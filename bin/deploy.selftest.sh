@@ -58,6 +58,17 @@
 # a fetch fix that handles git's 1 and lets its 128 escape, and an A3 fix that matches `dubious
 # ownership` and defaults everything else back to "not a git checkout", each pass every case but one.
 #
+# ⛔ AND A FIXTURE IS CHOSEN FOR THE WRONG FIXES IT REDS ON, NOT FOR THE RIGHT ONE IT PASSES
+# (card#9610). § card#9610 is where that is most explicit: the loader could not tell a `.env` the
+# kernel refused MID-READ from an empty one, because bash's `read` returns the same status at
+# end-of-file and on a read error, and three different wrong fixes each pass an obvious fixture.
+# `/proc/self/mem` — a regular file, mode 600, owned by this user, that `stat` calls size 0 and whose
+# first byte cannot be read, with no root and no special mount — is the ONE input that reds on all
+# three: on dropping the stderr capture, on discriminating with `[ -d "$ENV_FILE" ]` (which a
+# DIRECTORY fixture passes), and on discriminating by length against `stat -c %s` (which reads it as
+# empty). The directory case is beside it as a second shape, never as a substitute. Each wrong fix was
+# BUILT and run in that card's build round, and each reds exactly where this says it does.
+#
 # ⛔ AND A CONDITION THIS RUNNER CANNOT PRODUCE IS NAMED, NEVER SKIPPED (card#9646). Several cases
 # here depend on a state the suite has to MANUFACTURE — a file this user cannot open, an object at
 # mode 000, a checkout git treats as another user's. Each asserts that state before it asserts
@@ -558,6 +569,141 @@ hasnt "unreadable .env: no store verdict is reached on a file that was never rea
 # The twin, one variable away: the same file, openable by this user, passes every check.
 chmod 640 "$ROOT/server/.env"; run --dry-run
 eq "the same .env, readable: exit 0" 0 "$RC"
+
+# ── card#9610 — A .ENV THAT OPENED AND COULD NOT BE READ TO ITS END ────────────────────────────
+# The residual card#9605 left, and the sibling of the case above one step further in. Splitting the OPEN
+# out gave the open's failure a status of its own; the READ's two meanings stayed fused, because bash's
+# `read -d ''` returns 1 at end-of-file AND on a read error alike. So a file that yielded NO BYTES because
+# the kernel refused mid-read came back here as an EMPTY file, env_file_scan certified a file nothing had
+# read, and A5 refused on `APP_ENV is 'unset'` — a deploy stopped on a cause nothing established.
+#
+# WHAT DISCRIMINATES is not the status and not the SIZE: it is bash's own DIAGNOSTIC, which is a message on
+# a read error and silence at end-of-file — the same rule git_ref_oid reads git by. The cases below are
+# written to red on each wrong fix rather than on the absence of any fix, which is why the EIO one is here
+# at all and why the directory is NOT a substitute for it.
+#
+# ⛔ H1 IS THE LOAD-BEARING FIXTURE. `/proc/self/mem` is a REGULAR file, mode 600, owned by this user,
+# that `stat` reports as SIZE 0 and whose first byte cannot be read — no root and no special mount needed.
+# It is the only one of these that reds on ALL THREE wrong fixes:
+#   · dropping the stderr capture altogether        — status 1 is read as end-of-file, and this passes;
+#   · discriminating with `[ -d "$ENV_FILE" ]`      — H1b (a directory) passes, and this does not;
+#   · discriminating on length against `stat -c %s` — size 0 against 0 bytes read is "an empty file".
+# Each of those is built and run in the build round, and each reds HERE and nowhere else.
+#
+# These run deploy.sh as a LIBRARY (§ library mode, card#9644): `$0` is this selftest, so DEPLOY_IS_RUN is
+# 0, nothing execs, and one reader can be pointed at one path. There is no way to reach this through a real
+# `server/.env`: a symlink to /proc/self/mem is refused earlier, by A5's mode check, which reads `stat -c %a`
+# WITHOUT `-L` and so reports the LINK's 777. That is stated rather than worked around — a fixture bent into
+# shape to reach a check would be testing the bend.
+#
+# LC_ALL=C is pinned on the subshell, not on deploy.sh: bash's read diagnostic is gettext-translated, the
+# loader reads only its PRESENCE (never its words), and these assertions are the one place the words have to
+# be predictable. A runner in another language exercises the same mechanism; only this file needs the pin.
+section "card#9610 — a .env that OPENED and could not be READ to its end"
+
+# THE FIXTURE'S OWN PRECONDITION, ASSERTED FIRST, THROUGH A READER THAT IS NOT BASH'S. A kernel that answers
+# this path with 0 bytes instead of EIO would make every case below pass while testing nothing, so it reds
+# HERE, by name. `head` is used because it is not the mechanism under test (canon #9).
+eio_err="$(LC_ALL=C head -c1 /proc/self/mem 2>&1 >/dev/null)"; eio_rc=$?
+neq "EIO fixture: /proc/self/mem really cannot be read by an ordinary reader on this runner" 0 "$eio_rc"
+has "EIO fixture: and the reason it gives is an I/O error" "Input/output error" "$eio_err"
+
+# H1 — the loader, on a regular file whose read fails. env_file_scan is what turns the flag into a refusal.
+# ⚠ WHICH OF THESE WERE RED BEFORE THE FIX, MEASURED rather than assumed — a case comment that implies more
+# than the run showed is the same defect as a check that cannot fail. Red at 6686c0f: the exit code, the
+# banner, the promise, and the headline. GREEN there, FOR A DIFFERENT REASON: the two that read bash's
+# diagnostic (the old loader did not redirect `read`'s stderr at all, so bash printed straight to the stream
+# this capture merges — they assert the diagnostic SURVIVES the capture the fix adds, which is the thing a
+# fix can drop), and the three `hasnt` guards (the old loader reached no refusal at all, so it printed none
+# of the wrong ones either — they hold the fix to naming THIS cause rather than a neighbouring one).
+#
+# env_lib <.env path> <reader> [args…] — ONE way in, for every case here. It is a subshell function on
+# purpose: that subshell is what gives deploy.sh's `refuse` — which never returns — something to exit, and
+# it keeps LC_ALL, ENV_FILE and any TMPDIR the caller exported out of the rest of this suite. ENV_FILE is
+# set AFTER the source because deploy.sh's own configuration block writes it.
+# ⚠ The comment inside must not OPEN with the analyser's own directive word: a `# shellcheck …` line it
+# cannot parse is an ERROR, not a note, and it stops the whole file being checked (measured, 0.9.0).
+env_lib() (
+  # $0 is this selftest, so deploy.sh's DEPLOY_IS_RUN is 0 and nothing execs (§ library mode, card#9644).
+  LC_ALL=C
+  _env_lib_path="$1"; shift
+  # ⛔ THE READER IS SAVED BEFORE THE SOURCE, and that is not defensiveness — deploy.sh runs `set --` when
+  # it is SOURCED (§ library mode: a sourced copy must not see its caller's arguments), so `$@` is EMPTY
+  # below it. Measured while building this: called as `"$@"` after the source, env_lib ran NOTHING and every
+  # case here compared against an empty string — three of them still passed, because "no output" contains no
+  # wrong cause either. That is the shape a `hasnt`-only case has, and why each of these has a positive twin.
+  _env_lib_cmd=( "$@" )
+  # shellcheck disable=SC1090  # NOT `source=bin/deploy.sh`: measured 0.9.0, that directive pulls the whole
+  # of deploy.sh into THIS file's measurement and moves four of its finding classes at once (SC2016, SC2030,
+  # SC2031, SC2317), which buys nothing — deploy.sh is a population member and is linted in its own right.
+  . "$DEPLOY"
+  # shellcheck disable=SC2034  # ENV_FILE is deploy.sh's OWN input, read by the reader sourced above, which
+  # ShellCheck cannot follow from here — the same annotation bin/env-mirror-diff.mirror.sh carries for it.
+  ENV_FILE="$_env_lib_path"
+  "${_env_lib_cmd[@]}"
+)
+
+# env_get_status KEY — env_get's STATUS as text, with its output discarded. Run through env_lib, so it is
+# the status as a caller inside a `$(…)` sees it: the one thing that crosses back out of that subshell.
+# shellcheck disable=SC2317  # every call is indirect: env_lib runs it through "$@", which ShellCheck reads
+# as a body nothing reaches. Measured: rename it and the four cases below red, so it is reached.
+env_get_status() { local _rc=0; env_get "$1" >/dev/null || _rc=$?; printf 'rc=%s' "$_rc"; }
+
+OUT="$( env_lib /proc/self/mem env_file_scan 2>&1 )"; RC=$?
+eq  "EIO at the loader: exit 1 (refused, nothing touched)" 1 "$RC"
+has "EIO at the loader: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
+has "EIO at the loader: the phase-A promise" "Nothing was changed. The previous release is still serving." "$OUT"
+has "EIO at the loader: says the read stopped short, not that the file is empty" \
+    "was opened but could not be read to its end" "$OUT"
+has "EIO at the loader: bash's own diagnostic is printed back, not swallowed" "read error" "$OUT"
+has "EIO at the loader: and it names the errno the kernel answered with" "Input/output error" "$OUT"
+hasnt "EIO at the loader: never reports the wrong cause (every key read as unset)" "APP_ENV is 'unset'" "$OUT"
+hasnt "EIO at the loader: not the OPEN's refusal — the open succeeded" "exists but cannot be read by the user" "$OUT"
+hasnt "EIO at the loader: no NUL verdict on a file no byte of which was read" "carries a NUL byte" "$OUT"
+
+# H1b — the directory, card#9610's own T4 shape. It is a SECOND case and not the first: a `[ -d ]` test
+# passes it while leaving H1 red, which is the whole reason H1 exists.
+OUT="$( env_lib "$T" env_file_scan 2>&1 )"; RC=$?
+eq  "a directory at the loader: exit 1" 1 "$RC"
+has "a directory at the loader: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
+has "a directory at the loader: the same refusal, by the same route" "was opened but could not be read to its end" "$OUT"
+has "a directory at the loader: bash's errno says which fault it was" "Is a directory" "$OUT"
+
+# H1c — the STATUS, which is the only thing that crosses a `$(…)`. Phase B and A10b read through one, so a
+# flag set inside it is invisible to them: env_get answers 3, prints nothing, and 3 is never 'unset'.
+env_get_rc="$( env_lib /proc/self/mem env_get_status APP_URL 2>/dev/null )"
+eq "env_get on a file it could not read: status 3, which is neither 'unset' (1) nor 'unread' (2)" "rc=3" "$env_get_rc"
+env_get_out="$( env_lib /proc/self/mem env_get APP_URL 2>/dev/null || true )"
+eq "env_get on a file it could not read: prints nothing at all" "" "$env_get_out"
+# The twin, one variable away: the same reader, on a file it CAN read, still answers the value.
+env_get_ok="$( env_lib "$ROOT/server/.env" env_get APP_URL 2>/dev/null )"
+eq "the same reader on a readable .env: the value, unchanged" "https://mezzanine.example" "$env_get_ok"
+
+# The scratch-file failure the loader answers for ITSELF. It runs in both phases and inside
+# bin/env-mirror-diff.mirror.sh, where neither `refuse` nor `git_read_unusable` is the right answer, so it
+# sets the same flag with a reason of its own rather than dying or guessing.
+#
+# ⚠ TMPDIR IS EXPORTED, NOT JUST SET, and that is the fixture's whole mechanism: `mktemp` is an external
+# command and reads TMPDIR out of its ENVIRONMENT. Measured while building this case — with TMPDIR set but
+# unexported, mktemp never sees it, writes under /tmp and SUCCEEDS, and this case passed vacuously against
+# a loader that has the branch. A `.env`-shaped path that is a regular FILE is what mktemp cannot create
+# under (ENOTDIR), so the readable `.env` here is doing double duty as the input and as the broken TMPDIR.
+# shellcheck disable=SC2030  # TMPDIR is MEANT to be local to this expansion — a broken TMPDIR leaking into
+# the rest of the suite would break every later fixture. The subshell is the containment, not an accident.
+OUT="$( export TMPDIR="$ROOT/server/.env"; env_lib "$ROOT/server/.env" env_file_scan 2>&1 )"; RC=$?
+eq  "no scratch file for the diagnostic: exit 1" 1 "$RC"
+has "no scratch file for the diagnostic: refuses rather than judging a read it could not judge" \
+    "was opened but could not be read to its end" "$OUT"
+has "no scratch file for the diagnostic: names the scratch file as the reason" \
+    "No scratch file could be created for bash's read diagnostic" "$OUT"
+hasnt "no scratch file for the diagnostic: claims no path it did not establish was the one mktemp used" \
+    "could not be created under" "$OUT"
+hasnt "no scratch file for the diagnostic: no DB password is printed" "$FAKE_PW" "$OUT"
+# The twin, one variable away: the same file and the same reader, with a TMPDIR that IS a directory.
+# shellcheck disable=SC2031  # the warning is about the line above's TMPDIR not reaching here, which is the
+# arrangement this twin depends on: each case exports its own, and neither sees the other's.
+OUT="$( export TMPDIR="$T"; env_lib "$ROOT/server/.env" env_file_scan 2>&1 )"; RC=$?
+eq "a working TMPDIR, same .env: the scan passes" 0 "$RC"
 
 mkfix wrong_app_env; sed -i 's/^APP_ENV=.*/APP_ENV=local/' "$ROOT/server/.env"
 run_refusal "APP_ENV=local" "APP_ENV is 'local'" --dry-run
@@ -2789,6 +2935,75 @@ run
 eq  "APP_URL=null (Laravel: no URL at all): exit 0, as for an unset APP_URL" 0 "$RC"
 has "APP_URL=null: reported as unset, and the deploy as unverified" "APP_URL is unset" "$OUT"
 unlogged "APP_URL=null: no smoke request was made to a URL the app does not have" "curl "
+
+# ── card#9610 — A .ENV THAT STOPS BEING READABLE MID-RUN, ON EITHER SIDE OF THE WINDOW ─────────
+# The two cases the unit-level ones above cannot reach: a `.env` that was read once and is not readable
+# when it is read AGAIN. A5 scans it before its first key, so every later reader in the same run is
+# entitled to assume it was readable — and that assumption is exactly what makes "unset" the wrong answer
+# when it stops being true. Both mutants make it stop being true, at the two places it matters.
+#
+# ⚠ THE FLAGS CANNOT CARRY THIS, WHICH IS WHY env_get ANSWERS WITH A STATUS. Both readers call env_get
+# inside a `$(…)`, so ENV_LINES_UNREADABLE and ENV_LINES_READ_FAILED are set in a SUBSHELL that then exits:
+# a fix keyed on either flag in the parent passes nothing here. H4 is the asymmetric one — it is the case
+# that fix reds on.
+#
+# ⚠ WHAT IS NOT FIXTURED, stated rather than skipped: a READ (as against an OPEN) that fails on a real
+# `server/.env` cannot be produced on either side of the window — it needs a filesystem that answers EIO on
+# demand. `chmod 000` is what this runner can do, and it fails the OPEN. Both failures reach the same
+# env_get status 3 by the same route, and the READ half of it is covered at unit level by the /proc/self/mem
+# cases in § card#9610 above, which run the loader directly.
+section "card#9610 — a .env read once and not readable the second time"
+
+# H3 — PHASE A. The v1-mutator runs on the SERVING release's copy, which is the one phase A runs, and makes
+# `.env` unopenable immediately after env_file_scan has certified it. Without a status of its own, A5's
+# `env_read app_env APP_ENV || true` swallows the failure and refuses on `APP_ENV is 'unset'` — the exact
+# wrong cause, on a file that is right there and correct.
+unreadable_after_the_scan() {
+  # shellcheck disable=SC2016,SC2317  # SC2016: the `$ENV_FILE` and the `$` anchor are sed's, written
+  # LITERALLY into the release's own deploy.sh — expanding either here would write this suite's paths into
+  # the mutant. SC2317: every mutator is called indirectly, by mkfix, which ShellCheck cannot follow.
+  sed -i 's|^  env_file_scan$|  env_file_scan\n  chmod 000 "$ENV_FILE" # .env made unreadable by the selftest mutant, AFTER the scan|' "$1/bin/deploy.sh"
+}
+mkfix env_unreadable_after_scan "" unreadable_after_the_scan
+eq "phase-A mutant: the serving release really drops .env's mode after the scan" 1 \
+   "$(gitc "$SRC" show "$V1:bin/deploy.sh" | grep -c 'made unreadable by the selftest mutant')"
+run_refusal "a .env that stops being readable after A5's scan" \
+  "could not be read, so what Laravel reads for APP_ENV is not established" --dry-run
+hasnt "stopped being readable: never reports it as a key the host does not set" "APP_ENV is 'unset'" "$OUT"
+hasnt "stopped being readable: no DB password is printed" "$FAKE_PW" "$OUT"
+eq "phase-A mutant: the fixture really is unopenable afterwards (a root runner cannot hold this)" \
+   unopenable "$(env_openability "$ROOT/server/.env")"
+chmod 640 "$ROOT/server/.env"
+
+# H4 — PHASE B. The v2-mutator runs on the DEPLOYED release, which is the copy phase B re-execs into, and
+# makes `.env` unopenable just before the smoke step reads APP_URL. ⛔ NO REFUSAL IS ALLOWED HERE: the
+# window is closed and the new release is serving, so the promise a refusal makes would be false. The
+# deploy is UNVERIFIED, says which of the three reasons it is, and exits 0.
+unreadable_before_the_smoke() {
+  # shellcheck disable=SC2016,SC2317  # sed's own text, called indirectly by mkfix — both for the same
+  # reasons as the mutator above.
+  sed -i 's|^  local url code url_rc=0$|  chmod 000 "$ENV_FILE" # .env made unreadable by the selftest mutant, INSIDE the window\n  local url code url_rc=0|' "$1/bin/deploy.sh"
+}
+mkfix env_unreadable_in_window unreadable_before_the_smoke
+eq "phase-B mutant: the deployed release really drops .env's mode before the smoke read" 1 \
+   "$(gitc "$SRC" show "HEAD:bin/deploy.sh" | grep -c 'made unreadable by the selftest mutant')"
+run
+eq  "a .env unreadable inside the window: exit 0 — the app is up and this is not a refusal" 0 "$RC"
+has "a .env unreadable inside the window: names the file, not the key" "server/.env could not be read" "$OUT"
+has "a .env unreadable inside the window: says the deploy is UNVERIFIED" "UNVERIFIED" "$OUT"
+has "a .env unreadable inside the window: points at the run that names the cause" "names the cause the way A5 does" "$OUT"
+# ⚠ THE NEEDLE CARRIES `warn`'s OWN `⚠ ` PREFIX, deliberately. The correct warning QUOTES the wrong cause
+# in order to deny it — "This is not 'APP_URL is unset'" — so a bare `APP_URL is unset` needle matches the
+# RIGHT message and reds on the fix. What discriminates is the wrong branch's own rendering, which is the
+# line `warn` emits and nothing else in this output produces. Measured: this case reds with the needle
+# below against the previous bin/deploy.sh, where that branch is the one that fires.
+hasnt "a .env unreadable inside the window: never reports APP_URL as a key the host does not set" \
+      "⚠ APP_URL is unset" "$OUT"
+unlogged "a .env unreadable inside the window: no smoke request was made on a URL nothing read" "curl "
+hasnt "a .env unreadable inside the window: no DB password is printed" "$FAKE_PW" "$OUT"
+eq "phase-B mutant: the fixture really is unopenable (a root runner cannot hold this)" \
+   unopenable "$(env_openability "$ROOT/server/.env")"
+chmod 640 "$ROOT/server/.env"
 
 printf '\n──────────────────────────────────────────────\n'
 # ⚠ REPEATED HERE because a line 1,400 assertions up has scrolled past. A condition this runner

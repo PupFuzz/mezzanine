@@ -168,7 +168,8 @@ its date, its decider and the scope of what it moved. The original row above sta
   with the certificate verified, and fails closed without it. `bin/deploy.sh` A5 enforces that split from
   `server/.env` alone: a `DB_URL` it does not follow counts as another host, a key written in a form it does
   not read exactly as Laravel does is refused by name, a `.env` Laravel's own parser does not read as the
-  lines it is written in — or that carries a NUL byte, which Laravel reads and nothing in the script can —
+  lines it is written in — or that carries a NUL byte, which Laravel reads and nothing in the script can, or
+  that opened and could not be read to its end (card#9610) —
   is refused before any key is read, and a variable set in the process environment (a
   PHP-FPM pool's `env[DB_HOST]`, say), which Laravel prefers over `.env`, is outside what it reads. Every
   verdict whose answer could differ is on the value the app RECEIVES rather than the text of the line — a CA
@@ -528,7 +529,7 @@ rule violations anyone could have committed at the time.
     already open when the code moves keeps the old code until it ends, which is
     `mezzanine:feed-reload`'s job and the drain's (the stream bullet below).
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
-  an unreviewed failure marker, a modified prod tree, `.env` (missing, unreadable by the deploy user, world-readable, non-production,
+  an unreviewed failure marker, a modified prod tree, `.env` (missing, unreadable by the deploy user, **opened and not readable to its end** (card#9610), world-readable, non-production,
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, a store on another host without `MYSQL_ATTR_SSL_CA`, a
   non-persistent `CACHE_STORE`, a key A5 reads written in a form other than plain `KEY=value`, a file Laravel's
   own parser does not read as the lines it is written in, a file carrying a NUL byte), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
@@ -555,8 +556,19 @@ rule violations anyone could have committed at the time.
   and asserting the second for every 128 sent an operator whose prod checkout had been restored from backup
   — `detected dubious ownership`, which git prints its own repair line for — looking for a checkout that was
   right there. git's own wording is the discriminator, git's message is printed, and an unrecognised wording
-  gets the generic refusal rather than a false specific one. And **a read of the release itself that git
-  could not complete**: every
+  gets the generic refusal rather than a false specific one. And **a `.env` that OPENED and could not be read
+  to its end** (card#9610), which is the one an earlier round could not see: bash's `read` returns the same
+  status at end-of-file and on a read error, so a file the kernel refused mid-read came back as an EMPTY one
+  and the deploy refused on `APP_ENV is 'unset'` — a cause nothing established. bash's own DIAGNOSTIC is what
+  tells the two apart (a read error prints, an end-of-file is silent, the same rule the git reads use), it is
+  printed back before anything is decided, and nothing read partway is used. The one shape no reader can see
+  is stated in `bin/deploy.sh` rather than assumed away: an I/O error the kernel reports AS an end-of-file.
+  **After the window there is no refusal to make**, because the new release is already serving — so a
+  `server/.env` that stops being readable between phase A and phase B's smoke check leaves the deploy
+  **UNVERIFIED and says which of three reasons it is**: `APP_URL` in a form the script does not read, a
+  `server/.env` it could not read at all, or an `APP_URL` the host genuinely does not set. Only the last of
+  those is "unset", and reporting the other two as unset is what card#9610 ended. And **a read of the release
+  itself that git could not complete**: every
   precondition that judges the target tree reads it out of the object database before the checkout, and a
   read that FAILED is refused by name (card#9608) — *"the release does not carry this path"* and *"git could
   not read it"* are different answers, only the first is a finding about the release, and a gate handed the

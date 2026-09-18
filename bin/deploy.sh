@@ -232,10 +232,11 @@ done
 # that outlives the deploy.
 #
 # env_lines_load — $ENV_FILE as the LINES Laravel's own parser reads it as, in ENV_LINES; ENV_LINES_NUL is 1
-# when the read STOPPED at a NUL byte rather than reaching EOF, and ENV_LINES_UNREADABLE is 1 when the file
-# could not be OPENED at all, in which case ENV_LINES is empty because nothing was read. This is the ONE
-# place in this script that turns the file into lines, and both readers below iterate ENV_LINES, so
-# "a line" is a single thing here.
+# when the read STOPPED at a NUL byte rather than reaching EOF, ENV_LINES_UNREADABLE is 1 when the file
+# could not be OPENED at all, and ENV_LINES_READ_FAILED is 1 when it WAS opened and the read of it did not
+# reach the end — in either of those last two ENV_LINES is empty, because nothing this deploy will use was
+# read. This is the ONE place in this script that turns the file into lines, and both readers below iterate
+# ENV_LINES, so "a line" is a single thing here.
 # It has to be, and card#9561 r4's BLOCKER is why: while `env_file_scan` split on `\r\n`, `\n` and `\r` alike
 # and `env_get` shelled to `grep`, whose terminator is `\n` ONLY, a `.env` ending `# note\rDB_HOST=db.internal`
 # was TWO lines to Dotenv and ONE to the reader that decides — so Laravel went to db.internal over TCP in
@@ -244,11 +245,21 @@ done
 # unreadable for EVERY key. Both are the same defect — two notions of "a line" — and both end here rather
 # than in a refusal, because a file Laravel reads is one this script should read the same way.
 #   · the split is Dotenv\Parser\Parser::parse's `Regex::split("/(\r\n|\n|\r)/")`, mirrored (v5.7.0);
-#   · `read -d ''` returns status 1 at EOF **and** on a read ERROR, so status 1 alone does not mean the read
-#     completed. Splitting the OPEN out below discriminates the open's failure; the read's own two meanings
-#     stay fused, so a path that yields no bytes (a mid-read EIO) still reads here as an empty file — the
-#     residual is card#9610, and A5's `-f` at the call site closes the directory case for phase A. Status 0
-#     is the other thing: it STOPPED, at a NUL, and everything past that byte is unread — so the NUL flag.
+#   · `read -d ''` returns status 1 at EOF **and** on a read ERROR, so THE STATUS CANNOT DISCRIMINATE —
+#     and bash's DIAGNOSTIC can, which is the same "status + silence" rule git_ref_oid reads git by
+#     (§ git_ref_oid). Measured here, bash 5.3.9, 2026-09-18: `/dev/null` → status 1, stderr EMPTY; a
+#     directory → status 1, `read: N: read error: Is a directory`; `/proc/self/mem` → status 1,
+#     `read: N: read error: Input/output error`. So status 1 with bash SILENT is end-of-file, and status 1
+#     with bash SPEAKING is a read that stopped short. Status 0 is the third thing: it STOPPED, at a NUL,
+#     and everything past that byte is unread — so the NUL flag. Anything else is neither, and says so.
+#     ⛔ NOT A SIZE OR LENGTH TEST (card#9610 weighed and rejected it): `${#content}` against `stat -c %s`
+#     counts CHARACTERS against BYTES under a UTF-8 locale, asks the filesystem a second question whose
+#     answer can have changed since the first, and reads every /proc-style file — which reports size 0 —
+#     as empty. The one no-root EIO fixture there is on this host is exactly such a file.
+#   · ⚠ THE RESIDUAL, stated rather than assumed away: an I/O error the kernel reports to the read as an
+#     end-of-file — 0 bytes rather than −1 — is invisible to EVERY userland reader, bash included, and
+#     nothing below can see it. And bash's diagnostic is gettext-translated, so only its PRESENCE is read
+#     here, never its words: a host running in another language refuses in that language and is not misread.
 #   · the OPEN is a step of its own, with a status of its own, because `read`'s statuses cannot carry its
 #     failure and a silenced open is indistinguishable from an empty file (card#9605). Until this, the open
 #     rode on the read: `read … 2>/dev/null < "$ENV_FILE"` applies its redirections LEFT TO RIGHT, so stderr
@@ -260,15 +271,82 @@ done
 ENV_LINES=()
 ENV_LINES_NUL=0
 ENV_LINES_UNREADABLE=0
+ENV_LINES_READ_FAILED=0
+ENV_LINES_READ_FAILED_WHY=""
+
+# ENV_READ_ERR_FD — the scratch `read`'s stderr goes to, and the only reason this loader needs one: bash's
+# read ERROR is a message and its EOF is SILENCE, so the diagnostic has to be kept somewhere to be looked
+# at, and a builtin that must set a variable in THIS shell cannot be wrapped in a `$(…)`. It is created
+# once per process, on the first read, and UNLINKED the instant it exists: the fd holds the inode open, so
+# there is no path left for anything to race on and nothing to clean up — it dies with this shell.
+# `/dev/fd/N` re-opens that same inode from offset 0, which is what makes each write TRUNCATE what the
+# previous read left and each read-back start at the top.
+#
+# ⚠ WHAT IT COSTS, stated rather than left to be found: bash does not set close-on-exec on a descriptor
+# opened this way, so every child this script runs inherits it, and phase B's re-exec — which replaces the
+# process, losing the variable but not the descriptor — makes the new process open a second. That is two
+# empty, unlinked, unreferenced inodes at the very most, for the life of one deploy; it carries no content
+# to leak, and no reader in this script or any child looks at a descriptor it was not given.
+#
+# ⚠ ONE PER PROCESS IS LOAD-BEARING, NOT TIDINESS, and the number that says so is a measurement rather
+# than a preference. `bin/env-mirror-diff.sh` reads its whole key list through this loader once per cell —
+# its own header states that NOTHING on the scan path forks, and why — so a scratch file per LOAD would be
+# a fork per key per cell. Measured on this host, 2026-09-18, bash 5.3.9: a `mktemp`-and-`rm` per load
+# costs 6.3 ms and this costs 0.08 ms, and what that lane actually pays for the shape below is one `mktemp`
+# per CELL (each cell is a subshell of its own, so it opens its own): 1m41s before this change, 2m19s after.
+# Re-derive both sides before changing the shape rather than trusting those figures:
+#   time bash bin/env-mirror-diff.sh   ·   its own footer prints the cell count the timing is over
+ENV_READ_ERR_FD=
+
+# env_read_err_open — opens ENV_READ_ERR_FD, once. Status 1 when no scratch file could be made, which is
+# the one failure the loader answers for itself: it runs in BOTH phases and inside bin/env-mirror-diff.sh,
+# where neither `refuse` nor `git_read_unusable` is the right answer, so it sets the flag and lets the
+# caller decide. Both statuses are read; neither is guessed at.
+env_read_err_open() {
+  local t
+  t="$(mktemp 2>/dev/null)" || return 1
+  { exec {ENV_READ_ERR_FD}<> "$t"; } 2>/dev/null || { rm -f "$t"; ENV_READ_ERR_FD=; return 1; }
+  rm -f "$t"
+}
+
 env_lines_load() {
-  local content="" line fd=
-  ENV_LINES=(); ENV_LINES_NUL=0; ENV_LINES_UNREADABLE=0
+  local content="" line rc=0 msg="" fd=
+  ENV_LINES=(); ENV_LINES_NUL=0; ENV_LINES_UNREADABLE=0; ENV_LINES_READ_FAILED=0; ENV_LINES_READ_FAILED_WHY=""
   # The group's `2>/dev/null` is established before the open inside it runs, which is the ordering the old
   # one-liner got wrong; the open's own status is what sets the flag, and nothing below runs on a file that
   # was never opened.
   if ! { exec {fd}< "$ENV_FILE"; } 2>/dev/null; then ENV_LINES_UNREADABLE=1; return 0; fi
-  if IFS= read -r -d '' content <&"$fd"; then ENV_LINES_NUL=1; fi
+  if [ -z "$ENV_READ_ERR_FD" ] && ! env_read_err_open; then
+    exec {fd}<&-
+    ENV_LINES_READ_FAILED=1
+    # ⚠ NO PATH IS NAMED HERE, and that is a correctness point rather than a style one: `${TMPDIR:-/tmp}`
+    # would read this SHELL's variable, while `mktemp` reads the one in its ENVIRONMENT, and the two are
+    # the same only while TMPDIR is exported. Naming the mechanism is true either way; naming a path would
+    # be a specific cause nothing here established (measured 2026-09-18: an unexported TMPDIR is invisible
+    # to mktemp, which then writes under /tmp and succeeds).
+    ENV_LINES_READ_FAILED_WHY="No scratch file could be created for bash's read diagnostic (\`mktemp\` failed), and that diagnostic is the only thing that tells a read error from an end of file here — so the read was not judged and nothing it returned is used. mktemp writes under \$TMPDIR, or /tmp when that is unset: check that whichever applies names a directory this deploy can write to, and that it is not full."
+    return 0
+  fi
+  IFS= read -r -d '' content <&"$fd" 2>"/dev/fd/$ENV_READ_ERR_FD" || rc=$?
   exec {fd}<&-
+  msg="$(< "/dev/fd/$ENV_READ_ERR_FD")"
+  if [ "$rc" -eq 0 ]; then
+    ENV_LINES_NUL=1
+  elif [ "$rc" -ne 1 ] || [ -n "$msg" ]; then
+    # A READ THAT STOPPED SHORT. bash's line is printed back in full and nothing is decided before it is —
+    # the rule every reader in this script follows — and it is safe to print BY CONSTRUCTION, not by
+    # inspection: `read`'s diagnostic names the file DESCRIPTOR and the errno string, and carries no byte
+    # of what was read. ENV_LINES is left EMPTY on purpose: a file read partway is not a file this deploy
+    # will certify, so there is nothing here for the readers below to hand back.
+    [ -z "$msg" ] || printf '%s\n' "$msg" >&2
+    ENV_LINES_READ_FAILED=1
+    if [ -n "$msg" ]; then
+      ENV_LINES_READ_FAILED_WHY="bash's own read error is printed above this refusal. It names the file descriptor it was reading and the errno the kernel answered with, and no byte of what the file holds."
+    else
+      ENV_LINES_READ_FAILED_WHY="bash's \`read\` exited $rc and printed NOTHING. Status 0 is a NUL byte and status 1 is end-of-file or a read error; this is neither of those, so what the read did is not established here and nothing it may have returned is used."
+    fi
+    return 0
+  fi
   content="${content//$'\r\n'/$'\n'}"
   content="${content//$'\r'/$'\n'}"
   # `<<<` appends exactly the terminator the last line needs, so ${#ENV_LINES[@]} is the number of lines
@@ -280,6 +358,14 @@ env_lines_load() {
 # when a line defining KEY is in a form this reader does not read EXACTLY as Laravel does (vlucas/phpdotenv's
 # Dotenv\Parser, then Illuminate\Support\Env::get). Status 2 is never "unset": a check that took an unread value
 # as absent would pass the value Laravel then uses.
+#
+# ⛔ AND STATUS 3, printing nothing, when THE FILE ITSELF WAS NOT READ — it could not be opened, or it was
+# opened and the read did not reach its end (§ env_lines_load). STATUS 3 IS NEVER "UNSET" EITHER, and it is a
+# STATUS rather than a flag for one reason: every caller that wants a value calls this inside a `$(…)`, so the
+# flags env_lines_load sets die with that subshell and the status is the only thing that crosses back. A reader
+# that let a 3 fall into the status-1 branch would report every key of an unread file as one this host does not
+# set — which is the wrong cause in the safe direction for A5 (it refuses, naming the wrong thing) and in the
+# DANGEROUS one for phase B and A10b, where "unset" is a fact those two act on.
 #
 # PRECONDITION: `env_file_scan` has passed on $ENV_FILE. `env_lines_load` decides where a line ENDS; the
 # scan is what makes one of those lines a SETTING — Dotenv reads a `KEY="` value its own line does not close
@@ -304,6 +390,9 @@ env_lines_load() {
 env_get() {
   local key="$1" lines="" line value re
   env_lines_load
+  # Asked of the LOADER's flags, above every question about content: ENV_LINES is empty in both of these
+  # cases, and an empty ENV_LINES is exactly what a file that really sets nothing looks like from here.
+  if [ "$ENV_LINES_UNREADABLE" = 1 ] || [ "$ENV_LINES_READ_FAILED" = 1 ]; then return 3; fi
   # The pattern is the one this reader has always used; what changed in card#9561 r5 is what it runs over.
   # bash's `=~` is ERE, so the text is unchanged — but it matches the lines ENV_LINES holds, which are the
   # lines Dotenv reads, rather than the ones a `\n`-only splitter would have found. The matches are joined
@@ -334,11 +423,34 @@ env_get() {
   printf '%s' "$value"
 }
 
+# env_unread_refuse KEY — the refusal for env_get status 3, in one place because TWO callers make it (env_read
+# below, and A10b) and a second wording would be a second contract. It lives inside the .env reading block so
+# that bin/env-mirror-diff.mirror.sh, which sources this block with `refuse` stubbed, gets it with the readers.
+#
+# It says less than env_file_scan's two refusals do, and deliberately: this is reached AFTER that scan has
+# already passed on this file in this run, so what it knows is that the file has STOPPED being readable since —
+# not which of the two ways. bash's own error, when the read was the half that failed, is on screen above it.
+env_unread_refuse() {
+  refuse "$ENV_FILE could not be read, so what Laravel reads for $1 is not established" \
+    "It was read once already in this run — A5 scans it before its first key — so this is not a .env that was" \
+    "never readable: it has stopped being readable since, either at the OPEN (ownership or mode changed under" \
+    "this deploy) or during the READ (a disk, filesystem or network-mount fault, in which case bash's own error" \
+    "is above this refusal)." \
+    "Nothing was read out of it here, so no key's value is established — not this one, and not the ones already" \
+    "checked, which were read from a file that has since changed under this run." \
+    "Fix what made it unreadable and run \`$0 --dry-run\`, which reaches this file at A5 and names the cause there." \
+    "Its content is not printed here — it may carry a credential."
+}
+
 # env_read VAR KEY — env_get KEY into VAR, in THIS shell: returns 1 with VAR empty when KEY is unset, and REFUSES
 # when env_get cannot read KEY. The refusal names the key and never the line, which may carry a credential.
+# It refuses on status 3 as well as on status 2, and that is the whole reason A5's `env_read … || true` call
+# sites are safe: `|| true` swallows a status, and a 3 swallowed into A5's status-1 path would be read as
+# "APP_ENV is 'unset'" — a deploy refused, loudly, on a cause nothing established (card#9610).
 env_read() {
   local _env_value _env_rc=0
   _env_value="$(env_get "$2")" || _env_rc=$?
+  [ "$_env_rc" -ne 3 ] || env_unread_refuse "$2"
   [ "$_env_rc" -ne 2 ] || refuse ".env defines $2 in a form this deploy does not read, so what Laravel reads for it is not established" \
     "$ENV_FILE sets $2 with an export prefix, whitespace around =, a quoted name, a \$ outside '…' (Dotenv" \
     "interpolates \${…}), an inline comment, trailing whitespace, a \\ inside \"…\", a doubly quoted value, a bare" \
@@ -448,6 +560,26 @@ env_file_scan() {
       "and give it to the user this deploy runs as, keeping mode 640." \
       "Nothing was read out of it. Without this refusal every key comes back 'unset' and the deploy stops" \
       "on the first key A5 checks, naming a cause that is not the real one." \
+      "Its content is not printed here — it may carry a credential."
+  fi
+  # The I/O refusal's sibling one step further in, and the one the open check above cannot make: the file
+  # OPENED and the read of it did not reach the end. Splitting the open out gave that failure a status of
+  # its own; this gives the READ one, which `read`'s own status cannot carry (§ env_lines_load).
+  if [ "$ENV_LINES_READ_FAILED" = 1 ]; then
+    refuse "$ENV_FILE was opened but could not be read to its end" \
+      "$ENV_LINES_READ_FAILED_WHY" \
+      "The open SUCCEEDED, so this is neither a permission nor an ownership — those are what the two checks" \
+      "above it and the refusal above this one are about, and all of them passed. WHICH fault it is, the" \
+      "errno in bash's line says and this deploy does not guess past it: a read that fails on a file already" \
+      "open is usually a disk or filesystem one — failing media, a filesystem remounted read-only or unmounted" \
+      "under this host, a network mount that stopped answering — and \`dmesg\` and the mount this file sits on" \
+      "are where that family is visible. An errno about the KIND of file instead, on a path A5 has already" \
+      "tested with \`-f\`, says $ENV_FILE changed shape under this run." \
+      "NOTHING THAT WAS READ IS USED. A file read partway is not certified here: every line below the point" \
+      "it stopped is unread, and a partial read is indistinguishable from a shorter file once the bytes are" \
+      "in hand — so the read is discarded whole rather than scanned. Without this refusal that partial read" \
+      "comes back as an EMPTY file and the deploy stops on the first key A5 checks, naming a cause that is" \
+      "not the real one." \
       "Its content is not printed here — it may carry a credential."
   fi
   if [ "$ENV_LINES_NUL" = 1 ]; then
@@ -2065,7 +2197,10 @@ gate_a10_migration_algorithm() {
 
 # gate_a10b_config_drift <sha> — A10b. NOT host-free: it reads the release's server/.env.example
 # out of git and asks env_get what THIS HOST's $ENV_FILE sets, which is the comparison it exists to
-# make. It warns and never refuses.
+# make. It warns and never refuses ON A FINDING — a key the host does not set, or sets in a form this
+# deploy does not read, is a warning and nothing more. It DOES refuse when the file it is comparing
+# against stopped being readable mid-run (env_get status 3), which is not a finding about config drift
+# but the disappearance of the evidence this gate and every check above it were reading.
 gate_a10b_config_drift() {
   local SHA="$1"
   # A10b — config drift between the release and the host. A release that introduces a setting ships
@@ -2077,10 +2212,12 @@ gate_a10b_config_drift() {
   # ever mention it.
   # Whether this host sets a key is asked through env_get, the one reader that answers it the way Laravel
   # would: a hand-rolled `^[[:space:]]*KEY=` line-grep reported `export FOO=…` and `"FOO"=…` — both of them
-  # Dotenv's FOO — as a key the host does not set. Its third answer is kept apart: status 2 is a key written
+  # Dotenv's FOO — as a key the host does not set. Its other three answers are each kept apart: status 2 is a key written
   # in a form this deploy does not read, which is not "missing" and not "set" but "not established", and
-  # saying "does not set" of it sends the operator to add a line that is already there. (A5 has run
-  # env_file_scan on this file, which is what makes a LINE a unit here at all — env_get's precondition.)
+  # saying "does not set" of it sends the operator to add a line that is already there; status 3 is the file
+  # itself not being read, which would put EVERY key of .env.example into that same list and is refused
+  # rather than warned about (card#9610). (A5 has run env_file_scan on this file, which is what makes a LINE
+  # a unit here at all — env_get's precondition, and the thing a status 3 here says has stopped holding.)
   local want="" example missing_keys=() unread_keys=() k k_rc
   # "no key of .env.example is unset on this host" and "that file was not read" are the same silence
   # from here, so the read that produced the key list has to be the one that can tell them apart.
@@ -2094,6 +2231,12 @@ gate_a10b_config_drift() {
     case "$k_rc" in
       1) missing_keys+=("$k") ;;
       2) unread_keys+=("$k") ;;
+      # ⛔ NOT A WARNING, and not a key this host "does not set". A5 read this same file through this same
+      # loader earlier in this run, so a 3 here means it stopped being readable in between — and every key
+      # already collected above was read from a file that is no longer the one on disk. Warning would put
+      # EVERY key the release's .env.example names into a "does not set" list that nothing established,
+      # and the operator would go and re-add settings that are already there (card#9610).
+      3) env_unread_refuse "$k" ;;
     esac
   done
   [ ${#missing_keys[@]} -eq 0 ] \
@@ -2709,7 +2852,11 @@ phase_b_post_checkout() {
   # refuses and an operator has to look. `/up` is Laravel's health route (server/bootstrap/app.php
   # `health: '/up'`); it needs no credential and it is the one endpoint that answers before MFA.
   # APP_URL is read with env_get rather than env_read: a refusal promises nothing was changed, and here the new
-  # release is already serving. A value env_get cannot read gets the unset case's warning, named.
+  # release is already serving. Every answer env_get cannot turn into a URL gets a warning of its OWN, NAMED —
+  # a form this reader does not read (status 2), a file that was not read at all (status 3), and a key the file
+  # genuinely does not set are three different facts about this host, and only the last of them is "unset".
+  # ⛔ NO `refuse` ON ANY OF THEM: the window is closed and the new release is serving, so the one promise a
+  # refusal makes would be false. The deploy is UNVERIFIED and says so, which is what exit 0 means here.
   local url code url_rc=0
   url="$(env_get APP_URL)" || url_rc=$?
   # The same rule as every A5 check: what the app has is the value it RECEIVES. An APP_URL Laravel
@@ -2718,6 +2865,8 @@ phase_b_post_checkout() {
   ! env_app_falsy "$url" || url=""
   if [ "$url_rc" -eq 2 ]; then
     warn "APP_URL is in a form this script does not read (env_get, bin/deploy.sh) — no smoke check was made. The deploy is UNVERIFIED."
+  elif [ "$url_rc" -eq 3 ]; then
+    warn "server/.env could not be read (its open or its read failed; bash's reason, if any, is above) — no smoke check was made. The deploy is UNVERIFIED. This is not 'APP_URL is unset': the file was readable in phase A and stopped being so inside the window. \`bin/deploy.sh --dry-run\` names the cause the way A5 does."
   elif [ -z "$url" ]; then
     warn "APP_URL is unset — no smoke check was made. The deploy is UNVERIFIED."
   else

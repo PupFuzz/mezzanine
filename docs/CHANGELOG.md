@@ -26,6 +26,34 @@ verbatim by release flow step 13 (`docs/VERSIONING.md`). R5 gates this file's si
 
 ## [Unreleased]
 
+- **card#9610** — **a `server/.env` that OPENS and cannot be read to its end is now refused as itself,
+  and after the maintenance window it leaves the deploy UNVERIFIED by name rather than reported as an
+  unset key.** bash's `read` returns the same status at end-of-file and on a read ERROR, so the loader
+  could not tell a file the kernel refused mid-read from an empty one: `env_file_scan` certified a file
+  nothing had read, and A5 refused on `APP_ENV is 'unset'` — a deploy stopped on a cause nothing
+  established, with a `.env` that was right there and correct. What discriminates is bash's own
+  DIAGNOSTIC, not its status and not the file's size: a read error prints and an end-of-file is silent,
+  which is the rule the git reads in this script already use. A size or length test was measured and
+  rejected — it counts characters against bytes under a UTF-8 locale, asks the filesystem a second
+  question whose answer can have changed since the first, and reads every `/proc`-style file as empty.
+  The read's stderr is captured to be READ rather than hidden: every byte of it is printed back before
+  anything is decided, and it is safe to print by construction — `read`'s diagnostic names a file
+  descriptor and an errno and carries no byte of what the file holds. Nothing read partway is used.
+  The shape no userland reader can see is stated in the script instead of assumed away: an I/O error the
+  kernel reports AS an end-of-file. **The status is what crosses the subshell.** Both readers that want a
+  value call `env_get` inside a `$(…)`, so a flag set by the loader dies with that subshell — `env_get`
+  answers **3** for a file that was not read, printing nothing, and 3 is never "unset". `env_read`
+  refuses on it, which is what stops A5's `env_read … || true` from swallowing it back into `APP_ENV is
+  'unset'`; A10b refuses on it rather than listing 53 keys the host "does not set"; and phase B, where
+  no refusal is allowed because the new release is already serving, **warns with the cause named** and
+  says the deploy is UNVERIFIED. The suite gains the fixtures that discriminate: an EIO on a regular
+  file with no root (`/proc/self/mem` — the only one that reds on all three wrong fixes, including the
+  `[ -d ]` one a directory fixture would pass and the size one that reads it as empty), the directory
+  beside it, `env_get`'s status read through a subshell, a `.env` made unreadable after A5's scan, and
+  one made unreadable inside the window. Each was seen to red against the previous `bin/deploy.sh`
+  first. One condition is named rather than fixtured: a phase-A or phase-B READ failure on a real
+  `server/.env` needs a filesystem that answers EIO on demand, which this runner cannot produce — a
+  symlink to `/proc/self/mem` is refused earlier by A5's mode check, which reads the LINK's mode.
 - **card#9646** — **every exit `bin/deploy.sh` takes in its precondition phase is now a refusal that
   says so, and names only the cause the run established.** Four commands ran without their status
   being read, so the script died on them instead of refusing: `--ref` with no value (bash's own
