@@ -545,7 +545,18 @@ rule violations anyone could have committed at the time.
   `pm.status_listen`, a status that does not answer over that listener for that pool; and on that
   pool `zlib.output_compression`, `output_handler` or `ignore_user_abort` set in the ini, the pool
   or a `.user.ini`. `output_buffering` is reported and **not** refused — measured, the handler's
-  flush defeats this host's 4096. And **a read of the release itself that git could not complete**: every
+  flush defeats this host's 4096. And **a fetch git could not complete**, and **a repository git could not
+  open**, each named as itself (card#9646). Both used to end phase A with git's own status and no refusal at
+  all: a fetch that failed exited 1 for a ref of this checkout it could not read and 128 for a remote it
+  could not reach, and `git status` exited 128 on an unreadable `.git/index` — so the operator got either a
+  code the exit table does not list, or the code that MEANS "refused, nothing was touched" with neither the
+  `⛔ REFUSED` banner nor the `Nothing was changed` promise on screen to confirm it. **And a repository git
+  cannot open is told apart from a checkout that is not there**: `rev-parse --git-dir` exits 128 for both,
+  and asserting the second for every 128 sent an operator whose prod checkout had been restored from backup
+  — `detected dubious ownership`, which git prints its own repair line for — looking for a checkout that was
+  right there. git's own wording is the discriminator, git's message is printed, and an unrecognised wording
+  gets the generic refusal rather than a false specific one. And **a read of the release itself that git
+  could not complete**: every
   precondition that judges the target tree reads it out of the object database before the checkout, and a
   read that FAILED is refused by name (card#9608) — *"the release does not carry this path"* and *"git could
   not read it"* are different answers, only the first is a finding about the release, and a gate handed the
@@ -568,8 +579,8 @@ rule violations anyone could have committed at the time.
   that needs the pack — an abbreviated id, `main~1`, `:/subject` — which is the shape a real host is in, so
   A7 tells an operator which of the two their `--ref` is and what resolves without the store being read at
   all; and a REF FILE at mode 000 answers silently too, on a store where every object reads, which nothing
-  here can see — not reachable today only because the fetch meets that ref first (card#9646), and written
-  down in `bin/deploy.sh` beside the premise it falsifies rather than left as a premise. **A status that is
+  here can see — not reachable today only because the fetch refuses on that ref first (card#9646), and
+  written down in `bin/deploy.sh` beside the premise it falsifies rather than left as a premise. **A status that is
   neither 0 nor 1 is split by that same silence**: git exits 128 without printing anything for `@{…}` reflog
   syntax on a completely healthy store — `--ref HEAD@{1}` does it on any host — so that refusal states the
   status, claims no failed read, and says what to deploy from instead. **A LOUD answer is named as the

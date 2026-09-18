@@ -77,6 +77,15 @@
 #   2  FAILED INSIDE THE MAINTENANCE WINDOW. The app is DOWN and stays down for operator review.
 #      A failure marker is left and a bare re-run REFUSES until an operator clears it.
 #   3  the app came back up but the post-window smoke check did not pass. Marker left.
+#   ⛔ ANY OTHER CODE — and a 1 with no ⛔ banner — is this script DYING on a command it ran without
+#      reading that command's status, not a verdict it reached (card#9646). Read it that way, and
+#      read the two lines that tell them apart rather than the number: a REFUSAL prints
+#      `⛔ REFUSED — <cause>` and ends `Nothing was changed. The previous release is still serving.`,
+#      and an IN-WINDOW failure prints `▶ Maintenance window: OPEN` and leaves the marker named
+#      above. A death prints neither, and the command's own error is the last thing on screen.
+#      NOTHING WAS TOUCHED when neither the window line nor the marker is there: every phase-A
+#      command runs before `php artisan down`. Each such site found is fixed — this note exists
+#      because the class is not closed by inspection, not because the shape is acceptable.
 #
 # USAGE
 #   bin/deploy.sh [--ref <ref>] [--dry-run] [--redeploy] [--allow-unreleased]
@@ -802,8 +811,8 @@ git_read_at() {
 # assumed:
 #   · IT IS NOT REACHABLE THROUGH THIS SCRIPT TODAY. A7 fetches before it resolves anything, and a
 #     ref it cannot read fails THAT first — measured: `fatal: bad object refs/remotes/origin/main`,
-#     exit 1, so the deploy dies at the fetch with git's error on screen (card#9646 owns the fetch's
-#     own status reading; that is where a fix for this belongs).
+#     exit 1, so the deploy REFUSES at the fetch, by name, with git's error above the refusal
+#     (card#9646 landed the fetch's own status reading; a fix for this belongs there).
 #   · IF IT EVER BECOMES REACHABLE, THE COUPLING IS A8's. An unreadable `refs/remotes/$REMOTE/main`
 #     would answer git_ref_oid with 1-silent, A8 would read that as "there is no release branch",
 #     and the run would conclude that nothing is released — so `--allow-unreleased` would apply —
@@ -1489,12 +1498,80 @@ phase_a() {
   fi
 
   # A3 — this really is a Mezzanine checkout, and a git one.
-  git_at rev-parse --git-dir >/dev/null 2>&1 || refuse "$DEPLOY_ROOT is not a git checkout"
+  #
+  # ⛔ ONE CAUSE WAS ASSERTED FOR A STATUS THAT CARRIES SEVERAL (card#9646). `rev-parse --git-dir`
+  # exits 128 for every way it cannot open a repository, and `2>&1 >/dev/null || refuse "… is not a
+  # git checkout"` threw git's own message away and named the one cause the operator is LEAST likely
+  # to be in: a prod checkout that has been deploying for months does not stop being a git checkout.
+  # Measured, git 2.53.0, all 128 with the message dropped: `detected dubious ownership` (a checkout
+  # restored from backup, rsynced, or chowned — git prints the exact repair line itself), `bad config
+  # line 1 in file .git/config`, and a file under `.git` it could not read. An operator told "not a
+  # git checkout" about any of those goes looking for a checkout that is right there.
+  #
+  # THE DISCRIMINATOR IS GIT'S OWN WORDING, not the status — the status is 128 for all of them. git
+  # says `not a git repository` in those words for the four shapes that really are not a checkout
+  # (a plain directory; `.git` at mode 000, which git discovers PAST rather than fails on; a `.git`
+  # file pointing nowhere; a `.git` directory that is not a repository), and `cannot change to '…':
+  # Not a directory` for a root that is a file. Anything else lands in the generic branch — which is
+  # honest about an unrecognised wording rather than false about it. `LC_ALL=C` is pinned on this
+  # call so the wording is the one measured; it is pinned on the NEW call only (card#9646 § 5 S9).
+  # git's message is PRINTED before either refusal, because it is what names the cause.
+  #
+  # ⚠ AND NONE OF THE THREE REFUSALS card#9646 ADDS (here, A4, A7) SAYS "git's error is above this
+  # refusal". They say what git PRINTED is above it, which is true whether or not git printed
+  # anything. A fixed line asserting a message git may not have given is card#9611 r3's own defect
+  # — git_ref_oid's `∉ {0,1}, git SILENT` answer is exactly that state, met on a healthy host — and
+  # a silent non-zero from these three commands is not something this suite can produce, so a
+  # branch on it would be a check that cannot fail (canon #9) guarding a state nothing establishes
+  # is reachable (canon #6). The wording carries the uncertainty instead, and costs nothing.
+  local repo_msg="" repo_rc=0
+  repo_msg="$(LC_ALL=C git_at rev-parse --git-dir 2>&1 >/dev/null)" || repo_rc=$?
+  if [ "$repo_rc" -ne 0 ]; then
+    [ -z "$repo_msg" ] || printf '%s\n' "$repo_msg" >&2
+    case "$repo_msg" in
+      *"not a git repository"* | *"cannot change to"*)
+        refuse "$DEPLOY_ROOT is not a git checkout" \
+          "git's message above says what it found there instead." ;;
+      *)
+        refuse "git could not open $DEPLOY_ROOT as a repository (\`git rev-parse --git-dir\` exited $repo_rc)" \
+          "What git printed is above this refusal. That, and the status, are the whole of what was" \
+          "established, and this deploy does not guess past them." \
+          "IT IS NOT \"not a git checkout\" — git says that in those words, and that answer has its" \
+          "own refusal. What reaches here is a checkout git can see and could not OPEN. Measured," \
+          "git 2.53.0:" \
+          "  · \`detected dubious ownership in repository at …\` — the checkout is owned by another" \
+          "    user, which is what a restore from backup, an rsync or a chown leaves behind. git" \
+          "    prints the \`git config --global --add safe.directory <path>\` line for it itself;" \
+          "    chowning the checkout to the deploy user is the other fix, and the better one on a" \
+          "    host where this user is the only one that should be writing here." \
+          "  · a \`.git/config\` git cannot parse — \`bad config line N in file …\`." \
+          "  · a file under \`.git\` it could not read." \
+          "Nothing was read out of the checkout, so nothing here says anything about the release or" \
+          "about what is being served." ;;
+    esac
+  fi
   [ -f "$APP_DIR/artisan" ] || refuse "$APP_DIR/artisan not found — MEZZ_DEPLOY_ROOT is not a Mezzanine checkout"
 
   # A4 — a clean tree. A modified file on the prod checkout IS the hand-deploy D-13 forbids, and
   # the checkout below would either clobber it or fail. Either way the operator must see it now.
-  local dirty; dirty="$(git_at status --porcelain)"
+  #
+  # ⛔ AND ITS STATUS IS READ, because A3 does not cover it (card#9646 S2, measured rather than
+  # assumed). `git status` opens `.git/index`; `rev-parse --git-dir` never does — measured, git
+  # 2.53.0, on a checkout whose `.git/index` is mode 000: A3 exits 0 and this exits 128 with
+  # `fatal: .git/index: index file open failed: Permission denied`. Unguarded under `set -Eeuo`
+  # that ended phase A at exit 128, a code the exit table does not list, with no banner and no
+  # promise. THE EMPTINESS IS NOT THE ANSWER HERE EITHER: a failed `status` hands back the same
+  # empty string a clean tree does, so a `[ -z "$dirty" ]` on it certifies a tree it never read.
+  local dirty="" dirty_rc=0
+  dirty="$(git_at status --porcelain)" || dirty_rc=$?
+  [ "$dirty_rc" -eq 0 ] || refuse \
+    "git could not read the state of $DEPLOY_ROOT (\`git status --porcelain\` exited $dirty_rc)" \
+    "What git printed is above this refusal, and is what names the file it could not read." \
+    "Whether this checkout carries local modifications is NOT established — this is not \"the tree is clean\"." \
+    "A deploy that carried on here would check out over an edit it never saw, which is the hand-deploy" \
+    "D-13 forbids, applied by this script instead of by a person." \
+    "A3 above passed: git opened the repository. What failed is the read of the working tree's" \
+    "state, and \`.git/index\` is the file that read needs (measured, git 2.53.0)."
   [ -z "$dirty" ] || refuse "the prod checkout has local modifications" \
     "$(printf '%s' "$dirty" | sed 's/^/  | /')" \
     "Prod moves only by this script (D-13). Nothing may be edited on the host."
@@ -1622,7 +1699,39 @@ phase_a() {
   # what is being served (it moves remote-tracking refs, nothing in the worktree), so --dry-run
   # runs it too: a ref check that did not fetch would be checking yesterday's answer.
   step "Fetching $REMOTE"
-  git_at fetch --prune --tags "$REMOTE"
+  # ⛔ THE FETCH'S OWN STATUS IS READ, and it is the first phase-A command that could not say so
+  # (card#9646). Unguarded under `set -Eeuo pipefail`, a fetch that failed ended the script with
+  # git's status — 1 for a ref of this checkout it could not read, 128 for a remote it could not
+  # reach — and NO ⛔ banner and no "Nothing was changed" promise. At 1 that is indistinguishable
+  # from a refusal (the exit table above says 1 MEANS refused); at 128 it is a code the table does
+  # not list at all. The only discriminator an operator had was the absence of two lines nothing
+  # told them to look for.
+  #
+  # ⛔ STATUS ONLY — git's stderr IS NOT CAPTURED, and that is load-bearing rather than incidental.
+  # A SUCCESSFUL fetch prints to stderr as a matter of course (ref-update lines), and it prints
+  # git's own `error:` lines while still exiting 0 when an object it does not need is unreadable —
+  # the shape `three_releases` produces in bin/deploy.selftest.sh, where a middle commit is blinded
+  # and the fetch completes. A rule keyed on stderr would refuse those healthy runs. The status is
+  # the whole answer here; git's message goes straight to the operator's terminal, unsilenced, which
+  # is the same rule the readers below state (§ reading the TARGET RELEASE out of git).
+  #
+  # The headline names no cause on purpose: the status does not carry one, so it does not claim one.
+  local fetch_rc=0
+  git_at fetch --prune --tags "$REMOTE" || fetch_rc=$?
+  [ "$fetch_rc" -eq 0 ] || git_read_unusable \
+    "git could not fetch $REMOTE (\`git fetch\` exited $fetch_rc)" \
+    "What git printed is above this refusal. WHICH of these it is, git says and this deploy does" \
+    "not guess:" \
+    "  · $REMOTE could not be reached, or refused this host's credential, or MEZZ_REMOTE names no" \
+    "    remote of this checkout — git says \`does not appear to be a git repository\` or \`Could" \
+    "    not read from remote repository\` (measured, git 2.53.0: exit 128 for both)." \
+    "  · a ref of THIS CHECKOUT that git could not read — \`bad object refs/…\`, exit 1. A fetch" \
+    "    reads this checkout's own tips to tell $REMOTE what it already has, so that failure is in" \
+    "    the object store HERE and not at $REMOTE. It is the store A8's refusal names the repair" \
+    "    for, and \`git fetch\` is not that repair — it is the thing that failed." \
+    "  · a store git could not write what it fetched into." \
+    "Nothing about the release was read: no ref was resolved and no gate ran. Remote-tracking refs" \
+    "may have moved partway; the worktree, HEAD and what is being served did not."
 
   # The candidates, in the order they have always been tried. git_commit_of (card#9611) asks the
   # refs and the object store separately, so "there is no ref of that name" and "git could not read
@@ -1712,9 +1821,15 @@ phase_a() {
   # THE ONE UNGUARDED READ HERE, and why it needs no guard (card#9611 r3, recorded rather than
   # wrapped): $SHA is a full commit id that git_commit_of proved readable with `cat-file -t` one
   # call earlier, and abbreviating it reads that same object. A store that could fail this fails
-  # A7's `git fetch` long before. If it somehow did fail, `set -e` ends phase A with git's own error
-  # on screen and nothing touched — the safe direction, which is why this is a comment and not a
-  # refusal path for a state that cannot be reached.
+  # A7's `git fetch` long before — and that fetch now REFUSES on it by name (card#9646), so the
+  # state this would meet is one the run has already ended in.
+  # ⚠ THAT IS A V1 THIS SCRIPT CANNOT REACH, NOT A SHAPE THAT IS ACCEPTABLE HERE — and the
+  # difference is card#9646's whole point, so the old wording is corrected rather than kept.
+  # A `set -e` death IS NOT "the safe direction": it exits with git's status, which at 1 is the
+  # code the exit table above says MEANS "refused, nothing was touched", with no ⛔ banner and no
+  # "Nothing was changed" promise to tell the operator which of the two they are looking at. What
+  # makes this line a comment instead of a refusal path is that it is UNREACHABLE — canon #6, an
+  # analysis finding no live precondition concludes no work — and nothing else.
   short_sha="$(git_at rev-parse --short "$SHA")"
   if git_ref_oid main_oid "refs/remotes/$REMOTE/main"; then
     git_at merge-base --is-ancestor "$SHA" "$main_oid" || ancestry=$?

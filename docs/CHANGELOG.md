@@ -26,6 +26,34 @@ verbatim by release flow step 13 (`docs/VERSIONING.md`). R5 gates this file's si
 
 ## [Unreleased]
 
+- **card#9646** — **every exit `bin/deploy.sh` takes in its precondition phase is now a refusal that
+  says so, and names only the cause the run established.** Four commands ran without their status
+  being read, so the script died on them instead of refusing: `--ref` with no value (bash's own
+  `${2:?}`), `git fetch`, `git status --porcelain`, and — for its cause rather than its status —
+  `git rev-parse --git-dir`. Under `set -Eeuo pipefail` a death exits with THAT command's status,
+  which is exit 1 for a ref this checkout cannot read and 128 for a remote it cannot reach: 1 is the
+  code the script's own exit table says means *refused, nothing was touched*, and 128 is a code the
+  table does not list at all. The operator's only discriminator was the absence of the `⛔ REFUSED`
+  banner and the `Nothing was changed. The previous release is still serving.` promise — two lines
+  nothing told them to look for, and the exit table now says so. A3's refusal also asserted one cause
+  for a status that carries several: `rev-parse --git-dir` exits 128 for every way it cannot open a
+  repository, and `$DEPLOY_ROOT is not a git checkout` was stated for all of them with git's own
+  message thrown away, so a prod checkout restored from backup or rsynced — `detected dubious
+  ownership`, which git prints its own `safe.directory` repair line for — sent its operator looking
+  for a checkout that was right there. git's wording is the discriminator now, git's message is
+  printed, and an unrecognised wording gets an honest generic refusal rather than a false specific
+  one. **The suite could not see any of it, which is the finding under the finding**:
+  `bin/deploy.selftest.sh`'s `run_refusal` asserted an exit code and a needle, and a banner-less
+  death satisfies both, so it now asserts the banner and the promise as well — one edit that upgrades
+  every call site it has rather than one case at a time. The new cases each name the mutant they
+  catch, and the two asymmetric ones are marked: a fetch fix that handles git's exit 1 and lets its
+  128 escape passes every fetch case but the one run with the remote gone, and an A3 fix that matches
+  `dubious ownership` and defaults everything else back to *not a git checkout* passes all five
+  preserved shapes and reds only on a `.git/config` git cannot parse. `git status`'s status is read
+  because the precondition is live and was measured to be: on a checkout whose `.git/index` is mode
+  000, A3 exits 0 — it never opens the index — and A4 exits 128, and the empty result a failed
+  `status` hands back reads exactly like a clean tree.
+
 - **card#9813** — **every released section but the latest now lives in its own file, so the
   changelog the contents API returns stays a fraction of the truncation cliff.** `[0.2.0]`,
   `[0.3.0]` and `[0.4.0]` moved verbatim to `docs/changelog/v0.2.0.md`, `v0.3.0.md` and

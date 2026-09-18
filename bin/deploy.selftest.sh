@@ -1507,9 +1507,14 @@ unlogged "a git read that fails in the window: the app is NEVER brought up" "art
 # refs are fetched into the checkout before anything is broken.
 # ⚠ THE TIP IS NOT AVAILABLE TO BLIND, and that is measured, not a preference: a checkout whose
 # remote-tracking tip is unreadable cannot `git fetch` at all (it reads its own tips to say what it
-# has), so such a fixture dies at A7's `git fetch` and never reaches either read. A middle commit
-# leaves `git status` (A4) and the fetch working — the fetch prints git's error and still exits 0 —
-# and breaks exactly the two reads this card is about.
+# has), so such a fixture REFUSES at A7's `git fetch`, by name (card#9646 — it used to DIE there,
+# with git's status and no banner), and never reaches either read. A middle commit leaves `git
+# status` (A4) and the fetch working — the fetch prints git's error and still exits 0 — and breaks
+# exactly the two reads this card is about.
+# ⛔ THAT EXIT-0-WHILE-PRINTING FETCH IS ALSO THE CONTROL card#9646's fetch refusal must not widen
+# into, and it is these cases rather than a case of its own: every `three_releases` fixture below
+# blinds an object and then deploys THROUGH the fetch. A fetch rule keyed on git's STDERR instead of
+# its STATUS refuses all of them, so it cannot land while this block is green.
 three_releases() {
   mkfix "$1"
   printf '0.0.3\n' > "$SRC/VERSION"
@@ -1929,22 +1934,267 @@ has "dash --ref with rev syntax: the note fires, one variable away" "carries rev
 
 # ANSWER ∉ {0,1} + git LOUD — NAMED, NOT ASSERTED. Every shape measured that makes rev-parse exit
 # non-0/1 LOUDLY is a refs-storage read failure (packed-refs unreadable; packed-refs corrupt), and
-# A7's `git fetch` runs BEFORE anything is resolved and meets it first — so the branch is not
+# a checkout in that state fails EARLIER commands of this same phase — so the branch is not
 # reachable through this script today. Both halves of that are asserted rather than assumed: git
-# really does answer that way, and the deploy really does die at the fetch with git's error on
-# screen, which is the loud, true failure an operator needs either way.
+# really does answer that way, and the deploy really does stop before git_ref_oid is reached.
+#
+# ⛔ WHICH GATE MEETS IT MOVED, and it is stated rather than left for a reader to re-derive from an
+# old sentence. This comment used to say A7's `git fetch` meets it first. Measured, git 2.53.0, on
+# this fixture: `rev-parse --git-dir` (A3) exits 0 — it does not read the refs — while `status
+# --porcelain` (A4) and `fetch` BOTH answer `fatal: couldn't read .git/packed-refs: Permission
+# denied` at 128, and A4 runs first. card#9646 gave A4 its own status reading, so A4 is now where
+# this fixture is refused; A7's refusal is the one behind it, exercised on its own fixtures below.
+#
+# ⛔ AND WHAT "STOPS" MEANT WAS NOT GOOD ENOUGH, which is card#9646's finding here rather than a
+# tidy-up. `neq 0` was the assertion, and it passed identically before and after the fix: the
+# unguarded assignment ENDED THE SCRIPT with git's 128 — a code the exit table does not list, no ⛔
+# banner, no promise. `neq 0` cannot tell that from a refusal, so it certified "the deploy stops"
+# over a death. The assertions are now the contract: exit 1 BECAUSE a gate refused, with the banner
+# and the phase-A promise that make the 1 mean what the table says it means.
 three_releases git_ref_oid_refs_unreadable
 chmod 000 "$ROOT/.git/packed-refs"
 eq "fixture: a name resolve really is 128 AND loud with packed-refs unreadable (a root runner is not this)" \
   "128|loud" \
   "$(gitc "$ROOT" rev-parse --verify --quiet --end-of-options refs/remotes/origin/main \
        2>"$T/ro.err" >/dev/null; printf '%s|%s' "$?" "$([ -s "$T/ro.err" ] && echo loud || echo silent)")"
+eq "fixture: A3 passes it — \`rev-parse --git-dir\` does not read the refs" 0 \
+  "$(LC_ALL=C gitc "$ROOT" rev-parse --git-dir >/dev/null 2>&1; echo $?)"
 run --dry-run --ref main
-neq "answer other-loud: the deploy stops (the fetch meets it before git_ref_oid does)" 0 "$RC"
+eq   "answer other-loud: exit 1 — a gate REFUSES on it before git_ref_oid is reached" 1 "$RC"
+has  "answer other-loud: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" "⛔ REFUSED — " "$OUT"
+has  "answer other-loud: the phase-A promise" \
+  "Nothing was changed. The previous release is still serving." "$OUT"
+has  "answer other-loud: named as the read that failed, with the status git gave" \
+  "git could not read the state of $ROOT (\`git status --porcelain\` exited 128)" "$OUT"
 has  "answer other-loud: git's own error is what the operator gets" "packed-refs" "$OUT"
 hasnt "answer other-loud: and nothing claims the ref is absent" \
   "does not resolve to a commit on" "$OUT"
 chmod 644 "$ROOT/.git/packed-refs"
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+section "card#9646 — every phase-A exit is a REFUSAL, and names only what the run established"
+# ⛔ THE CLASS. `refuse` is the only exit in bin/deploy.sh that prints `⛔ REFUSED — <cause>` and
+# `Nothing was changed. The previous release is still serving.`, and the header's exit table says
+# exit 1 MEANS that. Any command phase A runs WITHOUT reading its status breaks the promise from
+# underneath: under `set -Eeuo pipefail` the script exits with THAT command's status and neither
+# line. Three sub-shapes, by what the status collides with — and all three were live here:
+#   · exit 1   — bash's `${2:?}`, and `git fetch` on a ref of this checkout it cannot read. READS
+#                AS REFUSED. This is the dangerous one: the status says "nothing was touched" and
+#                there is no banner to say it was never a verdict.
+#   · exit 128 — most git fatals (`git fetch` on an unreachable remote, `git status` on an
+#                unreadable index). A code the exit table does not list at all.
+#   · exit 2   — a grep or an awk fed a fatal. That code MEANS "failed inside the window, the app
+#                is DOWN" — the inversion, printed about a run that never opened a window.
+# The suite could not see any of it: `run_refusal` asserted exit 1 and a needle, both of which a
+# banner-less death satisfies. The two `has` lines it now carries are what close that, for every
+# call site at once; the cases below are the sites where the status was not being read.
+#
+# ⛔ AND THE SECOND HALF IS THE CAUSE, not just the shape. A refusal may name only what the run
+# ESTABLISHED. A3 asserted ONE cause — "is not a git checkout" — for a 128 that carries several,
+# after throwing git's own message away; the operator most likely to meet it is the one whose prod
+# checkout was restored from backup and is owned by another user, and they were sent looking for a
+# checkout that is right there. Each case below therefore asserts WHICH cause is named AND that the
+# other is not, with a control one variable away — an assertion on the exit code alone would have
+# passed against the defect.
+
+# ── A3 — git could not OPEN the repository, which is not "this is not a git checkout" ──────────
+# THE DISCRIMINATOR IS GIT'S OWN WORDING. Every shape below exits 128; git says `not a git
+# repository` in those words for the four that really are not a checkout, and `cannot change to
+# '…': Not a directory` for a root that is a file. Anything else is the generic refusal, which is
+# honest about an unrecognised wording rather than false about it. A3 was unfixtured before this.
+
+# ⭐ G6 FIRST, BECAUSE IT IS THE ASYMMETRIC ONE. A fix that matched `dubious ownership` and let
+# everything else fall back to "is not a git checkout" passes G1 AND all four of G2-G5 — every case
+# a reader of the card would think to write — and reds only here. Measured, git 2.53.0: a `.git/
+# config` reading `[core` answers `fatal: bad config line 1 in file .git/config` at 128.
+mkfix repo_config_corrupt
+printf '[core\n' > "$ROOT/.git/config"
+eq "fixture: a corrupt .git/config really is 128 here" 128 \
+  "$(LC_ALL=C gitc "$ROOT" rev-parse --git-dir >/dev/null 2>&1; echo $?)"
+run_refusal "a .git/config git cannot parse" \
+  "git could not open $ROOT as a repository (\`git rev-parse --git-dir\` exited 128)" --dry-run
+has  "corrupt .git/config: git's own message reaches the operator" "bad config line" "$OUT"
+hasnt "corrupt .git/config: is NOT called 'not a git checkout' — the checkout is right there" \
+  "is not a git checkout" "$OUT"
+has  "corrupt .git/config: says outright it is not that, so the operator does not go looking" \
+  "IT IS NOT \"not a git checkout\"" "$OUT"
+
+# G1 — dubious ownership: the shape a prod checkout restored from backup, rsynced or chowned is in.
+mkfix repo_dubious_ownership
+# ASSERTED, not assumed. Without the knob this git would answer 0 and the case would certify
+# nothing while looking like it had, so it reds HERE, by name (canon #9).
+eq "fixture: this git really refuses a differently-owned checkout at 128 (the test knob exists)" 128 \
+  "$(GIT_TEST_ASSUME_DIFFERENT_OWNER=1 LC_ALL=C gitc "$ROOT" rev-parse --git-dir >/dev/null 2>&1; echo $?)"
+: > "$CALL_LOG"
+OUT="$(GIT_TEST_ASSUME_DIFFERENT_OWNER=1 MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
+eq  "dubious ownership: exit 1" 1 "$RC"
+has "dubious ownership: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
+has "dubious ownership: the phase-A promise" \
+  "Nothing was changed. The previous release is still serving." "$OUT"
+has "dubious ownership: named as a repository git could not OPEN" \
+  "git could not open $ROOT as a repository" "$OUT"
+has "dubious ownership: git's own message reaches the operator" "detected dubious ownership" "$OUT"
+has "dubious ownership: with the repair git prints for it" "safe.directory" "$OUT"
+has "dubious ownership: and the other fix, which is the better one on a single-user host" \
+  "chowning the checkout to the deploy user" "$OUT"
+hasnt "dubious ownership: is NOT called 'not a git checkout'" "is not a git checkout" "$OUT"
+unlogged "dubious ownership: never opened the window" "artisan down"
+# THE CONTROL, one variable away: the same fixture without the knob deploys.
+run --dry-run
+eq "the control: the same checkout, owned by this user, deploys" 0 "$RC"
+
+# ── G2-G5 — the four shapes that really ARE "not a git checkout", each preserved ───────────────
+# These are what the old refusal was RIGHT about, and a fix that generalised the headline over
+# every 128 would red all four. Each asserts the preserved answer AND that the generic one is not
+# reached. `run_refusal` carries the banner, the promise and exit 1 for each.
+mkfix repo_plain_dir
+mkdir -p "$T/repo_plain_dir/plain"
+: > "$CALL_LOG"
+OUT="$(MEZZ_DEPLOY_ROOT="$T/repo_plain_dir/plain" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
+eq  "a plain directory: exit 1" 1 "$RC"
+has "a plain directory: still refused as not a git checkout" \
+  "$T/repo_plain_dir/plain is not a git checkout" "$OUT"
+hasnt "a plain directory: not the generic 'could not open' answer" "git could not open" "$OUT"
+
+mkfix repo_git_unreadable
+chmod 000 "$ROOT/.git"
+# ASSERTED, not assumed — root opens every mode, and under a root runner this fixture is an
+# ordinary checkout and the case would certify nothing (canon #9).
+eq "unreadable .git: the fixture really is unopenable by this user (a root runner cannot hold this)" \
+  unopenable "$(env_openability "$ROOT/.git/HEAD")"
+run_refusal "a .git directory this user cannot read" "is not a git checkout" --dry-run
+hasnt "unreadable .git: git discovers PAST it rather than failing on it, so not the generic answer" \
+  "git could not open" "$OUT"
+chmod 755 "$ROOT/.git"
+
+mkfix repo_gitfile_nowhere
+rm -rf "$ROOT/.git"; printf 'gitdir: %s/nowhere\n' "$T" > "$ROOT/.git"
+run_refusal "a .git file pointing at nothing" "is not a git checkout" --dry-run
+hasnt "dangling .git file: not the generic 'could not open' answer" "git could not open" "$OUT"
+
+mkfix repo_git_empty_dir
+rm -rf "$ROOT/.git"; mkdir "$ROOT/.git"
+run_refusal "a .git directory that is not a repository" "is not a git checkout" --dry-run
+hasnt "empty .git directory: not the generic 'could not open' answer" "git could not open" "$OUT"
+
+# And the fifth wording git uses for the same answer: a deploy root that is a FILE.
+mkfix repo_root_is_a_file
+printf 'x\n' > "$T/repo_root_is_a_file/afile"
+: > "$CALL_LOG"
+OUT="$(MEZZ_DEPLOY_ROOT="$T/repo_root_is_a_file/afile" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
+eq  "a deploy root that is a file: exit 1" 1 "$RC"
+has "a deploy root that is a file: refused as not a git checkout (git says \`cannot change to\`)" \
+  "is not a git checkout" "$OUT"
+hasnt "a deploy root that is a file: not the generic 'could not open' answer" "git could not open" "$OUT"
+
+# ── S2 — A4's `git status`, which A3 does NOT cover ────────────────────────────────────────────
+# ⛔ MEASURED, NOT ASSUMED, and the measurement is why this is fixed rather than recorded as
+# unreachable (card#9646 § 5 S2): on a checkout whose `.git/index` is mode 000, A3's `rev-parse
+# --git-dir` exits 0 — it never opens the index — and A4's `git status --porcelain` exits 128 with
+# `fatal: .git/index: index file open failed: Permission denied`. The precondition is LIVE. The
+# unguarded assignment ended phase A at 128, and the emptiness it left behind reads exactly like a
+# clean tree, which is the card#9608 direction one gate along.
+mkfix index_unreadable
+chmod 000 "$ROOT/.git/index"
+eq "fixture: the index really is unopenable by this user (a root runner cannot hold this)" \
+  unopenable "$(env_openability "$ROOT/.git/index")"
+eq "fixture: A3 passes it — \`rev-parse --git-dir\` never opens the index" 0 \
+  "$(LC_ALL=C gitc "$ROOT" rev-parse --git-dir >/dev/null 2>&1; echo $?)"
+run_refusal "an unreadable .git/index (A4)" \
+  "git could not read the state of $ROOT (\`git status --porcelain\` exited 128)" --dry-run
+has  "unreadable index: git's own error reaches the operator" "index file open failed" "$OUT"
+hasnt "unreadable index: the empty result is NOT read as a clean tree" \
+  "has local modifications" "$OUT"
+has  "unreadable index: says outright that cleanliness was not established" \
+  "this is not \"the tree is clean\"" "$OUT"
+hasnt "unreadable index: makes no claim about A3, which passed" "is not a git checkout" "$OUT"
+chmod 644 "$ROOT/.git/index"
+# THE CONTROL, one variable away: the same checkout with a readable index deploys.
+run --dry-run
+eq "the control: the same checkout, index readable, deploys" 0 "$RC"
+
+# ── A7 — the fetch, whose status was never read ────────────────────────────────────────────────
+# ⛔ STATUS ONLY, NEVER STDERR. A fetch that SUCCEEDS prints to stderr as a matter of course, and
+# prints git's own `error:` lines while still exiting 0 when an object it does not need is
+# unreadable. Every `three_releases` case above is that shape and deploys through it, so they are
+# the standing controls for this: a stderr-keyed fetch rule reds them all.
+
+# F1 — a remote-tracking TIP this checkout cannot read. A fetch reads its own tips to tell the
+# remote what it has, so this fails the FETCH, in the checkout's own store. Measured, git 2.53.0:
+# `fatal: bad object <oid>`, exit 1.
+# ⚠ `eq 1` IS GREEN BEFORE THE FIX and is not the assertion that catches anything here: the
+# unguarded fetch died with git's own 1, the status the exit table says means "refused, nothing was
+# touched". THE BANNER AND THE PROMISE ARE THE RED. That is the whole shape of this card.
+three_releases fetch_tip_blind
+FETCH_TIP_OID="$(gitc "$ROOT" rev-parse refs/remotes/origin/main)"
+FETCH_TIP_OBJ="$ROOT/.git/objects/${FETCH_TIP_OID:0:2}/${FETCH_TIP_OID:2}"
+blind_object refs/remotes/origin/main
+run --dry-run
+eq  "fetch on an unreadable tip: exit 1" 1 "$RC"
+has "fetch on an unreadable tip: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" \
+  "⛔ REFUSED — " "$OUT"
+has "fetch on an unreadable tip: the phase-A promise" \
+  "Nothing was changed. The previous release is still serving." "$OUT"
+has "fetch on an unreadable tip: named as the fetch, with the status git gave" \
+  "git could not fetch origin (\`git fetch\` exited 1)" "$OUT"
+has "fetch on an unreadable tip: git's own message reaches the operator" "bad object" "$OUT"
+hasnt "fetch on an unreadable tip: nothing claims the ref did not resolve — no ref was resolved" \
+  "does not resolve to a commit on" "$OUT"
+has "fetch on an unreadable tip: says the failure is in THIS checkout's store, not at the remote" \
+  "a ref of THIS CHECKOUT that git could not read" "$OUT"
+has "fetch on an unreadable tip: and that a fetch is not the repair for it" \
+  "it is the thing that failed" "$OUT"
+unlogged "fetch on an unreadable tip: never opened the window" "artisan down"
+# THE CONTROL, one variable away: the same fixture with that object readable deploys.
+chmod 444 "$FETCH_TIP_OBJ"
+run --dry-run
+eq "the control: the same checkout, that object readable, deploys" 0 "$RC"
+
+# ⭐ F2 — THE ASYMMETRIC ONE, and the reason it is here. A reader of the card writes `[ "$fetch_rc"
+# -ne 1 ] || refuse …`: it handles the exit 1 the card names, F1 passes, and git's 128 still escapes
+# as a banner-less death. Only a fixture whose fetch exits 128 catches that. Measured, git 2.53.0,
+# with the remote gone: `does not appear to be a git repository` + `Could not read from remote
+# repository`, exit 128. Run WITHOUT --dry-run, which also kills the mutant that instruments only
+# the dry-run path — A7 fetches on both (the fetch moves remote-tracking refs and nothing else).
+mkfix fetch_remote_gone
+mv "$ORIGIN" "$ORIGIN.gone"
+run
+eq  "fetch with the remote gone: exit 1 (128 is what git gave; the REFUSAL is what the operator gets)" \
+  1 "$RC"
+has "fetch with the remote gone: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
+has "fetch with the remote gone: the phase-A promise" \
+  "Nothing was changed. The previous release is still serving." "$OUT"
+has "fetch with the remote gone: named as the fetch, with the status git gave" \
+  "git could not fetch origin (\`git fetch\` exited 128)" "$OUT"
+has "fetch with the remote gone: git's own message reaches the operator" \
+  "Could not read from remote repository" "$OUT"
+hasnt "fetch with the remote gone: not worded as a failed read of the release" \
+  "⛔ REFUSED — git could not read" "$OUT"
+has "fetch with the remote gone: says no ref was resolved and no gate ran" \
+  "no ref was resolved and no gate ran" "$OUT"
+unlogged "fetch with the remote gone: never opened the window, on a run with no --dry-run" "artisan down"
+eq  "fetch with the remote gone: HEAD is where it was" "$V1" "$(gitc "$ROOT" rev-parse HEAD)"
+# THE CONTROL, one variable away: put the remote back and the same command deploys.
+mv "$ORIGIN.gone" "$ORIGIN"
+run --dry-run
+eq "the control: the same checkout with its remote back deploys" 0 "$RC"
+
+# F3 — MEZZ_REMOTE naming no remote of this checkout. Same 128, a different sentence from git, and
+# the deploy's headline names the remote it was given rather than guessing at a cause.
+mkfix fetch_no_such_remote
+: > "$CALL_LOG"
+OUT="$(MEZZ_REMOTE=nowhere MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
+eq  "MEZZ_REMOTE naming no remote: exit 1" 1 "$RC"
+has "MEZZ_REMOTE naming no remote: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
+has "MEZZ_REMOTE naming no remote: the phase-A promise" \
+  "Nothing was changed. The previous release is still serving." "$OUT"
+has "MEZZ_REMOTE naming no remote: the headline names the remote it was given" \
+  "git could not fetch nowhere (\`git fetch\` exited 128)" "$OUT"
+has "MEZZ_REMOTE naming no remote: git's own message reaches the operator" \
+  "'nowhere' does not appear" "$OUT"
+hasnt "MEZZ_REMOTE naming no remote: claims no ref failed to resolve — none was asked for" \
+  "does not resolve to a commit on" "$OUT"
+unlogged "MEZZ_REMOTE naming no remote: never opened the window" "artisan down"
 
 # ⛔ A RELEASE WITH NO server/bootstrap/app.php REFUSES, where it warned and deployed. Grounded in
 # `server/artisan` line 14 — `$app = require_once __DIR__.'/bootstrap/app.php';` — so EVERY artisan
