@@ -439,6 +439,34 @@ mkfix as_root; export STUB_UID=0; run --dry-run
 eq "root: exit 1" 1 "$RC"; has "root: says why" "running as root" "$OUT"
 hasnt "root: offers no escalation route" "sudo" "$OUT"
 
+# ── S1 — an option with no value ───────────────────────────────────────────────────────────────
+# `REF="${2:?--ref needs a value}"` had BASH refuse, not this script: `bash: line N: 2: --ref needs
+# a value` on stderr and exit 1, which is the code the table says means "refused, nothing touched"
+# with nothing on screen to confirm it. `--internal-post-checkout`'s bare `${2:?}` printed only the
+# parameter's NAME. Both go through `refuse` now. `eq 1` was green before the fix, on both.
+mkfix option_needs_value
+run --dry-run --ref
+eq  "--ref with no value: exit 1" 1 "$RC"
+has "--ref with no value: the ⛔ REFUSED banner, so the 1 is this script's verdict" \
+  "⛔ REFUSED — --ref needs a value" "$OUT"
+has "--ref with no value: the phase-A promise" \
+  "Nothing was changed. The previous release is still serving." "$OUT"
+hasnt "--ref with no value: bash's own parameter error is not what the operator is left with" \
+  "2: --ref needs a value" "$OUT"
+unlogged "--ref with no value: never opened the window" "artisan down"
+# An EMPTY value is the same decision — which is what `${2:?}` did, and what a `[ $# -ge 2 ]` test
+# would have quietly dropped: `--ref ''` would then resolve `refs/remotes/origin/` at A7.
+run --dry-run --ref ''
+eq  "--ref '': exit 1, the empty value refused exactly as a missing one" 1 "$RC"
+has "--ref '': the banner" "⛔ REFUSED — --ref needs a value" "$OUT"
+run --dry-run --internal-post-checkout
+eq  "--internal-post-checkout with no value: exit 1" 1 "$RC"
+has "--internal-post-checkout with no value: refused BY NAME, where bash printed only \`2\`" \
+  "⛔ REFUSED — --internal-post-checkout needs a value" "$OUT"
+# THE CONTROL, one variable away: the same option WITH a value deploys.
+run --dry-run --ref main
+eq  "the control: --ref WITH a value still deploys" 0 "$RC"
+
 mkfix stale_marker
 printf 'started_at: 2026-09-08T00:00:00Z\nto_commit: deadbeef\n' > "$ROOT/.deploy-failed"
 run_refusal "stale marker" "a previous deploy failed and has not been reviewed" --dry-run

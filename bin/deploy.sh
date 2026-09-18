@@ -183,15 +183,26 @@ REF="main"; DRY_RUN=0; REDEPLOY=0; ALLOW_UNRELEASED=0; POST_CHECKOUT_SHA=""; TAR
 # Sourced, `$@` is the SOURCING script's argument list, which is not this deploy's and must not be
 # parsed as one — `--ref` would be taken from it, and anything else refused outright.
 [ "$DEPLOY_IS_RUN" -eq 1 ] || set --
+# ⛔ AN OPTION WITH NO VALUE IS REFUSED THROUGH `refuse`, LIKE EVERY OTHER PHASE-A EXIT (card#9646).
+# `${2:?…}` was the shape here, and it is the same defect this card ends one line up from the deploy:
+# bash prints `bash: line N: 2: --ref needs a value` and exits 1 ITSELF, so the operator gets the status
+# that MEANS "refused, nothing was touched" (the exit table above) with no ⛔ banner and no "Nothing was
+# changed" promise — the two lines that say which of those it is. `--internal-post-checkout`'s bare
+# `${2:?}` was worse still: bash's message is then just the parameter's name. Both go through `refuse`.
+# The test is `-n "${2:-}"` rather than `$# -ge 2` so that an EMPTY value is refused exactly as a missing
+# one is, which is what `${2:?…}` did: `--ref ''` would otherwise resolve `refs/remotes/origin/` at A7.
 while [ $# -gt 0 ]; do
   case "$1" in
-    --ref)               REF="${2:?--ref needs a value}"; shift 2 ;;
+    --ref)               [ -n "${2:-}" ] || refuse "--ref needs a value" "run \`$0 --help\`"
+                         REF="$2"; shift 2 ;;
     --dry-run)           DRY_RUN=1; shift ;;
     --redeploy)          REDEPLOY=1; shift ;;
     --allow-unreleased)  ALLOW_UNRELEASED=1; shift ;;
     # Internal. Phase B re-enters here after the checkout — see § re-exec. Never run by hand:
     # it assumes the maintenance window is already open.
-    --internal-post-checkout) POST_CHECKOUT_SHA="${2:?}"; shift 2 ;;
+    --internal-post-checkout) [ -n "${2:-}" ] || refuse "--internal-post-checkout needs a value" \
+                           "It is internal: phase B passes the commit it checked out. Run \`$0 --help\`."
+                         POST_CHECKOUT_SHA="$2"; shift 2 ;;
     -h|--help)           usage ;;
     *) refuse "unknown argument: $1" "run \`$0 --help\`" ;;
   esac
