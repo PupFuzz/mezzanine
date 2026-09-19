@@ -12,6 +12,11 @@
 # head's changelog dropped, is RESIDUE — permitted only when the PR body declares it exactly, in
 # a `Release-excludes: <tokens> — <reason>` line. R6 was added after PR #176 (v0.5.0) sat open
 # for a day, green throughout, at a head four merges behind `dev` (card#9707).
+# And it asserts that release flow step 13 was done (R7): the head's `docs/CHANGELOG.md` carries
+# at most TWO released sections — the one this release mints and the previous latest — and no
+# `docs/changelog/*.md` archive file is past R5's contents-API cliff. Off the release path R7
+# only warns. R7 was added so a skipped step 13 reds the release that owes it rather than, weeks
+# later, R5 redding an unrelated feature PR (card#9814).
 # On EVERY PR it asserts `docs/PLAN.md § 4`'s changelog discipline (R4-R5): a PR whose head ref
 # or title names a card carries that card's line-initial `- **card#NNNN**` bullet under
 # `## [Unreleased]`, and `docs/CHANGELOG.md` stays below the contents-API truncation cliff with

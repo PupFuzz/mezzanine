@@ -126,7 +126,8 @@ def make_repo(*, base_version: str | None = "0.1.0",
               older_changelog: str | None = None,
               older_days_ago: int = 30,
               base_branch: str = "main",
-              head_branch: str = "release/v0.2.0") -> Path:
+              head_branch: str = "release/v0.2.0",
+              base_files: dict[str, str] | None = None) -> Path:
     """A two-branch fixture repo carrying this repo's real authority files.
 
     `None` for a version or the head changelog means the FILE IS ABSENT at that side — the
@@ -137,6 +138,10 @@ def make_repo(*, base_version: str | None = "0.1.0",
     puts a changelog size OUTSIDE R5's fourteen-day window: with it the growth R5 measures is
     head-minus-that, without it the file has no history before the cutoff and the growth is its
     whole size. Same head bytes, two verdicts — that difference IS the window.
+
+    `base_files` are extra paths written into the BASE commit, so the head (cut from it) carries
+    them too and R6 — whose subject defaults to the base — measures them as no residue. § 11b
+    plants `docs/changelog/<tag>.md` archive files this way.
     """
     repo = Path(tempfile.mkdtemp(prefix="relguard-fx-"))
     FIXTURES.append(repo)
@@ -169,6 +174,10 @@ def make_repo(*, base_version: str | None = "0.1.0",
     if base_version is not None:
         (repo / "VERSION").write_text(base_version + "\n", encoding="utf-8")
     (repo / "docs" / "CHANGELOG.md").write_text(base_changelog, encoding="utf-8")
+    for rel, content in (base_files or {}).items():
+        dst = repo / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(content, encoding="utf-8")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "base")
 
@@ -942,6 +951,94 @@ r = guard(sh, base_ref="dev", head_ref="card-8174-changelog-gate", base_rev="ori
 eq("shallow, but the pre-window commit IS reachable → measured, exit 0", 0, r.returncode)
 eq("  … and it measured the growth from that commit, not from zero",
    True, "grew 10,00" in r.stdout)
+
+
+# =============================================================================================
+print("== 11b. R7 — release flow step 13: at most TWO released sections, no archive past the "
+      "cliff ==")
+# THE DEFECT THIS ARM GUARDS (card#9814). Step 13 moves the no-longer-latest released section out
+# of `docs/CHANGELOG.md` into `docs/changelog/<tag>.md`, and nothing enforced it: a skipped step
+# surfaced only as R5's red on some LATER feature PR by an author who did not cause it. R5 is no
+# help in the window that matters most, either — after an archive the file SHRANK, the growth
+# term clamps to zero and R5's threshold is the whole cliff (card#9814 comment 5709). So every
+# fixture here sits far below R5's threshold: what catches a skipped step 13 must be R7.
+# Every release-path arm is single-variable off § 3's CONTROL (a release PR for 0.2.0 over 0.1.0).
+TWO_RELEASED = (changelog_with("0.2.0")
+                + "\n## [0.1.0] - 2026-08-20\n\n- **card#7929** — the previous release.\n")
+THIRD = "\n## [0.0.9] - 2026-08-10\n\n- **card#7335** — the release step 13 should have moved.\n"
+
+# --- THE CONTROL: the release this PR mints plus the previous latest — what step 4 leaves behind
+# when step 13 was done after the last release — passes.
+fx = make_repo(**dict(CONTROL, head_changelog=TWO_RELEASED))
+r = guard(fx)
+eq("two released sections (the new one + the previous latest) → exit 0", 0, r.returncode)
+eq("  … with no rule flagged", [], rules_flagged(r))
+eq("  … and the run PRINTS the count it measured (no silent verdict)",
+   True, "2 released section(s)" in r.stdout)
+if r.returncode != 0:
+    print(r.stdout, r.stderr, file=sys.stderr)
+
+# --- THE PLANT: a third released section — step 13 skipped after the last release.
+fx = make_repo(**dict(CONTROL, head_changelog=TWO_RELEASED + THIRD))
+r = guard(fx)
+eq("a THIRD released section on a release PR → RED", 1, r.returncode)
+eq("  … R7 alone (single-variable off the control above)", ["R7"], rules_flagged(r))
+eq("  … naming the archive file to move it into, and neither of the two that stay",
+   (True, False, False),
+   ("docs/changelog/v0.0.9.md" in r.stdout, "docs/changelog/v0.1.0.md" in r.stdout,
+    "docs/changelog/v0.2.0.md" in r.stdout))
+eq("  … and routing the move through `dev` (a move ON the release branch is R6a residue)",
+   True, "step 13" in r.stdout and "up to date with `dev`" in r.stdout)
+
+# --- MUTATION CONTROL: the plant with the third heading demoted to `###`. R7 keys on `^##` the
+# way R3 and R4 do (`_heading_text`), so this is two released sections and passes — proving the
+# plant above reds on the HEADING, not on the extra bytes.
+fx = make_repo(**dict(CONTROL, head_changelog=TWO_RELEASED + THIRD.replace("\n## ", "\n### ")))
+r = guard(fx)
+eq("  CONTROL: the third heading demoted to `###` → exit 0 (R7 keys on `^##`)", 0, r.returncode)
+
+# --- Four sections: EVERY excess section is named, each with its own archive file.
+fx = make_repo(**dict(CONTROL, head_changelog=TWO_RELEASED + THIRD
+                      + "\n## [0.0.8] - 2026-08-01\n\n- **card#7456** — older still.\n"))
+r = guard(fx)
+eq("four released sections → RED on R7, naming BOTH excess archive files",
+   (["R7"], True, True),
+   (rules_flagged(r), "docs/changelog/v0.0.9.md" in r.stdout,
+    "docs/changelog/v0.0.8.md" in r.stdout))
+
+# --- OFF THE RELEASE PATH R7 WARNS AND NEVER REFUSES. The same three-section changelog on a
+# feature PR into `dev`: its author did not skip step 13 and cannot fix it in their PR, which is
+# the exact misdirected red card#9814 exists to end.
+fx = make_repo(**R4FX, head_changelog=TWO_RELEASED + THIRD)
+r = r4(fx, head_ref="chore/tidy")
+eq("the same three sections on a feature PR → exit 0", 0, r.returncode)
+eq("  … with no rule flagged", [], rules_flagged(r))
+eq("  … but a ::warning:: naming R7 and the archive file",
+   True, "::warning::release-pr-guard: R7" in r.stdout and "docs/changelog/v0.0.9.md" in r.stdout)
+
+# --- THE ARCHIVE BACKSTOP (card#9814 comment 5709). Every archive file is born under the cliff
+# (it was part of an R5-held file); the one way past it is a post-hoc edit to a released section.
+# The limit is R5's own constant, read from the guard module — a retyped figure here would be a
+# second copy free to drift.
+ARCHIVE = "docs/changelog/v0.1.0.md"
+fx = make_repo(**CONTROL, base_files={ARCHIVE: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
+r = guard(fx)
+eq("an archive file ONE byte over the cliff on a release PR → RED", 1, r.returncode)
+eq("  … R7 alone", ["R7"], rules_flagged(r))
+eq("  … naming the file and its size",
+   True, ARCHIVE in r.stdout and f"{mod.CONTENTS_API_CLIFF_BYTES + 1:,} B" in r.stdout)
+# CONTROL: the same file AT the cliff is not past it (R5's `<=` boundary, the same constant).
+fx = make_repo(**CONTROL, base_files={ARCHIVE: "x" * mod.CONTENTS_API_CLIFF_BYTES})
+r = guard(fx)
+eq("  CONTROL: the same archive file AT the cliff → exit 0 (the boundary discriminates)",
+   0, r.returncode)
+# Off the release path the oversize archive warns, and does not refuse.
+fx = make_repo(**R4FX, head_changelog=unreleased_with(),
+               base_files={ARCHIVE: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
+r = r4(fx, head_ref="chore/tidy")
+eq("the same oversize archive on a feature PR → exit 0 with a ::warning:: naming it",
+   (0, True),
+   (r.returncode, "::warning::release-pr-guard: R7" in r.stdout and ARCHIVE in r.stdout))
 
 
 # =============================================================================================

@@ -14,17 +14,32 @@ holds this file's SIZE under `1 MiB − the bytes it grew in the last 14 days`, 
 there is still time to archive released sections rather than after the contents API has begun
 returning it empty. **R6** (card#9707) gives this section a third reader: on a release PR it
 compares the cards bulleted here on `dev` against the head's changelog, so a release cannot
-quietly ship with fewer cards than `dev` holds.
+quietly ship with fewer cards than `dev` holds. **R7** (card#9814) refuses a release PR whose
+copy of this file carries more than two released sections, and so enforces the archiving below.
 
 Sections are newest-first: `[Unreleased]` collects what has landed on `dev` since the last
 release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4).
 
 This file holds `[Unreleased]` and the latest released section only. Every older release is one
 file per tag under [`docs/changelog/`](changelog/) — `ls docs/changelog/` lists them — moved there
-verbatim by release flow step 13 (`docs/VERSIONING.md`). R5 gates this file's size; `docs/PLAN.md
-§ 4` says why the archive files need no gate of their own.
+verbatim by release flow step 13 (`docs/VERSIONING.md`), which R7 enforces. R5 gates this file's
+size; `docs/PLAN.md § 4` says why the archive files need no gate of their own beyond R7's backstop.
 
 ## [Unreleased]
+
+- **card#9814** — **`release-pr-guard` R7 refuses a release PR that skipped archiving the previous
+  release (release flow step 13), so the red lands on the release that owes the step.** Before it,
+  a skipped step 13 surfaced only as R5's size red on some later feature PR by an author who could
+  not fix it, and not at all in the fortnight after an archive, when R5's threshold is the whole
+  cliff. On a PR into `main`, `docs/CHANGELOG.md` at the head may carry at most two released
+  sections — the one the release mints and the previous latest — and the refusal names the
+  `docs/changelog/<tag>.md` file each excess section belongs in, with the fix routed through `dev`
+  as step 13 says. The same rule refuses any `docs/changelog/*.md` past R5's own contents-API cliff,
+  the backstop for a post-hoc edit to a released section. Off the release path both clauses warn
+  and never refuse. R7 counts released sections with R3's own reading of the headings, so a `###`
+  heading is not one. The self-test adds a control, the third-section plant, the demoted-heading
+  control, and an archive plant with its at-the-cliff control; each red was seen to fail before the
+  rule existed, and raising the limit to three or doubling the archive limit reds the plants.
 
 - **card#9610** — **a `server/.env` that OPENS and cannot be read to its end is now refused as itself,
   and after the maintenance window it leaves the deploy UNVERIFIED by name rather than reported as an

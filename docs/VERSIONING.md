@@ -414,8 +414,9 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
     The live file is then `## [Unreleased]` plus the release just cut, and nothing else. The move
     is verbatim in the byte sense — `cmp` the section against the base, extracting the archive
     file's body with `tail -n +6`, since an `awk` range re-emits a trailing newline and cannot see
-    a missing one. `docs/PLAN.md § 4` owns the layout and the reason the archive files carry no
-    size gate of their own.
+    a missing one. `docs/PLAN.md § 4` owns the layout and the reason the archive files need no
+    size gate beyond R7's backstop. **`release-pr-guard` R7 enforces this step** on the NEXT
+    release PR — see the note below.
     ⚠ **Do it BEFORE the next release branch is cut.** An archive PR that lands on `dev` after
     the cut makes `docs/changelog/*.md` R6a residue on that release PR, because the release head
     will not have the files `dev` has just gained. The answer is the refresh from `dev` that R6
@@ -444,18 +445,23 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 > (v0.5.0) sat open for roughly a day at a head four merges behind `dev`, every check green,
 > and merging it would have shipped a release omitting four cards.
 >
-> ⛔ **Steps 5, 6, 8, 9, 11, 12 and 13 remain unenforced, and deliberately so.** The deploy and
+> ✅ **And since card#9814, step 13 is enforced — on the release PR that follows it.** The same
+> guard's **R7** refuses a release PR whose `docs/CHANGELOG.md` carries more than TWO released
+> sections (the one it mints and the previous latest), naming the `docs/changelog/<tag>.md` file
+> each excess section belongs in, and any `docs/changelog/*.md` past R5's contents-API cliff. The
+> fix it names is step 13 done the way step 13 says — on `dev`, then a refresh of the release
+> branch from `dev` — never the move made on the release branch. Off the release path R7 only
+> warns: a feature PR's author did not skip step 13. Before R7, a skipped step 13 was caught only
+> by R5, on some later PR by some other author, and not at all in the fortnight after an archive,
+> when R5's threshold is the whole cliff.
+>
+> ⛔ **Steps 5, 6, 8, 9, 11 and 12 remain unenforced, and deliberately so.** The deploy and
 > wire verdicts are human judgement stated in prose — a gate that grepped for a phrase would
 > report having checked a judgement when it had checked a string. "Wait for CI" is about other
 > checks; "a human merges it" cannot be enforced at all here, because one GitHub identity is
 > shared by the agent and the operator, and that is the whole reason card#8174 gates *what* is
 > merged rather than *who* merges it. **Nor is the bump SIZE checked** — nothing mechanical can
-> tell a patch from a minor ([§ Bump sizing](#bump-sizing) is yours). **Step 13's omission is
-> caught only by R5, on some later PR by some other author** — the changelog grows past the
-> threshold and the red lands on whoever happens to be pushing, not on the release cutter who
-> skipped the step. Moving that red onto the release PR is filed as **R7** on card#9814 ("the head's
-> `docs/CHANGELOG.md` carries at most TWO released sections", release path only); it changes what
-> CI refuses on a release PR, so it is ask-first and is not built. Read the guard's green as
+> tell a patch from a minor ([§ Bump sizing](#bump-sizing) is yours). Read the guard's green as
 > covering exactly the steps named above and nothing else. **Step 11's back-merge in particular
 > is NOT what R6 checks** — R6 asks whether this release carries `dev`'s content, and says
 > nothing about whether any past release was merged back. On this repo an ancestry test would
