@@ -26,6 +26,16 @@ verbatim by release flow step 13 (`docs/VERSIONING.md`). R5 gates this file's si
 
 ## [Unreleased]
 
+- **card#9831** — **`bin/deploy-gate-inputs.sh` answers a mistyped command line with exit 2 and its
+  `⛔` banner, which is its word for "this check could not run".** `--ref` with no value, or with an
+  empty one, used to fail inside bash's own `${2:?}` expansion: a shell error that the script's ERR
+  trap never sees, so the shell printed one line of its own and exited 1 — the code the script's exit
+  table reserves for "a required input is MISSING", a verdict about the release. The option's value is
+  now tested before it is used and the failure leaves through `die`, and an unknown argument leaves the
+  same way instead of through a banner-less `printf`. The exit table names the command line among the
+  causes of exit 2, and `bin/deploy-gate-inputs.selftest.sh` asserts the banner as well as the code for
+  each case, because the shell's message carries the same words as the banner's.
+
 - **card#9610** — **a `server/.env` that OPENS and cannot be read to its end is now refused as itself,
   and after the maintenance window it leaves the deploy UNVERIFIED by name rather than reported as an
   unset key.** bash's `read` returns the same status at end-of-file and on a read ERROR, so the loader
