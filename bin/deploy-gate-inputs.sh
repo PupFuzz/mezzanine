@@ -127,10 +127,11 @@
 #   0  every required input this check DERIVED is present at <rev> — which is not the same as every
 #      input phase A reads; the run's own `NOT PROVED BY A GREEN` block is where the difference is
 #   1  a required input is MISSING — a real `bin/deploy.sh --ref <rev>` refuses at phase A
-#   2  the check could not run: no bin/deploy.sh at <rev>, no reads derived from it (an empty
-#      derivation is a measurement that never happened, never a pass), a line that could be a read
-#      written in a shape the derivation does not match, or a classification table that no longer
-#      matches the reads — or their dispositions — in deploy.sh
+#   2  the check could not run: a command line it could not use (`--ref` with no value, an unknown
+#      argument, a <rev> that names no commit), no bin/deploy.sh at <rev>, no reads derived from
+#      it (an empty derivation is a measurement that never happened, never a pass), a line that
+#      could be a read written in a shape the derivation does not match, or a classification table
+#      that no longer matches the reads — or their dispositions — in deploy.sh
 
 set -Eeuo pipefail
 
@@ -147,11 +148,16 @@ die() { printf '\n⛔ %s — %s\n' "$ME" "$1" >&2; shift; local l; for l in "$@"
 # `die`, neither of which trips this.
 trap 'rc=$?; printf "\n⛔ %s — this check FAILED at line %s (status %s) and established NOTHING about the tree.\n   This is not a finding about the release.\n" "$ME" "$LINENO" "$rc" >&2; exit 2' ERR
 
+# A bad COMMAND LINE leaves by `die` too (card#9831): it is "this check could not speak", never a
+# finding. An option's value is tested, not expanded with `${2:?}` — that fails as a parameter
+# expansion, a shell error the ERR trap above never sees, and the shell then exits 1.
 while [ $# -gt 0 ]; do
   case "$1" in
-    --ref)     REV="${2:?--ref needs a value}"; shift 2 ;;
+    --ref)
+      { [ $# -ge 2 ] && [ -n "$2" ]; } || die "$1 needs a value" "run \`$ME --help\` for usage"
+      REV="$2"; shift 2 ;;
     -h|--help) sed -n '/^# USAGE/,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) printf '%s: unknown argument: %s (try --help)\n' "$ME" "$1" >&2; exit 2 ;;
+    *) die "unknown argument: $1" "run \`$ME --help\` for usage" ;;
   esac
 done
 
