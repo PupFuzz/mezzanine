@@ -640,7 +640,8 @@ rule violations anyone could have committed at the time.
   from does not exist, and when the release carries no `server/.env.example` for the check that reads
   it — each a gap it says out loud rather than a state it calls safe.
 - **The host's own tool VERSIONS are refused by name, before anything is touched** (card#9616), which
-  until that card was true of PHP alone: A1 asked only whether the other eleven binaries were PRESENT.
+  until that card was true of PHP alone: A1 asked of every other binary in its list only whether it was
+  PRESENT.
   - **bash.** `BASH_FLOOR` at the top of `bin/deploy.sh` is the one home of the number, and the value is
     **measured, not read off the constructs**. A scan for version-gated syntax finds `mapfile` (4.0) and
     `exec {fd}<` (4.1) and stops a whole minor short, because the binding construct is not syntax:
