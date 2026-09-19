@@ -49,6 +49,7 @@ AUTHORITIES = (".release-pr.json", ".github/workflows/auto-tag-version.yml",
                "bin/promote-cards-by-token")
 
 fails = 0
+checks = 0
 
 # Every fixture is a real git repo in a temp dir, and this file now builds about forty of them
 # per run — several carrying a 600 KB changelog, all carrying a copy of the 44 KB mover. Left
@@ -71,12 +72,15 @@ atexit.register(_sweep_fixtures)
 
 
 def ok(msg: str) -> None:
+    global checks
+    checks += 1
     print(f"  ok   {msg}")
 
 
 def bad(msg: str) -> None:
-    global fails
+    global fails, checks
     fails += 1
+    checks += 1
     print(f"  FAIL {msg}", file=sys.stderr)
 
 
@@ -85,8 +89,15 @@ def eq(what: str, want, got) -> None:
 
 
 def run(*args: str) -> subprocess.CompletedProcess:
+    """`errors="surrogateescape"` for the same reason the guard's own `_git` carries it, one
+    level up: § 11b drives the guard over a repo holding an archive filename that is not valid
+    UTF-8, and a strict harness dies decoding the guard's OUTPUT. Measured — with `printable()`
+    removed and this handler absent, the suite ended in a raw `UnicodeDecodeError` at this call,
+    printing no FAIL line and no total, so a regression at the guard's print site read as a
+    broken harness. With the handler the same regression is a named check going red."""
     return subprocess.run([sys.executable, str(GUARD), *args],
-                          capture_output=True, text=True, cwd=str(REPO))
+                          capture_output=True, text=True, errors="surrogateescape",
+                          cwd=str(REPO))
 
 
 # --- Fixture construction ---------------------------------------------------------------------
@@ -126,7 +137,8 @@ def make_repo(*, base_version: str | None = "0.1.0",
               older_changelog: str | None = None,
               older_days_ago: int = 30,
               base_branch: str = "main",
-              head_branch: str = "release/v0.2.0") -> Path:
+              head_branch: str = "release/v0.2.0",
+              base_files: dict[str, str] | None = None) -> Path:
     """A two-branch fixture repo carrying this repo's real authority files.
 
     `None` for a version or the head changelog means the FILE IS ABSENT at that side — the
@@ -137,6 +149,10 @@ def make_repo(*, base_version: str | None = "0.1.0",
     puts a changelog size OUTSIDE R5's fourteen-day window: with it the growth R5 measures is
     head-minus-that, without it the file has no history before the cutoff and the growth is its
     whole size. Same head bytes, two verdicts — that difference IS the window.
+
+    `base_files` are extra paths written into the BASE commit, so the head (cut from it) carries
+    them too and R6 — whose subject defaults to the base — measures them as no residue. § 11b
+    plants `docs/changelog/<tag>.md` archive files this way.
     """
     repo = Path(tempfile.mkdtemp(prefix="relguard-fx-"))
     FIXTURES.append(repo)
@@ -169,6 +185,10 @@ def make_repo(*, base_version: str | None = "0.1.0",
     if base_version is not None:
         (repo / "VERSION").write_text(base_version + "\n", encoding="utf-8")
     (repo / "docs" / "CHANGELOG.md").write_text(base_changelog, encoding="utf-8")
+    for rel, content in (base_files or {}).items():
+        dst = repo / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(content, encoding="utf-8")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "base")
 
@@ -550,6 +570,21 @@ r = guard(fx, head_ref="release/v0.2.0")
 eq("docs/CHANGELOG.md absent at the head → exit 2", 2, r.returncode)
 eq("  … and says removing the file does not remove the obligation",
    True, "do not remove the obligation by removing the file" in r.stderr)
+
+# --- …and a file whose BYTES do not decode is unmeasurable too, not a crash. `_git` reads with
+# `errors="surrogateescape"` so that R7's raw-byte `ls-tree` cannot die on a filename (§ 11b),
+# and this arm is the other half of that widening: a `VERSION` git hands back undecodable must
+# still reach a VERDICT — exit 2, naming the accepted spelling — rather than a traceback and the
+# exit 1 that tells an author their PR breaks a rule.
+fx = make_repo(**CONTROL)
+(fx / "VERSION").write_bytes(b"0.2.0\xe9\n")
+git(fx, "add", "-A")
+git(fx, "commit", "-qm", "a VERSION that is not valid UTF-8")
+r = guard(fx, head_ref="release/v0.2.0")
+eq("VERSION carrying undecodable bytes → exit 2, and no traceback",
+   (2, False), (r.returncode, "Traceback" in r.stderr))
+eq("  … reaching the rule's own refusal, not the interpreter's",
+   True, "not an accepted version string" in r.stderr)
 
 # CONTROL for this whole block: exit 2 must be DISTINGUISHABLE from exit 1, or the split that
 # sends authors and maintainers to different files is decoration.
@@ -945,6 +980,189 @@ eq("  … and it measured the growth from that commit, not from zero",
 
 
 # =============================================================================================
+print("== 11b. R7 — release flow step 13: at most TWO released sections, no archive past the "
+      "cliff ==")
+# THE DEFECT THIS ARM GUARDS (card#9814). Step 13 moves the no-longer-latest released section out
+# of `docs/CHANGELOG.md` into `docs/changelog/<tag>.md`, and nothing enforced it: a skipped step
+# surfaced only as R5's red on some LATER feature PR by an author who did not cause it. R5 is no
+# help in the window that matters most, either — after an archive the file SHRANK, the growth
+# term clamps to zero and R5's threshold is the whole cliff (card#9814 comment 5709). So every
+# fixture here sits far below R5's threshold: what catches a skipped step 13 must be R7.
+# Every release-path arm is single-variable off § 3's CONTROL (a release PR for 0.2.0 over 0.1.0).
+TWO_RELEASED = (changelog_with("0.2.0")
+                + "\n## [0.1.0] - 2026-08-20\n\n- **card#7929** — the previous release.\n")
+THIRD = "\n## [0.0.9] - 2026-08-10\n\n- **card#7335** — the release step 13 should have moved.\n"
+
+# --- THE CONTROL: the release this PR mints plus the previous latest — what step 4 leaves behind
+# when step 13 was done after the last release — passes.
+fx = make_repo(**dict(CONTROL, head_changelog=TWO_RELEASED))
+r = guard(fx)
+eq("two released sections (the new one + the previous latest) → exit 0", 0, r.returncode)
+eq("  … with no rule flagged", [], rules_flagged(r))
+eq("  … and the run PRINTS the count it measured (no silent verdict)",
+   True, "2 released section(s)" in r.stdout)
+if r.returncode != 0:
+    print(r.stdout, r.stderr, file=sys.stderr)
+
+# --- THE PLANT: a third released section — step 13 skipped after the last release.
+fx = make_repo(**dict(CONTROL, head_changelog=TWO_RELEASED + THIRD))
+r = guard(fx)
+eq("a THIRD released section on a release PR → RED", 1, r.returncode)
+eq("  … R7 alone (single-variable off the control above)", ["R7"], rules_flagged(r))
+eq("  … naming the archive file to move it into, and neither of the two that stay",
+   (True, False, False),
+   ("docs/changelog/v0.0.9.md" in r.stdout, "docs/changelog/v0.1.0.md" in r.stdout,
+    "docs/changelog/v0.2.0.md" in r.stdout))
+eq("  … and routing the move through `dev` (a move ON the release branch is R6a residue)",
+   True, "step 13" in r.stdout and "up to date with `dev`" in r.stdout)
+
+# --- MUTATION CONTROL: the plant with the third heading demoted to `###`. R7 keys on `^##` the
+# way R3 and R4 do (`_heading_text`), so this is two released sections and passes — proving the
+# plant above reds on the HEADING, not on the extra bytes.
+fx = make_repo(**dict(CONTROL, head_changelog=TWO_RELEASED + THIRD.replace("\n## ", "\n### ")))
+r = guard(fx)
+eq("  CONTROL: the third heading demoted to `###` → exit 0 (R7 keys on `^##`)", 0, r.returncode)
+
+# --- Four sections: EVERY excess section is named, each with its own archive file.
+fx = make_repo(**dict(CONTROL, head_changelog=TWO_RELEASED + THIRD
+                      + "\n## [0.0.8] - 2026-08-01\n\n- **card#7456** — older still.\n"))
+r = guard(fx)
+eq("four released sections → RED on R7, naming BOTH excess archive files",
+   (["R7"], True, True),
+   (rules_flagged(r), "docs/changelog/v0.0.9.md" in r.stdout,
+    "docs/changelog/v0.0.8.md" in r.stdout))
+
+# --- OFF THE RELEASE PATH R7 WARNS AND NEVER REFUSES. The same three-section changelog on a
+# feature PR into `dev`: its author did not skip step 13 and cannot fix it in their PR, which is
+# the exact misdirected red card#9814 exists to end.
+fx = make_repo(**R4FX, head_changelog=TWO_RELEASED + THIRD)
+r = r4(fx, head_ref="chore/tidy")
+eq("the same three sections on a feature PR → exit 0", 0, r.returncode)
+eq("  … with no rule flagged", [], rules_flagged(r))
+eq("  … but a ::warning:: naming R7 and the section to move",
+   True, "::warning::release-pr-guard: R7" in r.stdout and "0.0.9" in r.stdout)
+# …and it names the archive file GENERICALLY, because off this path R7 does not read the tag
+# format at all (the arm below is what that decision costs and buys).
+eq("  … with the archive file named from the version, not composed from `tag_format`",
+   (True, False),
+   ("docs/changelog/<the 0.0.9 tag>.md" in r.stdout, "docs/changelog/v0.0.9.md" in r.stdout))
+
+# --- THE ARCHIVE BACKSTOP (card#9814 comment 5709). Every archive file is born under the cliff
+# (it was part of an R5-held file); the one way past it is a post-hoc edit to a released section.
+# The limit is R5's own constant, read from the guard module — a retyped figure here would be a
+# second copy free to drift.
+ARCHIVE = "docs/changelog/v0.1.0.md"
+fx = make_repo(**CONTROL, base_files={ARCHIVE: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
+r = guard(fx)
+eq("an archive file ONE byte over the cliff on a release PR → RED", 1, r.returncode)
+eq("  … R7 alone", ["R7"], rules_flagged(r))
+eq("  … naming the file and its size",
+   True, ARCHIVE in r.stdout and f"{mod.CONTENTS_API_CLIFF_BYTES + 1:,} B" in r.stdout)
+# CONTROL: the same file AT the cliff is not past it (R5's `<=` boundary, the same constant).
+fx = make_repo(**CONTROL, base_files={ARCHIVE: "x" * mod.CONTENTS_API_CLIFF_BYTES})
+r = guard(fx)
+eq("  CONTROL: the same archive file AT the cliff → exit 0 (the boundary discriminates)",
+   0, r.returncode)
+# Off the release path the oversize archive warns, and does not refuse.
+fx = make_repo(**R4FX, head_changelog=unreleased_with(),
+               base_files={ARCHIVE: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
+r = r4(fx, head_ref="chore/tidy")
+eq("the same oversize archive on a feature PR → exit 0 with a ::warning:: naming it",
+   (0, True),
+   (r.returncode, "::warning::release-pr-guard: R7" in r.stdout and ARCHIVE in r.stdout))
+
+# --- ⛔ OFF THE RELEASE PATH R7 READS NO AUTHORITY FILE, AND THIS IS THE ARM THAT SAYS SO. It
+# plants ONE state — an unreadable `.release-pr.json` — so it pins the authority-file case and
+# NOT a universal about exit 2, which this file cannot claim: `archive_sizes` raises
+# `Unmeasurable` if git fails to list `docs/changelog/`, on every path, and the LATIN1 arm pins
+# the OTHER state that used to escape as a traceback. The first cut of R7 read that config off
+# the release path whenever there were excess sections — to NAME the archive file prettily — and
+# excess sections are exactly the state R7 exists to detect, on every feature PR until the next
+# release. A malformed config then failed every one of them with exit 2, from a rule that can do
+# no more than warn there. Measured on that code: exit 2.
+fx = make_repo(**R4FX, head_changelog=TWO_RELEASED + THIRD)
+(fx / ".release-pr.json").write_text("{not json", encoding="utf-8")
+r = r4(fx, head_ref="chore/tidy")
+eq("excess sections + an UNREADABLE `.release-pr.json` on a feature PR → exit 0, never 2",
+   0, r.returncode)
+eq("  … still warned, naming the version and no degenerate path",
+   (True, True, False),
+   ("::warning::release-pr-guard: R7" in r.stdout, "0.0.9" in r.stdout,
+    "docs/changelog/.md" in r.stdout))
+# CONTROL: the release path DOES read that authority, so the same broken config there is exit 2 —
+# which is what makes the exit 0 above a decision about the PATH and not R7 ignoring the file.
+fx = make_repo(**dict(CONTROL, head_changelog=TWO_RELEASED + THIRD))
+(fx / ".release-pr.json").write_text("{not json", encoding="utf-8")
+r = guard(fx)
+eq("  CONTROL: the same broken config on the RELEASE path → exit 2 (the path discriminates)",
+   2, r.returncode)
+
+# --- The archive listing RECURSES. A `docs/changelog/` subdirectory is not the documented layout
+# (one file per tag, flat), but a non-recursive listing would report "0 archive file(s)" while an
+# oversize file sat under it — a measurement that is not merely silent but WRONG, which is worse
+# than the gap it hides.
+NESTED = "docs/changelog/superseded/v0.0.1.md"
+fx = make_repo(**CONTROL, base_files={NESTED: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
+r = guard(fx)
+eq("an oversize archive in a SUBDIRECTORY of docs/changelog/ → RED on R7", ["R7"], rules_flagged(r))
+eq("  … and the run COUNTS it rather than printing 0 archive file(s)",
+   (True, False), ("1 archive file(s)" in r.stdout, "0 archive file(s)" in r.stdout))
+
+# --- …and the SAME wrong-measurement shape one field over: `git ls-tree` C-QUOTES any path
+# outside safe ASCII, so `docs/changelog/café.md` arrives as `"docs/changelog/caf\303\251.md"`,
+# fails an `.md` suffix test, and vanishes from both the sizes and the printed count. Read
+# without `-z` this arm plants two archive files and the run reports one — the audit sibling of
+# the `-r` arm above, and the reason the listing now asks git not to quote at all.
+QUOTED = "docs/changelog/café.md"
+fx = make_repo(**CONTROL, base_files={QUOTED: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
+r = guard(fx)
+eq("an oversize archive whose NAME is not plain ASCII → RED on R7", ["R7"], rules_flagged(r))
+eq("  … naming the file, and counted rather than quoted away",
+   (True, True), ("café.md" in r.stdout, "1 archive file(s)" in r.stdout))
+
+# --- …and the OTHER side of asking git for raw bytes: a filename that is not valid UTF-8 at all.
+# Quoting used to make every path pure ASCII, so `text=True` could not fail; raw bytes mean the
+# DECODE can, inside `subprocess.run`, before any rule is evaluated — a `UnicodeDecodeError` is
+# not `Unmeasurable`, so it escaped `main()` as a traceback and exit 1. On a feature PR exit 1 is
+# R7 telling an author their PR breaks a rule: the misdirected red this card exists to end, and
+# worse than the exit 2 that was removed. A filename is not the repo's to validate, so the guard
+# reads it lossily and PRINTS it lossily rather than refusing anything.
+LATIN1 = "docs/changelog/inv\udce9.md"          # one 0xe9 byte — latin-1 `é`, invalid UTF-8
+fx = make_repo(**R4FX, head_changelog=unreleased_with(),
+               base_files={LATIN1: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
+r = r4(fx, head_ref="chore/tidy")
+eq("an archive filename that is not valid UTF-8, on a feature PR → exit 0, no traceback",
+   (0, False), (r.returncode, "Traceback" in r.stderr))
+eq("  … and it was MEASURED (counted and warned), not skipped past",
+   (True, True),
+   ("1 archive file(s)" in r.stdout, "::warning::release-pr-guard: R7" in r.stdout))
+# …and the PRINT site, which the two above do not reach: they pin the READ. Without
+# `printable()` the guard still exits 0 here — CPython gives stdout the `surrogateescape`
+# handler under this runner's C.UTF-8 locale — and writes the raw 0xE9 byte into the log and
+# into the `::warning::` annotation, which is malformed UTF-8 for every consumer downstream.
+# So the assertion is on the SPELLING, not on the exit code: U+FFFD, the one outcome that is
+# well-formed whatever handler stdout happens to have.
+eq("  … and the path is PRINTED lossily, as U+FFFD", True, "inv�.md" in r.stdout)
+
+# --- THE VERSION-LESS HEADING, which is the one branch of `archive_file_for` no arm had ever
+# seen printed. R7 counts it because `changelog_sections` does, and it ranks below every
+# versioned section — so with `[0.2.0]` plus two prose headings the LAST of them is excess, and
+# the message cannot name an archive file for it. What it owes instead is an instruction the
+# author can act on, and both readings of the heading are legitimate.
+fx = make_repo(**dict(CONTROL, head_changelog=changelog_with("0.2.0")
+                      + "\n## Older notes\n\n- prose.\n\n## Even older\n\n- more prose.\n"))
+r = guard(fx)
+eq("a version-less `## ` heading counts as a released section → RED on R7", ["R7"],
+   rules_flagged(r))
+eq("  … naming the heading it means and offering BOTH readings of it",
+   (True, True, True),
+   ("'Even older'" in r.stdout, "either give it its version" in r.stdout,
+    "demote it below `##`" in r.stdout))
+eq("  … and composing no tag it cannot know (no `<the … tag>` and no bare `/.md`)",
+   (False, False), ("<the None tag>" in r.stdout, "docs/changelog/.md" in r.stdout))
+
+
+# =============================================================================================
 print("== 12. TRIGGER CONTEXT — the gate judges a PR that CAN still be fixed ==")
 # THE DEFECT THIS ARM GUARDS (card#9732). `edited` fires on a MERGED pull request. On
 # 2026-09-17 an edit to PR #176's body — merged as v0.5.0 some hours earlier — re-ran this gate
@@ -1298,6 +1516,10 @@ if r.returncode != 0:
 
 print()
 if fails:
-    print(f"release-pr-guard.selftest: {fails} check(s) FAILED", file=sys.stderr)
+    print(f"release-pr-guard.selftest: {fails} check(s) FAILED of {checks} run", file=sys.stderr)
     sys.exit(1)
-print("release-pr-guard.selftest: all checks passed")
+# The TOTAL is printed, not just the verdict: anything that cites this suite's coverage — a PR
+# body, a review — must be able to DERIVE the figure by running it, and a bare "all checks
+# passed" is a pointer to a number nobody can read back. It also makes a silently-skipped block
+# visible as a total that fell.
+print(f"release-pr-guard.selftest: all checks passed — {checks} check(s) passed")
