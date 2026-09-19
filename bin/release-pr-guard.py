@@ -593,10 +593,19 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
 def printable(text: str) -> str:
     """Text safe to PRINT, whatever bytes git handed back.
 
-    `_git` surrogate-escapes undecodable bytes, and a surrogate raises `UnicodeEncodeError` on
-    the way OUT — so a message naming a path git could not decode would crash at the `print`
-    instead of at the read, which is the same defect one step later. Round-tripping through
-    `surrogateescape` -> `replace` turns those bytes into U+FFFD and nothing else changes.
+    `_git` surrogate-escapes undecodable bytes, and what a surrogate then does at the `print`
+    DEPENDS ON THE STDIO HANDLER, which is why this is a sanitiser and not an exception guard.
+    Measured rather than assumed, because the first wording of this docstring asserted the raise
+    unconditionally and that is false here: CPython installs `surrogateescape` on stdout under
+    the C / C.UTF-8 locale — the GitHub-hosted runner's locale, and this repo's workflow sets no
+    `PYTHONIOENCODING` — so an unsanitised surrogate does NOT raise; it is written back out as
+    the raw undecodable byte, into the job log and into the `::warning::` annotation
+    (`python3 -c "import sys; print(sys.stdout.errors)"` prints `surrogateescape`; printing a
+    string carrying one escaped 0xE9 there exits 0 and emits that byte). Under a strict handler
+    (`PYTHONIOENCODING=utf-8:strict`) the same `print` raises `UnicodeEncodeError` and the run
+    exits 1. `printable()` removes both outcomes: round-tripping `surrogateescape` -> `replace`
+    turns those bytes into U+FFFD, so the output is well-formed UTF-8 for every consumer, and it
+    is the identity on valid UTF-8.
     """
     return text.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
 

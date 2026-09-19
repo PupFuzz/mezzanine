@@ -89,8 +89,15 @@ def eq(what: str, want, got) -> None:
 
 
 def run(*args: str) -> subprocess.CompletedProcess:
+    """`errors="surrogateescape"` for the same reason the guard's own `_git` carries it, one
+    level up: § 11b drives the guard over a repo holding an archive filename that is not valid
+    UTF-8, and a strict harness dies decoding the guard's OUTPUT. Measured — with `printable()`
+    removed and this handler absent, the suite ended in a raw `UnicodeDecodeError` at this call,
+    printing no FAIL line and no total, so a regression at the guard's print site read as a
+    broken harness. With the handler the same regression is a named check going red."""
     return subprocess.run([sys.executable, str(GUARD), *args],
-                          capture_output=True, text=True, cwd=str(REPO))
+                          capture_output=True, text=True, errors="surrogateescape",
+                          cwd=str(REPO))
 
 
 # --- Fixture construction ---------------------------------------------------------------------
@@ -1067,7 +1074,7 @@ eq("the same oversize archive on a feature PR → exit 0 with a ::warning:: nami
 # --- ⛔ OFF THE RELEASE PATH R7 READS NO AUTHORITY FILE, AND THIS IS THE ARM THAT SAYS SO. It
 # plants ONE state — an unreadable `.release-pr.json` — so it pins the authority-file case and
 # NOT a universal about exit 2, which this file cannot claim: `archive_sizes` raises
-# `Unmeasurable` if git fails to list `docs/changelog/`, on every path, and the arm below pins
+# `Unmeasurable` if git fails to list `docs/changelog/`, on every path, and the LATIN1 arm pins
 # the OTHER state that used to escape as a traceback. The first cut of R7 read that config off
 # the release path whenever there were excess sections — to NAME the archive file prettily — and
 # excess sections are exactly the state R7 exists to detect, on every feature PR until the next
@@ -1129,6 +1136,13 @@ eq("an archive filename that is not valid UTF-8, on a feature PR → exit 0, no 
 eq("  … and it was MEASURED (counted and warned), not skipped past",
    (True, True),
    ("1 archive file(s)" in r.stdout, "::warning::release-pr-guard: R7" in r.stdout))
+# …and the PRINT site, which the two above do not reach: they pin the READ. Without
+# `printable()` the guard still exits 0 here — CPython gives stdout the `surrogateescape`
+# handler under this runner's C.UTF-8 locale — and writes the raw 0xE9 byte into the log and
+# into the `::warning::` annotation, which is malformed UTF-8 for every consumer downstream.
+# So the assertion is on the SPELLING, not on the exit code: U+FFFD, the one outcome that is
+# well-formed whatever handler stdout happens to have.
+eq("  … and the path is PRINTED lossily, as U+FFFD", True, "inv�.md" in r.stdout)
 
 # --- THE VERSION-LESS HEADING, which is the one branch of `archive_file_for` no arm had ever
 # seen printed. R7 counts it because `changelog_sections` does, and it ranks below every
