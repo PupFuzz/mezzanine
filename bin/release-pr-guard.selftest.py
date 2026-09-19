@@ -1079,6 +1079,35 @@ eq("an oversize archive in a SUBDIRECTORY of docs/changelog/ → RED on R7", ["R
 eq("  … and the run COUNTS it rather than printing 0 archive file(s)",
    (True, False), ("1 archive file(s)" in r.stdout, "0 archive file(s)" in r.stdout))
 
+# --- …and the SAME wrong-measurement shape one field over: `git ls-tree` C-QUOTES any path
+# outside safe ASCII, so `docs/changelog/café.md` arrives as `"docs/changelog/caf\303\251.md"`,
+# fails an `.md` suffix test, and vanishes from both the sizes and the printed count. Read
+# without `-z` this arm plants two archive files and the run reports one — the audit sibling of
+# the `-r` arm above, and the reason the listing now asks git not to quote at all.
+QUOTED = "docs/changelog/café.md"
+fx = make_repo(**CONTROL, base_files={QUOTED: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
+r = guard(fx)
+eq("an oversize archive whose NAME is not plain ASCII → RED on R7", ["R7"], rules_flagged(r))
+eq("  … naming the file, and counted rather than quoted away",
+   (True, True), ("café.md" in r.stdout, "1 archive file(s)" in r.stdout))
+
+# --- THE VERSION-LESS HEADING, which is the one branch of `archive_file_for` no arm had ever
+# seen printed. R7 counts it because `changelog_sections` does, and it ranks below every
+# versioned section — so with `[0.2.0]` plus two prose headings the LAST of them is excess, and
+# the message cannot name an archive file for it. What it owes instead is an instruction the
+# author can act on, and both readings of the heading are legitimate.
+fx = make_repo(**dict(CONTROL, head_changelog=changelog_with("0.2.0")
+                      + "\n## Older notes\n\n- prose.\n\n## Even older\n\n- more prose.\n"))
+r = guard(fx)
+eq("a version-less `## ` heading counts as a released section → RED on R7", ["R7"],
+   rules_flagged(r))
+eq("  … naming the heading it means and offering BOTH readings of it",
+   (True, True, True),
+   ("'Even older'" in r.stdout, "either give it its version" in r.stdout,
+    "demote it below `##`" in r.stdout))
+eq("  … and composing no tag it cannot know (no `<the … tag>` and no bare `/.md`)",
+   (False, False), ("<the None tag>" in r.stdout, "docs/changelog/.md" in r.stdout))
+
 
 # =============================================================================================
 print("== 12. TRIGGER CONTEXT — the gate judges a PR that CAN still be fixed ==")

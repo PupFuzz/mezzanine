@@ -201,12 +201,14 @@ R3's own reading (`changelog_sections`, keyed on `_heading_text`'s `^##`) — no
     clause warns off the path too, for a different reason: the only way an archive file passes
     the cliff is a post-hoc edit to a released section, and when that edit is made on a feature
     PR the warning lands on the PR that made it, while the release PR is where it is refused.
-    ⛔ AND "NEVER REFUSES" INCLUDES EXIT 2, WHICH IS WHY R7 OPENS NO AUTHORITY FILE OFF THIS
-    PATH. Its first cut read `.release-pr.json` there to name the archive file from `tag_format`,
+    ⛔ AND R7 OPENS NO AUTHORITY FILE OFF THIS PATH, SO IT ADDS NO EXIT 2 THERE EITHER — with
+    one state named below rather than claimed away.
+    Its first cut read `.release-pr.json` there to name the archive file from `tag_format`,
     and that made `load_tag_format`'s exit 2 reachable from every feature PR in a repo whose
     changelog carries excess sections — the very state R7 detects, persisting until the next
-    release. A warning is not worth a new way to fail a PR the rule has nothing to refuse. The
-    only exit 2 R7 can raise off the release path is `git ls-tree` failing, which is the
+    release. A warning is not worth a new way to fail a PR the rule has nothing to refuse. What
+    remains is not a refusal but an UNMEASURABLE state, and it is the only one R7 can reach off
+    the release path: `git ls-tree` failing to list the archive directory, which is the
     git-level failure the head-changelog read above has already hit.
   * THE ARCHIVE CLAUSE (card#9814 comment 5709). `docs/PLAN.md § 4` argues the archive files need
     no size gate: every byte in one was part of an R5-held `docs/CHANGELOG.md` at its release, and
@@ -322,8 +324,8 @@ Exit 2 = the guard COULD NOT MEASURE — missing `VERSION`, unreadable base rev,
          integration branch (R6), a run not given the PR body while R6 has residue to declare,
          unparseable semver, absent `docs/CHANGELOG.md`, no `## [Unreleased]` heading to scope
          R4 or R6b to, a shallow clone R5 cannot measure growth in, an archive directory R7
-         cannot list (its one refusal off the release path — it reads no AUTHORITY there), or an
-         authority that moved.
+         cannot list (its one unmeasurable state off the release path — it reads no AUTHORITY
+         there), or an authority that moved.
          Someone fixes
          the repo or this guard. The split matters: a 1 and a 2 send different people to
          different files, and collapsing them would send authors to rename branches that were
@@ -1132,15 +1134,26 @@ def archive_sizes(repo: Path, sha: str) -> list[tuple[str, int]]:
     file in a subdirectory is not merely missed: the run PRINTS a count that does not include it,
     so an oversize archive under `docs/changelog/superseded/` reads as `0 archive file(s)`. A
     measurement that is wrong is worse than one that is absent, and the flag is the whole fix.
+
+    ⚠ AND NUL-SEPARATED (`-z`), which is the same defect one field over. `git ls-tree` C-QUOTES
+    any path outside safe ASCII — `docs/changelog/café.md` is emitted as
+    `"docs/changelog/caf\\303\\251.md"` — so a suffix test for `.md` is False and the file drops
+    out of the sizes AND out of the printed count, which then confidently reports one file where
+    there are two. `-z` makes git emit the path raw, and it closes the same hole for a path
+    containing a tab, which would otherwise be split as if the tab were the field separator.
     """
-    r = _git(repo, "ls-tree", "-r", "-l", sha, "--", CHANGELOG_ARCHIVE_DIR + "/")
+    r = _git(repo, "ls-tree", "-r", "-l", "-z", sha, "--", CHANGELOG_ARCHIVE_DIR + "/")
     if r.returncode != 0:
         raise Unmeasurable(
-            f"`git ls-tree -r -l {sha[:7]} -- {CHANGELOG_ARCHIVE_DIR}/` failed in {repo} "
+            f"`git ls-tree -r -l -z {sha[:7]} -- {CHANGELOG_ARCHIVE_DIR}/` failed in {repo} "
             f"({r.stderr.strip()}) — R7 cannot size the archive files it exists to watch.")
     out = []
-    for line in r.stdout.splitlines():
-        meta, _, path = line.partition("\t")
+    # `-z` terminates each ENTRY with NUL, so entries are split on it rather than on newlines
+    # (a path may contain one), and the first TAB still separates the metadata from the path.
+    for entry in r.stdout.split("\0"):
+        if not entry:
+            continue
+        meta, _, path = entry.partition("\t")
         fields = meta.split()
         if len(fields) == 4 and fields[1] == "blob" and path.endswith(".md"):
             out.append((path, int(fields[3])))
