@@ -27,6 +27,55 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9616** — **`bin/deploy.sh` refuses a host whose `bash`, `git` or `npm` is too old — by name,
+  in phase A, before anything is touched.** Until now A1 asked only whether those binaries were
+  PRESENT; PHP alone had a version gate. So a host that was too old got partway in: `npm ci` failed in
+  phase B with the site already down, a git without `:(literal)` pathspec magic failed every read of
+  the release and was reported as a release missing its files, and a bash below the floor did not
+  refuse at all — it DIED, at A7's refusal, on an empty array expanded under `set -u`, exiting 1 with
+  no `⛔ REFUSED` banner and no *"Nothing was changed"* promise, which is exactly the code the exit
+  table reserves for "refused, nothing was touched".
+  **The bash floor is MEASURED, and `BASH_FLOOR` at the top of `bin/deploy.sh` is its one home.** A
+  construct scan cannot find it — it sees `mapfile` (4.0) and `exec {fd}<` (4.1) and stops a full minor
+  short of the truth — so nothing scans: `.github/workflows/deploy-selftest.yml` gains a `bash-floor`
+  job that builds GNU bash at the declared floor and at the minor below it, from the release tarballs
+  pinned by sha256, and runs the whole self-test under each. The floor must PASS **and the minor below
+  must FAIL**; the below-floor run lowers `BASH_FLOOR` in its own copy of the tree so that the gate is
+  not what stops it, and the job reds if that run passes, because a floor whose control cannot fail is
+  a version that works rather than a floor. It reads the floor through `bin/deploy.sh`'s own reader, so
+  CI cannot measure a floor the gate would not see.
+  **Both copies of the script are held to a floor.** After `artisan down` the deploy re-execs the
+  TARGET release's `bin/deploy.sh`, which never runs A1 — so A6b reads that release's own `BASH_FLOOR`
+  out of git and holds this host's bash to it, beside the gates that already read the release (A6,
+  A10–A13). A release that declares none predates this card: that is said out loud and is not a
+  refusal, since refusing would make every rollback undeployable for want of a line it could not have
+  carried.
+  **git is PROBED, never version-parsed** (A3b, after A3 has established that git can open the
+  repository): `git ls-tree HEAD -- VERSION` first, so that a failure of the magic form differs from it
+  by one thing, then the same read with `:(literal)`, which must print exactly `VERSION`. The OUTPUT is
+  required and not the status, because a magic-less git can also exit 0 having listed nothing — which
+  downstream is indistinguishable from a release that does not carry the file.
+  **npm is compared against the TARGET tree's `lockfileVersion`** (A12), the release that moves to a
+  newer lockfile format being exactly the one the serving checkout says nothing about. The mapping is
+  npm's own documentation, quoted at the gate and marked documented-not-measured; a lockfile version
+  the gate cannot map is refused rather than guessed at.
+  `bin/deploy.selftest.sh` carries a case for each refusal, every one asserting the banner and the
+  promise as well as the exit code — in this class an exit-code assertion catches nothing, because the
+  death being refused already exits 1 — plus the controls one variable away: the release's floor set to
+  this host's bash, npm exactly at the lockfile's floor, and a git that fails the PLAIN probe, which
+  must not be blamed on the pathspec magic it never reached. `BASH_VERSINFO` cannot be faked inside a
+  running bash, so the comparison is a predicate of its own, driven at the floor and at the floor minus
+  one.
+  `bin/deploy-gate-inputs.sh`'s classification table moves with the gates, as it is built to: A12's
+  read of `server/package-lock.json` becomes a CONTENT read rather than a presence one, and
+  `bin/deploy.sh` joins the table as A6b's input — each row's function and disposition digest DERIVED
+  by that check and pasted from its own output, never hand-computed. `bin/shell-lint.baseline.tsv`
+  grows by a typed `--accept-new`, in two classes this file already carries as debt: SC2317 on the
+  new fixture mutators, which ShellCheck cannot see `mkfix` invoke, and one SC2016 on a
+  single-quoted `$BASH_FLOOR` that must reach the sourced shell unexpanded. Annotating only the new
+  ones while their siblings stay unannotated would put two conventions in one file; discharging the
+  whole class is its own round.
+
 - **card#9814** — **`release-pr-guard` R7 refuses a release PR that skipped archiving the previous
   release (release flow step 13), so the red lands on the release that owes the step.** Before it,
   a skipped step 13 surfaced only as R5's size red on some later feature PR by an author who could

@@ -539,7 +539,9 @@ rule violations anyone could have committed at the time.
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, a store on another host without `MYSQL_ATTR_SSL_CA`, a
   non-persistent `CACHE_STORE`, a key A5 reads written in a form other than plain `KEY=value`, a file Laravel's
   own parser does not read as the lines it is written in, a file carrying a NUL byte), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
-  same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, a migration that
+  same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, **a host whose
+  `bash`, `git` or `npm` is too old** (card#9616 — each by name, in phase A, before anything is
+  touched; the detail is the bullet below this list), a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
   *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`, `setsid`
   or `ps`, a crontab the deployed release's own install would refuse (an unreadable one included), a
@@ -637,6 +639,43 @@ rule violations anyone could have committed at the time.
   host's `.env` does not set. It also warns, naming it, when the document root it reads a `.user.ini`
   from does not exist, and when the release carries no `server/.env.example` for the check that reads
   it — each a gap it says out loud rather than a state it calls safe.
+- **The host's own tool VERSIONS are refused by name, before anything is touched** (card#9616), which
+  until that card was true of PHP alone: A1 asked only whether the other eleven binaries were PRESENT.
+  - **bash.** `BASH_FLOOR` at the top of `bin/deploy.sh` is the one home of the number, and the value is
+    **measured, not read off the constructs**. A scan for version-gated syntax finds `mapfile` (4.0) and
+    `exec {fd}<` (4.1) and stops a whole minor short, because the binding construct is not syntax:
+    `"${a[@]}"` over an EMPTY array under `set -u` is an `unbound variable` death on every bash before
+    4.4, and the script has two such expansions — A7's `ref_note`, empty for any ordinary ref name, and
+    `env_lines_load`'s `ENV_LINES`, empty for a `.env` with no lines. Which of a file's array expansions
+    can be empty is a whole-program property rather than a syntactic one, which is the second reason a
+    scan cannot answer this question. Measured, on bash built from the GNU
+    release tarballs: at 4.4 the self-test passes in full; at 4.3 it fails, and every failure is A7's
+    *"does not resolve to a commit"* refusal DYING on `"${ref_note[@]}"` — exit 1 with no `⛔ REFUSED`
+    banner and no *"Nothing was changed"* promise, which is the exit code that MEANS "refused, nothing
+    was touched" reached by a death. `.github/workflows/deploy-selftest.yml`'s `bash-floor` job re-runs
+    that pair on every PR — the floor must pass, **and the minor below it must fail** — so the number
+    stays a measurement and cannot quietly become a claim. Both the SERVING copy (A1) and the copy the
+    RELEASE ships (A6b) are held to a floor: after `artisan down` the deploy re-execs the target's
+    `bin/deploy.sh`, which never runs A1, so a release that RAISES the floor would meet it inside the
+    window with the app down. A release predating the card declares none, and that is said out loud and
+    is not a refusal — refusing it would make every rollback undeployable for want of a line it could
+    not have carried.
+  - **git.** Every read of the release out of the object database passes its path as `:(literal)<path>`,
+    so a git that does not know pathspec magic fails or mis-answers all of them — and the first arrives
+    as *"git could not read server/composer.json"*, a statement about the release that is not the cause.
+    A3b PROBES it instead of parsing `git --version`, which a distro backport makes wrong in both
+    directions: first `git ls-tree HEAD -- VERSION` on this checkout, which establishes that git can list
+    a tree at all, then the same read with the magic, which must print exactly `VERSION`. **The output is
+    what is required, not the status** — a magic-less git can also exit 0 having listed nothing, taking
+    the whole string for a literal path, and that is indistinguishable downstream from a release that
+    does not carry the file.
+  - **npm.** A12 reads the `lockfileVersion` out of the TARGET tree's `server/package-lock.json` and
+    refuses an `npm --version` below what it implies — 3 needs npm 7, from npm's own documentation,
+    which is quoted at the gate and marked **documented, not measured**; 1 and 2 state no floor and none
+    is invented for them, and any other version is refused rather than guessed at. Read from the target
+    because the release that MOVES to a newer lockfile format is exactly the one the serving checkout's
+    lockfile says nothing about. `npm ci` runs inside the window, so the refusal is that failure moved to
+    before anything is touched.
 - **The `.env` refusals above rest on a MIRROR, and the mirror's agreement with what it mirrors is a
   standing CI property** (card#9591). A5 cannot ask PHP what `server/.env` means — at phase A the config
   cache is stale by construction and the host may have no working app — so `bin/deploy.sh` re-implements

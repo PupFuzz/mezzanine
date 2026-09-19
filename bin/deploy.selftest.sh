@@ -13,8 +13,9 @@
 #         bin/supervision.sh. And THE DAEMON RESTART: flock, fuser, setsid, ps and kill run for real (fuser
 #         behind a pass-through that one case slows by 0.3 s, to know when a lock is first sampled, and ps
 #         behind one that one case blinds; mktemp, too, is the real one, behind a pass-through § card#9816
-#         makes fail after a set number of calls) against stub daemons holding locks inside the temp dir, so "the old process is gone and a
-#         new one holds the lock" is observed, not merely recorded.
+#         makes fail after a set number of calls; and git, behind one the card#9616 cases turn into a git
+#         without `:(literal)` pathspec magic) against stub daemons holding locks inside the temp dir, so
+#         "the old process is gone and a new one holds the lock" is observed, not merely recorded.
 #   STUB: php (and the daemons it runs), php-fpm<minor>, composer, npm, crontab, curl, id, cgi-fcgi — on PATH,
 #         recording every call to $CALL_LOG. The crontab stub reads and writes one file per fixture;
 #         the php-fpm stub prints a phpinfo whose opcache values each case sets, beside a fixture
@@ -44,7 +45,11 @@
 #   - the feed stream's host conditions (A14, card#9300): each R1 ini hazard and each R2 pool defect
 #     refused, each beside the same host without it;
 #   - the stream drain (phase B): a stream the previous release opened ended by SIGTERM, one opened after
-#     fleet.reload left alone — and the same run with the release's kill cut out, where it survives.
+#     fleet.reload left alone — and the same run with the release's kill cut out, where it survives;
+#   - the host's version floors (card#9616): the bash floor moved above this host's bash on the SERVING
+#     copy and, separately, on the TARGET release alone — each beside the same fixture at a floor this
+#     bash meets; a git without `:(literal)` in both of the ways one answers, beside a git that cannot
+#     list a tree at all; and the release's lockfileVersion against npm 6.14.0 and npm 9.2.0.
 #
 # ⛔ AND THE REFUSAL CONTRACT ITSELF, ASSERTED AT `run_refusal` RATHER THAN PER CASE (card#9646).
 # A refusal is three things together — exit 1, the `⛔ REFUSED — <cause>` banner, and the closing
@@ -157,6 +162,7 @@ REAL_FUSER="$(command -v fuser)" || { echo "selftest: fuser not found" >&2; exit
 REAL_PHP="$(command -v php)" || { echo "selftest: php not found (deploy.sh parses the stream pool's JSON status with php -r)" >&2; exit 1; }
 REAL_PS="$(command -v ps)" || { echo "selftest: ps not found" >&2; exit 1; }
 REAL_MKTEMP="$(command -v mktemp)" || { echo "selftest: mktemp not found" >&2; exit 1; }
+REAL_GIT="$(command -v git)" || { echo "selftest: git not found" >&2; exit 1; }
 mkdir -p "$T/bin" "$T/knobs"; export PATH="$T/bin:$PATH"
 # `mezzanine:extra` is in no release this repo ships: it is the daemon the ACROSS RELEASES case's target
 # release adds, and the stub has to know to hold a lock for it.
@@ -194,6 +200,15 @@ for c in composer npm; do
 cat > "$T/bin/$c" <<STUB
 #!/usr/bin/env bash
 printf '$c %s\n' "\$*" >> "\$CALL_LOG"
+# \`npm --version\` is A1c's read of THIS HOST's npm, which A12 holds to the floor the release's
+# lockfile implies (card#9616). The stub answers it from a knob, and can fail it. composer is never
+# asked its version by this script — A6 reads the floor out of the release, not out of composer.
+if [ "$c" = npm ] && [ "\${1:-}" = --version ]; then
+  if [ "\${STUB_NPM_VERSION_RC:-0}" -ne 0 ]; then
+    echo "stub npm: cannot determine version" >&2; exit "\$STUB_NPM_VERSION_RC"
+  fi
+  printf '%s\n' "\${STUB_NPM_VERSION:-9.2.0}"; exit 0
+fi
 if [ -n "\${STUB_FAIL_RE:-}" ] && printf '$c %s' "\$*" | grep -Eq "\$STUB_FAIL_RE"; then
   echo "stub $c: forced failure" >&2; exit 1
 fi
@@ -290,6 +305,30 @@ fi
 exec "$REAL_MKTEMP" "$@"
 STUB
 } > "$T/bin/mktemp"
+# git: the REAL one — turned, by a knob, into a git that does not accept `:(literal)` pathspec magic
+# (card#9616, A3b). ⭐ BOTH of the ways such a git answers are produced, because a probe reading only
+# the STATUS would pass the second: `128` fails any invocation carrying the magic, as git does on a
+# pathspec it cannot parse, and `empty` exits 0 listing nothing, as a git taking the whole string for
+# a literal path would. `plain128` instead fails the probe's PLAIN form (`ls-tree … -- VERSION`) —
+# a git that cannot list a tree at all, which must not be blamed on the magic it never reached.
+{
+  printf '#!/usr/bin/env bash\nKNOBS=%q\nREAL_GIT=%q\n' "$T/knobs" "$REAL_GIT"
+  cat <<'STUB'
+mode="$(cat "$KNOBS/git_magic" 2>/dev/null)"
+if [ -n "$mode" ]; then
+  for a in "$@"; do
+    case "$mode:$a" in
+      128:':(literal)'*) echo "fatal: Invalid pathspec magic 'literal' in ':(literal)VERSION' (selftest shim)" >&2; exit 128 ;;
+      empty:':(literal)'*) exit 0 ;;
+    esac
+  done
+  if [ "$mode" = plain128 ] && [ "${*: -2}" = "-- VERSION" ]; then
+    echo "fatal: unable to read tree (selftest shim)" >&2; exit 128
+  fi
+fi
+exec "$REAL_GIT" "$@"
+STUB
+} > "$T/bin/git"
 cat > "$T/bin/id" <<'STUB'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -334,7 +373,10 @@ reset_stubs() {
   unset STUB_UID STUB_CRONTAB_BROKEN MEZZ_DEPLOY_IN_WINDOW MEZZ_DEPLOY_REVALIDATE_FLOOR_S MEZZ_FPM_BIN
   kill_streams
   : > "$T/knobs/dies_after_start"; : > "$T/knobs/ignores_term"; : > "$T/knobs/transient_loser"
-  rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps" "$T/knobs/mktemp_passes"
+  rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps" "$T/knobs/mktemp_passes" "$T/knobs/git_magic"
+  # 9.2.0 is ABOVE the npm 7 the fixture's lockfileVersion 3 implies without BEING it, so a case
+  # that passes A12 here is not passing on an accidental exact match (card#9616).
+  export STUB_NPM_VERSION=9.2.0 STUB_NPM_VERSION_RC=0
   # The document root A14 reads a .user.ini from. Never the default ($HOME/public_html): on the host
   # this runs on that is a REAL vhost's, and a selftest that read it would not be hermetic.
   export MEZZ_DOCROOT="$T/docroot"; rm -rf "$MEZZ_DOCROOT"; mkdir -p "$MEZZ_DOCROOT"
@@ -2126,12 +2168,18 @@ has "dash --ref with rev syntax: the note fires, one variable away" "carries rev
 # reachable through this script today. Both halves of that are asserted rather than assumed: git
 # really does answer that way, and the deploy really does stop before git_ref_oid is reached.
 #
-# ⛔ WHICH GATE MEETS IT MOVED, and it is stated rather than left for a reader to re-derive from an
-# old sentence. This comment used to say A7's `git fetch` meets it first. Measured, git 2.53.0, on
+# ⛔ WHICH GATE MEETS IT HAS MOVED TWICE, and each move is stated rather than left for a reader to
+# re-derive from an old sentence. It first said A7's `git fetch` meets it. Measured, git 2.53.0, on
 # this fixture: `rev-parse --git-dir` (A3) exits 0 — it does not read the refs — while `status
 # --porcelain` (A4) and `fetch` BOTH answer `fatal: couldn't read .git/packed-refs: Permission
-# denied` at 128, and A4 runs first. card#9646 gave A4 its own status reading, so A4 is now where
-# this fixture is refused; A7's refusal is the one behind it, exercised on its own fixtures below.
+# denied` at 128, and A4 ran first once card#9646 gave A4 its own status reading.
+# ⇒ NOW IT IS A3b (card#9616), which runs between A3 and A4 and probes git's `:(literal)` pathspec
+# magic. Its PLAIN form — `git ls-tree HEAD -- VERSION`, the step that makes a failure of the magic
+# form attributable to the magic — resolves HEAD, which reads the refs, so this fixture answers it
+# 128 and loud. Measured on this fixture. That is the right answer and not a regression: the cause
+# named is "git could not list HEAD's tree", git's own `packed-refs` message is printed with it, and
+# nothing is claimed about the release or about the pathspec support that was never reached. A4's
+# refusal and A7's are the ones behind it, exercised on their own fixtures.
 #
 # ⛔ AND WHAT "STOPS" MEANT WAS NOT GOOD ENOUGH, which is card#9646's finding here rather than a
 # tidy-up. `neq 0` was the assertion, and it passed identically before and after the fix: the
@@ -2153,10 +2201,12 @@ has  "answer other-loud: the ⛔ REFUSED banner, so the 1 is a verdict and not a
 has  "answer other-loud: the phase-A promise" \
   "Nothing was changed. The previous release is still serving." "$OUT"
 has  "answer other-loud: named as the read that failed, with the status git gave" \
-  "git could not read the state of $ROOT (\`git status --porcelain\` exited 128)" "$OUT"
+  "git could not list HEAD's tree in $ROOT (\`git ls-tree HEAD -- VERSION\` exited 128)" "$OUT"
 has  "answer other-loud: git's own error is what the operator gets" "packed-refs" "$OUT"
 hasnt "answer other-loud: and nothing claims the ref is absent" \
   "does not resolve to a commit on" "$OUT"
+hasnt "answer other-loud: nor blamed on a pathspec support the probe never got to ask about" \
+  "does not accept" "$OUT"
 chmod 644 "$ROOT/.git/packed-refs"
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -2535,6 +2585,189 @@ mkfix internal_flag
 export MEZZ_DEPLOY_IN_WINDOW=0; run --internal-post-checkout "$V2"
 eq "post-checkout entry point by hand: exit 1" 1 "$RC"
 has "post-checkout entry point: says why" "not an operator entry point" "$OUT"
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+section "card#9616 — the host's bash, git and npm, each refused BY NAME before anything is touched"
+# Until this card A1 asked only whether each tool was PRESENT (`command -v`), for all twelve. PHP was
+# the exception and still is: A6 has read the floor out of the release since card#9203. So a host whose
+# bash, git or npm was too old got PARTWAY IN — npm ≤ 6 failed `npm ci` in phase B with the site
+# already down, a git without `:(literal)` failed every read of the release and was reported as a
+# release missing its files, and a bash below 4.4 DIED on `"${ref_note[@]}"` at A7's refusal, exiting 1
+# with no ⛔ banner and no "Nothing was changed" promise — the code the exit table reserves for
+# "refused, nothing was touched", reached by a death.
+#
+# ⛔ EVERY CASE HERE ASSERTS THE BANNER AND THE PROMISE, not the exit code (`run_refusal` carries all
+# three). PR #191 measured why: in this failure class an exit-code assertion catches NOTHING, because
+# the death being refused already exits 1.
+
+# ── the bash floor ─────────────────────────────────────────────────────────────────────────────
+# ⛔ BASH_VERSINFO CANNOT BE FAKED INSIDE A RUNNING BASH, so there is no knob that puts this host's
+# bash below a floor. The COMPARISON is therefore a predicate of its own and is driven here with the
+# versions either side of the floor — DERIVED from the declaration, never retyped — and the two GATES
+# are driven end to end by moving the FLOOR instead: a copy of deploy.sh whose floor is above the bash
+# running this suite is, to that copy, a host below its floor.
+# The value the script HOLDS, read by sourcing it (§ library mode) — never by a pattern of this file's.
+BASH_FLOOR_HERE="$(env_lib "$T/none" eval 'printf %s "$BASH_FLOOR"' 2>/dev/null)"
+neq "fixture: bin/deploy.sh declares a BASH_FLOOR this suite can read" "" "$BASH_FLOOR_HERE"
+floor_major="${BASH_FLOOR_HERE%%.*}"; floor_minor="${BASH_FLOOR_HERE#*.}"
+floor_below="$floor_major.$((floor_minor - 1))"
+# The bash deploy.sh runs under here is PATH's (its `#!/usr/bin/env bash`), which need not be the one
+# running this suite — so the version is asked of THAT bash, the way deploy.sh itself will read it.
+HOST_BASH_MM="$(bash -c 'printf "%s.%s" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"')"
+HOST_BASH_FULL="$(bash -c 'printf %s "$BASH_VERSION"')"
+bash_pred() { env_lib "$T/none" bash_meets_floor "$@" >/dev/null 2>&1 && echo meets || echo below; }
+eq "bash_meets_floor: $floor_below is BELOW the floor $BASH_FLOOR_HERE" below "$(bash_pred "$floor_below" "$BASH_FLOOR_HERE")"
+eq "bash_meets_floor: $BASH_FLOOR_HERE is exactly the floor, and meets it" meets "$(bash_pred "$BASH_FLOOR_HERE" "$BASH_FLOOR_HERE")"
+eq "bash_meets_floor: a later major meets it" meets "$(bash_pred "$((floor_major + 1)).0" "$BASH_FLOOR_HERE")"
+# Minors compare as NUMBERS, not as text — bash 4.10 would sort below 4.4 as a string.
+eq "bash_meets_floor: $floor_major.10 is not below $floor_major.4" meets "$(bash_pred "$floor_major.10" "$floor_major.4")"
+eq "bash_meets_floor: 4.3 is below 4.4" below "$(bash_pred 4.3 4.4)"
+eq "bash_meets_floor: 4.4 meets 4.4" meets "$(bash_pred 4.4 4.4)"
+# ONE READER: what A6b takes out of a release's text, and what deploy-selftest.yml reads this file's
+# floor with, is bash_floor_declared — held here to the value the file really declares, so a workflow
+# pattern of its own cannot drift away from the gate's.
+eq "bash_floor_declared reads deploy.sh's own floor back as declared" "$BASH_FLOOR_HERE" \
+   "$(env_lib "$T/none" bash_floor_declared < "$DEPLOY" 2>/dev/null)"
+# …and it reads the declaration's SHAPES as one value: quoted, or with a trailing comment.
+eq "bash_floor_declared: a quoted value with a trailing comment, and only the FIRST declaration" 4.4 \
+   "$(printf 'x=1\nBASH_FLOOR="4.4"  # measured\nBASH_FLOOR=9.9\n' | env_lib "$T/none" bash_floor_declared 2>/dev/null)"
+eq "bash_floor_declared: no declaration, no floor — which is every release before this card" "" \
+   "$(printf '#!/usr/bin/env bash\n# BASH_FLOOR=9.9 in a comment is not a declaration\n' | env_lib "$T/none" bash_floor_declared 2>/dev/null)"
+
+# A1 — the SERVING copy's floor. The v1 mutator raises the floor of the copy the HOST is running, so
+# the bash running this suite is, to that copy, below the floor.
+raise_bash_floor() { sed -i 's/^BASH_FLOOR=.*/BASH_FLOOR=99.0/' "$1/bin/deploy.sh"; }
+mkfix bash_below_serving_floor '' raise_bash_floor
+run_refusal "a bash below the SERVING copy's floor (A1)" \
+  "bash $HOST_BASH_FULL is below this script's floor, BASH_FLOOR=99.0" --dry-run
+hasnt "a bash below the serving floor: refused in A1, before any gate read the release" "ok — PHP" "$OUT"
+hasnt "a bash below the serving floor: not blamed on the release being deployed" "the release being deployed declares" "$OUT"
+
+# A6b — the TARGET release's floor, which the serving copy's A1 never reads (design review r1, F1).
+# The serving copy declares the real floor, which this bash meets; the release being deployed raises
+# it. The deployed copy is what the re-exec runs INSIDE the window, so a floor only IT declares has to
+# refuse here, before anything is touched.
+mkfix bash_below_target_floor raise_bash_floor
+run_refusal "a release that RAISES the bash floor above this host's bash (A6b)" \
+  "bash $HOST_BASH_MM is below the floor the release being deployed declares: BASH_FLOOR=99.0 in bin/deploy.sh at" --dry-run
+has "raised bash floor: says the SERVING copy's own floor was met, so the operator knows which one bound" \
+  "This copy's own floor ($BASH_FLOOR_HERE) was met — A1 checked it." "$OUT"
+has "raised bash floor: says why a floor the serving copy does not declare still binds" \
+  "re-execs THAT release's bin/deploy.sh" "$OUT"
+unlogged "raised bash floor: npm ci never ran" "npm ci"
+# The control, one variable away: the same deploy with the release's floor AT this host's own bash.
+floor_at_host() { sed -i "s/^BASH_FLOOR=.*/BASH_FLOOR=$HOST_BASH_MM/" "$1/bin/deploy.sh"; }
+mkfix bash_at_target_floor floor_at_host
+run --dry-run
+eq  "control: a release whose floor IS this host's bash deploys" 0 "$RC"
+has "control: and says which floor it held the bash to, and where it read it" \
+  "ok — bash $HOST_BASH_MM meets BASH_FLOOR=$HOST_BASH_MM, declared by bin/deploy.sh at" "$OUT"
+
+# A release cut before this card declares no floor. That is NOT a refusal — it could not have declared
+# one — and the run says exactly what WAS enforced for it instead of going quiet.
+drop_bash_floor() { sed -i '/^BASH_FLOOR=/d' "$1/bin/deploy.sh"; }
+mkfix bash_target_no_floor drop_bash_floor
+run --dry-run
+eq  "a release with no BASH_FLOOR line: deploys" 0 "$RC"
+has "a release with no BASH_FLOOR line: says so, and names the floor enforced instead" \
+  "declares no BASH_FLOOR (it predates card#9616); only this copy's floor, $BASH_FLOOR_HERE, was enforced (A1)" "$OUT"
+
+nonsense_bash_floor() { sed -i 's/^BASH_FLOOR=.*/BASH_FLOOR=banana/' "$1/bin/deploy.sh"; }
+mkfix bash_target_floor_unreadable nonsense_bash_floor
+run_refusal "a release whose BASH_FLOOR is not a version" \
+  "declares BASH_FLOOR='banana', which is not a version" --dry-run
+
+no_deploy_sh() { rm -f "$1/bin/deploy.sh"; }
+mkfix bash_target_no_deploy_sh no_deploy_sh
+run_refusal "a release with no bin/deploy.sh for the re-exec to run" "bin/deploy.sh is missing from" --dry-run
+# An EMPTY one is a different fact, and must not be read as the survivable "declares no floor".
+empty_deploy_sh() { : > "$1/bin/deploy.sh"; }
+mkfix bash_target_empty_deploy_sh empty_deploy_sh
+run_refusal "a release whose bin/deploy.sh is empty" "bin/deploy.sh at" --dry-run
+has "empty bin/deploy.sh: refused as empty, not as a release that predates the floor" \
+  "is empty" "$OUT"
+hasnt "empty bin/deploy.sh: not reported as a release that simply declares no floor" \
+  "declares no BASH_FLOOR (it predates card#9616)" "$OUT"
+
+# ── git — `:(literal)` pathspec magic, PROBED after A3 (design review r1, F9) ──────────────────
+mkfix git_no_magic_128; printf '128' > "$T/knobs/git_magic"
+run_refusal "a git that rejects :(literal) with an error" \
+  "this host's git does not accept \`:(literal)\` pathspec magic" --dry-run
+has "git without magic (128): says what the MAGIC form did, which is the one variable" \
+  "\`git ls-tree HEAD -- ':(literal)VERSION'\` exited 128" "$OUT"
+has "git without magic (128): git's own message reaches the operator" "Invalid pathspec magic" "$OUT"
+hasnt "git without magic (128): not misreported as a failed read of the release" "git could not read" "$OUT"
+hasnt "git without magic (128): refused before any gate read the release" "ok — PHP" "$OUT"
+
+# ⭐ THE ASYMMETRIC ONE. A probe reading only the STATUS passes this, and every read of the release
+# through _git_ls_at would then list NOTHING at status 0 — which downstream is "no such path", a real
+# answer. That is why the probe requires the exact line.
+mkfix git_no_magic_empty; printf 'empty' > "$T/knobs/git_magic"
+run_refusal "a git that answers :(literal) with exit 0 and nothing listed" \
+  "this host's git does not accept \`:(literal)\` pathspec magic" --dry-run
+has "git without magic (empty): names the STATUS and the OUTPUT, because the status alone was 0" \
+  "exited 0 and printed ''" "$OUT"
+has "git without magic (empty): and says what it had to print" "must print exactly VERSION" "$OUT"
+
+# The PLAIN form runs first, and that is what makes a failure of the magic form attributable to magic.
+mkfix git_plain_unreadable; printf 'plain128' > "$T/knobs/git_magic"
+run_refusal "a git that cannot list HEAD's tree at all" \
+  "git could not list HEAD's tree in $ROOT (\`git ls-tree HEAD -- VERSION\` exited 128)" --dry-run
+hasnt "plain form unreadable: not blamed on the pathspec magic, which was never reached" \
+  "does not accept" "$OUT"
+
+no_version_file() { rm -f "$1/VERSION"; }
+mkfix git_probe_no_version '' no_version_file
+run_refusal "a checkout whose HEAD carries no VERSION for the probe to stand on" \
+  "does not list VERSION" --dry-run
+
+# ── npm — the floor the TARGET release's lockfile implies (A12) ────────────────────────────────
+mkfix npm_below_lockfile_floor; export STUB_NPM_VERSION=6.14.0
+run_refusal "npm 6.14.0 against a lockfileVersion 3 release" \
+  "npm 6.14.0 is below npm 7, which lockfileVersion 3 in server/package-lock.json at" --dry-run
+unlogged "npm 6.14.0: npm ci never ran" "npm ci"
+has "npm 6.14.0: says the failure was moved out of the window" "with the app already down" "$OUT"
+
+mkfix npm_at_lockfile_floor; export STUB_NPM_VERSION=7.0.0
+run --dry-run
+eq  "control: npm 7.0.0 is EXACTLY lockfileVersion 3's floor, and deploys" 0 "$RC"
+mkfix npm_above_lockfile_floor
+run --dry-run
+eq  "control: npm 9.2.0 deploys a lockfileVersion 3 release" 0 "$RC"
+has "control: says which floor it held npm to, and where that floor came from" \
+  "ok — npm 9.2.0 meets npm 7, which lockfileVersion 3 in server/package-lock.json at" "$OUT"
+logged "control: the host's npm really was asked for its version" "npm --version"
+
+# READ FROM THE TARGET TREE: the serving release's lockfile is v2, the release being deployed moves to
+# v3. A gate reading the CHECKOUT's lockfile passes this — and `npm ci` then fails inside the window.
+lockfile_v2() { printf '{\n    "name": "server",\n    "lockfileVersion": 2,\n    "requires": true\n}\n' > "$1/server/package-lock.json"; }
+lockfile_v3() { printf '{\n    "name": "server",\n    "lockfileVersion": 3,\n    "requires": true\n}\n' > "$1/server/package-lock.json"; }
+mkfix npm_target_raises_lockfile lockfile_v3 lockfile_v2; export STUB_NPM_VERSION=6.14.0
+run_refusal "a release that moves its lockfile to v3, on npm 6.14.0" \
+  "npm 6.14.0 is below npm 7, which lockfileVersion 3 in server/package-lock.json at" --dry-run
+# …and the other way round: a v2 release, for which npm's docs state no floor, deploys on npm 6.
+mkfix npm_target_lockfile_v2 lockfile_v2 lockfile_v2; export STUB_NPM_VERSION=6.14.0
+run --dry-run
+eq  "control: a lockfileVersion 2 release on npm 6.14.0 deploys (npm's docs: v2 is backwards compatible to v1)" 0 "$RC"
+has "control: and says it compared NOTHING, rather than that npm met a floor" \
+  "is lockfileVersion 2, for which npm's docs state no floor; npm 6.14.0 was not compared" "$OUT"
+
+lockfile_unmapped() { printf '{\n    "name": "server",\n    "lockfileVersion": 4\n}\n' > "$1/server/package-lock.json"; }
+mkfix npm_lockfile_unmapped lockfile_unmapped
+run_refusal "a lockfileVersion this gate has no npm floor for" \
+  "declares lockfileVersion '4', which A12 cannot map to an npm floor" --dry-run
+lockfile_versionless() { printf '{\n    "name": "server"\n}\n' > "$1/server/package-lock.json"; }
+mkfix npm_lockfile_versionless lockfile_versionless
+run_refusal "a lockfile with no lockfileVersion at all" \
+  "declares lockfileVersion '(none)', which A12 cannot map to an npm floor" --dry-run
+
+mkfix npm_version_fails; export STUB_NPM_VERSION_RC=1
+run_refusal "an npm that cannot answer --version" "\`npm --version\` exited 1" --dry-run
+has "npm --version failed: says what is NOT established, rather than assuming a version" \
+  "is NOT established" "$OUT"
+mkfix npm_version_garbage; export STUB_NPM_VERSION='not a version'
+run_refusal "an npm whose --version is not a version" \
+  "\`npm --version\` printed 'not a version', which is not a version" --dry-run
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 section "NO ROOT — nothing in the deploy path escalates or reaches systemd"

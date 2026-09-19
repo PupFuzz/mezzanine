@@ -190,11 +190,12 @@ trap 'rm -rf "$WORK"' EXIT
 CLASSIFIED=()
 while IFS= read -r row; do [ -z "$row" ] || CLASSIFIED+=("$row"); done <<'TABLE'
 server/composer.json	read	A6	required-nonempty	gate_a6_php_floor	6cd7000c6ab9	refuses: it is where the PHP floor is declared, and composer would meet it inside the window instead
+bin/deploy.sh	read	A6b	required-nonempty	gate_a6b_bash_floor	8f85c7590322	refuses: phase B re-execs the DEPLOYED release's own copy to run the window, so a release without one (or with an empty one) is checked out with the app down and then has nothing to run. Present, its BASH_FLOOR line is the floor this host's bash is held to; a release carrying no such line predates card#9616 and PASSES, saying so.
 server/database/migrations	ls	A10	optional	gate_a10_migration_algorithm	69438f9e492a	passes, saying the release ships no migrations — git_ls_at's empty is a real answer
 $mig	read	A10	run-time	gate_a10_migration_algorithm	69438f9e492a	each migration the listing above named: the names come from the tree, not from this file, so presence is not in question — the read follows the listing. Its content predicate (ALGORITHM=) is out of scope below.
 server/.env.example	read	A10b	optional	gate_a10b_config_drift	c6e6540fcb03	warns that no key of the release was compared against the host's .env
 server/bootstrap/app.php	read	A11	required	gate_a11_trusted_proxies	910d5f07fb9a	refuses: server/artisan requires it, so every artisan command of that release fails inside the window
-server/package-lock.json	ls	A12	required	gate_a12_asset_lockfile	86bdec226cc1	refuses: npm ci needs it and package.json floats, so the prod asset build would not be reproducible
+server/package-lock.json	read	A12	required-nonempty	gate_a12_asset_lockfile	a076d4861637	refuses: npm ci needs it and package.json floats, so the prod asset build would not be reproducible. Its CONTENT is read too (card#9616): the lockfileVersion is the npm floor, so an empty file — declaring none — is refused as a lockfileVersion this gate cannot map.
 bin/supervision.sh	read	A13	required-nonempty	gate_a13_target_plan	7ec2114d0a10	refuses: the window installs the deployed release's crontab block from it
 server/public/$uif	read	A14	run-time	fpm_code_reload_ready	e3b0c44298fc	the release's .user.ini, whose NAME comes from the host's phpinfo (user_ini.filename): no fixed path exists at this commit. A14 is not run here at all — it needs PHP-FPM.
 TABLE

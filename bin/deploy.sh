@@ -70,6 +70,21 @@
 # does not create databases, does not mint an APP_KEY, and never rolls anything back. It refuses
 # to start when the host is not in the state those acts leave behind.
 #
+# ⚑ WHAT THIS HOST'S TOOLS MUST BE (card#9616). Each refused BY NAME in phase A, before anything
+#   is touched — the host is never discovered to be too old inside the window:
+#     bash   `BASH_FLOOR` below, and the floor the RELEASE BEING DEPLOYED declares on its own copy
+#            of that line (A1, A6b). The value is MEASURED, not read off the constructs; the block
+#            that declares it says how, and what each measurement answered.
+#     git    accepts `:(literal)` pathspec magic — PROBED on this checkout, no version parsed
+#            (A3b). Every read of the release out of the object database passes a path that way.
+#     npm    at least what the RELEASE's `server/package-lock.json` `lockfileVersion` implies, per
+#            npm's own documentation (A1c reads the host's, A12 makes the comparison).
+#     PHP    satisfies the RELEASE's `server/composer.json` `require.php` (A6), and FPM's opcache
+#            will re-read changed code (A14).
+#   Every one of them but git's is read out of the TARGET tree rather than out of this checkout,
+#   because the deploy that RAISES a floor is exactly the deploy whose own checkout does not show
+#   the new one. git's is a property of the host binary alone, so it is probed here.
+#
 # EXIT CODES — deliberately distinct, because "refused" and "broke" are different events:
 #   0  deployed, smoke-checked, app up
 #   1  REFUSED in the precondition phase. Nothing was touched; the app is still serving the
@@ -122,6 +137,53 @@
 # `§ 6.9` (migrations on a live `events` table), `§ 8.3` (the heartbeat) · `docs/PLAN.md § 5`.
 
 set -Eeuo pipefail
+# ── THE BASH FLOOR (card#9616) ────────────────────────────────────────────────────────────────
+# The oldest bash this script is known to run on. ⚠ THIS LINE IS ITS ONE HOME. A1 holds the bash
+# running phase A to it; A6b holds that same bash to the floor the RELEASE BEING DEPLOYED declares
+# on its own copy of this line, because that copy is what runs the maintenance window after the
+# re-exec; and `.github/workflows/deploy-selftest.yml` READS the value from here rather than
+# carrying one of its own.
+#
+# ⛔ IT IS MEASURED, AND A CONSTRUCT SCAN IS NOT HOW IT WAS FOUND. Scanning this file for
+# version-gated SYNTAX finds `mapfile` (bash 4.0) and `exec {fd}<` (4.1) and stops — and both are a
+# whole minor below the truth, because the binding construct is not syntax at all. `"${a[@]}"` over
+# an array with NO elements, under `set -u`, is an `unbound variable` DEATH on bash before 4.4, and
+# this script has such expansions: `"${ref_note[@]}"` at A7, empty for any ordinary ref name, and
+# `"${ENV_LINES[@]}"` in env_lines_load's two loops, empty for a `server/.env` with no lines.
+# ⛔ AND WHETHER A GIVEN EXPANSION CAN BE EMPTY IS A WHOLE-PROGRAM PROPERTY, NOT A SYNTACTIC ONE —
+# which is the second half of why a scan cannot answer this. The file's other array expansions
+# (`why`, `store_read_tail`, `bad`, `FPM_NOT_READY`, `STREAM_NOT_READY`) are each either
+# initialised non-empty or guarded by a `${#…[@]} -gt 0`, and telling those apart from the two
+# above takes reading the program, not matching a pattern over it. So nothing here scans: the
+# floor is where the SUITE was seen to pass and the minor below it is where it was seen to FAIL.
+# ⛔ AND NO TRIPWIRE TABLE SHIPS EITHER, deliberately. A construct table is a list, every list of
+# this kind measured so far has been incomplete, and an incomplete one is worse than none: it reds
+# on the constructs somebody remembered and stays SILENT on the one that actually moves the floor,
+# while reading like coverage. The pair of CI runs below is a check that can fail on a construct
+# nobody has thought of, which is the property a table cannot have.
+#
+# MEASURED 2026-09-19, on the tree that introduced this line, against bash built from the GNU
+# release tarballs (gcc 15.2.0, `./configure --without-bash-malloc --disable-nls`), each first on
+# PATH so that the re-exec runs the same interpreter. ⚠ No figure is written down here, because the
+# `bash-floor` job RE-RUNS this pair on every PR and its log is the live reading; what is recorded
+# is what each run answered and why:
+#   · bash 4.4  — `bin/deploy.selftest.sh` passed in full.
+#   · bash 4.3  — the same suite on the same tree FAILED, and every failing assertion was A7's
+#     `'<ref>' does not resolve to a commit` refusal DYING on `"${ref_note[@]}"` instead of
+#     refusing: no `⛔ REFUSED` banner and no "Nothing was changed" promise, with the script
+#     exiting 1 — the exact code the table above says means *refused, nothing was touched*. That
+#     is the failure this floor exists to move to before anything runs.
+# The mechanism on its own, same two binaries: `set -u; a=(); for x in "${a[@]}"; do :; done`
+# prints `a[@]: unbound variable` on 4.3 and completes on 4.4.
+#
+# ⚠ WHAT IS NOT MEASURED: anything below 4.3. A bash old enough to reject this file's SYNTAX never
+# reaches A1 to be refused by it, so the gate can only speak for a shell that got that far.
+#
+# ⚠ READ AS TEXT — by A6b out of the release being deployed, and by CI. Keep it
+# `BASH_FLOOR=<major>.<minor>`, alone on its line, at column 0, unquoted or quoted. A new construct
+# stays at or below this floor, or the floor MOVES — and it moves by re-running the pair above,
+# never by retyping this number.
+BASH_FLOOR=4.4
 # ── library mode (card#9644) ──────────────────────────────────────────────────────────────────
 # RUN, or SOURCED? Phase A's target-tree gates are callable one at a time (§ PHASE A's TARGET-TREE
 # GATES), and a checker reaches them by sourcing this file — which, while the bottom of it read
@@ -173,6 +235,14 @@ REMOTE="${MEZZ_REMOTE:-origin}"
 # A14 refuses a binary that is not there rather than reading nothing.
 HOST_PHP_VERSION="$(php -r 'echo PHP_VERSION;' 2>/dev/null || true)"
 FPM_BIN="${MEZZ_FPM_BIN:-php-fpm$(printf '%s' "$HOST_PHP_VERSION" | cut -d. -f1,2)}"
+
+# The bash running THIS PROCESS, as <major>.<minor> — what A1 and A6b hold to a BASH_FLOOR. It is
+# read from the interpreter itself rather than from `bash --version`, because the interpreter is the
+# thing that will die. ⚠ It speaks for the WINDOW too, and only conditionally: phase B re-execs the
+# deployed release's bin/deploy.sh through its `#!/usr/bin/env bash`, which is the `bash` on PATH —
+# the same one, when this script is run as `bin/deploy.sh` (USAGE). Run through an explicit
+# interpreter that is not PATH's bash, the window's bash is not the one measured here.
+HOST_BASH_VERSION="${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
 
 # The supervised daemons, their locks and the exact command cron runs for each — stated ONCE, in
 # bin/supervision.sh, sourced from beside THIS file. In phase A that is the SERVING release's copy, and
@@ -1290,6 +1360,36 @@ ver_ge() {
   return 0
 }
 
+# ── the bash and npm floors (card#9616) ───────────────────────────────────────────────────────
+
+# bash_meets_floor <major.minor> <floor> — THE comparison A1 and A6b both make, and a predicate of
+# its own for one reason: `BASH_VERSINFO` cannot be faked inside a running bash, so a selftest
+# cannot drive A1 by lying about the host. It drives THIS with the versions either side of the
+# floor, and drives the two gates end to end by moving the FLOOR instead.
+bash_meets_floor() { ver_ge "$1" "$2"; }
+
+# bash_floor_declared — the BASH_FLOOR a copy of this script declares, read from its TEXT on stdin:
+# the first line beginning `BASH_FLOOR=`, with quotes and any trailing comment removed. It prints
+# NOTHING when there is no such line, which is every release cut before card#9616.
+# ⛔ ONE READER, on purpose: A6b reads the TARGET release with this and deploy-selftest.yml reads
+# THIS file with it, so CI cannot measure a floor A6b would not see. A second pattern in the
+# workflow is the restatement that drifts.
+bash_floor_declared() {
+  awk '/^BASH_FLOOR=/ && !seen { v = substr($0, 12); sub(/[ \t]*#.*$/, "", v); gsub(/["\047]/, "", v)
+                                 sub(/[ \t]+$/, "", v); print v; seen = 1 }'
+}
+
+# npm_lockfile_version — the TOP-LEVEL `lockfileVersion` of a package-lock.json on stdin, or nothing
+# if it has none. npm writes that key once, at the top level, and in no package entry, so the first
+# match is the file's. It reads to the END rather than exiting at the first hit: exiting early makes
+# a writer feeding it a large lockfile through a pipe take a SIGPIPE, which under `pipefail` is a
+# failure of the caller's whole pipeline.
+npm_lockfile_version() {
+  awk '!seen && match($0, /"lockfileVersion"[ \t]*:[ \t]*[^,} \t]+/) {
+         v = substr($0, RSTART, RLENGTH); sub(/^"lockfileVersion"[ \t]*:[ \t]*/, "", v); seen = 1 }
+       END { printf "%s", v }'
+}
+
 # ── PHP-FPM: new code without a reload ────────────────────────────────────────────────────────
 # The pool master is root's (a Virtualmin per-domain pool), so this user cannot reload it — and it
 # does not have to. MEASURED on the sandbox host, 2026-09-13, with its own php-fpm8.5 binary and FPM
@@ -1654,11 +1754,46 @@ phase_a() {
   # without ps no holder of a lock can be proven to have started after the restart. cgi-fcgi and timeout
   # are the stream pool's: A14 reads the pool's status over FastCGI, and phase B's drain lists the
   # streams still open with it (fpm_status).
+  #
+  # ⛔ AND FIRST, THE BASH RUNNING IT (card#9616). Below BASH_FLOOR — declared at the top of this
+  # file, which says how the number was measured — this script does not refuse: it DIES, partway
+  # through, on its own constructs, and the first such death is at A7's refusal, which arrives as a
+  # bare exit 1 with neither the ⛔ banner nor the "Nothing was changed" promise. That is the exit
+  # code the table above reserves for "refused, nothing was touched", reached by a death. So the
+  # bash is refused here, by name, before anything else this script does can depend on a newer one.
+  bash_meets_floor "$HOST_BASH_VERSION" "$BASH_FLOOR" || refuse \
+    "bash $BASH_VERSION is below this script's floor, BASH_FLOOR=$BASH_FLOOR" \
+    "bin/deploy.sh is MEASURED to pass its own selftest on bash $BASH_FLOOR and to FAIL it on the" \
+    "minor below (.github/workflows/deploy-selftest.yml runs both on every PR, and the top of this" \
+    "file records what each run answered). On an older bash it dies on its own constructs partway" \
+    "through, and phase B's are inside the maintenance window, with the app down." \
+    "" \
+    "Run this deploy with bash $BASH_FLOOR or later. \`bash --version\` names the one on PATH, which is" \
+    "also the one the re-exec after the checkout runs the deployed release's copy with."
   local missing=()
   for c in git php composer npm curl crontab flock fuser setsid ps cgi-fcgi timeout; do
     command -v "$c" >/dev/null 2>&1 || missing+=("$c")
   done
   [ ${#missing[@]} -eq 0 ] || refuse "missing required command(s): ${missing[*]}"
+
+  # A1c — npm's VERSION, read here beside npm's presence and handed to A12, which holds it to the
+  # floor the RELEASE's lockfile implies. Read here so that gate stays host-free (§ PHASE A's
+  # TARGET-TREE GATES), exactly as A6 is handed $HOST_PHP_VERSION.
+  # ⛔ AND ITS STATUS IS READ (card#9646): an npm that cannot answer `--version` is refused as THAT,
+  # never read as a version of nothing — and what it printed has to BE a version, or there is
+  # nothing for A12 to compare and a `[ -z … ]` on it would certify an npm it never asked.
+  local npm_version="" npm_rc=0
+  npm_version="$(npm --version)" || npm_rc=$?
+  [ "$npm_rc" -eq 0 ] || refuse "\`npm --version\` exited $npm_rc" \
+    "What npm printed is above this refusal. Which npm this host runs is NOT established, so" \
+    "whether it can install the release's lockfile (A12) is not established either — and \`npm ci\`" \
+    "runs in phase B, inside the maintenance window, with the app already down."
+  case "$npm_version" in
+    [0-9]*.[0-9]*) ;;
+    *) refuse "\`npm --version\` printed '$npm_version', which is not a version" \
+         "A12 compares this host's npm against the floor the release's lockfile implies, and will" \
+         "not make that comparison against something it cannot read as a version." ;;
+  esac
 
   # A1b — the restart's timings. restart_daemons does arithmetic on them inside the window, where a value it
   # cannot read would stop the deploy with the app down.
@@ -1736,6 +1871,64 @@ phase_a() {
     esac
   fi
   [ -f "$APP_DIR/artisan" ] || refuse "$APP_DIR/artisan not found — MEZZ_DEPLOY_ROOT is not a Mezzanine checkout"
+
+  # A3b — this host's git accepts `:(literal)` PATHSPEC MAGIC (card#9616). Every read this deploy
+  # makes of the release out of the object database goes through _git_ls_at, which passes its path
+  # as `:(literal)<path>`. A git that does not know the magic fails, or mis-answers, EVERY one of
+  # them — and the first would arrive as "git could not read server/composer.json at <sha>", a
+  # statement about the RELEASE that is not the real cause. One probe here names the cause once.
+  #
+  # ⛔ PROBED, NOT PARSED. `git --version` is a claim about which build does what, and a distro
+  # backport makes that claim wrong in both directions; the probe asks THIS build. So no version
+  # number is compared here and none is declared. (The history is settled and recorded on card#9616
+  # — `:(literal)` entered git at 5c6933d201fab183a9779dca0fe43bf2f1eca098, first stable tag
+  # v1.8.5 — and it is history, not what decides this line.)
+  #
+  # AFTER A3, NEVER BEFORE IT. A3 has established that git can OPEN this repository; without that,
+  # a probe that failed would be read as "this git lacks the magic" when the real cause is a
+  # checkout git cannot open at all. And the PLAIN form runs first, for the same reason one step
+  # further in: it establishes that this git can list HEAD's tree, so that a failure of the MAGIC
+  # form differs from it by exactly one thing — the magic.
+  #
+  # ⚠ AND IT EXITS THROUGH `refuse`, NOT `not_established` (card#9816), which is a deliberate call
+  # and not an oversight: `not_established` exists for a precondition that can fail on EITHER side
+  # of the maintenance window, and reads POST_CHECKOUT_SHA to pick its terminal. Every gate this
+  # card adds — this one, A1's bash floor, A1c's npm read, A6b and A12's comparison — runs only
+  # from `phase_a`, which `main` calls only when POST_CHECKOUT_SHA is empty. Routing them through
+  # it would buy nothing and would tell the next reader they are reachable in-window, which they
+  # are not. A6 and A10–A13 refuse the same way for the same reason.
+  #
+  # ⭐ BOTH OF A MAGIC-LESS GIT'S ANSWERS ARE REFUSED, and the second is why the probe asserts the
+  # OUTPUT and not the status: such a git can also exit 0 having listed NOTHING, taking the whole
+  # string `:(literal)VERSION` for a literal path that is not in the tree. That is status 0 with an
+  # empty answer — indistinguishable, to every reader downstream, from "the release does not carry
+  # this path". So what is required is the exact line, not the exit code.
+  local probe="" probe_rc=0
+  probe="$(git_at ls-tree --name-only HEAD -- VERSION)" || probe_rc=$?
+  [ "$probe_rc" -eq 0 ] || refuse \
+    "git could not list HEAD's tree in $DEPLOY_ROOT (\`git ls-tree HEAD -- VERSION\` exited $probe_rc)" \
+    "What git printed is above this refusal. A3 passed — git opened the repository — and what" \
+    "failed is the read of a TREE, which is what every precondition that judges the release makes." \
+    "Until that works, whether this git accepts the pathspec those reads use (\`:(literal)\`) cannot" \
+    "be probed either, so this is not a statement about the release or about git's pathspec support."
+  [ "$probe" = VERSION ] || refuse \
+    "HEAD's tree in $DEPLOY_ROOT does not list VERSION (git printed '$probe')" \
+    "A Mezzanine checkout carries VERSION at its root. This precondition probes git's pathspec" \
+    "magic against that path, and a path that is not there cannot tell a git which accepts the" \
+    "magic from one which does not — both would print nothing."
+  probe_rc=0
+  probe="$(git_at ls-tree --name-only HEAD -- ':(literal)VERSION')" || probe_rc=$?
+  if [ "$probe_rc" -ne 0 ] || [ "$probe" != VERSION ]; then
+    refuse "this host's git does not accept \`:(literal)\` pathspec magic" \
+      "\`git ls-tree HEAD -- VERSION\` listed VERSION on this same checkout, one line ago." \
+      "\`git ls-tree HEAD -- ':(literal)VERSION'\` exited $probe_rc and printed '$probe', where it" \
+      "must print exactly VERSION. What git printed on stderr, if anything, is above this refusal." \
+      "Every read this deploy makes of the release out of git passes its path that way (_git_ls_at)," \
+      "so on this git each of them would fail, or list nothing and be read as a release that does" \
+      "not carry the file. Upgrade git on this host: \`:(literal)\` has been in git since v1.8.5." \
+      "" \
+      "$(git --version 2>/dev/null || echo 'git --version printed nothing')"
+  fi
 
   # A4 — a clean tree. A modified file on the prod checkout IS the hand-deploy D-13 forbids, and
   # the checkout below would either clobber it or fail. Either way the operator must see it now.
@@ -2096,7 +2289,7 @@ phase_a() {
   fi
 
   # ── THE TARGET-TREE GATES, called in the order they refuse in (card#9644) ────────────────────
-  # A6 and A10–A13 decide about the RELEASE BEING DEPLOYED rather than about this host: each reads
+  # A6, A6b and A10–A13 decide about the RELEASE BEING DEPLOYED rather than about this host: each reads
   # the tree at $SHA out of the object database and refuses before the checkout. They are functions
   # of their own — § PHASE A's TARGET-TREE GATES, below — so that a checker can run one over a real
   # commit with no host to run it against. Inline, the only ways to reach a content predicate were
@@ -2107,10 +2300,11 @@ phase_a() {
   # decides: a gate refuses out of the process, so the first refusal any of them reaches is the
   # first one a deploy meets. Each gate's own header says whether it touches anything but git.
   gate_a6_php_floor "$SHA" "${HOST_PHP_VERSION:-0}"
+  gate_a6b_bash_floor "$SHA" "$HOST_BASH_VERSION"
   gate_a10_migration_algorithm "$SHA"
   gate_a10b_config_drift "$SHA"
   gate_a11_trusted_proxies "$SHA"
-  gate_a12_asset_lockfile "$SHA"
+  gate_a12_asset_lockfile "$SHA" "$npm_version"
   gate_a13_supervision "$SHA"
 
   # A14 — PHP-FPM will serve the new code without a reload. The reasoning and the measurement are at
@@ -2203,6 +2397,64 @@ gate_a6_php_floor() {
       "floor it already meets."
   fi
   say "  ok — PHP $phpver satisfies $floor_constraint, declared by server/composer.json at $(git_at rev-parse --short "$SHA")"
+}
+
+# gate_a6b_bash_floor <sha> <host bash major.minor> — A6b. HOST-FREE: it reads the BASH_FLOOR that
+# bin/deploy.sh at <sha> declares and compares it against the version it is HANDED, exactly as A6
+# does the PHP one, so a checker names the host version instead of having one.
+gate_a6b_bash_floor() {
+  local SHA="$1" bashver="$2"
+  # A6b — THE BASH FLOOR OF THE RELEASE BEING DEPLOYED (card#9616). A1 held this bash to THIS
+  # copy's floor. But this copy does not run the maintenance window: after `artisan down` and the
+  # checkout, phase B re-execs the DEPLOYED release's bin/deploy.sh (--internal-post-checkout), and
+  # that copy never runs A1. So a release which RAISES the floor passes A1 here and then meets its
+  # own floor the only other way there is — as a death on its own constructs, with the app down.
+  # Reading the target's declaration refuses that before anything is touched. Same reasoning, same
+  # place in the order, as A6's PHP floor: the two differ on exactly the deploy that moves a floor.
+  local src="" floor="" short
+  short="$(git_at rev-parse --short "$SHA")"
+  # Absent is a refusal of its own and not "no floor": bin/deploy.sh at <sha> is the file the
+  # re-exec RUNS, so a release without it cannot run its own window at all. A13 refuses a release
+  # with no bin/supervision.sh for the same reason and in the same words.
+  git_read_at src "$SHA" bin/deploy.sh || refuse \
+    "bin/deploy.sh is missing from $short" \
+    "After the checkout, phase B re-execs the deployed release's own bin/deploy.sh to run the" \
+    "maintenance window. A release without it would be checked out with the app down and then have" \
+    "nothing left to run."
+  # …and an EMPTY one is refused as itself, not read as a release that declares no floor. The two
+  # are different facts about the release and only the second is survivable: a file with no bytes
+  # in it cannot run the window either. A6 refuses an empty server/composer.json for the same reason.
+  [ -n "$src" ] || refuse \
+    "bin/deploy.sh at $short is empty" \
+    "It is the file phase B re-execs to run the maintenance window, so an empty one is a release" \
+    "that cannot deploy itself. This is NOT \"it declares no bash floor\" — a release that predates" \
+    "card#9616 declares none and deploys; this one has nothing in it at all."
+  floor="$(printf '%s\n' "$src" | bash_floor_declared)"
+  if [ -z "$floor" ]; then
+    # ⛔ NOT A REFUSAL, and this is the deliberate part. Every release cut before card#9616 declares
+    # no BASH_FLOOR, and that is a fact about WHEN it was written, not a claim that it runs on any
+    # bash. What is enforced for such a release is what exists: A1's floor, on the copy running now.
+    # Refusing instead would make every older release undeployable by this one — a ROLLBACK
+    # included, which is the deploy most likely to be run under pressure — for want of a
+    # declaration it could not have made.
+    say "  ok — bin/deploy.sh at $short declares no BASH_FLOOR (it predates card#9616); only this copy's floor, $BASH_FLOOR, was enforced (A1)"
+    return 0
+  fi
+  case "$floor" in
+    [0-9]*.[0-9]*) ;;
+    *) refuse "bin/deploy.sh at $short declares BASH_FLOOR='$floor', which is not a version" \
+         "A6b compares this host's bash against the floor that release declares, and will not guess" \
+         "one it cannot read. The line is \`BASH_FLOOR=<major>.<minor>\`, alone on its line." ;;
+  esac
+  bash_meets_floor "$bashver" "$floor" || refuse \
+    "bash $bashver is below the floor the release being deployed declares: BASH_FLOOR=$floor in bin/deploy.sh at $short" \
+    "This copy's own floor ($BASH_FLOOR) was met — A1 checked it. But after \`artisan down\` and the" \
+    "checkout, phase B re-execs THAT release's bin/deploy.sh, and on a bash below its floor it dies" \
+    "on its own constructs inside the maintenance window, with the app already down. This refusal" \
+    "is that failure, moved to before anything is touched." \
+    "" \
+    "Either run this deploy with bash $floor or later, or deploy a release whose floor this bash meets."
+  say "  ok — bash $bashver meets BASH_FLOOR=$floor, declared by bin/deploy.sh at $short"
 }
 
 # gate_a10_migration_algorithm <sha> — A10. HOST-FREE: the migrations at <sha> and their text.
@@ -2338,21 +2590,63 @@ gate_a11_trusted_proxies() {
   fi
 }
 
-# gate_a12_asset_lockfile <sha> — A12. HOST-FREE: whether server/package-lock.json is at <sha>.
+# gate_a12_asset_lockfile <sha> <host npm version> — A12. HOST-FREE: server/package-lock.json at
+# <sha>, and the npm version it is HANDED (A1c read it), as A6 is handed the host's PHP.
 gate_a12_asset_lockfile() {
-  local SHA="$1"
+  local SHA="$1" npmver="$2"
   # A12 — a lockfile for the asset build. `npm ci` is used below and requires one; more to the
   # point, package.json floats (vite ^8, tailwind ^4), so a lockfile-less prod build can ship
   # different JavaScript from the same commit on two consecutive days, and nothing in the repo
   # would record which. Refusing here is not this script being strict — it is the only place the
   # question is still cheap.
-  local lock_at=""
-  git_ls_at lock_at "$SHA" server/package-lock.json
-  [ -n "$lock_at" ] || refuse \
-    "server/package-lock.json is missing from $(git_at rev-parse --short "$SHA")" \
+  local lock="" lock_version="" npm_floor="" short
+  short="$(git_at rev-parse --short "$SHA")"
+  # The CONTENT, not just the presence (card#9616): the lockfile's own `lockfileVersion` is what
+  # says which npm can install it. `git_read_at`'s 1 is "no such path at this commit" — a git read
+  # that FAILED never returns here at all (§ reading the TARGET RELEASE out of git).
+  git_read_at lock "$SHA" server/package-lock.json || refuse \
+    "server/package-lock.json is missing from $short" \
     "The prod asset build must be reproducible: package.json floats (vite ^8, tailwind ^4)," \
     "so without a lockfile the same commit can build different assets on different days." \
     "Commit the lockfile (\`npm install\` in server/, commit server/package-lock.json)."
+  # …AND AN NPM THAT CAN INSTALL IT. `npm ci` runs in phase B, inside the window: an npm too old
+  # for the release's lockfile fails there with the app already down. The floor is read from the
+  # TARGET tree, because a release that MOVES to a newer lockfile format is exactly the one whose
+  # floor the serving checkout's own lockfile does not show — the same reasoning as A6 and A6b.
+  #
+  # ⚠ THE MAPPING IS DOCUMENTED, NOT MEASURED — and it is npm's own documentation, quoted rather
+  # than summarised. docs.npmjs.com, "package-lock.json", § lockfileVersion (the v11 page, read
+  # 2026-09-19): "1: The lockfile version used by npm v5 and v6. … 2: The lockfile version used by
+  # npm v7 and v8. Backwards compatible to v1 lockfiles. 3: The lockfile version used by npm v9 and
+  # above. Backwards compatible to npm v7." So 3 implies npm >= 7, and that is the only floor those
+  # words state: 2 carries the v1 `dependencies` section precisely so npm v6 can read it, and 1 is
+  # v5/v6's own format. No npm below 7 was RUN against any of them by this repository, and nothing
+  # here invents a floor for 1 or 2. A lockfileVersion this mapping does not name — none, a
+  # non-number, a 4 — is REFUSED rather than guessed at, in the same direction A6 refuses a PHP
+  # constraint it cannot evaluate: a guess that is wrong is discovered inside the window.
+  lock_version="$(printf '%s\n' "$lock" | npm_lockfile_version)"
+  case "$lock_version" in
+    3)     npm_floor=7 ;;
+    1 | 2) npm_floor="" ;;
+    *) refuse "server/package-lock.json at $short declares lockfileVersion '${lock_version:-(none)}', which A12 cannot map to an npm floor" \
+         "A12 knows lockfileVersion 1, 2 and 3, from npm's own documentation (this gate's comment" \
+         "quotes it), and refuses any other rather than guess which npm \`npm ci\` would need — a" \
+         "guess that is wrong is found inside the maintenance window, with the app down." \
+         "Teach A12 the new lockfile version from npm's docs, deliberately, and re-read this gate." ;;
+  esac
+  if [ -n "$npm_floor" ]; then
+    ver_ge "$npmver" "$npm_floor" || refuse \
+      "npm $npmver is below npm $npm_floor, which lockfileVersion $lock_version in server/package-lock.json at $short needs" \
+      "npm's own documentation says lockfileVersion 3 is \"backwards compatible to npm v7\" and no" \
+      "further. \`npm ci\` reads that lockfile in phase B, inside the" \
+      "maintenance window, with the app already down. This refusal is that failure, moved to" \
+      "before anything is touched." \
+      "" \
+      "Upgrade this host's npm to $npm_floor or later (\`npm --version\` is what was read)."
+    say "  ok — npm $npmver meets npm $npm_floor, which lockfileVersion $lock_version in server/package-lock.json at $short needs"
+  else
+    say "  ok — server/package-lock.json at $short is lockfileVersion $lock_version, for which npm's docs state no floor; npm $npmver was not compared"
+  fi
 }
 
 # gate_a13_target_plan <sha> <workdir> <deploy root> <php binary> — A13's HOST-FREE half, and the
