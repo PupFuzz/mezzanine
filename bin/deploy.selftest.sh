@@ -151,9 +151,12 @@ before() {
 section() { printf '\n── %s\n' "$1"; }
 
 # ── stubs on PATH ─────────────────────────────────────────────────────────────────────────────
+# ⛔ EVERY `REAL_…` RESOLVES HERE, BEFORE THE PATH EXPORT BELOW. After it, `command -v <name>` finds
+# this suite's own stub as soon as one is written, and a stub that execs itself never returns.
 REAL_FUSER="$(command -v fuser)" || { echo "selftest: fuser not found" >&2; exit 1; }
 REAL_PHP="$(command -v php)" || { echo "selftest: php not found (deploy.sh parses the stream pool's JSON status with php -r)" >&2; exit 1; }
 REAL_PS="$(command -v ps)" || { echo "selftest: ps not found" >&2; exit 1; }
+REAL_MKTEMP="$(command -v mktemp)" || { echo "selftest: mktemp not found" >&2; exit 1; }
 mkdir -p "$T/bin" "$T/knobs"; export PATH="$T/bin:$PATH"
 # `mezzanine:extra` is in no release this repo ships: it is the daemon the ACROSS RELEASES case's target
 # release adds, and the stub has to know to hold a lock for it.
@@ -276,7 +279,6 @@ STUB
 # later one is handed a TMPDIR that does not exist, so it fails with mktemp's OWN error, exactly as on a
 # host whose TMPDIR is gone (card#9816). Each call is logged while the knob is set. A count, because the
 # .env loader makes phase A's FIRST scratch file, and a TMPDIR broken from the start stops every run there.
-REAL_MKTEMP="$(command -v mktemp)" || { echo "selftest: mktemp not found" >&2; exit 1; }
 {
   printf '#!/usr/bin/env bash\nKNOBS=%q\nREAL_MKTEMP=%q\nBROKEN_TMPDIR=%q\n' "$T/knobs" "$REAL_MKTEMP" "$T/no-such-dir"
   cat <<'STUB'
@@ -3033,9 +3035,11 @@ chmod 640 "$ROOT/server/.env"
 # carries none of it — both wrong shapes exit 1 — and A7's wrong shape even carries the banner and the
 # promise, so the HEADLINE is what reds on it.
 #
-# ⛔ EACH CASE PROVES IT REACHED mktemp, by mktemp's own error naming the broken directory: a TMPDIR that is
-# set and not EXPORTED never reaches mktemp at all (§ card#9610 measured that), and a case that never made
-# mktemp fail would pass on any code.
+# ⛔ EACH CASE PROVES IT REACHED mktemp — a case that never made mktemp fail would pass on any code — but
+# NOT all by the same instrument: the scratch_refused cases below prove it by mktemp's OWN error naming
+# the broken directory, and S0, where the loader silences that error, by the loader's own reason, which
+# it sets only when mktemp failed (the case says so at the call). A TMPDIR that is set and not EXPORTED
+# never reaches mktemp at all — the § card#9610 cases measured that.
 section "card#9816 — a scratch file phase A could not create is a REFUSAL that names it"
 MKTEMP_FAILED="mktemp: failed to create"
 

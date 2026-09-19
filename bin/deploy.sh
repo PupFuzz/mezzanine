@@ -778,11 +778,12 @@ git_at() { git -C "$DEPLOY_ROOT" "$@"; }
 #     are read together. The absent case prints nothing, because ls-tree is silent about it.
 #   · A FAILED READ IS TERMINAL HERE, rather than handing back a status a caller could drop — and
 #     WHICH terminal it takes is decided by not_established (through git_read_unusable), from the
-#     PHASE, rather than asserted in this comment. The assertion it replaces ("every caller is in phase A") was true, and what kept it
-#     true was one `[ -z "$POST_CHECKOUT_SHA" ] &&` at the single caller that runs on both sides of the
-#     window (fpm_code_reload_ready) — a guard these readers cannot see, that reads like a phase-A
-#     optimisation, and whose removal would have made `refuse` a one-way door: "Nothing was changed.
-#     The previous release is still serving." printed with the checkout landed and the app down.
+#     PHASE, rather than asserted in this comment. The assertion it replaces ("every caller is in
+#     phase A") was true, and what kept it true was one `[ -z "$POST_CHECKOUT_SHA" ] &&` at the single
+#     caller that runs on both sides of the window (fpm_code_reload_ready) — a guard these readers
+#     cannot see, that reads like a phase-A optimisation, and whose removal would have made `refuse` a
+#     one-way door: "Nothing was changed. The previous release is still serving." printed with the
+#     checkout landed and the app down.
 
 # git_read_call_site <var> — the line THE CALLER of these readers is on, into <var>. The frame depth
 # is DERIVED rather than assumed, because git_read_unusable is reached at three different depths:
@@ -791,10 +792,10 @@ git_at() { git -C "$DEPLOY_ROOT" "$@"; }
 # three in the window, because presence is established before content is ever read). A fixed
 # BASH_LINENO index is therefore right for ONE path and names THIS FILE for the other two: measured
 # on the shape this replaces (bash 5.3.9, git 2.53.0), BASH_LINENO[1] gave the line INSIDE _git_ls_at
-# that calls git_read_failed, and the one INSIDE git_read_at — so `failed_line:` in the marker and in
-# the banner pointed an operator recovering a down app at the primitive instead of at the precondition
-# that was running. (The line NUMBERS of that measurement are on card#9608, not restated here, where
-# every edit to this file would move them.) When one of these
+# that calls git_read_failed, and the one INSIDE git_read_at — so `failed_line:` in the marker pointed
+# an operator recovering a down app at the primitive instead of at the precondition that was running.
+# (The line NUMBERS of that measurement are on card#9608, not restated here, where every edit to this
+# file would move them.) When one of these
 # readers fails they are the innermost CONTIGUOUS frames, so the OUTERMOST of them is the frame the
 # caller itself invoked and BASH_LINENO at that index is the caller's own line, at every depth. The
 # family is named below rather than matched by prefix, so that a CALLER whose name happens to look
@@ -855,6 +856,10 @@ git_read_unusable() {
 #     that way), `set -e` does not apply at all, so the run carried on with an EMPTY path and refused on
 #     a cause nothing established: "'main' does not resolve to a commit on origin" for a ref that is
 #     there, and "git could not resolve the tag …" for a tag git never got to peel.
+# ⚠ A FULL filesystem is a DIFFERENT failure and is UNTESTED here: `mktemp` can SUCCEED on one, and
+# what then fails is the WRITE of git's stderr into the file it made — which this exit never sees. The
+# advice in the refusal below still names fullness — it is a thing to check on a host whose `mktemp`
+# DID fail — but no fixture has produced it; the missing TMPDIR named above is what was measured.
 # mktemp's own error is NOT silenced: it names the path it tried, which is the TMPDIR mktemp actually
 # read (its ENVIRONMENT's, not necessarily this shell's — § env_lines_load).
 #   · <var> is written with `printf -v`, never returned through `$(…)`: a refusal inside a command

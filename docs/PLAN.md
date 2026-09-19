@@ -617,10 +617,11 @@ rule violations anyone could have committed at the time.
   with no `server/bootstrap/app.php`**: `server/artisan` requires that file, so every artisan command of such
   a release fails — the first of them `php artisan optimize:clear`, inside the maintenance window, with the
   app down — which is the same reading the PHP floor and a missing `bin/supervision.sh` already get. And
-  **a scratch file or directory phase A could not create** (card#9816) — an unwritable, missing or full
-  `TMPDIR` — refused as itself, with `mktemp`'s own error above the refusal naming the path it tried. A13's
-  work directory used to end phase A with `mktemp`'s status 1 and no refusal at all, and the two scratch
-  files A7 makes while resolving `--ref` sit inside calls where `set -e` does not apply, so a failed
+  **a scratch file or directory phase A could not create** (card#9816) — whatever the reason `mktemp`
+  gives, measured with a `TMPDIR` that is not there — refused as itself, with `mktemp`'s own error
+  above the refusal naming the path it tried. A13's work directory used to end phase A with
+  `mktemp`'s status 1 and no refusal at all, and `git_ref_oid`'s and `git_commit_of`'s stderr files,
+  made while `--ref` is resolved, sit inside calls where `set -e` does not apply, so a failed
   `mktemp` there carried on with an empty path and refused on a cause nothing established: *"does not
   resolve to a commit on origin"* for a ref that is there, and a failed git read for a tag git never got to
   peel. The `.env` loader's own scratch file is the one exception: it runs in both phases and in the
