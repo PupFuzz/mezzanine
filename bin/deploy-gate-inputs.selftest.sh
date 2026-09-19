@@ -430,6 +430,27 @@ OUT="$(cd "$DIR" && PATH="$DIR/stub:$PATH" bash "$CHECK" --ref HEAD 2>&1)"; RC=$
 eq  "a tool the check needs fails: exit 2, NOT 1"   2 "$RC"
 has "a crash says it established nothing, and is not a finding" "established NOTHING" "$OUT"
 
+# ── the invocation ─────────────────────────────────────────────────────────────────────────────
+# A mistyped COMMAND LINE must not be readable as a finding either (card#9831). `${2:?}` on an
+# option's value fails as a parameter expansion, which is a shell error and never trips the ERR trap
+# above: the shell prints its own line and exits 1 — this check's word for "a required input is
+# MISSING". Each case asserts the `⛔` banner as well as the code, because the shell's own message
+# carries the same words as `die`'s and exit 2 alone is reachable by more than one path.
+section "THE INVOCATION — a mistyped command line is never a verdict about the release"
+
+mkcase argv
+OUT="$(cd "$DIR" && bash "$CHECK" --ref 2>&1)"; RC=$?
+eq  "--ref with no value: exit 2, NOT 1"            2 "$RC"
+has "--ref with no value: stops with the banner"    "⛔ deploy-gate-inputs.sh — --ref needs a value" "$OUT"
+
+OUT="$(cd "$DIR" && bash "$CHECK" --ref '' 2>&1)"; RC=$?
+eq  "--ref with an empty value: exit 2, NOT 1"      2 "$RC"
+has "--ref with an empty value: stops with the banner" "⛔ deploy-gate-inputs.sh — --ref needs a value" "$OUT"
+
+OUT="$(cd "$DIR" && bash "$CHECK" --reff HEAD 2>&1)"; RC=$?
+eq  "an unknown argument: exit 2"                   2 "$RC"
+has "an unknown argument: stops with the banner, naming it" "⛔ deploy-gate-inputs.sh — unknown argument: --reff" "$OUT"
+
 # ── findings about the RELEASE — exit 1, and never confused with exit 2 ────────────────────────
 section "FINDINGS — this repository does not satisfy the gate"
 
