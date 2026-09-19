@@ -616,7 +616,15 @@ rule violations anyone could have committed at the time.
   marker — the logs and the marker the failure banner sends the operator to — with it. And **a release
   with no `server/bootstrap/app.php`**: `server/artisan` requires that file, so every artisan command of such
   a release fails — the first of them `php artisan optimize:clear`, inside the maintenance window, with the
-  app down — which is the same reading the PHP floor and a missing `bin/supervision.sh` already get. It warns,
+  app down — which is the same reading the PHP floor and a missing `bin/supervision.sh` already get. And
+  **a scratch file or directory phase A could not create** (card#9816) — an unwritable, missing or full
+  `TMPDIR` — refused as itself, with `mktemp`'s own error above the refusal naming the path it tried. A13's
+  work directory used to end phase A with `mktemp`'s status 1 and no refusal at all, and the two scratch
+  files A7 makes while resolving `--ref` sit inside calls where `set -e` does not apply, so a failed
+  `mktemp` there carried on with an empty path and refused on a cause nothing established: *"does not
+  resolve to a commit on origin"* for a ref that is there, and a failed git read for a tag git never got to
+  peel. The `.env` loader's own scratch file is the one exception: it runs in both phases and in the
+  mirror, so it answers for that failure itself, refusing at A5 (card#9610). It warns,
   rather than refusing, where the doc's own reading is that the state is
   fail-safe: no `trustProxies()` at all, and keys the release's `.env.example` names that the
   host's `.env` does not set. It also warns, naming it, when the document root it reads a `.user.ini`

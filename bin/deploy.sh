@@ -300,7 +300,7 @@ ENV_READ_ERR_FD=
 
 # env_read_err_open — opens ENV_READ_ERR_FD, once. Status 1 when no scratch file could be made, which is
 # the one failure the loader answers for itself: it runs in BOTH phases and inside bin/env-mirror-diff.sh,
-# where neither `refuse` nor `git_read_unusable` is the right answer, so it sets the flag and lets the
+# where neither `refuse` nor `not_established` is the right answer, so it sets the flag and lets the
 # caller decide. Both statuses are read; neither is guessed at.
 env_read_err_open() {
   local t
@@ -777,8 +777,8 @@ git_at() { git -C "$DEPLOY_ROOT" "$@"; }
 #     half of how this class survives: the refusal below names the read, git names the cause, and they
 #     are read together. The absent case prints nothing, because ls-tree is silent about it.
 #   · A FAILED READ IS TERMINAL HERE, rather than handing back a status a caller could drop — and
-#     WHICH terminal it takes is decided by git_read_unusable, from the PHASE, rather than asserted in
-#     this comment. The assertion it replaces ("every caller is in phase A") was true, and what kept it
+#     WHICH terminal it takes is decided by not_established (through git_read_unusable), from the
+#     PHASE, rather than asserted in this comment. The assertion it replaces ("every caller is in phase A") was true, and what kept it
 #     true was one `[ -z "$POST_CHECKOUT_SHA" ] &&` at the single caller that runs on both sides of the
 #     window (fpm_code_reload_ready) — a guard these readers cannot see, that reads like a phase-A
 #     optimisation, and whose removal would have made `refuse` a one-way door: "Nothing was changed.
@@ -799,13 +799,16 @@ git_at() { git -C "$DEPLOY_ROOT" "$@"; }
 # caller itself invoked and BASH_LINENO at that index is the caller's own line, at every depth. The
 # family is named below rather than matched by prefix, so that a CALLER whose name happens to look
 # like a reader's cannot be walked past; a reader added here and not named falls back to reporting
-# its own call site — what the fixed index did — never some further caller's.
+# its own call site — what the fixed index did — never some further caller's. The phase-reading exit
+# and the scratch helpers below are in the family for the same reason: each is a frame BETWEEN the
+# failure and the caller, and an unnamed one is where `failed_line:` would point (card#9816).
 git_read_call_site() {
   local __i __outer=0
   for __i in "${!FUNCNAME[@]}"; do
     case "${FUNCNAME[__i]}" in
-      git_read_call_site | git_read_unusable | git_read_failed | git_read_at | git_ls_at | _git_ls_at | \
-      git_rev_read_failed | git_peel_mismatch | git_commit_of | git_ref_oid)
+      git_read_call_site | not_established | git_read_unusable | git_read_failed | git_read_at | \
+      git_ls_at | _git_ls_at | git_rev_read_failed | git_peel_mismatch | git_commit_of | git_ref_oid | \
+      scratch_file | scratch_dir | _scratch)
         __outer="$__i" ;;
       *) break ;;
     esac
@@ -813,23 +816,68 @@ git_read_call_site() {
   printf -v "$1" '%s' "${BASH_LINENO[__outer]:-0}"
 }
 
-# git_read_unusable <headline> <detail line…> — the ONE exit these readers take, and the ONE place
-# the phase is read. Phase A REFUSES: nothing has been touched, and the refusal says exactly that.
-# Phase B cannot say it — the window is open and the checkout has landed — so it takes the in-window
-# failure path, which writes the marker and says the app is down and stays down. POST_CHECKOUT_SHA is
-# what phase B re-enters with, so no caller has to remember which side of the window it is on.
-git_read_unusable() {
+# not_established <headline> <detail line…> — THE ONE phase-reading exit, for any failure that means a
+# precondition could not be ESTABLISHED and that can happen on either side of the window: a read of
+# the release out of git, a scratch file this script could not create (card#9816). Phase A REFUSES:
+# nothing has been touched, and the refusal says exactly that. Phase B cannot say it — the window is
+# open and the checkout has landed — so it takes the in-window failure path, which writes the marker
+# and says the app is down and stays down; the step it names is the step in progress (FAILED_STEP)
+# with the headline after it. POST_CHECKOUT_SHA is what phase B re-enters with, so no caller has to
+# remember which side of the window it is on.
+not_established() {
   local __line
   if [ -n "$POST_CHECKOUT_SHA" ]; then
     git_read_call_site __line
     printf '%s\n' "${@:2}" >&2
-    FAILED_STEP="reading the release out of git — $1"
+    FAILED_STEP="$FAILED_STEP — $1"
     # `false ||` so the banner reports a failing status, as it does for every other in-window failure
     # (in_window_failure reads `$?`) — which is also why the line is resolved into $__line ABOVE and
     # not in the argument: a command substitution there would run between the `false` and the call.
     false || in_window_failure "$__line"
   fi
   refuse "$@"
+}
+
+# git_read_unusable <headline> <detail line…> — the ONE exit the git readers below take: not_established,
+# with the step named as the read of the release. It never returns, so naming the step unconditionally
+# is safe on both sides of the window.
+git_read_unusable() {
+  FAILED_STEP="reading the release out of git"
+  not_established "$@"
+}
+
+# scratch_file <var> <what it is for> · scratch_dir <var> <what it is for> — a new temporary file (or
+# directory) into <var>, or not_established, NAMING THE SCRATCH FILE (card#9816). A bare `x="$(mktemp)"`
+# failed two ways here, both measured with TMPDIR pointing at a directory that does not exist:
+#   · where `set -e` applies (A13), it ended phase A with mktemp's status 1 — the code the exit table
+#     says means REFUSED — with no ⛔ banner and no promise;
+#   · inside a function called from an `if` or a `||` (git_ref_oid, git_commit_of — A7 and A8 call them
+#     that way), `set -e` does not apply at all, so the run carried on with an EMPTY path and refused on
+#     a cause nothing established: "'main' does not resolve to a commit on origin" for a ref that is
+#     there, and "git could not resolve the tag …" for a tag git never got to peel.
+# mktemp's own error is NOT silenced: it names the path it tried, which is the TMPDIR mktemp actually
+# read (its ENVIRONMENT's, not necessarily this shell's — § env_lines_load).
+#   · <var> is written with `printf -v`, never returned through `$(…)`: a refusal inside a command
+#     substitution would exit only the subshell and the caller would carry on with an empty path. That
+#     also keeps each call to the one fork mktemp itself costs.
+#   · Its locals are `__sc_`-prefixed, for the shadowing hazard _git_ls_at states: git_ref_oid passes
+#     `__ro_err` and git_commit_of `__err`.
+# ⛔ NOT the .env loader's scratch file (env_read_err_open): the loader runs in both phases and inside
+# bin/env-mirror-diff.mirror.sh, where neither `refuse` nor this exit is the right answer, so it answers
+# for that failure itself.
+scratch_file() { _scratch "$1" "$2" file; }
+scratch_dir()  { _scratch "$1" "$2" directory -d; }
+_scratch() { # _scratch <var> <what it is for> <file|directory> [mktemp option…]
+  local __sc_var="$1" __sc_for="$2" __sc_kind="$3" __sc_out __sc_rc=0
+  shift 3
+  __sc_out="$(mktemp "$@")" || __sc_rc=$?
+  [ "$__sc_rc" -eq 0 ] || not_established "no scratch $__sc_kind could be created for $__sc_for (\`mktemp\` exited $__sc_rc)" \
+    "mktemp's own error is above this line and names the path it tried. mktemp writes under \$TMPDIR, or" \
+    "/tmp when that is unset: check that whichever applies names a directory this deploy can write to," \
+    "and that it is not full." \
+    "Nothing was read in its place, so what it was for is not established — this is not a finding about" \
+    "the release."
+  printf -v "$__sc_var" '%s' "$__sc_out"
 }
 
 git_read_failed() { # git_read_failed <git subcommand> <rev> <path> <status>
@@ -1046,7 +1094,7 @@ git_peel_mismatch() {
 git_ref_oid() {
   local __ro_var="$1" __ro_cand="$2" __ro_err __ro_msg __ro_out __ro_rc=0
   printf -v "$__ro_var" '%s' ""
-  __ro_err="$(mktemp)"
+  scratch_file __ro_err "git's error output while resolving '$__ro_cand'"
   # --end-of-options because the candidate can be `$REF` as the operator typed it: a leading `-` is
   # a ref name here and must not be read as an option. NO `^{commit}`: that peel is what drags the
   # object store into this question and collapses its failure onto status 1 (above).
@@ -1138,7 +1186,7 @@ git_commit_of() {
             # git's stderr is captured and re-printed here, as git_ref_oid does, because the
             # discriminator IS that message and this call site used to let it go straight past.
             __rc=0
-            __err="$(mktemp)"
+            scratch_file __err "git's error output while peeling the tag '$__cand' ($__oid)"
             __peeled="$(git_at rev-parse --verify --end-of-options "$__oid^{commit}" 2>"$__err")" || __rc=$?
             __msg="$(cat "$__err")"; rm -f "$__err"
             [ -z "$__msg" ] || printf '%s\n' "$__msg" >&2
@@ -2372,7 +2420,7 @@ gate_a13_supervision() {
   local php_bin short work installed added removed serving_locks target_locks
   short="$(git_at rev-parse --short "$SHA")"
   php_bin="$(supervision_default_php)"
-  work="$(mktemp -d)"
+  scratch_dir work "A13's reading of $short's crontab block"
   gate_a13_target_plan "$SHA" "$work" "$DEPLOY_ROOT" "$php_bin"
   TARGET_DAEMONS="$(cat "$work/daemons")"; TARGET_DAEMONS="${TARGET_DAEMONS% }"
   target_locks="$(cat "$work/locks")"
