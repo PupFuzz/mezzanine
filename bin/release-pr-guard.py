@@ -31,7 +31,8 @@ the fix is still one commit.
 
 WHAT THIS GATE ASSERTS — the rules below, in TWO FAMILIES, applicable on different conditions.
 
-RELEASE SHAPE (R1-R3, R6) — only on a PR whose base is the release branch:
+RELEASE SHAPE (R1-R3, R6-R7) — refused only on a PR whose base is the release branch (R7 also
+WARNS off it):
   * R1 — HEAD BRANCH SHAPE. The head ref must be exactly `release/` + the tag this PR would
     mint (see AUTHORITY SOURCING). It is an EQUALITY against the head's own `VERSION`, not a
     shape match, so `release/v0.3.0` carrying `VERSION` 0.2.0 is also refused: the branch name
@@ -48,6 +49,9 @@ RELEASE SHAPE (R1-R3, R6) — only on a PR whose base is the release branch:
     `docs/CHANGELOG.md`), and the changelog edit does not DROP a card `dev` holds. Residue is
     permitted, but only DECLARED: a `Release-excludes:` line in the PR body naming exactly the
     residue and why. See WHY R6 EXISTS and ⛔ R6 IS NOT AN ANCESTRY TEST below.
+  * R7 — RELEASE FLOW STEP 13 WAS DONE. `docs/CHANGELOG.md` at the head carries at most TWO
+    released sections — the one this release mints and the previous latest — and no
+    `docs/changelog/*.md` archive file is past R5's contents-API cliff. See WHY R7 EXISTS below.
 
 CHANGELOG DISCIPLINE (R4-R5) — on EVERY PR, because that is where the entries are written:
   * R4 — THE CARD'S BULLET. If the head ref or the PR title names a card, `docs/CHANGELOG.md`
@@ -183,7 +187,39 @@ does not resolve, R6 raises rather than skipping: a release gate that cannot see
 is comparing against must red, exactly as R5 does in a shallow clone. An unmeasurable currency
 reported green is the false-clean this whole file exists to avoid.
 
+WHY R7 EXISTS — a skipped step red on someone else's PR, weeks later (card#9814). Step 13 moves
+the released section that is no longer the latest out of `docs/CHANGELOG.md` into
+`docs/changelog/<tag>.md`. Skipped, nothing said so: the file kept growing and R5 eventually
+redded whichever feature PR happened to be open when it crossed the threshold — an author who
+did not cause it and cannot fix it in their PR. R5 is also silent for the fortnight after an
+archive, because its growth term clamps to zero on a shrink and the threshold is then the whole
+cliff. R7 moves the red onto the release PR, whose author is the seat that owes step 13, and
+names the archive file each excess section belongs in. What counts as a released section is
+R3's own reading (`changelog_sections`, keyed on `_heading_text`'s `^##`) — not a second parser.
+  * OFF THE RELEASE PATH R7 WARNS AND NEVER REFUSES, both clauses. A feature PR's author did not
+    skip step 13, so a refusal there would be the misdirected red R7 exists to end. The archive
+    clause warns off the path too, for a different reason: the only way an archive file passes
+    the cliff is a post-hoc edit to a released section, and when that edit is made on a feature
+    PR the warning lands on the PR that made it, while the release PR is where it is refused.
+    ⛔ AND R7 OPENS NO AUTHORITY FILE OFF THIS PATH, SO IT ADDS NO EXIT 2 THERE EITHER — with
+    one state named below rather than claimed away.
+    Its first cut read `.release-pr.json` there to name the archive file from `tag_format`,
+    and that made `load_tag_format`'s exit 2 reachable from every feature PR in a repo whose
+    changelog carries excess sections — the very state R7 detects, persisting until the next
+    release. A warning is not worth a new way to fail a PR the rule has nothing to refuse. What
+    remains is not a refusal but an UNMEASURABLE state, and it is the only one R7 can reach off
+    the release path: `git ls-tree` failing to list the archive directory, which is the
+    git-level failure the head-changelog read above has already hit.
+  * THE ARCHIVE CLAUSE (card#9814 comment 5709). `docs/PLAN.md § 4` argues the archive files need
+    no size gate: every byte in one was part of an R5-held `docs/CHANGELOG.md` at its release, and
+    the file never receives bytes again. The residual is a post-hoc edit to an immutable released
+    section, and R7's second clause is its mechanical backstop, at R5's own
+    `CONTENTS_API_CLIFF_BYTES` — never a second copy of the figure.
+
 AND WHAT IT DELIBERATELY DOES NOT ASSERT:
+  * NOT that an archive file is byte-identical to the section it replaced. That is step 13's
+    `cmp` at authoring time, not a CI invariant; R7 asserts that the move HAPPENED and that no
+    archive is past the cliff.
   * NO CARD TOKEN is required. R4 fires on a token that is there; a PR that names no card owes
     nothing and passes, which is `card-token-lint`'s posture and `docs/PLAN.md § 4`'s rule.
   * NO CHANGELOG PROSE JUDGEMENT. R3 asks whether the section exists and R4 whether the bullet
@@ -237,10 +273,11 @@ failure is exit 2 — never a fallback to a guessed value:
     rather than done: it edits `card-token-lint.py`, which this change's scope excludes.
 
 THE REMAINING LITERALS ARE NAMED RATHER THAN HIDDEN. `release/`, `VERSION`, `docs/CHANGELOG.md`,
-the `## [Unreleased]` heading, the `- **card#NNNN**` bullet form, the INTEGRATION BRANCH and the
-1 MiB cliff are written out below because no machine-readable authority in this repo states any
-of them; each is a prose rule (`docs/VERSIONING.md § Release flow` steps 2 and 4, § The core
-rules rules 1 and 3, and § Branch model; `docs/PLAN.md § 4` for the bullet form and the cliff)
+the `## [Unreleased]` heading, the `- **card#NNNN**` bullet form, the INTEGRATION BRANCH, the
+1 MiB cliff, the `docs/changelog/` archive directory and R7's limit of two released sections are
+written out below because no machine-readable authority in this repo states any of them; each is
+a prose rule (`docs/VERSIONING.md § Release flow` steps 2, 4 and 13, § The core rules rules 1 and
+3, and § Branch model; `docs/PLAN.md § 4` for the bullet form, the cliff and the archive layout)
 and each is cited at its definition. Where a literal is unavoidable the honest thing is to say
 which doc owns it, not to pretend it was derived.
 ⚠ THE INTEGRATION BRANCH WAS LOOKED FOR AND IS NOT THERE, which is why R6's is a literal while
@@ -280,12 +317,15 @@ same state as an EMPTY body. A PR with no body is a real state and means "no dec
 (R6 reds if there is residue); a run that was never TOLD the body cannot see a declaration that
 may well be there, so R6 exits 2 rather than refusing a PR for a line it was not shown.
 
-Exit 0 = clean. The release-shape rules may have been NOT APPLICABLE; R4 and R5 were judged.
+Exit 0 = clean. The release-shape rules may have been NOT APPLICABLE; R4 and R5 were judged, and
+         off the release path R7 can only have warned.
 Exit 1 = this PR breaks a rule — the author fixes the PR.
 Exit 2 = the guard COULD NOT MEASURE — missing `VERSION`, unreadable base rev, an unresolvable
          integration branch (R6), a run not given the PR body while R6 has residue to declare,
          unparseable semver, absent `docs/CHANGELOG.md`, no `## [Unreleased]` heading to scope
-         R4 or R6b to, a shallow clone R5 cannot measure growth in, or an authority that moved.
+         R4 or R6b to, a shallow clone R5 cannot measure growth in, an archive directory R7
+         cannot list (its one unmeasurable state off the release path — it reads no AUTHORITY
+         there), or an authority that moved.
          Someone fixes
          the repo or this guard. The split matters: a 1 and a 2 send different people to
          different files, and collapsing them would send authors to rename branches that were
@@ -333,12 +373,21 @@ INTEGRATION_BRANCH = "dev"
 # release flow steps 3 and 4 ARE these two edits and nothing else. R6a's residue is every other
 # differing path.
 RELEASE_ARTIFACT_PATHS = (VERSION_PATH, CHANGELOG_PATH)
+# `docs/VERSIONING.md` core rule 3 and § Release flow step 13 ("move the released section that is
+# no longer the latest … into `docs/changelog/v<previous version>.md`"); `docs/PLAN.md § 4` owns
+# the layout. R7's second clause reads every `*.md` directly under it.
+CHANGELOG_ARCHIVE_DIR = "docs/changelog"
+# R7's limit. Step 13 leaves the live file holding `## [Unreleased]` plus exactly the latest
+# released section; step 4 of the NEXT release then retitles `[Unreleased]`, adding the one that
+# release mints. So a release PR whose predecessor's step 13 was done carries exactly TWO. It is a
+# literal because the two steps that produce it are prose, and those are its owners.
+MAX_RELEASED_SECTIONS = 2
 # `docs/PLAN.md § 4` ("a line-initial `- **card#NNNN** — …` bullet under `## [Unreleased]`"),
 # restated in `docs/CHANGELOG.md`'s own preamble. Both halves are literals: the heading R4 is
 # scoped to, and the bullet form. "Bold-anywhere is not accepted — line-initial is the rule."
 UNRELEASED_HEADING = "## [Unreleased]"
 
-# The prose doc that owns the release-shape rules (R1-R3), named for a human who wants the
+# The prose doc that owns the release-shape rules (R1-R3, R6-R7), named for a human who wants the
 # ruling rather than the diagnosis. This guard enforces what that file says; where they
 # disagree, it wins.
 CANON_DOC = "docs/VERSIONING.md"
@@ -397,6 +446,11 @@ _EXCLUDES_RE = re.compile(r"^" + re.escape(EXCLUDES_KEYWORD) + r"[ \t]*(.*)$", r
 # A version's structural parts, for ORDERING only (semver.org § 11). Validity is the extracted
 # authority's ruling, not this pattern's — this runs only after that check has passed.
 _PRECEDENCE_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z][0-9A-Za-z.-]*))?$")
+# The version a released section's HEADING names, so R7 can say which archive file it belongs
+# in. Unanchored, and bounded on both sides like R3's token, so a date in the same heading
+# (`2026-08-30`, no dots) never matches. The ordering of what it finds is `precedence_key`'s.
+_SECTION_VERSION_RE = re.compile(
+    r"(?<![0-9.\-])([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?)(?![0-9A-Za-z.\-])")
 _NUMERIC_IDENT_RE = re.compile(r"^[0-9]+$")
 
 
@@ -511,12 +565,49 @@ def load_card_grammar(repo: Path) -> re.Pattern:
 # --- Content, read from git revisions --------------------------------------------------------
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    """Every text-mode git read in this guard, with `errors="surrogateescape"`.
+
+    ⛔ THE ERROR HANDLER IS LOAD-BEARING AND WAS MEASURED. `text=True` alone is STRICT UTF-8, and
+    strict decoding turns a byte sequence git handed back into a `UnicodeDecodeError` raised
+    INSIDE `subprocess.run` — before any rule is evaluated, and not an `Unmeasurable`, so it
+    escapes `main()` as a traceback and exit 1. On a feature PR exit 1 is this guard telling an
+    author their PR breaks a rule, which is worse than the exit 2 it would otherwise be and is
+    the misdirected red R7 exists to end. The path that reached it: R7's `ls-tree -z` asks git
+    for RAW bytes (quoting is what used to make every path pure ASCII), so an archive file named
+    in latin-1 — `docs/changelog/inv<0xe9>.md` — killed the run. Surrogate-escaping keeps those
+    bytes reversible and printable (`printable()`), and a filename is not this repo's to
+    validate: the guard reports it lossily rather than refusing anything over it.
+    ⚠ This handler must NOT become the way the CHANGELOG is decoded. That file is read as bytes
+    (`read_bytes_at`) and decoded STRICTLY by `decode_changelog`, because a changelog this guard
+    cannot read is an exit 2 by design — see that function. Widening the decode there would
+    silently apply the heading and bullet rules to mojibake.
+    """
     try:
         return subprocess.run(["git", "-C", str(repo), *args],
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, errors="surrogateescape")
     except FileNotFoundError:
         raise Unmeasurable("git is not on PATH — this guard reads both sides' content with "
                            "`git show` and cannot measure anything without it.") from None
+
+
+def printable(text: str) -> str:
+    """Text safe to PRINT, whatever bytes git handed back.
+
+    `_git` surrogate-escapes undecodable bytes, and what a surrogate then does at the `print`
+    DEPENDS ON THE STDIO HANDLER, which is why this is a sanitiser and not an exception guard.
+    Measured rather than assumed, because the first wording of this docstring asserted the raise
+    unconditionally and that is false here: CPython installs `surrogateescape` on stdout under
+    the C / C.UTF-8 locale — the GitHub-hosted runner's locale, and this repo's workflow sets no
+    `PYTHONIOENCODING` — so an unsanitised surrogate does NOT raise; it is written back out as
+    the raw undecodable byte, into the job log and into the `::warning::` annotation
+    (`python3 -c "import sys; print(sys.stdout.errors)"` prints `surrogateescape`; printing a
+    string carrying one escaped 0xE9 there exits 0 and emits that byte). Under a strict handler
+    (`PYTHONIOENCODING=utf-8:strict`) the same `print` raises `UnicodeEncodeError` and the run
+    exits 1. `printable()` removes both outcomes: round-tripping `surrogateescape` -> `replace`
+    turns those bytes into U+FFFD, so the output is well-formed UTF-8 for every consumer, and it
+    is the identity on valid UTF-8.
+    """
+    return text.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
 
 
 def resolve_rev(repo: Path, rev: str, role: str, hint: str = "") -> str:
@@ -1015,6 +1106,150 @@ def check_changelog_size(head_size: int, base_size: int, threshold: int,
                 f"({base_size:,} B -> {head_size:,} B), so R5 does not refuse it."]
 
 
+# --- R7: release flow step 13 — the live changelog is archived, and no archive is past the cliff
+
+def excess_sections(sections: list[str]) -> list[tuple[str, str | None]]:
+    """The released sections past MAX_RELEASED_SECTIONS, as (heading, version or None).
+
+    WHICH ones stay is decided by semver precedence, not by file order: the two that stay are the
+    newest two versions (on a release PR, the one it mints and the previous latest), and
+    `docs/PLAN.md § 4` owns the file's ordering, which this guard does not rule on. A heading that
+    names no version still counts — `changelog_sections` is R3's own reading of "released
+    section" and R7 does not invent a second one — and it ranks below every versioned one, so it
+    is excess whenever at least two versioned sections are present. Measured, because the first
+    wording of this line claimed it was ALWAYS excess and it is not:
+    `excess_sections(['Older notes', 'Even older', '[0.1.0] - 2026-08-20'])` keeps `'Older
+    notes'`, since `versioned + unversioned` has only one versioned entry to put in front of it.
+
+    ⚠ THE TWO THAT STAY ARE NOT ANCHORED TO THE HEAD'S `VERSION`, and that is accepted rather
+    than unnoticed. A changelog carrying a section for a version HIGHER than the one being
+    released, or the same version twice, makes "the newest two" the wrong two — the release's own
+    section could be named as excess. Both are malformed changelogs that R3 does not catch
+    (it asks only that a section for the new version EXISTS), and anchoring would mean teaching
+    R7 the head's `VERSION`, which off the release path does not exist. The count is still right,
+    so the refusal is still right; only the naming of which section to move could mislead, and
+    the author reading it has the file in front of them.
+    """
+    if len(sections) <= MAX_RELEASED_SECTIONS:
+        return []
+    versioned, unversioned = [], []
+    for heading in sections:
+        m = _SECTION_VERSION_RE.search(heading)
+        (versioned if m else unversioned).append((heading, m.group(1) if m else None))
+    versioned.sort(key=lambda hv: precedence_key(hv[1]), reverse=True)
+    ranked = versioned + unversioned
+    return ranked[MAX_RELEASED_SECTIONS:]
+
+
+def archive_file_for(version: str | None, tag_format: str) -> str:
+    """`docs/changelog/<tag>.md` — the tag composed from `tag_format`, exactly as R1 composes it.
+
+    Two degradations, both of them named rather than papered over. NO VERSION in the heading:
+    this guard does not rule on the heading FORMAT (`docs/PLAN.md § 4` owns it), so it says which
+    heading it means and what the two readings of it are. NO TAG FORMAT: off the release path the
+    format is deliberately not read (see the caller), so the version is named and the reader
+    composes the tag — a warning is not worth making `load_tag_format`'s exit 2 reachable there.
+    """
+    if version is None:
+        return (f"{CHANGELOG_ARCHIVE_DIR}/<tag>.md — this heading names no version, so no tag "
+                f"can be composed for it. A level-2 heading in {CHANGELOG_PATH} is a released "
+                f"section ({CHANGELOG_CANON_DOC} owns the format): either give it its version, "
+                f"or demote it below `##` if it is not one")
+    if not tag_format:
+        return f"{CHANGELOG_ARCHIVE_DIR}/<the {version} tag>.md"
+    return f"{CHANGELOG_ARCHIVE_DIR}/{tag_format.replace('{{version}}', version)}.md"
+
+
+def archive_sizes(repo: Path, sha: str) -> list[tuple[str, int]]:
+    """(path, bytes) for every `*.md` blob under the archive dir at `sha`.
+
+    Read from the TREE with `git ls-tree -l`, so the size is git's blob size — bytes, never a
+    decoded length — and no file is read at all. An absent directory lists nothing, which is a
+    real state (the archive did not exist before card#9813), not missing data.
+
+    ⚠ RECURSIVE (`-r`), though the documented layout is flat — one file per tag. Without it a
+    file in a subdirectory is not merely missed: the run PRINTS a count that does not include it,
+    so an oversize archive under `docs/changelog/superseded/` reads as `0 archive file(s)`. A
+    measurement that is wrong is worse than one that is absent, and the flag is the whole fix.
+
+    ⚠ AND NUL-SEPARATED (`-z`), which is the same defect one field over. `git ls-tree` C-QUOTES
+    any path outside safe ASCII — `docs/changelog/café.md` is emitted as
+    `"docs/changelog/caf\\303\\251.md"` — so a suffix test for `.md` is False and the file drops
+    out of the sizes AND out of the printed count, which then confidently reports one file where
+    there are two. `-z` makes git emit the path raw, and it closes the same hole for a path
+    containing a tab or a newline, which git quotes for the same reason. (Measured, because the
+    first wording of this line said `-z` stops a tab-bearing path being SPLIT at the tab: it
+    does not and could not. Without `-z` git emits `"docs/changelog/ta\\tb.md"` — quoted exactly
+    as the accented name is — and `partition` takes only the FIRST tab in any case. Same
+    conclusion, different mechanism.)
+
+    ⛔ AND ASKING FOR RAW BYTES MADE THE DECODE A LIVE FAILURE, which is why `_git` surrogate-
+    escapes. Quoting had been doing double duty: it also guaranteed pure-ASCII output, so
+    `text=True` could not raise. The flag that fixed the measurement created that hazard in the
+    same stroke — the sibling worth naming here rather than discovering twice.
+    """
+    r = _git(repo, "ls-tree", "-r", "-l", "-z", sha, "--", CHANGELOG_ARCHIVE_DIR + "/")
+    if r.returncode != 0:
+        raise Unmeasurable(
+            f"`git ls-tree -r -l -z {sha[:7]} -- {CHANGELOG_ARCHIVE_DIR}/` failed in {repo} "
+            f"({r.stderr.strip()}) — R7 cannot size the archive files it exists to watch.")
+    out = []
+    # `-z` terminates each ENTRY with NUL, so entries are split on it rather than on newlines
+    # (a path may contain one), and the first TAB still separates the metadata from the path.
+    for entry in r.stdout.split("\0"):
+        if not entry:
+            continue
+        meta, _, path = entry.partition("\t")
+        fields = meta.split()
+        if len(fields) == 4 and fields[1] == "blob" and path.endswith(".md"):
+            out.append((path, int(fields[3])))
+    return out
+
+
+def check_step13(excess: list[tuple[str, str | None]], section_count: int, tag_format: str,
+                 oversize: list[tuple[str, int]], is_release_pr: bool) -> list[str]:
+    """R7 — the messages for a skipped step 13 and for an archive file past the cliff.
+
+    The CALLER decides whether they are failures or warnings: on the release path they refuse,
+    and off it they warn, because a feature PR's author neither skipped step 13 nor can fix it in
+    their PR — the misdirected red card#9814 exists to end.
+    """
+    msgs = []
+    if excess:
+        moves = "; ".join(f"{h!r} -> {archive_file_for(v, tag_format)}" for h, v in excess)
+        msg = (f"R7 changelog archive: {CHANGELOG_PATH} at the head carries {section_count} "
+               f"released sections, and a release PR carries at most {MAX_RELEASED_SECTIONS} — "
+               f"the one it mints and the previous latest. Release flow step 13 was skipped "
+               f"after an earlier release. Move, verbatim: {moves}. Land that move on "
+               f"`{INTEGRATION_BRANCH}` in a tokenless docs PR ({CANON_DOC} § Release flow step "
+               f"13 says how, including the `cmp` check), then bring the release branch up to "
+               f"date with `{INTEGRATION_BRANCH}` — a move made ON the release branch never "
+               f"reaches `{INTEGRATION_BRANCH}`, and R6 reads its new archive file as residue.")
+        if not is_release_pr:
+            msg = (f"R7 WARNING (not a failure): {msg} This PR is not a release, so R7 does not "
+                   f"refuse it; the next release PR will be refused until the move lands.")
+        msgs.append(msg)
+    for raw_path, size in oversize:
+        # `printable` and not the raw name: `_git` surrogate-escapes a path git could not
+        # decode, and printing a surrogate raises where the read no longer does.
+        path = printable(raw_path)
+        msg = (f"R7 archive size: {path} is {size:,} B at the head, past the "
+               f"{CONTENTS_API_CLIFF_BYTES:,} B contents-API cliff R5 holds {CHANGELOG_PATH} "
+               f"under — past it the API returns the file's content as EMPTY rather than as an "
+               f"error. An archive file is born under that cliff, because every byte in it was "
+               f"part of an R5-held {CHANGELOG_PATH}; only a post-hoc edit to a released section "
+               f"can push it past, and released sections are immutable "
+               f"({CHANGELOG_CANON_DOC}). Revert the edit to that released section on "
+               f"`{INTEGRATION_BRANCH}`, and bring any open release branch up to date with "
+               f"`{INTEGRATION_BRANCH}` afterwards, for the same R6 reason as a step-13 move.")
+        if not is_release_pr:
+            msg = (f"R7 WARNING (not a failure): {msg} This PR is not a release, so R7 does not "
+                   f"refuse it; the next release PR will be refused while the file stays past "
+                   f"the cliff.")
+        msgs.append(msg)
+    return msgs
+
+
 # --- Entry point -----------------------------------------------------------------------------
 
 def _strip_ref(ref: str) -> str:
@@ -1233,6 +1468,30 @@ def run(args) -> int:
     problems += r5_problems
     notes += r5_notes
 
+    # --- R7: release flow step 13, refusing on the release path and warning off it ------------
+    sections = changelog_sections(changelog)
+    excess = excess_sections(sections)
+    archives = archive_sizes(repo, head_sha)
+    oversize = [(p, n) for p, n in archives if n > CONTENTS_API_CLIFF_BYTES]
+    largest = max((n for _, n in archives), default=0)
+    print(f"  measured:     {CHANGELOG_PATH} carries {len(sections)} released section(s) at the "
+          f"head (at most {MAX_RELEASED_SECTIONS} on a release PR); {CHANGELOG_ARCHIVE_DIR}/ "
+          f"holds {len(archives)} archive file(s), largest {largest:,} B "
+          f"(cliff {CONTENTS_API_CLIFF_BYTES:,} B)")
+    # ⛔ OFF THE RELEASE PATH THE TAG FORMAT IS NOT READ AT ALL, and the empty string here is the
+    # whole of that decision. The release path loaded it above (R1 needs it). Reading it here to
+    # NAME the archive file more prettily would make `load_tag_format`'s exit 2 reachable from a
+    # feature PR — and reachable in exactly the state R7 exists to detect, on every feature PR
+    # until the next release, from a rule that off this path can do no more than warn.
+    # `archive_file_for` names the version instead when it has no format.
+    r7 = check_step13(excess, len(sections), tag_format if is_release_pr else "", oversize,
+                      is_release_pr)
+    if is_release_pr:
+        applicable.append("R7")
+        problems += r7
+    else:
+        notes += r7
+
     for n in notes:
         print(f"::warning::release-pr-guard: {n}")
 
@@ -1257,7 +1516,8 @@ def run(args) -> int:
           f"had merged with no changelog entry at all.")
     print(f"The rules this enforces are {CANON_DOC} § Release flow steps 2, 3, 4 and 7 (R1-R3), "
           f"§ Release flow step 2's 'off `{INTEGRATION_BRANCH}`' read as a statement about the "
-          f"release's CONTENT (R6), and {CHANGELOG_CANON_DOC} (R4-R5). Fix the PR and push; "
+          f"release's CONTENT (R6), § Release flow step 13 (R7), and {CHANGELOG_CANON_DOC} "
+          f"(R4-R5). Fix the PR and push; "
           f"this gate re-runs on every push, and on a title, body or base change.")
     return 1
 
@@ -1266,7 +1526,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Refuse a PR into the release branch that is not shaped like a release "
                     "(head branch, VERSION bump, changelog section) or that ships less than the "
-                    "integration branch holds without declaring what it leaves out, and refuse "
+                    "integration branch holds without declaring what it leaves out or that "
+                    "skipped archiving the previous release (release flow step 13), and refuse "
                     "any PR that names a card without a changelog bullet or that pushes the "
                     "changelog past its size threshold.")
     ap.add_argument("--base-ref", required=True, help="the PR's base branch name")

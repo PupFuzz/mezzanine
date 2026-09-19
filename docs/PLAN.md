@@ -412,7 +412,7 @@ rule violations anyone could have committed at the time.
   both with the per-section census — `LC_ALL=C awk '/^## /{if(n!="")printf "%s\t%d\n",n,b; n=$0;
   b=0} {b+=length($0)+1} END{printf "%s\t%d\n",n,b}' docs/CHANGELOG.md` — and the live total with
   `wc -c docs/CHANGELOG.md`; the figures above are the reading on that date, not a standing claim.
-- **Archived releases — one file per tag, and why they need no gate of their own.** The live
+- **Archived releases — one file per tag, and why their only size check is a backstop.** The live
   `docs/CHANGELOG.md` holds `## [Unreleased]` and **exactly the latest released section**. Every
   older released section lives verbatim at `docs/changelog/<tag>.md`, one file per tag
   (`v0.2.0.md`, `v0.3.0.md`, `v0.4.0.md` at the first archive, card#9813) — named by the tag
@@ -423,18 +423,24 @@ rule violations anyone could have committed at the time.
   a file whose final newline had been stripped).
   ✅ **Archiving is release flow step 13**, not a periodic act — `docs/VERSIONING.md § Release
   flow` owns it, including why it lands on `dev` in its own tokenless docs PR rather than on the
-  release branch. Nothing enforces step 13; its omission surfaces as R5's notice on some later
-  PR.
-  ⭐ **The archive files carry no size gate, and that is an invariant rather than an omission.**
+  release branch.
+  ⛔ **Enforced by `bin/release-pr-guard.py` R7** on the release PR that follows: its
+  `docs/CHANGELOG.md` may carry at most TWO released sections — the one it mints and the previous
+  latest — and the refusal names the `docs/changelog/<tag>.md` file each excess section belongs
+  in. Off the release path R7 only warns, because a feature PR's author did not skip the step.
+  Before card#9814 the omission surfaced only as R5's notice on some later PR by some other
+  author.
+  ⭐ **The archive files need no size gate of their own, and that is an invariant rather than an
+  omission.**
   Every byte in `docs/changelog/<tag>.md` was part of `docs/CHANGELOG.md` at the release commit
   that produced it, where R5 held the whole file under the cliff — so one section plus a
   five-line header is necessarily under the cliff too, and the file never receives bytes again
   because a release **collects** entries rather than authoring them. The invariant rests on
   **released sections being immutable**, which this repo states here for the first time: a
   released section is as fixed as the tag that carries it, and editing one post hoc is the single
-  way to push an archive file at a cliff nothing is watching. That residual is left to review on
-  purpose; a mechanical backstop (`find docs/changelog -size +1000k`) is recorded on card#9814
-  with R7, not built.
+  way to push an archive file at the cliff. That residual has a mechanical backstop in R7's
+  second clause (card#9814): a `docs/changelog/*.md` past R5's own contents-API cliff constant is
+  refused on a release PR and warned on any other.
   ⭐ **Enumerate the changelog's readers by derivation, never from a remembered directory list:**
   `grep -rn -i changelog bin tools .github docs CLAUDE.md README.md fleet-reporter resources
   server --exclude-dir=vendor | grep -v '^docs/CHANGELOG.md:'`. The `-i` is load-bearing — the
