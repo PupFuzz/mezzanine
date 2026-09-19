@@ -26,6 +26,28 @@ verbatim by release flow step 13 (`docs/VERSIONING.md`). R5 gates this file's si
 
 ## [Unreleased]
 
+- **card#9816** — **`bin/deploy.sh`'s three phase-A scratch-file failures are now refused as themselves,
+  with the `⛔ REFUSED` banner and the "Nothing was changed. The previous release is still serving."
+  promise.** Three temporary files this script created inside phase A had no unified error path: A13's
+  work directory for its isolation check, and git_ref_oid's and git_commit_of's stderr files for
+  capturing git's diagnostics on a failed read. When `mktemp` failed — measured on a host with TMPDIR
+  unset and /tmp full, or TMPDIR pointing at a directory that does not exist — two of them refused
+  with a WRONG CAUSE because the failure went undetected: git_ref_oid and git_commit_of are called
+  from inside an `if` or `||`, where `set -e` does not apply, so the script carried on with an empty
+  path and refused on a cause it never established ("'main' does not resolve to a commit on origin" for
+  a ref that is in the checkout, "git could not resolve the tag …" for a tag git never got to peel).
+  A13's failure was worse: `mktemp`'s failure exits the phase with status 1 — the code the exit table
+  reserves for a REFUSED — but no banner fired, so the operator saw only the exit code with no
+  description. All three now route through `not_established`, the one exit that reads the phase (A
+  REFUSES with the banner and promise, B takes the in-window failure path and warns with the cause
+  named); `scratch_file` and `scratch_dir` wrap `mktemp` and call `not_established` on failure, naming
+  the scratch file and its purpose rather than the git step that would have run with an empty path. The
+  three sites join `git_read_call_site`'s family so `failed_line:` in the refusal still names the
+  caller. **Each change was seen to red on the old code** — the three fixtures exercise a real-mktemp
+  pass-through that fails after N calls, and the whole run with TMPDIR gone to a missing directory,
+  generating the three refused headlines and the empty-path false causes that the old code carried
+  through.
+
 - **card#9831** — **`bin/deploy-gate-inputs.sh` answers a mistyped command line with exit 2 and its
   `⛔` banner, which is its word for "this check could not run".** `--ref` with no value, or with an
   empty one, used to fail inside bash's own `${2:?}` expansion: a shell error that the script's ERR
