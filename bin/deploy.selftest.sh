@@ -155,6 +155,17 @@ before() {
 }
 section() { printf '\n── %s\n' "$1"; }
 
+# no_shell_death <label> — the run printed no bash DIAGNOSTIC of its own. ⛔ THIS IS THE BASH-FLOOR
+# TRIPWIRE, and it is the only assertion in this file whose job is to fail on a DIFFERENT INTERPRETER
+# rather than on different code (card#9616). `"${a[@]}"`/`"${a[*]}"` over an empty array under `set -u`
+# is an `unbound variable` death below bash 4.4, and some of those sites do not change what the deploy
+# DECIDES — checkout_lock_holders' is inside a `$( )`, so on an old bash the subshell dies, the parent
+# reads an empty answer and carries on. No assertion about the deploy's verdict can see that; this one
+# can. At or above BASH_FLOOR it always passes, which is the point: the run that makes it fire is
+# `deploy-selftest.yml`'s below-floor control, and every case carrying it widens that control's
+# denominator past the one construct it started with.
+no_shell_death() { hasnt "$1: no shell diagnostic of bash's own (bash-floor tripwire)" "unbound variable" "$2"; }
+
 # ── stubs on PATH ─────────────────────────────────────────────────────────────────────────────
 # ⛔ EVERY `REAL_…` RESOLVES HERE, BEFORE THE PATH EXPORT BELOW. After it, `command -v <name>` finds
 # this suite's own stub as soon as one is written, and a stub that execs itself never returns.
@@ -533,6 +544,7 @@ unlogged "control: --dry-run mutates nothing (no artisan down)" "artisan down"
 unlogged "control: --dry-run writes no crontab" "crontab -$"
 hasnt "control: a document root with no .user.ini is not warned about" "no document root at" "$OUT"
 eq  "control: --dry-run left HEAD where it was" "$V1" "$(git -C "$ROOT" rev-parse HEAD)"
+no_shell_death "control" "$OUT"
 
 section "REFUSAL — the host is not in a deployable state"
 # ⛔ THE REFUSAL CONTRACT IS ASSERTED HERE, ONCE, FOR EVERY CASE THAT USES THIS (card#9646).
@@ -2760,6 +2772,16 @@ lockfile_versionless() { printf '{\n    "name": "server"\n}\n' > "$1/server/pack
 mkfix npm_lockfile_versionless lockfile_versionless
 run_refusal "a lockfile with no lockfileVersion at all" \
   "declares lockfileVersion '(none)', which A12 cannot map to an npm floor" --dry-run
+# …and an EMPTY lockfile is a different fact from one whose version this gate does not know: the
+# mapping refusal's remediation ("teach A12 the new lockfile version") is the wrong instruction for a
+# file with nothing in it. A6b draws the same line about an empty bin/deploy.sh.
+lockfile_empty() { : > "$1/server/package-lock.json"; }
+mkfix npm_lockfile_empty lockfile_empty
+run_refusal "an empty server/package-lock.json" "server/package-lock.json at" --dry-run
+has "empty lockfile: refused as empty" "is empty" "$OUT"
+hasnt "empty lockfile: not reported as a lockfileVersion the gate does not know" \
+  "cannot map to an npm floor" "$OUT"
+hasnt "empty lockfile: and not as a MISSING one, which it is not" "is missing from" "$OUT"
 
 mkfix npm_version_fails; export STUB_NPM_VERSION_RC=1
 run_refusal "an npm that cannot answer --version" "\`npm --version\` exited 1" --dry-run
@@ -2768,6 +2790,51 @@ has "npm --version failed: says what is NOT established, rather than assuming a 
 mkfix npm_version_garbage; export STUB_NPM_VERSION='not a version'
 run_refusal "an npm whose --version is not a version" \
   "\`npm --version\` printed 'not a version', which is not a version" --dry-run
+
+# ── the floor's DENOMINATOR: the other empty-array sites, each reached by a fixture ────────────
+# ⛔ THE BACKSTOP HAD A DENOMINATOR OF ONE. The header of bin/deploy.sh declares the rule "a new
+# construct stays at or below this floor, or the floor MOVES", and `deploy-selftest.yml`'s
+# below-floor run is the only thing enforcing it. Until these cases the ONLY empty-array expansion
+# any fixture reached was A7's `ref_note` — so guard that one site and the 4.3 control goes green,
+# the job reports that the floor can be LOWERED, and a first deploy on an older host then meets
+# `checkout_lock_holders` for real, in the window, with the app down. That is the exact class this
+# card exists to move out of the window, reintroduced by its own backstop.
+#
+# ⚠ BOTH CASES ARE REAL SCENARIOS THIS SUITE WAS MISSING, not contrivances built for the tripwire —
+# a FIRST deploy (D-08: the prod host has never been deployed to, so this is the one run that is
+# certain to happen) and a `.env` with nothing in it. That is why each carries its own assertions
+# about what the deploy DECIDES, and would be worth keeping with no floor in the picture at all.
+
+# A server/.env with no lines at all — a real A5 case this suite did not have, and the one that
+# RULED OUT a supposed third empty-array site rather than adding one. `ENV_LINES` looks like the
+# clearest hazard of the three: env_get and env_file_scan both loop over it unguarded. It is not
+# one. MEASURED (`env_lines_load` over a zero-byte file): `${#ENV_LINES[@]}` is 1, not 0, because
+# the split is `<<<`, which appends a terminator — so a file with nothing in it is ONE empty line,
+# and the array is only ever `()` on the UNREADABLE / READ_FAILED paths, which both loops test
+# before they run. ⇒ This case passes on bash 4.3 as well as 4.4, deliberately and by measurement;
+# it is not a floor tripwire and is not counted as one. What it does assert is that an empty file
+# refuses on the RIGHT cause — unlike the card#9610 fixtures, where "APP_ENV is 'unset'" was a
+# cause nothing had established, here it is exactly what the file says.
+mkfix env_zero_lines; : > "$ROOT/server/.env"
+eq "fixture: the .env really is zero bytes" 0 "$(wc -c < "$ROOT/server/.env")"
+run_refusal "a server/.env with no lines at all" "APP_ENV is 'unset', not 'production'" --dry-run
+no_shell_death "zero-line .env" "$OUT"
+
+# `${files[@]}` in checkout_lock_holders — a FIRST deploy, the D-08 scenario this suite had no case
+# for at all: nothing is running, so no daemon lock file exists and the glob behind that array
+# matches nothing. The deploy must still stop nothing, start everything, and say so.
+mkfix first_deploy
+eq "fixture: a first deploy really starts with no daemon lock file" "" \
+  "$(compgen -G "$ROOT/server/storage/framework/daemon-*.lock" || true)"
+run
+eq  "first deploy: exit 0" 0 "$RC"
+has "first deploy: reports success" "✔ DEPLOYED" "$OUT"
+has "first deploy: says it stopped nothing, rather than reporting pids it never saw" \
+  "stopped — pid(s) none were running" "$OUT"
+no_shell_death "first deploy" "$OUT"
+for c in "${SUPERVISED_DAEMONS[@]}"; do
+  neq "first deploy: $c holds its lock afterwards" "" "$(fuser "$(supervision_lock "$ROOT" "$c")" 2>/dev/null | tr -d ' ')"
+done
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 section "NO ROOT — nothing in the deploy path escalates or reaches systemd"
@@ -2895,6 +2962,7 @@ before "order: daemons relaunched before the app is up" "php artisan mezzanine:f
 before "order: smoke check after the app is up"         "artisan up" "curl "
 OUTL="$(printf '%s\n' "$OUT" | grep -n -e 'since the last code write' -e 'Maintenance window: CLOSING' | cut -d: -f1 | tr '\n' ' ')"
 eq  "order: the opcache wait ends before the window closes" "ascending" "$(set -- $OUTL; [ $# -eq 2 ] && [ "$1" -lt "$2" ] && echo ascending || echo "lines: $OUTL")"
+no_shell_death "full run" "$OUT"
 hasnt "full run leaks no APP_KEY"                       "$FAKE_KEY" "$OUT"
 hasnt "full run leaks no DB password"                   "$FAKE_PW"  "$OUT"
 hasnt "full run never mentions systemctl"               "systemctl" "$OUT"
@@ -3060,6 +3128,7 @@ unlogged "adds a daemon, dry run: the crontab was not written"    "crontab -$"
 start_old_daemons
 run
 eq  "adds a daemon: exit 0"                                       0 "$RC"
+no_shell_death "adds a daemon" "$OUT"
 has "adds a daemon: the crontab carries its every-minute entry"   "* * * * * $EXTRA_CMD" "$(cat "$STUB_CRONTAB_FILE")"
 has "adds a daemon: …and its @reboot entry"                       "@reboot $EXTRA_CMD" "$(cat "$STUB_CRONTAB_FILE")"
 neq "adds a daemon: a process holds its lock"                     "" "$(fuser "$ROOT/server/storage/framework/daemon-extra.lock" 2>/dev/null | tr -d ' ')"
@@ -3125,12 +3194,14 @@ mkfix recover_after_failure drop_daemon
 start_old_daemons
 STUB_FAIL_RE='artisan migrate'; run
 eq "recovery: the first run fails in the window (exit 2)" 2 "$RC"
+no_shell_death "recovery, the failed window" "$OUT"
 for pid in $OLD_PIDS; do
   eq "recovery: the previous daemon pid $pid still runs after the failed window" "alive" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
 done
 rm -f "$ROOT/.deploy-failed"; STUB_FAIL_RE=''
 run --redeploy
 eq  "recovery: the re-run deploys (exit 0)"                   0 "$RC"
+no_shell_death "recovery, the re-run" "$OUT"
 for pid in $OLD_PIDS; do
   eq "recovery: the previous daemon pid $pid is gone" "gone" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
 done

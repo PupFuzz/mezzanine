@@ -147,15 +147,36 @@ set -Eeuo pipefail
 # ⛔ IT IS MEASURED, AND A CONSTRUCT SCAN IS NOT HOW IT WAS FOUND. Scanning this file for
 # version-gated SYNTAX finds `mapfile` (bash 4.0) and `exec {fd}<` (4.1) and stops — and both are a
 # whole minor below the truth, because the binding construct is not syntax at all. `"${a[@]}"` over
-# an array with NO elements, under `set -u`, is an `unbound variable` DEATH on bash before 4.4, and
-# this script has such expansions: `"${ref_note[@]}"` at A7, empty for any ordinary ref name, and
-# `"${ENV_LINES[@]}"` in env_lines_load's two loops, empty for a `server/.env` with no lines.
-# ⛔ AND WHETHER A GIVEN EXPANSION CAN BE EMPTY IS A WHOLE-PROGRAM PROPERTY, NOT A SYNTACTIC ONE —
-# which is the second half of why a scan cannot answer this. The file's other array expansions
-# (`why`, `store_read_tail`, `bad`, `FPM_NOT_READY`, `STREAM_NOT_READY`) are each either
-# initialised non-empty or guarded by a `${#…[@]} -gt 0`, and telling those apart from the two
-# above takes reading the program, not matching a pattern over it. So nothing here scans: the
-# floor is where the SUITE was seen to pass and the minor below it is where it was seen to FAIL.
+# an array with NO elements, under `set -u`, is an `unbound variable` DEATH on bash before 4.4 —
+# `"${a[*]}"` exactly as much as `"${a[@]}"` (measured, 4.3.0 vs 4.4.0; `"${!a[@]}"` is SAFE on both,
+# which is why the `${!…[@]}` loops here are not in this class) — and this script has such
+# expansions. The two the self-test is known to REACH with the array empty, each reded on 4.3 by a
+# case of its own — which is how they are known to be reached, rather than by inspection:
+#   · `"${ref_note[@]}"`   A7's refusal, empty for any ordinary ref name. The shell DIES, and the
+#     refusal it was in the middle of printing never appears: exit 1, no banner, no promise.
+#   · `"${files[@]}"`      checkout_lock_holders, empty on a FIRST deploy, when no daemon lock file
+#     exists yet. Measured: this one does NOT kill the deploy. The call site is inside a `$( )`, so
+#     the SUBSHELL dies, the parent reads an empty answer and carries on reporting that nothing was
+#     running — which happens to be true on a first deploy. Only the self-test's `no_shell_death`
+#     tripwire can see it. `restart_daemons` reads the same array again in its own body, where an
+#     empty one WOULD kill the run; no path reaches THAT one empty, because the relaunch above it
+#     has created the lock files by then.
+#
+# ⛔ WHETHER A GIVEN EXPANSION CAN BE EMPTY IS A WHOLE-PROGRAM PROPERTY, NOT A SYNTACTIC ONE, which
+# is the second half of why a scan cannot answer this. `bad`, `missing`, `stale`, `present`, `hs`
+# and the rest are the same SYNTAX, and are guarded by a `${#…[@]} -gt 0` or initialised non-empty.
+# `ENV_LINES` reads like the clearest case of all and is NOT one: `env_lines_load` splits with `<<<`,
+# which appends a terminator, so even a ZERO-BYTE `.env` yields one (empty) element — measured — and
+# the only paths that leave the array `()` set ENV_LINES_UNREADABLE or ENV_LINES_READ_FAILED, which
+# both loops test before they run.
+#
+# ⚠ SO THE LIST ABOVE IS NOT A UNIVERSAL, AND NOTHING RE-DERIVES IT. It is a hand audit, and hand
+# audits of exactly this question have now been wrong in both directions: the first named three
+# guarded sites as hazards and missed `files`; the second added `ENV_LINES`, which the measurement
+# above then removed. Do not read it as the population. What IS mechanical is the pair of CI runs
+# below — they exercise whatever sites the suite reaches, enumerated or not, and `no_shell_death`
+# in the self-test is what makes a site visible when it degrades instead of dying. So nothing here
+# scans: the floor is where the SUITE was seen to pass and the minor below it is where it FAILED.
 # ⛔ AND NO TRIPWIRE TABLE SHIPS EITHER, deliberately. A construct table is a list, every list of
 # this kind measured so far has been incomplete, and an incomplete one is worse than none: it reds
 # on the constructs somebody remembered and stays SILENT on the one that actually moves the floor,
@@ -168,11 +189,12 @@ set -Eeuo pipefail
 # `bash-floor` job RE-RUNS this pair on every PR and its log is the live reading; what is recorded
 # is what each run answered and why:
 #   · bash 4.4  — `bin/deploy.selftest.sh` passed in full.
-#   · bash 4.3  — the same suite on the same tree FAILED, and every failing assertion was A7's
-#     `'<ref>' does not resolve to a commit` refusal DYING on `"${ref_note[@]}"` instead of
-#     refusing: no `⛔ REFUSED` banner and no "Nothing was changed" promise, with the script
-#     exiting 1 — the exact code the table above says means *refused, nothing was touched*. That
-#     is the failure this floor exists to move to before anything runs.
+#   · bash 4.3  — the same suite on the same tree FAILED, on the two independent sites above: A7's
+#     `'<ref>' does not resolve to a commit` refusal DYING on `"${ref_note[@]}"` instead of refusing
+#     — no `⛔ REFUSED` banner, no "Nothing was changed" promise, exiting 1, which is the exact code
+#     the table above says means *refused, nothing was touched* — and the FIRST-DEPLOY case's
+#     tripwire, on checkout_lock_holders. That first shape is the failure this floor exists to move
+#     to before anything runs; the second is the one no verdict-shaped assertion could have seen.
 # The mechanism on its own, same two binaries: `set -u; a=(); for x in "${a[@]}"; do :; done`
 # prints `a[@]: unbound variable` on 4.3 and completes on 4.4.
 #
@@ -236,12 +258,12 @@ REMOTE="${MEZZ_REMOTE:-origin}"
 HOST_PHP_VERSION="$(php -r 'echo PHP_VERSION;' 2>/dev/null || true)"
 FPM_BIN="${MEZZ_FPM_BIN:-php-fpm$(printf '%s' "$HOST_PHP_VERSION" | cut -d. -f1,2)}"
 
-# The bash running THIS PROCESS, as <major>.<minor> — what A1 and A6b hold to a BASH_FLOOR. It is
-# read from the interpreter itself rather than from `bash --version`, because the interpreter is the
-# thing that will die. ⚠ It speaks for the WINDOW too, and only conditionally: phase B re-execs the
-# deployed release's bin/deploy.sh through its `#!/usr/bin/env bash`, which is the `bash` on PATH —
-# the same one, when this script is run as `bin/deploy.sh` (USAGE). Run through an explicit
-# interpreter that is not PATH's bash, the window's bash is not the one measured here.
+# The bash running THIS PROCESS, as <major>.<minor> — what A1 and A6b hold to a BASH_FLOOR. Read from
+# the interpreter itself rather than from `bash --version`, because the interpreter is the thing that
+# will die. It speaks for the MAINTENANCE WINDOW too, unconditionally, and that is a property of the
+# re-exec rather than a hope about PATH: phase B hands this very interpreter over (`exec "$BASH" …`,
+# phase_b_open_window), so the shell the window runs on is the shell measured here. It was NOT so
+# while the re-exec went through the target's `#!/usr/bin/env bash`; that is what changed, and why.
 HOST_BASH_VERSION="${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
 
 # The supervised daemons, their locks and the exact command cron runs for each — stated ONCE, in
@@ -1768,8 +1790,8 @@ phase_a() {
     "file records what each run answered). On an older bash it dies on its own constructs partway" \
     "through, and phase B's are inside the maintenance window, with the app down." \
     "" \
-    "Run this deploy with bash $BASH_FLOOR or later. \`bash --version\` names the one on PATH, which is" \
-    "also the one the re-exec after the checkout runs the deployed release's copy with."
+    "Run this deploy with bash $BASH_FLOOR or later. Whichever interpreter you run it with is the one" \
+    "measured here AND the one the re-exec hands the maintenance window to, so there is one bash to fix."
   local missing=()
   for c in git php composer npm curl crontab flock fuser setsid ps cgi-fcgi timeout; do
     command -v "$c" >/dev/null 2>&1 || missing+=("$c")
@@ -2609,6 +2631,18 @@ gate_a12_asset_lockfile() {
     "The prod asset build must be reproducible: package.json floats (vite ^8, tailwind ^4)," \
     "so without a lockfile the same commit can build different assets on different days." \
     "Commit the lockfile (\`npm install\` in server/, commit server/package-lock.json)."
+  # …and an EMPTY one is refused as itself, not folded into "a lockfileVersion this gate cannot map"
+  # (card#9616 review r2). The mapping refusal tells the operator to teach A12 a new lockfile version
+  # from npm's docs, which is the wrong instruction for a file that declares nothing because it holds
+  # nothing: what they have is a truncated or half-written lockfile, and `npm ci` would refuse it too.
+  # A6b makes the same distinction about bin/deploy.sh, for the same reason.
+  [ -n "$lock" ] || refuse \
+    "server/package-lock.json at $short is empty" \
+    "\`npm ci\` reads that file in phase B, inside the maintenance window, and an empty one is not a" \
+    "lockfile it can install from — nor does it declare the lockfileVersion this gate reads to decide" \
+    "which npm the release needs. This is NOT \"a lockfileVersion A12 does not know\": there is no" \
+    "version in it to know, and nothing to teach this gate." \
+    "Regenerate it (\`npm install\` in server/) and commit the result."
   # …AND AN NPM THAT CAN INSTALL IT. `npm ci` runs in phase B, inside the window: an npm too old
   # for the release's lockfile fails there with the app already down. The floor is read from the
   # TARGET tree, because a release that MOVES to a newer lockfile format is exactly the one whose
@@ -2840,7 +2874,14 @@ MARKER_END
   # NOT handed over: which daemons to stop. The lock files say that (restart_daemons).
   trap - ERR
   export MEZZ_DEPLOY_IN_WINDOW=1 MEZZ_DEPLOY_ROOT="$DEPLOY_ROOT" MEZZ_DEPLOY_REVALIDATE_FLOOR_S="$FPM_REVALIDATE_S"
-  exec "$DEPLOY_ROOT/bin/deploy.sh" --internal-post-checkout "$SHA"
+  # ⛔ THROUGH `$BASH` — THIS PROCESS'S OWN INTERPRETER — NOT THE SHEBANG (card#9616). It used to be
+  # `exec "$DEPLOY_ROOT/bin/deploy.sh" …`, which runs the target's `#!/usr/bin/env bash`: the bash on
+  # PATH, which need not be the one phase A ran under. A1 and A6b hold THIS process's bash to the two
+  # floors, so on `somebash bin/deploy.sh`, with an older bash first on PATH, both gates would pass and
+  # the window would then run on the bash neither of them measured — and die on the constructs the
+  # floors exist to keep out, with the app down. Handing the interpreter over makes the thing the gates
+  # measured the thing that runs, rather than adding a third gate to check the difference.
+  exec "$BASH" "$DEPLOY_ROOT/bin/deploy.sh" --internal-post-checkout "$SHA"
 }
 
 # ── the daemons: a restart without systemd ─────────────────────────────────────────────────────

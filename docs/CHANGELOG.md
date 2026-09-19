@@ -75,6 +75,28 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   single-quoted `$BASH_FLOOR` that must reach the sourced shell unexpanded. Annotating only the new
   ones while their siblings stay unannotated would put two conventions in one file; discharging the
   whole class is its own round.
+  **Review round 2 found the backstop had a denominator of one, and that is the substantive fix in
+  it.** Only ONE empty-array site — A7's `ref_note` — was reached by any fixture, so guarding that
+  one site would have turned the below-floor control green and had the job report that the floor
+  could be lowered, while a first deploy on an older host still met `checkout_lock_holders` in the
+  window. The suite gains two scenarios it had never covered: a **FIRST deploy** (D-08 — the prod
+  host has never been deployed to, so it is the one run certain to happen), which is where that
+  array is empty, and a **`server/.env` with no lines**. A `no_shell_death` tripwire rides on those
+  and on the widest existing runs, because the first-deploy site does not change what the deploy
+  DECIDES — its expansion is inside a `$( )`, so on an old bash the subshell dies and the parent
+  reads an empty answer — and no verdict-shaped assertion can see that. The declared population of
+  such sites is now stated as a HAND AUDIT that nothing re-derives, with both of its past errors
+  recorded: one direction called three guarded sites hazards, the other added `ENV_LINES`, which
+  measurement removed (`env_lines_load` splits with `<<<`, so a zero-byte `.env` is one empty line
+  and the array is never `()` where the loops read it). The control's own assertions were two
+  decorations: it now asserts that the `sed` lowering `BASH_FLOOR` in the below-tree actually
+  applied — without it both gates refuse every fixture and the suite reds for the gate's reason,
+  which is what lowering the floor exists to prevent — and it requires the suite's own
+  `N assertions, M FAILED` line rather than accepting any non-zero exit, so a run that broke for an
+  unrelated reason cannot pass for a measurement. **The maintenance window now runs the interpreter
+  the gates measured**: the re-exec hands over `$BASH` rather than going through the deployed
+  release's `#!/usr/bin/env bash`, which closes the gap where `somebash bin/deploy.sh` passed both
+  floors and then died in the window on PATH's older shell.
 
 - **card#9814** — **`release-pr-guard` R7 refuses a release PR that skipped archiving the previous
   release (release flow step 13), so the red lands on the release that owes the step.** Before it,

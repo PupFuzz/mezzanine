@@ -108,7 +108,14 @@ jobs:
           floor="$( . ./bin/deploy.sh >/dev/null 2>&1; bash_floor_declared < bin/deploy.sh )"
           [ -n "$floor" ] || { echo "::error::bin/deploy.sh declares no BASH_FLOOR — nothing to measure, and an empty derivation is never a pass"; exit 1; }
           major="${floor%%.*}"; minor="${floor#*.}"
-          case "$floor" in [0-9]*.[0-9]*) ;; *) echo "::error::BASH_FLOOR='$floor' is not <major>.<minor>"; exit 1 ;; esac
+          # A THREE-COMPONENT FLOOR IS NAMED AS ITSELF. `4.4.1` leaves `minor` as `4.1`, which fails
+          # the integer test below and would have been reported as "ends in .0" — a defect that is
+          # not the one present. It still fails closed; it now fails closed saying the true reason.
+          case "$floor" in
+            *.*.*) echo "::error::BASH_FLOOR='$floor' has three components; this job compares <major>.<minor>, which is what A1 and A6b compare too. Declare the floor as <major>.<minor>."; exit 1 ;;
+            [0-9]*.[0-9]*) ;;
+            *) echo "::error::BASH_FLOOR='$floor' is not <major>.<minor>"; exit 1 ;;
+          esac
           # The control is the minor BELOW. A floor at `.0` has no predecessor this arithmetic can
           # name, so it stops rather than measuring the wrong pair.
           [ "$minor" -gt 0 ] || { echo "::error::BASH_FLOOR=$floor ends in .0 — name its predecessor release here deliberately"; exit 1; }
@@ -175,15 +182,33 @@ jobs:
           set -Eeuo pipefail
           rm -rf /tmp/below-tree && cp -a "$GITHUB_WORKSPACE" /tmp/below-tree
           sed -i "s/^BASH_FLOOR=.*/BASH_FLOOR=$BELOW/" /tmp/below-tree/bin/deploy.sh
-          grep -n '^BASH_FLOOR=' /tmp/below-tree/bin/deploy.sh
+          # ⛔ ASSERTED, NOT PRINTED. If that `sed` ever stops matching, A1 and A6b refuse every
+          # fixture (mkfix copies the working-tree deploy.sh into the fixture's target commit, so the
+          # two floors move together), the suite reds FOR THE GATE'S REASON — the one thing lowering
+          # the floor exists to avoid — and a bare `grep -n` would print the untouched line and exit 0
+          # while this step declared the control discriminating. `-x` so a line that merely CONTAINS
+          # the value cannot satisfy it.
+          grep -qx "BASH_FLOOR=$BELOW" /tmp/below-tree/bin/deploy.sh \
+            || { echo "::error::the below-floor tree still does not declare BASH_FLOOR=$BELOW, so this run would measure the GATE refusing rather than the constructs failing. The sed above did not match; fix it before reading anything into the result."; grep -n '^BASH_FLOOR=' /tmp/below-tree/bin/deploy.sh || true; exit 1; }
           "/tmp/bash-$BELOW/bin/bash" -c 'echo "measuring with: $BASH_VERSION"'
           rc=0
-          ( cd /tmp/below-tree && PATH="/tmp/path-$BELOW:$PATH" "/tmp/bash-$BELOW/bin/bash" bin/deploy.selftest.sh ) || rc=$?
+          ( cd /tmp/below-tree && PATH="/tmp/path-$BELOW:$PATH" "/tmp/bash-$BELOW/bin/bash" bin/deploy.selftest.sh ) \
+            > /tmp/below-run.log 2>&1 || rc=$?
+          tail -40 /tmp/below-run.log
           if [ "$rc" -eq 0 ]; then
             echo "::error::bin/deploy.sh's self-test PASSED on bash $BELOW, so $FLOOR is not the floor — it is merely a version that works. Lower BASH_FLOOR to what the suite really needs, or find the construct that should have failed here."
             exit 1
           fi
-          echo "control discriminated: the suite exited $rc on bash $BELOW, and 0 on bash $FLOOR — the floor is where it starts passing."
+          # ⛔ AND THE OUTCOME IS ASSERTED, NOT THE EXIT CODE. Any non-zero rc would otherwise read as
+          # discrimination — including a run that died for a reason with nothing to do with bash's
+          # version (a harness construct, a runner image change, a tool that stopped being installed).
+          # The suite's own summary line is the evidence that it RAN and that its ASSERTIONS are what
+          # failed; a run that never reached the summary measured nothing.
+          grep -Eq 'assertions, [0-9]+ FAILED$' /tmp/below-run.log \
+            || { echo "::error::the below-floor run exited $rc without reaching its own 'N assertions, M FAILED' summary, so it did not measure the floor — it broke. The tail above is what it printed; this is never a pass."; exit 1; }
+          echo "control discriminated: on bash $BELOW the suite ran and its own assertions failed — $(grep -Eo 'assertions, [0-9]+ FAILED$' /tmp/below-run.log) — where on bash $FLOOR the same suite passed in full."
+          echo "the constructs the control reds on (a denominator of one would make the floor unfalsifiable):"
+          grep -E '^  FAIL ' /tmp/below-run.log | sed 's/ —.*//' | sort -u
 
   # ── the mirror, held against the parser it mirrors ──────────────────────────────────────────────────
   # `bin/deploy.sh` re-implements, in bash, the part of vlucas/phpdotenv that decides where a `.env` line

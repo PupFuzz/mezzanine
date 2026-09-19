@@ -63,7 +63,7 @@ bin/deploy.selftest.sh	SC2016	19
 bin/deploy.selftest.sh	SC2034	2
 bin/deploy.selftest.sh	SC2086	2
 bin/deploy.selftest.sh	SC2217	1
-bin/deploy.selftest.sh	SC2317	71
+bin/deploy.selftest.sh	SC2317	72
 bin/deploy.sh	SC1003	5
 bin/deploy.sh	SC2016	3
 bin/deploy.sh	SC2034	1

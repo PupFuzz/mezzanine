@@ -646,21 +646,33 @@ rule violations anyone could have committed at the time.
     **measured, not read off the constructs**. A scan for version-gated syntax finds `mapfile` (4.0) and
     `exec {fd}<` (4.1) and stops a whole minor short, because the binding construct is not syntax:
     `"${a[@]}"` over an EMPTY array under `set -u` is an `unbound variable` death on every bash before
-    4.4, and the script has two such expansions — A7's `ref_note`, empty for any ordinary ref name, and
-    `env_lines_load`'s `ENV_LINES`, empty for a `.env` with no lines. Which of a file's array expansions
-    can be empty is a whole-program property rather than a syntactic one, which is the second reason a
-    scan cannot answer this question. Measured, on bash built from the GNU
-    release tarballs: at 4.4 the self-test passes in full; at 4.3 it fails, and every failure is A7's
-    *"does not resolve to a commit"* refusal DYING on `"${ref_note[@]}"` — exit 1 with no `⛔ REFUSED`
-    banner and no *"Nothing was changed"* promise, which is the exit code that MEANS "refused, nothing
-    was touched" reached by a death. `.github/workflows/deploy-selftest.yml`'s `bash-floor` job re-runs
-    that pair on every PR — the floor must pass, **and the minor below it must fail** — so the number
-    stays a measurement and cannot quietly become a claim. Both the SERVING copy (A1) and the copy the
-    RELEASE ships (A6b) are held to a floor: after `artisan down` the deploy re-execs the target's
+    4.4 — and `"${a[*]}"` equally, while `"${!a[@]}"` is safe on both, all three measured. **Which of a
+    file's array expansions can ever BE empty is a whole-program property, not a syntactic one**, which
+    is the second reason a scan cannot answer the question — and the reason no list of the sites is
+    written down here. Two hand audits of exactly that population were wrong in opposite directions:
+    the first called three guarded sites hazards and missed `checkout_lock_holders`; the second added
+    `env_lines_load`'s `ENV_LINES`, which measurement then removed (the split is `<<<`, which appends a
+    terminator, so even a zero-byte `.env` is one empty line and the array is never `()` on a path the
+    loops reach). **The mechanical check is the pair of CI runs, not an enumeration.** Measured, on bash
+    built from the GNU release tarballs: at 4.4 the self-test passes in full; at 4.3 it fails on two
+    independent sites — A7's *"does not resolve to a commit"* refusal DYING on `"${ref_note[@]}"` (exit 1
+    with no `⛔ REFUSED` banner and no *"Nothing was changed"* promise, which is the exit code that MEANS
+    "refused, nothing was touched" reached by a death), and a FIRST deploy, where
+    `checkout_lock_holders` expands an empty array because no daemon lock file exists yet. That second
+    one does not stop the deploy — the expansion is inside a `$( )`, so the subshell dies and the parent
+    reads an empty answer — so no assertion about the deploy's verdict can see it, and the self-test
+    carries a `no_shell_death` tripwire that can. `.github/workflows/deploy-selftest.yml`'s `bash-floor`
+    job re-runs the pair on every PR — the floor must pass, **and the minor below it must fail, with its
+    own `N assertions, M FAILED` summary line rather than merely a non-zero exit** — so the number stays
+    a measurement and cannot quietly become a claim. Both the SERVING copy (A1) and the copy the RELEASE
+    ships (A6b) are held to a floor: after `artisan down` the deploy re-execs the target's
     `bin/deploy.sh`, which never runs A1, so a release that RAISES the floor would meet it inside the
     window with the app down. A release predating the card declares none, and that is said out loud and
     is not a refusal — refusing it would make every rollback undeployable for want of a line it could
-    not have carried.
+    not have carried. **And the window runs the interpreter the gates measured**: the re-exec hands over
+    `$BASH`, this process's own shell, instead of going through the target's `#!/usr/bin/env bash` — so
+    `somebash bin/deploy.sh` on a host whose PATH `bash` is older no longer passes both gates and then
+    dies in the window on the shell neither of them read.
   - **git.** Every read of the release out of the object database passes its path as `:(literal)<path>`,
     so a git that does not know pathspec magic fails or mis-answers all of them — and the first arrives
     as *"git could not read server/composer.json"*, a statement about the release that is not the cause.
@@ -671,7 +683,8 @@ rule violations anyone could have committed at the time.
     the whole string for a literal path, and that is indistinguishable downstream from a release that
     does not carry the file.
   - **npm.** A12 reads the `lockfileVersion` out of the TARGET tree's `server/package-lock.json` and
-    refuses an `npm --version` below what it implies — 3 needs npm 7, from npm's own documentation,
+    refuses an `npm --version` below what it implies — an EMPTY lockfile being refused as that rather
+    than as a version the gate cannot map, since the remediation differs — 3 needs npm 7, from npm's own documentation,
     which is quoted at the gate and marked **documented, not measured**; 1 and 2 state no floor and none
     is invented for them, and any other version is refused rather than guessed at. Read from the target
     because the release that MOVES to a newer lockfile format is exactly the one the serving checkout's
