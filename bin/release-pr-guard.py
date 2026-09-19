@@ -565,12 +565,40 @@ def load_card_grammar(repo: Path) -> re.Pattern:
 # --- Content, read from git revisions --------------------------------------------------------
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    """Every text-mode git read in this guard, with `errors="surrogateescape"`.
+
+    ⛔ THE ERROR HANDLER IS LOAD-BEARING AND WAS MEASURED. `text=True` alone is STRICT UTF-8, and
+    strict decoding turns a byte sequence git handed back into a `UnicodeDecodeError` raised
+    INSIDE `subprocess.run` — before any rule is evaluated, and not an `Unmeasurable`, so it
+    escapes `main()` as a traceback and exit 1. On a feature PR exit 1 is this guard telling an
+    author their PR breaks a rule, which is worse than the exit 2 it would otherwise be and is
+    the misdirected red R7 exists to end. The path that reached it: R7's `ls-tree -z` asks git
+    for RAW bytes (quoting is what used to make every path pure ASCII), so an archive file named
+    in latin-1 — `docs/changelog/inv<0xe9>.md` — killed the run. Surrogate-escaping keeps those
+    bytes reversible and printable (`printable()`), and a filename is not this repo's to
+    validate: the guard reports it lossily rather than refusing anything over it.
+    ⚠ This handler must NOT become the way the CHANGELOG is decoded. That file is read as bytes
+    (`read_bytes_at`) and decoded STRICTLY by `decode_changelog`, because a changelog this guard
+    cannot read is an exit 2 by design — see that function. Widening the decode there would
+    silently apply the heading and bullet rules to mojibake.
+    """
     try:
         return subprocess.run(["git", "-C", str(repo), *args],
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, errors="surrogateescape")
     except FileNotFoundError:
         raise Unmeasurable("git is not on PATH — this guard reads both sides' content with "
                            "`git show` and cannot measure anything without it.") from None
+
+
+def printable(text: str) -> str:
+    """Text safe to PRINT, whatever bytes git handed back.
+
+    `_git` surrogate-escapes undecodable bytes, and a surrogate raises `UnicodeEncodeError` on
+    the way OUT — so a message naming a path git could not decode would crash at the `print`
+    instead of at the read, which is the same defect one step later. Round-tripping through
+    `surrogateescape` -> `replace` turns those bytes into U+FFFD and nothing else changes.
+    """
+    return text.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
 
 
 def resolve_rev(repo: Path, rev: str, role: str, hint: str = "") -> str:
@@ -1140,7 +1168,16 @@ def archive_sizes(repo: Path, sha: str) -> list[tuple[str, int]]:
     `"docs/changelog/caf\\303\\251.md"` — so a suffix test for `.md` is False and the file drops
     out of the sizes AND out of the printed count, which then confidently reports one file where
     there are two. `-z` makes git emit the path raw, and it closes the same hole for a path
-    containing a tab, which would otherwise be split as if the tab were the field separator.
+    containing a tab or a newline, which git quotes for the same reason. (Measured, because the
+    first wording of this line said `-z` stops a tab-bearing path being SPLIT at the tab: it
+    does not and could not. Without `-z` git emits `"docs/changelog/ta\\tb.md"` — quoted exactly
+    as the accented name is — and `partition` takes only the FIRST tab in any case. Same
+    conclusion, different mechanism.)
+
+    ⛔ AND ASKING FOR RAW BYTES MADE THE DECODE A LIVE FAILURE, which is why `_git` surrogate-
+    escapes. Quoting had been doing double duty: it also guaranteed pure-ASCII output, so
+    `text=True` could not raise. The flag that fixed the measurement created that hazard in the
+    same stroke — the sibling worth naming here rather than discovering twice.
     """
     r = _git(repo, "ls-tree", "-r", "-l", "-z", sha, "--", CHANGELOG_ARCHIVE_DIR + "/")
     if r.returncode != 0:
@@ -1183,7 +1220,10 @@ def check_step13(excess: list[tuple[str, str | None]], section_count: int, tag_f
             msg = (f"R7 WARNING (not a failure): {msg} This PR is not a release, so R7 does not "
                    f"refuse it; the next release PR will be refused until the move lands.")
         msgs.append(msg)
-    for path, size in oversize:
+    for raw_path, size in oversize:
+        # `printable` and not the raw name: `_git` surrogate-escapes a path git could not
+        # decode, and printing a surrogate raises where the read no longer does.
+        path = printable(raw_path)
         msg = (f"R7 archive size: {path} is {size:,} B at the head, past the "
                f"{CONTENTS_API_CLIFF_BYTES:,} B contents-API cliff R5 holds {CHANGELOG_PATH} "
                f"under — past it the API returns the file's content as EMPTY rather than as an "

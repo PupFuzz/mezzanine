@@ -39,9 +39,12 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   and never refuse, and R7 opens no authority file there, so the archive file is named from the
   version instead of composed from `tag_format`, and the one state that can still stop a feature
   PR through R7 is git failing to list `docs/changelog/` — which the guard's earlier read of
-  `docs/CHANGELOG.md` already exits 2 on. The archive listing recurses and asks git not to quote
-  the paths, so a file in a `docs/changelog/` subdirectory, or one named outside plain ASCII, is
-  counted rather than reported as none. R7 counts released sections with R3's own reading of the
+  `docs/CHANGELOG.md` already exits 2 on, and which stays the only one after this round's decode
+  fix. The archive listing recurses and asks git not to quote the paths, so a file in a
+  `docs/changelog/` subdirectory, or one named outside plain ASCII, is counted rather than
+  reported as none; an archive filename that is not valid UTF-8 at all is read and printed
+  lossily rather than refused, because a filename is not this repo's to validate and every git
+  read now survives undecodable bytes. R7 counts released sections with R3's own reading of the
   headings, so a `###` heading is not one. The self-test adds a control, the third-section plant,
   the demoted-heading control, an archive plant with its at-the-cliff control, and the controls
   that a feature PR meets no authority file in R7, that a nested archive is seen, that a

@@ -49,6 +49,7 @@ AUTHORITIES = (".release-pr.json", ".github/workflows/auto-tag-version.yml",
                "bin/promote-cards-by-token")
 
 fails = 0
+checks = 0
 
 # Every fixture is a real git repo in a temp dir, and this file now builds about forty of them
 # per run — several carrying a 600 KB changelog, all carrying a copy of the 44 KB mover. Left
@@ -71,12 +72,15 @@ atexit.register(_sweep_fixtures)
 
 
 def ok(msg: str) -> None:
+    global checks
+    checks += 1
     print(f"  ok   {msg}")
 
 
 def bad(msg: str) -> None:
-    global fails
+    global fails, checks
     fails += 1
+    checks += 1
     print(f"  FAIL {msg}", file=sys.stderr)
 
 
@@ -559,6 +563,21 @@ r = guard(fx, head_ref="release/v0.2.0")
 eq("docs/CHANGELOG.md absent at the head → exit 2", 2, r.returncode)
 eq("  … and says removing the file does not remove the obligation",
    True, "do not remove the obligation by removing the file" in r.stderr)
+
+# --- …and a file whose BYTES do not decode is unmeasurable too, not a crash. `_git` reads with
+# `errors="surrogateescape"` so that R7's raw-byte `ls-tree` cannot die on a filename (§ 11b),
+# and this arm is the other half of that widening: a `VERSION` git hands back undecodable must
+# still reach a VERDICT — exit 2, naming the accepted spelling — rather than a traceback and the
+# exit 1 that tells an author their PR breaks a rule.
+fx = make_repo(**CONTROL)
+(fx / "VERSION").write_bytes(b"0.2.0\xe9\n")
+git(fx, "add", "-A")
+git(fx, "commit", "-qm", "a VERSION that is not valid UTF-8")
+r = guard(fx, head_ref="release/v0.2.0")
+eq("VERSION carrying undecodable bytes → exit 2, and no traceback",
+   (2, False), (r.returncode, "Traceback" in r.stderr))
+eq("  … reaching the rule's own refusal, not the interpreter's",
+   True, "not an accepted version string" in r.stderr)
 
 # CONTROL for this whole block: exit 2 must be DISTINGUISHABLE from exit 1, or the split that
 # sends authors and maintainers to different files is decoration.
@@ -1045,12 +1064,15 @@ eq("the same oversize archive on a feature PR → exit 0 with a ::warning:: nami
    (0, True),
    (r.returncode, "::warning::release-pr-guard: R7" in r.stdout and ARCHIVE in r.stdout))
 
-# --- ⛔ OFF THE RELEASE PATH R7 CANNOT EXIT 2, AND THIS IS THE ARM THAT SAYS SO. The first cut
-# of R7 read `.release-pr.json` off the release path whenever there were excess sections — to
-# NAME the archive file prettily — and excess sections are exactly the state R7 exists to detect,
-# on every feature PR until the next release. A malformed config then failed every one of them
-# with exit 2, from a rule that is supposed to be able to do no more than warn there. Measured on
-# that code: exit 2. R7 now reads no authority off the release path and names the file generically.
+# --- ⛔ OFF THE RELEASE PATH R7 READS NO AUTHORITY FILE, AND THIS IS THE ARM THAT SAYS SO. It
+# plants ONE state — an unreadable `.release-pr.json` — so it pins the authority-file case and
+# NOT a universal about exit 2, which this file cannot claim: `archive_sizes` raises
+# `Unmeasurable` if git fails to list `docs/changelog/`, on every path, and the arm below pins
+# the OTHER state that used to escape as a traceback. The first cut of R7 read that config off
+# the release path whenever there were excess sections — to NAME the archive file prettily — and
+# excess sections are exactly the state R7 exists to detect, on every feature PR until the next
+# release. A malformed config then failed every one of them with exit 2, from a rule that can do
+# no more than warn there. Measured on that code: exit 2.
 fx = make_repo(**R4FX, head_changelog=TWO_RELEASED + THIRD)
 (fx / ".release-pr.json").write_text("{not json", encoding="utf-8")
 r = r4(fx, head_ref="chore/tidy")
@@ -1090,6 +1112,23 @@ r = guard(fx)
 eq("an oversize archive whose NAME is not plain ASCII → RED on R7", ["R7"], rules_flagged(r))
 eq("  … naming the file, and counted rather than quoted away",
    (True, True), ("café.md" in r.stdout, "1 archive file(s)" in r.stdout))
+
+# --- …and the OTHER side of asking git for raw bytes: a filename that is not valid UTF-8 at all.
+# Quoting used to make every path pure ASCII, so `text=True` could not fail; raw bytes mean the
+# DECODE can, inside `subprocess.run`, before any rule is evaluated — a `UnicodeDecodeError` is
+# not `Unmeasurable`, so it escaped `main()` as a traceback and exit 1. On a feature PR exit 1 is
+# R7 telling an author their PR breaks a rule: the misdirected red this card exists to end, and
+# worse than the exit 2 that was removed. A filename is not the repo's to validate, so the guard
+# reads it lossily and PRINTS it lossily rather than refusing anything.
+LATIN1 = "docs/changelog/inv\udce9.md"          # one 0xe9 byte — latin-1 `é`, invalid UTF-8
+fx = make_repo(**R4FX, head_changelog=unreleased_with(),
+               base_files={LATIN1: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
+r = r4(fx, head_ref="chore/tidy")
+eq("an archive filename that is not valid UTF-8, on a feature PR → exit 0, no traceback",
+   (0, False), (r.returncode, "Traceback" in r.stderr))
+eq("  … and it was MEASURED (counted and warned), not skipped past",
+   (True, True),
+   ("1 archive file(s)" in r.stdout, "::warning::release-pr-guard: R7" in r.stdout))
 
 # --- THE VERSION-LESS HEADING, which is the one branch of `archive_file_for` no arm had ever
 # seen printed. R7 counts it because `changelog_sections` does, and it ranks below every
@@ -1463,6 +1502,10 @@ if r.returncode != 0:
 
 print()
 if fails:
-    print(f"release-pr-guard.selftest: {fails} check(s) FAILED", file=sys.stderr)
+    print(f"release-pr-guard.selftest: {fails} check(s) FAILED of {checks} run", file=sys.stderr)
     sys.exit(1)
-print("release-pr-guard.selftest: all checks passed")
+# The TOTAL is printed, not just the verdict: anything that cites this suite's coverage — a PR
+# body, a review — must be able to DERIVE the figure by running it, and a bare "all checks
+# passed" is a pointer to a number nobody can read back. It also makes a silently-skipped block
+# visible as a total that fell.
+print(f"release-pr-guard.selftest: all checks passed — {checks} check(s) passed")
