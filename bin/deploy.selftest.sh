@@ -12,7 +12,8 @@
 #         including the re-exec, which really does hand off to the checked-out copy — and
 #         bin/supervision.sh. And THE DAEMON RESTART: flock, fuser, setsid, ps and kill run for real (fuser
 #         behind a pass-through that one case slows by 0.3 s, to know when a lock is first sampled, and ps
-#         behind one that one case blinds) against stub daemons holding locks inside the temp dir, so "the old process is gone and a
+#         behind one that one case blinds; mktemp, too, is the real one, behind a pass-through § card#9816
+#         makes fail after a set number of calls) against stub daemons holding locks inside the temp dir, so "the old process is gone and a
 #         new one holds the lock" is observed, not merely recorded.
 #   STUB: php (and the daemons it runs), php-fpm<minor>, composer, npm, crontab, curl, id, cgi-fcgi — on PATH,
 #         recording every call to $CALL_LOG. The crontab stub reads and writes one file per fixture;
@@ -150,9 +151,12 @@ before() {
 section() { printf '\n── %s\n' "$1"; }
 
 # ── stubs on PATH ─────────────────────────────────────────────────────────────────────────────
+# ⛔ EVERY `REAL_…` RESOLVES HERE, BEFORE THE PATH EXPORT BELOW. After it, `command -v <name>` finds
+# this suite's own stub as soon as one is written, and a stub that execs itself never returns.
 REAL_FUSER="$(command -v fuser)" || { echo "selftest: fuser not found" >&2; exit 1; }
 REAL_PHP="$(command -v php)" || { echo "selftest: php not found (deploy.sh parses the stream pool's JSON status with php -r)" >&2; exit 1; }
 REAL_PS="$(command -v ps)" || { echo "selftest: ps not found" >&2; exit 1; }
+REAL_MKTEMP="$(command -v mktemp)" || { echo "selftest: mktemp not found" >&2; exit 1; }
 mkdir -p "$T/bin" "$T/knobs"; export PATH="$T/bin:$PATH"
 # `mezzanine:extra` is in no release this repo ships: it is the daemon the ACROSS RELEASES case's target
 # release adds, and the stub has to know to hold a lock for it.
@@ -271,6 +275,21 @@ if [ -e "$KNOBS/blind_ps" ]; then exit 0; fi
 exec "$REAL_PS" "$@"
 STUB
 } > "$T/bin/ps"
+# mktemp: the REAL one — and, while the `mktemp_passes` knob holds N, the first N calls succeed and every
+# later one is handed a TMPDIR that does not exist, so it fails with mktemp's OWN error, exactly as on a
+# host whose TMPDIR is gone (card#9816). Each call is logged while the knob is set. A count, because the
+# .env loader makes phase A's FIRST scratch file, and a TMPDIR broken from the start stops every run there.
+{
+  printf '#!/usr/bin/env bash\nKNOBS=%q\nREAL_MKTEMP=%q\nBROKEN_TMPDIR=%q\n' "$T/knobs" "$REAL_MKTEMP" "$T/no-such-dir"
+  cat <<'STUB'
+if [ -e "$KNOBS/mktemp_passes" ]; then
+  printf 'mktemp %s\n' "$*" >> "$CALL_LOG"
+  n="$(cat "$KNOBS/mktemp_passes")"
+  if [ "$n" -gt 0 ]; then printf '%s\n' "$((n - 1))" > "$KNOBS/mktemp_passes"; else export TMPDIR="$BROKEN_TMPDIR"; fi
+fi
+exec "$REAL_MKTEMP" "$@"
+STUB
+} > "$T/bin/mktemp"
 cat > "$T/bin/id" <<'STUB'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -315,7 +334,7 @@ reset_stubs() {
   unset STUB_UID STUB_CRONTAB_BROKEN MEZZ_DEPLOY_IN_WINDOW MEZZ_DEPLOY_REVALIDATE_FLOOR_S MEZZ_FPM_BIN
   kill_streams
   : > "$T/knobs/dies_after_start"; : > "$T/knobs/ignores_term"; : > "$T/knobs/transient_loser"
-  rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps"
+  rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps" "$T/knobs/mktemp_passes"
   # The document root A14 reads a .user.ini from. Never the default ($HOME/public_html): on the host
   # this runs on that is a REAL vhost's, and a selftest that read it would not be hermetic.
   export MEZZ_DOCROOT="$T/docroot"; rm -rf "$MEZZ_DOCROOT"; mkdir -p "$MEZZ_DOCROOT"
@@ -680,7 +699,7 @@ env_get_ok="$( env_lib "$ROOT/server/.env" env_get APP_URL 2>/dev/null )"
 eq "the same reader on a readable .env: the value, unchanged" "https://mezzanine.example" "$env_get_ok"
 
 # The scratch-file failure the loader answers for ITSELF. It runs in both phases and inside
-# bin/env-mirror-diff.mirror.sh, where neither `refuse` nor `git_read_unusable` is the right answer, so it
+# bin/env-mirror-diff.mirror.sh, where neither `refuse` nor `not_established` is the right answer, so it
 # sets the same flag with a reason of its own rather than dying or guessing.
 #
 # ⚠ TMPDIR IS EXPORTED, NOT JUST SET, and that is the fixture's whole mechanism: `mktemp` is an external
@@ -3004,6 +3023,90 @@ hasnt "a .env unreadable inside the window: no DB password is printed" "$FAKE_PW
 eq "phase-B mutant: the fixture really is unopenable (a root runner cannot hold this)" \
    unopenable "$(env_openability "$ROOT/server/.env")"
 chmod 640 "$ROOT/server/.env"
+
+# ── card#9816 — A SCRATCH FILE PHASE A COULD NOT CREATE IS A REFUSAL, AND NAMES THE SCRATCH FILE ──
+# A bare `x="$(mktemp)"` failed two ways, measured on the previous bin/deploy.sh with each case below:
+# A13's ended phase A with mktemp's status 1 — the code the exit table says MEANS refused — and no ⛔ banner
+# and no promise; A7's two sat inside calls made from an `if` or a `||`, where `set -e` does not apply, so
+# the run carried on with an empty path and REFUSED ON A FALSE CAUSE — "'main' does not resolve to a commit
+# on origin" for a ref that is there, and a failed git read for a tag git never peeled. Every migrated site
+# now goes through scratch_file / scratch_dir, whose failure is not_established's, and each has a case here,
+# because a fix at the shared exit is only shown to reach the callers a case reaches. ⚠ The exit code
+# carries none of it — both wrong shapes exit 1 — and A7's wrong shape even carries the banner and the
+# promise, so the HEADLINE is what reds on it.
+#
+# ⛔ EACH CASE PROVES IT REACHED mktemp — a case that never made mktemp fail would pass on any code — but
+# NOT all by the same instrument: the scratch_refused cases below prove it by mktemp's OWN error naming
+# the broken directory, and S0, where the loader silences that error, by the loader's own reason, which
+# it sets only when mktemp failed (the case says so at the call). A TMPDIR that is set and not EXPORTED
+# never reaches mktemp at all — the § card#9610 cases measured that.
+section "card#9816 — a scratch file phase A could not create is a REFUSAL that names it"
+MKTEMP_FAILED="mktemp: failed to create"
+
+# S0 — the whole run with TMPDIR gone from the start. The .env loader makes phase A's FIRST scratch file
+# (A5, before any git read), and it answers for that failure itself — so this is where such a run stops,
+# refused, with the scratch file named as the reason and no git read blamed. The three sites the loader
+# does not own are reached by the cases after it, which let the loader's file through first.
+mkfix scratch_tmpdir_gone
+# The loader silences mktemp's stderr, so what proves the fixture reached mktemp here is the loader's own
+# reason, which it sets only when mktemp failed.
+TMPDIR="$T/no-such-dir" run --dry-run
+has "TMPDIR gone: the fixture reaches mktemp, and names the scratch file as the reason" \
+  "No scratch file could be created for bash's read diagnostic" "$OUT"
+eq  "TMPDIR gone: exit 1" 1 "$RC"
+has "TMPDIR gone: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" "⛔ REFUSED — " "$OUT"
+has "TMPDIR gone: the phase-A promise" "Nothing was changed. The previous release is still serving." "$OUT"
+hasnt "TMPDIR gone: blames no git read" "⛔ REFUSED — git" "$OUT"
+unlogged "TMPDIR gone: never opened the window" "artisan down"
+
+# scratch_refused <label> <passes> <headline needle> <args…> — the first <passes> mktemp calls succeed and
+# the next fails; the refusal must be the migrated site's, by its headline.
+scratch_refused() {
+  local label="$1" passes="$2" needle="$3"; shift 3
+  printf '%s\n' "$passes" > "$T/knobs/mktemp_passes"
+  run "$@"
+  has "$label: the fixture reaches mktemp and it fails — mktemp's own error is on screen" \
+    "$MKTEMP_FAILED" "$OUT"
+  has "$label: and names the directory it tried" "$T/no-such-dir/" "$OUT"
+  eq  "$label: exit 1" 1 "$RC"
+  has "$label: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" "⛔ REFUSED — " "$OUT"
+  has "$label: the phase-A promise" "Nothing was changed. The previous release is still serving." "$OUT"
+  has "$label: the headline names the scratch file" "⛔ REFUSED — $needle" "$OUT"
+  hasnt "$label: blames no git read" "⛔ REFUSED — git" "$OUT"
+  hasnt "$label: the .env loader's own scratch file was let through" \
+    "No scratch file could be created for bash's read diagnostic" "$OUT"
+  unlogged "$label: never opened the window" "artisan down"
+  rm -f "$T/knobs/mktemp_passes"
+}
+
+# THE CONTROL, one variable away: the same fixture with every mktemp call let through deploys — so the
+# pass-through is not itself what refuses the cases below.
+mkfix scratch_sites
+printf '99\n' > "$T/knobs/mktemp_passes"
+run --dry-run
+eq "the control: every scratch file created, the same fixture passes" 0 "$RC"
+rm -f "$T/knobs/mktemp_passes"
+
+# S1 — git_ref_oid's stderr file: A7's first candidate, the call after the loader's.
+scratch_refused "A7, git_ref_oid" 1 \
+  "no scratch file could be created for git's error output while resolving 'refs/remotes/origin/main'" \
+  --dry-run
+
+# S2 — A13's work directory: after the loader's, A7's and A8's (both git_ref_oid on refs/remotes/origin/main).
+scratch_refused "A13, the crontab block's work directory" 3 \
+  "no scratch directory could be created for A13's reading of $(gitc "$ROOT" rev-parse --short "$V2")'s crontab block" \
+  --dry-run
+
+# S3 — git_commit_of's peel of an ANNOTATED tag, which is the only path to that file: after the loader's,
+# git_ref_oid on refs/remotes/origin/<tag> (absent) and on refs/tags/<tag> (the tag object).
+gitc "$SRC" tag -a v0.0.2 -m 'selftest: an annotated tag over the release' "$V2"
+gitc "$SRC" push -q origin v0.0.2
+eq "fixture: v0.0.2 is an ANNOTATED tag, so resolving it peels" tag "$(gitc "$SRC" cat-file -t v0.0.2)"
+run --dry-run --ref v0.0.2
+eq "the control: the same tag, every scratch file created, deploys" 0 "$RC"
+scratch_refused "A7, git_commit_of's tag peel" 3 \
+  "no scratch file could be created for git's error output while peeling the tag 'refs/tags/v0.0.2'" \
+  --dry-run --ref v0.0.2
 
 printf '\n──────────────────────────────────────────────\n'
 # ⚠ REPEATED HERE because a line 1,400 assertions up has scrolled past. A condition this runner
