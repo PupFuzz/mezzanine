@@ -1013,8 +1013,13 @@ fx = make_repo(**R4FX, head_changelog=TWO_RELEASED + THIRD)
 r = r4(fx, head_ref="chore/tidy")
 eq("the same three sections on a feature PR → exit 0", 0, r.returncode)
 eq("  … with no rule flagged", [], rules_flagged(r))
-eq("  … but a ::warning:: naming R7 and the archive file",
-   True, "::warning::release-pr-guard: R7" in r.stdout and "docs/changelog/v0.0.9.md" in r.stdout)
+eq("  … but a ::warning:: naming R7 and the section to move",
+   True, "::warning::release-pr-guard: R7" in r.stdout and "0.0.9" in r.stdout)
+# …and it names the archive file GENERICALLY, because off this path R7 does not read the tag
+# format at all (the arm below is what that decision costs and buys).
+eq("  … with the archive file named from the version, not composed from `tag_format`",
+   (True, False),
+   ("docs/changelog/<the 0.0.9 tag>.md" in r.stdout, "docs/changelog/v0.0.9.md" in r.stdout))
 
 # --- THE ARCHIVE BACKSTOP (card#9814 comment 5709). Every archive file is born under the cliff
 # (it was part of an R5-held file); the one way past it is a post-hoc edit to a released section.
@@ -1039,6 +1044,40 @@ r = r4(fx, head_ref="chore/tidy")
 eq("the same oversize archive on a feature PR → exit 0 with a ::warning:: naming it",
    (0, True),
    (r.returncode, "::warning::release-pr-guard: R7" in r.stdout and ARCHIVE in r.stdout))
+
+# --- ⛔ OFF THE RELEASE PATH R7 CANNOT EXIT 2, AND THIS IS THE ARM THAT SAYS SO. The first cut
+# of R7 read `.release-pr.json` off the release path whenever there were excess sections — to
+# NAME the archive file prettily — and excess sections are exactly the state R7 exists to detect,
+# on every feature PR until the next release. A malformed config then failed every one of them
+# with exit 2, from a rule that is supposed to be able to do no more than warn there. Measured on
+# that code: exit 2. R7 now reads no authority off the release path and names the file generically.
+fx = make_repo(**R4FX, head_changelog=TWO_RELEASED + THIRD)
+(fx / ".release-pr.json").write_text("{not json", encoding="utf-8")
+r = r4(fx, head_ref="chore/tidy")
+eq("excess sections + an UNREADABLE `.release-pr.json` on a feature PR → exit 0, never 2",
+   0, r.returncode)
+eq("  … still warned, naming the version and no degenerate path",
+   (True, True, False),
+   ("::warning::release-pr-guard: R7" in r.stdout, "0.0.9" in r.stdout,
+    "docs/changelog/.md" in r.stdout))
+# CONTROL: the release path DOES read that authority, so the same broken config there is exit 2 —
+# which is what makes the exit 0 above a decision about the PATH and not R7 ignoring the file.
+fx = make_repo(**dict(CONTROL, head_changelog=TWO_RELEASED + THIRD))
+(fx / ".release-pr.json").write_text("{not json", encoding="utf-8")
+r = guard(fx)
+eq("  CONTROL: the same broken config on the RELEASE path → exit 2 (the path discriminates)",
+   2, r.returncode)
+
+# --- The archive listing RECURSES. A `docs/changelog/` subdirectory is not the documented layout
+# (one file per tag, flat), but a non-recursive listing would report "0 archive file(s)" while an
+# oversize file sat under it — a measurement that is not merely silent but WRONG, which is worse
+# than the gap it hides.
+NESTED = "docs/changelog/superseded/v0.0.1.md"
+fx = make_repo(**CONTROL, base_files={NESTED: "x" * (mod.CONTENTS_API_CLIFF_BYTES + 1)})
+r = guard(fx)
+eq("an oversize archive in a SUBDIRECTORY of docs/changelog/ → RED on R7", ["R7"], rules_flagged(r))
+eq("  … and the run COUNTS it rather than printing 0 archive file(s)",
+   (True, False), ("1 archive file(s)" in r.stdout, "0 archive file(s)" in r.stdout))
 
 
 # =============================================================================================

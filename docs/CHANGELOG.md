@@ -36,10 +36,15 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   `docs/changelog/<tag>.md` file each excess section belongs in, with the fix routed through `dev`
   as step 13 says. The same rule refuses any `docs/changelog/*.md` past R5's own contents-API cliff,
   the backstop for a post-hoc edit to a released section. Off the release path both clauses warn
-  and never refuse. R7 counts released sections with R3's own reading of the headings, so a `###`
-  heading is not one. The self-test adds a control, the third-section plant, the demoted-heading
-  control, and an archive plant with its at-the-cliff control; each red was seen to fail before the
-  rule existed, and raising the limit to three or doubling the archive limit reds the plants.
+  and never refuse, and that includes never exiting 2: R7 opens no authority file there, so a
+  feature PR gains no new way to fail from a rule that has nothing to refuse it for — the archive
+  file is named from the version instead of composed from `tag_format`. The archive listing
+  recurses, so a file in a `docs/changelog/` subdirectory is counted rather than reported as none.
+  R7 counts released sections with R3's own reading of the headings, so a `###` heading is not
+  one. The self-test adds a control, the third-section plant, the demoted-heading control, an
+  archive plant with its at-the-cliff control, and the two controls that a feature PR cannot exit
+  2 through R7 and that a nested archive is seen; each red was seen to fail before the code that
+  answers it, and raising the limit to three or doubling the archive limit reds the plants.
 
 - **card#9831** — **`bin/deploy-gate-inputs.sh` answers a mistyped command line with exit 2 and its
   `⛔` banner, which is its word for "this check could not run".** `--ref` with no value, or with an

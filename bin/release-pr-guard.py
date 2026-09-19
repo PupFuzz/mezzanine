@@ -201,6 +201,13 @@ R3's own reading (`changelog_sections`, keyed on `_heading_text`'s `^##`) — no
     clause warns off the path too, for a different reason: the only way an archive file passes
     the cliff is a post-hoc edit to a released section, and when that edit is made on a feature
     PR the warning lands on the PR that made it, while the release PR is where it is refused.
+    ⛔ AND "NEVER REFUSES" INCLUDES EXIT 2, WHICH IS WHY R7 OPENS NO AUTHORITY FILE OFF THIS
+    PATH. Its first cut read `.release-pr.json` there to name the archive file from `tag_format`,
+    and that made `load_tag_format`'s exit 2 reachable from every feature PR in a repo whose
+    changelog carries excess sections — the very state R7 detects, persisting until the next
+    release. A warning is not worth a new way to fail a PR the rule has nothing to refuse. The
+    only exit 2 R7 can raise off the release path is `git ls-tree` failing, which is the
+    git-level failure the head-changelog read above has already hit.
   * THE ARCHIVE CLAUSE (card#9814 comment 5709). `docs/PLAN.md § 4` argues the archive files need
     no size gate: every byte in one was part of an R5-held `docs/CHANGELOG.md` at its release, and
     the file never receives bytes again. The residual is a post-hoc edit to an immutable released
@@ -315,7 +322,8 @@ Exit 2 = the guard COULD NOT MEASURE — missing `VERSION`, unreadable base rev,
          integration branch (R6), a run not given the PR body while R6 has residue to declare,
          unparseable semver, absent `docs/CHANGELOG.md`, no `## [Unreleased]` heading to scope
          R4 or R6b to, a shallow clone R5 cannot measure growth in, an archive directory R7
-         cannot list, or an authority that moved.
+         cannot list (its one refusal off the release path — it reads no AUTHORITY there), or an
+         authority that moved.
          Someone fixes
          the repo or this guard. The split matters: a 1 and a 2 send different people to
          different files, and collapsing them would send authors to rename branches that were
@@ -1068,8 +1076,20 @@ def excess_sections(sections: list[str]) -> list[tuple[str, str | None]]:
     newest two versions (on a release PR, the one it mints and the previous latest), and
     `docs/PLAN.md § 4` owns the file's ordering, which this guard does not rule on. A heading that
     names no version still counts — `changelog_sections` is R3's own reading of "released
-    section" and R7 does not invent a second one — and it is always excess, because no archive
-    file can be named for it and so it cannot be one of the two a release keeps.
+    section" and R7 does not invent a second one — and it ranks below every versioned one, so it
+    is excess whenever at least two versioned sections are present. Measured, because the first
+    wording of this line claimed it was ALWAYS excess and it is not:
+    `excess_sections(['Older notes', 'Even older', '[0.1.0] - 2026-08-20'])` keeps `'Older
+    notes'`, since `versioned + unversioned` has only one versioned entry to put in front of it.
+
+    ⚠ THE TWO THAT STAY ARE NOT ANCHORED TO THE HEAD'S `VERSION`, and that is accepted rather
+    than unnoticed. A changelog carrying a section for a version HIGHER than the one being
+    released, or the same version twice, makes "the newest two" the wrong two — the release's own
+    section could be named as excess. Both are malformed changelogs that R3 does not catch
+    (it asks only that a section for the new version EXISTS), and anchoring would mean teaching
+    R7 the head's `VERSION`, which off the release path does not exist. The count is still right,
+    so the refusal is still right; only the naming of which section to move could mislead, and
+    the author reading it has the file in front of them.
     """
     if len(sections) <= MAX_RELEASED_SECTIONS:
         return []
@@ -1083,23 +1103,40 @@ def excess_sections(sections: list[str]) -> list[tuple[str, str | None]]:
 
 
 def archive_file_for(version: str | None, tag_format: str) -> str:
-    """`docs/changelog/<tag>.md` — the tag composed from `tag_format`, exactly as R1 composes it."""
+    """`docs/changelog/<tag>.md` — the tag composed from `tag_format`, exactly as R1 composes it.
+
+    Two degradations, both of them named rather than papered over. NO VERSION in the heading:
+    this guard does not rule on the heading FORMAT (`docs/PLAN.md § 4` owns it), so it says which
+    heading it means and what the two readings of it are. NO TAG FORMAT: off the release path the
+    format is deliberately not read (see the caller), so the version is named and the reader
+    composes the tag — a warning is not worth making `load_tag_format`'s exit 2 reachable there.
+    """
     if version is None:
-        return f"{CHANGELOG_ARCHIVE_DIR}/<tag>.md (its heading names no version)"
+        return (f"{CHANGELOG_ARCHIVE_DIR}/<tag>.md — this heading names no version, so no tag "
+                f"can be composed for it. A level-2 heading in {CHANGELOG_PATH} is a released "
+                f"section ({CHANGELOG_CANON_DOC} owns the format): either give it its version, "
+                f"or demote it below `##` if it is not one")
+    if not tag_format:
+        return f"{CHANGELOG_ARCHIVE_DIR}/<the {version} tag>.md"
     return f"{CHANGELOG_ARCHIVE_DIR}/{tag_format.replace('{{version}}', version)}.md"
 
 
 def archive_sizes(repo: Path, sha: str) -> list[tuple[str, int]]:
-    """(path, bytes) for every `*.md` blob directly under the archive dir at `sha`.
+    """(path, bytes) for every `*.md` blob under the archive dir at `sha`.
 
     Read from the TREE with `git ls-tree -l`, so the size is git's blob size — bytes, never a
     decoded length — and no file is read at all. An absent directory lists nothing, which is a
     real state (the archive did not exist before card#9813), not missing data.
+
+    ⚠ RECURSIVE (`-r`), though the documented layout is flat — one file per tag. Without it a
+    file in a subdirectory is not merely missed: the run PRINTS a count that does not include it,
+    so an oversize archive under `docs/changelog/superseded/` reads as `0 archive file(s)`. A
+    measurement that is wrong is worse than one that is absent, and the flag is the whole fix.
     """
-    r = _git(repo, "ls-tree", "-l", sha, "--", CHANGELOG_ARCHIVE_DIR + "/")
+    r = _git(repo, "ls-tree", "-r", "-l", sha, "--", CHANGELOG_ARCHIVE_DIR + "/")
     if r.returncode != 0:
         raise Unmeasurable(
-            f"`git ls-tree -l {sha[:7]} -- {CHANGELOG_ARCHIVE_DIR}/` failed in {repo} "
+            f"`git ls-tree -r -l {sha[:7]} -- {CHANGELOG_ARCHIVE_DIR}/` failed in {repo} "
             f"({r.stderr.strip()}) — R7 cannot size the archive files it exists to watch.")
     out = []
     for line in r.stdout.splitlines():
@@ -1379,12 +1416,14 @@ def run(args) -> int:
           f"head (at most {MAX_RELEASED_SECTIONS} on a release PR); {CHANGELOG_ARCHIVE_DIR}/ "
           f"holds {len(archives)} archive file(s), largest {largest:,} B "
           f"(cliff {CONTENTS_API_CLIFF_BYTES:,} B)")
-    # The release path loaded the tag format above. Off it, the format is read only when there is
-    # an archive file to NAME, so a feature PR whose changelog is in shape gains no new way to
-    # exit 2 from a rule that can do no more than warn it.
-    r7_tag_format = (tag_format if is_release_pr
-                     else load_tag_format(repo) if excess else "")
-    r7 = check_step13(excess, len(sections), r7_tag_format, oversize, is_release_pr)
+    # ⛔ OFF THE RELEASE PATH THE TAG FORMAT IS NOT READ AT ALL, and the empty string here is the
+    # whole of that decision. The release path loaded it above (R1 needs it). Reading it here to
+    # NAME the archive file more prettily would make `load_tag_format`'s exit 2 reachable from a
+    # feature PR — and reachable in exactly the state R7 exists to detect, on every feature PR
+    # until the next release, from a rule that off this path can do no more than warn.
+    # `archive_file_for` names the version instead when it has no format.
+    r7 = check_step13(excess, len(sections), tag_format if is_release_pr else "", oversize,
+                      is_release_pr)
     if is_release_pr:
         applicable.append("R7")
         problems += r7
