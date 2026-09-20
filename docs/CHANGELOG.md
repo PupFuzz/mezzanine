@@ -27,6 +27,34 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9684** — **`docs/VERSIONING.md § Branch model` no longer keeps a copy of this
+  repository's settings, so the copy can no longer be wrong.** The section carried a stack of
+  dated re-readings — which contexts each branch required on which day, which merge method each
+  branch allowed, what classic branch protection held — every one of them added because the
+  reading before it had gone stale, and every one stale again before the next reader arrived.
+  **Nothing re-derived them, so they were prose ageing into false statements about what would
+  block your merge.** They are deleted. What stays is the part no API call can tell you — why
+  `dev` carries an admin bypass and what it exists for, why the tag ruleset must never gain a
+  `creation` rule, why the review ruleset does not close the actor gap, and the pending trap that
+  makes a filtered workflow unsafe to require — and, where the readings were, **the commands that
+  print the live answer**. A pointer cannot drift.
+  **Statements that had already gone false are corrected in the same act.** The section said that
+  no ruleset had replaced `main`'s `strict: true`; a ruleset has, and the published command prints
+  it for either branch. It said the required status checks also lived in classic protection with
+  `enforce_admins` on, and reasoned from *"Classic protection on `dev` does not require linear
+  history"* — classic protection has been retired from both branches since card#9746, and
+  `gh api repos/PupFuzz/mezzanine/branches/dev/protection` answers `404 Branch not protected` for
+  `dev` and for `main`. And `§ Release flow` step 8 said *"Nothing enforces this mechanically
+  here"*, which stopped being true with the first required context.
+  **`§ Release flow` steps 5 and 8 now carry commands rather than facts.** Step 5 derives the host
+  floors through `bin/deploy.sh`'s own readers and `tools/verify-php-floor.py`, so a release note
+  states a floor it has just read instead of one someone copied; step 8 derives which contexts
+  GitHub will hold the merge on, because the lanes outside that set run and block nothing, and a
+  wall of green ticks is evidence only where a red was possible.
+  ⚠ **Run step 5's command from the repo root, and never redirect its stderr away.**
+  `bin/deploy.sh` sources `bin/supervision.sh` from beside itself, so a lone copy of the script
+  cannot be sourced — with stderr discarded that failure prints nothing at all rather than saying
+  what went wrong.
 - **card#9801** — **A PR into `dev` now has a body generator, and the shape it emits is the fleet
   standard's.** `bin/change-pr-body.py` writes the scope line, `## Highlights`, optionally
   `## Upgrade warnings`, the `Built:` / `**Coordinated in:**` machine lines and the attribution
