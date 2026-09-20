@@ -2840,11 +2840,15 @@ eq "bash_floor_is_version: a leading dot is not a version" not "$(floor_ok '.4')
 eq "bash_floor_is_version: a trailing dot is not a version" not "$(floor_ok '4.')"
 
 # ── and the OTHER predicate, which is not a looser spelling of it (card#9984 r4) ───────────────
-# `ver_is_comparable` asks a different question: will `ver_ge` read every field of this HOST
-# version as the number written there, or substitute 0 for one it cannot read? A1c holds
-# `npm --version` to it. The two are driven side by side because the difference between them is
-# the thing a future editor is most likely to get wrong — a floor is exactly two numeric fields,
-# a host version is two or more and may carry a suffix `ver_ge` truncates on purpose.
+# `ver_is_comparable` asks a different question of a HOST version: does every dot-field begin
+# with a digit? A1c holds `npm --version` to it. The two predicates are driven side by side
+# because the difference between them is what a future editor is most likely to get wrong —
+# a floor is exactly two numeric fields, a host version is two or more and may carry a suffix
+# `ver_ge` truncates on purpose.
+# ⚠ IT IS STRICTER THAN `ver_ge` NEEDS, deliberately: `ver_ge` reads three fields, so a fourth
+# that is not digit-led could not have been misread — it is never read. The cases below pin
+# that surplus as INTENDED rather than leaving it to look like an oversight; bin/deploy.sh's
+# header says why it is not narrowed to the first three.
 comparable() { env_lib "$T/none" ver_is_comparable "$1" >/dev/null 2>&1 && echo comparable || echo not; }
 eq "ver_is_comparable: an ordinary three-field version is" comparable "$(comparable 9.2.0)"
 eq "ver_is_comparable: two fields are enough" comparable "$(comparable 9.2)"
@@ -2861,6 +2865,18 @@ eq "ver_is_comparable: a word is not" not "$(comparable banana)"
 eq "ver_is_comparable: an empty answer is not" not "$(comparable '')"
 eq "ver_is_comparable: an empty middle field is not" not "$(comparable '9..2')"
 eq "ver_is_comparable: a trailing dot is not" not "$(comparable '9.2.')"
+# ⛔ THE SURPLUS STRICTNESS, PINNED AS INTENDED. `ver_ge` reads three fields, so a FOURTH that is
+# not digit-led could not have been misread — it is never read. These are refused anyway, and
+# these cases exist so that the next reader finds a decision rather than an oversight, and so that
+# narrowing the predicate to the first three fields reds here rather than passing quietly.
+eq "ver_is_comparable: a non-numeric FOURTH field is refused, though ver_ge never reads it" \
+   not "$(comparable '1.0.0-alpha.beta')"
+eq "ver_is_comparable: …and semver build metadata likewise" not "$(comparable '9.2.0+build.abc')"
+# The twin, one field away: npm's own prerelease convention is `-<tag>.<number>`, so its fourth
+# field IS digit-led and is accepted — which is why the strictness costs nothing real.
+eq "ver_is_comparable: npm's own prerelease shape has a digit-led fourth field, and passes" \
+   comparable "$(comparable '7.0.0-beta.0')"
+eq "ver_is_comparable: …as does the one A1c's control deploys with" comparable "$(comparable '9.2.0-pre.1')"
 # ⛔ THE PREDICATES DISAGREE, ON PURPOSE, and these pin the disagreement so that neither can be
 # quietly swapped for the other: a bash floor may not carry a suffix or a third field, and a host
 # version may.

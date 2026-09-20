@@ -1531,9 +1531,26 @@ bash_floor_is_version() {
   esac
 }
 
-# ver_is_comparable <value> — true when `ver_ge` will read EVERY field of <value> as the number
-# written there, rather than silently substituting 0 for a field it cannot read: two or more
-# dot-separated fields, each BEGINNING with a digit.
+# ver_is_comparable <value> — true when EVERY dot-separated field of <value> begins with a digit,
+# and there are two or more of them. That is the rule, stated as the code has it.
+#
+# ⚠ IT IS STRICTER THAN `ver_ge` NEEDS, AND THE SURPLUS IS DELIBERATE (card#9984 r5). `ver_ge`
+# reads three fields, so a fourth that does not begin with a digit could not have been misread —
+# it is never read at all. This predicate refuses it anyway. Drive it to see: `1.0.0-alpha.beta`
+# and `9.2.0+build.abc` are legal semver, are REFUSED here, and `ver_ge` would have compared
+# them as `1.0.0` and `9.2.0`, exactly as written. The cases in bin/deploy.selftest.sh pin both.
+#   · Refusing them costs nothing that is real: npm's prerelease convention is `-<tag>.<number>`,
+#     so `9.2.0-pre.1` and `7.0.0-beta.0` have a digit-led fourth field and ARE accepted. This
+#     card's independent verification swept npm's published versions from the registry and
+#     found none that A1c's old glob accepted and this predicate refuses — not measured here.
+#   · It fails CLOSED, in phase A, with the banner and the offending string — a legible refusal an
+#     operator can act on, never a silent misread.
+#   · And the alternative is worse: stopping the walk at the third field would hard-code `ver_ge`'s
+#     depth in a SECOND place, so a later change to that depth would make this predicate wrong in
+#     the PERMISSIVE direction — the exact failure class this card exists to close. Being stricter
+#     than necessary degrades safely; being coupled to a constant elsewhere does not.
+# ⇒ DO NOT "fix" the mismatch by loosening this to the first three fields. If a real tool is ever
+# refused here, the fix is a case naming that tool's output, decided deliberately.
 #
 # ⛔ THE OTHER PREDICATE, AND NOT A LOOSER SPELLING OF THE ONE ABOVE (card#9984 r4).
 # They answer different questions and the difference is deliberate:
@@ -1546,7 +1563,8 @@ bash_floor_is_version() {
 # treated as its release — and MEASURED to be the permissive direction that matters here: a real
 # prerelease npm prints one, and holding A1c to "all fields numeric" would refuse a host that is
 # perfectly able to install the lockfile. A field that STARTS with a non-digit is the opposite
-# case: `ver_ge` reads it as 0, which is a number nobody reported.
+# case: among the three `ver_ge` reads, it becomes a 0 nobody reported — which is the defect —
+# and beyond them it is refused by the surplus strictness stated above.
 # MEASURED by restoring A1c's old `[0-9]*.[0-9]*` glob in place of the call it now makes:
 # `9.x.5` passed it and `ver_ge` read it as 9.0.5; `6.x.9` passed and read as 6.0.9. Both are
 # the partly-parseable shape this card refuses everywhere else — a version read as far as it

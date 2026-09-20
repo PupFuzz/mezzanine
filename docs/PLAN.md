@@ -767,10 +767,15 @@ rule violations anyone could have committed at the time.
     `grep -n '\[0-9\]\*\.\[0-9\]\*' bin/deploy.sh | grep -v ':[[:space:]]*#'`
     should print nothing, the remaining hits being comments that name the glob they
     replaced. `bash_floor_is_version` is for a declaration,
-    and **`ver_is_comparable`** for a version a tool reported — two or more fields, each beginning
-    with a digit, which is exactly the condition under which `ver_ge` reads every field as written
-    instead of substituting 0. A6 keeps neither: it is handed `${HOST_PHP_VERSION:-0}`, whose `0`
-    sentinel means *php could not be read* and which `ver_ge` already refuses to compare.
+    and **`ver_is_comparable`** for a version a tool reported — two or more fields, each
+    beginning with a digit. Among the three fields `ver_ge` actually reads, that is exactly the
+    condition under which it reads each as written instead of substituting 0; beyond them the
+    predicate is deliberately STRICTER than the comparison needs, which the function's own
+    header argues for rather than leaving as an accident (a fourth non-numeric field is never
+    read, so it could not have been misread — it is refused so the rule stays one sentence, and
+    so nothing couples this predicate to `ver_ge`'s field depth). A6 keeps neither: it is handed
+    `${HOST_PHP_VERSION:-0}`, whose `0` sentinel means *php could not be read* and which
+    `ver_ge` already refuses to compare.
     The floor predicate is STRICTER than the `[0-9]*.[0-9]*` glob it replaces in A6b, which
     also admitted `4.4x` and `4.x.5`; the second
     is the one that mattered, since a release declaring it was enforced as the floor 4.0.5 — a

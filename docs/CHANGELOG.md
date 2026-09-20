@@ -54,8 +54,11 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   same loose pattern, so an npm reporting something like `9.x.5` was compared as `9.0.5` — a
   number your host never reported. It is refused now. **A prerelease npm still deploys**:
   `9.2.0-pre.1` is read as its release, which is long-standing deliberate behaviour and is
-  covered by a case so it stays that way. What is refused is a version with a field that
-  does not start with a digit, which is the only shape that was being silently read as 0.
+  covered by a case so it stays that way. What is refused is a version with any dot-field that
+  does not start with a digit. Among the first three fields — the ones the comparison reads —
+  that is the shape that was being silently read as `0`; beyond them the check is deliberately
+  stricter than the comparison needs — npm's published versions were swept for this, and none
+  of them is affected.
   **Every comparison between two well-formed versions answers exactly as it did before** —
   measured field by field against the previous implementation. What changed is only what
   happens to an operand that is not one.
