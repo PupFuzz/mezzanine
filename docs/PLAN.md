@@ -564,7 +564,39 @@ rule violations anyone could have committed at the time.
   and asserting the second for every 128 sent an operator whose prod checkout had been restored from backup
   — `detected dubious ownership`, which git prints its own repair line for — looking for a checkout that was
   right there. git's own wording is the discriminator, git's message is printed, and an unrecognised wording
-  gets the generic refusal rather than a false specific one. And **a `.env` that OPENED and could not be read
+  gets the generic refusal rather than a false specific one. And **a `MEZZ_REMOTE` that is not the NAME of a
+  remote of the checkout** (card#9832), refused at A3c before the first line that would print it. The variable
+  is documented as a name, but `git fetch` takes a URL as readily as one and a URL can carry a credential, so
+  `MEZZ_REMOTE=https://user:token@host/org/repo` is a configuration git accepts — and every later mention of
+  it put that credential on the operator's screen and in the deploy log: measured on the tree before the gate,
+  five times over in a single refused run, in A7's step line and in four lines of the fetch refusal. **git's own
+  redaction is no backstop**, being per-transport and not the deploy's to rely on: measured, git 2.53.0, an
+  `https://` URL is reported with the credential stripped and a `git://` one verbatim, and either message is on
+  screen before the script sees it — which is why redaction is the weaker half and refusal is the fix. The test
+  is **MEMBERSHIP in `git remote`, never a pattern match for `://` or `@`**: `backup@nas` and a bare `@` are
+  legal remote names (measured, git 2.53.0 — a remote name is a refname component), so a pattern would refuse a
+  host configured exactly right. **What membership does NOT close is stated at the size it was measured**
+  (review round 2, which found the first wording overclaiming): no name `git remote add` will CREATE can be a
+  URL — a refname may not contain `:`, and every URL git fetches from carries one — but `git config` writes a
+  section name straight into `.git/config` with no such check, so `git config
+  'remote.https://user:secret@host/o/r.git.url' <url>` exits 0, `git remote` lists that URL as a NAME, and the
+  gate passes it (all measured, git 2.53.0). That is a configured remote of the checkout, and the honest claim
+  is the narrow one. ⚠ **On such a checkout the credential is already on screen whenever the remotes are
+  listed**, this gate's own refusal included, because the list it prints IS `git remote`'s output: a credential
+  written into `.git/config` as a remote NAME appears under a headline saying the value is not printed. What is
+  withheld there is `$MEZZ_REMOTE`; the list is the checkout's own configuration, which the deploy reports and
+  does not author, and a credential belongs in `remote.<name>.url`, never in the name. A multi-line
+  `MEZZ_REMOTE` equal to two or more ADJACENT names joined by newlines is refused before the list test, since
+  the test is applied to the value and the value is not a name — nothing secret passed that way, but A7 would
+  have claimed the gate had established a name for a value that names none, and then echoed it. **The refusal
+  does not echo the value**, which is the whole of its point — a refusal that quoted the rejected value to
+  explain itself would emit the credential it exists to keep out of the log — so it names the VARIABLE and
+  lists the remotes the checkout HAS, which are names (`git remote` with no options prints no
+  `remote.<name>.url`). The cost is paid knowingly:
+  an operator who merely mistyped a NAME does not see the typo echoed back, and the list of names that would
+  have worked is what makes it findable; echoing "only when the value looks safe" would be the same guess by
+  another route. `git remote`'s own status is read, and a `git remote` that FAILED is refused as *"whether
+  MEZZ_REMOTE names a remote is NOT established"* rather than as a value that names nothing. And **a `.env` that OPENED and could not be read
   to its end** (card#9610), which is the one an earlier round could not see: bash's `read` returns the same
   status at end-of-file and on a read error, so a file the kernel refused mid-read came back as an EMPTY one
   and the deploy refused on `APP_ENV is 'unset'` — a cause nothing established. bash's own DIAGNOSTIC is what

@@ -49,7 +49,12 @@
 #   - the host's version floors (card#9616): the bash floor moved above this host's bash on the SERVING
 #     copy and, separately, on the TARGET release alone — each beside the same fixture at a floor this
 #     bash meets; a git without `:(literal)` in both of the ways one answers, beside a git that cannot
-#     list a tree at all; and the release's lockfileVersion against npm 6.14.0 and npm 9.2.0.
+#     list a tree at all; and the release's lockfileVersion against npm 6.14.0 and npm 9.2.0;
+#   - MEZZ_REMOTE (card#9832): a credential-bearing URL refused WITHOUT the value reaching the output,
+#     beside a remote NAMED with that same string, which deploys and prints it — so the absence is a
+#     measurement rather than a needle the output could never have carried; `backup@nas`, a legal
+#     remote name, deploying, which is what reds the pattern match the membership test must not become;
+#     and a value joining two ADJACENT remote names with a newline, beside each half deploying alone.
 #
 # ⛔ AND THE REFUSAL CONTRACT ITSELF, ASSERTED AT `run_refusal` RATHER THAN PER CASE (card#9646).
 # A refusal is three things together — exit 1, the `⛔ REFUSED — <cause>` banner, and the closing
@@ -326,6 +331,17 @@ STUB
 {
   printf '#!/usr/bin/env bash\nKNOBS=%q\nREAL_GIT=%q\n' "$T/knobs" "$REAL_GIT"
   cat <<'STUB'
+# A `git remote` that FAILS (card#9832, A3c). After A3 has opened the repository nothing this
+# suite can do to a fixture makes the real `git remote` non-zero — a config git cannot parse, or
+# cannot read, fails A3's `rev-parse --git-dir` first — so the status A3c reads is exercised from
+# here instead of left as a branch nothing has been seen to take (canon #9). Only the deploy's own
+# call is affected: the knob is set immediately before the run and cleared by reset_stubs, and the
+# fixture's own `git remote add` calls happen while it is unset.
+if [ -e "$KNOBS/git_remote_fail" ]; then
+  for a in "$@"; do
+    if [ "$a" = remote ]; then echo "fatal: unable to read config file (selftest shim)" >&2; exit 128; fi
+  done
+fi
 mode="$(cat "$KNOBS/git_magic" 2>/dev/null)"
 if [ -n "$mode" ]; then
   for a in "$@"; do
@@ -402,11 +418,15 @@ reset_stubs() {
   export MEZZ_STREAM_POOL=mezz-stream MEZZ_FEED_DRAIN_CEILING_S=2
   : > "$T/knobs/streams"; rm -f "$T/knobs/status_down" "$T/knobs/status_pool"
   export MEZZ_DAEMON_SETTLE_S=2 MEZZ_DAEMON_STOP_TIMEOUT_S=3
-  unset STUB_UID STUB_CRONTAB_BROKEN MEZZ_DEPLOY_IN_WINDOW MEZZ_DEPLOY_REVALIDATE_FLOOR_S MEZZ_FPM_BIN
+  # ⛔ MEZZ_REMOTE IS UNSET HERE, not defaulted: A3c (card#9832) refuses a value that is not among
+  # `git remote`'s names, so one case's remote leaking into the next would refuse every later
+  # fixture — whose clone knows only `origin` — on a cause that case never set.
+  unset STUB_UID STUB_CRONTAB_BROKEN MEZZ_DEPLOY_IN_WINDOW MEZZ_DEPLOY_REVALIDATE_FLOOR_S MEZZ_FPM_BIN \
+        MEZZ_REMOTE
   kill_streams
   : > "$T/knobs/dies_after_start"; : > "$T/knobs/ignores_term"; : > "$T/knobs/transient_loser"
   rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps" "$T/knobs/mktemp_passes" "$T/knobs/git_magic" \
-        "$T/knobs/bash_calls"
+        "$T/knobs/bash_calls" "$T/knobs/git_remote_fail"
   # 9.2.0 is ABOVE the npm 7 the fixture's lockfileVersion 3 implies without BEING it, so a case
   # that passes A12 here is not passing on an accidental exact match (card#9616).
   export STUB_NPM_VERSION=9.2.0 STUB_NPM_VERSION_RC=0
@@ -2496,22 +2516,22 @@ mv "$ORIGIN.gone" "$ORIGIN"
 run --dry-run
 eq "the control: the same checkout with its remote back deploys" 0 "$RC"
 
-# F3 — MEZZ_REMOTE naming no remote of this checkout. Same 128, a different sentence from git, and
-# the deploy's headline names the remote it was given rather than guessing at a cause.
-mkfix fetch_no_such_remote
-: > "$CALL_LOG"
-OUT="$(MEZZ_REMOTE=nowhere MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
-eq  "MEZZ_REMOTE naming no remote: exit 1" 1 "$RC"
-has "MEZZ_REMOTE naming no remote: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
-has "MEZZ_REMOTE naming no remote: the phase-A promise" \
-  "Nothing was changed. The previous release is still serving." "$OUT"
-has "MEZZ_REMOTE naming no remote: the headline names the remote it was given" \
-  "git could not fetch nowhere (\`git fetch\` exited 128)" "$OUT"
-has "MEZZ_REMOTE naming no remote: git's own message reaches the operator" \
-  "'nowhere' does not appear" "$OUT"
+# F3 — MEZZ_REMOTE naming no remote of this checkout. ⚠ THIS CASE MOVED, AND ITS OLD ASSERTIONS
+# WERE THE DEFECT card#9832 CLOSES. It used to reach the FETCH and assert that the headline "names
+# the remote it was given" — `git could not fetch nowhere` — which is the echo that puts a
+# credential-bearing MEZZ_REMOTE on screen, since `git fetch` takes a URL as readily as a name.
+# A3c now refuses such a value before A7 runs and without printing it, so this case's subject is
+# the ORDERING: the run stops before the fetch, and the fetch's own refusals no longer speak for
+# a MEZZ_REMOTE that names nothing. The refusal itself is asserted in § card#9832 below.
+mkfix fetch_no_such_remote; export MEZZ_REMOTE=nowhere
+run_refusal "MEZZ_REMOTE naming no remote" \
+  "MEZZ_REMOTE does not name a remote of $ROOT" --dry-run
+hasnt "MEZZ_REMOTE naming no remote: A7 was never reached, so no fetch spoke for it" \
+  "git could not fetch" "$OUT"
+hasnt "MEZZ_REMOTE naming no remote: and A7's step line, which prints the value, never ran" \
+  "Fetching" "$OUT"
 hasnt "MEZZ_REMOTE naming no remote: claims no ref failed to resolve — none was asked for" \
   "does not resolve to a commit on" "$OUT"
-unlogged "MEZZ_REMOTE naming no remote: never opened the window" "artisan down"
 
 # ⛔ A RELEASE WITH NO server/bootstrap/app.php REFUSES, where it warned and deployed. Grounded in
 # `server/artisan` line 14 — `$app = require_once __DIR__.'/bootstrap/app.php';` — so EVERY artisan
@@ -3473,6 +3493,185 @@ eq "the control: the same tag, every scratch file created, deploys" 0 "$RC"
 scratch_refused "A7, git_commit_of's tag peel" 3 \
   "no scratch file could be created for git's error output while peeling the tag 'refs/tags/v0.0.2'" \
   --dry-run --ref v0.0.2
+
+# ── card#9832 — MEZZ_REMOTE IS A REMOTE NAME, AND ONE THAT IS NOT IS REFUSED WITHOUT BEING PRINTED ──
+# `git fetch` takes a URL as readily as a name and a URL can carry a credential, so
+# `MEZZ_REMOTE=https://user:token@host/org/repo` is a configuration git accepts — and every mention
+# of `$REMOTE` then printed it: A7's step line before anything could fail, and A7's and A8's
+# refusals. MEASURED against the tree before the gate, with the fixture below: the whole URL —
+# the fake credential inside it — on screen five times over in one refused run, in A7's step line
+# and in four lines of the fetch refusal that followed it. Git's own redaction is no
+# backstop — it is per-transport (git 2.53.0: https strips the credential, `git://` does not) and
+# the message is on screen before the deploy sees it. A3c refuses a value that is not among
+# `git remote`'s names, in phase A, before the first line that could carry it.
+#
+# ⛔ THE ABSENCE ASSERTIONS ARE THE POINT OF THIS SECTION, AND AN ABSENCE PASSES FOR FREE. A `hasnt`
+# is satisfied by a misspelled needle, by an output the needle could never have appeared in, and by
+# a run that printed nothing at all. So the needle is observed PRESENT one variable away, on the
+# same fixture — see the twin below. Without it the credential assertions here would be evidence of
+# nothing.
+#
+# ⭐ AND THE MUTANT THIS SECTION EXISTS TO CATCH is the pattern match — `case $REMOTE in *://*|*@*)`
+# — which is the obvious wrong fix, and the URL case above does NOT catch it: a URL matches the
+# pattern, so that refusal stays green on the mutant. What catches it is `backup@nas`, a LEGAL
+# remote name (a remote name is a refname component, and `@` is allowed in one — measured, git
+# 2.53.0), which the mutant refuses: a host configured exactly right, turned away. Measured on the
+# mutant, it reds there and on the two refusals for values that are not URLs at all — `nowhere`,
+# and `origin` on a checkout with no remotes — because a pattern lets both through to the fetch.
+#
+# ⚠ AND WHAT MEMBERSHIP DOES NOT CLOSE IS NOT TESTED HERE, ON PURPOSE (review round 2). `git config`
+# writes a section name straight into `.git/config` with no name check, so a remote whose NAME is a
+# credential-bearing URL is a CONFIGURED remote and this gate passes it — measured, git 2.53.0, and
+# stated at `bin/deploy.sh`'s A3c and in both docs. No case pins that here: what to do about it is an
+# acceptance question open with the operator, and a characterisation test would read as ratifying the
+# hole. What IS tested below is the leg this round CLOSED — a multi-line value.
+section "card#9832 — MEZZ_REMOTE is a remote NAME, and a value that is not one is refused unprinted"
+
+# ⛔ AN OBVIOUSLY FAKE VALUE, by construction: `example.invalid` is reserved by RFC 2606 and can
+# resolve nowhere, and the token is a literal that says what it is. Nothing here is a credential.
+FAKE_TOKEN='SELFTESTFAKETOKEN'
+FAKE_REMOTE_URL="https://selftest:$FAKE_TOKEN@example.invalid/org/repo.git"
+
+mkfix remote_is_a_url; export MEZZ_REMOTE="$FAKE_REMOTE_URL"
+run_refusal "MEZZ_REMOTE as a credential-bearing URL" \
+  "MEZZ_REMOTE does not name a remote of $ROOT" --dry-run
+hasnt "MEZZ_REMOTE as a URL: the URL is nowhere in the output" "$FAKE_REMOTE_URL" "$OUT"
+hasnt "MEZZ_REMOTE as a URL: nor the credential inside it, on its own" "$FAKE_TOKEN" "$OUT"
+hasnt "MEZZ_REMOTE as a URL: nor the host it would have been fetched from" "example.invalid" "$OUT"
+hasnt "MEZZ_REMOTE as a URL: A7's step line, which prints \$REMOTE before anything can fail, never ran" \
+  "Fetching" "$OUT"
+hasnt "MEZZ_REMOTE as a URL: and no gate read the release" "ok — PHP" "$OUT"
+has "MEZZ_REMOTE as a URL: says outright that the value is withheld, so the omission reads as a decision" \
+  "ITS VALUE IS NOT PRINTED" "$OUT"
+# ⚠ The label says what this fixture's list IS, not what a list can never contain: `origin` is the
+# only remote here. A list CAN carry a URL where one was written in as a NAME (section head).
+has "MEZZ_REMOTE as a URL: lists the names this checkout DOES have" \
+  "  · origin" "$OUT"
+has "MEZZ_REMOTE as a URL: and says how to add the one that was meant" "remote add <name> <url>" "$OUT"
+
+# ⛔ THE POSITIVE TWIN. The same fixture, one variable away: a remote whose NAME is that string.
+# It is a legal name, it deploys, and `Fetching SELFTESTFAKETOKEN` reaches the screen — so the
+# credential needle and the `Fetching` needle are both things this output CAN carry, and their
+# absence above is a measurement rather than a needle that could never appear.
+# ⚠ THE FULL URL AND THE HOST ARE NOT TWINNED — and the reason is NOT that no run could print them.
+# ⛔ AN EARLIER WORDING HERE SAID "AND CANNOT BE: no URL can be a remote's name", which is the round-1
+# universal this card's review round 2 falsified on three other surfaces and which survived HERE, in
+# the one place where it is load-bearing: it is the stated reason those two `hasnt`es get no twin, so
+# a maintainer reads it as the leak path being closed by impossibility — the exact conclusion this
+# card exists to prevent, about the question that is still open with the operator.
+# WHAT IS TRUE: no name `git remote add` will CREATE can be a URL, so no twin can be built the way
+# the twin above is. A name written straight in with `git config` CAN be a URL — the hole recorded
+# at this section's head, left untested on purpose — and such a run does NOT merely reach the fetch
+# and fail: measured through this harness, git resolves that name as a REMOTE, fetches from its
+# configured `.url` and EXITS 0. A7's step line has printed the credential by then, and what
+# follows depends on that remote's refspec — in the run measured here A8's refusal printed it a
+# second time, which is a property of the fixture's refspec and not a general one.
+# So a twin IS buildable, with `git config`; it is not built because building it is the
+# characterisation test this section deliberately does not ship.
+# The two needles are asserted absent as the strings CONTAINING the needle that IS twinned, which is
+# what makes their absence meaningful without a twin of their own.
+gitc "$ROOT" remote add "$FAKE_TOKEN" "$ORIGIN"
+export MEZZ_REMOTE="$FAKE_TOKEN"
+run --dry-run
+eq  "the positive twin: a remote NAMED with that same string deploys" 0 "$RC"
+has "the positive twin: and this output DOES carry it — the absences above are measurements" \
+  "Fetching $FAKE_TOKEN" "$OUT"
+
+# ⭐ THE MUTATION-CATCHER. `backup@nas` is a legal remote name; a gate that pattern-matched `@`
+# would refuse a host that is configured exactly right, which is the widening the card forbids.
+mkfix remote_name_with_at
+gitc "$ROOT" remote add 'backup@nas' "$ORIGIN"
+export MEZZ_REMOTE='backup@nas'
+run --dry-run
+eq  "⭐ a LEGAL remote name carrying @: deploys (a pattern match on \`://\` or \`@\` refuses it)" 0 "$RC"
+has "a legal remote name carrying @: and it is the remote that was fetched" "Fetching backup@nas" "$OUT"
+
+# A configured name that is not the default, which is what the variable is FOR.
+mkfix remote_named_not_origin
+gitc "$ROOT" remote add prod-mirror "$ORIGIN"
+export MEZZ_REMOTE=prod-mirror
+run --dry-run
+eq  "a MEZZ_REMOTE naming a configured remote other than origin: deploys" 0 "$RC"
+has "a configured non-default remote: it is the one that was fetched" "Fetching prod-mirror" "$OUT"
+
+# THE DEFAULT PATH, unchanged: MEZZ_REMOTE unset is `origin`, and `origin` is a configured remote
+# of any checkout this deploy runs on, so the gate is silent on every ordinary host.
+mkfix remote_default_origin
+run --dry-run
+eq  "the default: MEZZ_REMOTE unset deploys, exactly as before this gate" 0 "$RC"
+has "the default: and it fetched origin" "Fetching origin" "$OUT"
+
+# `origin` IS NOT SPECIAL-CASED: on a checkout with no remotes at all the default is refused too,
+# and the list has its own wording rather than an empty bullet.
+mkfix remote_none_configured
+gitc "$ROOT" remote remove origin
+run_refusal "the default origin on a checkout with no remotes at all" \
+  "MEZZ_REMOTE does not name a remote of $ROOT" --dry-run
+has "no remotes at all: said in words, not as an empty list" \
+  "(none — this checkout has no remotes configured at all)" "$OUT"
+
+# ⛔ A MULTI-LINE VALUE — the leg review round 2 found open in the first membership test. The test
+# brackets the LIST in newlines and matches the VALUE inside it, and the value is not a name: two
+# or more ADJACENT names joined by a newline therefore matched, and the gate PASSED them. Nothing
+# secret got through — every line has to be a real remote name — but A7 would then state that A3c
+# "established that it does name a remote" about a value that names none, the fetch would fail, and
+# the multi-line value would be echoed across that refusal: the leak this gate exists to end,
+# reached by the back door. Refusing such a value costs no legitimate one, and the routes INTO the
+# config are enumerated rather than counted — "either route" was this comment's own short
+# enumeration, and review round 3 named a third (measured, git 2.53.0):
+#   · `git remote add $'two\nlines' <url>`        — `is not a valid remote name`, nothing written
+#   · `git config "remote.$'two\nlines'.url" …`   — `invalid key (newline)`, nothing written
+#   · hand-editing `.git/config`                  — the file then does not PARSE: `fatal: bad config
+#     line N in file .git/config`, exit 128 from `git remote`, `git config --list` and `git status`
+#     alike — so that checkout is refused at A3, which names that wording, long before A3c.
+# ⇒ No route leaves a remote whose NAME carries a newline, so the guard rejects no real name.
+# ⭐ THE CONTROLS ARE WHAT MAKE THIS CASE ABOUT THE JOINING: each half is a configured remote of
+# this same fixture and deploys on its own, one variable away.
+MULTILINE_REMOTE=$'origin\nupstream'
+mkfix remote_multiline
+gitc "$ROOT" remote add upstream "$ORIGIN"
+# The fixture's own premise, asserted rather than assumed: the joined value is EXACTLY what
+# `git remote` prints, which is the only reason the bracketed-list test could ever have matched it.
+eq  "fixture: the two names are adjacent in \`git remote\`'s output, which is what joined them" \
+  "$MULTILINE_REMOTE" "$(gitc "$ROOT" remote)"
+export MEZZ_REMOTE="$MULTILINE_REMOTE"
+run_refusal "a MEZZ_REMOTE that is two ADJACENT remote names joined by a newline" \
+  "MEZZ_REMOTE does not name a remote of $ROOT" --dry-run
+hasnt "a multi-line MEZZ_REMOTE: A7 never ran, so nothing claimed A3c had established a name" \
+  "Fetching" "$OUT"
+hasnt "a multi-line MEZZ_REMOTE: and the value itself is not echoed" "$MULTILINE_REMOTE" "$OUT"
+has "a multi-line MEZZ_REMOTE: both halves are listed as the names that WOULD have worked" \
+  "  · origin" "$OUT"
+# THE CONTROLS, one variable away each: both halves really are configured remotes here, so the
+# refusal above is about the joining and not about either name being unknown.
+export MEZZ_REMOTE=origin
+run --dry-run
+eq  "the control: the first half alone is a configured remote and deploys" 0 "$RC"
+export MEZZ_REMOTE=upstream
+run --dry-run
+eq  "the control: the second half alone is a configured remote and deploys" 0 "$RC"
+has "the control: and it is the remote that was fetched" "Fetching upstream" "$OUT"
+
+# ⛔ `git remote`'s OWN STATUS. Unguarded, a failure here would end phase A with git's status and no
+# banner — the card#9646 class. Nothing this suite can do to a FIXTURE produces it (a config git
+# cannot read or parse fails A3's `rev-parse --git-dir` first), so the shim produces it, and the
+# refusal must be about what was NOT established rather than about the value.
+mkfix remote_list_unreadable; export MEZZ_REMOTE="$FAKE_REMOTE_URL"
+: > "$T/knobs/git_remote_fail"
+run_refusal "a \`git remote\` that failed" \
+  "git could not list the remotes of $ROOT (\`git remote\` exited 128)" --dry-run
+has "git remote failed: git's own message reaches the operator" "unable to read config file" "$OUT"
+has "git remote failed: says what is NOT established, rather than that the value is wrong" \
+  "is NOT established" "$OUT"
+hasnt "git remote failed: not reported as a MEZZ_REMOTE that names nothing" \
+  "does not name a remote of" "$OUT"
+hasnt "git remote failed: and the value is withheld on this branch too (it is set to the URL here)" \
+  "$FAKE_TOKEN" "$OUT"
+# THE CONTROL, one variable away: the same fixture with `git remote` answering — and MEZZ_REMOTE
+# back to the default, since the URL it was set to is what the gate below refuses.
+rm -f "$T/knobs/git_remote_fail"; unset MEZZ_REMOTE
+run --dry-run
+eq  "the control: the same fixture with \`git remote\` answering deploys" 0 "$RC"
 
 printf '\n──────────────────────────────────────────────\n'
 # ⚠ REPEATED HERE because a line 1,400 assertions up has scrolled past. A condition this runner
