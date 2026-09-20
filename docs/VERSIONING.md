@@ -344,11 +344,26 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
    ⚠ **The bash line tests the VALUE, not itself, and that is the whole reason it is written the
    long way.** `echo "… $(bash_floor_declared …)"` prints its own prefix whatever the reader
    returns, so an empty read comes out as a confident line with nothing after the colon and the
-   block exits 0 — a PASS over a floor nobody read. **No release tag has a bash floor to print:**
-   `BASH_FLOOR=` entered `bin/deploy.sh` with card#9616, which is not in `v0.5.0` or anything
-   before it, so the sha form above says so on stderr for every tag that exists today. Check any
-   rev with `git show <rev>:bin/deploy.sh | grep -c '^BASH_FLOOR='`. The same silent empty would
-   follow a rename or a typo of that declaration, which is the case this shape really guards.
+   block exits 0 — a PASS over a floor nobody read. The case this shape really guards is a rename
+   or a typo of that declaration, which reads empty in exactly the same way.
+
+   ⚠ **No tag up to `v0.5.0` prints a bash floor**, because `BASH_FLOOR=` entered `bin/deploy.sh`
+   with card#9616, later than all of them — and those tags are immutable, so that stays true. The
+   first release cut after card#9616 will print one. **How the older tags fail is NOT uniform, so
+   run the block over them rather than taking a list from here:** substitute each tag for `rev=`
+   above, or read one rev directly with
+   `git show <rev>:bin/deploy.sh | grep -c '^BASH_FLOOR='` (`0` = the file is there and declares
+   nothing) and `git ls-tree --name-only <rev> -- ':(literal)bin/deploy.sh'` (empty = the file is
+   not in that tree at all).
+
+   ⛔ **Where the rev does not carry `bin/deploy.sh`, git's own error REPLACES the refusal and
+   A12's line does not print either.** Sourcing `bin/deploy.sh` sets `set -Eeuo pipefail` in the
+   CALLING shell — its header says so — so a `git show` that cannot resolve the path fails the
+   assignment and the subshell ABORTS right there, before the `||` and before the gate. The
+   earliest tags are that case. A12 can also refuse on its own (a tree with no
+   `server/package-lock.json`), printing its `⛔ REFUSED` banner instead of its ok-line and
+   exiting the subshell the same way. Fewer lines, same verdict: anything short of three is
+   FAILED, and the stderr text says which of these it was.
 
    ⛔ **Keep stderr. Never `2>&1` or `2>/dev/null` here**, and read the block as FAILED unless
    **all three** lines printed — the bash floor, A12's npm line, and the PHP floor line. One

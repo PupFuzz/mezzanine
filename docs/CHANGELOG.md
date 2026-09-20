@@ -46,30 +46,16 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   `gh api repos/PupFuzz/mezzanine/branches/dev/protection` answers `404 Branch not protected` for
   `dev` and for `main`. And `§ Release flow` step 8 said *"Nothing enforces this mechanically
   here"*, which stopped being true with the first required context.
-  **`§ Release flow` steps 5 and 8 now carry commands rather than facts.** Step 5 derives the host
-  floors through the gates that enforce them — `bin/deploy.sh`'s own `bash_floor_declared`, its
-  A12 lockfile gate, and `tools/verify-php-floor.py` — so a release note quotes a floor it has
-  just read instead of one someone copied; step 8 derives which contexts GitHub will hold the
-  merge on, because the lanes outside that set run and block nothing, and a wall of green ticks is
-  evidence only where a red was possible.
-  ⚠ **The npm floor is what A12 prints, not what `npm_lockfile_version` prints.** That reader
-  gives the lockfile's own `lockfileVersion` — a file-format number — and a release note that
-  carries it as a host requirement asks for an npm version that does not exist. Step 5 therefore
-  calls `gate_a12_asset_lockfile`, whose line names the floor and the lockfile version it was
-  derived from, and the mapping between them stays in the gate where it is enforced.
-  ⚠ **Run step 5's command from the repo root of the tree being released, keep stderr, and treat
-  the block as failed unless all THREE of its lines printed — the bash floor, A12's npm line and
-  the PHP floor line.** `bin/deploy.sh` sources `bin/supervision.sh` from beside itself, so a copy
-  of the script without its sibling — or a run from the wrong directory — fails at that source,
-  and stderr is the only surface that reports it. Being checked out on the tree you are releasing
-  matters for a second reason too: the bash and npm lines read whichever rev you name out of git,
-  while `tools/verify-php-floor.py` has no rev form and always reads the files on disk.
-  ⚠ **The bash line tests the VALUE it read, not whether a line appeared**, because an
-  `echo "… $(reader)"` prints its prefix even when the reader returns nothing — which would be a
-  PASS over a floor nobody read. **No release tag declares a bash floor:** `BASH_FLOOR=` entered
-  `bin/deploy.sh` with card#9616, which `v0.5.0` and every earlier tag predate, so pointing the
-  step at one of those shas prints the refusal on stderr instead of an empty answer. Check any rev
-  with `git show <rev>:bin/deploy.sh | grep -c '^BASH_FLOOR='`.
+  **`§ Release flow` steps 5 and 8 now carry commands rather than facts**, and the procedure is
+  written down once, there. Step 5 derives the host floors by RUNNING the gates that enforce them
+  instead of asking you to copy a number, so a release note quotes a floor it has just read; step
+  8 derives which contexts GitHub will actually hold the merge on, because the lanes outside that
+  set run and block nothing and a wall of green ticks is evidence only where a red was possible.
+  ⚠ **If you write release notes, read `§ Release flow` step 5 before the next one** — how to run
+  it, which rev each line speaks for, why the npm floor is the one A12 prints rather than the
+  `lockfileVersion` beside it, and how to tell the block failed. **This entry deliberately does
+  not repeat the procedure**: the same instructions in two places is the defect this card is
+  about, and one round of review was enough to make the copies disagree.
 - **card#9801** — **A PR into `dev` now has a body generator, and the shape it emits is the fleet
   standard's.** `bin/change-pr-body.py` writes the scope line, `## Highlights`, optionally
   `## Upgrade warnings`, the `Built:` / `**Coordinated in:**` machine lines and the attribution
