@@ -2001,21 +2001,42 @@ phase_a() {
   # pattern is a guess about what a URL looks like, and it is wrong in the direction that costs an
   # operator a correctly configured deploy: `backup@nas`, `git@github` and a bare `@` are all LEGAL
   # remote names (measured, git 2.53.0 — a remote name is a refname component, and `@` is allowed
-  # in one), so a rule keyed on `@` refuses a host that is set up exactly right. Membership is also
-  # COMPLETE in the other direction, for a reason rather than by luck: a refname may not contain
-  # `:` (measured, git 2.53.0 — `git remote add a:b <url>` answers `'a:b' is not a valid remote
-  # name`), and every URL git fetches from carries one, `https://host/…`, `file://…`, `git://…` and
-  # the scp-style `user@host:path` alike. So no URL can BE the name of a configured remote, and no
-  # URL passes. ⚠ THE ONE FETCH TARGET WITH NO `:` IS A BARE FILESYSTEM PATH, and it is disposed of
-  # rather than left unexamined: it carries no credential, and it reaches the fetch only where
-  # somebody has configured a remote whose NAME is that path — which is a configured remote, and is
-  # exactly what this gate asks for.
+  # in one), so a rule keyed on `@` refuses a host that is set up exactly right.
+  #
+  # ⛔ WHAT MEMBERSHIP DOES NOT CLOSE, STATED AT THE SIZE IT WAS MEASURED (review round 2). The
+  # claim here WAS that no URL can be a configured remote's name, on the strength of `git remote
+  # add a:b <url>` answering `'a:b' is not a valid remote name`. ⚠ THAT CONTROL ONLY COVERS NAMES
+  # GIT CREATES. `git config` writes a section name straight into `.git/config` with no such
+  # check — measured, git 2.53.0:
+  #     git config 'remote.https://user:secret@host/o/r.git.url' https://host/o/r.git   # exit 0
+  # `git remote` then LISTS that URL as a name, and this gate PASSES it (verdict measured against
+  # the construct below). ⇒ THE HONEST STATEMENT IS THE NARROW ONE: no name `git remote add` will
+  # CREATE can be a URL — a refname may not contain `:`, and every URL git fetches from carries
+  # one (`https://host/…`, `file://…`, `git://…`, scp-style `user@host:path`) — BUT a name written
+  # directly with `git config` can be, and it IS a configured remote of this checkout.
+  #
+  # ⚠ AND ON SUCH A CHECKOUT THE CREDENTIAL IS ALREADY ON SCREEN WHENEVER THE REMOTES ARE LISTED,
+  # this gate's own refusal included: the list it prints below is `git remote`'s output, so a
+  # credential someone wrote into `.git/config` AS A REMOTE NAME appears under a headline saying
+  # the value is not printed. The value withheld there is `$MEZZ_REMOTE`; the list is the
+  # checkout's own configuration, and nothing here can make `git remote` say less than it says.
+  # A credential does not belong in a remote NAME on any host — `remote.<name>.url` is where a URL
+  # goes, and this gate is what makes the NAME the only thing MEZZ_REMOTE may be.
+  #
+  # ⚠ THE ONE FETCH TARGET WITH NO `:` IS A BARE FILESYSTEM PATH, disposed of rather than left
+  # unexamined: it carries no credential, and it reaches the fetch only where somebody has
+  # configured a remote whose NAME is that path — which is a configured remote, and is exactly
+  # what this gate asks for.
   #
   # ⛔ AND THE REFUSAL DOES NOT ECHO THE VALUE, which is the whole of the point: a refusal that
   # quoted the rejected MEZZ_REMOTE to explain itself would emit the credential it exists to keep
   # out of the log. It names the VARIABLE and lists the remotes this checkout HAS, and those are
-  # names — `git remote` with no options prints one name per line and no URL (measured, git 2.53.0;
-  # `git remote -v` is the form that prints URLs, and is deliberately not the form called here).
+  # NAMES: `git remote` with no options prints one name per line and no `remote.<name>.url`
+  # (measured, git 2.53.0; `git remote -v` is the form that prints URLs, and is deliberately not
+  # the form called here). ⚠ WHAT THAT DOES NOT PROMISE is that no URL is on that list — a NAME
+  # written into `.git/config` with `git config` can itself be a URL, and `git remote` prints the
+  # names it is given (see the block above). The withholding is of `$MEZZ_REMOTE`; the list is the
+  # checkout's own configuration, which this gate reports and does not author.
   # ⚠ THE COST IS PAID KNOWINGLY: an operator who merely mistyped a remote NAME does not get their
   # typo echoed back. Echoing "only when the value looks safe" would be the same pattern-matching
   # guess by another route, one more rule to keep true, and wrong the first time a value that looks
@@ -2049,12 +2070,31 @@ phase_a() {
   # banner and no promise, and take the loader's refusal — which names that cause correctly — with
   # it. Nothing on the runner this suite usually runs on would show that: bash 5.1 and later use a
   # pipe. `deploy-selftest.yml`'s bash-floor job runs the whole suite at BASH_FLOOR, where it would.
-  # A `case` over the list bracketed by newlines needs no file and no child, and it is exact:
-  # `$REMOTE` is quoted, so it is matched literally and not as a glob, and a remote name is a
-  # refname component, which cannot contain a newline.
+  # A `case` over the list bracketed by newlines needs no file and no child, and `$REMOTE` is
+  # quoted inside the pattern, so it is matched LITERALLY and not as a glob — `*`, `o*`, `origi?`
+  # and `[o]rigin` are each refused against a list holding `origin`, and so are `orig`, `rigin`
+  # and `origin ` (measured, with this exact construct).
+  #
+  # ⛔ AND A VALUE CARRYING A NEWLINE IS REFUSED BEFORE THAT TEST, because the test is applied to
+  # the VALUE and the value is not a name (review round 2). A list bracketed by newlines makes
+  # ADJACENT entries joinable: against `origin\nupstream\nbackup@nas\nprod-mirror`, the value
+  # `$'origin\nupstream'` MATCHES and the gate passes it — measured with this construct. Nothing
+  # secret gets through that way, since every line of such a value has to be a real remote name,
+  # but A7 would then state that A3c "established that it does name a remote" about a value that
+  # names none, the fetch would fail, and the multi-line value would be echoed across that
+  # refusal — the five echoes this gate exists to end, reached by the back door.
+  # ⇒ It costs nothing to close: a remote NAME cannot contain a newline by either route into the
+  # config (measured, git 2.53.0 — `git remote add $'two\nlines' <url>` answers `is not a valid
+  # remote name`, and `git config "remote.$'two\nlines'.url" <url>` answers `invalid key
+  # (newline)` and writes nothing), so this rejects no value that could ever have been a name. It
+  # takes the SAME refusal below rather than one of its own: a value that is not a name does not
+  # name a remote, and a second near-identical message would be a second thing to keep true.
   local remote_is_configured=0
-  case $'\n'"$remotes"$'\n' in
-    *$'\n'"$REMOTE"$'\n'*) remote_is_configured=1 ;;
+  case "$REMOTE" in
+    *$'\n'*) ;;
+    *) case $'\n'"$remotes"$'\n' in
+         *$'\n'"$REMOTE"$'\n'*) remote_is_configured=1 ;;
+       esac ;;
   esac
   if [ "$remote_is_configured" -ne 1 ]; then
     local remote_names="  (none — this checkout has no remotes configured at all)"

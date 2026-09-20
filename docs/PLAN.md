@@ -575,11 +575,24 @@ rule violations anyone could have committed at the time.
   screen before the script sees it — which is why redaction is the weaker half and refusal is the fix. The test
   is **MEMBERSHIP in `git remote`, never a pattern match for `://` or `@`**: `backup@nas` and a bare `@` are
   legal remote names (measured, git 2.53.0 — a remote name is a refname component), so a pattern would refuse a
-  host configured exactly right; and it is complete in the other direction for a reason rather than by luck,
-  since a refname may not contain `:` and every URL git fetches from carries one. **The refusal does not echo
-  the value**, which is the whole of its point — a refusal that quoted the rejected value to explain itself
-  would emit the credential it exists to keep out of the log — so it names the VARIABLE and lists the remotes
-  the checkout HAS, which are names (`git remote` with no options prints no URL). The cost is paid knowingly:
+  host configured exactly right. **What membership does NOT close is stated at the size it was measured**
+  (review round 2, which found the first wording overclaiming): no name `git remote add` will CREATE can be a
+  URL — a refname may not contain `:`, and every URL git fetches from carries one — but `git config` writes a
+  section name straight into `.git/config` with no such check, so `git config
+  'remote.https://user:secret@host/o/r.git.url' <url>` exits 0, `git remote` lists that URL as a NAME, and the
+  gate passes it (all measured, git 2.53.0). That is a configured remote of the checkout, and the honest claim
+  is the narrow one. ⚠ **On such a checkout the credential is already on screen whenever the remotes are
+  listed**, this gate's own refusal included, because the list it prints IS `git remote`'s output: a credential
+  written into `.git/config` as a remote NAME appears under a headline saying the value is not printed. What is
+  withheld there is `$MEZZ_REMOTE`; the list is the checkout's own configuration, which the deploy reports and
+  does not author, and a credential belongs in `remote.<name>.url`, never in the name. A multi-line
+  `MEZZ_REMOTE` equal to two or more ADJACENT names joined by newlines is refused before the list test, since
+  the test is applied to the value and the value is not a name — nothing secret passed that way, but A7 would
+  have claimed the gate had established a name for a value that names none, and then echoed it. **The refusal
+  does not echo the value**, which is the whole of its point — a refusal that quoted the rejected value to
+  explain itself would emit the credential it exists to keep out of the log — so it names the VARIABLE and
+  lists the remotes the checkout HAS, which are names (`git remote` with no options prints no
+  `remote.<name>.url`). The cost is paid knowingly:
   an operator who merely mistyped a NAME does not see the typo echoed back, and the list of names that would
   have worked is what makes it findable; echoing "only when the value looks safe" would be the same guess by
   another route. `git remote`'s own status is read, and a `git remote` that FAILED is refused as *"whether

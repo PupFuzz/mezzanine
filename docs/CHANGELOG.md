@@ -41,12 +41,27 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   half.
   **The test is MEMBERSHIP in `git remote`, never a pattern match for `://` or `@`.** `backup@nas`
   and a bare `@` are legal remote names — a remote name is a refname component — so a pattern would
-  refuse a host that is configured exactly right; and membership is complete in the other direction
-  for a reason rather than by luck, since a refname may not contain `:` and every URL git fetches
-  from carries one.
+  refuse a host that is configured exactly right.
+  **What membership does NOT close, said at the size it was measured.** No name `git remote add`
+  will CREATE can be a URL: a refname may not contain `:`, and every URL git fetches from carries
+  one. But `git config` writes a section name straight into `.git/config` with no such check —
+  measured, git 2.53.0, `git config 'remote.https://user:secret@host/o/r.git.url' <url>` exits 0,
+  `git remote` then lists that URL as a NAME, and this gate passes it. That is a configured remote
+  of the checkout, so the claim is the narrow one and not "no URL can be a remote's name".
+  ⚠ **On a checkout like that the credential is already on screen whenever the remotes are listed,
+  this gate's refusal included** — the list it prints is `git remote`'s own output, so a credential
+  someone wrote into `.git/config` AS A REMOTE NAME appears under a headline saying the value is not
+  printed. What is withheld there is `MEZZ_REMOTE`; the list is your checkout's configuration, which
+  the deploy reports and does not author. **If any remote of your deploy checkout is named with a
+  URL, rename it** (`git -C <deploy root> remote rename <the URL> <a name>`): a credential belongs
+  in `remote.<name>.url`, never in the name, and while it is the name it is printed by every tool
+  that lists your remotes, not only by this one.
+  A multi-line `MEZZ_REMOTE` equal to two or more ADJACENT names joined by newlines is refused
+  before the list test, since that test is applied to the value and the value is not a name.
   **The refusal does not echo what it rejected**, which is the whole of its point: it names the
   VARIABLE, says outright that the value is withheld, and lists the remotes this checkout HAS, which
-  are names — `git remote` with no options prints no URL. The cost is paid knowingly: an operator who
+  are names — `git remote` with no options prints no `remote.<name>.url`. The cost is paid
+  knowingly: an operator who
   merely mistyped a name does not get the typo echoed back, and the list of names that would have
   worked is what makes it findable. `git remote`'s own status is read too, so a `git remote` that
   FAILED is refused as *"whether `MEZZ_REMOTE` names a remote is NOT established"* rather than as a
@@ -59,7 +74,8 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   output, a positive twin that observes the same string PRESENT so the absence is a measurement
   rather than a needle that could never appear, `backup@nas` deploying (which is what reds the
   pattern match), a configured non-default remote deploying, the default `origin` path unchanged, a
-  checkout with no remotes at all, and a `git remote` made to fail by the suite's git shim — a
+  checkout with no remotes at all, a value joining two adjacent remote names with a newline beside
+  each half deploying alone, and a `git remote` made to fail by the suite's git shim — a
   status nothing can make a fixture produce, since a config git cannot read fails A3 first.
 
 - **card#9616** — **`bin/deploy.sh` refuses a host whose `bash`, `git` or `npm` is too old — by name,
