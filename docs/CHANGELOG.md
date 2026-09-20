@@ -27,6 +27,35 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9803** — **`docs/design/FLEET-STATE.md` § 6.2 owns the suite's store-isolation pin values
+  and carries them as a verbatim XML block; the suite now checks that block against
+  `server/phpunit.xml`.** Nothing compared the two, so the document that OWNS the pins could
+  disagree with the file that implements them, in either direction, with every check green. The cost
+  is in the correction rather than in the disagreement: someone who finds the file contradicting the
+  section that owns the values edits the FILE to match it, and those pins decide which database the
+  suite rebuilds destructively on every run and which Redis index it flushes — on a shared host,
+  someone else's.
+  **`Tests\Feature\DatabasePinTest` reads § 6.2's block through the same reader it already used for
+  `phpunit.xml`** — one implementation of what a pin is, rather than a second parser inside a check
+  whose whole subject is two copies disagreeing — and reds naming the key and what each side
+  declares.
+  **It compares `DB_URL` and `REDIS_URL`, and leaves the remaining pins to the guards that already
+  cover them.** That scope was established per key. A drifted `DB_DATABASE`, `REDIS_DB` or
+  `REDIS_CACHE_DB` copied into `phpunit.xml` moves a resolved value `Tests\TestCase` asserts by name
+  and ABORTS the run on, so it cannot reach a green suite. `REDIS_URL` is asserted by nothing:
+  Laravel's `RedisManager` takes the index from the URL's path when it BUILDS a connection, so
+  `config('database.redis.default.database')` goes on reporting the pinned index and no check sees
+  the difference. And `DB_URL`'s existing guard compares the database NAME alone, while the URL also
+  replaces the driver, host, port, username and password — measured with a `DB_URL` of
+  `mysql://127.0.0.1:3399/mezzanine_test` pinned in `phpunit.xml`, where every `config()` pin passed,
+  the connection-name guard passed, and the run went on to open a connection to that port.
+  The check was watched failing in each shape before it was trusted: a value changed in § 6.2, a
+  value changed in `phpunit.xml`, and the pin deleted from each side in turn.
+  **There is nothing to do on any host.** No application code, no configuration and no deploy path
+  changes, and the check runs with the rest of the PHP suite. It matters when you EDIT either copy:
+  move the pins in `server/phpunit.xml` and § 6.2's block in the same commit, and read that section's
+  guard bullets before deciding which copy drifted.
+
 - **card#9832** — **`bin/deploy.sh` refuses a `MEZZ_REMOTE` that is not the NAME of a remote of the
   checkout, in phase A, before anything is touched — and without printing the value.** The variable
   has always been documented as a git remote NAME, but `git fetch` takes a URL just as readily, and

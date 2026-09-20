@@ -1252,6 +1252,10 @@ believed they had already done:
 <server name="REDIS_URL"      value=""/>
 ```
 
+⛔ **Editing the block above edits the pins.** `Tests\Feature\DatabasePinTest` reads it and compares it
+with `server/phpunit.xml`; the last guard bullet below says which keys it compares and why the rest are
+already covered elsewhere.
+
 **And the pin is guarded, not trusted** ([AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites)):
 
 - A test-suite bootstrap guard (`Tests\TestCase::createApplication()`) **aborts the run** before the
@@ -1271,6 +1275,14 @@ believed they had already done:
     `mezzanine_test` while the connection points elsewhere. Measured on card#9328: with the `DB_URL`
     pin removed from `phpunit.xml` and a `DB_URL` exported, the `config()` read passed. The connection's
     PDO is lazy, so this read opens no connection.
+    ⚠ **It compares the database NAME, and no other component of the URL** — stated because the
+    bullet above reads as total. `ConfigurationUrlParser::getPrimaryOptions()` also replaces the
+    driver, host, port, username and password. Measured on card#9803 with a `DB_URL` of
+    `mysql://127.0.0.1:3399/mezzanine_test` pinned in `phpunit.xml`: every `config()` pin passed,
+    this read passed, and the run went on to open a connection to that host and port — the suite
+    would have rebuilt a `mezzanine_test` on a server nobody chose had one been listening. What
+    closes that for the DECLARED value is the doc↔file bullet below; the resolved case is open and
+    belongs with the Redis form of the connection read.
   - ⚠ **`REDIS_URL` has no connection-level read.** Laravel's `RedisManager` also applies the URL only
     when it resolves a connection, so a `REDIS_URL` path is invisible to the `config()` read, just as
     `DB_URL`'s was. Nothing refuses it, and today nothing reaches it: the suite runs cache, session and
@@ -1291,6 +1303,27 @@ believed they had already done:
   the divergence the pairing test above exists to catch and must be judged rather than fall out of the
   set. The unforced `<env>` entries (`DB_CONNECTION` and the defaults above it) claim nothing and are
   not pins.
+- **And THIS SECTION'S OWN BLOCK is checked against the file it owns** (card#9803). The block above is
+  a verbatim copy of `phpunit.xml`'s pins, this section declares itself their owner, and until
+  card#9803 nothing compared the two — so the owning copy could drift from the implementing one in
+  either direction, silently. The block STAYS rather than being replaced by a pointer at the file:
+  this document is published to the fleet and most of its readers have no `server/phpunit.xml` to
+  follow a pointer into, which is the case where a restatement is guarded instead of deleted. The
+  harm is the CORRECTION rather than the disagreement: a seat that
+  finds the file disagreeing with the section that owns the values edits the FILE, which is an edit
+  to the pins deciding which database `RefreshDatabase` rebuilds destructively and which Redis index
+  a flush reaches. `DatabasePinTest` now reads the block above through the same reader it reads
+  `phpunit.xml` with — one implementation of *what a pin is*, because a second one in a check about
+  two copies disagreeing is the same defect a layer further out — and reds naming the key and both
+  sides' values.
+  ⚠ **It compares `DB_URL` and `REDIS_URL` only, and that scope is card#9803's finding rather than a
+  convenience.** The question asked per key was whether a drifted value here, copied into the file,
+  would already red: `DB_DATABASE`, `REDIS_DB` and `REDIS_CACHE_DB` each move a resolved value the
+  bootstrap guard above asserts by name and ABORTS on, so they are covered and are not re-checked
+  (another copy of the values here would be another copy to keep in step). `REDIS_URL` is asserted
+  by nothing at all — the bullet above says why — and `DB_URL`'s connection read covers the database
+  name alone. The URL pins are exactly the ones whose value can drift here, reach the file, and
+  still run green.
 - `DB_CONNECTION` is declared **`mysql`** and is **not** forced, deliberately, and `phpunit.xml`
   comments the omission as load-bearing. **There is one engine.** SQLite is not a supported
   configuration anywhere this application runs, so nothing selects a backend any more
