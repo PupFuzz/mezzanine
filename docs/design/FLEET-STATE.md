@@ -1252,6 +1252,10 @@ believed they had already done:
 <server name="REDIS_URL"      value=""/>
 ```
 
+⛔ **Editing the block above edits the pins.** `Tests\Feature\DatabasePinTest` reads it and compares it
+to `server/phpunit.xml`, key by key and value by value; the guard bullet below that opens *"And THIS
+SECTION'S OWN BLOCK is checked against the file it owns"* says how, and what each key's other cover is.
+
 **And the pin is guarded, not trusted** ([AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites)):
 
 - A test-suite bootstrap guard (`Tests\TestCase::createApplication()`) **aborts the run** before the
@@ -1271,6 +1275,14 @@ believed they had already done:
     `mezzanine_test` while the connection points elsewhere. Measured on card#9328: with the `DB_URL`
     pin removed from `phpunit.xml` and a `DB_URL` exported, the `config()` read passed. The connection's
     PDO is lazy, so this read opens no connection.
+    ⚠ **It compares the database NAME, and no other component of the URL** — stated because the
+    bullet above reads as total. `ConfigurationUrlParser::getPrimaryOptions()` also replaces the
+    driver, host, port, username and password. Measured on card#9803 with a `DB_URL` of
+    `mysql://127.0.0.1:3399/mezzanine_test` pinned in `phpunit.xml`: every `config()` pin passed,
+    this read passed, and the run went on to open a connection to that host and port — the suite
+    would have rebuilt a `mezzanine_test` on a server nobody chose had one been listening. What
+    closes that for the DECLARED value is the doc↔file bullet below; the resolved case is open and
+    belongs with the Redis form of the connection read.
   - ⚠ **`REDIS_URL` has no connection-level read.** Laravel's `RedisManager` also applies the URL only
     when it resolves a connection, so a `REDIS_URL` path is invisible to the `config()` read, just as
     `DB_URL`'s was. Nothing refuses it, and today nothing reaches it: the suite runs cache, session and
@@ -1291,6 +1303,37 @@ believed they had already done:
   the divergence the pairing test above exists to catch and must be judged rather than fall out of the
   set. The unforced `<env>` entries (`DB_CONNECTION` and the defaults above it) claim nothing and are
   not pins.
+- **And THIS SECTION'S OWN BLOCK is checked against the file it owns** (card#9803). The block above is
+  a verbatim copy of `phpunit.xml`'s pins, this section declares itself their owner, and until
+  card#9803 nothing compared the two — so the owning copy could drift from the implementing one in
+  either direction, silently. The block STAYS rather than being replaced by a pointer at the file:
+  this document is published to the fleet and most of its readers have no `server/phpunit.xml` to
+  follow a pointer into, which is the case where a restatement is guarded instead of deleted. The
+  harm is the CORRECTION rather than the disagreement: a seat that
+  finds the file disagreeing with the section that owns the values edits the FILE, which is an edit
+  to the pins deciding which database `RefreshDatabase` rebuilds destructively and which Redis index
+  a flush reaches. `DatabasePinTest` now reads the block above through the same reader it reads
+  `phpunit.xml` with — one implementation of *what a pin is*, because a second one in a check about
+  two copies disagreeing is the same defect a layer further out — and reds naming the key and
+  printing what each copy declares.
+  **The population is the pin set itself, not a list anyone maintains:** the key sets are read from
+  the two files and compared, and then, over `phpunit.xml`'s own set read at run time, each pin's
+  `<env>` value, its `force` and its `<server>` value are compared — so a pin added to the file is
+  compared on the run that adds it, with no second decision to remember. `force` is in there
+  because finding 1 above makes it as load-bearing as the value: a block whose `force="true"` has
+  been dropped isolates nothing once copied into the file. Naming a subset here instead would be an
+  unguarded restatement of a list, which is the defect this bullet is about.
+  ⚠ **What the check is WORTH differs by key, and card#9803 established it key by key.** For
+  `REDIS_URL` it is the only thing there is: the value is asserted nowhere else, for the reason the
+  bullet above gives. For `DB_URL` it is the only thing behind every component but the database
+  name, which is all the connection read compares. For `DB_DATABASE`, `REDIS_DB` and
+  `REDIS_CACHE_DB` it is not the only guard, and which red you get depends on which copy moved: a
+  drift in THIS DOCUMENT reaches this check and nothing else, one step before a seat copies it into
+  the file, while a drift in the FILE moves a resolved value and so aborts the run at the bootstrap
+  guard before this check runs at all. The check is the better report of the two — it prints what
+  each copy declares and leaves which one drifted to the reader — where the abort blames an
+  exported variable that in this sequence is not the cause, which is why that refusal now names
+  this one beside it.
 - `DB_CONNECTION` is declared **`mysql`** and is **not** forced, deliberately, and `phpunit.xml`
   comments the omission as load-bearing. **There is one engine.** SQLite is not a supported
   configuration anywhere this application runs, so nothing selects a backend any more
