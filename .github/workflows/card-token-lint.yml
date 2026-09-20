@@ -4,8 +4,10 @@
 # one only REPORTS — so the index below says which is which rather than leaving it to be inferred.
 #
 #   job `card-token-lint`  — the PR's TITLE and HEAD BRANCH, against the card-token grammar the
-#                            kanban correlators use. It BLOCKS: it is a required context. The file
-#                            keeps its name from this job.
+#                            kanban correlators use. It BLOCKS: a bad token FAILS this job, so a
+#                            branch requiring this context cannot merge past it. Whether a branch
+#                            requires it is a repository setting, read with the command below —
+#                            never from this file. The file keeps its name from this job.
 #   job `pr-body-lint`     — the PR's BODY, against the FLEET's PR-body standard (card#9767). Its
 #                            VERDICT ON THE BODY is REPORT-ONLY: that step prints what it finds and
 #                            exits 0, always, so nothing anybody writes in a body can fail this job.
@@ -20,19 +22,26 @@
 # both judge through a vendored file. A separate workflow would duplicate the trigger block, the
 # pin step and the reasoning, and put the same class of check in two places to keep in sync.
 # ⛔ THEY ARE SEPARATE JOBS, NOT STEPS IN ONE, AND THERE IS NO `needs:` BETWEEN THEM. A ruleset
-# matches the JOB id (`docs/VERSIONING.md § Branch model`, measured 2026-08-30), so two jobs are two
-# independently requirable contexts and a red on one names which check failed. Two jobs also means
+# matches each job's own check run (the ⚠ paragraph below states how that name is decided), so two
+# jobs are two independently requirable contexts and a red on one names which check failed. Two jobs also means
 # the REPORT-ONLY one is structurally incapable of touching the BLOCKING one: with no `needs:` edge
 # they are separate runners with separate results, so nothing `pr-body-lint` does — a finding, a
 # crash, a timeout — can fail or skip `card-token-lint`. ⚠ This repository has ZERO `needs:` edges
 # in ANY workflow, and that is the property that makes the previous sentence true rather than
 # hopeful; a future edit that adds one here owes a re-read of this paragraph.
 #
-# ⚠ THE WORKFLOW'S DISPLAY NAME CHANGED WITH THAT SECOND JOB, AND THE JOB IDS DID NOT. Rulesets and
-# classic protection match the job id, never the display name — that is measured in
-# `docs/VERSIONING.md § Branch model`, which is also where the required set lives. So `card-token-lint`
-# is still the same required context it was; `pr-body-lint` is a NEW context that is NOT required
-# until somebody edits the ruleset, and `docs/VERSIONING.md` records that state rather than this file.
+# ⚠ THE WORKFLOW'S DISPLAY NAME CHANGED WITH THAT SECOND JOB, AND THE JOB IDS DID NOT. A ruleset
+# matches the CHECK-RUN name, never the workflow's display name, and here that name is the job id
+# because no job in this repository declares a `name:` — `docs/VERSIONING.md § Branch model` states
+# that and carries the command that reads what each branch requires. So `card-token-lint` keeps the
+# context id it always had and `pr-body-lint` arrived as a new one.
+# ⛔ WHICH of them a branch REQUIRES is not stated here, and it is not stated there either: it is a
+# repository setting, and a copy of it in a workflow header is exactly what went stale in this repo
+# before (`asset-provenance.yml` told reviewers a red did not block a merge while it did). Read it:
+#   gh api repos/PupFuzz/mezzanine/rules/branches/dev --jq \
+#     '[.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context]|sort'
+# What IS this file's to state is each job's OWN BEHAVIOUR, which is the index above: `pr-body-lint`
+# prints its verdict and exits 0, so requiring its context would not by itself make it block.
 #
 # IT ALSO GUARDS EVERY VENDORED FILE'S DECLARED PROVENANCE (`bin/vendor-pin-check.sh`, the first
 # step of each job; its MANIFEST is the list) — the mover the card-token gate extracts its grammar

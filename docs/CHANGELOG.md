@@ -47,14 +47,20 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   `dev` and for `main`. And `§ Release flow` step 8 said *"Nothing enforces this mechanically
   here"*, which stopped being true with the first required context.
   **`§ Release flow` steps 5 and 8 now carry commands rather than facts.** Step 5 derives the host
-  floors through `bin/deploy.sh`'s own readers and `tools/verify-php-floor.py`, so a release note
-  states a floor it has just read instead of one someone copied; step 8 derives which contexts
-  GitHub will hold the merge on, because the lanes outside that set run and block nothing, and a
-  wall of green ticks is evidence only where a red was possible.
-  ⚠ **Run step 5's command from the repo root, and never redirect its stderr away.**
-  `bin/deploy.sh` sources `bin/supervision.sh` from beside itself, so a lone copy of the script
-  cannot be sourced — with stderr discarded that failure prints nothing at all rather than saying
-  what went wrong.
+  floors through the gates that enforce them — `bin/deploy.sh`'s own `bash_floor_declared`, its
+  A12 lockfile gate, and `tools/verify-php-floor.py` — so a release note quotes a floor it has
+  just read instead of one someone copied; step 8 derives which contexts GitHub will hold the
+  merge on, because the lanes outside that set run and block nothing, and a wall of green ticks is
+  evidence only where a red was possible.
+  ⚠ **The npm floor is what A12 prints, not what `npm_lockfile_version` prints.** That reader
+  gives the lockfile's own `lockfileVersion` — a file-format number — and a release note that
+  carries it as a host requirement asks for an npm version that does not exist. Step 5 therefore
+  calls `gate_a12_asset_lockfile`, whose line names the floor and the lockfile version it was
+  derived from, and the mapping between them stays in the gate where it is enforced.
+  ⚠ **Run step 5's command from the repo root of the tree being released, keep stderr, and treat
+  the block as failed unless every labelled line printed.** `bin/deploy.sh` sources
+  `bin/supervision.sh` from beside itself, so a copy of the script without its sibling — or a run
+  from the wrong directory — fails at that source, and stderr is the only surface that reports it.
 - **card#9801** — **A PR into `dev` now has a body generator, and the shape it emits is the fleet
   standard's.** `bin/change-pr-body.py` writes the scope line, `## Highlights`, optionally
   `## Upgrade warnings`, the `Built:` / `**Coordinated in:**` machine lines and the attribution

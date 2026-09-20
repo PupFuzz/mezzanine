@@ -89,10 +89,13 @@ correlates on).
 
 ⛔ **WHICH CONTEXTS A PR MUST PASS, AND WHICH MERGE METHOD A BRANCH OFFERS, ARE REPOSITORY-SETTINGS
 FACTS. A DOCUMENT CANNOT VERIFY THEM; ONLY THE API CAN.** This section is the one home of **where
-to read them**, and it deliberately carries no list of required contexts and no merge-method table.
-(The one settings reading it still states is the `dev` merge-method ruleset and its bypass, at the
-end of this section, because the policy that bypass exists for is not readable from the API at
-all; that block carries its own re-derive command.) It used to carry the lists too: a stack of dated
+to read them**, and **it carries no list of required contexts and no merge-method table** — that is
+the load-bearing half, because those two are what a reader acts on and what moved under the old
+copies. Settings ARE stated elsewhere in this section — which method each branch offers, the `dev`
+bypass, the two release rulesets — and each is stated as the POLICY it must satisfy, with the
+command that reads the live setting beside it, because the reasoning is what no API call can give
+you. Treat any of them as a claim to re-derive, never as the state. The lists used to be here
+too: a stack of dated
 re-readings, each added because the previous one had gone stale, and each stale again before the
 next card read it — a settings value copied into prose has no reader that re-derives it, which is
 the whole defect. Copies of it in two other files (`.github/workflows/asset-provenance.yml` and
@@ -123,7 +126,14 @@ reader that stopped at one of them would have reported the other's requirement a
 **A required context is the name of the CHECK RUN, never the workflow file's name** — so a second
 job added to an existing workflow file is a second, independently requirable context, and that is
 why two jobs in one file can be required separately. In this repo that name is the JOB id, because
-no job declares a `name:` — `grep -n '^    name:' .github/workflows/*.yml` matches nothing. ⚠ **A
+no job declares a `name:` — run this from the repo root, where an empty result is a result and not
+a wrong directory:
+
+```
+grep -n '^    name:' .github/workflows/*.yml || echo 'no job declares a name: — the context IS the job id'
+```
+
+⚠ **A
 job that gains a `name:` is renaming its context**, and a ruleset would go on requiring the old
 one and wait for a check that never reports.
 
@@ -192,8 +202,12 @@ it, and it is why the release gate asks *what* is merged rather than *who* merge
 >   as a merge commit after the ruleset existed, which only the bypass admits.
 > - **What the bypass does not skip:** it bypasses this ruleset only. The required status checks
 >   are a rule of a DIFFERENT ruleset, so a back-merge still waits for every required check —
->   the `{type, ruleset_id, parameters}` command above prints which ruleset each rule in force
->   comes from, and that ruleset's own bypass is read by the per-id command beside it. ⚠ **And
+>   **and that conclusion holds only while that other ruleset grants no bypass of its own.** Read
+>   both halves before relying on it: the `{type, ruleset_id, parameters}` command above says
+>   which ruleset the `required_status_checks` rule on `dev` comes from, and
+>   `gh api repos/PupFuzz/mezzanine/rulesets/<that id> --jq '{bypass_actors,current_user_can_bypass}'`
+>   says whether this identity can step past it. A bypass added there would make the sentence
+>   above false without touching this block. ⚠ **And
 >   no rule on `dev` may require linear history** — that one refuses a merge commit from anyone
 >   its own ruleset does not exempt, and would make core rule 5 unsatisfiable; the same command
 >   lists every rule type in force, which is where to check it.
@@ -280,23 +294,36 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 5. **State the deploy verdict for BOTH targets** — see
    [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets). A release
    that says nothing about a target has not said "nothing to do" about it.
-   Where the verdict states what a host must satisfy, **derive the floors from the script that
-   enforces them — never copy a number into the notes.** `bin/deploy.sh` declares them and reads
-   its own declarations, and `tools/verify-php-floor.py` is the PHP one's reader:
+   Where the verdict states what a host must satisfy, **derive the floors from the gates that
+   enforce them — never copy a number into the notes, and never restate a mapping.**
+   `bin/deploy.sh` declares the bash floor and reads its own declaration; A12 owns the mapping
+   from a lockfile format to an npm floor and is the only thing that should ever state that
+   floor; `tools/verify-php-floor.py` is the PHP one's reader. Run from the repo root of the tree
+   being released:
 
    ```
-   ( . ./bin/deploy.sh >/dev/null; bash_floor_declared < bin/deploy.sh; npm_lockfile_version < server/package-lock.json )
+   ( . ./bin/deploy.sh >/dev/null
+     echo "bash floor declared by this tree: $(bash_floor_declared < bin/deploy.sh)"
+     gate_a12_asset_lockfile HEAD "$(npm --version)" )
    python3 tools/verify-php-floor.py
    ```
 
-   Run both from the repo root, and **do not redirect stderr away**: `bin/deploy.sh` sources
-   `bin/supervision.sh` from beside itself, so a lone copy of the script cannot be sourced, and
-   a swallowed failure there leaves the block printing nothing at all rather than saying so.
-   Sourcing runs no deploy: the script's own `main` function runs only when the file is executed
-   (§ library mode), which is what lets a checker read a declaration without deploying anything.
-   git is the exception with no floor to print — A3b PROBES the host instead, by design. What the
-   host must satisfy is `bin/deploy.sh`'s header block *"⚑ WHAT THIS HOST'S TOOLS MUST BE"* to
-   state; this step only says the notes must carry it.
+   A12's line names the npm floor and the lockfile version it came from, so **the note quotes that
+   line rather than a number**. ⚠ `npm_lockfile_version` is NOT that floor — it prints the
+   lockfile's own `lockfileVersion`, a file-format number, and a note that carries it as a host
+   requirement asks for an npm that does not exist. Pass a release's sha in place of `HEAD` to ask
+   about that release; the gate reads the tree out of git, so it needs a checkout with the commit,
+   and it needs an `npm` on the machine only to have a version to compare against.
+
+   ⛔ **Keep stderr. Never `2>&1` or `2>/dev/null` here**, and read the block as FAILED unless
+   every labelled line printed. `bin/deploy.sh` sources `bin/supervision.sh` from beside itself,
+   so a copy of the script without its sibling — or a run from the wrong directory — fails at that
+   source, and stderr is the only place that says so. Sourcing runs no deploy: the script's own
+   `main` function runs only when the file is executed (§ library mode), which is what lets a
+   checker call one gate without deploying anything. git is the exception with no floor to print —
+   A3b PROBES the host instead, by design. What the host must satisfy is `bin/deploy.sh`'s header
+   block *"⚑ WHAT THIS HOST'S TOOLS MUST BE"* to state; this step only says the notes must carry
+   it.
 6. **State the wire verdict** if the accepted schema set moved — see
    [§ Wire compatibility](#wire-compatibility--the-reporter-to-ingest-contract-has-its-own-version-line).
 7. **Open the release PR `release/v<version>` → `main`** with full notes. Head is the release
