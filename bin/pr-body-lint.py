@@ -39,9 +39,12 @@
 # rules, plus `attribution-line`. Keeping the local pair would have been a second divergent
 # implementation of a capability the framework already owns (canon #5).
 #
-# ⛔ IT IS WIRED REPORT-ONLY, ON PURPOSE. The `pr-body-lint` job in
-# `.github/workflows/card-token-lint.yml` prints this verdict and exits 0 whatever it finds. That
-# job's own block owns why, what it would take to make it block, and whose decision that is. Not
+# ⛔ IT IS WIRED REPORT-ONLY, ON PURPOSE. The STEP that runs this program, in the `pr-body-lint`
+# job of `.github/workflows/card-token-lint.yml`, prints this verdict and exits 0 whatever it
+# finds — so no PR body can fail that job. ⚠ The JOB promises no such thing: its vendored-byte
+# pin and its selftest steps judge the CHECKOUT and do red, which is what makes a red there a
+# statement about this repository's files and never about anybody's prose. That job's own block
+# owns why, what it would take to make the VERDICT block, and whose decision that is. Not
 # restated here — one home per claim.
 #
 # RE-VENDORING. Take the fresh upstream file, put this header back on top of it with all three

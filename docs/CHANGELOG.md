@@ -60,11 +60,28 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   and in "the contract this job makes is that it exits 0". That was never true: the job's
   vendored-byte pin and the vendored linter's own selftest shipped in its first commit and both
   red on a bad checkout. ⚠ "Corrected everywhere" is exactly the claim that goes stale at the next
-  copy and that nothing re-checks, so the instrument is recorded rather than the verdict — re-run
-  it before adding a sentence about this lane, because it caught two copies that narrower greps
-  and two review passes missed:
-  `git grep -n -i -E "exits? 0|can fail|cannot fail|never block|never fails" -- CLAUDE.md docs/ .github/workflows/ | grep -i "body\|this job\|this step\|lane"`.
-  The promise is, and always was, about the BODY: no PR body can fail this job. The
+  copy and that nothing re-checks, so the SWEEP is recorded rather than the verdict. Re-run it
+  before adding a sentence about this lane; each round of this change found a copy the previous
+  round's narrower sweep had not:
+
+  ```
+  for f in $(git grep -l "pr-body-lint" -- CLAUDE.md README.md docs/ .github/ bin/ \
+             | grep -v 'fixtures\|changelog/v0'); do
+    git grep -n -i -E "exits? 0|can fail|cannot fail|never block|never fails" -- "$f"
+  done
+  ```
+
+  ⛔ **SELECT THE FILES, THEN READ EVERY MATCH IN THEM — DO NOT ADD A SECOND LINE-FILTER.** The
+  obvious tightening (`| grep -i "body\|this job"`) is what this command replaced, and it was
+  measured to MISS its own known positive: these sentences are hard-wrapped, so the predicate and
+  the subject word land on different lines and a line-oriented second stage drops the pair. At
+  the base commit it silently omitted `docs/VERSIONING.md:256`, which carried the claim verbatim.
+  Dropping `bin/` from the pathspec hid the last copy of all, inside `bin/pr-body-lint.py`'s own
+  header. ⇒ The cost of the version above is NOISE — it returns every "exit 0" in the changelog's
+  history, and you discard those by eye. That is the right trade: a reader who skims a screenful of
+  irrelevant lines still finds the wrong sentence, and a filtered sweep that returns a clean-looking
+  set hands the next author CONFIDENCE instead of a question, which is worse than the universal it
+  replaced. The promise is, and always was, about the BODY: no PR body can fail this job. The
   generator's selftest now runs in the same job and can red it too, and it is ordered AFTER the
   report step so that a broken generator can never suppress the body verdict the author reads.
 - **card#9984** — **`bin/deploy.sh`'s version comparison refuses operands it cannot read, so a
