@@ -747,8 +747,11 @@ and where they were already stated verbatim while the block duplicated them.
 PR body an agent writes. The linter is upstream's own program, vendored at `bin/pr-body-lint.py`; its
 docstring is the contract, including what it deliberately refuses to judge.
 
-⛔ **THE `pr-body-lint` JOB PRINTS ITS VERDICT AND EXITS 0. ALWAYS.** ⇒ **A green CI run says nothing
-about whether your body meets the standard** — read the job's log, not its tick.
+⛔ **THE STEP THAT JUDGES YOUR BODY PRINTS ITS VERDICT AND EXITS 0, WHATEVER IT FINDS.** ⇒ **A green
+CI run says nothing about whether your body meets the standard** — read the job's log, not its tick.
+⚠ The JOB is not the same promise and never was: its pin and selftest steps judge the CHECKOUT — the
+vendored bytes, the vendored linter's own controls, `bin/change-pr-body.py` — and those DO red it. So
+a RED `pr-body-lint` is never a verdict on your prose; read which step failed.
 
 Report-only is the decision recorded on card#9767, and it rests on a measurement rather than a taste.
 ⭐ **MOST OF THIS REPOSITORY'S MERGED BODIES FAIL THE STANDARD, AND THOSE REDS ARE CORRECT** — the

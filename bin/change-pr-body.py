@@ -23,6 +23,10 @@ A `--change` mode on the fleet helper is very likely the right END state — the
 install's, not this repository's — but that is a proposal for the fleet to agree, and until it
 does, this repository owns its own route to compliance rather than owing it to a change it cannot
 make. What would move there is the EMISSION; the house map below stays local either way.
+⚠ AN UNMADE PROPOSAL MAKES THIS FILE PERMANENT BY DEFAULT, so it is not left as an intention:
+the FR text lives on **card#9801**, which is where this file's replacement gets argued. Read it
+there before extending this program — an extension here is a divergence from the fleet's answer
+if that answer arrives.
 
 WHAT IT EMITS, AND WHY EXACTLY THIS. `skills/release-pr/SKILL.md § PR body` "governs **every** PR
 body an agent writes — feature, fix, docs, dependency, release", so the closed section set binds a
@@ -45,6 +49,15 @@ program, vendored — and nothing here re-implements any part of it (canon #5: a
 "does this body meet the standard" is the divergence that matters, because one of the two would be
 green). The selftest drives the real linter over this generator's real output, so the claim that
 the output complies is measured on every CI run rather than asserted in this paragraph.
+
+⛔ READ THAT CLAIM AT ITS EXACT SCOPE: THE SKELETON PASSES, A BODY BUILT FROM IT IS NOT PROMISED TO.
+`--agent` and `--session-url` are PASS-THROUGH — this program writes what it is handed into the
+trailer and judges neither, by the same emit/do-not-judge rule above — so they can red the linter:
+`--agent 'CI is green at 0a2aa07'` reds `live-state-reading`, and a session URL carrying `FROM:`
+reds `attribution-line`. Add the author's own prose on top and the surface is wider again. ⇒ THIS
+IS WHY THE LINT STEP AFTER THE GENERATOR IS NOT OPTIONAL and why the stderr checklist names it: a
+green here is a statement about the SKELETON, and the body that gets pushed is a different
+document. The right answer to those two fields is the lint, never a validator bolted on here.
 
 ⚠ NO COUNT IN THE SCOPE LINE, AND THE GENERATOR EXEMPTION IS THE REASON RATHER THAN AN OVERSIGHT.
 The standard exempts generated output from canon #16 "where the generator RUNS" — `release-pr-body`
@@ -104,10 +117,42 @@ def refuse(message: str) -> int:
     return 2
 
 
-def git(*args: str) -> tuple[int, str]:
-    """`(rc, stdout-stripped)` for one git command. stderr is left to the caller's terminal."""
-    proc = subprocess.run(["git", *args], capture_output=True, text=True)
-    return proc.returncode, proc.stdout.strip()
+class Git:
+    """One git command's `(rc, stdout, stderr)`, each stream stripped.
+
+    ⛔ GIT'S STDERR IS CAPTURED AND CARRIED, NEVER DISCARDED, AND THAT IS THE WHOLE POINT OF THIS
+    BEING A CLASS AND NOT A TUPLE. The first cut of this program captured both streams and threw
+    the error away, so every way git can fail collapsed into whichever of this program's four
+    fixed causes came next — measured: with a malformed `.git/config`, `git rev-parse --git-dir`
+    dies with `fatal: bad config line 1`, and the refusal read `this is not a git repository`.
+    That is a WRONG-BUT-SPECIFIC cause, which is worse than a generic one, in a program whose
+    entire argument is that it refuses instead of guessing. A dubious-ownership refusal, a corrupt
+    object store and a broken config each have their own words, and `said()` puts them in the
+    refusal the author reads.
+
+    It is APPENDED to the refusal rather than let through to the terminal (`stdout=PIPE` alone):
+    the refusal is this program's product, and a caller that redirects or captures streams — CI
+    does both — must get the cause in the line it keeps, not interleaved into a stream nothing
+    attributes.
+    """
+
+    def __init__(self, *args: str) -> None:
+        proc = subprocess.run(["git", *args], capture_output=True, text=True)
+        self.rc = proc.returncode
+        self.out = proc.stdout.strip()
+        self.err = proc.stderr.strip()
+
+    def said(self) -> str:
+        """git's own words, as a clause to append — empty when it said nothing.
+
+        `--quiet` on a `rev-parse` means a ref that simply does not exist produces NO stderr, so
+        those refusals stay clean and this adds nothing to them. What it carries is the case the
+        program cannot enumerate.
+        """
+        if not self.err:
+            return ""
+        return " git said: %s" % " / ".join(line.strip() for line in self.err.splitlines()
+                                            if line.strip())
 
 
 def resolve_base(base: str) -> tuple[str | None, str]:
@@ -119,8 +164,7 @@ def resolve_base(base: str) -> tuple[str | None, str]:
     name, because that is what the PR's base is called on GitHub.
     """
     for candidate in ("origin/%s" % base, base):
-        rc, _ = git("rev-parse", "--verify", "--quiet", "%s^{commit}" % candidate)
-        if rc == 0:
+        if Git("rev-parse", "--verify", "--quiet", "%s^{commit}" % candidate).rc == 0:
             return candidate, base
     return None, base
 
@@ -186,9 +230,13 @@ def main(argv: list[str]) -> int:
             return refuse("%s spans more than one line, and it is written into the attribution "
                           "trailer as one." % name)
 
-    rc, _ = git("rev-parse", "--git-dir")
-    if rc != 0:
-        return refuse("this is not a git repository, so there is no range to name.")
+    # ⛔ THIS PROBE ANSWERS "CAN GIT ANSWER HERE AT ALL", NOT "IS THIS A REPOSITORY". The two are
+    # different questions and only git knows which one failed, so its answer is carried rather
+    # than replaced by whichever of this program's causes came next in the source.
+    probe = Git("rev-parse", "--git-dir")
+    if probe.rc != 0:
+        return refuse("git could not answer here, so there is no range to name — run this from "
+                      "inside the repository's checkout.%s" % probe.said())
 
     base_ref, base_name = resolve_base(args.base)
     if base_ref is None:
@@ -196,26 +244,36 @@ def main(argv: list[str]) -> int:
                       "this PR merges into with --base, and fetch it first." % (args.base,
                                                                                 args.base))
 
-    rc, head_sha = git("rev-parse", "--verify", "--quiet", "%s^{commit}" % args.head)
-    if rc != 0:
-        return refuse("`%s` does not resolve to a commit here (--head)." % args.head)
+    head = Git("rev-parse", "--verify", "--quiet", "%s^{commit}" % args.head)
+    if head.rc != 0:
+        return refuse("`%s` does not resolve to a commit here (--head).%s"
+                      % (args.head, head.said()))
+    head_sha = head.out
 
     head_name = args.head
     if args.head == "HEAD":
-        rc, branch = git("rev-parse", "--abbrev-ref", "HEAD")
-        if rc != 0 or branch == "HEAD":
+        branch = Git("rev-parse", "--abbrev-ref", "HEAD")
+        if branch.rc != 0 or branch.out == "HEAD":
             return refuse("HEAD is detached, so the body cannot name the branch this PR merges "
-                          "from — pass --head <branch>, or check the branch out.")
-        head_name = branch
+                          "from — pass --head <branch>, or check the branch out.%s"
+                          % branch.said())
+        head_name = branch.out
 
-    rc, merge_base = git("merge-base", base_ref, head_sha)
-    if rc != 0 or not merge_base:
-        return refuse("`%s` and `%s` share no merge base, so there is no range this PR merges."
-                      % (base_ref, head_name))
+    # The base's TIP, for the diagnostic that lets an author see a stale `origin/<base>`. It is
+    # read here and not in `resolve_base`, which answers "does this ref exist" and nothing else.
+    base_tip = Git("rev-parse", "--verify", "--quiet", "%s^{commit}" % base_ref).out
 
-    rc, revs = git("rev-list", "%s..%s" % (merge_base, head_sha))
-    if rc != 0:
-        return refuse("could not list the range `%s..%s`." % (merge_base, head_sha))
+    base = Git("merge-base", base_ref, head_sha)
+    if base.rc != 0 or not base.out:
+        return refuse("`%s` and `%s` share no merge base, so there is no range this PR merges.%s"
+                      % (base_ref, head_name, base.said()))
+    merge_base = base.out
+
+    listing = Git("rev-list", "%s..%s" % (merge_base, head_sha))
+    if listing.rc != 0:
+        return refuse("could not list the range `%s..%s`.%s"
+                      % (merge_base, head_sha, listing.said()))
+    revs = listing.out
     if not revs:
         # NOT a warning. A body describing an empty range describes nothing, and the author is
         # one commit away from a real one; emitting it would produce a scope line whose own
@@ -236,11 +294,26 @@ def main(argv: list[str]) -> int:
 
     # STDERR: what is NOT done. A generator that printed nothing here would read as "this body is
     # finished", and the sections it left are the ones that carry the whole value to the reader.
+    #
+    # ⚠ THE RESOLVED BASE IS NAMED BECAUSE NOTHING HERE FETCHES IT. `origin/<base>` is whatever
+    # this checkout last fetched, and a STALE one sits further back, which moves the merge-base
+    # back with it and makes the scope line name a range WIDER than the PR actually merges — a
+    # body that is wrong about its own subject, with nothing in it to show that. This program will
+    # not fetch (a network write is not a generator's to take) and will not judge freshness (it
+    # cannot know what the remote holds), so it says which ref and which commit it used and leaves
+    # the reading to the author. Naming it is the whole fix: a stale base is obvious the moment
+    # the sha is in front of you.
     sys.stderr.write(
-        "change-pr-body: a SKELETON is on stdout. Still yours:\n"
+        "change-pr-body: a SKELETON is on stdout. The base resolved to `%s` at %s, and the range\n"
+        "  starts at the merge-base %s. Still yours:\n"
+        "  * `git fetch origin` first if that tip is not the base's current one — a stale base\n"
+        "    moves the merge-base back and widens the range this body claims to merge.\n"
         "  * every `%s … -->` marker — delete the marker, write the section.\n"
+        "  * `--agent` / `--session-url` are passed through UNJUDGED; the lint below is what\n"
+        "    judges the body you actually push.\n"
         "  * read it back as the person INSTALLING this, then judge it:\n"
-        "      python3 bin/pr-body-lint.py --body-file <the body file>\n" % AUTHOR_MARK)
+        "      python3 bin/pr-body-lint.py --body-file <the body file>\n"
+        % (base_ref, base_tip[:12] or "an unreadable tip", merge_base[:12], AUTHOR_MARK))
     if not args.session_url:
         sys.stderr.write("  * the attribution trailer has NO session URL (--session-url was not "
                          "given).\n")

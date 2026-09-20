@@ -50,6 +50,13 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   report-only and `pr-body-lint` is still required by no ruleset; the flip to blocking is the
   operator's act, gated on the verdict being RE-DERIVED over the recent merged bodies rather than
   on any figure written down — `CLAUDE.md` carries the loop that prints it.
+  **A false claim about that lane is corrected wherever it was written.** Every surface describing
+  the `pr-body-lint` job said the JOB prints its verdict and exits 0 — one of them in the words
+  "nothing in this job can fail a pull request". That was never true: the job's vendored-byte pin
+  and the vendored linter's own selftest shipped in its first commit and both red on a bad
+  checkout. The promise is, and always was, about the BODY: no PR body can fail this job. The
+  generator's selftest now runs in the same job and can red it too, and it is ordered AFTER the
+  report step so that a broken generator can never suppress the body verdict the author reads.
 - **card#9984** — **`bin/deploy.sh`'s version comparison refuses operands it cannot read, so a
   `BASH_FLOOR` that is not a version is refused by name instead of certified.** Until this change
   the comparison behind every one of phase A's version floors — A1's bash floor, A6's PHP floor,
@@ -496,12 +503,14 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   which PAIRED_KEYS does not name` and `GUARDED BUT ABSENT: PAIRED_KEYS names REDIS_URL, which
   phpunit.xml no longer pins`. `docs/design/FLEET-STATE.md` § 6.2 records the leg and AT-D2-14 carries
   the fixture control as its fourth RED.
-- **card#9767** — **this repository now runs the FLEET's PR-body linter on every open PR, and it
-  REPORTS rather than blocks.** `bin/pr-body-lint.py` is upstream's own program — the one every coord
+- **card#9767** — **this repository now runs the FLEET's PR-body linter on every open PR, and its
+  verdict on a body REPORTS rather than blocks.** `bin/pr-body-lint.py` is upstream's own program — the one every coord
   install's CI runs and the review path spawns — vendored byte-for-byte under a `#` provenance header
   that records the source commit and plugin version, because the upstream repository is private and a
   public runner cannot clone it. The new **`pr-body-lint` job** in
-  `.github/workflows/card-token-lint.yml` prints its whole verdict and **exits 0 whatever it finds**.
+  `.github/workflows/card-token-lint.yml` prints its whole verdict and **the step that judges the
+  body exits 0 whatever it finds**. ⚠ The JOB is not thereby incapable of failing — its pin and
+  selftest steps judge the CHECKOUT and do red — and it never was: those steps shipped with it.
   ⛔ **THE REPORT-ONLY WIRING IS THE DECISION, NOT AN UNFINISHED STAGING STEP.** Run over this
   repository's recent merged bodies, most of them FAIL the standard — and **those reds are correct**:
   the standard governs every PR body an agent writes and is ratified twice, and this repo is genuinely
@@ -511,8 +520,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   to route around it, so this lane makes the findings visible without minting that habit. ⚠ **It is a
   WINDOW, not a destination** — adopting the body shape, and then a dated flip to blocking, are
   tracked on card#9767 and are the operator's calls; requiring the job as a ruleset context is
-  likewise the operator's, and **would not by itself make it block**, because the job exits 0. **The
-  lane existing is not the class being handled.** ⭐ **WHAT IT REPLACED, AND WHY THAT IS THE POINT**
+  likewise the operator's, and **would not by itself make the BODY VERDICT block**, because that step
+  exits 0 — though it would make the job's pin and selftest steps blocking, which is the intent.
+  **The lane existing is not the class being handled.** ⭐ **WHAT IT REPLACED, AND WHY THAT IS THE POINT**
   — `bin/pr-body-fields.py` and `bin/coord_audit_field.py`, a mezzanine-local two-field presence guard
   built around `review-prep.py`'s `_audit_field`, are **deleted**. That function has MOVED upstream and
   now lives inside this very linter, so the local pair was a copy of something that was no longer

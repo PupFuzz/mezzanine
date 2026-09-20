@@ -126,8 +126,11 @@ jobs:
 
   # ── pr-body-lint (card#9767) ─────────────────────────────────────────────────────────────────
   # WHAT IT DOES. Reads this PR's BODY, judges it against the fleet's PR-body standard with
-  # upstream's own linter, prints the whole verdict — and EXITS 0 WHATEVER IT FINDS. Nothing in
-  # this job can fail a pull request. `bin/pr-body-lint.py`'s docstring is the contract; the
+  # upstream's own linter, prints the whole verdict — and THAT STEP EXITS 0 WHATEVER IT FINDS, so
+  # NO PR BODY can fail a pull request here. ⛔ THAT IS NOT "nothing in this job can fail a pull
+  # request", WHICH THIS HEADER USED TO SAY AND WHICH WAS NEVER TRUE: the pin and selftest steps
+  # below judge the CHECKOUT and red on it, and they shipped in this job's first commit. The
+  # promise is about the BODY. `bin/pr-body-lint.py`'s docstring is the contract; the
   # standard itself is `skills/release-pr/SKILL.md § PR body` in a coord install, and neither is
   # restated here.
   #
@@ -203,22 +206,6 @@ jobs:
       - name: Self-test (upstream's red-then-green controls for every rule)
         run: python3 bin/pr-body-lint.selftest.py
 
-      # ⭐ THE ROUTE TO A COMPLIANT BODY, HELD TO THE SAME JUDGE THE STEP BELOW USES (card#9801).
-      # `bin/change-pr-body.py` is this repository's generator for a NON-release PR body — the
-      # class `release-pr-body` structurally cannot produce, which is why the standing "generate
-      # it, never hand-write it" rule had no mechanical route here. Its whole claim is that what
-      # it emits PASSES the linter, and a generator that has quietly stopped complying is
-      # indistinguishable from one that never did, so the claim is measured here rather than
-      # asserted in its header: the suite pipes the real generator's real output into the real
-      # vendored linter, then mutates that output once per rule to show the green discriminates.
-      # It also grades `CLAUDE.md`'s `change-pr-body:house-map` against the linter's own
-      # `ALLOWED_H2`, so the map an author reads cannot drift from the judge that grades them.
-      # It stages its own git repository per case and needs no network and no credential — a CI
-      # checkout of a PR is a DETACHED HEAD, and a suite run against it would exercise a refusal
-      # path here and the ordinary path on a workstation.
-      - name: Self-test (this repo's change-PR body generator, judged by the linter above)
-        run: python3 bin/change-pr-body.selftest.py
-
       # THE BODY IS READ FROM `env:`, NEVER `${{ }}` INSIDE `run:`, which is a script-injection
       # sink and a PR body is the most attacker-controlled text on the whole event. `--env` is the
       # linter's own injection-safe route and is preferred to a pipe: it keeps the body off argv,
@@ -249,3 +236,30 @@ jobs:
                echo "finding about the body, and it still does not fail the job." ;;
           esac
           exit 0
+
+      # ⭐ THE ROUTE TO A COMPLIANT BODY, HELD TO THE SAME JUDGE THE STEP ABOVE USES (card#9801).
+      # `bin/change-pr-body.py` is this repository's generator for a NON-release PR body — the
+      # class `release-pr-body` structurally cannot produce, which is why the standing "generate
+      # it, never hand-write it" rule had no mechanical route here. Its whole claim is that the
+      # SKELETON it emits PASSES the linter, and a generator that has quietly stopped complying is
+      # indistinguishable from one that never did, so the claim is measured here rather than
+      # asserted in its header: the suite pipes the real generator's real output into the real
+      # vendored linter, then mutates that output once per rule to show the green discriminates.
+      # ⚠ The claim is about the SKELETON, not about any body built from it: `--agent` and
+      # `--session-url` are pass-through and unjudged (the suite pins two values that red), and
+      # the author's own prose is wider still — which is why the step above exists.
+      # It also grades `CLAUDE.md`'s `change-pr-body:house-map` against the linter's own
+      # `ALLOWED_H2`, so the map an author reads cannot drift from the judge that grades them.
+      # It stages its own git repository per case and needs no network and no credential — a CI
+      # checkout of a PR is a DETACHED HEAD, and a suite run against it would exercise a refusal
+      # path here and the ordinary path on a workstation.
+      #
+      # ⛔ IT RUNS AFTER THE REPORT STEP, AND THE ORDER IS THE POINT. This step CAN red, and a
+      # step that reds ends the job: placed before the report, a broken generator would SUPPRESS
+      # the body verdict — the one output of this job addressed to the author, on a lane whose
+      # entire purpose is that the verdict is always visible. The pin and the vendored-linter
+      # selftest stay ABOVE for the opposite reason: they judge the JUDGE, and a verdict printed
+      # by an unverified copy of the linter is worth nothing. No `if: always()` is used; ordering
+      # answers it without one, and this repository has no precedent for that conditional.
+      - name: Self-test (this repo's change-PR body generator, judged by the linter above)
+        run: python3 bin/change-pr-body.selftest.py

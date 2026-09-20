@@ -272,6 +272,21 @@ refused("a `--session-url` spanning lines likewise",
         generate(WORK, "--session-url", "https://example.invalid/a\nhttps://example.invalid/b"),
         "--session-url spans more than one line")
 
+# ⛔ GIT'S OWN WORDS REACH THE REFUSAL. The cause here is NOT one of this program's four named
+# causes, and before `Git.said()` existed it was reported as one of them ("this is not a git
+# repository") — a wrong-but-specific cause. The staged defect is a config git cannot parse, which
+# is the cheapest way to make git fail for a reason the program cannot enumerate; dubious
+# ownership and a corrupt object store are the same shape and are NOT separately staged, because
+# what is under test is that the words are carried, not which words they are.
+BROKEN = stage()
+(BROKEN / ".git" / "config").write_text("this is not a git config\n", encoding="utf-8")
+broken_run = generate(BROKEN)
+refused("a git failure the program cannot enumerate is not reported as one that it can",
+        broken_run, "git said:")
+contains("  … and git's own words are what it carries", "bad config", broken_run.stderr)
+absent("  … rather than a cause the program made up", "is not a git repository",
+       broken_run.stderr)
+
 # argparse's own refusal, asserted because `--built` being REQUIRED is the design decision that
 # keeps this program from ever writing an attestation nobody made.
 no_built = subprocess.run([sys.executable, str(GEN), "--coordinated-in", "card#9801"],
@@ -299,6 +314,27 @@ eq("  … and no tally of it (canon #16: this generator runs once, the branch ke
 # STDOUT IS THE BODY AND ONLY THE BODY — `> body.md` must not capture diagnostics.
 contains("the still-yours checklist goes to STDERR", "Still yours:", run.stderr)
 absent("  … and never to stdout", "Still yours:", BODY)
+
+# THE BASE IT ACTUALLY USED IS NAMED, because nothing here fetches and a stale `origin/<base>`
+# widens the range the scope line claims. The ref and a sha, not a freshness verdict.
+contains("the resolved base REF is named on stderr", "`origin/dev`", run.stderr)
+eq("  … with a sha beside it, so a stale tip is visible",
+   True, bool(re.search(r"`origin/dev` at [0-9a-f]{7,40}", run.stderr)))
+contains("  … and the stale-base consequence is stated, not left to be inferred",
+         "widens the range", run.stderr)
+
+# ⛔ THE PASS-THROUGH RESIDUE, MEASURED RATHER THAN CLAIMED. The header says the SKELETON passes
+# and that `--agent` / `--session-url` are unjudged; these two cases are what makes that
+# qualification a fact. They must NOT be "fixed" by validating the fields here — the emit/judge
+# separation is the design, and the lint step is the answer.
+poisoned = generate(WORK, "--agent", "CI is green at 4f2a91c")
+eq("an `--agent` carrying a live-state reading passes THROUGH and reds the linter",
+   ["live-state-reading"], rules(poisoned.stdout))
+poisoned_url = generate(WORK, "--session-url", "FROM: mezzanine-solo")
+eq("a `--session-url` carrying an attribution line does the same",
+   ["attribution-line"], rules(poisoned_url.stdout))
+contains("  … which is why the checklist names the fields as unjudged",
+         "passed through UNJUDGED", run.stderr)
 no_url = generate(WORK)
 contains("a missing --session-url is NAMED rather than invented",
          "NO session URL", no_url.stderr)
@@ -316,8 +352,27 @@ if not block:
     bad(f"`{MAP_MARKER}` block is ABSENT from CLAUDE.md — the map an author reads is gone, and "
         f"every assertion below would otherwise pass over an empty population")
 else:
-    rows = [line.strip() for line in block.group(0).splitlines()
-            if line.strip().startswith("## ") and "|" in line]
+    # ⛔ THE ROW GRAMMAR IS ASSERTED BEFORE THE ROWS ARE READ, because a SELECTOR silently drops
+    # what it does not match. `startswith("## ") and "|" in line` is how the rows are found, so a
+    # mistyped row — `# What you do | …`, or an arrow where the pipe should be — is not a failing
+    # row, it is NO row: it leaves the map, the author still reads it, and nothing grades it. The
+    # block is prose down to its first row and rows from there to `-->`; every line in that tail
+    # must BE a row. This is the same defect shape as the empty-population zero below, one level
+    # finer — that one catches the whole map vanishing, this one catches a row vanishing.
+    ROW_RE = re.compile(r"^##[ \t]+\S.*\|.*\S.*$")
+    lines = [line.rstrip() for line in block.group(0).splitlines()]
+    body_lines = [line for line in lines if line.strip() != "-->"]
+    first_row = next((i for i, line in enumerate(body_lines) if ROW_RE.match(line)), None)
+    if first_row is None:
+        bad("the `change-pr-body:house-map` block contains NO row matching the row grammar — "
+            "the map an author reads has become prose nothing grades")
+        tail = []
+    else:
+        tail = body_lines[first_row:]
+    eq("every line after the block's first row IS a row (a mistyped one would vanish, not fail)",
+       [], [line for line in tail if not ROW_RE.match(line)])
+
+    rows = [line.strip() for line in tail if ROW_RE.match(line)]
     # The wrong-population zero, closed FIRST: an empty or truncated block makes every check
     # below vacuously green, which is the one way this section could report clean while the map
     # it grades has disappeared.
