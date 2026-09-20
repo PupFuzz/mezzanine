@@ -7,6 +7,10 @@
 # stub daemons inside the temp dir. It deploys nothing and reaches no host; the prod host (docs/PLAN.md
 # D-08) has never been deployed to.
 #
+# AND IT MEASURES THE BASH FLOOR (card#9616, the `bash-floor` job below): the same suite under a bash
+# built at the `BASH_FLOOR` that `bin/deploy.sh` declares, which must pass, and under the minor below
+# it, which must fail. That pair is what makes the declared floor a measurement rather than a claim.
+#
 # WHY IT EXISTS. card#7459's acceptance is that the script is "seen to fail on a broken
 # precondition before trusted", and that property decays silently: a refusal that stops firing
 # looks exactly like a host that is in good order. The first place anyone would find out is a
@@ -33,8 +37,10 @@
 # stays: requiring a check is a repository-settings act, so a workflow added later is not
 # automatically required — which is exactly why a copy here rots.
 #
-# NEEDS NO CREDENTIAL AND NO NETWORK. bash + git + util-linux (flock, setsid) + psmisc (fuser) +
-# the checkout, nothing else.
+# NO CREDENTIAL IS NEEDED BY ANY JOB HERE. The `deploy-selftest` job needs no network either:
+# bash + git + util-linux (flock, setsid) + psmisc (fuser) + the checkout, nothing else.
+# `env-mirror-differential` and `bash-floor` DO reach the network — packagist and ftp.gnu.org
+# respectively — and each says at its own header what it fetches and what a failed fetch means.
 
 name: Deploy selftest
 
@@ -58,6 +64,151 @@ jobs:
       # suite is the evidence, so it must fail on its own assertions and never on a file mode.
       - name: Self-test (every refusal exercised against the real script)
         run: bash bin/deploy.selftest.sh
+
+  # ── the bash floor, MEASURED — and measured to be the floor, not merely to be met (card#9616) ──
+  # `bin/deploy.sh` declares `BASH_FLOOR`. THIS JOB IS WHAT MAKES THAT NUMBER A MEASUREMENT rather
+  # than an assertion: it runs the whole self-test under a bash built at the declared floor, which
+  # must PASS, and again under the minor BELOW it, which must FAIL. A floor with only the first leg
+  # is a claim nobody tried to falsify — the run below it is the control (canon #9), and a job whose
+  # control cannot fail is a decoration.
+  #
+  # ⛔ THE BELOW-FLOOR RUN LOWERS `BASH_FLOOR` IN ITS OWN COPY OF THE TREE, ON PURPOSE. Left alone,
+  # A1 would refuse every fixture for being below the floor and the run would fail for the GATE's
+  # reason — which proves the gate works and says nothing about the floor. Lowered, the gate is out
+  # of the way and what remains to fail is the script meeting bash's real limits. Measured 2026-09-19
+  # on the author's box, this is what that looks like: at 4.3 the failures are A7's
+  # `'<ref>' does not resolve to a commit` refusal DYING on `"${ref_note[@]}"` — an empty array
+  # expanded under `set -u` — with no ⛔ banner and no "Nothing was changed" promise.
+  #
+  # ⚠ WHY A SOURCE BUILD AND NOT `docker run bash:$BASH_FLOOR`. The `bash:4.x` images exist and are
+  # current (verified 2026-09-19: `bash:4.4` and `bash:4.3` are rebuilt on alpine3.22), but they are
+  # busybox + musl userland, and this suite needs GNU `sed -i`, `readlink -f`, `git`, `php`, `ps`,
+  # `fuser`, `flock` and `setsid` to run AT ALL — so a container run would measure a SUBSET and
+  # report the rest as not verified, which is a weaker measurement than the one below. And a Docker
+  # Hub TAG IS MUTABLE (`bash:4.4` was rebuilt the day this was written), so pinning the measurement
+  # to it makes the floor's evidence drift silently; the GNU release tarball and its sha256 do not
+  # move. The ubuntu-latest runner supplies the same GNU userland the deploy's real host has.
+  #
+  # NEEDS NETWORK (ftp.gnu.org) AND A COMPILER, and nothing else — no credential, no registry login.
+  # A download or a build that fails FAILS THE JOB: an unbuilt shell measures nothing, and a step
+  # that cannot run is never a pass.
+  bash-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # DERIVED from bin/deploy.sh, through bin/deploy.sh's OWN reader (`bash_floor_declared`, the
+      # one A6b reads a target release's declaration with) — never by a pattern of this file's. A
+      # second pattern here is the restatement that drifts away from the gate it claims to measure.
+      - name: Read BASH_FLOOR out of bin/deploy.sh, with the script's own reader
+        id: floor
+        run: |
+          set -Eeuo pipefail
+          floor="$( . ./bin/deploy.sh >/dev/null 2>&1; bash_floor_declared < bin/deploy.sh )"
+          [ -n "$floor" ] || { echo "::error::bin/deploy.sh declares no BASH_FLOOR — nothing to measure, and an empty derivation is never a pass"; exit 1; }
+          major="${floor%%.*}"; minor="${floor#*.}"
+          # A THREE-COMPONENT FLOOR IS NAMED AS ITSELF. `4.4.1` leaves `minor` as `4.1`, which fails
+          # the integer test below and would have been reported as "ends in .0" — a defect that is
+          # not the one present. It still fails closed; it now fails closed saying the true reason.
+          case "$floor" in
+            *.*.*) echo "::error::BASH_FLOOR='$floor' has three components; this job compares <major>.<minor>, which is what A1 and A6b compare too. Declare the floor as <major>.<minor>."; exit 1 ;;
+            [0-9]*.[0-9]*) ;;
+            *) echo "::error::BASH_FLOOR='$floor' is not <major>.<minor>"; exit 1 ;;
+          esac
+          # The control is the minor BELOW. A floor at `.0` has no predecessor this arithmetic can
+          # name, so it stops rather than measuring the wrong pair.
+          [ "$minor" -gt 0 ] || { echo "::error::BASH_FLOOR=$floor ends in .0 — name its predecessor release here deliberately"; exit 1; }
+          below="$major.$((minor - 1))"
+          echo "floor=$floor"  >> "$GITHUB_OUTPUT"
+          echo "below=$below"  >> "$GITHUB_OUTPUT"
+          echo "bin/deploy.sh declares BASH_FLOOR=$floor; the control runs at $below"
+
+      # Two shells, from the GNU release tarballs, each pinned by sha256 — the checksums were read
+      # from ftp.gnu.org and cross-checked against mirrors.kernel.org, so the pin is a transport
+      # check and not a second copy of a number nobody verified. An unpinned download compiled and
+      # RUN in CI is the shape this avoids.
+      - name: Build GNU bash at the floor and at the minor below it
+        env:
+          FLOOR: ${{ steps.floor.outputs.floor }}
+          BELOW: ${{ steps.floor.outputs.below }}
+        run: |
+          set -Eeuo pipefail
+          # <version> <sha256 of bash-<version>.tar.gz on ftp.gnu.org>. A floor that MOVES adds its
+          # row here and its predecessor's, deliberately — which is the same act as re-measuring.
+          # (Written with printf rather than a heredoc: a heredoc terminator cannot sit at column 0
+          # inside a YAML block scalar, and an indented one does not terminate.)
+          printf '%s\n' \
+            '4.3 afc687a28e0e24dc21b988fa159ff9dbcf6b7caa92ade8645cc6d5605cd024d4' \
+            '4.4 d86b3392c1202e8ff5a423b302e6284db7f8f435ea9f39b5b1b20fd3ac36dfcb' \
+            > /tmp/bash-sha256
+          for v in "$FLOOR" "$BELOW"; do
+            sum="$(awk -v v="$v" '$1 == v { print $2 }' /tmp/bash-sha256)"
+            [ -n "$sum" ] || { echo "::error::no pinned sha256 for bash $v — add it above, from ftp.gnu.org"; exit 1; }
+            curl -fsSL --retry 3 -o "/tmp/bash-$v.tar.gz" "https://ftp.gnu.org/gnu/bash/bash-$v.tar.gz"
+            printf '%s  /tmp/bash-%s.tar.gz\n' "$sum" "$v" | sha256sum -c -
+            mkdir -p "/tmp/src-$v"
+            tar xzf "/tmp/bash-$v.tar.gz" -C "/tmp/src-$v" --strip-components=1
+            # A 2009–2016 C codebase under a 2020s gcc: the CFLAGS demote back to warnings the
+            # diagnostics that became errors by default. Nothing there changes what bash DOES.
+            # The whole build goes to a log and only its tail is printed, and only on failure —
+            # the warnings are real and thousands of lines of them would bury this job's evidence.
+            ( cd "/tmp/src-$v"
+              ./configure --prefix="/tmp/bash-$v" --without-bash-malloc --disable-nls \
+                CFLAGS="-O1 -std=gnu89 -Wno-implicit-function-declaration -Wno-implicit-int -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-return-mismatch" \
+                && make -j"$(nproc)" && make install ) > "/tmp/build-$v.log" 2>&1 \
+              || { echo "::error::building bash $v failed — the last lines of /tmp/build-$v.log follow. An unbuilt shell measures nothing, so this is never a pass."; tail -40 "/tmp/build-$v.log"; exit 1; }
+            mkdir -p "/tmp/path-$v"; ln -sf "/tmp/bash-$v/bin/bash" "/tmp/path-$v/bash"
+            echo "built: $("/tmp/bash-$v/bin/bash" -c 'echo "$BASH_VERSION"')"
+          done
+
+      # AT THE FLOOR: the whole suite, with that bash FIRST ON PATH so the re-exec after the
+      # checkout runs the same interpreter rather than the runner's own. It must pass.
+      - name: The suite passes on bash ${{ steps.floor.outputs.floor }} — the floor
+        env:
+          FLOOR: ${{ steps.floor.outputs.floor }}
+        run: |
+          set -Eeuo pipefail
+          "/tmp/bash-$FLOOR/bin/bash" -c 'echo "measuring with: $BASH_VERSION"'
+          PATH="/tmp/path-$FLOOR:$PATH" "/tmp/bash-$FLOOR/bin/bash" bin/deploy.selftest.sh
+
+      # THE CONTROL, one minor below — in a COPY of the tree whose BASH_FLOOR is lowered to match,
+      # so the gate is not what stops it. It must FAIL, and this step fails if it passes.
+      - name: The same suite FAILS on bash ${{ steps.floor.outputs.below }} — the control
+        env:
+          BELOW: ${{ steps.floor.outputs.below }}
+          FLOOR: ${{ steps.floor.outputs.floor }}
+        run: |
+          set -Eeuo pipefail
+          rm -rf /tmp/below-tree && cp -a "$GITHUB_WORKSPACE" /tmp/below-tree
+          sed -i "s/^BASH_FLOOR=.*/BASH_FLOOR=$BELOW/" /tmp/below-tree/bin/deploy.sh
+          # ⛔ ASSERTED, NOT PRINTED. If that `sed` ever stops matching, A1 and A6b refuse every
+          # fixture (mkfix copies the working-tree deploy.sh into the fixture's target commit, so the
+          # two floors move together), the suite reds FOR THE GATE'S REASON — the one thing lowering
+          # the floor exists to avoid — and a bare `grep -n` would print the untouched line and exit 0
+          # while this step declared the control discriminating. `-x` so a line that merely CONTAINS
+          # the value cannot satisfy it.
+          grep -qx "BASH_FLOOR=$BELOW" /tmp/below-tree/bin/deploy.sh \
+            || { echo "::error::the below-floor tree still does not declare BASH_FLOOR=$BELOW, so this run would measure the GATE refusing rather than the constructs failing. The sed above did not match; fix it before reading anything into the result."; grep -n '^BASH_FLOOR=' /tmp/below-tree/bin/deploy.sh || true; exit 1; }
+          "/tmp/bash-$BELOW/bin/bash" -c 'echo "measuring with: $BASH_VERSION"'
+          rc=0
+          ( cd /tmp/below-tree && PATH="/tmp/path-$BELOW:$PATH" "/tmp/bash-$BELOW/bin/bash" bin/deploy.selftest.sh ) \
+            > /tmp/below-run.log 2>&1 || rc=$?
+          tail -40 /tmp/below-run.log
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::bin/deploy.sh's self-test PASSED on bash $BELOW, so $FLOOR is not the floor — it is merely a version that works. Lower BASH_FLOOR to what the suite really needs, or find the construct that should have failed here."
+            exit 1
+          fi
+          # ⛔ AND THE OUTCOME IS ASSERTED, NOT THE EXIT CODE. Any non-zero rc would otherwise read as
+          # discrimination — including a run that died for a reason with nothing to do with bash's
+          # version (a harness construct, a runner image change, a tool that stopped being installed).
+          # The suite's own summary line is the evidence that it RAN and that its ASSERTIONS are what
+          # failed; a run that never reached the summary measured nothing.
+          grep -Eq 'assertions, [0-9]+ FAILED$' /tmp/below-run.log \
+            || { echo "::error::the below-floor run exited $rc without reaching its own 'N assertions, M FAILED' summary, so it did not measure the floor — it broke. The tail above is what it printed; this is never a pass."; exit 1; }
+          echo "control discriminated: on bash $BELOW the suite ran and its own assertions failed — $(grep -Eo 'assertions, [0-9]+ FAILED$' /tmp/below-run.log) — where on bash $FLOOR the same suite passed in full."
+          echo "the assertions the control reds on, deduplicated — read them for HOW MANY SITES they come from, since a denominator of one would make the floor unfalsifiable:"
+          grep -E '^  FAIL ' /tmp/below-run.log | sed 's/ —.*//' | sort -u
 
   # ── the mirror, held against the parser it mirrors ──────────────────────────────────────────────────
   # `bin/deploy.sh` re-implements, in bash, the part of vlucas/phpdotenv that decides where a `.env` line

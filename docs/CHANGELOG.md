@@ -27,6 +27,89 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9616** — **`bin/deploy.sh` refuses a host whose `bash`, `git` or `npm` is too old — by name,
+  in phase A, before anything is touched.** Until now A1 asked only whether those binaries were
+  PRESENT; PHP alone had a version gate. So a host that was too old got partway in: `npm ci` failed in
+  phase B with the site already down, a git without `:(literal)` pathspec magic failed every read of
+  the release and was reported as a release missing its files, and a bash below the floor did not
+  refuse at all — it DIED, at A7's refusal, on an empty array expanded under `set -u`, exiting 1 with
+  no `⛔ REFUSED` banner and no *"Nothing was changed"* promise, which is exactly the code the exit
+  table reserves for "refused, nothing was touched".
+  **The bash floor is MEASURED, and `BASH_FLOOR` at the top of `bin/deploy.sh` is its one home.** A
+  construct scan cannot find it — it sees `mapfile` (4.0) and `exec {fd}<` (4.1) and stops a full minor
+  short of the truth — so nothing scans: `.github/workflows/deploy-selftest.yml` gains a `bash-floor`
+  job that builds GNU bash at the declared floor and at the minor below it, from the release tarballs
+  pinned by sha256, and runs the whole self-test under each. The floor must PASS **and the minor below
+  must FAIL**; the below-floor run lowers `BASH_FLOOR` in its own copy of the tree so that the gate is
+  not what stops it, and the job reds if that run passes, because a floor whose control cannot fail is
+  a version that works rather than a floor. It reads the floor through `bin/deploy.sh`'s own reader, so
+  CI cannot measure a floor the gate would not see.
+  **Both copies of the script are held to a floor.** After `artisan down` the deploy re-execs the
+  TARGET release's `bin/deploy.sh`, which never runs A1 — so A6b reads that release's own `BASH_FLOOR`
+  out of git and holds this host's bash to it, beside the gates that already read the release (A6,
+  A10–A13). A release that declares none predates this card: that is said out loud and is not a
+  refusal, since refusing would make every rollback undeployable for want of a line it could not have
+  carried.
+  **git is PROBED, never version-parsed** (A3b, after A3 has established that git can open the
+  repository): `git ls-tree HEAD -- VERSION` first, so that a failure of the magic form differs from it
+  by one thing, then the same read with `:(literal)`, which must print exactly `VERSION`. The OUTPUT is
+  required and not the status, because a magic-less git can also exit 0 having listed nothing — which
+  downstream is indistinguishable from a release that does not carry the file.
+  **npm is compared against the TARGET tree's `lockfileVersion`** (A12), the release that moves to a
+  newer lockfile format being exactly the one the serving checkout says nothing about. The mapping is
+  npm's own documentation, quoted at the gate and marked documented-not-measured; a lockfile version
+  the gate cannot map is refused rather than guessed at.
+  `bin/deploy.selftest.sh` carries a case for each refusal, every one asserting the banner and the
+  promise as well as the exit code — in this class an exit-code assertion catches nothing, because the
+  death being refused already exits 1 — plus the controls one variable away: the release's floor set to
+  this host's bash, npm exactly at the lockfile's floor, and a git that fails the PLAIN probe, which
+  must not be blamed on the pathspec magic it never reached. `BASH_VERSINFO` cannot be faked inside a
+  running bash, so the comparison is a predicate of its own, driven at the floor and at the floor minus
+  one.
+  `bin/deploy-gate-inputs.sh`'s classification table moves with the gates, as it is built to: A12's
+  read of `server/package-lock.json` becomes a CONTENT read rather than a presence one, and
+  `bin/deploy.sh` joins the table as A6b's input — each row's function and disposition digest DERIVED
+  by that check and pasted from its own output, never hand-computed. `bin/shell-lint.baseline.tsv`
+  grows by a typed `--accept-new`, in two classes this file already carries as debt: SC2317 on the
+  new fixture mutators, which ShellCheck cannot see `mkfix` invoke, and one SC2016 on a
+  single-quoted `$BASH_FLOOR` that must reach the sourced shell unexpanded. Annotating only the new
+  ones while their siblings stay unannotated would put two conventions in one file; discharging the
+  whole class is its own round.
+  **Review round 2 found the backstop had a denominator of one, and that is the substantive fix in
+  it.** Only ONE empty-array site — A7's `ref_note` — was reached by any fixture, so guarding that
+  one site would have turned the below-floor control green and had the job report that the floor
+  could be lowered, while a first deploy on an older host still met `checkout_lock_holders` in the
+  window. The suite gains two scenarios it had never covered: a **FIRST deploy** (D-08 — the prod
+  host has never been deployed to, so it is the one run certain to happen), which is where that
+  array is empty, and a **`server/.env` with no lines**. A `no_shell_death` tripwire rides on those
+  and on the widest existing runs, because the first-deploy site does not change what the deploy
+  DECIDES — its expansion is inside a `$( )`, so on an old bash the subshell dies and the parent
+  reads an empty answer — and no verdict-shaped assertion can see that. The declared population of
+  such sites is now stated as a HAND AUDIT that nothing re-derives, with both of its past errors
+  recorded: one direction called three guarded sites hazards, the other added `ENV_LINES`, which
+  measurement removed (`env_lines_load` splits with `<<<`, so a zero-byte `.env` is one empty line
+  and the array is never `()` where the loops read it). The control's own assertions were two
+  decorations: it now asserts that the `sed` lowering `BASH_FLOOR` in the below-tree actually
+  applied — without it both gates refuse every fixture and the suite reds for the gate's reason,
+  which is what lowering the floor exists to prevent — and it requires the suite's own
+  `N assertions, M FAILED` line rather than accepting any non-zero exit, so a run that broke for an
+  unrelated reason cannot pass for a measurement. **The maintenance window now runs the interpreter
+  the gates measured**: the re-exec hands over `$BASH` rather than going through the deployed
+  release's `#!/usr/bin/env bash`, which closes the gap where `somebash bin/deploy.sh` passed both
+  floors and then died in the window on PATH's older shell.
+  **Review round 3 gave that behaviour change the control it was missing, and found its sibling.**
+  Every ordinary case starts the deploy through its shebang, so the invoking shell and PATH's shell
+  are one process and reverting the hand-over reds nothing — the claim was wider than anything in
+  the suite could support, which is a lower bar than this change applies everywhere else in itself.
+  The self-test now starts one deploy through an EXPLICIT interpreter with a recording pass-through
+  standing in for PATH's `bash`, and requires that neither the maintenance window nor A13 appears in
+  its log; a positive twin asserts the recorder was really on PATH first, so the two absence
+  assertions cannot pass having observed nothing. The sibling: `gate_a13_target_plan` ran the target
+  release's `bin/supervision.sh` under a bare `bash -c` — PATH's shell again, the one no gate reads —
+  and its refusal says the crontab block *"could not be installed here"*, blaming the RELEASE for
+  this host's PATH `bash`. That is the misattribution class this card exists to end, being committed
+  by one of its own gates; it now uses `$BASH` too, and has its own assertion in the same case.
+
 - **card#9814** — **`release-pr-guard` R7 refuses a release PR that skipped archiving the previous
   release (release flow step 13), so the red lands on the release that owes the step.** Before it,
   a skipped step 13 surfaced only as R5's size red on some later feature PR by an author who could
