@@ -747,16 +747,19 @@ and where they were already stated verbatim while the block duplicated them.
 PR body an agent writes. The linter is upstream's own program, vendored at `bin/pr-body-lint.py`; its
 docstring is the contract, including what it deliberately refuses to judge.
 
-⛔ **THE `pr-body-lint` JOB PRINTS ITS VERDICT AND EXITS 0. ALWAYS.** ⇒ **A green CI run says nothing
-about whether your body meets the standard** — read the job's log, not its tick.
+⛔ **THE STEP THAT JUDGES YOUR BODY PRINTS ITS VERDICT AND EXITS 0, WHATEVER IT FINDS.** ⇒ **A green
+CI run says nothing about whether your body meets the standard** — read the job's log, not its tick.
+⚠ The JOB is not the same promise and never was: its pin and selftest steps judge the CHECKOUT — the
+vendored bytes, the vendored linter's own controls, `bin/change-pr-body.py` — and those DO red it. So
+a RED `pr-body-lint` is never a verdict on your prose; read which step failed.
 
 Report-only is the decision recorded on card#9767, and it rests on a measurement rather than a taste.
-⭐ **MOST OF THIS REPOSITORY'S RECENT BODIES FAIL THE STANDARD, AND THOSE REDS ARE CORRECT** — the
-repo is genuinely non-compliant, principally on structure: its house sections (`## What is in it`,
-`## What you must do`, `## What you will see change`, `## Evidence`) are none of them in the
-standard's closed allowed set. A gate that reds ordinary correct-looking work on its first day
-teaches the people it governs to route around it, so the lane reports instead. **No figure is written
-down here** — a count of failing bodies is false at the next merge and nothing re-checks it. Derive it:
+⭐ **MOST OF THIS REPOSITORY'S MERGED BODIES FAIL THE STANDARD, AND THOSE REDS ARE CORRECT** — the
+repo wrote house sections that are none of them in the standard's closed allowed set (the
+`change-pr-body:house-map` block below is the set, and where each one goes instead). A gate that reds
+ordinary correct-looking work on its first day teaches the people it governs to route around it, so
+the lane reports instead. **No figure is written down here** — a count of failing bodies is false at
+the next merge and nothing re-checks it. Derive it:
 
 ```
 gh pr list --repo PupFuzz/mezzanine --state merged --limit 20 --jq '.[].number' --json number |
@@ -766,10 +769,90 @@ while read -r n; do
 done
 ```
 
+⚠ **THAT DERIVATION READS MERGED BODIES, AND A MERGED BODY IS NEVER EDITED** (operator ruling: the
+historical record stands as written). ⇒ Adopting the shape cannot turn the recent set green today;
+it goes green only as compliant bodies merge and displace the old ones, so a run of it measures how
+far the ADOPTION has travelled and never how good the adoption is. Judge a single body you are about
+to push with the second command below instead.
+
 ⚠ **THE LANE EXISTING IS NOT THE CLASS BEING HANDLED, AND A PERMANENTLY-RED-AND-IGNORED CHECK IS THE
 SAME BYPASS TRAINING BY A SLOWER ROUTE.** Report-only is a window: it closes when this repo adopts the
-body shape and an operator makes the dated flip to blocking. Both are tracked on card#9767, and both
-are the operator's call, not this repo's.
+body shape and an operator makes the dated flip to blocking. Both are tracked on card#9767 and
+card#9801; the flip is the operator's call, not this repo's.
+
+### The standard binds a CHANGE PR too, and this is the shape it leaves
+
+⛔ **DO NOT READ THE ALLOWED SET AS RELEASE-ONLY BECAUSE ITS EXAMPLES ARE RELEASE-SHAPED.** The
+question was settled by reading the standard rather than inferring it from the linter. § PR body's
+opening paragraph says it in one sentence — *"it governs **every** PR body an agent writes —
+feature, fix, docs, dependency, release"* — in the same breath as explaining that it lives in the
+release skill only because the release PR is the largest body the framework drafts. The sections a
+change PR has no use for are marked as such **in the standard's own IN table**: `Bundled` and
+`Release artifacts` both come from the row that reads `Release PRs only`, and no other admitted
+section carries that restriction. ⇒ The allowed set is an ALLOWLIST, never a required list —
+nothing obliges a change PR to carry a section — so what it leaves a PR into `dev` is exactly:
+
+| Part | When |
+|---|---|
+| the scope line | always — one line, FIRST, naming the range this merges against its base, with the command that re-prints it and never a tally of it |
+| `## Highlights` | whenever anything about the change has an installer-visible face |
+| `## Upgrade warnings` | **only** when the installer cannot deploy or upgrade correctly without an action. Absent that need there is no section, not an empty one |
+| `Built:`, `**Coordinated in:**`, the attribution trailer | always — machine-read, and the installer POV does not reach them |
+
+Everything this repository used to put in a body keeps its obligation and changes its home:
+
+<!-- change-pr-body:house-map — WHERE EACH OF THIS REPOSITORY'S HOUSE SECTIONS GOES, and the one
+     surface an author reads instead of re-deriving it from the standard. It is a marker block
+     rather than prose because `bin/change-pr-body.selftest.py` GRADES it (canon #16: a copy a
+     program must load gets a guard, not a pointer): every left-hand heading is driven through
+     `bin/pr-body-lint.py` and must still RED, and every destination spelled `## X` must be a
+     heading that linter's own `ALLOWED_H2` admits AND that passes it. So a row that has drifted
+     from the judge — because the standard moved, or the linter was re-vendored — reds the suite
+     instead of sending an author to write a section that will red on their PR. One row per line:
+     the house heading, a pipe, then where its content goes.
+## What changes for you | ## Highlights
+## What is in it | ## Highlights
+## What you will see change | ## Highlights
+## What you do | ## Upgrade warnings
+## What you must do | ## Upgrade warnings
+## What it replaces | docs/CHANGELOG.md — the defect, its history, and what the change replaced
+## Evidence | the review-request round (`coord-review`), and the card
+## Docs | docs/CHANGELOG.md; the Rule X1 doc-sync audit trail goes to the review round
+## Not verified | a card, cited from the review round
+-->
+
+⚠ **The map's left column is not a closed list of what an author might invent** — the RULE is that
+any H2 outside the allowlist has a home outside the body, and the linter's finding names it. The
+map covers the sections this repository actually used; re-derive that population from the merged
+bodies rather than trusting the column:
+
+```
+gh pr list --repo PupFuzz/mezzanine --state merged --limit 20 --json number --jq '.[].number' |
+while read -r n; do gh api "repos/PupFuzz/mezzanine/pulls/$n" --jq .body; done | grep '^## '
+```
+
+### Generate a change PR's body — `bin/change-pr-body.py`
+
+⛔ **`release-pr-body` CANNOT PRODUCE ONE, AND THAT IS NOT A MISCONFIGURATION.** On a PR into `dev`
+it exits 2 with `could not resolve version`; it is structurally a release generator, and forcing
+`--version` would emit a body asserting a release that is not happening. The standing rule that a
+body is generated rather than hand-written therefore had no mechanical route for the commonest PR
+class here until `bin/change-pr-body.py` (card#9801). Use it, then fill the marked sections:
+
+```
+python3 bin/change-pr-body.py \
+  --built 'dispatched (coder ×N / mechanic ×M)' --coordinated-in 'card#NNNN' \
+  --agent 'implemented by the mezzanine `coder` subagent' \
+  --session-url '<this session URL>' > /tmp/body.md      # add --upgrade-warnings only if needed
+python3 bin/pr-body-lint.py --body-file /tmp/body.md      # must be rc 0 BEFORE `gh pr create`
+```
+
+It refuses rather than guessing: `--built` and `--coordinated-in` are required (a count nothing
+recorded is a fabricated attestation), a detached HEAD and an empty range are refused by name, and
+no session URL is invented. The judgement sections come out as `<!-- AUTHOR: … -->` markers — the
+same marker `release-pr-body` leaves — so `grep '<!-- AUTHOR:'` finds an unfilled body of either
+kind. **A RELEASE PR still uses `release-pr-body`**; this tool emits no version, no bundled table
+and no artifact checklist, and is wrong for one.
 
 ⛔ **A PR BODY DOES NOT OPEN WITH A `FROM:` LINE.** Operator directive, 2026-09-17, fleet-wide with no
 per-repo exemption; the linter's `attribution-line` rule reds it. Which agent produced the work is

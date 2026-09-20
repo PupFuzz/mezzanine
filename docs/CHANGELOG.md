@@ -27,6 +27,63 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9801** — **A PR into `dev` now has a body generator, and the shape it emits is the fleet
+  standard's.** `bin/change-pr-body.py` writes the scope line, `## Highlights`, optionally
+  `## Upgrade warnings`, the `Built:` / `**Coordinated in:**` machine lines and the attribution
+  trailer, and leaves the judgement sections as `<!-- AUTHOR: … -->` markers. Until it existed the
+  author of a non-release PR had two options and both broke a rule: hand-write the body against the
+  standing "generate it" rule, or force `--version` onto `release-pr-body` — which exits 2 with
+  `could not resolve version` on a `dev` PR because it is structurally a RELEASE generator — and
+  emit a body asserting a release that is not happening. The fleet helper is unchanged: it is
+  owned outside this repository and a `--change` mode there is a fleet proposal, not a local edit.
+  **The shape question the generator answers is now written down too.** `skills/release-pr/SKILL.md
+  § PR body` governs *every* PR body an agent writes, not only a release one — two of the four
+  sections it admits carry `Release PRs only` in its own IN table, and the set is an allowlist
+  rather than a required list — so `CLAUDE.md § PR bodies are judged against the fleet standard`
+  now carries what a change PR looks like and a `change-pr-body:house-map` block saying where each
+  of this repository's former house sections goes instead. **That map is graded, not asserted:**
+  `bin/change-pr-body.selftest.py` drives every left-hand heading through `bin/pr-body-lint.py` and
+  requires it to still red, requires every `## X` destination to be one that linter admits AND
+  passes, and pipes the generator's real output into it — then mutates that output once per rule
+  so the green is shown to discriminate. **Once per rule is itself derived, not counted:** the
+  rule ids are read out of the linter's own source and the mutation set is required to cover
+  them, so re-vendoring a linter that adds a rule reds the suite for under-coverage instead of
+  leaving a coverage sentence that has quietly stopped being true. The suite runs in the
+  `pr-body-lint` job and can fail it.
+  **What has NOT changed is what the repository rejects.** The lane's verdict on a PR body is still
+  report-only and `pr-body-lint` is still required by no ruleset; the flip to blocking is the
+  operator's act, gated on the verdict being RE-DERIVED over the recent merged bodies rather than
+  on any figure written down — `CLAUDE.md` carries the loop that prints it.
+  **A false claim about that lane is corrected, and the sweep that finds it is written down
+  instead of being asserted complete.** Every surface describing the `pr-body-lint` job said the
+  JOB prints its verdict and exits 0 — in the words "nothing in this job can fail a pull request",
+  and in "the contract this job makes is that it exits 0". That was never true: the job's
+  vendored-byte pin and the vendored linter's own selftest shipped in its first commit and both
+  red on a bad checkout. ⚠ "Corrected everywhere" is exactly the claim that goes stale at the next
+  copy and that nothing re-checks, so the SWEEP is recorded rather than the verdict. Re-run it
+  before adding a sentence about this lane; each round of this change found a copy the previous
+  round's narrower sweep had not:
+
+  ```
+  for f in $(git grep -l "pr-body-lint" -- CLAUDE.md README.md docs/ .github/ bin/ \
+             | grep -v 'fixtures\|changelog/v0'); do
+    git grep -n -i -E "exits? 0|can fail|cannot fail|never block|never fails" -- "$f"
+  done
+  ```
+
+  ⛔ **SELECT THE FILES, THEN READ EVERY MATCH IN THEM — DO NOT ADD A SECOND LINE-FILTER.** The
+  obvious tightening (`| grep -i "body\|this job"`) is what this command replaced, and it was
+  measured to MISS its own known positive: these sentences are hard-wrapped, so the predicate and
+  the subject word land on different lines and a line-oriented second stage drops the pair. At
+  the base commit it silently omitted `docs/VERSIONING.md:256`, which carried the claim verbatim.
+  Dropping `bin/` from the pathspec hid the last copy of all, inside `bin/pr-body-lint.py`'s own
+  header. ⇒ The cost of the version above is NOISE — it returns every "exit 0" in the changelog's
+  history, and you discard those by eye. That is the right trade: a reader who skims a screenful of
+  irrelevant lines still finds the wrong sentence, and a filtered sweep that returns a clean-looking
+  set hands the next author CONFIDENCE instead of a question, which is worse than the universal it
+  replaced. The promise is, and always was, about the BODY: no PR body can fail this job. The
+  generator's selftest now runs in the same job and can red it too, and it is ordered AFTER the
+  report step so that a broken generator can never suppress the body verdict the author reads.
 - **card#9984** — **`bin/deploy.sh`'s version comparison refuses operands it cannot read, so a
   `BASH_FLOOR` that is not a version is refused by name instead of certified.** Until this change
   the comparison behind every one of phase A's version floors — A1's bash floor, A6's PHP floor,
@@ -473,12 +530,14 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   which PAIRED_KEYS does not name` and `GUARDED BUT ABSENT: PAIRED_KEYS names REDIS_URL, which
   phpunit.xml no longer pins`. `docs/design/FLEET-STATE.md` § 6.2 records the leg and AT-D2-14 carries
   the fixture control as its fourth RED.
-- **card#9767** — **this repository now runs the FLEET's PR-body linter on every open PR, and it
-  REPORTS rather than blocks.** `bin/pr-body-lint.py` is upstream's own program — the one every coord
+- **card#9767** — **this repository now runs the FLEET's PR-body linter on every open PR, and its
+  verdict on a body REPORTS rather than blocks.** `bin/pr-body-lint.py` is upstream's own program — the one every coord
   install's CI runs and the review path spawns — vendored byte-for-byte under a `#` provenance header
   that records the source commit and plugin version, because the upstream repository is private and a
   public runner cannot clone it. The new **`pr-body-lint` job** in
-  `.github/workflows/card-token-lint.yml` prints its whole verdict and **exits 0 whatever it finds**.
+  `.github/workflows/card-token-lint.yml` prints its whole verdict and **the step that judges the
+  body exits 0 whatever it finds**. ⚠ The JOB is not thereby incapable of failing — its pin and
+  selftest steps judge the CHECKOUT and do red — and it never was: those steps shipped with it.
   ⛔ **THE REPORT-ONLY WIRING IS THE DECISION, NOT AN UNFINISHED STAGING STEP.** Run over this
   repository's recent merged bodies, most of them FAIL the standard — and **those reds are correct**:
   the standard governs every PR body an agent writes and is ratified twice, and this repo is genuinely
@@ -488,8 +547,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   to route around it, so this lane makes the findings visible without minting that habit. ⚠ **It is a
   WINDOW, not a destination** — adopting the body shape, and then a dated flip to blocking, are
   tracked on card#9767 and are the operator's calls; requiring the job as a ruleset context is
-  likewise the operator's, and **would not by itself make it block**, because the job exits 0. **The
-  lane existing is not the class being handled.** ⭐ **WHAT IT REPLACED, AND WHY THAT IS THE POINT**
+  likewise the operator's, and **would not by itself make the BODY VERDICT block**, because that step
+  exits 0 — though it would make the job's pin and selftest steps blocking, which is the intent.
+  **The lane existing is not the class being handled.** ⭐ **WHAT IT REPLACED, AND WHY THAT IS THE POINT**
   — `bin/pr-body-fields.py` and `bin/coord_audit_field.py`, a mezzanine-local two-field presence guard
   built around `review-prep.py`'s `_audit_field`, are **deleted**. That function has MOVED upstream and
   now lives inside this very linter, so the local pair was a copy of something that was no longer
