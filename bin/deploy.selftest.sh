@@ -2839,11 +2839,45 @@ eq "bash_floor_is_version: a leading v is not a version" not "$(floor_ok v4.4)"
 eq "bash_floor_is_version: a leading dot is not a version" not "$(floor_ok '.4')"
 eq "bash_floor_is_version: a trailing dot is not a version" not "$(floor_ok '4.')"
 
+# ── and the OTHER predicate, which is not a looser spelling of it (card#9984 r4) ───────────────
+# `ver_is_comparable` asks a different question: will `ver_ge` read every field of this HOST
+# version as the number written there, or substitute 0 for one it cannot read? A1c holds
+# `npm --version` to it. The two are driven side by side because the difference between them is
+# the thing a future editor is most likely to get wrong — a floor is exactly two numeric fields,
+# a host version is two or more and may carry a suffix `ver_ge` truncates on purpose.
+comparable() { env_lib "$T/none" ver_is_comparable "$1" >/dev/null 2>&1 && echo comparable || echo not; }
+eq "ver_is_comparable: an ordinary three-field version is" comparable "$(comparable 9.2.0)"
+eq "ver_is_comparable: two fields are enough" comparable "$(comparable 9.2)"
+eq "ver_is_comparable: a prerelease suffix is fine — ver_ge truncates it on purpose" \
+   comparable "$(comparable '9.2.0-pre.1')"
+eq "ver_is_comparable: …as is the RC form ver_ge's own header documents" comparable "$(comparable 8.5.0RC1)"
+# The shape A1c's old glob admitted: a field that STARTS with a non-digit, which ver_ge reads as 0.
+eq "ver_is_comparable: a non-numeric MIDDLE field is not (ver_ge would read it as 0)" \
+   not "$(comparable '9.x.5')"
+eq "ver_is_comparable: …the same shape lower down the range" not "$(comparable '6.x.9')"
+eq "ver_is_comparable: a bare major is not — A1c needs a dotted version" not "$(comparable 9)"
+eq "ver_is_comparable: a leading v is not" not "$(comparable v9.2)"
+eq "ver_is_comparable: a word is not" not "$(comparable banana)"
+eq "ver_is_comparable: an empty answer is not" not "$(comparable '')"
+eq "ver_is_comparable: an empty middle field is not" not "$(comparable '9..2')"
+eq "ver_is_comparable: a trailing dot is not" not "$(comparable '9.2.')"
+# ⛔ THE PREDICATES DISAGREE, ON PURPOSE, and these pin the disagreement so that neither can be
+# quietly swapped for the other: a bash floor may not carry a suffix or a third field, and a host
+# version may.
+eq "the two differ: 9.2.0 is a comparable host version…" comparable "$(comparable 9.2.0)"
+eq "…and is NOT a bash floor, which is exactly two fields" not "$(floor_ok 9.2.0)"
+eq "the two differ: 8.5.0RC1 is a comparable host version…" comparable "$(comparable 8.5.0RC1)"
+eq "…and is NOT a bash floor, which carries no suffix" not "$(floor_ok 8.5.0RC1)"
+eq "the two agree: a plain two-field version is both" comparable "$(comparable 4.4)"
+eq "…and a bash floor" version "$(floor_ok 4.4)"
+
 # ⭐ AND A1 NOW HOLDS THIS COPY'S OWN DECLARATION TO IT, BEFORE COMPARING ANYTHING (card#9984 r2).
 # A6b has always refused a non-version floor in the TARGET release; A1 handed its own straight to
 # `ver_ge`, whose leading-digit test is the right one for a predicate A6 gives three-field PHP
-# versions and A12 a bare `7`, and much too loose for a bash floor. MEASURED at `8505c4c`,
-# library-mode, host bash 4.0 against a serving copy whose floor line was meant to read `4.4`:
+# versions and A12 a bare `7`, and much too loose for a bash floor. MEASURED by DELETING A1's
+# `bash_floor_is_version "$BASH_FLOOR" || refuse` guard — which is the mutation these cases red
+# on, runnable in this tree, where a SHA no published ref reaches would not be. Library-mode,
+# host bash 4.0, against a serving copy whose floor line was meant to read `4.4`:
 # every value in the loop below was read as 4.0.0 and answered MEETS — bash 4.0 deploying past a
 # 4.4 floor. `banana` was caught, because it does not start with a digit; a mistyped SEPARATOR is
 # the likelier typo and was not. A floor read as far as it parses and then passed is the same
@@ -2871,7 +2905,7 @@ unset BAD_FLOOR   # …so every later use of nonsense_bash_floor is `banana` aga
 
 # ⛔ AND THE LINE BEING GONE — the member of this class that was still a DEATH rather than a
 # refusal, found auditing the separator table above for siblings (canon #7). Measured at `9c4d67f`
-# and at `8505c4c`: with the `BASH_FLOOR=` line deleted from the serving copy, the first expansion
+# and before this card's own guard: with the `BASH_FLOOR=` line deleted from the serving copy, the first expansion
 # of `$BASH_FLOOR` died under `set -u` with `BASH_FLOOR: unbound variable` — exit 1, no ⛔ banner,
 # no promise, which the exit table at the top of bin/deploy.sh says means *refused, nothing was
 # touched*. `drop_bash_floor` is A6b's own mutator, reused: there it produces the SURVIVABLE
@@ -3021,6 +3055,32 @@ has "npm --version failed: says what is NOT established, rather than assuming a 
 mkfix npm_version_garbage; export STUB_NPM_VERSION='not a version'
 run_refusal "an npm whose --version is not a version" \
   "\`npm --version\` printed 'not a version', which is not a version" --dry-run
+
+# ⛔ AND ONE IT COULD READ ONLY AS FAR AS IT PARSES — A1c's own copy of the shape this card
+# refuses everywhere else, and the FOURTH copy of `[0-9]*.[0-9]*`, left behind when the other
+# three were consolidated (card#9984 r4). `9.x.5` begins with a digit and has a digit after a
+# dot, so the old glob passed it, and A12 then compared it as 9.0.5 — a number this host never
+# reported. Restore that glob in place of A1c's `ver_is_comparable` call to watch these red.
+# ⚠ THE VERDICT DOES NOT CHANGE at the floors A12 can produce today (its lockfileVersion case
+# yields the bare major `7` or nothing, so only the first field decides). That is why this is the
+# predicate's job and not a comment: nothing re-checks that luck, and the next floor with a minor
+# would let the substitution decide the gate.
+mkfix npm_version_partly_readable; export STUB_NPM_VERSION='9.x.5'
+run_refusal "an npm --version this deploy can read only as far as it parses" \
+  "\`npm --version\` printed '9.x.5', which is not a version" --dry-run
+# ⚠ THE NEEDLE MUST LIVE ON ONE LINE: `refuse` prints each argument as its own indented line, so
+# a phrase spanning two of them is never found. Measured — this assertion reded on exactly that.
+has "a partly-readable npm version: says it will not compare one read only as far as it parses" \
+  "read only as far as it parses" "$OUT"
+hasnt "a partly-readable npm version: no npm floor verdict it never reached" "is below npm" "$OUT"
+# The twin, one variable away: a PRERELEASE suffix is NOT this shape and must still deploy —
+# `ver_ge` truncating it is documented and deliberate, and refusing it would strand a host that
+# can install the lockfile perfectly well.
+mkfix npm_version_prerelease; export STUB_NPM_VERSION='9.2.0-pre.1'
+run --dry-run
+eq  "control: an npm whose version carries a prerelease suffix deploys" 0 "$RC"
+has "control: and it was compared as its release, not refused" \
+  "ok — npm 9.2.0-pre.1 meets npm 7" "$OUT"
 
 # ── the floor's DENOMINATOR: the other empty-array sites, each reached by a fixture ────────────
 # ⛔ THE BACKSTOP HAD A DENOMINATOR OF ONE. The header of bin/deploy.sh declares the rule "a new

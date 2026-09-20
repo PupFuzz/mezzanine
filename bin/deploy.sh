@@ -1505,8 +1505,10 @@ bash_floor_declared() {
 # and `.github/workflows/deploy-selftest.yml`'s floor step each held this value to a test of their
 # own, and A1's was the weakest — `ver_ge`'s leading-digit check, which is right for THAT predicate
 # (A6 hands it three-field PHP versions and A12 a bare `7`) and far too loose for a bash floor.
-# MEASURED at 8505c4c, library-mode, host bash 4.0 against a serving copy whose floor line was
-# meant to read `4.4`: `4,4`, `4.x`, `4-4`, `4x`, `4` and `"4 4"` each begin with a digit, so the
+# MEASURED by DELETING A1's `bash_floor_is_version "$BASH_FLOOR" || refuse` guard, which puts a
+# tree back in the state that guard fixed. Library-mode, host bash 4.0, against a serving copy
+# whose floor line was meant to read `4.4`: `4,4`, `4.x`, `4-4`, `4x`, `4` and `"4 4"` each
+# begin with a digit, so the
 # comparison RAN, truncated the floor at the first non-digit, read it as 4.0.0 and answered MEETS —
 # bash 4.0 deploying past a 4.4 floor. A mistyped separator is the likelier typo than `banana`, and
 # a partly-read floor passing is the same defect as an unread one passing.
@@ -1527,6 +1529,43 @@ bash_floor_is_version() {
     *.*)                         return 0 ;;  # …leaving exactly <digits>.<digits>
     *)                           return 1 ;;  # no separator at all — a bare major is not a floor
   esac
+}
+
+# ver_is_comparable <value> — true when `ver_ge` will read EVERY field of <value> as the number
+# written there, rather than silently substituting 0 for a field it cannot read: two or more
+# dot-separated fields, each BEGINNING with a digit.
+#
+# ⛔ THE OTHER PREDICATE, AND NOT A LOOSER SPELLING OF THE ONE ABOVE (card#9984 r4).
+# They answer different questions and the difference is deliberate:
+#   · `bash_floor_is_version` — what a BASH_FLOOR DECLARATION may be. Exactly two fields, all
+#     digits, no suffix, because that is the shape this file's header declares and the shape A1,
+#     A6b and the `bash-floor` job all compare.
+#   · `ver_is_comparable`     — what a HOST VERSION reported by a tool may be. Two fields or more,
+#     and a non-numeric SUFFIX on a field is fine.
+# A suffix is fine because `ver_ge` truncating it is DOCUMENTED and deliberate — `8.5.0RC1` is
+# treated as its release — and MEASURED to be the permissive direction that matters here: a real
+# prerelease npm prints one, and holding A1c to "all fields numeric" would refuse a host that is
+# perfectly able to install the lockfile. A field that STARTS with a non-digit is the opposite
+# case: `ver_ge` reads it as 0, which is a number nobody reported.
+# MEASURED by restoring A1c's old `[0-9]*.[0-9]*` glob in place of the call it now makes:
+# `9.x.5` passed it and `ver_ge` read it as 9.0.5; `6.x.9` passed and read as 6.0.9. Both are
+# the partly-parseable shape this card refuses everywhere else — a version read as far as it
+# parses and then acted on.
+# ⚠ THE VERDICT DID NOT CHANGE at the floors A12 can currently produce, because its
+# `lockfileVersion` case yields the bare major `7` or nothing, so only the FIRST field decides and
+# the glob already guaranteed that one is a digit. That is luck, not design: it holds only while no
+# floor here has a minor, nothing re-checks it, and the next floor with one would make the
+# substitution decide a gate. Closed at the predicate rather than left as a note that decays.
+# ⛔ NOT USED BY A6, deliberately: it is handed `${HOST_PHP_VERSION:-0}`, whose `0` sentinel is a
+# single field and means "php could not be read", which `ver_ge` already refuses to compare.
+ver_is_comparable() {
+  local v="$1" f
+  case "$v" in *.*) ;; *) return 1 ;; esac   # a single field is not a host version here
+  while :; do
+    f="${v%%.*}"
+    case "$f" in [0-9]*) ;; *) return 1 ;; esac
+    case "$v" in *.*) v="${v#*.}" ;; *) return 0 ;; esac
+  done
 }
 
 # npm_lockfile_version — the TOP-LEVEL `lockfileVersion` of a package-lock.json on stdin, or nothing
@@ -1601,11 +1640,21 @@ npm_lockfile_version() {
 # Sets FPM_POSTURE, FPM_REVALIDATE_S, STREAM_POSTURE and STREAM_STATUS_LISTEN on success; on failure
 # FPM_NOT_READY — a refusal title, then its lines. Phase A refuses on it; phase B, which re-reads it, fails
 # the window on it.
-# ⚠ THE HERE-STRING SHAPE card#9984 REMOVED FROM `ver_ge` SURVIVES IN THESE TWO, AND IS NAMED HERE
-# RATHER THAN FIXED (canon #7 — the sibling audit owes the NAME; whether it earns work is #18's
-# question, and the answer below is why this round did not take it).
-#   · Both split with `<<<`, a TEMPORARY FILE on every bash below 5.1 and so on a supported host
-#     (the citations are at `ver_ge`). A failed read leaves the substitution EMPTY.
+# ⚠ THE HERE-STRING SHAPE card#9984 REMOVED FROM `ver_ge` SURVIVES HERE, AND IS NAMED RATHER THAN
+# FIXED (canon #7 — the sibling audit owes the NAME; whether it earns work is #18's question, and
+# the answer below is why this round did not take it).
+# ⛔ THE POPULATION IS "EVERY HERE-STRING `fpm_code_reload_ready` REACHES" — stated that way, and
+# DERIVED, because the top of this file records hand audits of exactly this question having been
+# wrong before, in both directions:
+#     start at fpm_code_reload_ready, follow calls to functions defined in this file
+#     transitively, and report every `<<<` in the reached set
+# Run that (2026-09-20) and it reaches `phpinfo_value`, `pool_ini` and `ini_file_value`, plus
+# inline sites in `fpm_code_reload_ready` itself and in `stream_pool_ready` — wider than the two
+# functions the eye lands on. No figure is written here: re-derive it, the sites move.
+# The ruling below is uniform over all of them, so the wider population does not change it —
+# which is why the population had to be derived rather than guessed, not a reason to skip it.
+#   · Every one splits with `<<<`, a TEMPORARY FILE on every bash below 5.1 and so on a supported
+#     host (the citations are at `ver_ge`). A failed read leaves the substitution EMPTY.
 #   · Empty is read PERMISSIVELY downstream: `fpm_judge`'s first line is
 #     `if ! ini_on "${2:-0}"; then return 0; fi`, and an empty `opcache.enable` therefore means
 #     "opcache is off, every request reads the disk, this deploy needs no reload" — the same
@@ -1944,8 +1993,8 @@ phase_a() {
   # gates cannot disagree about what a floor is. Only then are there two things left that reach the
   # comparison: the floor being MET and the floor being MISSED.
   # ⛔ AND THE LINE BEING GONE IS REFUSED AS ITSELF, FIRST — which until card#9984 r2 was the one
-  # shape in this class that still reached the operator as a DEATH. MEASURED at 9c4d67f, at
-  # 8505c4c and here before this line: delete the `BASH_FLOOR=` line from a serving copy and the
+  # shape in this class that still reached the operator as a DEATH. MEASURED at `9c4d67f`, and
+  # reproducible here by deleting this guard: remove the `BASH_FLOOR=` line from a copy and the
   # first expansion of `$BASH_FLOOR` dies under `set -u` with `BASH_FLOOR: unbound variable`,
   # exit 1, NO ⛔ banner and NO "Nothing was changed" promise — the exit code the table at the top
   # of this file reserves for *refused, nothing was touched*, reached by a death, which is the
@@ -2005,12 +2054,17 @@ phase_a() {
     "What npm printed is above this refusal. Which npm this host runs is NOT established, so" \
     "whether it can install the release's lockfile (A12) is not established either — and \`npm ci\`" \
     "runs in phase B, inside the maintenance window, with the app already down."
-  case "$npm_version" in
-    [0-9]*.[0-9]*) ;;
-    *) refuse "\`npm --version\` printed '$npm_version', which is not a version" \
-         "A12 compares this host's npm against the floor the release's lockfile implies, and will" \
-         "not make that comparison against something it cannot read as a version." ;;
-  esac
+  # ⛔ `ver_is_comparable`, NOT AN INLINE GLOB (card#9984 r4). This was the FOURTH copy of
+  # `[0-9]*.[0-9]*`, left behind when r2 consolidated the other three, and it admitted the same
+  # partly-parseable shape the rest of this card refuses: `9.x.5` passed it and A12 then compared
+  # it as 9.0.5 — restore the glob here to measure that. The predicate is the HOST-VERSION one,
+  # not the bash-floor one: a floor is exactly two numeric fields, while an npm may legitimately
+  # print a prerelease suffix `ver_ge` truncates on purpose. Its header states the difference.
+  ver_is_comparable "$npm_version" || refuse \
+    "\`npm --version\` printed '$npm_version', which is not a version" \
+    "A12 compares this host's npm against the floor the release's lockfile implies. It will not" \
+    "make that comparison against something it cannot read as a version, nor against one it can" \
+    "read only as far as it parses — which would compare a number this host never reported."
 
   # A1b — the restart's timings. restart_daemons does arithmetic on them inside the window, where a value it
   # cannot read would stop the deploy with the app down.
@@ -2819,10 +2873,15 @@ gate_a6b_bash_floor() {
   # and it admitted `4.4x` and `4.x.5`; the second was enforced as the floor 4.0.5, which is not
   # the floor that release declared. `bash_floor_is_version` states what a floor is, once.
   # ⚠ TIGHTENING THIS GATE STRANDS NO RELEASE, and that was checked rather than assumed, because
-  # refusing a release nobody can re-cut is the failure the branch above exists to avoid: every
-  # tag this repository has published is read here (`git show <tag>:bin/deploy.sh`) and NONE of
-  # them declares a BASH_FLOOR at all — they all predate card#9616 and take that survivable path.
-  # A rollback is the deploy most likely to be run under pressure; it is unaffected.
+  # refusing a release nobody can re-cut is the failure the branch above exists to avoid. Every
+  # tag this repository has published was read (`git show <tag>:bin/deploy.sh`) and NONE declares
+  # a BASH_FLOOR, so this predicate rejects nothing that is out there — but they do not all reach
+  # it by the same route, and the earlier wording said they did:
+  #   · the tags that CARRY bin/deploy.sh declare no floor and take the survivable path above;
+  #   · the earliest tags carry no bin/deploy.sh at all, so A6b refuses them at the `git_read_at`
+  #     branch further up — which it already did before this card, and for a different reason.
+  # Re-derive rather than trusting either sentence: for each tag, `git cat-file -e <tag>:bin/
+  # deploy.sh` says which group it is in. A rollback to a tag that HAS the file is unaffected.
   bash_floor_is_version "$floor" || refuse \
     "bin/deploy.sh at $short declares BASH_FLOOR='$floor', which is not a version" \
     "A6b compares this host's bash against the floor that release declares, and will not guess" \

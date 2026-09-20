@@ -749,20 +749,39 @@ rule violations anyone could have committed at the time.
     bullet above closed only half of the asymmetry it claimed. A6b has always refused a non-version
     floor in the TARGET release; A1 handed this copy's own straight to `ver_ge`, whose leading-digit
     check is the right test for a predicate A6 gives three-field PHP versions and A12 a bare `7`,
-    and far too loose for a bash floor. Measured at `8505c4c`, host bash 4.0, with the floor line
-    mistyped as `4,4`, `4.x`, `4-4`, `4x`, `4` or `"4 4"`: each begins with a digit, so the
+    and far too loose for a bash floor. Measured with A1's `bash_floor_is_version` guard
+    deleted, host bash 4.0, and the floor line mistyped as `4,4`, `4.x`, `4-4`, `4x`, `4` or
+    `"4 4"`: each begins with a digit, so the
     comparison RAN, truncated at the first non-digit, read the floor as 4.0 and answered MET — bash
     4.0 deploying past a floor of 4.4. **A floor read as far as it parses and then passed is the
     same defect as one never read at all**, and the mistyped separator is the likelier typo.
     **`bash_floor_is_version` states what a floor is, once** — `<digits>.<digits>`, exactly two
     fields — and A1, A6b and the `bash-floor` job's floor step each hold their own copy of the
-    declaration to it, so no two of them can disagree about what a floor is. It is STRICTER than
-    the `[0-9]*.[0-9]*` glob it replaces in A6b, which also admitted `4.4x` and `4.x.5`; the second
+    declaration to it, so no two of them can disagree about what a floor is.
+    ⚠ **A1c had a FOURTH copy of that glob** — the host `npm --version` — which the first pass at
+    this consolidation missed: `9.x.5` passed it and A12 compared it as 9.0.5. It does NOT take
+    `bash_floor_is_version`, because a floor and a host version are not the same shape: an npm may
+    legitimately print a prerelease suffix, which `ver_ge` truncates on purpose. So there are
+    **a named predicate for each, and no EXECUTABLE copy of that glob left** — check it
+    rather than trusting this sentence:
+    `grep -n '\[0-9\]\*\.\[0-9\]\*' bin/deploy.sh | grep -v ':[[:space:]]*#'`
+    should print nothing, the remaining hits being comments that name the glob they
+    replaced. `bash_floor_is_version` is for a declaration,
+    and **`ver_is_comparable`** for a version a tool reported — two or more fields, each beginning
+    with a digit, which is exactly the condition under which `ver_ge` reads every field as written
+    instead of substituting 0. A6 keeps neither: it is handed `${HOST_PHP_VERSION:-0}`, whose `0`
+    sentinel means *php could not be read* and which `ver_ge` already refuses to compare.
+    The floor predicate is STRICTER than the `[0-9]*.[0-9]*` glob it replaces in A6b, which
+    also admitted `4.4x` and `4.x.5`; the second
     is the one that mattered, since a release declaring it was enforced as the floor 4.0.5 — a
     floor nobody wrote — rather than refused, and which way that substitution errs is unknowable,
-    exactly as with a PHP constraint A6 cannot evaluate. **Tightening it strands no release**: every
-    published tag was read, and none declares a `BASH_FLOOR` at all, so all of them keep A6b's
-    survivable predates-card#9616 path and a rollback is unaffected.
+    exactly as with a PHP constraint A6 cannot evaluate. **Tightening it strands no release**:
+    every published tag was read and none declares a `BASH_FLOOR`, so the stricter predicate
+    rejects nothing that is out there. They do not all reach that conclusion by the same route,
+    though — the tags that CARRY `bin/deploy.sh` take A6b's survivable predates-card#9616 path,
+    while the earliest carry no `bin/deploy.sh` at all and A6b refuses those at its `git_read_at`
+    branch, as it already did before this card. Which tag is in which group is
+    `git cat-file -e <tag>:bin/deploy.sh`, not a list written here.
     Auditing that table for siblings found the one member of the class that was still a DEATH:
     with the `BASH_FLOOR=` line DELETED from a serving copy, the first expansion of it died under
     `set -u` — `BASH_FLOOR: unbound variable`, exit 1, no `⛔` banner and no *"Nothing was

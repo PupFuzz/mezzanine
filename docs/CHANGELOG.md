@@ -34,9 +34,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   that was not a version: every field read 0, 0 is neither greater nor less than 0, and the answer
   was *"at least"*. None of them asks it under `set -e`, so nothing stopped. **What that cost:
   edit `BASH_FLOOR=` at the top of your serving copy of `bin/deploy.sh` to anything that is not a
-  `<major>.<minor>` — blank it, quote it wrong, write `v4.4` — and the next `bin/deploy.sh` run
-  printed no complaint about it, enforced no bash floor at all, and went on to open the
-  maintenance window.** It now stops in phase A, before anything is touched.
+  `<major>.<minor>` — blank it, or write `v4.4` — and the next `bin/deploy.sh` run printed no
+  complaint about it, enforced no bash floor at all, and went on to open the maintenance
+  window.** It now stops in phase A, before anything is touched.
   **A mistyped SEPARATOR is caught too, and it is the likelier typo.** `BASH_FLOOR=4,4`, `4.x`,
   `4-4`, `4x`, `4` and `"4 4"` all begin with a digit, so the comparison used to run, read as far
   as it parsed, take the floor to be `4.0` and report it met — a host running bash 4.0 deploying
@@ -49,8 +49,16 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   end the run with `BASH_FLOOR: unbound variable` and exit 1, with none of the `⛔ REFUSED`
   banner or the *"Nothing was changed. The previous release is still serving."* promise that
   tells you a deploy stopped on purpose rather than broke. A blank `BASH_FLOOR=` takes the same
-  refusal. **If your own copy's floor line is well-formed, nothing changes** — every comparison
-  this repository makes answers as it did before.
+  refusal.
+  **The same tightening reaches the host's own `npm --version`.** A1c validated it with the
+  same loose pattern, so an npm reporting something like `9.x.5` was compared as `9.0.5` — a
+  number your host never reported. It is refused now. **A prerelease npm still deploys**:
+  `9.2.0-pre.1` is read as its release, which is long-standing deliberate behaviour and is
+  covered by a case so it stays that way. What is refused is a version with a field that
+  does not start with a digit, which is the only shape that was being silently read as 0.
+  **Every comparison between two well-formed versions answers exactly as it did before** —
+  measured field by field against the previous implementation. What changed is only what
+  happens to an operand that is not one.
   **If a deploy of yours starts refusing with *"declares BASH_FLOOR='…', which is not a
   version"*, the fix is the line at the top of `bin/deploy.sh`:** it reads
   `BASH_FLOOR=<major>.<minor>`, alone on its line, at column 0, unquoted or quoted, and the
