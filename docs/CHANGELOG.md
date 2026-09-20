@@ -39,16 +39,25 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   `phpunit.xml`** — one implementation of what a pin is, rather than a second parser inside a check
   whose whole subject is two copies disagreeing — and reds naming the key and what each side
   declares.
-  **It compares `DB_URL` and `REDIS_URL`, and leaves the remaining pins to the guards that already
-  cover them.** That scope was established per key. A drifted `DB_DATABASE`, `REDIS_DB` or
-  `REDIS_CACHE_DB` copied into `phpunit.xml` moves a resolved value `Tests\TestCase` asserts by name
-  and ABORTS the run on, so it cannot reach a green suite. `REDIS_URL` is asserted by nothing:
+  **It compares every pin, and its population is the pin set rather than a list anyone maintains** —
+  the key sets are read from the two files and compared in both directions, and then every pin's
+  value is compared, so a pin added to `phpunit.xml` joins the check with no second decision for
+  anyone to remember.
+  **What the check is worth differs by key, and that was established key by key.** A drifted
+  `DB_DATABASE`, `REDIS_DB` or `REDIS_CACHE_DB` copied into `phpunit.xml` also moves a resolved value
+  `Tests\TestCase` asserts by name and ABORTS the run on, so for those the new check is the earlier
+  and clearer red rather than the only one. `REDIS_URL` is asserted by nothing else:
   Laravel's `RedisManager` takes the index from the URL's path when it BUILDS a connection, so
   `config('database.redis.default.database')` goes on reporting the pinned index and no check sees
   the difference. And `DB_URL`'s existing guard compares the database NAME alone, while the URL also
   replaces the driver, host, port, username and password — measured with a `DB_URL` of
   `mysql://127.0.0.1:3399/mezzanine_test` pinned in `phpunit.xml`, where every `config()` pin passed,
   the connection-name guard passed, and the run went on to open a connection to that port.
+  **The bootstrap guard's abort message was corrected in the same change.** It named an exported
+  environment variable as the usual cause, and in this card's sequence that sends the reader to
+  update the guard's own expected values — making the drift green and the store somebody else's. It
+  now names the drifted-pin cause beside the export and says to check both copies before editing
+  either.
   The check was watched failing in each shape before it was trusted: a value changed in § 6.2, a
   value changed in `phpunit.xml`, and the pin deleted from each side in turn.
   **There is nothing to do on any host.** No application code, no configuration and no deploy path

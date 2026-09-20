@@ -1253,8 +1253,8 @@ believed they had already done:
 ```
 
 ⛔ **Editing the block above edits the pins.** `Tests\Feature\DatabasePinTest` reads it and compares it
-with `server/phpunit.xml`; the last guard bullet below says which keys it compares and why the rest are
-already covered elsewhere.
+to `server/phpunit.xml`, key by key and value by value; the guard bullet below that opens *"And THIS
+SECTION'S OWN BLOCK is checked against the file it owns"* says how, and what each key's other cover is.
 
 **And the pin is guarded, not trusted** ([AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites)):
 
@@ -1316,14 +1316,18 @@ already covered elsewhere.
   `phpunit.xml` with — one implementation of *what a pin is*, because a second one in a check about
   two copies disagreeing is the same defect a layer further out — and reds naming the key and both
   sides' values.
-  ⚠ **It compares `DB_URL` and `REDIS_URL` only, and that scope is card#9803's finding rather than a
-  convenience.** The question asked per key was whether a drifted value here, copied into the file,
-  would already red: `DB_DATABASE`, `REDIS_DB` and `REDIS_CACHE_DB` each move a resolved value the
-  bootstrap guard above asserts by name and ABORTS on, so they are covered and are not re-checked
-  (another copy of the values here would be another copy to keep in step). `REDIS_URL` is asserted
-  by nothing at all — the bullet above says why — and `DB_URL`'s connection read covers the database
-  name alone. The URL pins are exactly the ones whose value can drift here, reach the file, and
-  still run green.
+  **The population is the pin set itself, not a list anyone maintains:** the key sets are read from
+  the two files and compared, and every pin's value is then compared, so a pin added to
+  `phpunit.xml` joins this check with no second decision to remember. Naming a subset here instead
+  would be an unguarded restatement of a list, which is the defect this bullet is about.
+  ⚠ **What the check is WORTH differs by key, and card#9803 established it key by key.** For
+  `REDIS_URL` it is the only thing there is: the value is asserted nowhere else, for the reason the
+  bullet above gives. For `DB_URL` it is the only thing behind every component but the database
+  name, which is all the connection read compares. For `DB_DATABASE`, `REDIS_DB` and
+  `REDIS_CACHE_DB` it is not the only guard — a drifted value copied into the file also aborts the
+  run at the resolved read — but it is the better one: it reds on the DOC edit rather than on the
+  file edit that follows, and it names both copies and which disagrees, where the abort blames an
+  exported variable that in this sequence is not the cause.
 - `DB_CONNECTION` is declared **`mysql`** and is **not** forced, deliberately, and `phpunit.xml`
   comments the omission as load-bearing. **There is one engine.** SQLite is not a supported
   configuration anywhere this application runs, so nothing selects a backend any more

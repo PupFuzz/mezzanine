@@ -15,8 +15,8 @@ use Tests\TestCase;
  * on a machine with nothing exported, and silently stops resisting an exported variable. The
  * divergence is invisible until the day it matters.
  *
- * It also asserts the DOCUMENT against the file, for the pins where nothing else would (card#9803
- * — DOCUMENTED_VALUE_KEYS below states which ones those are and why the rest are left out).
+ * It also asserts the DOCUMENT that owns these values against the file that implements them
+ * (card#9803 — the last test in this class, which states what that leg is worth key by key).
  */
 class DatabasePinTest extends TestCase
 {
@@ -28,43 +28,6 @@ class DatabasePinTest extends TestCase
         'DB_URL',
         'REDIS_DB',
         'REDIS_CACHE_DB',
-        'REDIS_URL',
-    ];
-
-    /**
-     * The pins whose VALUE § 6.2's verbatim block is compared against, and the only ones (card#9803).
-     *
-     * ⛔ THIS IS A SHORTER LIST THAN PAIRED_KEYS ON PURPOSE, AND THE OMISSIONS ARE A FINDING RATHER
-     * THAN AN OVERSIGHT. § 6.2 declares itself the OWNER of these values, so a seat that finds
-     * phpunit.xml disagreeing with it edits the FILE to match the DOCUMENT. What decides whether a
-     * key belongs here is therefore one question asked per key: if a drifted value in § 6.2 were
-     * copied into phpunit.xml, would anything already red?
-     *
-     *   - `DB_DATABASE`, `REDIS_DB`, `REDIS_CACHE_DB` — YES, so they are NOT re-checked here. Each
-     *     one moves a RESOLVED value that Tests\TestCase::PINS asserts by name
-     *     (`database.connections.mysql.database`, `database.redis.default.database`,
-     *     `database.redis.cache.database`), and that guard ABORTS the run in createApplication()
-     *     before any trait migrates. The drift cannot reach a green run, and a second statement of
-     *     the same guarantee here would be another copy of the values to keep in step.
-     *   - `REDIS_URL` — NO. Nothing asserts it anywhere: config('database.redis.*.database') keeps
-     *     reporting the pinned index, because RedisManager::resolve() applies the URL through
-     *     ConfigurationUrlParser only when it BUILDS a connection, and that parser's getDatabase()
-     *     takes the index from the URL's PATH. Measured on this tree against the framework's own
-     *     parser: the config array config/database.php builds for `redis.default` with the pinned
-     *     `database` and a `url` of `redis://127.0.0.1:6379/9` parses to database `9`, which
-     *     PhpRedisConnector then SELECTs. § 6.2's own bullet says the same in prose.
-     *   - `DB_URL` — PARTIALLY, which is not enough. Tests\TestCase's second read compares
-     *     DB::connection()->getDatabaseName(), so a URL whose path names another database is
-     *     refused. But ConfigurationUrlParser::getPrimaryOptions() also replaces the driver, host,
-     *     port, username and password, and nothing compares those: measured on this tree, a DB_URL
-     *     of `mysql://…@other-host:3307/mezzanine_test` resolves to database `mezzanine_test` on
-     *     host `other-host`, which every existing guard passes — while the suite destructively
-     *     rebuilds a database of that name on a server nobody chose.
-     *
-     * @var list<string>
-     */
-    private const DOCUMENTED_VALUE_KEYS = [
-        'DB_URL',
         'REDIS_URL',
     ];
 
@@ -270,32 +233,81 @@ class DatabasePinTest extends TestCase
      * an edit to the pins deciding which database RefreshDatabase rebuilds destructively and which
      * Redis index a flush reaches.
      *
-     * ⚠ SCOPED TO DOCUMENTED_VALUE_KEYS, not to the whole block. Every pin it leaves out is
-     * already covered — a drifted value copied into the file aborts the run at Tests\TestCase's
-     * resolved read — and that constant's docblock argues it key by key. Re-checking them here for
-     * symmetry would add a copy of the values without adding a guarantee.
+     * ⛔ IT COVERS EVERY PIN, AND THE FIRST VERSION OF IT DID NOT — worth recording, because that
+     * first version was this class's own defect re-minted one layer out. It compared a hand-written
+     * subset (the two URL pins, which the per-key finding below identified as the only ones a
+     * drifted value could reach a green run through) in the very class whose card#9742 finding is
+     * that a hand-written key list here silently under-reports. PAIRED_KEYS is FORCED to equal the
+     * file's pin set by the leg above; a subset beside it is forced to nothing, so a sixth pin
+     * would enter PAIRED_KEYS under compulsion and enter the subset only if someone remembered to
+     * redo the argument by hand — and a URL-shaped one would then drift unwatched. Covering
+     * everything costs no copy of anything: the key sets are read from the two files, and so are
+     * the values.
+     *
+     * ⭐ WHAT THE PER-KEY FINDING ESTABLISHED, kept because it says what this leg is WORTH key by
+     * key rather than which keys it visits:
+     *   - REDIS_URL — this leg is the ONLY thing standing behind it. Its value is asserted nowhere:
+     *     config('database.redis.*.database') keeps reporting the pinned index, because
+     *     RedisManager::resolve() applies the URL through ConfigurationUrlParser only when it BUILDS
+     *     a connection, and that parser's getDatabase() takes the index from the URL's PATH.
+     *     Measured against the framework's own parser: the array config/database.php builds for
+     *     redis.default, with `database` pinned and a `url` of redis://127.0.0.1:6379/9, parses to
+     *     database '9' — which PhpRedisConnector then SELECTs.
+     *   - DB_URL — this leg is the only thing standing behind every component but the database
+     *     name. Tests\TestCase compares DB::connection()->getDatabaseName(), while
+     *     ConfigurationUrlParser::getPrimaryOptions() also replaces driver, host, port, username and
+     *     password. Measured with a DB_URL of mysql://127.0.0.1:3399/mezzanine_test pinned here:
+     *     every config() pin passed, the bootstrap guard did not abort, and the run opened a
+     *     connection to that host and port.
+     *   - DB_DATABASE, REDIS_DB, REDIS_CACHE_DB — this leg is not their only guard; a drifted value
+     *     copied into the file also aborts the run at Tests\TestCase's resolved read. It is the
+     *     BETTER one: it reds here, naming both copies and which disagrees, instead of aborting the
+     *     whole suite on some later run with a message about exported variables — which in this
+     *     card's own harm sequence points the reader at the wrong copy.
      */
-    public function test_section_62s_declared_url_pins_are_the_ones_phpunit_xml_carries(): void
+    public function test_section_62s_declared_pins_are_the_ones_phpunit_xml_carries(): void
     {
         $document = $this->documentedPinBlock();
         $file = $this->phpunitXml();
 
-        // A CONTROL FIRST, on the document side, because that is the side this check newly reads.
-        // Without it, a block that stopped parsing — or a heading that moved — would compare null
-        // against null for every key and report green over a document it never read.
-        $missingFromDocument = array_values(array_diff(
-            self::DOCUMENTED_VALUE_KEYS,
-            $this->declaredPinKeys($document),
-        ));
+        // THE KEY LEG, WHICH IS ALSO THE CONTROL. Both sides are read from their own file, so this
+        // is a direct doc↔file comparison and stays true whatever PAIRED_KEYS says. Without it the
+        // value comparison below could compare null against null, key by key, over a block that
+        // had stopped parsing, and report green on a document it never read.
+        $declared = $this->declaredPinKeys($document);
+        $pinned = $this->declaredPinKeys($file);
 
-        $this->assertSame([], $missingFromDocument, sprintf(
-            '§ 6.2\'s xml block no longer declares %s. That section owns these values, so a block '
-            .'that has stopped naming a pin either dropped it — and a seat copying the block into '
-            .'phpunit.xml would then delete that pin — or this check has stopped reading the block.',
-            implode(', ', $missingFromDocument),
-        ));
+        sort($declared);
+        sort($pinned);
 
-        foreach (self::DOCUMENTED_VALUE_KEYS as $key) {
+        $undeclared = array_diff($pinned, $declared);
+        $unpinned = array_diff($declared, $pinned);
+
+        $message = 'docs/design/FLEET-STATE.md § 6.2 and server/phpunit.xml no longer pin the same '
+            .'keys. § 6.2 declares itself the OWNER of these values and states them verbatim, so the '
+            .'two copies have to name the same set.';
+
+        if ($undeclared !== []) {
+            $message .= sprintf(
+                ' UNDECLARED: phpunit.xml pins %s, which § 6.2\'s block does not declare — a seat copying that block into the file would delete the pin. Add it to § 6.2, or drop the pin in both places.',
+                implode(', ', $undeclared)
+            );
+        }
+
+        if ($unpinned !== []) {
+            $message .= sprintf(
+                ' DECLARED BUT NOT PINNED: § 6.2 declares %s, which phpunit.xml does not pin — the owning document promises isolation the suite does not have. Restore the pin, or drop the key in both places.',
+                implode(', ', $unpinned)
+            );
+        }
+
+        $this->assertSame($pinned, $declared, $message);
+
+        // And every pin's VALUE. PAIRED_KEYS is the population because the leg above forces it to
+        // equal phpunit.xml's pin set, and the key leg just forced the document to that same set —
+        // so iterating it visits every pin either file declares, under compulsion, with no second
+        // list for anyone to keep current.
+        foreach (self::PAIRED_KEYS as $key) {
             $declared = $this->declaredPinValues($document, $key);
             $carried = $this->declaredPinValues($file, $key);
 
@@ -303,14 +315,14 @@ class DatabasePinTest extends TestCase
                 'docs/design/FLEET-STATE.md § 6.2 and server/phpunit.xml disagree about the %s pin. '
                 .'§ 6.2 declares <env> %s and <server> %s; phpunit.xml carries <env> %s and <server> %s. '
                 .'§ 6.2 OWNS these values, so the reflex on reading this is to edit the file to match '
-                .'the document — establish which copy drifted before doing that, because nothing else '
-                .'in this suite notices %s resolving somewhere new.',
+                .'the document — establish which copy drifted before doing that. For DB_URL and '
+                .'REDIS_URL nothing else in this suite would notice; for the rest the next thing to '
+                .'notice is an abort blaming an exported variable that is not the cause.',
                 $key,
                 var_export($declared['env'], true),
                 var_export($declared['server'], true),
                 var_export($carried['env'], true),
                 var_export($carried['server'], true),
-                $key,
             ));
         }
     }
