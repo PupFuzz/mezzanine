@@ -535,7 +535,7 @@ rule violations anyone could have committed at the time.
     already open when the code moves keeps the old code until it ends, which is
     `mezzanine:feed-reload`'s job and the drain's (the stream bullet below).
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
-  an unreviewed failure marker, a modified prod tree, `.env` (missing, unreadable by the deploy user, **opened and not readable to its end** (card#9610), world-readable, non-production,
+  an unreviewed failure marker, a modified prod tree, `.env` (missing, unreadable by the deploy user, **opened and not readable to its end** (card#9610), **not read at all because the loader's own scratch file could not be created** (card#9933), world-readable, non-production,
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, a store on another host without `MYSQL_ATTR_SSL_CA`, a
   non-persistent `CACHE_STORE`, a key A5 reads written in a form other than plain `KEY=value`, a file Laravel's
   own parser does not read as the lines it is written in, a file carrying a NUL byte), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
@@ -603,6 +603,15 @@ rule violations anyone could have committed at the time.
   tells the two apart (a read error prints, an end-of-file is silent, the same rule the git reads use), it is
   printed back before anything is decided, and nothing read partway is used. The one shape no reader can see
   is stated in `bin/deploy.sh` rather than assumed away: an I/O error the kernel reports AS an end-of-file.
+  **And the file the loader never READ is a refusal of its own, under a headline of its own** (card#9933).
+  The loader needs a scratch file for that diagnostic, and where `mktemp` cannot make one it closes the
+  descriptor and returns before the read runs — one flag for both, because every caller asking whether a
+  key's value is established acts on one fact, and both are "the file was not read". The REFUSAL used to
+  be shared too, and it was the read's: the operator was told the open had succeeded and the read had
+  stopped short on a file no byte of which had been read, and was sent to `dmesg` and the mount for a
+  `$TMPDIR` this deploy could not write to — every sentence of it pointing away from the cause the run had
+  established, which sat one line below in the same refusal. A5 now names the scratch file in the headline
+  and says outright that the finding is about neither the file nor the disk it sits on.
   **After the window there is no refusal to make**, because the new release is already serving — so a
   `server/.env` that stops being readable between phase A and phase B's smoke check leaves the deploy
   **UNVERIFIED and says which of three reasons it is**: `APP_URL` in a form the script does not read, a
@@ -665,7 +674,8 @@ rule violations anyone could have committed at the time.
   `mktemp` there carried on with an empty path and refused on a cause nothing established: *"does not
   resolve to a commit on origin"* for a ref that is there, and a failed git read for a tag git never got to
   peel. The `.env` loader's own scratch file is the one exception: it runs in both phases and in the
-  mirror, so it answers for that failure itself, refusing at A5 (card#9610). It warns,
+  mirror, so it answers for that failure itself, refusing at A5 — under a headline naming the scratch
+  file, not the read that failure prevented (card#9610, card#9933). It warns,
   rather than refusing, where the doc's own reading is that the state is
   fail-safe: no `trustProxies()` at all, and keys the release's `.env.example` names that the
   host's `.env` does not set. It also warns, naming it, when the document root it reads a `.user.ini`

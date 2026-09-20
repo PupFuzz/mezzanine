@@ -810,6 +810,18 @@ eq "the same reader on a readable .env: the value, unchanged" "https://mezzanine
 # bin/env-mirror-diff.mirror.sh, where neither `refuse` nor `not_established` is the right answer, so it
 # sets the same flag with a reason of its own rather than dying or guessing.
 #
+# ⛔ AND IT REFUSES UNDER A HEADLINE OF ITS OWN (card#9933), WHICH IS WHAT THIS CASE PINS. The flag is
+# shared with the read that stopped short above it, and the REFUSAL used to be shared too: this case came
+# out as "was opened but could not be read to its end" — of a read that was never made — under a body
+# saying the open had succeeded, that a read failing on an already-open file is usually a disk or
+# filesystem one, and that `dmesg` and the mount are where that family is visible. On a host whose TMPDIR
+# is unwritable every one of those sentences points away from the cause, which the run had established one
+# line down in the reason this case already asserted.
+# ⚠ THE SUITE IS WHAT LET IT STAND. This case asserted the exit code, the reason and two `hasnt`s, and the
+# EIO case above asserted the shared headline — so the wrong headline was PINNED here and survived a fully
+# green run. The headline is asserted positively below and the read's is asserted ABSENT, so the two cases
+# no longer disagree about which headline is right, and the mutation that reds this one is stated with it.
+#
 # ⚠ TMPDIR IS EXPORTED, NOT JUST SET, and that is the fixture's whole mechanism: `mktemp` is an external
 # command and reads TMPDIR out of its ENVIRONMENT. Measured while building this case — with TMPDIR set but
 # unexported, mktemp never sees it, writes under /tmp and SUCCEEDS, and this case passed vacuously against
@@ -819,10 +831,25 @@ eq "the same reader on a readable .env: the value, unchanged" "https://mezzanine
 # the rest of the suite would break every later fixture. The subshell is the containment, not an accident.
 OUT="$( export TMPDIR="$ROOT/server/.env"; env_lib "$ROOT/server/.env" env_file_scan 2>&1 )"; RC=$?
 eq  "no scratch file for the diagnostic: exit 1" 1 "$RC"
-has "no scratch file for the diagnostic: refuses rather than judging a read it could not judge" \
-    "was opened but could not be read to its end" "$OUT"
+has "no scratch file for the diagnostic: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
+has "no scratch file for the diagnostic: the phase-A promise" \
+    "Nothing was changed. The previous release is still serving." "$OUT"
+# ⭐ THE HEADLINE, which the three assertions above cannot see: each of them passes on the read's refusal
+# exactly as it does on this one, which is how the wrong one survived. Mutation, run against the fix: give
+# the scratch refusal the read's headline back and this reds, alone, with the exit code and the banner
+# still green — the measurement PR #191 made about exit-code-only cases, on this class.
+has "no scratch file for the diagnostic: the headline names the scratch file the run actually failed on" \
+    "could not be read: no scratch file could be created for the read diagnostic" "$OUT"
 has "no scratch file for the diagnostic: names the scratch file as the reason" \
     "No scratch file could be created for bash's read diagnostic" "$OUT"
+hasnt "no scratch file for the diagnostic: never the READ's headline — no read was made on this path" \
+    "was opened but could not be read to its end" "$OUT"
+hasnt "no scratch file for the diagnostic: does not send the operator to \`dmesg\` for a scratch file" \
+    "dmesg" "$OUT"
+hasnt "no scratch file for the diagnostic: claims no disk or filesystem fault, which nothing here established" \
+    "usually a disk or filesystem one" "$OUT"
+hasnt "no scratch file for the diagnostic: does not report an open that succeeded as the finding" \
+    "The open SUCCEEDED" "$OUT"
 hasnt "no scratch file for the diagnostic: claims no path it did not establish was the one mktemp used" \
     "could not be created under" "$OUT"
 hasnt "no scratch file for the diagnostic: no DB password is printed" "$FAKE_PW" "$OUT"
@@ -3695,6 +3722,15 @@ has "TMPDIR gone: the fixture reaches mktemp, and names the scratch file as the 
 eq  "TMPDIR gone: exit 1" 1 "$RC"
 has "TMPDIR gone: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" "⛔ REFUSED — " "$OUT"
 has "TMPDIR gone: the phase-A promise" "Nothing was changed. The previous release is still serving." "$OUT"
+# ⭐ AND THE HEADLINE, which the three above cannot see (card#9933). This is the operator's own sequence —
+# a whole `bin/deploy.sh` run on a host whose TMPDIR is not there — so it is the one case that says what
+# such a host is actually TOLD. It asserted the banner and the reason and not the headline, and the
+# § card#9610 case beside it asserted the READ's headline for this same failure, so a refusal blaming a
+# read that never happened was pinned by a green suite.
+has "TMPDIR gone: the headline names the scratch file, not a read of .env that was never made" \
+  "⛔ REFUSED — $ROOT/server/.env could not be read: no scratch file could be created for the read diagnostic" "$OUT"
+hasnt "TMPDIR gone: never the READ's headline" "was opened but could not be read to its end" "$OUT"
+hasnt "TMPDIR gone: does not send the operator to \`dmesg\` and the mount for a scratch file" "dmesg" "$OUT"
 hasnt "TMPDIR gone: blames no git read" "⛔ REFUSED — git" "$OUT"
 unlogged "TMPDIR gone: never opened the window" "artisan down"
 

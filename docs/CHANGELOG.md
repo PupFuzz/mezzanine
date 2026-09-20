@@ -27,6 +27,31 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9933** — **a `server/.env` the deploy never read, because it could not create the scratch
+  file it reads with, is refused as that — instead of as a read that stopped short, under advice
+  pointing at your disks.** Point `TMPDIR` at a directory this deploy cannot write to (or fill it) and
+  run `bin/deploy.sh`: A5 used to stop with *"`<path>` was opened but could not be read to its end"*, and
+  the lines under it said the open had succeeded so this was neither a permission nor an ownership fault,
+  that a read failing on an already-open file is usually a disk or filesystem one — failing media, a
+  filesystem remounted read-only, a network mount that stopped answering — and that `dmesg` and the mount
+  the file sits on are where that family is visible. **None of it was true of your host.** The file had
+  been opened and closed again without a byte being read: what failed was `mktemp`, for a scratch file the
+  loader needs because bash's `read` reports an end-of-file and a read ERROR with the same status and
+  tells them apart only by its diagnostic. The cause was already in the refusal, one line further down,
+  contradicted by everything around it. **What you see now:** *"`<path>` could not be read: no scratch
+  file could be created for the read diagnostic"*, and a body that says the finding is about neither the
+  file nor the disk it sits on and sends you to the directory `mktemp` writes into — `$TMPDIR`, or `/tmp`
+  when that is unset. **What to do about it is unchanged**: give this deploy a writable, non-full
+  temporary directory. A read that really does stop short — failing media, a mount that went away — keeps
+  the old headline, the errno bash reported, and the disk-and-`dmesg` advice, which is correct for it.
+  Every other reader is unchanged: both failures still set one flag, `env_get` still answers **3** for
+  either, and phase B and A10b still act on the one fact they need, that the file was not read.
+  The suite is why this survived as long as it did, and that is fixed in the same change: the case for
+  this failure asserted the exit code, the banner and the reason, and the case beside it pinned the shared
+  headline — so the wrong headline was asserted CORRECT and a fully green run reported nothing. The
+  headline is now asserted for this case, the read's is asserted absent from it, and so are the three
+  sentences of disk-and-`dmesg` advice; the mutation that reds it (give the scratch refusal the read's
+  headline back) is named in the case, and was run.
 - **card#9984** — **`bin/deploy.sh`'s version comparison refuses operands it cannot read, so a
   `BASH_FLOOR` that is not a version is refused by name instead of certified.** Until this change
   the comparison behind every one of phase A's version floors — A1's bash floor, A6's PHP floor,

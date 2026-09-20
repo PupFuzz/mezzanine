@@ -348,10 +348,24 @@ done
 #
 # env_lines_load — $ENV_FILE as the LINES Laravel's own parser reads it as, in ENV_LINES; ENV_LINES_NUL is 1
 # when the read STOPPED at a NUL byte rather than reaching EOF, ENV_LINES_UNREADABLE is 1 when the file
-# could not be OPENED at all, and ENV_LINES_READ_FAILED is 1 when it WAS opened and the read of it did not
-# reach the end — in either of those last two ENV_LINES is empty, because nothing this deploy will use was
-# read. This is the ONE place in this script that turns the file into lines, and both readers below iterate
-# ENV_LINES, so "a line" is a single thing here.
+# could not be OPENED at all, and ENV_LINES_READ_FAILED is 1 when the file was NOT READ — in either of
+# those last two ENV_LINES is empty, because nothing this deploy will use was read. This is the ONE place
+# in this script that turns the file into lines, and both readers below iterate ENV_LINES, so "a line" is
+# a single thing here.
+#   · ⚠ ENV_LINES_READ_FAILED IS ONE FLAG OVER TWO DIFFERENT FAILURES, and ENV_LINES_READ_FAILED_KIND is
+#     which one (card#9933): `read` for a read that RAN and stopped short, `scratch` for a read that never
+#     ran at all, because no scratch file could be made for the diagnostic that would judge it. Every
+#     caller asking only "is what this file sets established?" reads the FLAG and needs no more — env_get
+#     answers 3 for both, which is the whole of what those callers act on. The kind is for the one caller
+#     that has to tell an OPERATOR which fault it is: until card#9933 both refused under the read's
+#     headline and the read's body, so a host whose $TMPDIR was unwritable was told its open had succeeded
+#     and its read had stopped short on a file nothing had read, and was sent to `dmesg` and the mount for
+#     a fault that was neither.
+#   · THE `scratch` KIND CAN ONLY FIRE ON A PROCESS'S FIRST LOAD, which is what decides who ever sees it:
+#     ENV_READ_ERR_FD is opened once and reused, so once any load has succeeded no later one re-opens it.
+#     In phase A the first load is A5's `env_file_scan`, which is where that refusal is; in phase B — a
+#     re-exec, so a new process and a new descriptor — it is the smoke check's read of APP_URL, which
+#     cannot refuse at all (the window is closed) and warns from the status alone.
 # It has to be, and card#9561 r4's BLOCKER is why: while `env_file_scan` split on `\r\n`, `\n` and `\r` alike
 # and `env_get` shelled to `grep`, whose terminator is `\n` ONLY, a `.env` ending `# note\rDB_HOST=db.internal`
 # was TWO lines to Dotenv and ONE to the reader that decides — so Laravel went to db.internal over TCP in
@@ -387,6 +401,7 @@ ENV_LINES=()
 ENV_LINES_NUL=0
 ENV_LINES_UNREADABLE=0
 ENV_LINES_READ_FAILED=0
+ENV_LINES_READ_FAILED_KIND=""
 ENV_LINES_READ_FAILED_WHY=""
 
 # ENV_READ_ERR_FD — the scratch `read`'s stderr goes to, and the only reason this loader needs one: bash's
@@ -415,8 +430,9 @@ ENV_READ_ERR_FD=
 
 # env_read_err_open — opens ENV_READ_ERR_FD, once. Status 1 when no scratch file could be made, which is
 # the one failure the loader answers for itself: it runs in BOTH phases and inside bin/env-mirror-diff.sh,
-# where neither `refuse` nor `not_established` is the right answer, so it sets the flag and lets the
-# caller decide. Both statuses are read; neither is guessed at.
+# where neither `refuse` nor `not_established` is the right answer, so it sets the flag — with a KIND of
+# its own, so the caller that refuses can name THIS cause rather than the read's — and lets the caller
+# decide. Both statuses are read; neither is guessed at.
 env_read_err_open() {
   local t
   t="$(mktemp 2>/dev/null)" || return 1
@@ -426,7 +442,8 @@ env_read_err_open() {
 
 env_lines_load() {
   local content="" line rc=0 msg="" fd=
-  ENV_LINES=(); ENV_LINES_NUL=0; ENV_LINES_UNREADABLE=0; ENV_LINES_READ_FAILED=0; ENV_LINES_READ_FAILED_WHY=""
+  ENV_LINES=(); ENV_LINES_NUL=0; ENV_LINES_UNREADABLE=0
+  ENV_LINES_READ_FAILED=0; ENV_LINES_READ_FAILED_KIND=""; ENV_LINES_READ_FAILED_WHY=""
   # The group's `2>/dev/null` is established before the open inside it runs, which is the ordering the old
   # one-liner got wrong; the open's own status is what sets the flag, and nothing below runs on a file that
   # was never opened.
@@ -434,12 +451,13 @@ env_lines_load() {
   if [ -z "$ENV_READ_ERR_FD" ] && ! env_read_err_open; then
     exec {fd}<&-
     ENV_LINES_READ_FAILED=1
+    ENV_LINES_READ_FAILED_KIND='scratch'
     # ⚠ NO PATH IS NAMED HERE, and that is a correctness point rather than a style one: `${TMPDIR:-/tmp}`
     # would read this SHELL's variable, while `mktemp` reads the one in its ENVIRONMENT, and the two are
     # the same only while TMPDIR is exported. Naming the mechanism is true either way; naming a path would
     # be a specific cause nothing here established (measured 2026-09-18: an unexported TMPDIR is invisible
     # to mktemp, which then writes under /tmp and succeeds).
-    ENV_LINES_READ_FAILED_WHY="No scratch file could be created for bash's read diagnostic (\`mktemp\` failed), and that diagnostic is the only thing that tells a read error from an end of file here — so the read was not judged and nothing it returned is used. mktemp writes under \$TMPDIR, or /tmp when that is unset: check that whichever applies names a directory this deploy can write to, and that it is not full."
+    ENV_LINES_READ_FAILED_WHY="No scratch file could be created for bash's read diagnostic (\`mktemp\` failed), and that diagnostic is the only thing that tells a read error from an end of file here — so the read was never made and no byte of the file was taken. mktemp writes under \$TMPDIR, or /tmp when that is unset: check that whichever applies names a directory this deploy can write to, and that it is not full."
     return 0
   fi
   IFS= read -r -d '' content <&"$fd" 2>"/dev/fd/$ENV_READ_ERR_FD" || rc=$?
@@ -455,6 +473,9 @@ env_lines_load() {
     # will certify, so there is nothing here for the readers below to hand back.
     [ -z "$msg" ] || printf '%s\n' "$msg" >&2
     ENV_LINES_READ_FAILED=1
+    # Quoted because the word is `read`: bare, ShellCheck reads it as a command name (SC2209), and the
+    # value here is the name of a KIND, never a command to run.
+    ENV_LINES_READ_FAILED_KIND='read'
     if [ -n "$msg" ]; then
       ENV_LINES_READ_FAILED_WHY="bash's own read error is printed above this refusal. It names the file descriptor it was reading and the errno the kernel answered with, and no byte of what the file holds."
     else
@@ -680,6 +701,27 @@ env_file_scan() {
   # The I/O refusal's sibling one step further in, and the one the open check above cannot make: the file
   # OPENED and the read of it did not reach the end. Splitting the open out gave that failure a status of
   # its own; this gives the READ one, which `read`'s own status cannot carry (§ env_lines_load).
+  #
+  # ⛔ TWO REFUSALS, BECAUSE ONE FLAG CARRIES TWO FAILURES AND ONLY ONE OF THEM IS ABOUT THE FILE
+  # (card#9933). The loader sets ENV_LINES_READ_FAILED for a read that stopped short AND for a read it
+  # never made, and this used to refuse both under the read's headline and the read's body — so a host
+  # whose $TMPDIR was unwritable was told the open had succeeded and the read had stopped short, and was
+  # pointed at `dmesg`, the mount and the media, for a scratch file. Every sentence of it named something
+  # the run had not established, while the cause sat one line down in $ENV_LINES_READ_FAILED_WHY.
+  # `refuse` never returns, so the scratch kind exits at its own refusal and the one below it is the
+  # read's. What both still share is the FLAG, which is what keeps every other caller — env_get's status
+  # 3, and through it phase B and A10b — reading one fact: the file was not read (§ env_lines_load).
+  if [ "$ENV_LINES_READ_FAILED" = 1 ] && [ "$ENV_LINES_READ_FAILED_KIND" = 'scratch' ]; then
+    refuse "$ENV_FILE could not be read: no scratch file could be created for the read diagnostic" \
+      "$ENV_LINES_READ_FAILED_WHY" \
+      "THIS IS NOT A FINDING ABOUT $ENV_FILE. The file opened, the descriptor was closed again, and the" \
+      "read was never made — so nothing here says that file is unreadable, damaged or short, and nothing" \
+      "here is about the disk, the filesystem or the mount it sits on. What failed is a scratch file THIS" \
+      "DEPLOY makes for itself, and the directory \`mktemp\` writes into is where the fix is." \
+      "NOTHING WAS READ. Without this refusal the file comes back as an EMPTY one and the deploy stops on" \
+      "the first key A5 checks, naming a cause that is not the real one." \
+      "No byte of its content was read, and none is printed here — it may carry a credential."
+  fi
   if [ "$ENV_LINES_READ_FAILED" = 1 ]; then
     refuse "$ENV_FILE was opened but could not be read to its end" \
       "$ENV_LINES_READ_FAILED_WHY" \
