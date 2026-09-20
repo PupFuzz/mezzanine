@@ -611,12 +611,24 @@ rule violations anyone could have committed at the time.
   stopped short on a file no byte of which had been read, and was sent to `dmesg` and the mount for a
   `$TMPDIR` this deploy could not write to — every sentence of it pointing away from the cause the run had
   established, which sat one line below in the same refusal. A5 now names the scratch file in the headline
-  and says outright that the finding is about neither the file nor the disk it sits on.
+  and says outright that the finding is about neither the file nor the disk it sits on. **Which SCRATCH
+  step failed is read off a status rather than assumed**, because the two send an operator to different
+  places: `mktemp` failing is a `$TMPDIR` finding, and a scratch file that was created and could not be
+  OPENED is not — `mktemp` worked, and what to look at is how many files the deploy may have open.
   **After the window there is no refusal to make**, because the new release is already serving — so a
-  `server/.env` that stops being readable between phase A and phase B's smoke check leaves the deploy
-  **UNVERIFIED and says which of three reasons it is**: `APP_URL` in a form the script does not read, a
-  `server/.env` it could not read at all, or an `APP_URL` the host genuinely does not set. Only the last of
-  those is "unset", and reporting the other two as unset is what card#9610 ended. And **a read of the release
+  `server/.env` the smoke check cannot read leaves the deploy **UNVERIFIED and says which reason it is**:
+  `APP_URL` in a form the script does not read, a `server/.env` that stopped being readable between phase A
+  and the smoke check, a `server/.env` that was never READ because that phase's own scratch file failed, or
+  an `APP_URL` the host genuinely does not set. Only the last of those is "unset", and reporting the others
+  as unset is what card#9610 ended. **The scratch one is a warning of its own and not a fourth way of
+  saying the file went bad** (card#9933): phase B is a re-exec, so it makes a scratch file of its own,
+  inside the window — and a deploy that finished, `✔ DEPLOYED`, exit 0, used to report that failure as a
+  `server/.env` whose open or read had failed and which had stopped being readable, with bash's reason
+  "above" where no such diagnostic can exist. It now names the scratch file, says the `.env` may be
+  perfectly readable, and says outright that the release IS serving and it is the CHECK that was not made.
+  It also says what the `--dry-run` remedy is worth here: that run reaches the same loader at A5 and names
+  the cause, but only while the cause is still there, so a `$TMPDIR` that filled during the window and
+  drained leaves the warning as the only record. And **a read of the release
   itself that git could not complete**: every
   precondition that judges the target tree reads it out of the object database before the checkout, and a
   read that FAILED is refused by name (card#9608) — *"the release does not carry this path"* and *"git could

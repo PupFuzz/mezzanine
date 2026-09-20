@@ -39,19 +39,34 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   loader needs because bash's `read` reports an end-of-file and a read ERROR with the same status and
   tells them apart only by its diagnostic. The cause was already in the refusal, one line further down,
   contradicted by everything around it. **What you see now:** *"`<path>` could not be read: no scratch
-  file could be created for the read diagnostic"*, and a body that says the finding is about neither the
+  file could be opened for bash's read diagnostic"*, and a body that says the finding is about neither the
   file nor the disk it sits on and sends you to the directory `mktemp` writes into — `$TMPDIR`, or `/tmp`
   when that is unset. **What to do about it is unchanged**: give this deploy a writable, non-full
   temporary directory. A read that really does stop short — failing media, a mount that went away — keeps
   the old headline, the errno bash reported, and the disk-and-`dmesg` advice, which is correct for it.
-  Every other reader is unchanged: both failures still set one flag, `env_get` still answers **3** for
-  either, and phase B and A10b still act on the one fact they need, that the file was not read.
+  **The same failure INSIDE the maintenance window is now named too, and that one reached you on a deploy
+  that SUCCEEDED.** Phase B re-executes, so it makes a scratch file of its own after the window opens —
+  and when that one failed you were told, on an `✔ DEPLOYED` run that exited 0, that `server/.env`'s open
+  or read had failed, that the file had stopped being readable inside the window, and that bash's reason
+  was printed above. The file was readable throughout, no read was ever made, and there was no such
+  diagnostic; the offered remedy (re-run `--dry-run`, which names the cause at A5) only works while the
+  cause is still there, so a `/tmp` that filled during composer or npm and drained again left you a clean
+  dry run and nothing else. That warning now names the scratch file, says `server/.env` may be perfectly
+  readable, says the release IS deployed and serving so that what is missing is the CHECK on it, and says
+  what the `--dry-run` remedy is and is not worth. The deploy still finishes and is still reported
+  UNVERIFIED — this is a warning, not a new failure, and no deploy that used to succeed now stops.
+  **And the scratch failure that is NOT about `$TMPDIR` is told apart from the one that is**: a scratch
+  file `mktemp` created and this deploy could not OPEN (the realistic cause is how many files it may have
+  open at once) no longer reports `mktemp` as having failed and no longer sends you to check a `$TMPDIR`
+  that is working. Every other reader is unchanged: both failures still set one flag, `env_get` still
+  answers **3** for either, and A10b still acts on the one fact it needs, that the file was not read.
   The suite is why this survived as long as it did, and that is fixed in the same change: the case for
   this failure asserted the exit code, the banner and the reason, and the case beside it pinned the shared
   headline — so the wrong headline was asserted CORRECT and a fully green run reported nothing. The
   headline is now asserted for this case, the read's is asserted absent from it, and so are the three
-  sentences of disk-and-`dmesg` advice; the mutation that reds it (give the scratch refusal the read's
-  headline back) is named in the case, and was run.
+  sentences of disk-and-`dmesg` advice; the in-window failure and the unopenable scratch file each gain a
+  case of their own, the in-window one driven through a whole deploy at the very scratch file phase B
+  makes; and the mutation that reds each of them is named in the case, and was run.
 - **card#9984** — **`bin/deploy.sh`'s version comparison refuses operands it cannot read, so a
   `BASH_FLOOR` that is not a version is refused by name instead of certified.** Until this change
   the comparison behind every one of phase A's version floors — A1's bash floor, A6's PHP floor,

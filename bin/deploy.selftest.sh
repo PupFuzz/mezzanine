@@ -839,7 +839,7 @@ has "no scratch file for the diagnostic: the phase-A promise" \
 # the scratch refusal the read's headline back and this reds, alone, with the exit code and the banner
 # still green — the measurement PR #191 made about exit-code-only cases, on this class.
 has "no scratch file for the diagnostic: the headline names the scratch file the run actually failed on" \
-    "could not be read: no scratch file could be created for the read diagnostic" "$OUT"
+    "could not be read: no scratch file could be opened for bash's read diagnostic" "$OUT"
 has "no scratch file for the diagnostic: names the scratch file as the reason" \
     "No scratch file could be created for bash's read diagnostic" "$OUT"
 hasnt "no scratch file for the diagnostic: never the READ's headline — no read was made on this path" \
@@ -853,9 +853,40 @@ hasnt "no scratch file for the diagnostic: does not report an open that succeede
 hasnt "no scratch file for the diagnostic: claims no path it did not establish was the one mktemp used" \
     "could not be created under" "$OUT"
 hasnt "no scratch file for the diagnostic: no DB password is printed" "$FAKE_PW" "$OUT"
+# THE OTHER WAY THE LOADER GETS NO SCRATCH FILE, and it is a DIFFERENT fault with a different fix
+# (card#9933 review): `env_read_err_open` also fails when mktemp SUCCEEDS and this shell cannot OPEN what
+# it named — status 2, where $TMPDIR is working and the realistic cause is the open-file limit. The
+# refusal used to attribute both to mktemp and send both to $TMPDIR, so the reason is read off the status
+# and this case is what holds it there.
+# ⚠ WHAT THIS FIXTURE ESTABLISHES, AND WHAT IT DOES NOT. It reaches that return by SHADOWING `mktemp`
+# with a shell function that succeeds and names a path in a directory that does not exist, so the `<>`
+# open fails with ENOENT. That is not the realistic CAUSE — a real mktemp creates what it names, and what
+# fails in the field is the descriptor limit, which no fixture here can produce without disturbing the
+# fork the `$( )` around mktemp needs. So this establishes that the SECOND return is taken and that the
+# reason written from it is the second one; it does not reproduce a host that ran out of descriptors.
+env_scan_unopenable_scratch() { # the reader env_lib runs: mktemp succeeds, its path cannot be opened
+  # shellcheck disable=SC2317  # reached through env_lib's "$@", which ShellCheck cannot follow
+  mktemp() { printf '%s\n' "$T/no-such-dir/scratch"; }
+  # shellcheck disable=SC2317
+  env_file_scan
+}
+# No TMPDIR is exported here, and that is part of what the case says: this failure does not need one to
+# be wrong, and the reason it produces must not mention one.
+OUT="$( env_lib "$ROOT/server/.env" env_scan_unopenable_scratch 2>&1 )"; RC=$?
+eq  "a scratch file that cannot be opened: exit 1" 1 "$RC"
+has "a scratch file that cannot be opened: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
+has "a scratch file that cannot be opened: the same headline — no scratch file, whichever step failed" \
+    "could not be read: no scratch file could be opened for bash's read diagnostic" "$OUT"
+has "a scratch file that cannot be opened: the reason says the file WAS created and could not be opened" \
+    "WAS created and this shell could not OPEN it" "$OUT"
+hasnt "a scratch file that cannot be opened: does not blame mktemp, which succeeded" \
+    "\`mktemp\` failed" "$OUT"
+hasnt "a scratch file that cannot be opened: does not send the operator to check \$TMPDIR" \
+    "mktemp writes under \$TMPDIR" "$OUT"
 # The twin, one variable away: the same file and the same reader, with a TMPDIR that IS a directory.
-# shellcheck disable=SC2031  # the warning is about the line above's TMPDIR not reaching here, which is the
-# arrangement this twin depends on: each case exports its own, and neither sees the other's.
+# shellcheck disable=SC2031  # the warning is about the broken-TMPDIR case's export — two cases up, with
+# the unopenable-scratch one between them — not reaching here, which is the arrangement this twin depends
+# on: each case exports its own, and neither sees the other's.
 OUT="$( export TMPDIR="$T"; env_lib "$ROOT/server/.env" env_file_scan 2>&1 )"; RC=$?
 eq "a working TMPDIR, same .env: the scan passes" 0 "$RC"
 
@@ -3663,7 +3694,7 @@ chmod 640 "$ROOT/server/.env"
 # H4 — PHASE B. The v2-mutator runs on the DEPLOYED release, which is the copy phase B re-execs into, and
 # makes `.env` unopenable just before the smoke step reads APP_URL. ⛔ NO REFUSAL IS ALLOWED HERE: the
 # window is closed and the new release is serving, so the promise a refusal makes would be false. The
-# deploy is UNVERIFIED, says which of the three reasons it is, and exits 0.
+# deploy is UNVERIFIED, says which reason it is, and exits 0.
 unreadable_before_the_smoke() {
   # shellcheck disable=SC2016,SC2317  # sed's own text, called indirectly by mkfix — both for the same
   # reasons as the mutator above.
@@ -3689,6 +3720,38 @@ hasnt "a .env unreadable inside the window: no DB password is printed" "$FAKE_PW
 eq "phase-B mutant: the fixture really is unopenable (a root runner cannot hold this)" \
    unopenable "$(env_openability "$ROOT/server/.env")"
 chmod 640 "$ROOT/server/.env"
+
+# H4b — THE SAME WINDOW, A READ THAT STOPS SHORT, AND THE DIAGNOSTIC PRINTED EXACTLY ONCE (card#9933).
+# H4 makes the OPEN fail, which is silent; this makes the READ fail, which is not — and the count is the
+# point. The smoke step now loads in phase B's own shell before reading the value through a `$( )`, so
+# there are two loads over one file, and bash's read error would be printed by both: the warning says
+# "bash's reason, if any, is above", and two copies of it, one of them from a read whose value nothing
+# used, is the report saying more than the run did. The classifying load is silenced for that reason, and
+# this case is what holds it silenced. A DIRECTORY is the fixture because it OPENS and cannot be READ —
+# § card#9610's H1b uses the same shape through the library — so this is also the only place the phase-B
+# read half is driven end to end; `rm`+`mkdir` at that point leaves `.env` a directory for the rest of
+# this fixture, which nothing after the smoke step reads.
+env_directory_before_the_smoke() {
+  # shellcheck disable=SC2016,SC2317  # sed's own text, called indirectly by mkfix — as the mutator above.
+  sed -i 's|^  local url code url_rc=0$|  rm -f "$ENV_FILE"; mkdir -p "$ENV_FILE" # .env replaced by a DIRECTORY by the selftest mutant, INSIDE the window\n  local url code url_rc=0|' "$1/bin/deploy.sh"
+}
+mkfix env_directory_in_window env_directory_before_the_smoke
+eq "phase-B directory mutant: the deployed release really replaces .env before the smoke read" 1 \
+   "$(gitc "$SRC" show "HEAD:bin/deploy.sh" | grep -c 'replaced by a DIRECTORY by the selftest mutant')"
+run
+eq  "a .env whose read stops short inside the window: exit 0 — the app is up and this is not a refusal" 0 "$RC"
+eq  "a .env whose read stops short inside the window: the fixture really is a directory afterwards" \
+  yes "$( [ -d "$ROOT/server/.env" ] && printf yes || printf no )"
+has "a .env whose read stops short inside the window: bash's own errno reaches the operator" \
+  "Is a directory" "$OUT"
+has "a .env whose read stops short inside the window: says the deploy is UNVERIFIED" "UNVERIFIED" "$OUT"
+has "a .env whose read stops short inside the window: takes the READ's warning, not the scratch one" \
+  "its open or its read failed" "$OUT"
+hasnt "a .env whose read stops short inside the window: no DB password is printed" "$FAKE_PW" "$OUT"
+# ⭐ THE COUNT IS THE ASSERTION. Mutation: drop the `2>/dev/null` from the smoke step's classifying load
+# and this reds at 2 while every other assertion here stays green.
+eq "a .env whose read stops short inside the window: bash's diagnostic is printed ONCE, by the read whose value was used" \
+  1 "$(printf '%s\n' "$OUT" | grep -c 'read error')"
 
 # ── card#9816 — A SCRATCH FILE PHASE A COULD NOT CREATE IS A REFUSAL, AND NAMES THE SCRATCH FILE ──
 # A bare `x="$(mktemp)"` failed two ways, measured on the previous bin/deploy.sh with each case below:
@@ -3728,7 +3791,7 @@ has "TMPDIR gone: the phase-A promise" "Nothing was changed. The previous releas
 # § card#9610 case beside it asserted the READ's headline for this same failure, so a refusal blaming a
 # read that never happened was pinned by a green suite.
 has "TMPDIR gone: the headline names the scratch file, not a read of .env that was never made" \
-  "⛔ REFUSED — $ROOT/server/.env could not be read: no scratch file could be created for the read diagnostic" "$OUT"
+  "⛔ REFUSED — $ROOT/server/.env could not be read: no scratch file could be opened for bash's read diagnostic" "$OUT"
 hasnt "TMPDIR gone: never the READ's headline" "was opened but could not be read to its end" "$OUT"
 hasnt "TMPDIR gone: does not send the operator to \`dmesg\` and the mount for a scratch file" "dmesg" "$OUT"
 hasnt "TMPDIR gone: blames no git read" "⛔ REFUSED — git" "$OUT"
@@ -3782,6 +3845,75 @@ eq "the control: the same tag, every scratch file created, deploys" 0 "$RC"
 scratch_refused "A7, git_commit_of's tag peel" 3 \
   "no scratch file could be created for git's error output while peeling the tag 'refs/tags/v0.0.2'" \
   --dry-run --ref v0.0.2
+
+# ── card#9933 — THE LOADER'S SCRATCH FILE FAILS INSIDE THE WINDOW, WHERE THERE IS NO REFUSAL TO MAKE ──
+# Every case above stops in phase A. This one cannot: phase B is a RE-EXEC, so it is a new process with a
+# new descriptor, and the first load it makes is the smoke check's — AFTER `php artisan up`, with the new
+# release already serving. There is no refusal available there and none is wanted; what is owed is a
+# warning that names what actually failed.
+#
+# ⛔ WHAT THIS CAUGHT, MEASURED on the tree that had card#9933's A5 half and not this one: the deploy
+# FINISHED — exit 0, `✔ DEPLOYED`, the marker removed — and its one warning said that the open or the read
+# of `server/.env` had failed, that the file had stopped being readable inside the window, and that bash's
+# reason was above. Four claims, none of them true: no read was made, the file was readable throughout,
+# and no such diagnostic exists. The remedy it offered — re-run `--dry-run`, which names the cause at A5 —
+# only works while the cause is still there, so a $TMPDIR that filled during composer or npm and drained
+# again left a clean dry run and nothing at all. The value that fixes it is the KIND the loader now
+# carries, and phase B can only read it because the load is made in its own shell (§ the smoke check).
+#
+# ⛔ THE PASS COUNT IS DERIVED, NEVER TYPED. The stub logs every mktemp call while the knob is set, so the
+# control below COUNTS what a whole deploy makes and this case then fails the LAST one — which is phase
+# B's loader, the only scratch file made after the window closes. A typed number silently starts failing a
+# different call the first time a scratch file is added or removed anywhere in phase A, and would then
+# pass while testing something else; the assertions below red instead, because a phase-A failure refuses
+# (no exit 0, no `✔ DEPLOYED`) and this warning never appears.
+section "card#9933 — the loader's scratch file fails INSIDE the maintenance window"
+mkfix scratch_in_window_control
+printf '999\n' > "$T/knobs/mktemp_passes"
+run
+eq "the control: every scratch file created, the whole deploy — window and all — finishes" 0 "$RC"
+scratch_calls="$(grep -c '^mktemp ' "$CALL_LOG" || true)"
+rm -f "$T/knobs/mktemp_passes"
+# The count is ASSERTED usable before it is used: a zero or a one would mean the stub logged nothing (the
+# knob missing, the log reset) and `$((n - 1))` would then fail a call that is not the loader's, or none.
+eq "the control: a whole deploy makes more than one scratch file, so the last of them can be failed" \
+  yes "$( [ "${scratch_calls:-0}" -ge 2 ] && printf yes || printf no )"
+
+mkfix scratch_in_window
+printf '%s\n' "$((scratch_calls - 1))" > "$T/knobs/mktemp_passes"
+run
+rm -f "$T/knobs/mktemp_passes"
+eq  "no scratch file inside the window: the deploy FINISHES — exit 0, because the window is closed" 0 "$RC"
+has "no scratch file inside the window: and it says the release is deployed" "DEPLOYED" "$OUT"
+hasnt "no scratch file inside the window: no phase-A refusal — the failure is past every one of them" \
+  "⛔ REFUSED — " "$OUT"
+has "no scratch file inside the window: the deploy is UNVERIFIED, by name" "The deploy is UNVERIFIED" "$OUT"
+# ⭐ THE FOUR CLAIMS THE OLD WARNING MADE, each asserted absent, beside the one it should have made.
+# Mutation, run against the fix: drop the `scratch` arm of the status-3 branch so it falls to the warning
+# below it, and these red while the exit code, `DEPLOYED` and `UNVERIFIED` stay green.
+has "no scratch file inside the window: names the scratch file as what failed" \
+  "no scratch file could be opened for bash's read diagnostic" "$OUT"
+has "no scratch file inside the window: says server/.env may be perfectly readable" \
+  "may be perfectly readable" "$OUT"
+has "no scratch file inside the window: says the release IS serving, so the gap is the CHECK" \
+  "The release IS deployed and serving" "$OUT"
+hasnt "no scratch file inside the window: does not say the file's open or its read failed" \
+  "its open or its read failed" "$OUT"
+hasnt "no scratch file inside the window: does not say the file stopped being readable in the window" \
+  "stopped being so inside the window" "$OUT"
+hasnt "no scratch file inside the window: points at no bash diagnostic, which cannot exist on this path" \
+  "bash's reason, if any, is above" "$OUT"
+# ⚠ THE NEEDLE CARRIES `warn`'s OWN `⚠ ` PREFIX, for the reason H4 states above: the correct warning
+# QUOTES the wrong cause in order to deny it, so a bare needle matches the RIGHT message. Measured here,
+# not assumed — with the bare needle this case FAILED against the fix, on its own denial.
+hasnt "no scratch file inside the window: reports no key as 'unset' on a file nothing read" \
+  "⚠ APP_URL is unset" "$OUT"
+hasnt "no scratch file inside the window: no DB password is printed" "$FAKE_PW" "$OUT"
+# THE PROOF IT WAS THE FILE THAT WENT UNREAD AND NOT THE FILE THAT WENT BAD, through a reader that is not
+# the one under test: the same .env, read with grep, still names APP_URL after the deploy that said it
+# could not be read.
+eq "no scratch file inside the window: server/.env was readable the whole time (read here with grep)" \
+  1 "$(grep -c '^APP_URL=' "$ROOT/server/.env")"
 
 # ── card#9832 — MEZZ_REMOTE IS A REMOTE NAME, AND ONE THAT IS NOT IS REFUSED WITHOUT BEING PRINTED ──
 # `git fetch` takes a URL as readily as a name and a URL can carry a credential, so
