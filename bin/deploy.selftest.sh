@@ -2721,6 +2721,9 @@ eq "ver_ge: …and npm 6.14.0 is below that same bare 7" below "$(bash_pred 6.14
 # ⚠ THE EMPTY OPERANDS ARE NOT HYPOTHETICAL INPUTS: they are what a `<<<` read that FAILED used to
 # leave behind, which is the route the card was filed on. The construct is gone, so what is pinned
 # here is the property rather than the one host condition that reached it.
+# RED at `9c4d67f` — restore that commit's `ver_ge` body verbatim into this tree and these reds,
+# with `meets` where `refused` is expected. Naming the commit is what makes the mutation
+# reproducible from this file rather than from a PR body nobody will be reading in a year.
 eq "ver_ge: both operands empty — what a failed read leaves — is REFUSED, never 'meets'" \
    refused "$(bash_pred "" "")"
 eq "ver_ge: an empty HOST version is refused, not read as 0" refused "$(bash_pred "" "$BASH_FLOOR_HERE")"
@@ -2789,34 +2792,133 @@ eq  "a release with no BASH_FLOOR line: deploys" 0 "$RC"
 has "a release with no BASH_FLOOR line: says so, and names the floor enforced instead" \
   "declares no BASH_FLOOR (it predates card#9616); only this copy's floor, $BASH_FLOOR_HERE, was enforced (A1)" "$OUT"
 
-nonsense_bash_floor() { sed -i 's/^BASH_FLOOR=.*/BASH_FLOOR=banana/' "$1/bin/deploy.sh"; }
+# nonsense_bash_floor — writes a BASH_FLOOR that is not a version into <tree>'s bin/deploy.sh. The
+# VALUE is the knob `BAD_FLOOR`, defaulting to `banana`, so the separator table further down drives
+# this ONE mutator instead of minting six (canon #5, and the same shape as this suite's STUB_ knobs).
+# No value used with it contains a `|` or an `&`, which is what lets the `sed` stay this simple.
+# ⛔ THE VALUE IS WRITTEN QUOTED, which is not cosmetic: `BASH_FLOOR=4 4` unquoted is an assignment
+# followed by the COMMAND `4`, so under `set -Eeuo pipefail` that copy of deploy.sh dies at 127 with
+# no banner before `main` is reached — it is not a floor any gate gets to refuse, it is a script
+# that does not run. MEASURED. Quoted is a shape this file's own header permits ("unquoted or
+# quoted") and `bash_floor_declared` strips, so every value below is a declaration a gate really
+# sees.
+# ⚠ `${BAD_FLOOR-banana}`, NOT `${BAD_FLOOR:-banana}`. The colon form treats an EMPTY value as
+# unset, so `BAD_FLOOR=''` would have written `banana` and the blank-declaration case below would
+# have tested the wrong thing — measured: it did, and the case reded on the wrong refusal, which
+# is the whole reason that case asserts the message and not just the exit code.
+nonsense_bash_floor() { sed -i "s|^BASH_FLOOR=.*|BASH_FLOOR=\"${BAD_FLOOR-banana}\"|" "$1/bin/deploy.sh"; }
 mkfix bash_target_floor_unreadable nonsense_bash_floor
 run_refusal "a release whose BASH_FLOOR is not a version" \
   "declares BASH_FLOOR='banana', which is not a version" --dry-run
 
-# ⭐ AND THE SERVING COPY'S OWN DECLARATION, WHICH NOTHING READ AS A VERSION UNTIL card#9984 — the
-# un-flagged half of the case directly above. A6b refuses that value in the TARGET release; A1
-# COMPARED it and answered. `ver_ge` truncated `banana` at its first non-digit, read the floor as 0,
-# found this host's bash greater and returned "meets", so phase A certified a floor it had not read
-# and the whole dry run exited 0 with no bash floor enforced at any point — the fails-open shape,
-# end to end, at the gate. The v1 mutator breaks the SERVING copy's line; `floor_at_host` — A6b's
-# own control mutator, reused — gives the RELEASE a floor this host meets, so the release is
-# well-formed and A1 is the only gate at issue.
-# ⚠ Every `hasnt` below is a step the OLD code reached and this one must not: they are what makes
-# this case a measurement of A1 rather than of whichever later gate happened to stop the run. The
-# one about `banana` is also the fixture's own integrity check — a v2 mutator that silently stopped
-# matching would leave the RELEASE declaring `banana` too, and A6b would refuse it in those words.
-mkfix bash_serving_floor_unreadable floor_at_host nonsense_bash_floor
-run_refusal "this copy's own BASH_FLOOR is not a version (A1)" \
-  "a version comparison this deploy cannot perform: '$HOST_BASH_MM' against 'banana'" --dry-run
-has "an unreadable serving floor: names which operand it could not read" \
-  "NOT A VERSION: the second, 'banana'" "$OUT"
-hasnt "an unreadable serving floor: never reported as a floor this host's bash MET" \
-  "meets BASH_FLOOR" "$OUT"
-hasnt "an unreadable serving floor: not blamed on the release being deployed, whose floor is intact" \
-  "declares BASH_FLOOR='banana'" "$OUT"
-hasnt "an unreadable serving floor: refused in A1, before any gate read the release" "ok — PHP" "$OUT"
-no_shell_death "an unreadable serving floor" "$OUT"
+# ── what a BASH_FLOOR IS, held to ONE test wherever it is read (card#9984) ─────────────────────
+# ⛔ `bash_floor_is_version` IS THAT TEST, and it is a predicate rather than a refusal because each
+# of its three callers speaks about a different copy of the declaration — A1 about this script's,
+# A6b about the release's, deploy-selftest.yml's floor step about the tree it is measuring — so
+# each owes its own words while none of them owes its own PATTERN. Driven here directly, because
+# what it accepts is the whole of what the gates will act on.
+floor_ok() { env_lib "$T/none" bash_floor_is_version "$1" >/dev/null 2>&1 && echo version || echo not; }
+eq "bash_floor_is_version: the floor this file declares is one" version "$(floor_ok "$BASH_FLOOR_HERE")"
+eq "bash_floor_is_version: a two-digit minor is one" version "$(floor_ok 4.10)"
+eq "bash_floor_is_version: a leading zero is still digits" version "$(floor_ok 04.4)"
+# The separator table. EVERY ONE of these begins with a digit, which is all `ver_ge` ever required.
+eq "bash_floor_is_version: a comma for the dot is not a version" not "$(floor_ok '4,4')"
+eq "bash_floor_is_version: a non-numeric minor is not a version" not "$(floor_ok '4.x')"
+eq "bash_floor_is_version: a hyphen for the dot is not a version" not "$(floor_ok '4-4')"
+eq "bash_floor_is_version: a missing separator is not a version" not "$(floor_ok '4x')"
+eq "bash_floor_is_version: a bare major is not a bash floor" not "$(floor_ok '4')"
+eq "bash_floor_is_version: a space for the dot is not a version" not "$(floor_ok '4 4')"
+# …and the shapes A6b's old `[0-9]*.[0-9]*` glob admitted, which this one does not.
+eq "bash_floor_is_version: a trailing non-digit is not a version (the old glob took it)" not "$(floor_ok '4.4x')"
+eq "bash_floor_is_version: a third field is not <major>.<minor> (the old glob took it, as floor 4.0.5)" \
+   not "$(floor_ok '4.x.5')"
+eq "bash_floor_is_version: three numeric fields are refused too — this compares two" not "$(floor_ok '4.4.1')"
+eq "bash_floor_is_version: an empty declaration is not a version" not "$(floor_ok '')"
+eq "bash_floor_is_version: a dotless word is not a version" not "$(floor_ok banana)"
+eq "bash_floor_is_version: a leading v is not a version" not "$(floor_ok v4.4)"
+eq "bash_floor_is_version: a leading dot is not a version" not "$(floor_ok '.4')"
+eq "bash_floor_is_version: a trailing dot is not a version" not "$(floor_ok '4.')"
+
+# ⭐ AND A1 NOW HOLDS THIS COPY'S OWN DECLARATION TO IT, BEFORE COMPARING ANYTHING (card#9984 r2).
+# A6b has always refused a non-version floor in the TARGET release; A1 handed its own straight to
+# `ver_ge`, whose leading-digit test is the right one for a predicate A6 gives three-field PHP
+# versions and A12 a bare `7`, and much too loose for a bash floor. MEASURED at `8505c4c`,
+# library-mode, host bash 4.0 against a serving copy whose floor line was meant to read `4.4`:
+# every value in the loop below was read as 4.0.0 and answered MEETS — bash 4.0 deploying past a
+# 4.4 floor. `banana` was caught, because it does not start with a digit; a mistyped SEPARATOR is
+# the likelier typo and was not. A floor read as far as it parses and then passed is the same
+# defect as one never read at all.
+# The v1 mutator breaks the SERVING copy's line; `floor_at_host` — A6b's own control mutator,
+# reused — gives the RELEASE a floor this host meets, so the release is well-formed and A1 is the
+# only gate at issue. Each `hasnt` is a step the old code reached and this one must not, which is
+# what makes these cases a measurement of A1 rather than of whichever later gate stopped the run.
+bad_floor_n=0
+for BAD_FLOOR in 'banana' '4,4' '4.x' '4-4' '4x' '4' '4 4'; do
+  bad_floor_n=$((bad_floor_n + 1))
+  mkfix "bash_serving_floor_bad$bad_floor_n" floor_at_host nonsense_bash_floor
+  run_refusal "this copy's BASH_FLOOR is '$BAD_FLOOR' (A1)" \
+    "this copy of bin/deploy.sh declares BASH_FLOOR='$BAD_FLOOR', which is not a version" --dry-run
+  hasnt "serving floor '$BAD_FLOOR': never reported as a floor this host's bash MET" \
+    "meets BASH_FLOOR" "$OUT"
+  hasnt "serving floor '$BAD_FLOOR': refused in A1, before any gate read the release" "ok — PHP" "$OUT"
+  # ⚠ NOT a `hasnt` on `declares BASH_FLOOR='…'`: A1's own refusal now uses those very words, so
+  # that needle would fire on the refusal being asserted. A6b's own preamble is what names A6b.
+  hasnt "serving floor '$BAD_FLOOR': not blamed on the release, whose floor is intact" \
+    "the floor that release declares" "$OUT"
+  no_shell_death "serving floor '$BAD_FLOOR'" "$OUT"
+done
+unset BAD_FLOOR   # …so every later use of nonsense_bash_floor is `banana` again.
+
+# ⛔ AND THE LINE BEING GONE — the member of this class that was still a DEATH rather than a
+# refusal, found auditing the separator table above for siblings (canon #7). Measured at `9c4d67f`
+# and at `8505c4c`: with the `BASH_FLOOR=` line deleted from the serving copy, the first expansion
+# of `$BASH_FLOOR` died under `set -u` with `BASH_FLOOR: unbound variable` — exit 1, no ⛔ banner,
+# no promise, which the exit table at the top of bin/deploy.sh says means *refused, nothing was
+# touched*. `drop_bash_floor` is A6b's own mutator, reused: there it produces the SURVIVABLE
+# "predates card#9616" path for a release, and here, on the SERVING copy, it must refuse — the two
+# are different facts about different copies and the suite holds both.
+# ⚠ NO v2 MUTATOR HERE, and that is not an omission: `floor_at_host` replaces a line, and this
+# fixture has deleted it, so it would match nothing. The RELEASE therefore declares no floor
+# either — A6b's survivable path — which changes nothing about what is asserted, because A1
+# refuses first and that is the whole of what this case measures.
+mkfix bash_serving_floor_absent '' drop_bash_floor
+run_refusal "this copy declares no BASH_FLOOR at all (A1)" \
+  "this copy of bin/deploy.sh declares no BASH_FLOOR" --dry-run
+has "an absent serving floor: says a release without one is a different matter" \
+  "predates card#9616 (A6b)" "$OUT"
+hasnt "an absent serving floor: not a bash death — no unbound-variable diagnostic" \
+  "unbound variable" "$OUT"
+hasnt "an absent serving floor: never reported as a floor this host's bash MET" "meets BASH_FLOOR" "$OUT"
+# …and an EMPTY declaration takes that same refusal: the remedy is the same line either way.
+BAD_FLOOR=''
+mkfix bash_serving_floor_blank floor_at_host nonsense_bash_floor
+run_refusal "this copy's BASH_FLOOR is blank (A1)" \
+  "this copy of bin/deploy.sh declares no BASH_FLOOR" --dry-run
+hasnt "a blank serving floor: not a bash death" "unbound variable" "$OUT"
+unset BAD_FLOOR
+
+# A6b's END, tightened with it: a RELEASE declaring `4.x.5` used to pass that gate's
+# `[0-9]*.[0-9]*` glob and be enforced as the floor 4.0.5 — a floor it never declared. Refused now.
+BAD_FLOOR='4.x.5'
+mkfix bash_target_floor_partly_readable nonsense_bash_floor
+run_refusal "a release whose BASH_FLOOR parses only partly (A6b)" \
+  "declares BASH_FLOOR='4.x.5', which is not a version" --dry-run
+has "a partly-readable target floor: says it will not read one as far as it parses" \
+  "nor read it as far as it parses" "$OUT"
+unset BAD_FLOOR
+
+# ⛔ AND `ver_ge`'s OWN REFUSAL IS STILL REACHED FROM A GATE, which the A1 cases above no longer
+# show: A1 now stops at the floor test, one step earlier. A6 is the caller that proves the wiring —
+# it validates its FLOOR operand (`floor_min`, out of server/composer.json) and is handed
+# `${HOST_PHP_VERSION:-0}` unvalidated, so a `php` that answers with something that is not a
+# version reaches `ver_ge` and is refused there rather than compared.
+mkfix php_version_not_a_version; export STUB_PHP_VERSION=banana
+run_refusal "a host php answering with something that is not a version (A6, through ver_ge)" \
+  "a version comparison this deploy cannot perform: 'banana' against" --dry-run
+has "a non-version host PHP: names the operand at fault" "NOT A VERSION: the first, 'banana'" "$OUT"
+hasnt "a non-version host PHP: no floor verdict it never reached" "does not satisfy" "$OUT"
+no_shell_death "a non-version host PHP" "$OUT"
+unset STUB_PHP_VERSION
 
 no_deploy_sh() { rm -f "$1/bin/deploy.sh"; }
 mkfix bash_target_no_deploy_sh no_deploy_sh

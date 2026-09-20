@@ -36,15 +36,34 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   edit `BASH_FLOOR=` at the top of your serving copy of `bin/deploy.sh` to anything that is not a
   `<major>.<minor>` — blank it, quote it wrong, write `v4.4` — and the next `bin/deploy.sh` run
   printed no complaint about it, enforced no bash floor at all, and went on to open the
-  maintenance window.** It now stops in phase A, before anything is touched, naming the
-  comparison it could not perform and which of the two operands is not a version; the deploy script
-  already refused exactly that value when a RELEASE declared it, and this is the same refusal for
-  your own copy. Nothing changes for a well-formed floor: every comparison this repository makes
-  answers as it did before. **If a deploy of yours starts refusing with *"a version comparison this
-  deploy cannot perform"*, read the two operands it prints** — one is this host's own version
-  (`$BASH_VERSINFO`, `php -r 'echo PHP_VERSION;'`, `npm --version`) and the other is a floor
-  declared by a release (`BASH_FLOOR=`, `require.php` in `server/composer.json`, `lockfileVersion`
-  in `server/package-lock.json`), and whichever of them is not a version is what to fix.
+  maintenance window.** It now stops in phase A, before anything is touched.
+  **A mistyped SEPARATOR is caught too, and it is the likelier typo.** `BASH_FLOOR=4,4`, `4.x`,
+  `4-4`, `4x`, `4` and `"4 4"` all begin with a digit, so the comparison used to run, read as far
+  as it parsed, take the floor to be `4.0` and report it met — a host running bash 4.0 deploying
+  past a floor of 4.4. What a floor IS is now one test — `<digits>.<digits>`, exactly two fields —
+  and A1 holds your copy's declaration to it, A6b holds the release's to it, and the `bash-floor`
+  CI job holds the tree it measures to it. **That test is stricter than the one A6b used to
+  apply:** a release declaring `BASH_FLOOR=4.x.5` or `4.4x` used to pass, and the first was
+  enforced as the floor `4.0.5`, which is not the floor that release declared. Both are refused
+  now. **And a copy whose `BASH_FLOOR=` line has been DELETED is refused as that** — it used to
+  end the run with `BASH_FLOOR: unbound variable` and exit 1, with none of the `⛔ REFUSED`
+  banner or the *"Nothing was changed. The previous release is still serving."* promise that
+  tells you a deploy stopped on purpose rather than broke. A blank `BASH_FLOOR=` takes the same
+  refusal. **If your own copy's floor line is well-formed, nothing changes** — every comparison
+  this repository makes answers as it did before.
+  **If a deploy of yours starts refusing with *"declares BASH_FLOOR='…', which is not a
+  version"*, the fix is the line at the top of `bin/deploy.sh`:** it reads
+  `BASH_FLOOR=<major>.<minor>`, alone on its line, at column 0, unquoted or quoted, and the
+  comment above it says how the number is arrived at and that it moves by re-running the
+  measurement rather than by being retyped.
+  **If instead it refuses with *"a version comparison this deploy cannot perform"*, read the two
+  operands it prints** — one is this host's own version (`$BASH_VERSINFO`, `php -r 'echo
+  PHP_VERSION;'`, `npm --version`) and the other is a floor declared by a release (`require.php`
+  in `server/composer.json`, `lockfileVersion` in `server/package-lock.json`), and whichever of
+  them is not a version is what to fix. The commonest way to reach it is a host `php` that answers
+  `php -r 'echo PHP_VERSION;'` with something other than a version: each floor gate validates the
+  FLOOR it read out of the release, and the HOST value it is handed is not validated anywhere
+  else.
   The same change drops the here-strings that split those operands. A here-string is a temporary
   file on every bash below 5.1, which is above the floor `BASH_FLOOR` declares, so on a supported
   host a temp-file failure reached that same fall-through with no bad input at all; the split is

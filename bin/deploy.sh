@@ -1394,8 +1394,8 @@ php_require_constraint() {
 # ⛔ AN OPERAND IT CANNOT COMPARE IS REFUSED, NEVER ANSWERED (card#9984). It used to fall through to
 # zeros: an operand that is not a version left every field 0, 0 is neither greater nor less than 0
 # at any field, and the function returned 0 — "A is at least B". MEASURED, by the cases in
-# bin/deploy.selftest.sh that drive this predicate: with the pre-card body restored, a floor
-# operand that is EMPTY and one reading `banana` each answered MEETS. Nothing died on the way,
+# bin/deploy.selftest.sh that drive this predicate: with the body at `9c4d67f` restored verbatim,
+# a floor operand that is EMPTY and one reading `banana` each answered MEETS. Nothing died on the way,
 # because every call site invokes it where `set -e` does not apply (left of a `||`, or inside an
 # `if`), so A1 certified a `BASH_FLOOR` it had not read and the deploy carried on with no bash floor
 # enforced at all — a check that cannot fail on the population it guards (canon #9), failing OPEN,
@@ -1496,6 +1496,39 @@ bash_floor_declared() {
                                  sub(/[ \t]+$/, "", v); print v; seen = 1 }'
 }
 
+# bash_floor_is_version <value> — true when <value> is a BASH_FLOOR a floor gate may act on:
+# `<digits>.<digits>`, exactly two fields, nothing else. A PREDICATE only — it prints nothing and
+# refuses nothing, because each caller speaks about a DIFFERENT copy of the declaration (this
+# script's, the release's, the tree CI is measuring) and owes its own words.
+#
+# ⛔ ONE TEST, for the same reason `bash_floor_declared` above is one reader (card#9984). A1, A6b
+# and `.github/workflows/deploy-selftest.yml`'s floor step each held this value to a test of their
+# own, and A1's was the weakest — `ver_ge`'s leading-digit check, which is right for THAT predicate
+# (A6 hands it three-field PHP versions and A12 a bare `7`) and far too loose for a bash floor.
+# MEASURED at 8505c4c, library-mode, host bash 4.0 against a serving copy whose floor line was
+# meant to read `4.4`: `4,4`, `4.x`, `4-4`, `4x`, `4` and `"4 4"` each begin with a digit, so the
+# comparison RAN, truncated the floor at the first non-digit, read it as 4.0.0 and answered MEETS —
+# bash 4.0 deploying past a 4.4 floor. A mistyped separator is the likelier typo than `banana`, and
+# a partly-read floor passing is the same defect as an unread one passing.
+# (The last of those is only a DECLARATION when quoted: `BASH_FLOOR=4 4` unquoted is an assignment
+# followed by the command `4`, so that copy dies at 127 before `main` and no gate ever sees it.)
+#
+# ⛔ IT IS STRICTER THAN THE `[0-9]*.[0-9]*` GLOB IT REPLACES IN A6b, deliberately. That glob also
+# admitted `4.4x` and `4.x.5`, and the second is not the harmless case it looks: MEASURED, a release
+# declaring `BASH_FLOOR=4.x.5` was enforced as the floor 4.0.5 — a floor nobody wrote, met by a host
+# bash 4.4 — so the gate was not failing closed, it was silently substituting a floor for the one
+# declared. Which way that substitution errs is unknowable, which is exactly why it is refused
+# rather than guessed at: A6 refuses a PHP constraint it cannot evaluate in the same direction, and
+# for the same reason. A three-field value is refused here too, so it cannot reach `ver_ge` and be
+# compared with a patch field that `<major>.<minor>` does not have.
+bash_floor_is_version() {
+  case "$1" in
+    *[!0-9.]* | *.*.* | .* | *.) return 1 ;;  # a non-digit, a third field, an empty field at an end
+    *.*)                         return 0 ;;  # …leaving exactly <digits>.<digits>
+    *)                           return 1 ;;  # no separator at all — a bare major is not a floor
+  esac
+}
+
 # npm_lockfile_version — the TOP-LEVEL `lockfileVersion` of a package-lock.json on stdin, or nothing
 # if it has none. npm writes that key once, at the top level, and in no package entry, so the first
 # match is the file's. It reads to the END rather than exiting at the first hit: exiting early makes
@@ -1568,6 +1601,24 @@ npm_lockfile_version() {
 # Sets FPM_POSTURE, FPM_REVALIDATE_S, STREAM_POSTURE and STREAM_STATUS_LISTEN on success; on failure
 # FPM_NOT_READY — a refusal title, then its lines. Phase A refuses on it; phase B, which re-reads it, fails
 # the window on it.
+# ⚠ THE HERE-STRING SHAPE card#9984 REMOVED FROM `ver_ge` SURVIVES IN THESE TWO, AND IS NAMED HERE
+# RATHER THAN FIXED (canon #7 — the sibling audit owes the NAME; whether it earns work is #18's
+# question, and the answer below is why this round did not take it).
+#   · Both split with `<<<`, a TEMPORARY FILE on every bash below 5.1 and so on a supported host
+#     (the citations are at `ver_ge`). A failed read leaves the substitution EMPTY.
+#   · Empty is read PERMISSIVELY downstream: `fpm_judge`'s first line is
+#     `if ! ini_on "${2:-0}"; then return 0; fi`, and an empty `opcache.enable` therefore means
+#     "opcache is off, every request reads the disk, this deploy needs no reload" — the same
+#     fail-open direction, on a host whose real opcache may be on with timestamps off.
+#   · And `set -e` is off for the whole dynamic extent: `fpm_code_reload_ready` is invoked left of
+#     a `||` at both of its call sites, exactly as `bash_meets_floor` was.
+# ⇒ SO THE SHAPE IS THE SAME. What differs, and is why it is not the same defect: the FIRST
+# here-string `fpm_code_reload_ready` reaches is the `Server API` read, and an empty answer there
+# is `"" != "FPM/FastCGI"`, which REFUSES. A host condition that breaks here-strings at all breaks
+# that one too, so it refuses before any opcache value is read. Reaching the permissive read needs
+# a failure that begins PARTWAY THROUGH the function — a filesystem that fills between the two —
+# which is narrower still than the condition `ver_ge`'s header already calls unreproducible here
+# without root. No fixture can produce it, so no case is shipped for it and none is claimed.
 phpinfo_value() { awk -F' => ' -v k="$2" '$1 == k { print $2; exit }' <<< "$1"; }
 pool_ini() { awk -F'\t' -v p="$2" -v k="$3" '$1 == p && $2 == k { v = $3 } END { printf "%s", v }' <<< "$1"; }
 ini_on() { case "${1,,}" in 1 | on | yes | true) return 0 ;; esac; return 1; }
@@ -1879,13 +1930,52 @@ phase_a() {
   # code the table above reserves for "refused, nothing was touched", reached by a death. So the
   # bash is refused here, by name, before anything else this script does can depend on a newer one.
   #
-  # ⚠ `set -e` DOES NOT APPLY TO THE LEFT OF THIS `||`, which is why the comparison itself has to be
-  # incapable of answering wrongly rather than merely incapable of lying (card#9984). A failure
-  # inside `bash_meets_floor` here does not end the run — it just looks like a verdict — so a
-  # comparison it could not perform exits through `refuse` from inside `ver_ge`, and the only two
-  # things that reach this line are the floor being MET and the floor being MISSED. `$BASH_FLOOR` is
-  # the one operand nothing else validates: A6b reads the TARGET release's declaration and refuses
-  # one that is not a version, and this line is where THIS copy's own is first read as one.
+  # ⚠ `set -e` DOES NOT APPLY TO THE LEFT OF THE `||` BELOW, which is why the comparison must be
+  # incapable of answering wrongly rather than merely incapable of lying (card#9984): a failure
+  # inside `bash_meets_floor` there does not end the run, it just looks like a verdict.
+  #
+  # ⛔ SO THE FLOOR IS ESTABLISHED TO BE A VERSION FIRST, HERE, AND NOT BY THE COMPARISON.
+  # `ver_ge` refuses an operand it cannot read AT ALL, which is the right test for a predicate A6
+  # hands three-field PHP versions and A12 a bare `7` — and it is far too loose for this one: it
+  # passes `4,4` and `4.x`, which begin with a digit, and the floor then silently becomes 4.0.
+  # `ver_ge`'s own header says that predicate is not total and that a caller wanting a stricter
+  # reading establishes its operand itself. A1 is such a caller, and this is where it does it,
+  # through the SAME `bash_floor_is_version` A6b holds the release's declaration to — so the two
+  # gates cannot disagree about what a floor is. Only then are there two things left that reach the
+  # comparison: the floor being MET and the floor being MISSED.
+  # ⛔ AND THE LINE BEING GONE IS REFUSED AS ITSELF, FIRST — which until card#9984 r2 was the one
+  # shape in this class that still reached the operator as a DEATH. MEASURED at 9c4d67f, at
+  # 8505c4c and here before this line: delete the `BASH_FLOOR=` line from a serving copy and the
+  # first expansion of `$BASH_FLOOR` dies under `set -u` with `BASH_FLOOR: unbound variable`,
+  # exit 1, NO ⛔ banner and NO "Nothing was changed" promise — the exit code the table at the top
+  # of this file reserves for *refused, nothing was touched*, reached by a death, which is the
+  # exact confusion `refuse` exists to prevent. `${BASH_FLOOR-}` is what lets it be answered
+  # instead, and an empty declaration (`BASH_FLOOR=`) takes the same refusal: the remedy for both
+  # is to write the line, so they are not split the way A6b splits absent from empty.
+  # ⚠ NOT SYMMETRIC WITH A6b, deliberately. A RELEASE that declares no floor is the survivable
+  # predates-card#9616 path, because it could not have declared one. THIS copy is the script
+  # running now, its own header calls that line its one home, and a copy of it with the line
+  # removed is edited, not old.
+  [ -n "${BASH_FLOOR-}" ] || refuse \
+    "this copy of bin/deploy.sh declares no BASH_FLOOR" \
+    "That line is the oldest bash this script is known to run on, and A1 holds the bash running" \
+    "this deploy to it. Without it there is no floor to enforce, and this refusal is deliberately" \
+    "not the silence a missing declaration used to produce." \
+    "" \
+    "Restore it at the top of this file — \`BASH_FLOOR=<major>.<minor>\`, alone on its line, at" \
+    "column 0 — and read the comment above it, which says how the number is arrived at. A release" \
+    "that declares none is a different matter and still deploys: it predates card#9616 (A6b)."
+  bash_floor_is_version "$BASH_FLOOR" || refuse \
+    "this copy of bin/deploy.sh declares BASH_FLOOR='$BASH_FLOOR', which is not a version" \
+    "BASH_FLOOR is the oldest bash this script is known to run on, and A1 holds the bash running" \
+    "this deploy to it. A declaration this cannot read is not a floor, and it is refused rather" \
+    "than read as far as it parses: a value like '4,4' or '4.x' would otherwise be taken as 4.0," \
+    "which is a floor nobody wrote and which almost any bash meets." \
+    "" \
+    "The line is \`BASH_FLOOR=<major>.<minor>\`, alone on its line, at column 0, unquoted or" \
+    "quoted — exactly two numeric fields. The comment at the top of this file says how the number" \
+    "is arrived at, and that it moves by re-running the measurement rather than by being retyped." \
+    "A6b holds the release being deployed to this same test, so nothing was read about it either."
   bash_meets_floor "$HOST_BASH_VERSION" "$BASH_FLOOR" || refuse \
     "bash $BASH_VERSION is below this script's floor, BASH_FLOOR=$BASH_FLOOR" \
     "bin/deploy.sh is MEASURED to pass its own selftest on bash $BASH_FLOOR and to FAIL it on the" \
@@ -2724,12 +2814,21 @@ gate_a6b_bash_floor() {
     say "  ok — bin/deploy.sh at $short declares no BASH_FLOOR (it predates card#9616); only this copy's floor, $BASH_FLOOR, was enforced (A1)"
     return 0
   fi
-  case "$floor" in
-    [0-9]*.[0-9]*) ;;
-    *) refuse "bin/deploy.sh at $short declares BASH_FLOOR='$floor', which is not a version" \
-         "A6b compares this host's bash against the floor that release declares, and will not guess" \
-         "one it cannot read. The line is \`BASH_FLOOR=<major>.<minor>\`, alone on its line." ;;
-  esac
+  # ⛔ THE SAME TEST A1 HOLDS THIS COPY'S OWN DECLARATION TO (card#9984). It used to be an inline
+  # `[0-9]*.[0-9]*` here — a third copy of the pattern, beside A1's looser one and the workflow's —
+  # and it admitted `4.4x` and `4.x.5`; the second was enforced as the floor 4.0.5, which is not
+  # the floor that release declared. `bash_floor_is_version` states what a floor is, once.
+  # ⚠ TIGHTENING THIS GATE STRANDS NO RELEASE, and that was checked rather than assumed, because
+  # refusing a release nobody can re-cut is the failure the branch above exists to avoid: every
+  # tag this repository has published is read here (`git show <tag>:bin/deploy.sh`) and NONE of
+  # them declares a BASH_FLOOR at all — they all predate card#9616 and take that survivable path.
+  # A rollback is the deploy most likely to be run under pressure; it is unaffected.
+  bash_floor_is_version "$floor" || refuse \
+    "bin/deploy.sh at $short declares BASH_FLOOR='$floor', which is not a version" \
+    "A6b compares this host's bash against the floor that release declares, and will not guess" \
+    "one it cannot read — nor read it as far as it parses, which would enforce a floor the release" \
+    "did not declare. The line is \`BASH_FLOOR=<major>.<minor>\`, alone on its line: exactly two" \
+    "numeric fields."
   bash_meets_floor "$bashver" "$floor" || refuse \
     "bash $bashver is below the floor the release being deployed declares: BASH_FLOOR=$floor in bin/deploy.sh at $short" \
     "This copy's own floor ($BASH_FLOOR) was met — A1 checked it. But after \`artisan down\` and the" \
