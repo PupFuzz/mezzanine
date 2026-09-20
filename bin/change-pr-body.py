@@ -127,13 +127,26 @@ class Git:
     dies with `fatal: bad config line 1`, and the refusal read `this is not a git repository`.
     That is a WRONG-BUT-SPECIFIC cause, which is worse than a generic one, in a program whose
     entire argument is that it refuses instead of guessing. A dubious-ownership refusal, a corrupt
-    object store and a broken config each have their own words, and `said()` puts them in the
+    object store and a broken config each have their own words, and `said_of()` puts them in the
     refusal the author reads.
+
+    ⛔ AND THE UNIVERSAL ABOVE IS A UNIVERSAL, WHICH IS WHY EVERY CALL SITE GOES THROUGH
+    `said_of()`. The first cut of the FIX left `resolve_base` discarding the object — it wrote
+    `if Git(...).rc == 0`, so a corrupt loose object that `origin/<base>` needs produced
+    `fatal: loose object … is corrupt` from git and `neither origin/dev nor dev resolves to a
+    commit here … fetch it first` from this program: a refusal that sends the author to do
+    something that cannot help, with git's actual diagnosis thrown away. Exactly the defect this
+    class exists to end, surviving at the one site the fix skipped. A per-site policy is how that
+    happens; there is one policy here and `bin/change-pr-body.selftest.py` drives BOTH sites.
 
     It is APPENDED to the refusal rather than let through to the terminal (`stdout=PIPE` alone):
     the refusal is this program's product, and a caller that redirects or captures streams — CI
     does both — must get the cause in the line it keeps, not interleaved into a stream nothing
     attributes.
+
+    ⚠ WHAT IT CANNOT LEAK. git's diagnostics name PATHS, REFS and, for a bad config, the LINE
+    NUMBER — never a config VALUE — so this carries no credential; the remote URL it can name is
+    already in the body's own range line and in every `git remote -v`.
     """
 
     def __init__(self, *args: str) -> None:
@@ -142,31 +155,47 @@ class Git:
         self.out = proc.stdout.strip()
         self.err = proc.stderr.strip()
 
-    def said(self) -> str:
-        """git's own words, as a clause to append — empty when it said nothing.
 
-        `--quiet` on a `rev-parse` means a ref that simply does not exist produces NO stderr, so
-        those refusals stay clean and this adds nothing to them. What it carries is the case the
-        program cannot enumerate.
-        """
-        if not self.err:
-            return ""
-        return " git said: %s" % " / ".join(line.strip() for line in self.err.splitlines()
-                                            if line.strip())
+def said_of(*probes: Git) -> str:
+    """git's own words from one or more probes, as a clause to append — empty if it said nothing.
+
+    DISTINCT texts only, in order: the two candidates `resolve_base` tries fail with the SAME
+    sentence whenever the cause is the store rather than the ref, and printing it twice reads as
+    two problems. `--quiet` on a `rev-parse` means a ref that merely does not exist produces NO
+    stderr at all, so a plain missing-ref refusal stays clean and this adds nothing to it. What it
+    carries is the case the program cannot enumerate.
+    """
+    texts: list[str] = []
+    for probe in probes:
+        if not probe.err:
+            continue
+        text = " / ".join(line.strip() for line in probe.err.splitlines() if line.strip())
+        if text and text not in texts:
+            texts.append(text)
+    return " git said: %s" % " | ".join(texts) if texts else ""
 
 
-def resolve_base(base: str) -> tuple[str | None, str]:
-    """The base branch as `(commit-ish that exists here, the name to PRINT)`.
+def resolve_base(base: str) -> tuple[str | None, str, list[Git]]:
+    """`(commit-ish that exists here, the name to PRINT, the probes that FAILED)`.
 
     `origin/<base>` is preferred over a local `<base>` deliberately: the PR merges into the
     REMOTE's branch, a stale local `dev` is the ordinary state of a worktree, and a range cut
     against it would name commits the PR does not carry. The printed name stays the plain branch
     name, because that is what the PR's base is called on GitHub.
+
+    ⛔ THE FAILED PROBES COME BACK, THEY ARE NOT DROPPED HERE. "Neither ref resolves" is this
+    function's ANSWER, never its diagnosis: the same answer covers a branch nobody fetched (fetch
+    it) and an object store that cannot be read (fetching will not help), and only git can tell
+    those apart. The caller appends `said_of(*tried)`. See the `Git` docstring for the measured
+    case this cost.
     """
+    tried: list[Git] = []
     for candidate in ("origin/%s" % base, base):
-        if Git("rev-parse", "--verify", "--quiet", "%s^{commit}" % candidate).rc == 0:
-            return candidate, base
-    return None, base
+        probe = Git("rev-parse", "--verify", "--quiet", "%s^{commit}" % candidate)
+        if probe.rc == 0:
+            return candidate, base, []
+        tried.append(probe)
+    return None, base, tried
 
 
 def build_body(scope_line: str, highlights: str, upgrade: str | None,
@@ -236,18 +265,18 @@ def main(argv: list[str]) -> int:
     probe = Git("rev-parse", "--git-dir")
     if probe.rc != 0:
         return refuse("git could not answer here, so there is no range to name — run this from "
-                      "inside the repository's checkout.%s" % probe.said())
+                      "inside the repository's checkout.%s" % said_of(probe))
 
-    base_ref, base_name = resolve_base(args.base)
+    base_ref, base_name, tried = resolve_base(args.base)
     if base_ref is None:
         return refuse("neither `origin/%s` nor `%s` resolves to a commit here — name the branch "
-                      "this PR merges into with --base, and fetch it first." % (args.base,
-                                                                                args.base))
+                      "this PR merges into with --base, and fetch it first.%s"
+                      % (args.base, args.base, said_of(*tried)))
 
     head = Git("rev-parse", "--verify", "--quiet", "%s^{commit}" % args.head)
     if head.rc != 0:
         return refuse("`%s` does not resolve to a commit here (--head).%s"
-                      % (args.head, head.said()))
+                      % (args.head, said_of(head)))
     head_sha = head.out
 
     head_name = args.head
@@ -256,23 +285,30 @@ def main(argv: list[str]) -> int:
         if branch.rc != 0 or branch.out == "HEAD":
             return refuse("HEAD is detached, so the body cannot name the branch this PR merges "
                           "from — pass --head <branch>, or check the branch out.%s"
-                          % branch.said())
+                          % said_of(branch))
         head_name = branch.out
 
     # The base's TIP, for the diagnostic that lets an author see a stale `origin/<base>`. It is
     # read here and not in `resolve_base`, which answers "does this ref exist" and nothing else.
-    base_tip = Git("rev-parse", "--verify", "--quiet", "%s^{commit}" % base_ref).out
+    #
+    # ⚠ THIS SITE DEGRADES, IT DOES NOT REFUSE — and it still carries git's words. The ref has
+    # already resolved a few lines up, so a failure here is near-unreachable (a concurrent gc or
+    # fetch); the run continues with the tip unnamed rather than dying over a diagnostic. It is
+    # NOT exempted from the one-policy rule: an exception here is how the next site added
+    # inherits the wrong default, which is exactly how `resolve_base` came to drop it.
+    tip = Git("rev-parse", "--verify", "--quiet", "%s^{commit}" % base_ref)
+    base_tip = tip.out[:12] if tip.out else "an unreadable tip%s" % said_of(tip)
 
     base = Git("merge-base", base_ref, head_sha)
     if base.rc != 0 or not base.out:
         return refuse("`%s` and `%s` share no merge base, so there is no range this PR merges.%s"
-                      % (base_ref, head_name, base.said()))
+                      % (base_ref, head_name, said_of(base)))
     merge_base = base.out
 
     listing = Git("rev-list", "%s..%s" % (merge_base, head_sha))
     if listing.rc != 0:
         return refuse("could not list the range `%s..%s`.%s"
-                      % (merge_base, head_sha, listing.said()))
+                      % (merge_base, head_sha, said_of(listing)))
     revs = listing.out
     if not revs:
         # NOT a warning. A body describing an empty range describes nothing, and the author is
@@ -313,7 +349,7 @@ def main(argv: list[str]) -> int:
         "    judges the body you actually push.\n"
         "  * read it back as the person INSTALLING this, then judge it:\n"
         "      python3 bin/pr-body-lint.py --body-file <the body file>\n"
-        % (base_ref, base_tip[:12] or "an unreadable tip", merge_base[:12], AUTHOR_MARK))
+        % (base_ref, base_tip, merge_base[:12], AUTHOR_MARK))
     if not args.session_url:
         sys.stderr.write("  * the attribution trailer has NO session URL (--session-url was not "
                          "given).\n")

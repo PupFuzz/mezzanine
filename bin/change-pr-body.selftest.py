@@ -13,7 +13,9 @@ THE FIVE ARMS, AND WHY THEY ARE KEPT APART.
     claim; everything else exists so that a green here means something.
   * § 2 RED — one mutation per case, applied to that same passing body, each naming the ONE rule
     it must provoke. Without this arm § 1 is consistent with a linter that passes everything,
-    which is the exact failure mode a vendored judge can drift into.
+    which is the exact failure mode a vendored judge can drift into. Its DENOMINATOR — which
+    rules exist — is read out of the linter's source, never counted here, so a re-vendor that
+    adds a rule reds this arm for under-coverage instead of leaving it quietly incomplete.
   * § 3 REFUSALS (rc 2) — the inputs the generator must decline instead of inventing. A
     generator that invents a `Built:` value produces a fabricated attestation, which is worse
     than the gap it fills, so the refusal is the behaviour under test and not an edge case.
@@ -228,6 +230,21 @@ MUTANTS = (
 for what, mutate, want in MUTANTS:
     eq(f"{what} → reds", want, rules(mutate(BODY)))
 
+# ⛔ THE DENOMINATOR IS DERIVED FROM THE JUDGE, NEVER COUNTED BY HAND. "One mutation per rule" is
+# a coverage claim, and a coverage claim over a population nobody re-computes reports where the
+# author stopped rather than what is covered: re-vendor a linter that adds an eighth rule and
+# `MUTANTS` silently under-covers while still reading as complete. The rule ids are read out of
+# the linter's own source — the same refusal to retype a set that makes this file IMPORT
+# `ALLOWED_H2` instead of listing it — and the control below proves the reader discriminates,
+# because a regex that matched nothing would make this check vacuously green.
+LINT_RULE_IDS = set(re.findall(r'Finding\("([a-z-]+)"', LINT.read_text(encoding="utf-8")))
+eq("CONTROL: the rule-id derivation actually finds rules in the linter's source",
+   True, len(LINT_RULE_IDS) >= 5 and "heading-not-allowed" in LINT_RULE_IDS)
+eq("  … and every rule the vendored linter can emit has a mutation that provokes it",
+   set(), LINT_RULE_IDS - {rule for _, _, want in MUTANTS for rule in want})
+eq("  … with no mutation claiming a rule the linter does not have",
+   set(), {rule for _, _, want in MUTANTS for rule in want} - LINT_RULE_IDS)
+
 # META-CONTROL: the suite above proves each mutation reds; this proves the UNMUTATED body is what
 # was being mutated — a `plant()` anchor that stopped matching would have raised, but an anchor
 # that matched a DIFFERENT occurrence would not.
@@ -286,6 +303,33 @@ refused("a git failure the program cannot enumerate is not reported as one that 
 contains("  … and git's own words are what it carries", "bad config", broken_run.stderr)
 absent("  … rather than a cause the program made up", "is not a git repository",
        broken_run.stderr)
+
+# ⛔ THE SECOND GIT SITE, DRIVEN SEPARATELY, BECAUSE THE FIRST FIX SKIPPED IT. `resolve_base` used
+# to write `if Git(...).rc == 0` and drop the object, so this case — the store cannot be read, the
+# `--git-dir` probe still passes — reported "fetch it first", which cannot help. One policy is
+# only one policy if every site is driven; the case that proves it is the one that was missed.
+CORRUPT = stage()
+_head = subprocess.run(["git", "rev-parse", "origin/dev"], cwd=CORRUPT,
+                       capture_output=True, text=True).stdout.strip()
+_loose = CORRUPT / ".git" / "objects" / _head[:2] / _head[2:]
+if not _loose.exists():
+    bad(f"staging: expected a loose object at {_loose} — this git packed it, and the case cannot "
+        f"be planted as written")
+else:
+    _loose.chmod(0o644)   # git writes loose objects read-only; they are immutable to git, not to us
+    _loose.write_bytes(b"not a git object")
+    corrupt_run = generate(CORRUPT)
+    refused("a base whose OBJECT cannot be read carries git's diagnosis, not 'fetch it first'",
+            corrupt_run, "git said:")
+    contains("  … and the diagnosis is the store's, not a guess about the ref",
+             "corrupt", corrupt_run.stderr)
+    # The refusal's own advice is still printed — it is the ANSWER ("neither ref resolves") and
+    # stays true; what the clause adds is the DIAGNOSIS the author needs to know it will not help.
+    contains("  … alongside the answer the function actually has",
+             "neither `origin/dev`", corrupt_run.stderr)
+    # Both candidates fail with the same sentence; it is reported ONCE, not as two problems.
+    eq("  … and one cause is reported once, not once per candidate tried",
+       1, corrupt_run.stderr.count("git said:"))
 
 # argparse's own refusal, asserted because `--built` being REQUIRED is the design decision that
 # keeps this program from ever writing an attestation nobody made.
@@ -362,17 +406,20 @@ else:
     ROW_RE = re.compile(r"^##[ \t]+\S.*\|.*\S.*$")
     lines = [line.rstrip() for line in block.group(0).splitlines()]
     body_lines = [line for line in lines if line.strip() != "-->"]
-    first_row = next((i for i, line in enumerate(body_lines) if ROW_RE.match(line)), None)
-    if first_row is None:
-        bad("the `change-pr-body:house-map` block contains NO row matching the row grammar — "
-            "the map an author reads has become prose nothing grades")
-        tail = []
-    else:
-        tail = body_lines[first_row:]
-    eq("every line after the block's first row IS a row (a mistyped one would vanish, not fail)",
-       [], [line for line in tail if not ROW_RE.match(line)])
 
-    rows = [line.strip() for line in tail if ROW_RE.match(line)]
+    # ⛔ THE POPULATION IS STRUCTURAL, NOT POSITIONAL, AND THE DIFFERENCE IS A MEASURED HOLE. The
+    # first cut graded "every line after the FIRST matching row", which leaves the leading edge
+    # unreachable: a mistyped row inserted immediately ABOVE the first real one is read as part
+    # of the preamble, so the suite stays fully green while that row is ungraded and still in
+    # front of an author — the exact failure the assertion exists to close, one position out of
+    # reach. No prose line in this block starts with `##`, so the population is every line whose
+    # lstrip does, wherever it sits, and a row that has stopped being a row FAILS instead of
+    # leaving the set.
+    candidates = [line for line in body_lines if line.lstrip().startswith("##")]
+    eq("every `##` line in the block IS a row (a mistyped one would vanish, not fail)",
+       [], [line for line in candidates if not ROW_RE.match(line)])
+
+    rows = [line.strip() for line in candidates if ROW_RE.match(line)]
     # The wrong-population zero, closed FIRST: an empty or truncated block makes every check
     # below vacuously green, which is the one way this section could report clean while the map
     # it grades has disappeared.

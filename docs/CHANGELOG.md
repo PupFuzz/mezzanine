@@ -45,16 +45,26 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   `bin/change-pr-body.selftest.py` drives every left-hand heading through `bin/pr-body-lint.py` and
   requires it to still red, requires every `## X` destination to be one that linter admits AND
   passes, and pipes the generator's real output into it — then mutates that output once per rule
-  so the green is shown to discriminate. The suite runs in the `pr-body-lint` job and can fail it.
+  so the green is shown to discriminate. **Once per rule is itself derived, not counted:** the
+  rule ids are read out of the linter's own source and the mutation set is required to cover
+  them, so re-vendoring a linter that adds a rule reds the suite for under-coverage instead of
+  leaving a coverage sentence that has quietly stopped being true. The suite runs in the
+  `pr-body-lint` job and can fail it.
   **What has NOT changed is what the repository rejects.** The lane's verdict on a PR body is still
   report-only and `pr-body-lint` is still required by no ruleset; the flip to blocking is the
   operator's act, gated on the verdict being RE-DERIVED over the recent merged bodies rather than
   on any figure written down — `CLAUDE.md` carries the loop that prints it.
-  **A false claim about that lane is corrected wherever it was written.** Every surface describing
-  the `pr-body-lint` job said the JOB prints its verdict and exits 0 — one of them in the words
-  "nothing in this job can fail a pull request". That was never true: the job's vendored-byte pin
-  and the vendored linter's own selftest shipped in its first commit and both red on a bad
-  checkout. The promise is, and always was, about the BODY: no PR body can fail this job. The
+  **A false claim about that lane is corrected, and the sweep that finds it is written down
+  instead of being asserted complete.** Every surface describing the `pr-body-lint` job said the
+  JOB prints its verdict and exits 0 — in the words "nothing in this job can fail a pull request",
+  and in "the contract this job makes is that it exits 0". That was never true: the job's
+  vendored-byte pin and the vendored linter's own selftest shipped in its first commit and both
+  red on a bad checkout. ⚠ "Corrected everywhere" is exactly the claim that goes stale at the next
+  copy and that nothing re-checks, so the instrument is recorded rather than the verdict — re-run
+  it before adding a sentence about this lane, because it caught two copies that narrower greps
+  and two review passes missed:
+  `git grep -n -i -E "exits? 0|can fail|cannot fail|never block|never fails" -- CLAUDE.md docs/ .github/workflows/ | grep -i "body\|this job\|this step\|lane"`.
+  The promise is, and always was, about the BODY: no PR body can fail this job. The
   generator's selftest now runs in the same job and can red it too, and it is ordered AFTER the
   report step so that a broken generator can never suppress the body verdict the author reads.
 - **card#9984** — **`bin/deploy.sh`'s version comparison refuses operands it cannot read, so a

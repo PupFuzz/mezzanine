@@ -215,9 +215,9 @@ jobs:
       # rather than swallowed with `|| true`, so the log says which of the three outcomes happened —
       # a silent `|| true` cannot tell a clean body from a lint that never ran, and a report-only
       # check whose own failure is invisible reports nothing. rc 2 (the linter could not read a
-      # body) does not red either, because the contract this job makes is that it exits 0; it is
-      # printed loudly instead, and the pin + selftest steps above are what would catch a broken
-      # vendored copy.
+      # body) does not red either, because the contract THIS STEP makes is that it exits 0 — the
+      # JOB makes no such contract, as its pin and selftest steps demonstrate; it is printed
+      # loudly instead, and those steps are what would catch a broken vendored copy.
       - name: Report this PR's body against the fleet standard (REPORT-ONLY — never fails the job)
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
@@ -244,7 +244,9 @@ jobs:
       # SKELETON it emits PASSES the linter, and a generator that has quietly stopped complying is
       # indistinguishable from one that never did, so the claim is measured here rather than
       # asserted in its header: the suite pipes the real generator's real output into the real
-      # vendored linter, then mutates that output once per rule to show the green discriminates.
+      # vendored linter, then mutates that output once per rule to show the green discriminates —
+      # over a rule set READ OUT of the linter's source, so a re-vendor that adds a rule reds here
+      # for under-coverage instead of leaving a stale "one per rule" claim standing.
       # ⚠ The claim is about the SKELETON, not about any body built from it: `--agent` and
       # `--session-url` are pass-through and unjudged (the suite pins two values that red), and
       # the author's own prose is wider still — which is why the step above exists.
