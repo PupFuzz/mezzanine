@@ -27,6 +27,29 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9801** — **A PR into `dev` now has a body generator, and the shape it emits is the fleet
+  standard's.** `bin/change-pr-body.py` writes the scope line, `## Highlights`, optionally
+  `## Upgrade warnings`, the `Built:` / `**Coordinated in:**` machine lines and the attribution
+  trailer, and leaves the judgement sections as `<!-- AUTHOR: … -->` markers. Until it existed the
+  author of a non-release PR had two options and both broke a rule: hand-write the body against the
+  standing "generate it" rule, or force `--version` onto `release-pr-body` — which exits 2 with
+  `could not resolve version` on a `dev` PR because it is structurally a RELEASE generator — and
+  emit a body asserting a release that is not happening. The fleet helper is unchanged: it is
+  owned outside this repository and a `--change` mode there is a fleet proposal, not a local edit.
+  **The shape question the generator answers is now written down too.** `skills/release-pr/SKILL.md
+  § PR body` governs *every* PR body an agent writes, not only a release one — two of the four
+  sections it admits carry `Release PRs only` in its own IN table, and the set is an allowlist
+  rather than a required list — so `CLAUDE.md § PR bodies are judged against the fleet standard`
+  now carries what a change PR looks like and a `change-pr-body:house-map` block saying where each
+  of this repository's former house sections goes instead. **That map is graded, not asserted:**
+  `bin/change-pr-body.selftest.py` drives every left-hand heading through `bin/pr-body-lint.py` and
+  requires it to still red, requires every `## X` destination to be one that linter admits AND
+  passes, and pipes the generator's real output into it — then mutates that output once per rule
+  so the green is shown to discriminate. The suite runs in the `pr-body-lint` job and can fail it.
+  **What has NOT changed is what the repository rejects.** The lane's verdict on a PR body is still
+  report-only and `pr-body-lint` is still required by no ruleset; the flip to blocking is the
+  operator's act, gated on the verdict being RE-DERIVED over the recent merged bodies rather than
+  on any figure written down — `CLAUDE.md` carries the loop that prints it.
 - **card#9984** — **`bin/deploy.sh`'s version comparison refuses operands it cannot read, so a
   `BASH_FLOOR` that is not a version is refused by name instead of certified.** Until this change
   the comparison behind every one of phase A's version floors — A1's bash floor, A6's PHP floor,
