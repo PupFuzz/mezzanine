@@ -174,6 +174,7 @@ REAL_PHP="$(command -v php)" || { echo "selftest: php not found (deploy.sh parse
 REAL_PS="$(command -v ps)" || { echo "selftest: ps not found" >&2; exit 1; }
 REAL_MKTEMP="$(command -v mktemp)" || { echo "selftest: mktemp not found" >&2; exit 1; }
 REAL_GIT="$(command -v git)" || { echo "selftest: git not found" >&2; exit 1; }
+REAL_BASH="$(command -v bash)" || { echo "selftest: bash not found" >&2; exit 1; }
 mkdir -p "$T/bin" "$T/knobs"; export PATH="$T/bin:$PATH"
 # `mezzanine:extra` is in no release this repo ships: it is the daemon the ACROSS RELEASES case's target
 # release adds, and the stub has to know to hold a lock for it.
@@ -340,6 +341,22 @@ fi
 exec "$REAL_GIT" "$@"
 STUB
 } > "$T/bin/git"
+# bash: the REAL one, behind a pass-through that RECORDS — the only way to see which interpreter a
+# child was started with (card#9616 review r3). deploy.sh starts three bash processes: the re-exec
+# that runs the maintenance window, A13's read of the target's bin/supervision.sh, and nothing else.
+# A1 and A6b hold THIS PROCESS's bash to the floors, so each of those must be `"$BASH"` and not the
+# `bash` that happens to be first on PATH; a child started through a `#!/usr/bin/env bash` shebang
+# or a bare `bash -c` lands HERE, and the case below asserts that none does.
+# ⛔ ITS SHEBANG IS THE REAL BASH BY ABSOLUTE PATH, not `#!/usr/bin/env bash`: this file IS what
+# `env bash` resolves to once $T/bin is on PATH, so the usual spelling would exec itself forever.
+# Logging is off unless the knob file exists, so every other case in this suite is unaffected by it.
+{
+  printf '#!%s\nKNOBS=%q\nREAL_BASH=%q\n' "$REAL_BASH" "$T/knobs" "$REAL_BASH"
+  cat <<'STUB'
+if [ -e "$KNOBS/bash_calls" ]; then printf 'bash %s\n' "$*" >> "$KNOBS/bash_calls"; fi
+exec "$REAL_BASH" "$@"
+STUB
+} > "$T/bin/bash"
 cat > "$T/bin/id" <<'STUB'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -384,7 +401,8 @@ reset_stubs() {
   unset STUB_UID STUB_CRONTAB_BROKEN MEZZ_DEPLOY_IN_WINDOW MEZZ_DEPLOY_REVALIDATE_FLOOR_S MEZZ_FPM_BIN
   kill_streams
   : > "$T/knobs/dies_after_start"; : > "$T/knobs/ignores_term"; : > "$T/knobs/transient_loser"
-  rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps" "$T/knobs/mktemp_passes" "$T/knobs/git_magic"
+  rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps" "$T/knobs/mktemp_passes" "$T/knobs/git_magic" \
+        "$T/knobs/bash_calls"
   # 9.2.0 is ABOVE the npm 7 the fixture's lockfileVersion 3 implies without BEING it, so a case
   # that passes A12 here is not passing on an accidental exact match (card#9616).
   export STUB_NPM_VERSION=9.2.0 STUB_NPM_VERSION_RC=0
@@ -520,6 +538,18 @@ start_old_daemons() {
 run() {
   : > "$CALL_LOG"
   OUT="$(MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" "$@" 2>&1)"
+  RC=$?
+}
+
+# run_via <interpreter> <args…> — the same deploy, started through an EXPLICIT interpreter instead
+# of through the script's `#!/usr/bin/env bash`. `run` above cannot distinguish the two interpreters
+# card#9616 cares about, because it invokes the shebang: the shell it starts IS PATH's bash, so a
+# deploy that handed the window to PATH's bash and one that handed over its own would be the same
+# process either way, and the difference the gates depend on would be untestable.
+run_via() {
+  local interp="$1"; shift
+  : > "$CALL_LOG"
+  OUT="$(MEZZ_DEPLOY_ROOT="$ROOT" "$interp" "$ROOT/bin/deploy.sh" "$@" 2>&1)"
   RC=$?
 }
 
@@ -2823,6 +2853,34 @@ no_shell_death "zero-line .env" "$OUT"
 # `${files[@]}` in checkout_lock_holders — a FIRST deploy, the D-08 scenario this suite had no case
 # for at all: nothing is running, so no daemon lock file exists and the glob behind that array
 # matches nothing. The deploy must still stop nothing, start everything, and say so.
+# ── the window runs the interpreter the GATES measured, not PATH's bash ───────────────────────
+# ⛔ THE ONE PLACE THIS CARD CHANGES PRODUCTION BEHAVIOUR, so it gets a control rather than a claim.
+# A1 and A6b read `BASH_VERSINFO` — THIS PROCESS's shell. The maintenance window used to be started
+# by `exec "$DEPLOY_ROOT/bin/deploy.sh" …`, which runs the target's `#!/usr/bin/env bash`: PATH's
+# shell, which the gates never read. So `somebash bin/deploy.sh` on a host whose PATH bash is older
+# passed both floors and then died in the window, with the app down, on the interpreter neither gate
+# had seen. phase_b_open_window now execs `"$BASH"`, and A13 reads the release's bin/supervision.sh
+# under `"$BASH"` too.
+# ⚠ AND `run` CANNOT SEE ANY OF THAT: it starts the deploy through the shebang, so the invoking
+# shell and PATH's shell are one process and both spellings behave identically. This case is the
+# only one in the file that starts the deploy through an EXPLICIT interpreter, which is what makes
+# the difference observable at all — reverting either site reds it, and nothing else in the suite.
+mkfix window_interpreter
+: > "$T/knobs/bash_calls"          # turns the bash pass-through's recording on for this case only
+start_old_daemons
+run_via "$REAL_BASH"
+eq  "explicit interpreter: the deploy runs to completion" 0 "$RC"
+has "explicit interpreter: and really deployed" "✔ DEPLOYED" "$OUT"
+# THE POSITIVE TWIN, first: without it the two `unlogged`-shaped assertions below would pass just as
+# happily with the recorder switched off, or absent from PATH, having observed nothing at all.
+neq "explicit interpreter: the bash pass-through really is on PATH and recording" "" \
+  "$(cat "$T/knobs/bash_calls" 2>/dev/null)"
+hasnt "explicit interpreter: the WINDOW was not started through PATH's bash (phase_b_open_window execs \$BASH)" \
+  "--internal-post-checkout" "$(cat "$T/knobs/bash_calls")"
+hasnt "explicit interpreter: nor was A13's read of the release's bin/supervision.sh" \
+  "supervision_install_plan" "$(cat "$T/knobs/bash_calls")"
+rm -f "$T/knobs/bash_calls"
+
 mkfix first_deploy
 eq "fixture: a first deploy really starts with no daemon lock file" "" \
   "$(compgen -G "$ROOT/server/storage/framework/daemon-*.lock" || true)"

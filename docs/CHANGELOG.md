@@ -97,6 +97,18 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   the gates measured**: the re-exec hands over `$BASH` rather than going through the deployed
   release's `#!/usr/bin/env bash`, which closes the gap where `somebash bin/deploy.sh` passed both
   floors and then died in the window on PATH's older shell.
+  **Review round 3 gave that behaviour change the control it was missing, and found its sibling.**
+  Every ordinary case starts the deploy through its shebang, so the invoking shell and PATH's shell
+  are one process and reverting the hand-over reds nothing — the claim was wider than anything in
+  the suite could support, which is a lower bar than this change applies everywhere else in itself.
+  The self-test now starts one deploy through an EXPLICIT interpreter with a recording pass-through
+  standing in for PATH's `bash`, and requires that neither the maintenance window nor A13 appears in
+  its log; a positive twin asserts the recorder was really on PATH first, so the two absence
+  assertions cannot pass having observed nothing. The sibling: `gate_a13_target_plan` ran the target
+  release's `bin/supervision.sh` under a bare `bash -c` — PATH's shell again, the one no gate reads —
+  and its refusal says the crontab block *"could not be installed here"*, blaming the RELEASE for
+  this host's PATH `bash`. That is the misattribution class this card exists to end, being committed
+  by one of its own gates; it now uses `$BASH` too, and has its own assertion in the same case.
 
 - **card#9814** — **`release-pr-guard` R7 refuses a release PR that skipped archiving the previous
   release (release flow step 13), so the red lands on the release that owes the step.** Before it,

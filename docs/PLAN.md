@@ -669,10 +669,17 @@ rule violations anyone could have committed at the time.
     `bin/deploy.sh`, which never runs A1, so a release that RAISES the floor would meet it inside the
     window with the app down. A release predating the card declares none, and that is said out loud and
     is not a refusal — refusing it would make every rollback undeployable for want of a line it could
-    not have carried. **And the window runs the interpreter the gates measured**: the re-exec hands over
-    `$BASH`, this process's own shell, instead of going through the target's `#!/usr/bin/env bash` — so
-    `somebash bin/deploy.sh` on a host whose PATH `bash` is older no longer passes both gates and then
-    dies in the window on the shell neither of them read.
+    not have carried. **And every bash the deploy starts is the interpreter the gates measured**: the
+    re-exec hands over `$BASH`, this process's own shell, instead of going through the target's
+    `#!/usr/bin/env bash`, and A13 reads the release's `bin/supervision.sh` under `$BASH` rather than a
+    bare `bash -c`. So `somebash bin/deploy.sh` on a host whose PATH `bash` is older no longer passes
+    both gates and then dies in the window on a shell neither of them read — and A13 no longer reports
+    *"the crontab block of `bin/supervision.sh` at &lt;sha&gt; could not be installed here"*, a statement
+    about the RELEASE, when what failed was this host's PATH `bash`. **That is asserted, not argued**:
+    the self-test starts one deploy through an explicit interpreter and, with a recording pass-through
+    standing in for PATH's `bash`, requires that neither the window nor A13 appears in its log —
+    reverting either hand-over reds exactly that case. The ordinary cases cannot see the difference,
+    because they start the deploy through its shebang, where the two interpreters are one process.
   - **git.** Every read of the release out of the object database passes its path as `:(literal)<path>`,
     so a git that does not know pathspec magic fails or mis-answers all of them — and the first arrives
     as *"git could not read server/composer.json"*, a statement about the release that is not the cause.

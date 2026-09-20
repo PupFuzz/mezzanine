@@ -155,12 +155,18 @@ set -Eeuo pipefail
 #   · `"${ref_note[@]}"`   A7's refusal, empty for any ordinary ref name. The shell DIES, and the
 #     refusal it was in the middle of printing never appears: exit 1, no banner, no promise.
 #   · `"${files[@]}"`      checkout_lock_holders, empty on a FIRST deploy, when no daemon lock file
-#     exists yet. Measured: this one does NOT kill the deploy. The call site is inside a `$( )`, so
+#     exists yet. MEASURED: this one does NOT kill the deploy. The call site is inside a `$( )`, so
 #     the SUBSHELL dies, the parent reads an empty answer and carries on reporting that nothing was
 #     running — which happens to be true on a first deploy. Only the self-test's `no_shell_death`
-#     tripwire can see it. `restart_daemons` reads the same array again in its own body, where an
-#     empty one WOULD kill the run; no path reaches THAT one empty, because the relaunch above it
-#     has created the lock files by then.
+#     tripwire can see it.
+#     `restart_daemons` reads that same array again in its own body, where an empty one WOULD kill
+#     the run. REASONED, then measured, and the two are marked apart because they were established
+#     differently: the reasoning is that the relaunch above it has created the lock files by then,
+#     so no path reaches it empty; the measurement is the below-floor CI run, where the FIRST-DEPLOY
+#     case's `exit 0` assertion passes on bash 4.3 — that run drives restart_daemons to completion
+#     on the very interpreter the empty expansion would die on. ⇒ That assertion is also what would
+#     CATCH the reasoning being wrong: were some path to reach it empty, it would stop being an
+#     `exit 0` on 4.3 and the control would red on a third site instead of the two it names.
 #
 # ⛔ WHETHER A GIVEN EXPANSION CAN BE EMPTY IS A WHOLE-PROGRAM PROPERTY, NOT A SYNTACTIC ONE, which
 # is the second half of why a scan cannot answer this. `bad`, `missing`, `stale`, `present`, `hs`
@@ -170,10 +176,14 @@ set -Eeuo pipefail
 # the only paths that leave the array `()` set ENV_LINES_UNREADABLE or ENV_LINES_READ_FAILED, which
 # both loops test before they run.
 #
-# ⚠ SO THE LIST ABOVE IS NOT A UNIVERSAL, AND NOTHING RE-DERIVES IT. It is a hand audit, and hand
-# audits of exactly this question have now been wrong in both directions: the first named three
-# guarded sites as hazards and missed `files`; the second added `ENV_LINES`, which the measurement
-# above then removed. Do not read it as the population. What IS mechanical is the pair of CI runs
+# ⚠ SO THE LIST ABOVE IS NOT A UNIVERSAL, AND NOTHING RE-DERIVES IT. It is a hand audit, and two
+# hand audits of exactly this question have already been wrong. THE FIRST (card#9616's design
+# review, F2) named three sites — `ref_note`, `ENV_LINES` and `why`. `ref_note` was right; the other
+# two are not hazards at all (`why` is initialised non-empty at both of its assignments, and see
+# `ENV_LINES` above); and it missed `files`. THE SECOND (this file's own header at 03a46b4) kept
+# `ENV_LINES`, dropped `why` — naming it correctly among the guarded — and still missed `files`,
+# which the round-2 review found and the measurement above then settled both ways. Do not read the
+# list as the population. What IS mechanical is the pair of CI runs
 # below — they exercise whatever sites the suite reaches, enumerated or not, and `no_shell_death`
 # in the self-test is what makes a site visible when it degrades instead of dying. So nothing here
 # scans: the floor is where the SUITE was seen to pass and the minor below it is where it FAILED.
@@ -1791,7 +1801,9 @@ phase_a() {
     "through, and phase B's are inside the maintenance window, with the app down." \
     "" \
     "Run this deploy with bash $BASH_FLOOR or later. Whichever interpreter you run it with is the one" \
-    "measured here AND the one the re-exec hands the maintenance window to, so there is one bash to fix."
+    "measured here, the one the re-exec hands the maintenance window to, and the one A13 reads the" \
+    "release's bin/supervision.sh under — every bash this deploy starts. So there is one bash to fix," \
+    "and the \`bash\` that happens to be first on PATH is not consulted by any of the three."
   local missing=()
   for c in git php composer npm curl crontab flock fuser setsid ps cgi-fcgi timeout; do
     command -v "$c" >/dev/null 2>&1 || missing+=("$c")
@@ -2704,8 +2716,17 @@ gate_a13_target_plan() {
       "A release without it cannot be supervised by this deploy."
   }
   printf '%s\n' "$target_sup" > "$work/supervision.sh"
+  # ⛔ `"$BASH"`, THIS PROCESS'S OWN INTERPRETER, NOT PATH'S (card#9616 review r3). This used to be a
+  # bare `bash -c`, which is the same defect the re-exec had and is worse HERE, because of what this
+  # gate says when the subprocess fails: "the crontab block of bin/supervision.sh at <sha> could not
+  # be installed here" — a statement about THE RELEASE. A1 and A6b hold THIS bash to the two floors
+  # and say nothing about PATH's, so on a host where those differ an old PATH bash would fail this
+  # subprocess on its own constructs and the deploy would blame the release being deployed for it.
+  # That misattribution is the class this card exists to end, and one of its own gates was making it.
+  # Running the target's supervision.sh under the interpreter the floors were checked against is
+  # also what makes A13's judgement about the RELEASE rather than about which bash came first.
   # shellcheck disable=SC2016 # expanded by the bash it is handed to, not by this one
-  eval_err="$(env -u BASH_ENV bash -c '
+  eval_err="$(env -u BASH_ENV "$BASH" -c '
       set -Eeuo pipefail
       . "$1/supervision.sh"
       for f in supervision_install_plan supervision_lock; do
