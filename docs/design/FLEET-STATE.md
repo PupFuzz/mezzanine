@@ -1314,20 +1314,26 @@ SECTION'S OWN BLOCK is checked against the file it owns"* says how, and what eac
   to the pins deciding which database `RefreshDatabase` rebuilds destructively and which Redis index
   a flush reaches. `DatabasePinTest` now reads the block above through the same reader it reads
   `phpunit.xml` with — one implementation of *what a pin is*, because a second one in a check about
-  two copies disagreeing is the same defect a layer further out — and reds naming the key and both
-  sides' values.
+  two copies disagreeing is the same defect a layer further out — and reds naming the key and
+  printing what each copy declares.
   **The population is the pin set itself, not a list anyone maintains:** the key sets are read from
-  the two files and compared, and every pin's value is then compared, so a pin added to
-  `phpunit.xml` joins this check with no second decision to remember. Naming a subset here instead
-  would be an unguarded restatement of a list, which is the defect this bullet is about.
+  the two files and compared, and then, over `phpunit.xml`'s own set read at run time, each pin's
+  `<env>` value, its `force` and its `<server>` value are compared — so a pin added to the file is
+  compared on the run that adds it, with no second decision to remember. `force` is in there
+  because finding 1 above makes it as load-bearing as the value: a block whose `force="true"` has
+  been dropped isolates nothing once copied into the file. Naming a subset here instead would be an
+  unguarded restatement of a list, which is the defect this bullet is about.
   ⚠ **What the check is WORTH differs by key, and card#9803 established it key by key.** For
   `REDIS_URL` it is the only thing there is: the value is asserted nowhere else, for the reason the
   bullet above gives. For `DB_URL` it is the only thing behind every component but the database
   name, which is all the connection read compares. For `DB_DATABASE`, `REDIS_DB` and
-  `REDIS_CACHE_DB` it is not the only guard — a drifted value copied into the file also aborts the
-  run at the resolved read — but it is the better one: it reds on the DOC edit rather than on the
-  file edit that follows, and it names both copies and which disagrees, where the abort blames an
-  exported variable that in this sequence is not the cause.
+  `REDIS_CACHE_DB` it is not the only guard, and which red you get depends on which copy moved: a
+  drift in THIS DOCUMENT reaches this check and nothing else, one step before a seat copies it into
+  the file, while a drift in the FILE moves a resolved value and so aborts the run at the bootstrap
+  guard before this check runs at all. The check is the better report of the two — it prints what
+  each copy declares and leaves which one drifted to the reader — where the abort blames an
+  exported variable that in this sequence is not the cause, which is why that refusal now names
+  this one beside it.
 - `DB_CONNECTION` is declared **`mysql`** and is **not** forced, deliberately, and `phpunit.xml`
   comments the omission as load-bearing. **There is one engine.** SQLite is not a supported
   configuration anywhere this application runs, so nothing selects a backend any more

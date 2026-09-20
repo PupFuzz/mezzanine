@@ -40,9 +40,12 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   whose whole subject is two copies disagreeing — and reds naming the key and what each side
   declares.
   **It compares every pin, and its population is the pin set rather than a list anyone maintains** —
-  the key sets are read from the two files and compared in both directions, and then every pin's
-  value is compared, so a pin added to `phpunit.xml` joins the check with no second decision for
-  anyone to remember.
+  the key sets are read from the two files and compared in both directions, and then, over
+  `phpunit.xml`'s own set read at run time, each pin's `<env>` value, its `force="true"` and its
+  `<server>` value are compared. A pin added to `phpunit.xml` is compared on the run that adds it,
+  with no second decision for anyone to remember. `force` is compared because § 6.2 finding 1 makes
+  it as load-bearing as the value: a block whose `force="true"` has been dropped isolates nothing
+  once copied into the file, and an exported variable then beats the pin.
   **What the check is worth differs by key, and that was established key by key.** A drifted
   `DB_DATABASE`, `REDIS_DB` or `REDIS_CACHE_DB` copied into `phpunit.xml` also moves a resolved value
   `Tests\TestCase` asserts by name and ABORTS the run on, so for those the new check is the earlier
@@ -58,8 +61,15 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   update the guard's own expected values — making the drift green and the store somebody else's. It
   now names the drifted-pin cause beside the export and says to check both copies before editing
   either.
-  The check was watched failing in each shape before it was trusted: a value changed in § 6.2, a
-  value changed in `phpunit.xml`, and the pin deleted from each side in turn.
+  **Which red you get depends on which copy moved, and it is worth knowing before you read one.** A
+  drift in § 6.2 — of any pin, in a value or in `force` — reaches this check and nothing else, and
+  you get its message naming the key and both copies. A drift in `phpunit.xml` reaches this check
+  for `DB_URL` and `REDIS_URL`, whose values no other check reads. For `DB_DATABASE`, `REDIS_DB` and
+  `REDIS_CACHE_DB` a file-side drift moves a resolved value, so every test errors in the bootstrap
+  guard before this check runs and you get that abort instead — safe, and pointed at the right copy
+  by the clause below.
+  The check was watched failing in each of those shapes before it was trusted, and each red was read
+  rather than counted.
   **There is nothing to do on any host.** No application code, no configuration and no deploy path
   changes, and the check runs with the rest of the PHP suite. It matters when you EDIT either copy:
   move the pins in `server/phpunit.xml` and § 6.2's block in the same commit, and read that section's
