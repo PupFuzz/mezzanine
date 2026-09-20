@@ -729,6 +729,23 @@ rule violations anyone could have committed at the time.
     because the release that MOVES to a newer lockfile format is exactly the one the serving checkout's
     lockfile says nothing about. `npm ci` runs inside the window, so the refusal is that failure moved to
     before anything is touched.
+  - **And the COMPARISON every one of those gates makes refuses operands it cannot read** (card#9984),
+    which until that card it answered instead. `ver_ge` fell through to zeros: an operand that is not a
+    version left every field 0, 0 is neither greater nor less than 0 at any field, and the answer
+    was *"at least"*. No call site is under `set -e` — each is left of a `||` or inside
+    an `if` — so nothing died, and A1 certified a `BASH_FLOOR` it had not read while the deploy carried
+    on with no bash floor enforced at any point. **A comparison that could not be performed is not a
+    comparison that passed**, and there is no third return value a caller could read, so it does not
+    return at all: it refuses by name, the way A1c already refuses an `npm --version` that is not a
+    version. The asymmetry it closes is that A6b has always refused a non-version `BASH_FLOOR` in the
+    TARGET release while this copy's own went unread. **The predicate is therefore not total** — a
+    caller wanting a soft answer establishes its operand first, as A1c, A6 and A6b each already do.
+    It also no longer splits its operands with a here-string, which is a temporary file on every bash
+    below 5.1 and therefore on a supported host: a read that failed there reached the same
+    fall-through with no bad input at all. ⚠ **What makes that read fail is narrower than it looks and
+    is recorded at the function** — bash validates `$TMPDIR` and falls back to `/tmp`, `/var/tmp`,
+    `/usr/tmp` and `.`, measured on 4.4 — so no fixture here can produce it without root, and what the
+    self-test pins is the property rather than one host condition that reached it.
 - **The `.env` refusals above rest on a MIRROR, and the mirror's agreement with what it mirrors is a
   standing CI property** (card#9591). A5 cannot ask PHP what `server/.env` means — at phase A the config
   cache is stale by construction and the host may have no working app — so `bin/deploy.sh` re-implements

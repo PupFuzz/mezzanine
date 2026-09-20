@@ -2681,7 +2681,17 @@ floor_below="$floor_major.$((floor_minor - 1))"
 # running this suite — so the version is asked of THAT bash, the way deploy.sh itself will read it.
 HOST_BASH_MM="$(bash -c 'printf "%s.%s" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"')"
 HOST_BASH_FULL="$(bash -c 'printf %s "$BASH_VERSION"')"
-bash_pred() { env_lib "$T/none" bash_meets_floor "$@" >/dev/null 2>&1 && echo meets || echo below; }
+# bash_pred <A> <B> — the predicate's answer as text, THREE-VALUED (card#9984). `meets` and `below`
+# are its two verdicts; `refused` is the third answer, for operands it cannot compare — and it has
+# to be told apart from `below` HERE, because a third state folded into a verdict is the whole
+# defect that card fixed. `refuse` exits 1 from inside env_lib's subshell after printing the banner,
+# so the BANNER is the discriminator and a bare `return 1` is not mistaken for it.
+bash_pred() {
+  local out rc=0
+  out="$(env_lib "$T/none" bash_meets_floor "$@" 2>&1)" || rc=$?
+  case "$out" in *"⛔ REFUSED — "*) echo refused; return 0 ;; esac
+  [ "$rc" -eq 0 ] && echo meets || echo below
+}
 eq "bash_meets_floor: $floor_below is BELOW the floor $BASH_FLOOR_HERE" below "$(bash_pred "$floor_below" "$BASH_FLOOR_HERE")"
 eq "bash_meets_floor: $BASH_FLOOR_HERE is exactly the floor, and meets it" meets "$(bash_pred "$BASH_FLOOR_HERE" "$BASH_FLOOR_HERE")"
 eq "bash_meets_floor: a later major meets it" meets "$(bash_pred "$((floor_major + 1)).0" "$BASH_FLOOR_HERE")"
@@ -2689,6 +2699,47 @@ eq "bash_meets_floor: a later major meets it" meets "$(bash_pred "$((floor_major
 eq "bash_meets_floor: $floor_major.10 is not below $floor_major.4" meets "$(bash_pred "$floor_major.10" "$floor_major.4")"
 eq "bash_meets_floor: 4.3 is below 4.4" below "$(bash_pred 4.3 4.4)"
 eq "bash_meets_floor: 4.4 meets 4.4" meets "$(bash_pred 4.4 4.4)"
+
+# ── ver_ge: the fields, and the operands it will not compare (card#9984) ───────────────────────
+# The split behind this predicate no longer goes through a here-string (bin/deploy.sh states why).
+# These hold the REPLACEMENT to the same field semantics the old one had — A6 hands it three-field
+# PHP versions and A12 hands it a bare major, so neither shape is incidental.
+eq "ver_ge: the third field is compared too" below "$(bash_pred 8.4.1 8.4.2)"
+eq "ver_ge: a field the operand does not have reads as 0, so 8.4 is below 8.4.2" below "$(bash_pred 8.4 8.4.2)"
+eq "ver_ge: …and 8.4 therefore MEETS 8.4.0" meets "$(bash_pred 8.4 8.4.0)"
+eq "ver_ge: a non-numeric suffix is truncated, so 8.5.0RC1 counts as its release" meets "$(bash_pred 8.5.0RC1 8.5.0)"
+eq "ver_ge: a leading-zero field is decimal and not octal (4.09 is 4.9)" meets "$(bash_pred 4.09 4.9)"
+eq "ver_ge: a bare major is a floor of its own — A12 compares npm against \`7\`" meets "$(bash_pred 9.2.0 7)"
+eq "ver_ge: …and npm 6.14.0 is below that same bare 7" below "$(bash_pred 6.14.0 7)"
+
+# ⛔ AND THE OPERANDS A COMPARISON CANNOT BE MADE OUT OF — the fails-open half of card#9984, driven
+# straight into the predicate with the VALUES that produce it. Until that card each of these
+# answered `meets`: an operand that is not a version left every field 0, 0 is neither greater nor
+# less than 0 at any field, and the function returned 0. Every caller is a floor gate reading
+# that as "the floor is met", and none of them is under `set -e` (each is left of a `||` or inside
+# an `if`), so nothing died and nothing was refused — the host the gate exists to stop deployed.
+# ⚠ THE EMPTY OPERANDS ARE NOT HYPOTHETICAL INPUTS: they are what a `<<<` read that FAILED used to
+# leave behind, which is the route the card was filed on. The construct is gone, so what is pinned
+# here is the property rather than the one host condition that reached it.
+eq "ver_ge: both operands empty — what a failed read leaves — is REFUSED, never 'meets'" \
+   refused "$(bash_pred "" "")"
+eq "ver_ge: an empty HOST version is refused, not read as 0" refused "$(bash_pred "" "$BASH_FLOOR_HERE")"
+eq "ver_ge: an empty FLOOR is refused, not read as 0 — which every version 'meets'" \
+   refused "$(bash_pred "$BASH_FLOOR_HERE" "")"
+eq "ver_ge: a floor that is not a version at all is refused, not truncated to 0" \
+   refused "$(bash_pred "$BASH_FLOOR_HERE" banana)"
+eq "ver_ge: a HOST version that is not a version is refused too" refused "$(bash_pred banana "$BASH_FLOOR_HERE")"
+# …and the refusal says what it could not do, rather than reporting a floor verdict it never reached.
+VER_GE_OUT="$(env_lib "$T/none" bash_meets_floor "" "" 2>&1)"; VER_GE_RC=$?
+eq  "ver_ge refusal: exit 1" 1 "$VER_GE_RC"
+has "ver_ge refusal: the ⛔ REFUSED banner, so it is a verdict and not a death" "⛔ REFUSED — " "$VER_GE_OUT"
+has "ver_ge refusal: names the comparison it could not perform" \
+    "a version comparison this deploy cannot perform" "$VER_GE_OUT"
+has "ver_ge refusal: names BOTH operands as at fault when both are" "NOT A VERSION: the first, ''; the second, ''" "$VER_GE_OUT"
+has "ver_ge refusal: names the chain it was called through, so the gate that asked is identifiable" \
+    "Called through: ver_ge bash_meets_floor" "$VER_GE_OUT"
+hasnt "ver_ge refusal: reports no floor verdict, since it reached none" "is below this script's floor" "$VER_GE_OUT"
+no_shell_death "ver_ge refusal" "$VER_GE_OUT"
 # ONE READER: what A6b takes out of a release's text, and what deploy-selftest.yml reads this file's
 # floor with, is bash_floor_declared — held here to the value the file really declares, so a workflow
 # pattern of its own cannot drift away from the gate's.
@@ -2742,6 +2793,30 @@ nonsense_bash_floor() { sed -i 's/^BASH_FLOOR=.*/BASH_FLOOR=banana/' "$1/bin/dep
 mkfix bash_target_floor_unreadable nonsense_bash_floor
 run_refusal "a release whose BASH_FLOOR is not a version" \
   "declares BASH_FLOOR='banana', which is not a version" --dry-run
+
+# ⭐ AND THE SERVING COPY'S OWN DECLARATION, WHICH NOTHING READ AS A VERSION UNTIL card#9984 — the
+# un-flagged half of the case directly above. A6b refuses that value in the TARGET release; A1
+# COMPARED it and answered. `ver_ge` truncated `banana` at its first non-digit, read the floor as 0,
+# found this host's bash greater and returned "meets", so phase A certified a floor it had not read
+# and the whole dry run exited 0 with no bash floor enforced at any point — the fails-open shape,
+# end to end, at the gate. The v1 mutator breaks the SERVING copy's line; `floor_at_host` — A6b's
+# own control mutator, reused — gives the RELEASE a floor this host meets, so the release is
+# well-formed and A1 is the only gate at issue.
+# ⚠ Every `hasnt` below is a step the OLD code reached and this one must not: they are what makes
+# this case a measurement of A1 rather than of whichever later gate happened to stop the run. The
+# one about `banana` is also the fixture's own integrity check — a v2 mutator that silently stopped
+# matching would leave the RELEASE declaring `banana` too, and A6b would refuse it in those words.
+mkfix bash_serving_floor_unreadable floor_at_host nonsense_bash_floor
+run_refusal "this copy's own BASH_FLOOR is not a version (A1)" \
+  "a version comparison this deploy cannot perform: '$HOST_BASH_MM' against 'banana'" --dry-run
+has "an unreadable serving floor: names which operand it could not read" \
+  "NOT A VERSION: the second, 'banana'" "$OUT"
+hasnt "an unreadable serving floor: never reported as a floor this host's bash MET" \
+  "meets BASH_FLOOR" "$OUT"
+hasnt "an unreadable serving floor: not blamed on the release being deployed, whose floor is intact" \
+  "declares BASH_FLOOR='banana'" "$OUT"
+hasnt "an unreadable serving floor: refused in A1, before any gate read the release" "ok — PHP" "$OUT"
+no_shell_death "an unreadable serving floor" "$OUT"
 
 no_deploy_sh() { rm -f "$1/bin/deploy.sh"; }
 mkfix bash_target_no_deploy_sh no_deploy_sh

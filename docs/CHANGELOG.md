@@ -27,6 +27,29 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9984** — **`bin/deploy.sh`'s version comparison refuses operands it cannot read, so a
+  `BASH_FLOOR` that is not a version is refused by name instead of certified.** Until this change
+  the comparison behind every one of phase A's version floors — A1's bash floor, A6's PHP floor,
+  A6b's floor for the release being deployed, A12's npm floor — fell through to zeros on an operand
+  that was not a version: every field read 0, 0 is neither greater nor less than 0, and the answer
+  was *"at least"*. None of them asks it under `set -e`, so nothing stopped. **What that cost:
+  edit `BASH_FLOOR=` at the top of your serving copy of `bin/deploy.sh` to anything that is not a
+  `<major>.<minor>` — blank it, quote it wrong, write `v4.4` — and the next `bin/deploy.sh` run
+  printed no complaint about it, enforced no bash floor at all, and went on to open the
+  maintenance window.** It now stops in phase A, before anything is touched, naming the
+  comparison it could not perform and which of the two operands is not a version; the deploy script
+  already refused exactly that value when a RELEASE declared it, and this is the same refusal for
+  your own copy. Nothing changes for a well-formed floor: every comparison this repository makes
+  answers as it did before. **If a deploy of yours starts refusing with *"a version comparison this
+  deploy cannot perform"*, read the two operands it prints** — one is this host's own version
+  (`$BASH_VERSINFO`, `php -r 'echo PHP_VERSION;'`, `npm --version`) and the other is a floor
+  declared by a release (`BASH_FLOOR=`, `require.php` in `server/composer.json`, `lockfileVersion`
+  in `server/package-lock.json`), and whichever of them is not a version is what to fix.
+  The same change drops the here-strings that split those operands. A here-string is a temporary
+  file on every bash below 5.1, which is above the floor `BASH_FLOOR` declares, so on a supported
+  host a temp-file failure reached that same fall-through with no bad input at all; the split is
+  now parameter expansion, which needs no file, no pipe and no subshell.
+
 - **card#9803** — **`docs/design/FLEET-STATE.md` § 6.2 owns the suite's store-isolation pin values
   and carries them as a verbatim XML block; the suite now checks that block against
   `server/phpunit.xml`.** Nothing compared the two, so the document that OWNS the pins could

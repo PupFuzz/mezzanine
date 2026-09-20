@@ -1390,13 +1390,82 @@ php_require_constraint() {
 # A non-numeric suffix (`8.5.0RC1`, `8.4.1-dev`) is truncated at the first non-digit, which
 # treats a release candidate as its release — the permissive direction, and the one composer
 # itself takes with a host PHP.
+#
+# ⛔ AN OPERAND IT CANNOT COMPARE IS REFUSED, NEVER ANSWERED (card#9984). It used to fall through to
+# zeros: an operand that is not a version left every field 0, 0 is neither greater nor less than 0
+# at any field, and the function returned 0 — "A is at least B". MEASURED, by the cases in
+# bin/deploy.selftest.sh that drive this predicate: with the pre-card body restored, a floor
+# operand that is EMPTY and one reading `banana` each answered MEETS. Nothing died on the way,
+# because every call site invokes it where `set -e` does not apply (left of a `||`, or inside an
+# `if`), so A1 certified a `BASH_FLOOR` it had not read and the deploy carried on with no bash floor
+# enforced at all — a check that cannot fail on the population it guards (canon #9), failing OPEN,
+# and the asymmetry is that A6b has always refused exactly that value in the TARGET release's
+# declaration while this copy's own went unread.
+# A comparison that could not be performed is not a comparison that passed, and there is no third
+# RETURN VALUE a caller could read: every call site is `… || refuse` or `if ! …`, so a non-zero
+# status means "below the floor" there and the NEXT caller added would inherit that same two-valued
+# reading. The answer therefore does not come back at all — it exits through `refuse`, by name, the
+# way A1c refuses an `npm --version` that is not a version rather than reading it as a version of
+# nothing. `refuse`, not `not_established`: every caller runs only from `phase_a` (A3b's note states
+# that rule and why).
+# ⇒ THIS PREDICATE IS NOT TOTAL. A future caller that wants a soft answer for a string that may not
+# be a version establishes that itself first, as A1c, A6 and A6b each already do for their floors.
+#
+# ⛔ AND NO HERE-STRING, WHICH IS WHAT THE SPLIT BELOW IS FOR. Both operands used to be read with
+# `IFS=. read -r -a a <<< "$1"`, and a here-string is a TEMPORARY FILE on every bash below 5.1 —
+# which is above the BASH_FLOOR declared at the top of this file, so on a SUPPORTED host that is
+# what it is (bash 4.4 `redir.c`, `r_reading_string` → `here_document_to_fd` →
+# `sh_mktmpfd("sh-thd", MT_USERANDOM|MT_USETMPDIR, …)`; read in the 4.4 release tarball,
+# 2026-09-20). A read that fails there leaves the array empty, which is the fall-through above,
+# reached with no bad input at all.
+# ⚠ WHAT IT TAKES TO MAKE THAT READ FAIL IS NARROWER THAN IT LOOKS, and it is written down here
+# because the obvious fixture does NOT produce it: bash validates `$TMPDIR` with `stat` + `W_OK` and
+# falls back to `/tmp`, `/var/tmp`, `/usr/tmp` and then `.` (4.4 `lib/sh/tmpfile.c`, `get_tmpdir` →
+# `file_iswdir`). MEASURED on bash 4.4 built from the GNU tarball: with `TMPDIR=/nonexistent` and a
+# working directory this user cannot write to, the here-string still SUCCEEDS — it lands in `/tmp`,
+# which on that host was writable. So the failing host is one where no directory in that chain is
+# usable at all — a full `/tmp`, or a locked-down account — which no fixture here can produce
+# without root. ⇒ The construct is removed rather than tested around, and what IS tested is the
+# property above: an operand this function did not read is never answered as a floor that was met,
+# whatever left it unread.
+#   · The replacement is PARAMETER EXPANSION, which is not a redirection at all: no temporary file,
+#     no pipe, no fork and no subshell, so there is nothing left for a temp directory to break and
+#     the split stays in this function's own scope. Nothing in it is newer than bash 2.
+#   · NOT a pipe into `read` (`printf … | IFS=. read -r -a a`): the read would run in a SUBSHELL and
+#     the fields would never reach the caller — the same silently-empty answer by another route.
+#   · NOT process substitution (`< <(printf …)`): where `/dev/fd` is unavailable bash falls back to
+#     a NAMED FIFO under `$TMPDIR`, which is this same hazard on the hosts least likely to be tested.
+#   · NOT an unquoted expansion split on IFS (`set -- $1`): that re-opens globbing on the operand.
 ver_ge() {
-  local i x y
-  local -a a b
-  IFS=. read -r -a a <<< "$1"
-  IFS=. read -r -a b <<< "$2"
-  for i in 0 1 2; do
-    x="${a[i]:-0}"; y="${b[i]:-0}"
+  local a="$1" b="$2" bad="" i x y
+  # `$bad` carries TEXT, not the operand, so an operand that is itself EMPTY still trips the test
+  # below — which is the case that matters: an unread operand is the empty one.
+  case "$a" in [0-9]*) ;; *) bad="the first, '$a'" ;; esac
+  case "$b" in [0-9]*) ;; *) bad="${bad:+$bad; }the second, '$b'" ;; esac
+  # `"${FUNCNAME[*]}"` is NOT in the empty-array class the top of this file warns about: it is
+  # expanded inside a function, where FUNCNAME always holds at least this frame.
+  [ -z "$bad" ] || refuse \
+    "a version comparison this deploy cannot perform: '$1' against '$2'" \
+    "\`ver_ge\` compares dotted versions numerically, field by field, and an operand that does not" \
+    "begin with a digit is not one it can read." \
+    "NOT A VERSION: $bad" \
+    "It does NOT read such an operand as 0 and does NOT fall through to \"at least\": every caller" \
+    "of this predicate is a FLOOR gate, and a false answer there reads as \"the floor is met\"," \
+    "which lets a host the gate exists to refuse deploy anyway." \
+    "" \
+    "Called through: ${FUNCNAME[*]}." \
+    "" \
+    "The operands are this host's own versions (\`\$BASH_VERSINFO\`, \`php -r 'echo PHP_VERSION;'\`," \
+    "\`npm --version\`) and a floor declared by a release (\`BASH_FLOOR=\` at the top of" \
+    "bin/deploy.sh, \`require.php\` in server/composer.json, \`lockfileVersion\` in" \
+    "server/package-lock.json). Whichever of the two above is not a version is what to fix."
+  # The fields, consumed from the front — as many as the loop below names, which is the same
+  # depth the indexed read it replaces compared. A field an operand does not have leaves the
+  # remainder empty, which reads as 0 below, exactly as the old `${a[i]:-0}` did.
+  for i in 1 2 3; do
+    x="${a%%.*}"; y="${b%%.*}"
+    case "$a" in *.*) a="${a#*.}" ;; *) a="" ;; esac
+    case "$b" in *.*) b="${b#*.}" ;; *) b="" ;; esac
     x="${x%%[!0-9]*}"; y="${y%%[!0-9]*}"
     x="${x:-0}"; y="${y:-0}"
     [ "$((10#$x))" -gt "$((10#$y))" ] && return 0
@@ -1411,6 +1480,9 @@ ver_ge() {
 # its own for one reason: `BASH_VERSINFO` cannot be faked inside a running bash, so a selftest
 # cannot drive A1 by lying about the host. It drives THIS with the versions either side of the
 # floor, and drives the two gates end to end by moving the FLOOR instead.
+# ⚠ IT INHERITS `ver_ge`'s THIRD ANSWER (card#9984) and is therefore not two-valued either: an
+# operand that is not a version ends the run through `refuse` rather than returning a verdict, so
+# `bash_meets_floor … || refuse` below cannot report "below the floor" for a floor it never read.
 bash_meets_floor() { ver_ge "$1" "$2"; }
 
 # bash_floor_declared — the BASH_FLOOR a copy of this script declares, read from its TEXT on stdin:
@@ -1806,6 +1878,14 @@ phase_a() {
   # bare exit 1 with neither the ⛔ banner nor the "Nothing was changed" promise. That is the exit
   # code the table above reserves for "refused, nothing was touched", reached by a death. So the
   # bash is refused here, by name, before anything else this script does can depend on a newer one.
+  #
+  # ⚠ `set -e` DOES NOT APPLY TO THE LEFT OF THIS `||`, which is why the comparison itself has to be
+  # incapable of answering wrongly rather than merely incapable of lying (card#9984). A failure
+  # inside `bash_meets_floor` here does not end the run — it just looks like a verdict — so a
+  # comparison it could not perform exits through `refuse` from inside `ver_ge`, and the only two
+  # things that reach this line are the floor being MET and the floor being MISSED. `$BASH_FLOOR` is
+  # the one operand nothing else validates: A6b reads the TARGET release's declaration and refuses
+  # one that is not a version, and this line is where THIS copy's own is first read as one.
   bash_meets_floor "$HOST_BASH_VERSION" "$BASH_FLOOR" || refuse \
     "bash $BASH_VERSION is below this script's floor, BASH_FLOOR=$BASH_FLOOR" \
     "bin/deploy.sh is MEASURED to pass its own selftest on bash $BASH_FLOOR and to FAIL it on the" \
@@ -2065,11 +2145,20 @@ phase_a() {
     "carrying a credential, which is the configuration A3c exists to refuse (card#9832)."
   # ⛔ MATCHED IN THE SHELL, WITH NO HERE-STRING AND NO SUBSHELL. `while read … <<< "$remotes"` is
   # the obvious spelling and it is the wrong one HERE: bash before 5.1 backs a here-string with a
-  # TEMPORARY FILE, and this gate runs BEFORE the `.env` loader — so on a host whose TMPDIR is gone
-  # (card#9816's own fixture) it would die on `cannot create temp file for here-document`, with no
-  # banner and no promise, and take the loader's refusal — which names that cause correctly — with
-  # it. Nothing on the runner this suite usually runs on would show that: bash 5.1 and later use a
-  # pipe. `deploy-selftest.yml`'s bash-floor job runs the whole suite at BASH_FLOOR, where it would.
+  # TEMPORARY FILE, and this gate runs BEFORE the `.env` loader — so on a host with nowhere to put
+  # one it would die on `cannot create temp file for here-document`, with no banner and no promise,
+  # and take the loader's refusal — which names that cause correctly — with it.
+  # ⚠ CORRECTED (card#9984): this used to name card#9816's own fixture, a TMPDIR pointing at a
+  # directory that is not there, as the host condition that produces that death. It does not.
+  # `mktemp` is an external command and fails on such a TMPDIR, which is why that fixture works for
+  # the scratch-file refusals — but BASH validates `$TMPDIR` itself (`stat` + `W_OK`) and silently
+  # falls back to `/tmp`, `/var/tmp`, `/usr/tmp` and then `.` (4.4 `lib/sh/tmpfile.c`, `get_tmpdir`
+  # → `file_iswdir`; MEASURED on bash 4.4 built from the GNU tarball, from a working directory this
+  # user cannot write to, where the here-string still succeeds). The death needs the WHOLE chain
+  # unusable — a full `/tmp`, a locked-down account — which no fixture here can produce without
+  # root. ⇒ The construct choice below stands and the reasoning for it is unchanged; what is
+  # withdrawn is the claim that a named fixture would demonstrate it. Nothing on the runner this
+  # suite usually runs on would show it either: bash 5.1 and later use a pipe.
   # A `case` over the list bracketed by newlines needs no file and no child, and `$REMOTE` is
   # quoted inside the pattern, so it is matched LITERALLY and not as a glob — `*`, `o*`, `origi?`
   # and `[o]rigin` are each refused against a list holding `origin`, and so are `orig`, `rigin`
