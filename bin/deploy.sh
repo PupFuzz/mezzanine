@@ -107,7 +107,12 @@
 #
 # CONFIG (environment; every default is derived, none is guessed):
 #   MEZZ_DEPLOY_ROOT      the checkout to deploy        [default: the repo this script lives in]
-#   MEZZ_REMOTE           git remote to fetch from      [default: origin]
+#   MEZZ_REMOTE           the NAME of a remote of the checkout being deployed, to fetch from
+#                         [default: origin]. ⛔ A NAME, NEVER A URL: `git fetch` would take a URL,
+#                         and a URL can carry a credential that this script's own messages print
+#                         and that git redacts in its own errors for some transports and not
+#                         others. A3c refuses a value that is not among `git remote`'s names, in
+#                         phase A, without echoing it (card#9832).
 #   MEZZ_FPM_BIN          the PHP-FPM binary whose opcache settings A14 reads [default:
 #                         php-fpm<this host's CLI PHP minor>, e.g. php-fpm8.5 — derived; see below]
 #   MEZZ_DAEMON_STOP_TIMEOUT_S  seconds the previous daemons get to exit after SIGTERM [default: 30]
@@ -1972,6 +1977,105 @@ phase_a() {
       "$(git --version 2>/dev/null || echo 'git --version printed nothing')"
   fi
 
+  # A3c — MEZZ_REMOTE NAMES A REMOTE OF THIS CHECKOUT (card#9832). `git fetch` takes a URL as
+  # happily as a name, and a URL can carry a credential — so `MEZZ_REMOTE=https://user:token@host/…`
+  # is a configuration git accepts and an operator deploying a private checkout may reasonably
+  # reach for, while the header above documents the variable as a NAME. Every later mention of
+  # `$REMOTE` then puts that credential on the operator's screen and in this deploy's log: A7's
+  # step line prints it before anything can fail, and A7's and A8's refusals print it — measured
+  # against the tree before this gate, one refused run put the whole URL on screen five times over,
+  # in A7's step line and in four lines of the fetch refusal that followed it. ⇒ Per canon #20 the
+  # question is not which file was read but whether a secret VALUE can reach an output stream, and
+  # through a supported configuration it can.
+  #
+  # ⛔ AND GIT'S OWN REDACTION IS NOT A BACKSTOP: it is PER-TRANSPORT, and it is not this script's
+  # to rely on. Measured, git 2.53.0, fetching a URL that carries a fake credential —
+  #     https://…  `fatal: unable to access 'https://host/o/r.git/': …`  — the credential STRIPPED
+  #     git://…    `fatal: unable to look up user:secret@host:1 …`       — VERBATIM
+  #     a path     `fatal: '/no/such/path' does not appear to be a …`    — VERBATIM
+  # So for one transport git redacts and for another it does not, and either way its message is on
+  # the operator's screen before this script sees it. ⇒ REDACTION IS THE WEAKER HALF AND IS NOT THE
+  # FIX: the value is refused HERE instead, before the first line that could carry it.
+  #
+  # ⛔ BY MEMBERSHIP IN `git remote`, NEVER BY PATTERN-MATCHING THE STRING FOR `://` OR `@`. A
+  # pattern is a guess about what a URL looks like, and it is wrong in the direction that costs an
+  # operator a correctly configured deploy: `backup@nas`, `git@github` and a bare `@` are all LEGAL
+  # remote names (measured, git 2.53.0 — a remote name is a refname component, and `@` is allowed
+  # in one), so a rule keyed on `@` refuses a host that is set up exactly right. Membership is also
+  # COMPLETE in the other direction, for a reason rather than by luck: a refname may not contain
+  # `:` (measured, git 2.53.0 — `git remote add a:b <url>` answers `'a:b' is not a valid remote
+  # name`), and every URL git fetches from carries one, `https://host/…`, `file://…`, `git://…` and
+  # the scp-style `user@host:path` alike. So no URL can BE the name of a configured remote, and no
+  # URL passes. ⚠ THE ONE FETCH TARGET WITH NO `:` IS A BARE FILESYSTEM PATH, and it is disposed of
+  # rather than left unexamined: it carries no credential, and it reaches the fetch only where
+  # somebody has configured a remote whose NAME is that path — which is a configured remote, and is
+  # exactly what this gate asks for.
+  #
+  # ⛔ AND THE REFUSAL DOES NOT ECHO THE VALUE, which is the whole of the point: a refusal that
+  # quoted the rejected MEZZ_REMOTE to explain itself would emit the credential it exists to keep
+  # out of the log. It names the VARIABLE and lists the remotes this checkout HAS, and those are
+  # names — `git remote` with no options prints one name per line and no URL (measured, git 2.53.0;
+  # `git remote -v` is the form that prints URLs, and is deliberately not the form called here).
+  # ⚠ THE COST IS PAID KNOWINGLY: an operator who merely mistyped a remote NAME does not get their
+  # typo echoed back. Echoing "only when the value looks safe" would be the same pattern-matching
+  # guess by another route, one more rule to keep true, and wrong the first time a value that looks
+  # safe is not. The list of names that WOULD have worked is what makes the typo findable instead.
+  #
+  # AFTER A3, NEVER BEFORE IT, for A3b's reason one step along: without A3 a failed `git remote`
+  # would be read as "MEZZ_REMOTE is wrong" when the real cause is a checkout git cannot open at
+  # all. And BEFORE A7, which is where `$REMOTE` is first printed — that ordering is what makes
+  # this a gate rather than a second opinion. It refuses through `refuse`, like every other gate
+  # reachable only from `phase_a` (A3b states why).
+  #
+  # ⛔ AND `git remote`'s OWN STATUS IS READ (card#9646's class). Unguarded under `set -Eeuo
+  # pipefail` a failure here would end phase A with git's status and no banner and no promise. THE
+  # EMPTINESS IS NOT THE ANSWER EITHER: a `git remote` that failed hands back the same empty string
+  # a checkout with no remotes hands back, so a membership test alone would refuse on the wrong
+  # cause. What is NOT established is whether MEZZ_REMOTE names a remote — not that it does not.
+  local remotes="" remotes_rc=0
+  remotes="$(git_at remote)" || remotes_rc=$?
+  [ "$remotes_rc" -eq 0 ] || refuse \
+    "git could not list the remotes of $DEPLOY_ROOT (\`git remote\` exited $remotes_rc)" \
+    "What git printed is above this refusal. A3 passed — git opened the repository — and what" \
+    "failed is the read of its remote configuration." \
+    "Whether MEZZ_REMOTE names a remote of this checkout is NOT established; this is not \"it does" \
+    "not\". Nothing was fetched and no ref was resolved." \
+    "MEZZ_REMOTE's value is not printed here, by this refusal or by any other: it may be a URL" \
+    "carrying a credential, which is the configuration A3c exists to refuse (card#9832)."
+  # ⛔ MATCHED IN THE SHELL, WITH NO HERE-STRING AND NO SUBSHELL. `while read … <<< "$remotes"` is
+  # the obvious spelling and it is the wrong one HERE: bash before 5.1 backs a here-string with a
+  # TEMPORARY FILE, and this gate runs BEFORE the `.env` loader — so on a host whose TMPDIR is gone
+  # (card#9816's own fixture) it would die on `cannot create temp file for here-document`, with no
+  # banner and no promise, and take the loader's refusal — which names that cause correctly — with
+  # it. Nothing on the runner this suite usually runs on would show that: bash 5.1 and later use a
+  # pipe. `deploy-selftest.yml`'s bash-floor job runs the whole suite at BASH_FLOOR, where it would.
+  # A `case` over the list bracketed by newlines needs no file and no child, and it is exact:
+  # `$REMOTE` is quoted, so it is matched literally and not as a glob, and a remote name is a
+  # refname component, which cannot contain a newline.
+  local remote_is_configured=0
+  case $'\n'"$remotes"$'\n' in
+    *$'\n'"$REMOTE"$'\n'*) remote_is_configured=1 ;;
+  esac
+  if [ "$remote_is_configured" -ne 1 ]; then
+    local remote_names="  (none — this checkout has no remotes configured at all)"
+    [ -z "$remotes" ] || remote_names="$(printf '%s' "$remotes" | sed 's/^/  · /')"
+    refuse "MEZZ_REMOTE does not name a remote of $DEPLOY_ROOT" \
+      "ITS VALUE IS NOT PRINTED, AND THAT IS THIS REFUSAL'S POINT. \`git fetch\` accepts a URL as" \
+      "well as a remote name, and a URL can carry a credential — so MEZZ_REMOTE may BE a secret," \
+      "and a refusal that quoted it to explain itself would put that secret on this screen and in" \
+      "this deploy's log. Read the value where you set it, not here (card#9832)." \
+      "" \
+      "MEZZ_REMOTE must be the NAME of a remote of this checkout. The names it has are:" \
+      "$remote_names" \
+      "" \
+      "Set MEZZ_REMOTE to one of those, or add the remote you mean and pass its NAME:" \
+      "  git -C $DEPLOY_ROOT remote add <name> <url>" \
+      "A URL is refused even when it carries no credential: nothing here can tell one that does" \
+      "from one that does not without inspecting it, and whether git redacts a URL in its OWN fetch" \
+      "error depends on the transport — measured, git 2.53.0: an https URL is reported with the" \
+      "credential stripped and a git:// one verbatim — which is not this script's to rely on."
+  fi
+
   # A4 — a clean tree. A modified file on the prod checkout IS the hand-deploy D-13 forbids, and
   # the checkout below would either clobber it or fail. Either way the operator must see it now.
   #
@@ -2142,9 +2246,11 @@ phase_a() {
     "git could not fetch $REMOTE (\`git fetch\` exited $fetch_rc)" \
     "What git printed is above this refusal. WHICH of these it is, git says and this deploy does" \
     "not guess:" \
-    "  · $REMOTE could not be reached, or refused this host's credential, or MEZZ_REMOTE names no" \
-    "    remote of this checkout — git says \`does not appear to be a git repository\` or \`Could" \
-    "    not read from remote repository\` (measured, git 2.53.0: exit 128 for both)." \
+    "  · $REMOTE could not be reached, or refused this host's credential, or its configured URL" \
+    "    names nothing git can fetch from — git says \`does not appear to be a git repository\` or" \
+    "    \`Could not read from remote repository\` (measured, git 2.53.0: exit 128 for both)." \
+    "    It is NOT \"MEZZ_REMOTE names no remote of this checkout\": A3c established that it does," \
+    "    by membership in \`git remote\`, before this fetch ran (card#9832)." \
     "  · a ref of THIS CHECKOUT that git could not read — \`bad object refs/…\`, exit 1. A fetch" \
     "    reads this checkout's own tips to tell $REMOTE what it already has, so that failure is in" \
     "    the object store HERE and not at $REMOTE. It is the store A8's refusal names the repair" \

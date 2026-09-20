@@ -27,6 +27,41 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9832** — **`bin/deploy.sh` refuses a `MEZZ_REMOTE` that is not the NAME of a remote of the
+  checkout, in phase A, before anything is touched — and without printing the value.** The variable
+  has always been documented as a git remote NAME, but `git fetch` takes a URL just as readily, and
+  a URL can carry a credential: `MEZZ_REMOTE=https://user:token@host/org/repo` is an ordinary thing
+  for an operator deploying a private checkout to set, and git accepts it. Every later mention of
+  the value then put that credential on the operator's screen and in the deploy log — measured on
+  the previous tree, five times over in one refused run, in the *"Fetching …"* step line and in four
+  lines of the fetch refusal that followed. **git's own redaction is not a backstop:** measured, git
+  2.53.0, an `https://` URL is reported with the credential stripped and a `git://` one verbatim, so
+  it is per-transport, it is not this script's to rely on, and either message is on screen before the
+  script sees it. Refusing the value at the boundary is therefore the fix and redaction is the weaker
+  half.
+  **The test is MEMBERSHIP in `git remote`, never a pattern match for `://` or `@`.** `backup@nas`
+  and a bare `@` are legal remote names — a remote name is a refname component — so a pattern would
+  refuse a host that is configured exactly right; and membership is complete in the other direction
+  for a reason rather than by luck, since a refname may not contain `:` and every URL git fetches
+  from carries one.
+  **The refusal does not echo what it rejected**, which is the whole of its point: it names the
+  VARIABLE, says outright that the value is withheld, and lists the remotes this checkout HAS, which
+  are names — `git remote` with no options prints no URL. The cost is paid knowingly: an operator who
+  merely mistyped a name does not get the typo echoed back, and the list of names that would have
+  worked is what makes it findable. `git remote`'s own status is read too, so a `git remote` that
+  FAILED is refused as *"whether `MEZZ_REMOTE` names a remote is NOT established"* rather than as a
+  value that names nothing.
+  **What to do if you set `MEZZ_REMOTE` to a URL:** add the remote to the deploy checkout once
+  (`git -C <deploy root> remote add <name> <url>`) and set `MEZZ_REMOTE` to that NAME. Hosts that
+  leave `MEZZ_REMOTE` unset are unaffected — `origin` is a remote of any checkout this deploy runs
+  on — and a host that had set it to a configured remote's name is unaffected as well.
+  `bin/deploy.selftest.sh` gains the credential-bearing URL refused with the value absent from the
+  output, a positive twin that observes the same string PRESENT so the absence is a measurement
+  rather than a needle that could never appear, `backup@nas` deploying (which is what reds the
+  pattern match), a configured non-default remote deploying, the default `origin` path unchanged, a
+  checkout with no remotes at all, and a `git remote` made to fail by the suite's git shim — a
+  status nothing can make a fixture produce, since a config git cannot read fails A3 first.
+
 - **card#9616** — **`bin/deploy.sh` refuses a host whose `bash`, `git` or `npm` is too old — by name,
   in phase A, before anything is touched.** Until now A1 asked only whether those binaries were
   PRESENT; PHP alone had a version gate. So a host that was too old got partway in: `npm ci` failed in
