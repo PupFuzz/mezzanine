@@ -27,6 +27,59 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9984** — **`bin/deploy.sh`'s version comparison refuses operands it cannot read, so a
+  `BASH_FLOOR` that is not a version is refused by name instead of certified.** Until this change
+  the comparison behind every one of phase A's version floors — A1's bash floor, A6's PHP floor,
+  A6b's floor for the release being deployed, A12's npm floor — fell through to zeros on an operand
+  that was not a version: every field read 0, 0 is neither greater nor less than 0, and the answer
+  was *"at least"*. None of them asks it under `set -e`, so nothing stopped. **What that cost:
+  edit `BASH_FLOOR=` at the top of your serving copy of `bin/deploy.sh` to anything that is not a
+  `<major>.<minor>` — blank it, or write `v4.4` — and the next `bin/deploy.sh` run printed no
+  complaint about it, enforced no bash floor at all, and went on to open the maintenance
+  window.** It now stops in phase A, before anything is touched.
+  **A mistyped SEPARATOR is caught too, and it is the likelier typo.** `BASH_FLOOR=4,4`, `4.x`,
+  `4-4`, `4x`, `4` and `"4 4"` all begin with a digit, so the comparison used to run, read as far
+  as it parsed, take the floor to be `4.0` and report it met — a host running bash 4.0 deploying
+  past a floor of 4.4. What a floor IS is now one test — `<digits>.<digits>`, exactly two fields —
+  and A1 holds your copy's declaration to it, A6b holds the release's to it, and the `bash-floor`
+  CI job holds the tree it measures to it. **That test is stricter than the one A6b used to
+  apply:** a release declaring `BASH_FLOOR=4.x.5` or `4.4x` used to pass, and the first was
+  enforced as the floor `4.0.5`, which is not the floor that release declared. Both are refused
+  now. **And a copy whose `BASH_FLOOR=` line has been DELETED is refused as that** — it used to
+  end the run with `BASH_FLOOR: unbound variable` and exit 1, with none of the `⛔ REFUSED`
+  banner or the *"Nothing was changed. The previous release is still serving."* promise that
+  tells you a deploy stopped on purpose rather than broke. A blank `BASH_FLOOR=` takes the same
+  refusal.
+  **The same tightening reaches the host's own `npm --version`.** A1c validated it with the
+  same loose pattern, so an npm reporting something like `9.x.5` was compared as `9.0.5` — a
+  number your host never reported. It is refused now. **A prerelease npm still deploys**:
+  `9.2.0-pre.1` is read as its release, which is long-standing deliberate behaviour and is
+  covered by a case so it stays that way. What is refused is a version with any dot-field that
+  does not start with a digit. Among the first three fields — the ones the comparison reads —
+  that is the shape that was being silently read as `0`; beyond them the check is deliberately
+  stricter than the comparison needs — npm's published versions were swept for this, and none
+  of them is affected.
+  **Every comparison between two well-formed versions answers exactly as it did before** —
+  measured field by field against the previous implementation. What changed is only what
+  happens to an operand that is not one.
+  **If a deploy of yours starts refusing with *"declares BASH_FLOOR='…', which is not a
+  version"*, the fix is the line at the top of `bin/deploy.sh`:** it reads
+  `BASH_FLOOR=<major>.<minor>`, alone on its line, at column 0, unquoted or quoted, and the
+  comment above it says how the number is arrived at and that it moves by re-running the
+  measurement rather than by being retyped.
+  **If instead it refuses with *"a version comparison this deploy cannot perform"*, read the two
+  operands it prints** — one is this host's own version (`$BASH_VERSINFO`, `php -r 'echo
+  PHP_VERSION;'`, `npm --version`) and the other is a floor declared by a release (`require.php`
+  in `server/composer.json`, `lockfileVersion` in `server/package-lock.json`), and whichever of
+  them is not a version is what to fix. The commonest way to reach it is a host `php` that answers
+  `php -r 'echo PHP_VERSION;'` with something other than a version: each floor gate validates the
+  FLOOR it read out of the release, and the HOST value it is handed is not validated anywhere
+  else.
+  The same change drops the here-strings that split those operands. A here-string is a temporary
+  file on every bash below 5.1, which is above the floor `BASH_FLOOR` declares, so on a supported
+  host a temp-file failure reached that same fall-through with no bad input at all; the split is
+  now parameter expansion, which needs no file, no pipe and no subshell.
+
 - **card#9803** — **`docs/design/FLEET-STATE.md` § 6.2 owns the suite's store-isolation pin values
   and carries them as a verbatim XML block; the suite now checks that block against
   `server/phpunit.xml`.** Nothing compared the two, so the document that OWNS the pins could

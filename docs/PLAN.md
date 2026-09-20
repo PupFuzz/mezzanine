@@ -729,6 +729,76 @@ rule violations anyone could have committed at the time.
     because the release that MOVES to a newer lockfile format is exactly the one the serving checkout's
     lockfile says nothing about. `npm ci` runs inside the window, so the refusal is that failure moved to
     before anything is touched.
+  - **And the COMPARISON every one of those gates makes refuses operands it cannot read** (card#9984),
+    which until that card it answered instead. `ver_ge` fell through to zeros: an operand that is not a
+    version left every field 0, 0 is neither greater nor less than 0 at any field, and the answer
+    was *"at least"*. No call site is under `set -e` — each is left of a `||` or inside
+    an `if` — so nothing died, and A1 certified a `BASH_FLOOR` it had not read while the deploy carried
+    on with no bash floor enforced at any point. **A comparison that could not be performed is not a
+    comparison that passed**, and there is no third return value a caller could read, so it does not
+    return at all: it refuses by name, the way A1c already refuses an `npm --version` that is not a
+    version. **The predicate is therefore not total** — a caller wanting a stricter reading
+    establishes its operand first, as A1c, A6 and A6b each already do, and as A1 now does.
+    It also no longer splits its operands with a here-string, which is a temporary file on every bash
+    below 5.1 and therefore on a supported host: a read that failed there reached the same
+    fall-through with no bad input at all. ⚠ **What makes that read fail is narrower than it looks and
+    is recorded at the function** — bash validates `$TMPDIR` and falls back to `/tmp`, `/var/tmp`,
+    `/usr/tmp` and `.`, measured on 4.4 — so no fixture here can produce it without root, and what the
+    self-test pins is the property rather than one host condition that reached it.
+  - **And what a BASH_FLOOR IS is now ONE test, wherever it is read** (card#9984 round 2), because the
+    bullet above closed only half of the asymmetry it claimed. A6b has always refused a non-version
+    floor in the TARGET release; A1 handed this copy's own straight to `ver_ge`, whose leading-digit
+    check is the right test for a predicate A6 gives three-field PHP versions and A12 a bare `7`,
+    and far too loose for a bash floor. Measured with A1's `bash_floor_is_version` guard
+    deleted, host bash 4.0, and the floor line mistyped as `4,4`, `4.x`, `4-4`, `4x`, `4` or
+    `"4 4"`: each begins with a digit, so the
+    comparison RAN, truncated at the first non-digit, read the floor as 4.0 and answered MET — bash
+    4.0 deploying past a floor of 4.4. **A floor read as far as it parses and then passed is the
+    same defect as one never read at all**, and the mistyped separator is the likelier typo.
+    **`bash_floor_is_version` states what a floor is, once** — `<digits>.<digits>`, exactly two
+    fields — and A1, A6b and the `bash-floor` job's floor step each hold their own copy of the
+    declaration to it, so no two of them can disagree about what a floor is.
+    ⚠ **A1c had a FOURTH copy of that glob** — the host `npm --version` — which the first pass at
+    this consolidation missed: `9.x.5` passed it and A12 compared it as 9.0.5. It does NOT take
+    `bash_floor_is_version`, because a floor and a host version are not the same shape: an npm may
+    legitimately print a prerelease suffix, which `ver_ge` truncates on purpose. So there are
+    **a named predicate for each, and no EXECUTABLE copy of that glob left** — check it
+    rather than trusting this sentence:
+    `grep -n '\[0-9\]\*\.\[0-9\]\*' bin/deploy.sh | grep -v ':[[:space:]]*#'`
+    should print nothing, the remaining hits being comments that name the glob they
+    replaced. `bash_floor_is_version` is for a declaration,
+    and **`ver_is_comparable`** for a version a tool reported — two or more fields, each
+    beginning with a digit. Among the three fields `ver_ge` actually reads, that is exactly the
+    condition under which it reads each as written instead of substituting 0; beyond them the
+    predicate is deliberately STRICTER than the comparison needs, which the function's own
+    header argues for rather than leaving as an accident (a fourth non-numeric field is never
+    read, so it could not have been misread — it is refused so the rule stays one sentence, and
+    so nothing couples this predicate to `ver_ge`'s field depth). A6 keeps neither: it is handed
+    `${HOST_PHP_VERSION:-0}`, whose `0` sentinel means *php could not be read* and which
+    `ver_ge` already refuses to compare.
+    The floor predicate is STRICTER than the `[0-9]*.[0-9]*` glob it replaces in A6b, which
+    also admitted `4.4x` and `4.x.5`; the second
+    is the one that mattered, since a release declaring it was enforced as the floor 4.0.5 — a
+    floor nobody wrote — rather than refused, and which way that substitution errs is unknowable,
+    exactly as with a PHP constraint A6 cannot evaluate. **Tightening it strands no release**:
+    every published tag was read and none declares a `BASH_FLOOR`, so the stricter predicate
+    rejects nothing that is out there. They do not all reach that conclusion by the same route,
+    though — the tags that CARRY `bin/deploy.sh` take A6b's survivable predates-card#9616 path,
+    while the earliest carry no `bin/deploy.sh` at all and A6b refuses those at its `git_read_at`
+    branch, as it already did before this card. Which tag is in which group is
+    `git cat-file -e <tag>:bin/deploy.sh`, not a list written here.
+    Auditing that table for siblings found the one member of the class that was still a DEATH:
+    with the `BASH_FLOOR=` line DELETED from a serving copy, the first expansion of it died under
+    `set -u` — `BASH_FLOOR: unbound variable`, exit 1, no `⛔` banner and no *"Nothing was
+    changed"* promise, which is the code the exit table reserves for *refused, nothing was
+    touched*, reached by a death. It is answered now, as itself, and so is a blank declaration;
+    the remedy for both is the same line, so they share one refusal. **This is deliberately not
+    symmetric with A6b**, where a release declaring no floor is the survivable
+    predates-card#9616 path: that release could not have declared one, whereas this copy's
+    missing line was edited out.
+    ⚠ `BASH_FLOOR=4 4` unquoted is not a floor any gate ever sees: it is an assignment followed by
+    the command `4`, so that copy dies at 127 with no banner before `main` is reached. Quoted, it
+    is a declaration, and it is refused as one.
 - **The `.env` refusals above rest on a MIRROR, and the mirror's agreement with what it mirrors is a
   standing CI property** (card#9591). A5 cannot ask PHP what `server/.env` means — at phase A the config
   cache is stale by construction and the host may have no working app — so `bin/deploy.sh` re-implements

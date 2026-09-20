@@ -98,24 +98,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      # DERIVED from bin/deploy.sh, through bin/deploy.sh's OWN reader (`bash_floor_declared`, the
-      # one A6b reads a target release's declaration with) — never by a pattern of this file's. A
-      # second pattern here is the restatement that drifts away from the gate it claims to measure.
-      - name: Read BASH_FLOOR out of bin/deploy.sh, with the script's own reader
+      # DERIVED from bin/deploy.sh, through bin/deploy.sh's OWN reader (`bash_floor_declared`) and
+      # its OWN validator (`bash_floor_is_version`) — the two A1 and A6b use — never by a pattern
+      # of this file's. A second pattern here is the restatement that drifts away from the gate it
+      # claims to measure, and card#9984 is what that costs: the copies of "is this a floor?" had
+      # drifted apart, and A1's was loose enough to pass `4,4` and read it as 4.0.
+      - name: Read BASH_FLOOR out of bin/deploy.sh, with the script's own reader and validator
         id: floor
         run: |
           set -Eeuo pipefail
           floor="$( . ./bin/deploy.sh >/dev/null 2>&1; bash_floor_declared < bin/deploy.sh )"
           [ -n "$floor" ] || { echo "::error::bin/deploy.sh declares no BASH_FLOOR — nothing to measure, and an empty derivation is never a pass"; exit 1; }
-          major="${floor%%.*}"; minor="${floor#*.}"
-          # A THREE-COMPONENT FLOOR IS NAMED AS ITSELF. `4.4.1` leaves `minor` as `4.1`, which fails
-          # the integer test below and would have been reported as "ends in .0" — a defect that is
-          # not the one present. It still fails closed; it now fails closed saying the true reason.
+          # A THREE-COMPONENT FLOOR IS NAMED AS ITSELF, before the general test, because the
+          # remedy differs: `4.4.1` is a floor somebody meant, written with a field this job (and
+          # A1, and A6b) does not compare. The general refusal below would say only "not
+          # <major>.<minor>", which is true and less useful.
           case "$floor" in
             *.*.*) echo "::error::BASH_FLOOR='$floor' has three components; this job compares <major>.<minor>, which is what A1 and A6b compare too. Declare the floor as <major>.<minor>."; exit 1 ;;
-            [0-9]*.[0-9]*) ;;
-            *) echo "::error::BASH_FLOOR='$floor' is not <major>.<minor>"; exit 1 ;;
           esac
+          ( . ./bin/deploy.sh >/dev/null 2>&1; bash_floor_is_version "$floor" ) \
+            || { echo "::error::BASH_FLOOR='$floor' is not <major>.<minor> — bin/deploy.sh's own bash_floor_is_version refuses it, so A1 would refuse this tree before anything is touched and there is nothing here to measure"; exit 1; }
+          major="${floor%%.*}"; minor="${floor#*.}"
           # The control is the minor BELOW. A floor at `.0` has no predecessor this arithmetic can
           # name, so it stops rather than measuring the wrong pair.
           [ "$minor" -gt 0 ] || { echo "::error::BASH_FLOOR=$floor ends in .0 — name its predecessor release here deliberately"; exit 1; }
