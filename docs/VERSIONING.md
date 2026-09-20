@@ -252,10 +252,15 @@ correlates on).
 >   genuinely did go away with it is `main`'s `strict: true`, which required a head to be up to date
 >   with its base; no ruleset replaced that, so it is a real consequence of the retirement rather
 >   than an oversight to reverse silently.
-> - **That job shipped as `pr-body-lint`, and it is required by NEITHER layer.** ⛔ **It is also
->   REPORT-ONLY: it prints its verdict and exits 0, so it cannot report a failure to either layer
->   even if one required it.** Two facts, not one — the second is the card#9767 decision, the first
->   is this table's subject, and requiring the context would not by itself make the check block.
+> - **That job shipped as `pr-body-lint`, and it is required by NEITHER layer.** ⛔ **Its VERDICT
+>   ON THE BODY is also REPORT-ONLY: that step prints what it finds and exits 0, so no PR body can
+>   report a failure to either layer even if one required the context.** Two facts, not one — the
+>   second is the card#9767 decision, the first is this table's subject, and requiring the context
+>   would not by itself make the BODY verdict block. ⚠ **Read the scope of that promise exactly:
+>   it is about the body, not about the job.** The job's other steps judge the CHECKOUT — the
+>   vendored-byte pins, the vendored linter's own controls, and `bin/change-pr-body.selftest.py`
+>   (card#9801) — and each of those CAN fail the job, so requiring this context would make a PR
+>   that edits a vendored file or breaks the body generator blocking, which is the intent.
 >   It remains SAFE to require whenever it is made to block: it carries no `branches:` filter, so it
 >   produces a completed run on every PR that can still merge, and its `if:` condition skips only a
 >   CLOSED PR — the form `release-pr-guard` already uses for the same reason, so the deadlock the
