@@ -58,9 +58,12 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   calls `gate_a12_asset_lockfile`, whose line names the floor and the lockfile version it was
   derived from, and the mapping between them stays in the gate where it is enforced.
   ⚠ **Run step 5's command from the repo root of the tree being released, keep stderr, and treat
-  the block as failed unless every labelled line printed.** `bin/deploy.sh` sources
-  `bin/supervision.sh` from beside itself, so a copy of the script without its sibling — or a run
-  from the wrong directory — fails at that source, and stderr is the only surface that reports it.
+  the block as failed unless all THREE of its lines printed — the bash floor, A12's npm line and
+  the PHP floor line.** `bin/deploy.sh` sources `bin/supervision.sh` from beside itself, so a copy
+  of the script without its sibling — or a run from the wrong directory — fails at that source,
+  and stderr is the only surface that reports it. Being checked out on the tree you are releasing
+  matters for a second reason too: the bash and npm lines read whichever rev you name out of git,
+  while `tools/verify-php-floor.py` has no rev form and always reads the files on disk.
 - **card#9801** — **A PR into `dev` now has a body generator, and the shape it emits is the fleet
   standard's.** `bin/change-pr-body.py` writes the scope line, `## Highlights`, optionally
   `## Upgrade warnings`, the `Built:` / `**Coordinated in:**` machine lines and the attribution

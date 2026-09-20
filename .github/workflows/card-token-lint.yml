@@ -40,8 +40,11 @@
 # before (`asset-provenance.yml` told reviewers a red did not block a merge while it did). Read it:
 #   gh api repos/PupFuzz/mezzanine/rules/branches/dev --jq \
 #     '[.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context]|sort'
-# What IS this file's to state is each job's OWN BEHAVIOUR, which is the index above: `pr-body-lint`
-# prints its verdict and exits 0, so requiring its context would not by itself make it block.
+# What IS this file's to state is each job's OWN BEHAVIOUR — which of its STEPS can red and which
+# cannot, a distinction the index above and each job's own block make in the one place each. This
+# paragraph deliberately carries no third copy of it: the unscoped form of that sentence was never
+# true of `pr-body-lint` (its pin and selftest steps red on the checkout), and a copy is how the
+# corrected version and the wrong one end up living side by side.
 #
 # IT ALSO GUARDS EVERY VENDORED FILE'S DECLARED PROVENANCE (`bin/vendor-pin-check.sh`, the first
 # step of each job; its MANIFEST is the list) — the mover the card-token gate extracts its grammar

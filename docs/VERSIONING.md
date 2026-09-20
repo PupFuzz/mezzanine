@@ -126,11 +126,17 @@ reader that stopped at one of them would have reported the other's requirement a
 **A required context is the name of the CHECK RUN, never the workflow file's name** — so a second
 job added to an existing workflow file is a second, independently requirable context, and that is
 why two jobs in one file can be required separately. In this repo that name is the JOB id, because
-no job declares a `name:` — run this from the repo root, where an empty result is a result and not
-a wrong directory:
+no job declares a `name:`. Derive that rather than trusting it, and **do not read "nothing printed"
+as the answer** — the wrong directory prints nothing too. `grep` distinguishes the two in its exit
+status, so read the status, not the silence:
 
 ```
-grep -n '^    name:' .github/workflows/*.yml || echo 'no job declares a name: — the context IS the job id'
+grep -n '^    name:' .github/workflows/*.yml
+case $? in
+  0) echo 'a job DOES declare a name: — its context is that string, not the job id' ;;
+  1) echo 'no job declares a name: — the context IS the job id' ;;
+  *) echo 'THE READ DID NOT HAPPEN (no such path — wrong directory?) — this says nothing either way' ;;
+esac
 ```
 
 ⚠ **A
@@ -303,20 +309,29 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 
    ```
    ( . ./bin/deploy.sh >/dev/null
-     echo "bash floor declared by this tree: $(bash_floor_declared < bin/deploy.sh)"
-     gate_a12_asset_lockfile HEAD "$(npm --version)" )
+     rev=HEAD                                   # or a release's sha — BOTH lines below then speak for that tree
+     echo "bash floor declared by $rev: $(git show "$rev":bin/deploy.sh | bash_floor_declared)"
+     gate_a12_asset_lockfile "$rev" "$(npm --version)" )
    python3 tools/verify-php-floor.py
    ```
 
    A12's line names the npm floor and the lockfile version it came from, so **the note quotes that
    line rather than a number**. ⚠ `npm_lockfile_version` is NOT that floor — it prints the
    lockfile's own `lockfileVersion`, a file-format number, and a note that carries it as a host
-   requirement asks for an npm that does not exist. Pass a release's sha in place of `HEAD` to ask
-   about that release; the gate reads the tree out of git, so it needs a checkout with the commit,
-   and it needs an `npm` on the machine only to have a version to compare against.
+   requirement asks for an npm that does not exist. The gate needs a checkout that HAS `$rev` (it
+   reads the tree out of the object database, not off disk) and an `npm` on the machine, only so
+   there is a version to compare against.
+
+   ⚠ **`verify-php-floor.py` is the odd one out: it reads the CHECKOUT, never a rev** — its only
+   input is `--root <directory>`. So the first two lines speak for whatever `$rev` you name, and
+   the PHP line speaks for the files on disk; **be checked out on the tree you are releasing** and
+   all three agree. Ask about a release you are not checked out on and the PHP line is answering
+   about a different tree.
 
    ⛔ **Keep stderr. Never `2>&1` or `2>/dev/null` here**, and read the block as FAILED unless
-   every labelled line printed. `bin/deploy.sh` sources `bin/supervision.sh` from beside itself,
+   **all three** lines printed — the bash floor, A12's npm line, and the PHP floor line. One
+   missing line is a failure, not a floor that does not apply.
+   `bin/deploy.sh` sources `bin/supervision.sh` from beside itself,
    so a copy of the script without its sibling — or a run from the wrong directory — fails at that
    source, and stderr is the only place that says so. Sourcing runs no deploy: the script's own
    `main` function runs only when the file is executed (§ library mode), which is what lets a
