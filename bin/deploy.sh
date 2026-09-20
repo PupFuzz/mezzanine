@@ -182,7 +182,9 @@ set -Eeuo pipefail
 # two are not hazards at all (`why` is initialised non-empty at both of its assignments, and see
 # `ENV_LINES` above); and it missed `files`. THE SECOND (this file's own header at 03a46b4) kept
 # `ENV_LINES`, dropped `why` — naming it correctly among the guarded — and still missed `files`,
-# which the round-2 review found and the measurement above then settled both ways. Do not read the
+# which the review at `f2ee3d0` found (card#9616 comment 5831) and the measurement above then
+# settled both ways. ⚠ The RECORD is named, not the round: this card has carried two numbering
+# schemes at once — build rounds and review rounds — and they do not line up. Do not read the
 # list as the population. What IS mechanical is the pair of CI runs
 # below — they exercise whatever sites the suite reaches, enumerated or not, and `no_shell_death`
 # in the self-test is what makes a site visible when it degrades instead of dying. So nothing here
@@ -270,10 +272,16 @@ FPM_BIN="${MEZZ_FPM_BIN:-php-fpm$(printf '%s' "$HOST_PHP_VERSION" | cut -d. -f1,
 
 # The bash running THIS PROCESS, as <major>.<minor> — what A1 and A6b hold to a BASH_FLOOR. Read from
 # the interpreter itself rather than from `bash --version`, because the interpreter is the thing that
-# will die. It speaks for the MAINTENANCE WINDOW too, unconditionally, and that is a property of the
-# re-exec rather than a hope about PATH: phase B hands this very interpreter over (`exec "$BASH" …`,
-# phase_b_open_window), so the shell the window runs on is the shell measured here. It was NOT so
-# while the re-exec went through the target's `#!/usr/bin/env bash`; that is what changed, and why.
+# will die.
+# ⇒ IT SPEAKS FOR EVERY BASH THIS SCRIPT STARTS, AND THAT IS THE WHOLE LIST: the MAINTENANCE WINDOW
+# (`exec "$BASH" …` in phase_b_open_window) and A13's read of the release's bin/supervision.sh
+# (`env -u BASH_ENV "$BASH" -c …` in gate_a13_target_plan). Both hand THIS interpreter over by name,
+# so the floors checked here are the floors those run under — a property of the two call sites, not
+# a hope about PATH. Neither was so before card#9616: the re-exec went through the target's
+# `#!/usr/bin/env bash` and A13 through a bare `bash -c`, both of which are whatever `bash` PATH
+# happens to resolve to, which nothing here reads. The supervised daemons are not on this list at
+# all — they start `/bin/sh -c` under `env -i`. `bin/deploy.selftest.sh`'s `window_interpreter`
+# case is what holds the two to it; reverting either call site reds exactly that case.
 HOST_BASH_VERSION="${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
 
 # The supervised daemons, their locks and the exact command cron runs for each — stated ONCE, in
@@ -2644,7 +2652,7 @@ gate_a12_asset_lockfile() {
     "so without a lockfile the same commit can build different assets on different days." \
     "Commit the lockfile (\`npm install\` in server/, commit server/package-lock.json)."
   # …and an EMPTY one is refused as itself, not folded into "a lockfileVersion this gate cannot map"
-  # (card#9616 review r2). The mapping refusal tells the operator to teach A12 a new lockfile version
+  # (the review at `f2ee3d0`, card#9616 comment 5831). The mapping refusal tells the operator to teach A12 a new lockfile version
   # from npm's docs, which is the wrong instruction for a file that declares nothing because it holds
   # nothing: what they have is a truncated or half-written lockfile, and `npm ci` would refuse it too.
   # A6b makes the same distinction about bin/deploy.sh, for the same reason.
@@ -2716,7 +2724,8 @@ gate_a13_target_plan() {
       "A release without it cannot be supervised by this deploy."
   }
   printf '%s\n' "$target_sup" > "$work/supervision.sh"
-  # ⛔ `"$BASH"`, THIS PROCESS'S OWN INTERPRETER, NOT PATH'S (card#9616 review r3). This used to be a
+  # ⛔ `"$BASH"`, THIS PROCESS'S OWN INTERPRETER, NOT PATH'S (the review at `0de8857`, card#9616
+  # comment 5846). This used to be a
   # bare `bash -c`, which is the same defect the re-exec had and is worse HERE, because of what this
   # gate says when the subprocess fails: "the crontab block of bin/supervision.sh at <sha> could not
   # be installed here" — a statement about THE RELEASE. A1 and A6b hold THIS bash to the two floors

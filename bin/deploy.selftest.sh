@@ -342,11 +342,15 @@ exec "$REAL_GIT" "$@"
 STUB
 } > "$T/bin/git"
 # bash: the REAL one, behind a pass-through that RECORDS — the only way to see which interpreter a
-# child was started with (card#9616 review r3). deploy.sh starts three bash processes: the re-exec
-# that runs the maintenance window, A13's read of the target's bin/supervision.sh, and nothing else.
-# A1 and A6b hold THIS PROCESS's bash to the floors, so each of those must be `"$BASH"` and not the
-# `bash` that happens to be first on PATH; a child started through a `#!/usr/bin/env bash` shebang
-# or a bare `bash -c` lands HERE, and the case below asserts that none does.
+# child was started with (the review at `0de8857`, card#9616 comment 5846). deploy.sh starts exactly TWO bash processes: the
+# re-exec that runs the maintenance window (phase_b_open_window) and A13's read of the target's
+# bin/supervision.sh (gate_a13_target_plan). The supervised daemons are not a third — they are
+# started `/bin/sh -c` under `env -i`, which resets PATH as well, so neither this stub nor any
+# bash is in that path. A1 and A6b hold THIS PROCESS's bash to the floors, so both of those
+# children must be `"$BASH"` and not the `bash` that happens to be first on PATH; a child started
+# through a `#!/usr/bin/env bash` shebang or a bare `bash -c` lands HERE, and the case below
+# asserts that neither does. (A1's own message counts THREE interpreters, correctly for what it
+# says: the two children and the process phase A is already running in, which it does not start.)
 # ⛔ ITS SHEBANG IS THE REAL BASH BY ABSOLUTE PATH, not `#!/usr/bin/env bash`: this file IS what
 # `env bash` resolves to once $T/bin is on PATH, so the usual spelling would exec itself forever.
 # Logging is off unless the knob file exists, so every other case in this suite is unaffected by it.
@@ -2850,9 +2854,6 @@ eq "fixture: the .env really is zero bytes" 0 "$(wc -c < "$ROOT/server/.env")"
 run_refusal "a server/.env with no lines at all" "APP_ENV is 'unset', not 'production'" --dry-run
 no_shell_death "zero-line .env" "$OUT"
 
-# `${files[@]}` in checkout_lock_holders — a FIRST deploy, the D-08 scenario this suite had no case
-# for at all: nothing is running, so no daemon lock file exists and the glob behind that array
-# matches nothing. The deploy must still stop nothing, start everything, and say so.
 # ── the window runs the interpreter the GATES measured, not PATH's bash ───────────────────────
 # ⛔ THE ONE PLACE THIS CARD CHANGES PRODUCTION BEHAVIOUR, so it gets a control rather than a claim.
 # A1 and A6b read `BASH_VERSINFO` — THIS PROCESS's shell. The maintenance window used to be started
@@ -2881,6 +2882,9 @@ hasnt "explicit interpreter: nor was A13's read of the release's bin/supervision
   "supervision_install_plan" "$(cat "$T/knobs/bash_calls")"
 rm -f "$T/knobs/bash_calls"
 
+# `${files[@]}` in checkout_lock_holders — a FIRST deploy, the D-08 scenario this suite had no case
+# for at all: nothing is running, so no daemon lock file exists and the glob behind that array
+# matches nothing. The deploy must still stop nothing, start everything, and say so.
 mkfix first_deploy
 eq "fixture: a first deploy really starts with no daemon lock file" "" \
   "$(compgen -G "$ROOT/server/storage/framework/daemon-*.lock" || true)"

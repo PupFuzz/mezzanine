@@ -207,7 +207,7 @@ jobs:
           grep -Eq 'assertions, [0-9]+ FAILED$' /tmp/below-run.log \
             || { echo "::error::the below-floor run exited $rc without reaching its own 'N assertions, M FAILED' summary, so it did not measure the floor — it broke. The tail above is what it printed; this is never a pass."; exit 1; }
           echo "control discriminated: on bash $BELOW the suite ran and its own assertions failed — $(grep -Eo 'assertions, [0-9]+ FAILED$' /tmp/below-run.log) — where on bash $FLOOR the same suite passed in full."
-          echo "the constructs the control reds on (a denominator of one would make the floor unfalsifiable):"
+          echo "the assertions the control reds on, deduplicated — read them for HOW MANY SITES they come from, since a denominator of one would make the floor unfalsifiable:"
           grep -E '^  FAIL ' /tmp/below-run.log | sed 's/ —.*//' | sort -u
 
   # ── the mirror, held against the parser it mirrors ──────────────────────────────────────────────────
