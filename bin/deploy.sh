@@ -2083,12 +2083,19 @@ phase_a() {
   # but A7 would then state that A3c "established that it does name a remote" about a value that
   # names none, the fetch would fail, and the multi-line value would be echoed across that
   # refusal — the five echoes this gate exists to end, reached by the back door.
-  # ⇒ It costs nothing to close: a remote NAME cannot contain a newline by either route into the
-  # config (measured, git 2.53.0 — `git remote add $'two\nlines' <url>` answers `is not a valid
-  # remote name`, and `git config "remote.$'two\nlines'.url" <url>` answers `invalid key
-  # (newline)` and writes nothing), so this rejects no value that could ever have been a name. It
-  # takes the SAME refusal below rather than one of its own: a value that is not a name does not
-  # name a remote, and a second near-identical message would be a second thing to keep true.
+  # ⇒ It costs nothing to close, and the routes into the config are ENUMERATED rather than counted
+  # — "either route" was this comment's own short enumeration until review round 3 named a third
+  # (measured, git 2.53.0):
+  #   · `git remote add $'two\nlines' <url>`       — `is not a valid remote name`, nothing written
+  #   · `git config "remote.$'two\nlines'.url" …`  — `invalid key (newline)`, nothing written
+  #   · hand-editing `.git/config`                 — the file then does not PARSE: `fatal: bad
+  #     config line N in file .git/config`, exit 128 from `git remote`, `git config --list` and
+  #     `git status` alike, so A3 refuses that checkout (its generic branch names that very
+  #     wording) long before this gate is reached.
+  # No route leaves a remote whose NAME carries a newline, so this rejects no value that could
+  # ever have been a name. It takes the SAME refusal below rather than one of its own: a value
+  # that is not a name does not name a remote, and a second near-identical message would be a
+  # second thing to keep true.
   local remote_is_configured=0
   case "$REMOTE" in
     *$'\n'*) ;;

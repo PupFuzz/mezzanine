@@ -3543,7 +3543,9 @@ hasnt "MEZZ_REMOTE as a URL: A7's step line, which prints \$REMOTE before anythi
 hasnt "MEZZ_REMOTE as a URL: and no gate read the release" "ok — PHP" "$OUT"
 has "MEZZ_REMOTE as a URL: says outright that the value is withheld, so the omission reads as a decision" \
   "ITS VALUE IS NOT PRINTED" "$OUT"
-has "MEZZ_REMOTE as a URL: lists the names this checkout DOES have, which are names and not URLs" \
+# ⚠ The label says what this fixture's list IS, not what a list can never contain: `origin` is the
+# only remote here. A list CAN carry a URL where one was written in as a NAME (section head).
+has "MEZZ_REMOTE as a URL: lists the names this checkout DOES have" \
   "  · origin" "$OUT"
 has "MEZZ_REMOTE as a URL: and says how to add the one that was meant" "remote add <name> <url>" "$OUT"
 
@@ -3551,9 +3553,23 @@ has "MEZZ_REMOTE as a URL: and says how to add the one that was meant" "remote a
 # It is a legal name, it deploys, and `Fetching SELFTESTFAKETOKEN` reaches the screen — so the
 # credential needle and the `Fetching` needle are both things this output CAN carry, and their
 # absence above is a measurement rather than a needle that could never appear.
-# ⚠ THE FULL URL AND THE HOST ARE NOT TWINNED, AND CANNOT BE: no URL can be a remote's name, so no
-# passing run can print one. They are asserted absent as the strings CONTAINING the needle that is
-# twinned, which is what makes their absence meaningful without a twin of their own.
+# ⚠ THE FULL URL AND THE HOST ARE NOT TWINNED — and the reason is NOT that no run could print them.
+# ⛔ AN EARLIER WORDING HERE SAID "AND CANNOT BE: no URL can be a remote's name", which is the round-1
+# universal this card's review round 2 falsified on three other surfaces and which survived HERE, in
+# the one place where it is load-bearing: it is the stated reason those two `hasnt`es get no twin, so
+# a maintainer reads it as the leak path being closed by impossibility — the exact conclusion this
+# card exists to prevent, about the question that is still open with the operator.
+# WHAT IS TRUE: no name `git remote add` will CREATE can be a URL, so no twin can be built the way
+# the twin above is. A name written straight in with `git config` CAN be a URL — the hole recorded
+# at this section's head, left untested on purpose — and such a run does NOT merely reach the fetch
+# and fail: measured through this harness, git resolves that name as a REMOTE, fetches from its
+# configured `.url` and EXITS 0. A7's step line has printed the credential by then, and what
+# follows depends on that remote's refspec — in the run measured here A8's refusal printed it a
+# second time, which is a property of the fixture's refspec and not a general one.
+# So a twin IS buildable, with `git config`; it is not built because building it is the
+# characterisation test this section deliberately does not ship.
+# The two needles are asserted absent as the strings CONTAINING the needle that IS twinned, which is
+# what makes their absence meaningful without a twin of their own.
 gitc "$ROOT" remote add "$FAKE_TOKEN" "$ORIGIN"
 export MEZZ_REMOTE="$FAKE_TOKEN"
 run --dry-run
@@ -3600,9 +3616,15 @@ has "no remotes at all: said in words, not as an empty list" \
 # secret got through — every line has to be a real remote name — but A7 would then state that A3c
 # "established that it does name a remote" about a value that names none, the fetch would fail, and
 # the multi-line value would be echoed across that refusal: the leak this gate exists to end,
-# reached by the back door. A remote NAME cannot carry a newline by either route into the config
-# (measured, git 2.53.0: `git remote add` answers `is not a valid remote name`, `git config`
-# answers `invalid key (newline)` and writes nothing), so refusing one costs no legitimate value.
+# reached by the back door. Refusing such a value costs no legitimate one, and the routes INTO the
+# config are enumerated rather than counted — "either route" was this comment's own short
+# enumeration, and review round 3 named a third (measured, git 2.53.0):
+#   · `git remote add $'two\nlines' <url>`        — `is not a valid remote name`, nothing written
+#   · `git config "remote.$'two\nlines'.url" …`   — `invalid key (newline)`, nothing written
+#   · hand-editing `.git/config`                  — the file then does not PARSE: `fatal: bad config
+#     line N in file .git/config`, exit 128 from `git remote`, `git config --list` and `git status`
+#     alike — so that checkout is refused at A3, which names that wording, long before A3c.
+# ⇒ No route leaves a remote whose NAME carries a newline, so the guard rejects no real name.
 # ⭐ THE CONTROLS ARE WHAT MAKE THIS CASE ABOUT THE JOINING: each half is a configured remote of
 # this same fixture and deploys on its own, one variable away.
 MULTILINE_REMOTE=$'origin\nupstream'
