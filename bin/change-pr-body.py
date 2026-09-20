@@ -20,9 +20,9 @@ a rule: hand-write the body, or generate a false release body. This file is the 
 (`~/.local/bin/release-pr-body` → `agent-board-toolkit`), every install runs the same copy, and a
 convention that spans installs is proposed to the fleet, never adopted unilaterally by one seat.
 A `--change` mode on the fleet helper is very likely the right END state — the gap is every
-install's, not this repository's — and the proposal for it is drafted on card#9801. Until the
-fleet agrees one, this repository owns its own route to compliance rather than owing it to a
-change it cannot make.
+install's, not this repository's — but that is a proposal for the fleet to agree, and until it
+does, this repository owns its own route to compliance rather than owing it to a change it cannot
+make. What would move there is the EMISSION; the house map below stays local either way.
 
 WHAT IT EMITS, AND WHY EXACTLY THIS. `skills/release-pr/SKILL.md § PR body` "governs **every** PR
 body an agent writes — feature, fix, docs, dependency, release", so the closed section set binds a
