@@ -64,6 +64,12 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   and stderr is the only surface that reports it. Being checked out on the tree you are releasing
   matters for a second reason too: the bash and npm lines read whichever rev you name out of git,
   while `tools/verify-php-floor.py` has no rev form and always reads the files on disk.
+  ⚠ **The bash line tests the VALUE it read, not whether a line appeared**, because an
+  `echo "… $(reader)"` prints its prefix even when the reader returns nothing — which would be a
+  PASS over a floor nobody read. **No release tag declares a bash floor:** `BASH_FLOOR=` entered
+  `bin/deploy.sh` with card#9616, which `v0.5.0` and every earlier tag predate, so pointing the
+  step at one of those shas prints the refusal on stderr instead of an empty answer. Check any rev
+  with `git show <rev>:bin/deploy.sh | grep -c '^BASH_FLOOR='`.
 - **card#9801** — **A PR into `dev` now has a body generator, and the shape it emits is the fleet
   standard's.** `bin/change-pr-body.py` writes the scope line, `## Highlights`, optionally
   `## Upgrade warnings`, the `Built:` / `**Coordinated in:**` machine lines and the attribution

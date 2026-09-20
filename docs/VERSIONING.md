@@ -126,15 +126,24 @@ reader that stopped at one of them would have reported the other's requirement a
 **A required context is the name of the CHECK RUN, never the workflow file's name** — so a second
 job added to an existing workflow file is a second, independently requirable context, and that is
 why two jobs in one file can be required separately. In this repo that name is the JOB id, because
-no job declares a `name:`. Derive that rather than trusting it, and **do not read "nothing printed"
-as the answer** — the wrong directory prints nothing too. `grep` distinguishes the two in its exit
-status, so read the status, not the silence:
+no job declares a `name:`. Derive that rather than trusting it — **the authoritative form is to ask
+GitHub what it actually reported**, since those strings are the ones a ruleset matches:
+
+```
+gh api repos/PupFuzz/mezzanine/commits/<sha>/check-runs --jq '.check_runs[].name' | sort -u
+```
+
+Offline, the same question is a `grep` — but **do not read "nothing printed" as the answer**: the
+wrong directory prints nothing too, and a workflow whose jobs are indented differently would slip
+past the pattern and answer "no" when the truth is "yes", which is the direction that costs a check
+that never reports. `grep` separates the two failures it CAN see in its exit status, so read the
+status rather than the silence, and treat this as the offline approximation of the command above:
 
 ```
 grep -n '^    name:' .github/workflows/*.yml
 case $? in
   0) echo 'a job DOES declare a name: — its context is that string, not the job id' ;;
-  1) echo 'no job declares a name: — the context IS the job id' ;;
+  1) echo 'no job declares a name: at THIS indentation — the context IS the job id' ;;
   *) echo 'THE READ DID NOT HAPPEN (no such path — wrong directory?) — this says nothing either way' ;;
 esac
 ```
@@ -194,13 +203,14 @@ the agent. What the ruleset buys is a **deliberate act** — approve, or knowing
 admin — rather than a silent merge. That is friction on the path PR #38 took, not a wall across
 it, and it is why the release gate asks *what* is merged rather than *who* merges it.
 
-> ✅ **THE MERGE-METHOD STATE ON `dev`: squash-only for everyone, plus an admin bypass for the
-> back-merge.** Read on 2026-09-13 from `GET /repos/PupFuzz/mezzanine/rulesets/21953633`: ruleset
-> `21953633` "dev — merge method (squash only)" (created 2026-08-31, `enforcement: active`,
-> `refs/heads/dev`) allows only `squash`. Its one bypass actor is `RepositoryRole` `actor_id` 5, the
-> admin role, in mode `always`, and the shared identity reads `current_user_can_bypass: always`.
-> **The bypass exists solely so core rule 5's `main` → `dev` back-merge lands as a merge commit.**
-> This is deliberately the model sola-pm uses (PupFuzz/agent-roundtable#385/#386).
+> ✅ **THE MERGE-METHOD POLICY ON `dev`: squash-only for everyone, plus one bypass, held by a ROLE
+> and existing for the back-merge alone.** A ruleset targeting `refs/heads/dev` — `21953633`, "dev
+> — merge method (squash only)" — must allow `squash` and nothing else, and its single bypass actor
+> must be the ADMIN ROLE rather than a person or a head branch. **That bypass exists solely so core
+> rule 5's `main` → `dev` back-merge lands as a merge commit**, and nothing else in this repository
+> depends on it. The values behind each of those sentences are settings: the re-derive command at
+> the end of this block prints them, and it is what to believe when the two disagree. This is
+> deliberately the model sola-pm uses (PupFuzz/agent-roundtable#385/#386).
 >
 > - **How the back-merge lands:** the admin identity merges the `sync/main-to-dev-post-v<version>`
 >   PR with `gh pr merge <N> --merge`. **Not `solo-self-merge`**: it always squashes, which is what
@@ -310,7 +320,10 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
    ```
    ( . ./bin/deploy.sh >/dev/null
      rev=HEAD                                   # or a release's sha — BOTH lines below then speak for that tree
-     echo "bash floor declared by $rev: $(git show "$rev":bin/deploy.sh | bash_floor_declared)"
+     floor=$(git show "$rev":bin/deploy.sh | bash_floor_declared)
+     [ -n "$floor" ] \
+       && echo "bash floor declared by $rev: $floor" \
+       || echo "NO BASH FLOOR READ AT $rev — a failed read, never 'that tree has no floor'" >&2
      gate_a12_asset_lockfile "$rev" "$(npm --version)" )
    python3 tools/verify-php-floor.py
    ```
@@ -328,9 +341,19 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
    all three agree. Ask about a release you are not checked out on and the PHP line is answering
    about a different tree.
 
+   ⚠ **The bash line tests the VALUE, not itself, and that is the whole reason it is written the
+   long way.** `echo "… $(bash_floor_declared …)"` prints its own prefix whatever the reader
+   returns, so an empty read comes out as a confident line with nothing after the colon and the
+   block exits 0 — a PASS over a floor nobody read. **No release tag has a bash floor to print:**
+   `BASH_FLOOR=` entered `bin/deploy.sh` with card#9616, which is not in `v0.5.0` or anything
+   before it, so the sha form above says so on stderr for every tag that exists today. Check any
+   rev with `git show <rev>:bin/deploy.sh | grep -c '^BASH_FLOOR='`. The same silent empty would
+   follow a rename or a typo of that declaration, which is the case this shape really guards.
+
    ⛔ **Keep stderr. Never `2>&1` or `2>/dev/null` here**, and read the block as FAILED unless
    **all three** lines printed — the bash floor, A12's npm line, and the PHP floor line. One
-   missing line is a failure, not a floor that does not apply.
+   missing line is a failure, not a floor that does not apply, and **the exit status is not the
+   tell**: the missing line and the refusal on stderr are.
    `bin/deploy.sh` sources `bin/supervision.sh` from beside itself,
    so a copy of the script without its sibling — or a run from the wrong directory — fails at that
    source, and stderr is the only place that says so. Sourcing runs no deploy: the script's own
