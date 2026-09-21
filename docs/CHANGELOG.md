@@ -85,8 +85,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   in-memory copy and a `bootstrap/cache/config.php` are the two consumers no file sweep can see, and
   both survive the whole overlap and break at the retire. **And the statement that carries both
   plaintexts now runs with the `mariadb` client's own history turned off**: measured 2026-09-20 both
-  ways, that client filters nothing, and the file it writes is neither a `DB_PASSWORD=` line nor under
-  this account's home — so neither of the document's own sweeps could ever have found it.
+  ways, that client filters nothing, and the file it writes is not a `DB_PASSWORD=` line — and, under
+  `sudo`'s usual `env_reset`, lands in root's home rather than this account's — so neither of the
+  document's own sweeps could ever have found it, on the line shape alone.
   **What is NOT checked is named rather than omitted**, which is the failure this card is really
   about: a declaration with nothing asserting it is a comment, and the next reader gets confidence
   where they should get a question. The application's own store reachability is watched by nothing;

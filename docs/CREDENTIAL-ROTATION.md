@@ -36,8 +36,11 @@ prints the account's password **hashes** — which are secret values, the same w
 `SELECT … FROM mysql.user` are, and neither of those two is needed anywhere here. Step 1 needs
 `SHOW CREATE USER` for a reason it gives, so read that output on the screen, keep it out of any log
 or paste, and put it nowhere but the statement it is for. Every other command in this document
-resolves no secret at all; where a command's *failure* text can print the database user and host,
-it says so where it is used.
+**prints** no secret value. Some do *resolve* one and send it nowhere — the classifier at the top of
+this file puts the live value on a file descriptor rather than in `argv`, which is the whole of why
+it is shaped that way, and step 2's editor puts it on your screen — and what matters is the stream,
+not the resolution. Where a command's *failure* text can print the database user and host, it says so
+where it is used.
 
 ---
 
@@ -350,29 +353,41 @@ goes in the second — writing `mysql_native_password` over a plugin the account
 it authenticates as a side effect of a password change.
 
 ⭐ **Better: do not retype the old value at all, and let that reading write rule 1 for you.** Rule 1
-can carry the **hash** `SHOW CREATE USER` just printed rather than a plaintext — the `*`-prefixed
-40-character string, in whichever shape the output puts it (an account on a single rule prints
-`IDENTIFIED BY PASSWORD '<hash>'`), together with the plugin that output names — copied verbatim into
-the statement in that same session and nowhere else:
+can carry the **hash** `SHOW CREATE USER` just printed rather than a plaintext, copied into the
+statement in that same session and nowhere else. **What you copy depends on the shape that output
+took, and for the single-rule account this document expects, the difference between the two shapes it
+can take is a syntax error rather than a nuance:**
+
+* **The output names a plugin** — `IDENTIFIED VIA ed25519 USING '<…>'`. **Copy that clause verbatim
+  as rule 1.** This is the case where the account's existing plugin comes across by construction
+  instead of asking you to notice it.
+* **The output names no plugin** — `IDENTIFIED BY PASSWORD '*<40 hex>'`, which is what an account
+  created with `IDENTIFIED BY` prints and therefore the shape to expect here. **That clause is not
+  valid inside an `OR` form**: pasting it is refused `ERROR 1064` and nothing changes. The plugin is
+  `mysql_native_password`, and rule 1 is
+  `IDENTIFIED VIA mysql_native_password USING '<that same hash>'` — the hash it printed, re-spelled
+  as `VIA … USING`.
 
 ```sql
 ALTER USER '<the account DB_USERNAME names>'@'<its host>'
-  IDENTIFIED VIA <the plugin SHOW CREATE USER named> USING '<the hash it printed>'
+  IDENTIFIED VIA <mysql_native_password, unless the output named another> USING '<the hash it printed>'
             OR mysql_native_password USING PASSWORD('<the new password>');
 ```
 
-Measured 2026-09-20 on the throwaway server: accepted, both the old and the new value authenticate, a
-third value is refused. **This is the form that cannot be mistyped**, which is exactly what the check
-below exists to catch, and it carries the account's existing plugin across by construction instead of
-asking you to notice it. The cost is a secret hash on your screen and — if you skipped
-`MYSQL_HISTFILE=/dev/null` — in the client's history file.
+Measured 2026-09-20 on a throwaway server of the same version, for both shapes: the statement above is
+accepted, both the old and the new value authenticate, and a third value is refused `ERROR 1045` —
+which is what makes the pass mean something. The verbatim paste of `IDENTIFIED BY PASSWORD '<hash>'`
+into the `OR` form is the `ERROR 1064`, measured the same way. **This is the form that cannot be
+mistyped**, which is exactly what the check below exists to catch. The cost is a secret hash on your
+screen and — if you skipped `MYSQL_HISTFILE=/dev/null` — in the client's history file.
 
-⛔ **Before you touch a single `.env`, prove a consumer still authenticates on the OLD value.** The
-overlap `ALTER USER` replaces **both** rules atomically, so if the old password you restated is wrong
-— a typo, or the wrong backup file, and § "A stale copy of a retired password is a trap" is about the
-superseded values this host has readable on disk — then rule 1 no longer matches what any consumer
-holds and **every consumer is refused immediately**: the full outage the overlap exists to remove,
-arriving unannounced and with nothing between here and step 2 to announce it.
+⛔ **On the overlap path, before you touch a single `.env`, prove a consumer still authenticates on
+the OLD value.** The overlap `ALTER USER` replaces **both** rules atomically, so if the old password
+you restated is wrong — a typo, or the wrong backup file, and § "A stale copy of a retired password
+is a trap" is about the superseded values this host has readable on disk — then rule 1 no longer
+matches what any consumer holds and **every consumer is refused immediately**: the full outage the
+overlap exists to remove, arriving unannounced and with nothing between here and step 2 to announce
+it.
 
 **The `SHOW CREATE USER` check above does not discriminate this.** Measured during this document's
 review (2026-09-20, `card#9660`) on a throwaway server with the old value deliberately mistyped: the
@@ -463,9 +478,30 @@ the skipped one is still working.
 * step 4 says every consumer is healthy;
 * step 5 says every stored copy is on the new value;
 * **every long-lived daemon started AFTER you edited the files in step 2** — positive evidence, not
-  an absence of complaints. `ps -o pid,lstart,args -p <pid>` for each lock `bin/supervision.sh
-  daemons` names, and compare each start time against when you did step 2. A daemon older than that
-  is still authenticating on the old value, and this statement is what breaks it;
+  an absence of complaints. Read step 2's moment off the file rather than out of your memory, and
+  each daemon's start time off the process that holds its lock:
+
+  ```sh
+  cd ~/mezzanine && . bin/supervision.sh   # bash; defines the helper the loop calls, runs nothing
+  ls -l --time-style=full-iso server/.env  # ← when step 2 wrote it, as a fact rather than a memory
+  for d in $(bin/supervision.sh daemons); do
+    pids=$(fuser "$(supervision_lock "$PWD" "$d")" 2>/dev/null |
+           tr -s ' ' ',' | sed 's/^,//;s/,$//')
+    echo "== $d"
+    if [ -n "$pids" ]; then ps -o pid,lstart,args -p "$pids"
+    else echo "   nothing holds its lock: not running, so it carries no copy"; fi
+  done
+  ```
+
+  `bin/supervision.sh daemons` prints the supervised **commands**, not lock paths; `supervision_lock`
+  is the function that turns one into the other, and the loop calls it rather than restating its rule,
+  so a daemon added later — or a lock path moved — is covered without editing this file. Each lock is
+  held by **two** processes, the `flock` wrapper and the `php artisan` child it started, and both
+  carry the daemon's start time. A daemon whose `STARTED` is older than the `.env` mtime is still
+  authenticating on the old value, and this statement is what breaks it: go back to step 3 and restart
+  it. A lock nobody holds means that daemon is not running, so it carries no copy to go stale and cron
+  starts it fresh on the new value. Both branches were run on this host, 2026-09-20 — the second
+  against a lock deliberately left unheld, so the message is a measurement rather than a guess;
 * **`php artisan config:clear` has been run in BOTH checkouts since step 2** — or
   `ls server/bootstrap/cache/config.php`, and the bridge's, shows there was no cache to clear.
 
@@ -513,7 +549,7 @@ wrote on your behalf during the rotation is yours to remember rather than theirs
 |---|---|---|
 | the application reaches the store | `cd ~/mezzanine/server && php artisan migrate:status` | rc 0 means this checkout's `.env` is accepted by the server. **Seen to fail** (2026-09-20): rc 0 healthy, and rc 1 carrying `SQLSTATE[HY000] [1045]` when the same command is run with a deliberately wrong password — so a pass here is evidence rather than decoration. ⚠ the failure text carries the database user and host: read it, do not paste it |
 | the application is serving | `curl -sS -o /dev/null -w '%{http_code}\n' "$APP_URL/up"` | 200 means the app answers. **It says nothing about the store** — `/up` needs no credential (`bin/deploy.sh`'s own smoke step says so). Reading a green `/up` as a healthy database is exactly the false confidence this document exists to remove |
-| the daemons came back | `tail ~/mezzanine/server/storage/logs/daemon-<name>.log` for each name `bin/supervision.sh daemons` prints | a fresh line after the restart, with no access-denied, means that daemon reconnected on the new value |
+| the daemons came back | `tail ~/mezzanine/server/storage/logs/daemon-<name>.log` for each name `bin/supervision.sh daemons` prints | a fresh line after the restart, with no access-denied, means that daemon reconnected on the new value. ⚠ when it is **not** clean, what you are reading is a PDO failure carrying the database user and host: read it, do not paste it |
 | the bridge reaches its store | `P=$(mktemp -d); BRIDGE_DB_WATCH_STATE=$P/state BRIDGE_DB_WATCH_LOG=$P/log ~/.local/bin/bridge-db-watch.sh; echo rc=$?; rm -rf "$P"` — `mktemp -d` rather than a fixed `/tmp/probe.state`, because the watcher writes with `>`, which follows a symlink anybody else on the host could have planted at a predictable path | rc 0 is the bridge's own `DatabaseConnectivityCheck` reporting ok, immediately, without waiting for cron and without disturbing the live state file. rc 1 is `FAILING`, rc 2 is `UNMEASURED` — which is **not** a pass |
 | the bridge works end to end | send a `ping` from the repository's webhook and read the delivery: `gh api repos/<owner>/<repo>/hooks --jq '.[].id'`, then `gh api -X POST repos/<owner>/<repo>/hooks/<id>/pings`, then `gh api "repos/<owner>/<repo>/hooks/<id>/deliveries?per_page=3" --jq '.[].status_code'` | 200 exercises the whole path — HMAC, routing, the store — rather than the connection alone. This is what proved the 2026-09-17 instance fix, and it is the strongest single check here |
 | every stored copy agrees | the derivation at the top of this file | every consumer reads `LIVE`. It compares copies **to each other**, never to what the server accepts |
