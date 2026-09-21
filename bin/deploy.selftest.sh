@@ -3698,7 +3698,7 @@ chmod 640 "$ROOT/server/.env"
 unreadable_before_the_smoke() {
   # shellcheck disable=SC2016,SC2317  # sed's own text, called indirectly by mkfix — both for the same
   # reasons as the mutator above.
-  sed -i 's|^  local url code url_rc=0$|  chmod 000 "$ENV_FILE" # .env made unreadable by the selftest mutant, INSIDE the window\n  local url code url_rc=0|' "$1/bin/deploy.sh"
+  sed -i 's|^  local url="" code url_rc=0$|  chmod 000 "$ENV_FILE" # .env made unreadable by the selftest mutant, INSIDE the window\n  local url="" code url_rc=0|' "$1/bin/deploy.sh"
 }
 mkfix env_unreadable_in_window unreadable_before_the_smoke
 eq "phase-B mutant: the deployed release really drops .env's mode before the smoke read" 1 \
@@ -3722,18 +3722,23 @@ eq "phase-B mutant: the fixture really is unopenable (a root runner cannot hold 
 chmod 640 "$ROOT/server/.env"
 
 # H4b — THE SAME WINDOW, A READ THAT STOPS SHORT, AND THE DIAGNOSTIC PRINTED EXACTLY ONCE (card#9933).
-# H4 makes the OPEN fail, which is silent; this makes the READ fail, which is not — and the count is the
-# point. The smoke step now loads in phase B's own shell before reading the value through a `$( )`, so
-# there are two loads over one file, and bash's read error would be printed by both: the warning says
-# "bash's reason, if any, is above", and two copies of it, one of them from a read whose value nothing
-# used, is the report saying more than the run did. The classifying load is silenced for that reason, and
-# this case is what holds it silenced. A DIRECTORY is the fixture because it OPENS and cannot be READ —
-# § card#9610's H1b uses the same shape through the library — so this is also the only place the phase-B
-# read half is driven end to end; `rm`+`mkdir` at that point leaves `.env` a directory for the rest of
-# this fixture, which nothing after the smoke step reads.
+# H4 makes the OPEN fail, which is silent; this makes the READ fail, which is not — and the COUNT is what
+# this case is for. The smoke step loads in phase B's own shell so that it can read the loader's KIND, and
+# then SKIPS the `$( env_get )` when that load says the file was not read: one load answers, and it is the
+# load whose flags are reported. ⛔ THAT SKIP IS A CORRECTNESS MECHANISM, NOT AN OPTIMISATION — without it
+# the two loads are separate events, the inner one re-attempts the scratch file this one failed to make,
+# and an inner load that succeeds there and then stops short in the READ would print bash's read error
+# with the scratch warning's "the read was never made" directly beneath it. That state needs two coincident
+# faults and no fixture here can produce it; what a fixture CAN see is the second load running at all, and
+# a second load over a file whose read fails prints the diagnostic TWICE. So the count below is the check
+# that guards the skip: restore the unconditional `env_get` and it reds at 2.
+# A DIRECTORY is the fixture because it OPENS and cannot be READ — § card#9610's H1b uses the same shape
+# through the library — so this is also the only place the phase-B read half is driven end to end;
+# `rm`+`mkdir` at that point leaves `.env` a directory for the rest of this fixture, which nothing after
+# the smoke step reads.
 env_directory_before_the_smoke() {
   # shellcheck disable=SC2016,SC2317  # sed's own text, called indirectly by mkfix — as the mutator above.
-  sed -i 's|^  local url code url_rc=0$|  rm -f "$ENV_FILE"; mkdir -p "$ENV_FILE" # .env replaced by a DIRECTORY by the selftest mutant, INSIDE the window\n  local url code url_rc=0|' "$1/bin/deploy.sh"
+  sed -i 's|^  local url="" code url_rc=0$|  rm -f "$ENV_FILE"; mkdir -p "$ENV_FILE" # .env replaced by a DIRECTORY by the selftest mutant, INSIDE the window\n  local url="" code url_rc=0|' "$1/bin/deploy.sh"
 }
 mkfix env_directory_in_window env_directory_before_the_smoke
 eq "phase-B directory mutant: the deployed release really replaces .env before the smoke read" 1 \
@@ -3748,9 +3753,11 @@ has "a .env whose read stops short inside the window: says the deploy is UNVERIF
 has "a .env whose read stops short inside the window: takes the READ's warning, not the scratch one" \
   "its open or its read failed" "$OUT"
 hasnt "a .env whose read stops short inside the window: no DB password is printed" "$FAKE_PW" "$OUT"
-# ⭐ THE COUNT IS THE ASSERTION. Mutation: drop the `2>/dev/null` from the smoke step's classifying load
-# and this reds at 2 while every other assertion here stays green.
-eq "a .env whose read stops short inside the window: bash's diagnostic is printed ONCE, by the read whose value was used" \
+# ⭐ THE COUNT IS THE ASSERTION, and it is the only one that reds on the skip's removal — the warning's
+# TEXT is the same either way, which is why an assertion about the text would not catch it. Mutation, run:
+# call `env_get` unconditionally instead of skipping it when the load says the file was not read, and this
+# reds at 2 while every other assertion in this case and in the scratch case stays green.
+eq "a .env whose read stops short inside the window: bash's diagnostic is printed ONCE, by the one load that ran" \
   1 "$(printf '%s\n' "$OUT" | grep -c 'read error')"
 
 # ── card#9816 — A SCRATCH FILE PHASE A COULD NOT CREATE IS A REFUSAL, AND NAMES THE SCRATCH FILE ──

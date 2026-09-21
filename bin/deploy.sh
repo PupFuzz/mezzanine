@@ -506,6 +506,16 @@ env_lines_load() {
   while IFS= read -r line; do ENV_LINES+=("$line"); done <<< "$content"
 }
 
+# env_file_unread — TRUE when the flags the LAST `env_lines_load` set say $ENV_FILE was not read: it could
+# not be opened at all, or it was opened and no read of it completed. One place, because there are now two
+# callers and a second copy would be a second contract (card#9933): `env_get`, which turns it into status 3,
+# and phase B's smoke check, which asks it of a load IT made so that the status it reports and the KIND it
+# reads come from one load rather than from two events (§ the smoke check).
+# ⚠ IT IS ABOUT THE LOAD IN HAND. It reads globals, so a caller asks it directly after its own
+# `env_lines_load` and never about somebody else's — which is exactly the distinction that makes phase B's
+# use of it sound.
+env_file_unread() { [ "$ENV_LINES_UNREADABLE" = 1 ] || [ "$ENV_LINES_READ_FAILED" = 1 ]; }
+
 # env_get KEY — prints KEY's value and returns 0; returns 1 when no line defines KEY; returns 2, printing nothing,
 # when a line defining KEY is in a form this reader does not read EXACTLY as Laravel does (vlucas/phpdotenv's
 # Dotenv\Parser, then Illuminate\Support\Env::get). Status 2 is never "unset": a check that took an unread value
@@ -544,7 +554,7 @@ env_get() {
   env_lines_load
   # Asked of the LOADER's flags, above every question about content: ENV_LINES is empty in both of these
   # cases, and an empty ENV_LINES is exactly what a file that really sets nothing looks like from here.
-  if [ "$ENV_LINES_UNREADABLE" = 1 ] || [ "$ENV_LINES_READ_FAILED" = 1 ]; then return 3; fi
+  if env_file_unread; then return 3; fi
   # The pattern is the one this reader has always used; what changed in card#9561 r5 is what it runs over.
   # bash's `=~` is ERE, so the text is unchanged — but it matches the lines ENV_LINES holds, which are the
   # lines Dotenv reads, rather than the ones a `\n`-only splitter would have found. The matches are joined
@@ -3756,7 +3766,11 @@ phase_b_post_checkout() {
   # facts about this host, and only the last of them is "unset".
   # ⛔ NO `refuse` ON ANY OF THEM: the window is closed and the new release is serving, so the one promise a
   # refusal makes would be false. The deploy is UNVERIFIED and says so, which is what exit 0 means here.
-  local url code url_rc=0
+  # ⚠ `url` IS INITIALISED HERE, and under `set -u` that is load-bearing rather than tidy: the skip
+  # below reaches the falsy test without assigning it, and a bare `local url` leaves it UNSET, which
+  # kills phase B at `"$url"` — after the window, with the release serving and no warning printed.
+  # Measured: this suite's three in-window cases red at exit 1 with no smoke line at all.
+  local url="" code url_rc=0
   # ⛔ THE LOADER IS RUN HERE, IN THIS SHELL, BEFORE THE READ BELOW PUTS IT INSIDE A `$( )` (card#9933).
   # `env_get` has to be called in a command substitution — that is the only way a value comes back — and
   # a subshell's variables die with it, so the STATUS was all that crossed and every status 3 looked the
@@ -3764,19 +3778,32 @@ phase_b_post_checkout() {
   # `mktemp` that fails: a deploy that FINISHED — exit 0, `✔ DEPLOYED`, the marker removed — whose single
   # warning told the operator that the open or the read of `server/.env` had failed, that the file had
   # stopped being readable inside the window, and that bash's reason was above. The file was readable
-  # throughout, no read was ever made, and no such diagnostic exists. Running the load here costs one more
-  # read of a small file and makes the KIND readable in this shell.
-  # ⚠ THE TWO LOADS CANNOT DISAGREE about it, which is what makes reading this one's flags sound: the
-  # scratch file is opened once per PROCESS and this load is the first (§ env_lines_load), so a load that
-  # gets one leaves the subshell's load unable to fail that way, and a load that does not leaves the
-  # subshell's load failing exactly as this one did.
-  # ⛔ AND IT IS SILENCED, which is a correctness point and not tidiness: on a read that stops short the
-  # loader PRINTS bash's diagnostic, and the warning below says that reason is above it — so an unsilenced
-  # load here would print it twice and the second copy would be from a read whose value nothing used.
-  # The report belongs to the read the VALUE came from, which is the one inside the `$( )`; this load's
-  # job is the flags.
-  env_lines_load 2>/dev/null
-  url="$(env_get APP_URL)" || url_rc=$?
+  # throughout, no read was ever made, and no such diagnostic exists.
+  #
+  # ⛔ ONE LOAD ANSWERS, AND IT IS THE LOAD WHOSE FLAGS ARE READ — that is what the skip below is for, and
+  # it is a mechanism rather than a hope (card#9933 review round 3). Reading this load's KIND beside a
+  # status that came from the OTHER load is only sound in one direction:
+  #   · this load gets its scratch file ⇒ ENV_READ_ERR_FD is set and the subshell INHERITS it, so the
+  #     inner load cannot fail at the scratch step and any 3 it answers is an open or a read — which is
+  #     what the generic warning below says. Sound.
+  #   · this load FAILS at the scratch step ⇒ the descriptor is still empty, so an inner load would
+  #     RE-ATTEMPT `mktemp`: two separate events. The inner one can succeed where this one failed and
+  #     then stop short in the READ, and the scratch warning — "the read was never made" — would print
+  #     directly beneath bash's own read-error diagnostic from that inner read. Two coincident faults,
+  #     and precisely the contradictory report this card exists to end.
+  # So the inner load is not run in that case at all: the file was not read, no key of it has a value,
+  # and this load is both the one that establishes that and the one whose kind is reported. Nothing is
+  # re-derived here — `env_file_unread` is the one place that turns these flags into "not read", and
+  # `env_get` answers its status 3 from the same predicate.
+  # ⚠ NOT SILENCED, and that follows from the skip: on a read that stops short exactly ONE load runs and
+  # its diagnostic is the one the warning means by "bash's reason … is above" (§ the suite's H4b, which
+  # asserts the count). Silencing it here would leave that warning pointing at nothing.
+  env_lines_load
+  if env_file_unread; then
+    url_rc=3
+  else
+    url="$(env_get APP_URL)" || url_rc=$?
+  fi
   # The same rule as every A5 check: what the app has is the value it RECEIVES. An APP_URL Laravel
   # resolves to a falsy value is no URL — `config('app.url')` is null or '' — so it takes the unset
   # case's warning rather than a smoke request to a host named `null` and a failure report naming it.

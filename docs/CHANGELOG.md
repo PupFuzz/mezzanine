@@ -27,7 +27,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
-- **card#9933** — **a `server/.env` the deploy never read, because it could not create the scratch
+- **card#9933** — **a `server/.env` the deploy never read, because it could not open the scratch
   file it reads with, is refused as that — instead of as a read that stopped short, under advice
   pointing at your disks.** Point `TMPDIR` at a directory this deploy cannot write to (or fill it) and
   run `bin/deploy.sh`: A5 used to stop with *"`<path>` was opened but could not be read to its end"*, and
