@@ -115,6 +115,64 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   alongside it; the filename rows were run on this host, the broken form first and failing.
   `docs/design/EVENT-SCHEMA.md` stops glossing that procedure's retire gate as two of its
   conditions in the same act, a partial gloss of a gate being a way to read a gate as met.
+- **card#9933** — **a `server/.env` the deploy never read, because it could not open the scratch
+  file it reads with, is refused as that — instead of as a read that stopped short, under advice
+  pointing at your disks.** Point `TMPDIR` at a directory `mktemp` cannot make a file in — one that is
+  missing, one this deploy cannot write to, or one whose filesystem is out of inodes — and run
+  `bin/deploy.sh`: A5 used to stop with *"`<path>` was opened but could not be read to its end"*, and
+  the lines under it said the open had succeeded so this was neither a permission nor an ownership fault,
+  that a read failing on an already-open file is usually a disk or filesystem one — failing media, a
+  filesystem remounted read-only, a network mount that stopped answering — and that `dmesg` and the mount
+  the file sits on are where that family is visible. **None of that advice applied to your host** — and
+  the one sentence of it that was TRUE, that the open had succeeded, is true on every path that reaches
+  this refusal and so told you nothing. The file had been opened and closed again without a byte being
+  read: what failed was `mktemp`, for a scratch file the loader needs because bash's `read` reports an
+  end-of-file and a read ERROR with the same status and
+  tells them apart only by its diagnostic. The cause was already in the refusal, one line further down,
+  contradicted by everything around it. **What you see now:** *"`<path>` could not be read: no scratch
+  file could be opened for bash's read diagnostic"*, and a body that says the finding is about neither the
+  file nor the disk it sits on and sends you to the directory `mktemp` writes into — `$TMPDIR`, or `/tmp`
+  when that is unset. **What to do about it is unchanged**: give this deploy a temporary directory it can
+  create a file in. (The advice now sends you to free INODES, `df -i`, and says that a `df` at 100% is not
+  on its own the finding: `mktemp` creates an EMPTY file, and a filesystem out of free blocks can still
+  give it one — measured on a 100%-full tmpfs. The old *"…and that it is not full"* pointed at free space, and
+  it was pointing at the wrong number before this change too, here and on every other scratch file the
+  deploy makes; both messages are corrected in this change. The denial of `df` is made for a scratch
+  FILE only: the one scratch DIRECTORY this deploy makes — A13's, for reading your crontab block — is
+  sent to both numbers instead, because a directory can need a data block where an empty file needs
+  none, and that case was not measured.) A read that really does stop short — failing
+  media, a mount that went away — keeps the old headline, the errno bash reported, and the
+  disk-and-`dmesg` advice, which is correct for it.
+  **The same failure in PHASE B is now named too, and that one reached you on a deploy that SUCCEEDED.**
+  Phase B re-executes, so it makes a scratch file of its own — after `php artisan up` has closed the
+  maintenance window and the release is already serving — and when that one failed you were told, on an
+  `✔ DEPLOYED` run that exited 0, that `server/.env`'s open or read had failed, that the file had stopped
+  being readable inside the window, and that bash's reason
+  was printed above. The file was readable throughout, no read was ever made, and there was no such
+  diagnostic; the offered remedy (re-run `--dry-run`, which names the cause at A5) only works while the
+  cause is still there, so a `$TMPDIR` that was missing, unwritable or out of inodes during the deploy and
+  was put right before you re-ran left you a clean
+  dry run and nothing else. That warning now names the scratch file, says `server/.env` may be perfectly
+  readable, says the release IS deployed and serving so that what is missing is the CHECK on it, and says
+  what the `--dry-run` remedy is and is not worth. The deploy still finishes and is still reported
+  UNVERIFIED — this is a warning, not a new failure, and no deploy that used to succeed now stops.
+  **The warning beside it — for a `server/.env` whose open or read really did fail — now names the span
+  it can establish**: the file was readable in phase A and stopped being so *between phase A and this
+  check*, rather than *inside the window*. That load runs after `php artisan up` has closed the window,
+  so a file that went unreadable once the window had closed reached you under a message that sent you
+  looking inside it; the cause it names and the run it sends you to are unchanged.
+  **And the scratch failure that is NOT about `$TMPDIR` is told apart from the one that is**: a scratch
+  file `mktemp` created and this deploy could not OPEN (the realistic cause is how many files it may have
+  open at once) no longer reports `mktemp` as having failed and no longer sends you to check a `$TMPDIR`
+  that is working. Every other reader is unchanged: both failures still set one flag, `env_get` still
+  answers **3** for either, and A10b still acts on the one fact it needs, that the file was not read.
+  The suite is why this survived as long as it did, and that is fixed in the same change: the case for
+  this failure asserted the exit code, the banner and the reason, and the case beside it pinned the shared
+  headline — so the wrong headline was asserted CORRECT and a fully green run reported nothing. The
+  headline is now asserted for this case, the read's is asserted absent from it, and so are the three
+  sentences of disk-and-`dmesg` advice; the in-window failure and the unopenable scratch file each gain a
+  case of their own, the in-window one driven through a whole deploy at the very scratch file phase B
+  makes; and the mutation that reds each of them is named in the case, and was run.
 - **card#9684** — **`docs/VERSIONING.md § Branch model` no longer keeps a copy of this
   repository's settings, so the copy can no longer be wrong.** The section carried a stack of
   dated re-readings — which contexts each branch required on which day, which merge method each
@@ -467,8 +525,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   unified error path: A13's work directory for its isolation check, and git_ref_oid's and
   git_commit_of's stderr files for capturing git's diagnostics on a failed read. When `mktemp`
   failed — measured with TMPDIR pointing at a directory that does not exist, the one condition the
-  fixtures produce; a FULL filesystem is UNTESTED and is a DIFFERENT failure, because `mktemp` can
-  SUCCEED on one and what then fails is the write of git's stderr into the file it made — two of
+  fixtures produce; a filesystem out of BLOCKS is UNTESTED and is a DIFFERENT failure, because `mktemp`
+  can SUCCEED on one and what then fails is the write of git's stderr into the file it made, while a
+  filesystem out of INODES fails `mktemp` and is this failure rather than that one — two of
   them refused with a WRONG CAUSE because the failure went undetected: git_ref_oid and git_commit_of
   are called from inside an `if` or `||`, where `set -e` does not apply, so the script carried on
   with an empty path and refused on a cause it never established ("'main' does not resolve to a
