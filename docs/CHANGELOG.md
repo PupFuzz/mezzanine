@@ -47,6 +47,23 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   the value went to `.mariadb_history` in a fresh `HOME` and to `.mysql_history` in a `HOME` that
   already held only that file, and with the variable neither file received it.
 
+- **card#9684** — **`python3 bin/release-facts.py` prints what a seat cutting a release of this
+  repository needs to know, in one read, and names what it could not verify.** From the tree it
+  lists every CI lane and marks each one whose `pull_request` trigger is filtered, or absent, as
+  never requirable, and it quotes the bash, npm and PHP floors as the readers that enforce them
+  print them. It carries no number of its own. From the GitHub API, with GET requests only, it
+  prints every rule instance on `dev` and `main` verbatim, the bypass actors of each ruleset they
+  come from, and a per-lane `gates` column. A failed read, a non-200 or an empty `[]` prints `NOT VERIFIED`, and
+  that branch's column reads `UNKNOWN`. It then names the facts no script here can establish: the
+  ask-first policy for opening a release PR (cited from `CLAUDE.md` as it reads it), organisation
+  rulesets, whether a target host meets the floors, and bypass actors this credential cannot see.
+  It names the credential it read with and never prints its value. It exits 1 when a job declares
+  a key that makes its status context differ from its job id, which turns "context equals job id"
+  into a checked fact, and it blocks nothing else. The new `release-facts` lane runs its hermetic
+  selftest, in which every case is re-run against a mutated script and must red there, and then
+  the reporter itself, with the report in the step summary. `docs/VERSIONING.md § Release flow`
+  step 7 now says opening the release PR is ask-first and points at the declaration, and step 8
+  points at the reporter.
 - **card#9660** — **The database password now has a rotation procedure that names every consumer
   of it, because the last rotation killed a consumer nobody had written down.** On a host that runs
   this application beside the agent webhook bridge, both authenticate as the **same** MariaDB login
