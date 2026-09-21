@@ -585,6 +585,20 @@ overlap window because seats are upgraded by their own owners on their own sched
 ([`docs/VERSIONING.md § Deploy is not a tag`](../VERSIONING.md#deploy-is-not-a-tag--and-mezzanine-has-two-targets)),
 and a week spans one weekend plus slack.
 
+This rule is not the only place the doctrine applies. The **database** credential of an install that
+runs this application beside the agent webhook bridge is shared the same way — one MariaDB login,
+two consumers — and it rotates in the same order and with the same add-before-retire shape, but its
+overlap **ends on a gate rather than on a clock**: the 7 days above is a fixed period, chosen because
+seats are upgraded by their own owners on their own schedule, while a database overlap runs until that
+procedure's own retire gate is satisfied — every stored copy moved across, every daemon restarted —
+which is minutes of work rather than a week, though the procedure lets it stand for however long
+satisfying that gate takes. It is a window in which a consumer nobody restarted is still succeeding on
+the value being retired, which is why a gate and not a timer is what closes it.
+[`docs/CREDENTIAL-ROTATION.md`](../CREDENTIAL-ROTATION.md) owns that procedure, the consumer
+enumeration, and the measurement showing the engine holds two concurrently-valid passwords. It is
+named here so the two statements of one doctrine can be read against each other instead of drifting
+apart.
+
 ### 3.4 Why identity never comes from the environment
 
 **Measured in this fleet, 2026-08-23.** A seat-detection predicate keyed on the undocumented harness
