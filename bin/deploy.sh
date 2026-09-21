@@ -366,7 +366,7 @@ done
 #   · WHICH OF THOSE TWO EVER SEES THE `scratch` KIND is decided by WHERE each process makes its FIRST load,
 #     and the reason is narrower than "only the first load can take that branch". ENV_READ_ERR_FD is opened
 #     once and reused — but a load that succeeds inside a `$( )` sets the descriptor in the SUBSHELL only,
-#     so the parent's next load finds it empty and re-attempts `mktemp`. bin/env-mirror-diff.sh, which gives
+#     so the parent's next load finds it empty and re-attempts `mktemp`. bin/env-mirror-diff.mirror.sh, which gives
 #     every cell its own subshell, does re-open per cell. What holds in THIS script is that each process's
 #     first load is a MAIN-SHELL one — A5's `env_file_scan` in phase A, and in phase B (a re-exec, so a new
 #     process and a new descriptor) the load the smoke check makes before its read of APP_URL — and a `$( )`
@@ -442,7 +442,7 @@ ENV_LINES_READ_FAILED_WHY=""
 ENV_READ_ERR_FD=
 
 # env_read_err_open — opens ENV_READ_ERR_FD, once. It is the one failure the loader answers for itself: it
-# runs in BOTH phases and inside bin/env-mirror-diff.sh, where neither `refuse` nor `not_established` is the
+# runs in BOTH phases and inside bin/env-mirror-diff.mirror.sh, where neither `refuse` nor `not_established` is the
 # right answer, so it sets the flag — with a KIND of its own, so the callers that tell an OPERATOR can name
 # THIS cause rather than the read's — and lets the caller decide.
 # ⚠ IT HAS TWO FAILURE RETURNS AND THEY ARE NOT THE SAME FAULT (card#9933 review), which matters because
@@ -1056,10 +1056,16 @@ git_read_unusable() {
 #     that way), `set -e` does not apply at all, so the run carried on with an EMPTY path and refused on
 #     a cause nothing established: "'main' does not resolve to a commit on origin" for a ref that is
 #     there, and "git could not resolve the tag …" for a tag git never got to peel.
-# ⚠ A FULL filesystem is a DIFFERENT failure and is UNTESTED here: `mktemp` can SUCCEED on one, and
-# what then fails is the WRITE of git's stderr into the file it made — which this exit never sees. The
-# advice in the refusal below still names fullness — it is a thing to check on a host whose `mktemp`
-# DID fail — but no fixture has produced it; the missing TMPDIR named above is what was measured.
+# ⚠ A filesystem out of BLOCKS and a filesystem out of INODES are DIFFERENT failures, and only the second
+# one reaches this exit. `mktemp` creates an EMPTY file, which costs an inode and no block: on a 100%-full
+# filesystem it SUCCEEDS (measured on a real full tmpfs — card#9932 — exit 0, a real path), and what then
+# fails is the WRITE of git's stderr into the file it made, which this exit never sees and which is
+# card#9932's. Out of INODES `mktemp` FAILS (measured — card#9933's round-4 review — rc 1, with `df`
+# showing free space and `df -i` showing none), and that is the "full" the advice below is written for:
+# it names `df -i`, and it denies `df` at 100% for the FILE kind ONLY. A scratch DIRECTORY is not covered
+# by that denial — a directory needs an inode and, on a filesystem that allocates one for it, a data block
+# as well, which is UNTESTED in either kind here: no fixture has produced a full filesystem at these call
+# sites at all; the missing TMPDIR named above is what was measured.
 # mktemp's own error is NOT silenced: it names the path it tried, which is the TMPDIR mktemp actually
 # read (its ENVIRONMENT's, not necessarily this shell's — § env_lines_load).
 #   · <var> is written with `printf -v`, never returned through `$(…)`: a refusal inside a command
@@ -1074,15 +1080,30 @@ scratch_file() { _scratch "$1" "$2" file; }
 scratch_dir()  { _scratch "$1" "$2" directory -d; }
 _scratch() { # _scratch <var> <what it is for> <file|directory> [mktemp option…]
   local __sc_var="$1" __sc_for="$2" __sc_kind="$3" __sc_out __sc_rc=0
+  local -a __sc_space
   shift 3
   __sc_out="$(mktemp "$@")" || __sc_rc=$?
-  [ "$__sc_rc" -eq 0 ] || not_established "no scratch $__sc_kind could be created for $__sc_for (\`mktemp\` exited $__sc_rc)" \
-    "mktemp's own error is above this line and names the path it tried. mktemp writes under \$TMPDIR, or" \
-    "/tmp when that is unset: check that whichever applies exists, that it names a directory this deploy" \
-    "can write to, and that its filesystem has free INODES (\`df -i\`). A \`df\` at 100% is not on its own" \
-    "the finding here: mktemp creates an EMPTY file, and a filesystem out of BLOCKS can still give it one." \
-    "Nothing was read in its place, so what it was for is not established — this is not a finding about" \
-    "the release."
+  if [ "$__sc_rc" -ne 0 ]; then
+    # ⛔ WHICH `df` DECIDES IT IS THE KIND'S QUESTION, not one answer for both (§ the ⚠ above): the denial of `df` at
+    # 100% is measured for an EMPTY FILE, which costs an inode and no block. A DIRECTORY can cost a block
+    # too, on a filesystem that allocates one for it — unmeasured here — so the directory advice rules out
+    # neither number rather than telling A13's operator to discount the one that may be the finding.
+    __sc_space=(
+      "can write to, and that its filesystem has free INODES (\`df -i\`). A \`df\` at 100% is not on its own"
+      "the finding here: mktemp creates an EMPTY file, and a filesystem out of BLOCKS can still give it one."
+    )
+    [ "$__sc_kind" != directory ] || __sc_space=(
+      "can write to, and that its filesystem has free INODES (\`df -i\`) AND free BLOCKS (\`df\`). Both are"
+      "worth reading for a DIRECTORY: it needs an inode, and on a filesystem that allocates a data block for"
+      "a directory, a block as well — so neither number is ruled out here."
+    )
+    not_established "no scratch $__sc_kind could be created for $__sc_for (\`mktemp\` exited $__sc_rc)" \
+      "mktemp's own error is above this line and names the path it tried. mktemp writes under \$TMPDIR, or" \
+      "/tmp when that is unset: check that whichever applies exists, that it names a directory this deploy" \
+      "${__sc_space[@]}" \
+      "Nothing was read in its place, so what it was for is not established — this is not a finding about" \
+      "the release."
+  fi
   printf -v "$__sc_var" '%s' "$__sc_out"
 }
 
@@ -3828,7 +3849,7 @@ phase_b_post_checkout() {
   elif [ "$url_rc" -eq 3 ] && [ "$ENV_LINES_READ_FAILED_KIND" = 'scratch' ]; then
     warn "server/.env was NOT READ — no scratch file could be opened for bash's read diagnostic, so the read was never made — and no smoke check was made. The deploy is UNVERIFIED. This is not 'APP_URL is unset', and it is NOT a finding about server/.env, which may be perfectly readable: what failed is a scratch file this deploy makes for itself, after the maintenance window closed. $ENV_LINES_READ_FAILED_WHY The release IS deployed and serving; what was not done is the check on it. Fix that and re-run \`bin/deploy.sh --dry-run\`, which reaches the same loader at A5 — and note it can only name this cause while the cause is still there: a \$TMPDIR that was missing, unwritable or out of inodes during this deploy and has been put right since leaves a clean dry run and this line as the only record."
   elif [ "$url_rc" -eq 3 ]; then
-    warn "server/.env could not be read (its open or its read failed; bash's reason, if any, is above) — no smoke check was made. The deploy is UNVERIFIED. This is not 'APP_URL is unset': the file was readable in phase A and stopped being so inside the window. \`bin/deploy.sh --dry-run\` names the cause the way A5 does."
+    warn "server/.env could not be read (its open or its read failed; bash's reason, if any, is above) — no smoke check was made. The deploy is UNVERIFIED. This is not 'APP_URL is unset': the file was readable in phase A and stopped being so between phase A and this check. \`bin/deploy.sh --dry-run\` names the cause the way A5 does."
   elif [ -z "$url" ]; then
     warn "APP_URL is unset — no smoke check was made. The deploy is UNVERIFIED."
   else

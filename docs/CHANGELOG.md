@@ -49,7 +49,10 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   on its own the finding: `mktemp` creates an EMPTY file, and a filesystem out of free blocks can still
   give it one — measured on a 100%-full tmpfs. The old *"…and that it is not full"* pointed at free space, and
   it was pointing at the wrong number before this change too, here and on every other scratch file the
-  deploy makes; both messages are corrected in this change.) A read that really does stop short — failing
+  deploy makes; both messages are corrected in this change. The denial of `df` is made for a scratch
+  FILE only: the one scratch DIRECTORY this deploy makes — A13's, for reading your crontab block — is
+  sent to both numbers instead, because a directory can need a data block where an empty file needs
+  none, and that case was not measured.) A read that really does stop short — failing
   media, a mount that went away — keeps the old headline, the errno bash reported, and the
   disk-and-`dmesg` advice, which is correct for it.
   **The same failure in PHASE B is now named too, and that one reached you on a deploy that SUCCEEDED.**
@@ -65,6 +68,11 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   readable, says the release IS deployed and serving so that what is missing is the CHECK on it, and says
   what the `--dry-run` remedy is and is not worth. The deploy still finishes and is still reported
   UNVERIFIED — this is a warning, not a new failure, and no deploy that used to succeed now stops.
+  **The warning beside it — for a `server/.env` whose open or read really did fail — now names the span
+  it can establish**: the file was readable in phase A and stopped being so *between phase A and this
+  check*, rather than *inside the window*. That load runs after `php artisan up` has closed the window,
+  so a file that went unreadable once the window had closed reached you under a message that sent you
+  looking inside it; the cause it names and the run it sends you to are unchanged.
   **And the scratch failure that is NOT about `$TMPDIR` is told apart from the one that is**: a scratch
   file `mktemp` created and this deploy could not OPEN (the realistic cause is how many files it may have
   open at once) no longer reports `mktemp` as having failed and no longer sends you to check a `$TMPDIR`
@@ -429,8 +437,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   unified error path: A13's work directory for its isolation check, and git_ref_oid's and
   git_commit_of's stderr files for capturing git's diagnostics on a failed read. When `mktemp`
   failed — measured with TMPDIR pointing at a directory that does not exist, the one condition the
-  fixtures produce; a FULL filesystem is UNTESTED and is a DIFFERENT failure, because `mktemp` can
-  SUCCEED on one and what then fails is the write of git's stderr into the file it made — two of
+  fixtures produce; a filesystem out of BLOCKS is UNTESTED and is a DIFFERENT failure, because `mktemp`
+  can SUCCEED on one and what then fails is the write of git's stderr into the file it made, while a
+  filesystem out of INODES fails `mktemp` and is this failure rather than that one — two of
   them refused with a WRONG CAUSE because the failure went undetected: git_ref_oid and git_commit_of
   are called from inside an `if` or `||`, where `set -e` does not apply, so the script carried on
   with an empty path and refused on a cause it never established ("'main' does not resolve to a

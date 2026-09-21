@@ -634,12 +634,21 @@ rule violations anyone could have committed at the time.
   ⛔ **A `$TMPDIR` out of BLOCKS is not on that list, and its absence is the point**: `mktemp` creates an
   EMPTY file, so a filesystem with no space left can still give it one — measured on a 100%-full tmpfs, where
   `mktemp` returned 0 and the `<>` open succeeded, so neither the refusal nor the warning fired at all.
-  INODE exhaustion is the "full" that reaches them. The advice on both scratch-file messages says so now
-  (`df -i`, and a `df` at 100% is not on its own the finding); it used to say *"check … that it is not
-  full"*, which sends an operator to the one number that does not decide this. ⚠ **What a full-by-blocks
-  `$TMPDIR` does instead is card#9932's**, and is neither introduced nor made worse here: the diagnostic
-  write fails, `msg` comes back empty, and because a read error and a clean EOF both return status 1 the
-  loader certifies a failed read as a complete read of an empty file. And **a read of the release
+  INODE exhaustion is the "full" that reaches them. The advice on every scratch-file message names `df -i`
+  now; it used to say *"check … that it is not full"*, which sends an operator to the one number that does
+  not decide this. ⛔ **The DENIAL that goes with it — that a `df` at 100% is not on its own the finding —
+  is made for a scratch FILE and not for a scratch DIRECTORY** — A13's is the one live directory — because what
+  was measured is that an EMPTY FILE costs an inode and no block; a directory can cost a block as well on
+  a filesystem that allocates one for it, which is unmeasured, so `scratch_dir`'s advice names both
+  numbers rather than ruling either out. ⚠ **A full-by-blocks `$TMPDIR` reaches the loader in the same
+  CLASS as card#9932**, and needs a SECOND, COINCIDENT fault before it does anything: on its own the
+  `mktemp` succeeds, the open succeeds, the read of `.env` succeeds, and `rc=1` with an empty `msg` is the
+  ordinary end-of-file path. It is where the read of `.env` ALSO fails that the coincidence bites — the
+  diagnostic write fails into the full scratch file, `msg` comes back empty, and because a read error and
+  a clean EOF both return status 1 the loader certifies a failed read as a complete read of an empty file.
+  That is neither introduced nor made worse here, and it is a THIRD instance of card#9932's class rather
+  than one of the two sites card#9932 names (`git_ref_oid`, `git_commit_of`) — appended to that card so
+  it is not orphaned if those two are fixed and it closes. And **a read of the release
   itself that git could not complete**: every
   precondition that judges the target tree reads it out of the object database before the checkout, and a
   read that FAILED is refused by name (card#9608) — *"the release does not carry this path"* and *"git could

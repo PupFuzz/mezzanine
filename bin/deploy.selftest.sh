@@ -3708,6 +3708,13 @@ eq  "a .env unreadable in phase B: exit 0 — the app is up and this is not a re
 has "a .env unreadable in phase B: names the file, not the key" "server/.env could not be read" "$OUT"
 has "a .env unreadable in phase B: says the deploy is UNVERIFIED" "UNVERIFIED" "$OUT"
 has "a .env unreadable in phase B: points at the run that names the cause" "names the cause the way A5 does" "$OUT"
+# ⭐ AND THE SPAN IT NAMES, which is the other half of the scratch case's `hasnt` on this same literal: with
+# only that `hasnt`, renaming the phrase in bin/deploy.sh would leave a control passing because the literal
+# exists NOWHERE. This `has` is what makes the pair discriminate two live messages. The span is what the
+# code establishes and no more — this load runs AFTER `php artisan up`, so "inside the window" was over-
+# specific (card#9933 round-4 review), while phase A's successful scan is a real lower bound.
+has "a .env unreadable in phase B: names the span the code establishes, not the window" \
+  "stopped being so between phase A and this check" "$OUT"
 # ⚠ THE NEEDLE CARRIES `warn`'s OWN `⚠ ` PREFIX, deliberately. The correct warning QUOTES the wrong cause
 # in order to deny it — "This is not 'APP_URL is unset'" — so a bare `APP_URL is unset` needle matches the
 # RIGHT message and reds on the fix. What discriminates is the wrong branch's own rendering, which is the
@@ -3801,6 +3808,14 @@ has "TMPDIR gone: the headline names the scratch file, not a read of .env that w
   "⛔ REFUSED — $ROOT/server/.env could not be read: no scratch file could be opened for bash's read diagnostic" "$OUT"
 hasnt "TMPDIR gone: never the READ's headline" "was opened but could not be read to its end" "$OUT"
 hasnt "TMPDIR gone: does not send the operator to \`dmesg\` and the mount for a scratch file" "dmesg" "$OUT"
+# ⭐ AND THE NUMBER THE ADVICE NAMES, which nothing asserted until now — the round-4 review found both
+# scratch-advice strings unpinned, so an edit putting free SPACE back would have reded nothing. Which
+# number it is was MEASURED (card#9933 round-4 review): out of inodes fails `mktemp` and reaches this
+# refusal; 100% blocks with inodes free does NOT reach it, which is why the denial below it is here.
+has "TMPDIR gone: the advice names free INODES as the number that decides a failed \`mktemp\`" \
+  "free INODES (\`df -i\`)" "$OUT"
+has "TMPDIR gone: and denies the number that does not — a \`df\` at 100%" \
+  "A \`df\` at 100% is not on its own the finding here" "$OUT"
 hasnt "TMPDIR gone: blames no git read" "⛔ REFUSED — git" "$OUT"
 unlogged "TMPDIR gone: never opened the window" "artisan down"
 
@@ -3820,6 +3835,8 @@ scratch_refused() {
   hasnt "$label: blames no git read" "⛔ REFUSED — git" "$OUT"
   hasnt "$label: the .env loader's own scratch file was let through" \
     "No scratch file could be created for bash's read diagnostic" "$OUT"
+  has "$label: the advice names free INODES, the number a failed \`mktemp\` turns on" \
+    "free INODES (\`df -i\`)" "$OUT"
   unlogged "$label: never opened the window" "artisan down"
   rm -f "$T/knobs/mktemp_passes"
 }
@@ -3836,11 +3853,21 @@ rm -f "$T/knobs/mktemp_passes"
 scratch_refused "A7, git_ref_oid" 1 \
   "no scratch file could be created for git's error output while resolving 'refs/remotes/origin/main'" \
   --dry-run
+# ⭐ THE FILE KIND CARRIES THE DENIAL, and the directory case below does not — the two advice paths are
+# asserted against each other here, because the denial is measured for an EMPTY FILE (an inode, no block)
+# and a directory can cost a block as well. Mutation, run: collapse the two paths back into one and the
+# pair below reds, whichever way it is collapsed.
+has "A7, git_ref_oid: a scratch FILE's advice denies a \`df\` at 100%" \
+  "mktemp creates an EMPTY file, and a filesystem out of BLOCKS can still give it one" "$OUT"
 
 # S2 — A13's work directory: after the loader's, A7's and A8's (both git_ref_oid on refs/remotes/origin/main).
 scratch_refused "A13, the crontab block's work directory" 3 \
   "no scratch directory could be created for A13's reading of $(gitc "$ROOT" rev-parse --short "$V2")'s crontab block" \
   --dry-run
+has "A13's work DIRECTORY: its advice rules out neither number, because a directory can cost a block" \
+  "free INODES (\`df -i\`) AND free BLOCKS (\`df\`)" "$OUT"
+hasnt "A13's work DIRECTORY: and it does not tell that operator to discount a \`df\` at 100%" \
+  "A \`df\` at 100% is not on its own" "$OUT"
 
 # S3 — git_commit_of's peel of an ANNOTATED tag, which is the only path to that file: after the loader's,
 # git_ref_oid on refs/remotes/origin/<tag> (absent) and on refs/tags/<tag> (the tag object).
@@ -3861,8 +3888,9 @@ scratch_refused "A7, git_commit_of's tag peel" 3 \
 #
 # ⛔ WHAT THIS CAUGHT, MEASURED on the tree that had card#9933's A5 half and not this one: the deploy
 # FINISHED — exit 0, `✔ DEPLOYED`, the marker removed — and its one warning said that the open or the read
-# of `server/.env` had failed, that the file had stopped being readable inside the window, and that bash's
-# reason was above. Not one of those was true: no read was made, the file was readable throughout, and no
+# of `server/.env` had failed, that the file had stopped being readable inside the window — the wording it
+# carried then; it now names the span between phase A and the check — and that bash's reason
+# was above. Not one of those was true: no read was made, the file was readable throughout, and no
 # such diagnostic exists — and the scratch file in question is made AFTER `php artisan up`, so even the
 # window was the wrong place to look. The remedy it offered — re-run `--dry-run`, which names the cause at
 # A5 — only works while the cause is still there, so a $TMPDIR that was missing, unwritable or out of
@@ -3913,8 +3941,8 @@ has "no scratch file in phase B: says the release IS serving, so the gap is the 
   "The release IS deployed and serving" "$OUT"
 hasnt "no scratch file in phase B: does not say the file's open or its read failed" \
   "its open or its read failed" "$OUT"
-hasnt "no scratch file in phase B: does not say the file stopped being readable in the window" \
-  "stopped being so inside the window" "$OUT"
+hasnt "no scratch file in phase B: does not say the file stopped being readable between phase A and here" \
+  "stopped being so between phase A and this check" "$OUT"
 hasnt "no scratch file in phase B: points at no bash diagnostic, which cannot exist on this path" \
   "bash's reason, if any, is above" "$OUT"
 # ⚠ THE NEEDLE CARRIES `warn`'s OWN `⚠ ` PREFIX, for the reason H4 states above: the correct warning
