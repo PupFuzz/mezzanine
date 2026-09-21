@@ -431,7 +431,7 @@ you are not). Use an editor. A `sed -i` whose pattern carries the value puts it 
 |---|---|---|
 | PHP-FPM, either vhost | yes, on the next request — Laravel reads `.env` at boot — **unless a config cache exists**, in which case the file is inert until it is rebuilt. Check: `ls server/bootstrap/cache/config.php`, and the bridge's | run `php artisan config:clear` in **both** checkouts. It is a no-op where there is no cache and the whole fix where there is one |
 | `schedule:run` | yes, next minute | nothing |
-| the long-lived daemons | **no** | stop each by its lock file — `fuser -k -TERM <lock>` — and cron restarts it within 60 s. `bin/supervision.sh` names the locks and owns this recipe; its header's "moving a hand-staged crontab" walks the same stop-by-lock step |
+| the long-lived daemons | **no** | stop each by its lock file — `fuser -k -TERM <lock>` — and cron restarts it within 60 s. `bin/supervision.sh` owns this recipe, and its `supervision_lock` is what turns a daemon's name into its lock path — step 6's loop calls it, so take the path from there rather than writing one out; its header's "moving a hand-staged crontab" walks the same stop-by-lock step |
 | a worktree you kept | yes, next run | nothing |
 
 ⚠ **Why the daemons are the dangerous row.** Each holds a connection opened before the rotation.
