@@ -376,13 +376,13 @@ can take is a syntax error rather than a nuance:**
   instead of asking you to notice it.
 * **The output names no plugin** — `IDENTIFIED BY PASSWORD '*<40 hex>'`, which is what an account
   created with `IDENTIFIED BY` prints and therefore the shape to expect here. **That clause is not
-  valid inside an `OR` form**: pasting it is refused `ERROR 1064` and nothing changes. ⚠ **that
+  valid inside an `OR` form**: pasting it is refused `ERROR 1064` and nothing changes. ⚠ **That
   refusal quotes your statement back at you, and your NEW password is in it in plaintext — read it,
   do not paste it.** Measured 2026-09-21 UTC: the server's own message ends `…near 'OR
-  mysql_native_password USING PASSWORD('<the new password>')' at line 1`, and the server composes it,
-  so it appears at an interactive prompt exactly as it does in batch output — measured under a pty as
-  well as a pipe. It does **not** reach the server's error log (`grep` on a throwaway's `--log-error`
-  file, with the log itself proven greppable). The plugin is
+  mysql_native_password USING PASSWORD('<the new password>')' at line 1`, and the server composes
+  that message, so it appears at an interactive prompt exactly as it does in batch output — measured
+  under a pty as well as a pipe. It does **not** reach the server's error log (`grep` for the value
+  on a throwaway's `--log-error` file, with the same file answering a control term). The plugin is
   `mysql_native_password`, and rule 1 is
   `IDENTIFIED VIA mysql_native_password USING '<that same hash>'` — the hash it printed, re-spelled
   as `VIA … USING`.
@@ -397,8 +397,8 @@ Measured 2026-09-20 on a throwaway server of the same version, for both shapes: 
 accepted, both the old and the new value authenticate, and a third value is refused `ERROR 1045` —
 which is what makes the pass mean something. The verbatim paste of `IDENTIFIED BY PASSWORD '<hash>'`
 into the `OR` form is the `ERROR 1064`, measured the same way. **What this form removes is the
-retyping of the old value** — the one input whose typo is both silent and total. It does not make the
-statement un-mistypable, and the fence itself invites the one mistyping the server ACCEPTS: rule 2
+retyping of the old value** — retyping it is where a typo takes every consumer down at once. It does
+not make the statement un-mistypable, and the fence invites a mistyping the server ACCEPTS: rule 2
 legitimately reads `USING PASSWORD('<the new password>')`, and writing `USING PASSWORD('<hash>')` in
 rule 1, one line above, where it wants a bare `USING '<hash>'`, is **accepted, rc 0** — it hashes
 your hash. Measured 2026-09-21 UTC against a freshly re-created fixture account, with the correct

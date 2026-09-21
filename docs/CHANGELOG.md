@@ -110,9 +110,10 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   not restate — socket authentication refused `ERROR 1045` after it — and the "two rules are present"
   confirmation passes either way, because it was already two. And § Verifying's daemon-log check
   resolves its filenames through `bin/supervision.sh`'s own `supervision_daemon_name`, where it had
-  asked for a name that subcommand prints and so named three files that do not exist. Every row
-  above was measured on a throwaway server at the pinned version, each with a control run alongside
-  it. `docs/design/EVENT-SCHEMA.md` stops glossing that procedure's retire gate as two of its
+  asked for a name that subcommand prints and so named three files that do not exist. Every engine
+  claim above was measured on a throwaway server at the pinned version, each with a control run
+  alongside it; the filename rows were run on this host, the broken form first and failing.
+  `docs/design/EVENT-SCHEMA.md` stops glossing that procedure's retire gate as two of its
   conditions in the same act, a partial gloss of a gate being a way to read a gate as met.
 - **card#9684** — **`docs/VERSIONING.md § Branch model` no longer keeps a copy of this
   repository's settings, so the copy can no longer be wrong.** The section carried a stack of
