@@ -98,14 +98,27 @@ Seen to discriminate on 2026-09-20: the application's, the bridge's and one work
 answered `LIVE`, every other path in the population answered `OTHER`, and a reference file with no
 password fired the refusal instead of reporting a clean sweep.
 
+⚠ **Expect the `OTHER` list to be longer than the traps in it.** Re-derived independently during
+this document's review (2026-09-20, `card#9660`), it also carries runbooks and deployment notes that
+quote a placeholder `DB_PASSWORD=` line and agent tool-result transcripts under `~/.claude` that
+captured one — all `OTHER`, none matching the live value. There is no per-path list here on purpose:
+that set turns over faster than this file does. Read the path, apply the rule above, move on.
+
 A second sweep catches a credential held in some shape other than a `KEY=value` line — a PHP-FPM
 pool injecting `env[DB_PASSWORD]`, a `mysqli.default_pw` in a `php.ini`, a `~/.my.cnf`. It printed
 nothing on the sandbox host on 2026-09-20, and it is not scheduled, so run it:
 
 ```sh
-find ~/etc ~/domains -type f -print0 |
-  xargs -0 grep -lE 'env\[DB_|env\[MYSQL|^[[:space:]]*mysqli\.default_pw[[:space:]]*=[[:space:]]*\S' 2>/dev/null
-ls -la ~/.my.cnf ~/.mylogin.cnf 2>/dev/null
+# ⚠ Read the VERDICT LINE, never the exit status: `xargs` answers 123 both when `grep` matched
+# nothing and when it could not read a file, so a clean sweep and a sweep that failed are the same
+# number. This prints which one it was.
+hits=$(find ~/etc ~/domains -type f -print0 |
+  xargs -0 grep -lIE 'env\[DB_|env\[MYSQL|^[[:space:]]*mysqli\.default_pw[[:space:]]*=[[:space:]]*\S' 2>/dev/null)
+if [ -n "$hits" ]; then printf 'FOUND — each of these holds a credential-shaped directive:\n%s\n' "$hits"
+else echo 'CLEAN — no credential-shaped directive under ~/etc or ~/domains'; fi
+for f in ~/.my.cnf ~/.mylogin.cnf; do
+  if [ -e "$f" ]; then ls -la "$f"; else echo "CLEAN — no $f"; fi
+done
 ```
 
 ## Who holds the credential, and who merely rides it
@@ -148,8 +161,9 @@ the section below.
 
 ### ⚠ A stale copy of a retired password is a trap and a surface
 
-The sweep on 2026-09-20 found sibling files beside `~/agent-webhook-bridge/.env` — timestamped
-`.bak` copies and an editor's `.env~` — each holding a **non-empty** `DB_PASSWORD` the sweep answers
+The sweep on 2026-09-20 found sibling files beside `~/agent-webhook-bridge/.env` — two `.bak`
+copies, one timestamped and one not, and an editor's `.env~` — each holding a **non-empty**
+`DB_PASSWORD` the sweep answers
 `OTHER` for, and an `env.bak` under `~/.cache` that no `.env*` pattern would have reached at all.
 They hold a superseded value: a retired secret, still readable on disk, one `cp` away from
 reinstating the outage the way an operator restores a config they believe is good.
@@ -178,11 +192,15 @@ operator at a terminal there is no gate on it at all.
 
 ⇒ **S is the refusable part. S goes first.**
 
-Work through the other order and the reason is concrete rather than procedural. **C then S**: every
-consumer now names a password the server has never heard of, so everything is down — and then S is
-refused. To get back you must restore the *old* value into every consumer, and you have just
-overwritten the only copies of it. The server cannot tell you what it was; it holds a hash. That is
-a half-applied state with **nothing to revert to**.
+Work the argument on the simplest form of the rotation — one value replaced by another — because
+that is where it is cleanest. The subsection below removes the outage and leaves the order exactly
+as this argument puts it.
+
+**C then S**: every consumer now names a password the server has never heard of, so everything is
+down **for the whole duration of a gate you have not yet passed** — and if that gate is then
+refused, your only route back is step 0's backups, whose sufficiency you have not yet tested. The
+server cannot tell you what the old value was; it holds a hash. S-first proves you hold the access a
+rollback needs *before* anything is overwritten, and it never depends on a backup being good.
 
 **S then C**: the server accepts only the new value, so everything is down for the same window —
 but you hold that value, and every remaining step is a local file write on files you own, with no
@@ -190,9 +208,55 @@ gate left that can refuse. And if C turns out to be impossible, S can be re-run,
 just proved you have the access to re-run it*. Doing the refusable part first is the only order
 that establishes you can get back **before** anything irreplaceable is overwritten.
 
-⚠ **Both orders have an outage window; the order is not what shortens it.** Shorten it by having C
-staged before you touch S — every path from the derivation in hand, every file confirmed writable,
-the editor open. Then the gap is seconds rather than however long it takes you to go looking.
+### The outage window is avoidable: this engine holds two passwords at once
+
+⭐ **MariaDB accepts more than one authentication rule for a single account, each rule carrying its
+own password, and a client presenting *either* value authenticates.** The grammar is
+`IDENTIFIED {VIA|WITH} authentication_rule [OR authentication_rule ...]`, where a rule may be
+`authentication_plugin USING PASSWORD('password')`; and *"If more than one authentication mechanism
+is declared using the `OR` keyword, the mechanisms are attempted in the order they are declared in
+the `CREATE USER` statement. As soon as one of the authentication mechanisms is successful,
+authentication is complete."* — MariaDB documentation,
+[CREATE USER § Authentication Options](https://mariadb.com/docs/server/reference/sql-statements/account-management-sql-statements/create-user),
+read 2026-09-20. The transitional use is stated outright in
+[Authentication from MariaDB 10.4](https://mariadb.com/docs/server/security/user-account-management/authentication-from-mariadb-10-4):
+*"It is possible to use more than one authentication plugin for each user account … while allowing
+the old … authentication plugin as an alternative for the transitional period."*
+
+**Documented is not measured, so it was measured** — 2026-09-20, against a throwaway `mariadbd`
+started in a scratch datadir with `--skip-networking` and its own socket, reporting
+`11.8.6-MariaDB`: the version this fleet pins
+([`docs/design/FLEET-STATE.md § 6.1`](design/FLEET-STATE.md#61-deployment-posture)) and the version
+this host runs. The live server was never touched and every value below was a throwaway fixture.
+
+| What was exercised | Result |
+|---|---|
+| `ALTER USER … IDENTIFIED VIA mysql_native_password USING PASSWORD('<old>') OR mysql_native_password USING PASSWORD('<new>')` | accepted — **two rules naming the same plugin are legal**, and `SHOW CREATE USER` prints both |
+| connecting with the old value, then the new | both authenticate; a **third, wrong** value is refused with `ERROR 1045`, so the test discriminates rather than passing everything |
+| the same three values through **PHP PDO / mysqlnd** (PHP 8.5.4) — how both consumers actually connect | old ✓, new ✓, wrong ✗. The second rule is reached by this stack's own client, not only by the `mariadb` CLI |
+| `ALTER USER … IDENTIFIED VIA mysql_native_password USING PASSWORD('<new>')` alone | the old value is refused at once and the new one still works — *"not specifying an authentication option in the `IDENTIFIED VIA` clause will remove that authentication method"* ([ALTER USER](https://mariadb.com/docs/server/reference/sql-statements/account-management-sql-statements/alter-user)) |
+| the same overlap `ALTER USER`, run **by the unprivileged account on itself** | refused: `ERROR 1227 … you need (at least one of) the CREATE USER privilege(s)`. **An overlap does not let a consumer rotate itself** — S stays the administrative, refusable half, so the order above is unchanged |
+
+⇒ **The outage is not inherent. Add the new password beside the old, move every consumer across
+while both work, then retire the old.** That is the shape this repository already uses for its other
+shared credential:
+[`docs/design/EVENT-SCHEMA.md § 3.3`](design/EVENT-SCHEMA.md#33-authentication-and-the-identity-binding-rule)
+issues the fleet token server-side first with both values valid for a seven-day overlap, then writes
+the new one into the consumer, then revokes the old. Same order, same reason, and the procedure
+below is that doctrine applied to this credential.
+
+⚠ **Two conditions, and if either fails you are on the single-value path.**
+
+* **The server-side route must be SQL as an administrator.** A hosting-panel password box sets one
+  value and cannot express a second rule.
+* **This was measured on a private server of the same version, never on the live account** — whose
+  administrative half is behind a credential no seat here holds. The first real rotation is what
+  establishes it there, and step 1's `SHOW CREATE USER` is the check that says whether it took.
+
+**On the single-value path the window is real, and the order is what makes it survivable rather than
+what shortens it.** Shorten it by having C staged before you touch S — every path from the
+derivation in hand, every file confirmed writable, the editor open. Then the gap is seconds rather
+than however long it takes you to go looking.
 
 ⚠ **An agent seat does not run this procedure.** The `.env` write is gated there as a secret-store
 write, and that denial is correct — it is what stopped `card#9660`'s instance fix until an operator
@@ -206,22 +270,45 @@ took it. An agent prepares the enumeration and hands it over; the operator rotat
 Every path answering `LIVE` is a file you must update. Confirm each is writable by you (`ls -l` on
 the paths), and take a temporary backup of each, mode 600, in one directory **outside both
 checkouts** — a backup left beside the original is what the next sweep finds and what the next
-operator restores. That backup is the copy of the old value a rollback needs. **Step 6 deletes
-them**, and skipping step 6 is how the `.env~` and `.bak` files above came to exist.
+operator restores. That backup is the copy of the old value a rollback needs — and on the overlap
+path step 1 needs it too, because it restates the old password. **Step 7 deletes them**, and
+skipping that step is how the `.env~` and `.bak` files above came to exist.
 
-**1 — S, the refusable part.** As an administrative user, at the prompt, never with `-e`:
+**1 — S₁, the refusable part: add the new password *beside* the old.** As an administrative user, at
+the prompt, never with `-e`:
 
 ```sql
--- at `sudo mariadb`, so the value never lands in argv or shell history
-ALTER USER '<the account DB_USERNAME names>'@'<its host>' IDENTIFIED BY '<the new password>';
+-- at `sudo mariadb`, so neither value lands in argv or shell history
+ALTER USER '<the account DB_USERNAME names>'@'<its host>'
+  IDENTIFIED VIA mysql_native_password USING PASSWORD('<the old password>')
+            OR mysql_native_password USING PASSWORD('<the new password>');
 ```
 
-Connections that are already open are **not** dropped by this — authentication happened when they
-were made. That is why step 3 restarts the long-lived daemons rather than trusting the outage to
-announce itself.
+⚠ **The old value has to be restated, and that is the whole clause doing its job**: an `ALTER USER`
+that does not name an authentication method *removes* it. Step 0's backups hold the old value.
+Confirm with `SHOW CREATE USER '<the account>'@'<its host>'` that **two** rules are present — that
+output carries password hashes, so read it and do not paste it.
 
-Everything that connects from here on is now broken. That is expected: it is the state you chose
-deliberately, with the new value in your hand rather than out of it.
+⚠ **Read that same `SHOW CREATE USER` first, before you write the statement.** The rule above names
+`mysql_native_password` because that is what an account created with `IDENTIFIED BY` uses. An
+account already on another plugin keeps *its* rule as the first one, verbatim, and the new value
+goes in the second — writing `mysql_native_password` over a plugin the account was using changes how
+it authenticates as a side effect of a password change.
+
+**Nothing is broken at this point.** Every consumer still authenticates with the value it already
+holds, and each one authenticates the moment it moves to the new value. That is what removes the
+window, and it is why step 6 exists.
+
+⛔ **If the server, or your route to it, will not take the two-rule form** — a hosting panel with one
+password box, an `ALTER USER` refused — then this is the single-value path: the statement is
+`ALTER USER … IDENTIFIED BY '<the new password>'`, **everything that connects from here on is broken
+until step 2 reaches it**, and that outage is chosen deliberately rather than a surprise, with the
+new value in your hand rather than out of it. The order does not change; only the window does, and
+there is then no step 6 because step 1 already retired the old value.
+
+Connections that are already open are **not** dropped by either form — authentication happened when
+they were made. That is why step 3 restarts the long-lived daemons rather than trusting the outage to
+announce itself.
 
 **2 — C, in one act, using step 0's list as the checklist.** Edit `DB_PASSWORD` in every DIRECT
 consumer — the application's, the bridge's, and any worktree copy you are keeping (delete the ones
@@ -240,16 +327,44 @@ you are not). Use an editor. A `sed -i` whose pattern carries the value puts it 
 The server does not close it, so the daemon keeps working and the break is *deferred* to whenever
 that connection next drops and it reconnects with what it read at start — hours later, in its own
 log, looking unrelated to anything you did. Restarting removes the question rather than answering
-it.
+it. **On the overlap path this row is more dangerous, not less**: a daemon that was never restarted
+reconnects with the *old* value and succeeds, so nothing is wrong until step 6 retires it — and then
+it breaks, an hour after the rotation you thought was finished, which is this document's own harm
+with a delay fuse on it.
 
 **4 — Verify every consumer, not the one you were thinking about.** Next section.
 
+⛔ **During the overlap, a successful connection stops telling you which value the consumer used.**
+Both are accepted, so every connection check in the next section passes for a consumer still on the
+old value — including the bridge watcher. The overlap buys the absence of an outage and costs this:
+**step 5 is what discriminates during the window, and it is not optional.** Step 6 is the only thing
+that makes a connection check meaningful again.
+
 **5 — Re-run the derivation.** Every consumer you just updated reads `LIVE` again. Anything still
 reading `OTHER` is either a file you missed or a retired copy that wants deleting — read the path
-and decide which.
+and decide which. On the overlap path this is the check that catches a consumer you skipped, because
+the skipped one is still working.
 
-**6 — Delete step 0's backups.** Verification is what gates this: once every consumer is confirmed
-healthy, the old value has no remaining job, and a retired secret readable on disk is a surface.
+**6 — S₂: retire the old password.** Overlap path only, and only once step 4 says every consumer is
+healthy *and* step 5 says every copy is on the new value:
+
+```sql
+ALTER USER '<the account DB_USERNAME names>'@'<its host>'
+  IDENTIFIED VIA mysql_native_password USING PASSWORD('<the new password>');
+```
+
+Naming only the new rule is what removes the old one. Verify once more afterwards: the old value is
+now refused and the new one still works, which is the rotation finished rather than merely started.
+This step is administrative and therefore refusable too — and a refusal here costs nothing, because
+every consumer is already on the new value. That asymmetry is the reason the refusable half is split
+in two: the expensive refusal is moved to a moment when nothing is broken yet, and the cheap one is
+all that is left at the end.
+**Skipping this step leaves a retired credential the server still accepts** — worse than one lying
+in a `.bak` file, because no file sweep can see it.
+
+**7 — Delete step 0's backups.** Verification is what gates this: once every consumer is confirmed
+healthy and the old value is retired, it has no remaining job, and a retired secret readable on disk
+is a surface.
 
 ---
 
@@ -260,7 +375,7 @@ healthy, the old value has no remaining job, and a retired secret readable on di
 | the application reaches the store | `cd ~/mezzanine/server && php artisan migrate:status` | rc 0 means this checkout's `.env` is accepted by the server. **Seen to fail** (2026-09-20): rc 0 healthy, and rc 1 carrying `SQLSTATE[HY000] [1045]` when the same command is run with a deliberately wrong password — so a pass here is evidence rather than decoration. ⚠ the failure text carries the database user and host: read it, do not paste it |
 | the application is serving | `curl -sS -o /dev/null -w '%{http_code}\n' "$APP_URL/up"` | 200 means the app answers. **It says nothing about the store** — `/up` needs no credential (`bin/deploy.sh`'s own smoke step says so). Reading a green `/up` as a healthy database is exactly the false confidence this document exists to remove |
 | the daemons came back | `tail ~/mezzanine/server/storage/logs/daemon-<name>.log` for each name `bin/supervision.sh daemons` prints | a fresh line after the restart, with no access-denied, means that daemon reconnected on the new value |
-| the bridge reaches its store | `BRIDGE_DB_WATCH_STATE=/tmp/probe.state BRIDGE_DB_WATCH_LOG=/tmp/probe.log ~/.local/bin/bridge-db-watch.sh; echo rc=$?` | rc 0 is the bridge's own `DatabaseConnectivityCheck` reporting ok, immediately, without waiting for cron and without disturbing the live state file. rc 1 is `FAILING`, rc 2 is `UNMEASURED` — which is **not** a pass |
+| the bridge reaches its store | `P=$(mktemp -d); BRIDGE_DB_WATCH_STATE=$P/state BRIDGE_DB_WATCH_LOG=$P/log ~/.local/bin/bridge-db-watch.sh; echo rc=$?; rm -rf "$P"` — `mktemp -d` rather than a fixed `/tmp/probe.state`, because the watcher writes with `>`, which follows a symlink anybody else on the host could have planted at a predictable path | rc 0 is the bridge's own `DatabaseConnectivityCheck` reporting ok, immediately, without waiting for cron and without disturbing the live state file. rc 1 is `FAILING`, rc 2 is `UNMEASURED` — which is **not** a pass |
 | the bridge works end to end | send a `ping` from the repository's webhook and read the delivery: `gh api repos/<owner>/<repo>/hooks --jq '.[].id'`, then `gh api -X POST repos/<owner>/<repo>/hooks/<id>/pings`, then `gh api "repos/<owner>/<repo>/hooks/<id>/deliveries?per_page=3" --jq '.[].status_code'` | 200 exercises the whole path — HMAC, routing, the store — rather than the connection alone. This is what proved the 2026-09-17 instance fix, and it is the strongest single check here |
 | every stored copy agrees | the derivation at the top of this file | every consumer reads `LIVE`. It compares copies **to each other**, never to what the server accepts |
 
@@ -297,12 +412,12 @@ check that is absent or unparseable is recorded as `UNMEASURED`, never as health
   line-initial `DB_PASSWORD=` under this account, plus the PHP-configuration shapes named above. A
   credential held some third way — a systemd unit, another user's home, a remote host — is found by
   neither, and neither sweep is scheduled.
-* **Whether this MariaDB accepts a second concurrently-valid password** — the feature that would
-  remove the outage window entirely, by letting every consumer move across before the old value is
-  retired — **is not established here. Nobody has checked.** If this server has it, the procedure
-  should be rewritten around it: the order stays server-first (add the new value, migrate every
-  consumer, then discard the old one), and what disappears is the window in which everything is
-  down.
+* **The overlap has never been exercised on the live account.** That this engine holds two
+  concurrently-valid passwords for one account, and that this stack's own PHP client authenticates
+  with either, is measured rather than assumed — but on a private server of the same version
+  (§ "The outage window is avoidable"), because the live account's administrative half is behind a
+  credential no seat here holds. The first real rotation is what establishes it there, and step 1's
+  `SHOW CREATE USER` is the check that says whether it took.
 * **This enumeration was measured on the sandbox host.** Another host's consumer set is whatever
   its own derivation prints. Run it there; do not carry this table across.
 
@@ -341,6 +456,9 @@ than passing it.
    2026-09-17 instance fix did for the bridge, and a webhook `ping` returning 200 is what proved it.
 3. **If nothing accepts the new value**, the server side is what is wrong. Re-run step 1 with a
    value you hold, then redo step 2 onward. Step 0's backups are what you need here, which is why
-   step 6 is gated on verification rather than done in the same breath as step 2.
-4. **When the system is healthy again**, finish step 6. A retired credential left on disk is the
-   next reader's trap.
+   step 7 is gated on verification rather than done in the same breath as step 2. On the overlap
+   path there is a cheaper answer first: the old value still works, so revert the consumer's file
+   and nothing is down while you work out what the server rejected.
+4. **When the system is healthy again**, finish steps 6 and 7 — retire the old value at the server,
+   then delete the backups. A retired credential left on disk, or left accepted by the server, is
+   the next reader's trap.

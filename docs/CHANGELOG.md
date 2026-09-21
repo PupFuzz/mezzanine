@@ -59,10 +59,21 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   greps — which would answer `LIVE` for every path in a sweep that measured nothing.
   **The order is reasoned for this install rather than asserted.** The server-side change needs an
   administrative credential this account does not have; the `.env` writes need nothing. So the
-  server side is the part that can be refused, and it goes **first** — the other order overwrites
-  the only copies of the old value and then discovers it cannot get the new one accepted, and the
-  server cannot tell you what the old one was because it holds a hash. Going server-first also
-  proves, before anything irreplaceable is overwritten, that you hold the access a rollback needs.
+  server side is the part that can be refused, and it goes **first**: the other order takes every
+  consumer down for the duration of a gate that has not been passed yet, and if that gate is then
+  refused, the only route back is a backup whose sufficiency has never been tested. Going
+  server-first proves you hold the access a rollback needs before anything is overwritten.
+  **And the outage that order implies turns out to be avoidable, which is measured rather than
+  hoped.** MariaDB accepts more than one authentication rule per account, each with its own
+  password — documented in the MariaDB Knowledge Base and then exercised on a throwaway server at
+  the version this fleet pins, `11.8.6`: two `mysql_native_password` rules are accepted, **both**
+  values authenticate, a third is refused, and this stack's own PHP PDO client reaches the second
+  rule as readily as the `mariadb` CLI. So the procedure adds the new password beside the old, moves
+  every consumer across while both work, and retires the old one afterwards — the same overlap
+  `docs/design/EVENT-SCHEMA.md § 3.3` already prescribes for the fleet token, which now points at
+  this document and is pointed back at, so the two statements of one doctrine cannot drift apart
+  unnoticed. The single-value path with its real outage stays documented for the case the overlap is
+  unavailable — a hosting panel offers one password box, not a SQL prompt.
   **What is NOT checked is named rather than omitted**, which is the failure this card is really
   about: a declaration with nothing asserting it is a comment, and the next reader gets confidence
   where they should get a question. The application's own store reachability is watched by nothing;
