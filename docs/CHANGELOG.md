@@ -27,6 +27,23 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#10074** — **README's install step now keeps the new database password out of the
+  `mariadb` client's own history file, and warns at the `CREATE USER` that a typo can print it.**
+  § Running the server locally told an installer to use `sudo mariadb` "so the password never lands
+  in argv or shell history". That held for argv and for the shell's history, and not for the
+  client's: without `MYSQL_HISTFILE=/dev/null` the `CREATE USER` statement, password included, was
+  written in plaintext to `~/.mariadb_history` under the `HOME` the client ran with, a file neither
+  of the rotation document's sweeps can find. The step now runs
+  `sudo env MYSQL_HISTFILE=/dev/null mariadb`, the same command `docs/CREDENTIAL-ROTATION.md` step 1
+  uses, and tells an installer who created the account without it to delete that file. A mistyped
+  `CREATE USER` can return the password inside its syntax-error text; README now says so beside
+  the statement and points at the rotation document's top matter, which states that mechanism once.
+  The README's pointer to that document was scoped to changing the password and now covers choosing
+  it too. Measured on a throwaway 11.8.6 server with fixture values: slips at several points ahead
+  of the value printed it, the one slip measured after the value printed none of it, and the
+  correct statement and a mistyped statement carrying no value printed no value; the history file
+  held the value without the variable and was not created with it.
+
 - **card#9660** — **The database password now has a rotation procedure that names every consumer
   of it, because the last rotation killed a consumer nobody had written down.** On a host that runs
   this application beside the agent webhook bridge, both authenticate as the **same** MariaDB login

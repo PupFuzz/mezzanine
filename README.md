@@ -73,8 +73,25 @@ application uses, and **`mezzanine_test`**, which the test suite is pinned to (�
 to keep.
 
 Create both, and one account for them, once — at the `mariadb` client's prompt as an administrative
-user (`sudo mariadb`). Type it at the prompt rather than passing it with `-e`, so the password never
-lands in argv or shell history:
+user, with the client's own history turned off:
+
+```sh
+sudo env MYSQL_HISTFILE=/dev/null mariadb
+```
+
+Typing the statements at that prompt, rather than passing them with `-e`, keeps the password out of
+argv and out of your shell's history. `MYSQL_HISTFILE=/dev/null` keeps it out of the **client's**
+history, which is a separate file: without it, the `CREATE USER` below is written to
+`~/.mariadb_history`, password included and in plaintext, under whichever `HOME` the client ran
+with — under `sudo`, look in root's as well as your own. If you created the account without the
+variable, delete that file.
+
+⛔ **A mistyped `CREATE USER` can print the password you chose in its error message.** Read any
+error it returns on the screen and paste it nowhere, and choose a different password before you
+retype the statement — nothing uses it until you put it in `.env` below, so that costs nothing.
+Why: the ⛔ on statements that fail on their syntax, at the top of
+[`docs/CREDENTIAL-ROTATION.md`](docs/CREDENTIAL-ROTATION.md), which states the mechanism once. The
+mechanism is the server's rather than that document's, and this statement trips it the same way.
 
 ```sql
 CREATE DATABASE mezzanine;
@@ -92,8 +109,9 @@ the app reaches MariaDB); the one key left to you is **`DB_PASSWORD`**. The suit
 account and swaps only the database, to `mezzanine_test` — and `Tests\TestCase` aborts the run
 before it touches anything if the connection resolves to any other connection or database.
 
-⚠ **Before you ever CHANGE that password, read
-[`docs/CREDENTIAL-ROTATION.md`](docs/CREDENTIAL-ROTATION.md).** This file is not the only thing
+⚠ **[`docs/CREDENTIAL-ROTATION.md`](docs/CREDENTIAL-ROTATION.md) governs that password from the
+moment you choose it: its top matter says how a statement that carries it can leak it, and
+before you ever CHANGE it, read the whole document.** `server/.env` is not the only thing
 holding it: on a host that also runs the agent webhook bridge, that account serves both, and a
 rotation that updates `server/.env` alone leaves the bridge authenticating with a value the server
 no longer accepts — silently, for as long as nobody happens to look. It went unnoticed for 38 hours
