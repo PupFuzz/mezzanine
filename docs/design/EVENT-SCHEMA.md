@@ -590,8 +590,9 @@ runs this application beside the agent webhook bridge is shared the same way —
 two consumers — and it rotates in the same order and with the same add-before-retire shape, but its
 overlap **ends on a gate rather than on a clock**: the 7 days above is a fixed period, chosen because
 seats are upgraded by their own owners on their own schedule, while a database overlap runs until that
-procedure's own retire gate is satisfied — every stored copy moved across, every daemon restarted —
-which is minutes of work rather than a week, though the procedure lets it stand for however long
+procedure's own retire gate is satisfied — every condition of it, which that procedure's step 6 owns
+and this paragraph deliberately does not restate, a partial gloss of a gate being a way to read a gate
+as met — which is minutes of work rather than a week, though the procedure lets it stand for however long
 satisfying that gate takes. It is a window in which a consumer nobody restarted is still succeeding on
 the value being retired, which is why a gate and not a timer is what closes it.
 [`docs/CREDENTIAL-ROTATION.md`](../CREDENTIAL-ROTATION.md) owns that procedure, the consumer

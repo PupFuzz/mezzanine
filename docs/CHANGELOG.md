@@ -94,6 +94,26 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   the bridge watcher's verdict reaches a human only when someone runs the reader; all copies can
   agree and all be wrong. The document proposes a scheduled sync check with those limits stated,
   and deliberately does not build it here.
+  **Four of its own claims are narrowed to what was measured, one of them about a secret**
+  (2026-09-21, the same card's follow-up). The hash shortcut is described as removing the retyping
+  of the old value rather than as a form that cannot be mistyped: rule 1 written
+  `USING PASSWORD('<hash>')` — one token from the `USING PASSWORD('<the new password>')` that rule 2
+  legitimately carries, on the line below it — is **accepted by the server**, and afterwards every
+  consumer's stored value is refused `ERROR 1045` while `SHOW CREATE USER` still prints two rules.
+  The mandatory check below the form catches exactly that, and the form and the check now both say
+  so. ⚠ **The `ERROR 1064` the document presents as the harmless outcome quotes your new password
+  back in plaintext** — the server composes that message, so it appears at an interactive prompt and
+  not only in batch output, though it does not reach the server's error log. The document's own rule
+  about failure text now covers a secret value rather than the database user and host alone, and the
+  warning sits where the refusal is met. **An account already carrying more than one authentication
+  rule gets told to write its own statement**: the published one silently drops every rule it does
+  not restate — socket authentication refused `ERROR 1045` after it — and the "two rules are present"
+  confirmation passes either way, because it was already two. And § Verifying's daemon-log check
+  resolves its filenames through `bin/supervision.sh`'s own `supervision_daemon_name`, where it had
+  asked for a name that subcommand prints and so named three files that do not exist. Every row
+  above was measured on a throwaway server at the pinned version, each with a control run alongside
+  it. `docs/design/EVENT-SCHEMA.md` stops glossing that procedure's retire gate as two of its
+  conditions in the same act, a partial gloss of a gate being a way to read a gate as met.
 - **card#9684** — **`docs/VERSIONING.md § Branch model` no longer keeps a copy of this
   repository's settings, so the copy can no longer be wrong.** The section carried a stack of
   dated re-readings — which contexts each branch required on which day, which merge method each

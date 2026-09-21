@@ -39,8 +39,9 @@ or paste, and put it nowhere but the statement it is for. Every other command in
 **prints** no secret value. Some do *resolve* one and send it nowhere — the classifier at the top of
 this file puts the live value on a file descriptor rather than in `argv`, which is the whole of why
 it is shaped that way, and step 2's editor puts it on your screen — and what matters is the stream,
-not the resolution. Where a command's *failure* text can print the database user and host, it says so
-where it is used.
+not the resolution. Where a command's *failure* text can print something this document keeps out of
+pastes and logs — the database user and host, and in one case a password you typed seconds earlier —
+it says so where it is used.
 
 ---
 
@@ -352,6 +353,18 @@ account already on another plugin keeps *its* rule as the first one, verbatim, a
 goes in the second — writing `mysql_native_password` over a plugin the account was using changes how
 it authenticates as a side effect of a password change.
 
+⛔ **And if that output prints MORE than one rule, every rule you do not restate is removed, and it is
+removed silently.** The statement above names exactly two rules and so does the ⭐ variant below it:
+both are written for the single-rule account this document expects, and neither is safe on an account
+that already carries two. Measured 2026-09-21 UTC on a throwaway server of the same version: against
+an account reading `IDENTIFIED VIA unix_socket OR mysql_native_password USING '<hash>'`, the statement
+is **accepted, rc 0**, the account becomes `mysql_native_password OR mysql_native_password`, and socket
+authentication that worked a moment earlier is refused `ERROR 1045`. **The "two rules are present"
+confirmation above cannot tell you this happened**, because it was already two — measured both ways
+on the same fixture, two before and two after. An account with rules to keep needs a statement that
+carries all of them, and this document does not have a measured one to give you: write it from that
+output, rule by rule, and prove each surviving rule still authenticates before you go on.
+
 ⭐ **Better: do not retype the old value at all, and let that reading write rule 1 for you.** Rule 1
 can carry the **hash** `SHOW CREATE USER` just printed rather than a plaintext, copied into the
 statement in that same session and nowhere else. **What you copy depends on the shape that output
@@ -363,7 +376,13 @@ can take is a syntax error rather than a nuance:**
   instead of asking you to notice it.
 * **The output names no plugin** — `IDENTIFIED BY PASSWORD '*<40 hex>'`, which is what an account
   created with `IDENTIFIED BY` prints and therefore the shape to expect here. **That clause is not
-  valid inside an `OR` form**: pasting it is refused `ERROR 1064` and nothing changes. The plugin is
+  valid inside an `OR` form**: pasting it is refused `ERROR 1064` and nothing changes. ⚠ **that
+  refusal quotes your statement back at you, and your NEW password is in it in plaintext — read it,
+  do not paste it.** Measured 2026-09-21 UTC: the server's own message ends `…near 'OR
+  mysql_native_password USING PASSWORD('<the new password>')' at line 1`, and the server composes it,
+  so it appears at an interactive prompt exactly as it does in batch output — measured under a pty as
+  well as a pipe. It does **not** reach the server's error log (`grep` on a throwaway's `--log-error`
+  file, with the log itself proven greppable). The plugin is
   `mysql_native_password`, and rule 1 is
   `IDENTIFIED VIA mysql_native_password USING '<that same hash>'` — the hash it printed, re-spelled
   as `VIA … USING`.
@@ -377,14 +396,24 @@ ALTER USER '<the account DB_USERNAME names>'@'<its host>'
 Measured 2026-09-20 on a throwaway server of the same version, for both shapes: the statement above is
 accepted, both the old and the new value authenticate, and a third value is refused `ERROR 1045` —
 which is what makes the pass mean something. The verbatim paste of `IDENTIFIED BY PASSWORD '<hash>'`
-into the `OR` form is the `ERROR 1064`, measured the same way. **This is the form that cannot be
-mistyped**, which is exactly what the check below exists to catch. The cost is a secret hash on your
+into the `OR` form is the `ERROR 1064`, measured the same way. **What this form removes is the
+retyping of the old value** — the one input whose typo is both silent and total. It does not make the
+statement un-mistypable, and the fence itself invites the one mistyping the server ACCEPTS: rule 2
+legitimately reads `USING PASSWORD('<the new password>')`, and writing `USING PASSWORD('<hash>')` in
+rule 1, one line above, where it wants a bare `USING '<hash>'`, is **accepted, rc 0** — it hashes
+your hash. Measured 2026-09-21 UTC against a freshly re-created fixture account, with the correct
+spelling as the control on the same fixture: correct, the old value still authenticates; mistyped,
+`SHOW CREATE USER` still prints **two** rules, the new value works, and the value every consumer
+holds is refused `ERROR 1045` — the whole outage the overlap exists to remove, from one extra token.
+The ⛔ check below is what catches it. The cost is a secret hash on your
 screen and — if you skipped `MYSQL_HISTFILE=/dev/null` — in the client's history file.
 
 ⛔ **On the overlap path, before you touch a single `.env`, prove a consumer still authenticates on
-the OLD value.** The overlap `ALTER USER` replaces **both** rules atomically, so if the old password
-you restated is wrong — a typo, or the wrong backup file, and § "A stale copy of a retired password
-is a trap" is about the superseded values this host has readable on disk — then rule 1 no longer
+the OLD value.** The overlap `ALTER USER` replaces **both** rules atomically, so if rule 1 is not the
+value your consumers actually hold — on either path, and each path has its own way of getting there:
+a typo or the wrong backup file where you restated the password (§ "A stale copy of a retired
+password is a trap" is about the superseded values this host has readable on disk), or the accepted
+`USING PASSWORD('<hash>')` mis-spelling where you copied the hash — then rule 1 no longer
 matches what any consumer holds and **every consumer is refused immediately**: the full outage the
 overlap exists to remove, arriving unannounced and with nothing between here and step 2 to announce
 it.
@@ -549,7 +578,7 @@ wrote on your behalf during the rotation is yours to remember rather than theirs
 |---|---|---|
 | the application reaches the store | `cd ~/mezzanine/server && php artisan migrate:status` | rc 0 means this checkout's `.env` is accepted by the server. **Seen to fail** (2026-09-20): rc 0 healthy, and rc 1 carrying `SQLSTATE[HY000] [1045]` when the same command is run with a deliberately wrong password — so a pass here is evidence rather than decoration. ⚠ the failure text carries the database user and host: read it, do not paste it |
 | the application is serving | `curl -sS -o /dev/null -w '%{http_code}\n' "$APP_URL/up"` | 200 means the app answers. **It says nothing about the store** — `/up` needs no credential (`bin/deploy.sh`'s own smoke step says so). Reading a green `/up` as a healthy database is exactly the false confidence this document exists to remove |
-| the daemons came back | `tail ~/mezzanine/server/storage/logs/daemon-<name>.log` for each name `bin/supervision.sh daemons` prints | a fresh line after the restart, with no access-denied, means that daemon reconnected on the new value. ⚠ when it is **not** clean, what you are reading is a PDO failure carrying the database user and host: read it, do not paste it |
+| the daemons came back | `cd ~/mezzanine && . bin/supervision.sh` (bash), then `for d in $(bin/supervision.sh daemons); do echo "== $d"; tail server/storage/logs/daemon-"$(supervision_daemon_name "$d")".log; done` — the subcommand prints `mezzanine:fold` and the file is `daemon-fold.log`, so the loop calls the function that owns that transform rather than restating it, the same way step 6's loop takes its lock paths from `supervision_lock` | a fresh line after the restart, with no access-denied, means that daemon reconnected on the new value. ⚠ when it is **not** clean, what you are reading is a PDO failure carrying the database user and host: read it, do not paste it |
 | the bridge reaches its store | `P=$(mktemp -d); BRIDGE_DB_WATCH_STATE=$P/state BRIDGE_DB_WATCH_LOG=$P/log ~/.local/bin/bridge-db-watch.sh; echo rc=$?; rm -rf "$P"` — `mktemp -d` rather than a fixed `/tmp/probe.state`, because the watcher writes with `>`, which follows a symlink anybody else on the host could have planted at a predictable path | rc 0 is the bridge's own `DatabaseConnectivityCheck` reporting ok, immediately, without waiting for cron and without disturbing the live state file. rc 1 is `FAILING`, rc 2 is `UNMEASURED` — which is **not** a pass |
 | the bridge works end to end | send a `ping` from the repository's webhook and read the delivery: `gh api repos/<owner>/<repo>/hooks --jq '.[].id'`, then `gh api -X POST repos/<owner>/<repo>/hooks/<id>/pings`, then `gh api "repos/<owner>/<repo>/hooks/<id>/deliveries?per_page=3" --jq '.[].status_code'` | 200 exercises the whole path — HMAC, routing, the store — rather than the connection alone. This is what proved the 2026-09-17 instance fix, and it is the strongest single check here |
 | every stored copy agrees | the derivation at the top of this file | every consumer reads `LIVE`. It compares copies **to each other**, never to what the server accepts |
