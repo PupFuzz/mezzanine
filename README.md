@@ -81,10 +81,11 @@ sudo env MYSQL_HISTFILE=/dev/null mariadb
 
 Typing the statements at that prompt, rather than passing them with `-e`, keeps the password out of
 argv and out of your shell's history. `MYSQL_HISTFILE=/dev/null` keeps it out of the **client's**
-history, which is a separate file: without it, the `CREATE USER` below is written to
-`~/.mariadb_history`, password included and in plaintext, under whichever `HOME` the client ran
-with — under `sudo`, look in root's as well as your own. If you created the account without the
-variable, delete that file.
+history, which is a separate file: without it, the `CREATE USER` below is written, password
+included and in plaintext, to `~/.mariadb_history` — or to `~/.mysql_history` instead, when that
+file already exists and `~/.mariadb_history` does not — under whichever `HOME` the client ran with.
+Under `sudo`, look in root's as well as your own. If you created the account without the variable,
+delete both files wherever they exist.
 
 ⛔ **A mistyped `CREATE USER` can print the password you chose in its error message.** Read any
 error it returns on the screen and paste it nowhere, and choose a different password before you
