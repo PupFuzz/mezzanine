@@ -255,6 +255,20 @@ If the bridge is down when a PR event fires, that move is **lost** and nothing r
 The backstop is the bridge's `reconcile` command, which recomputes the expected stage from
 GitHub ground truth. Nothing in this repo can detect the loss.
 
+### Rotating the database password can take the bridge down, silently
+On a host that runs both this application and the bridge, **they authenticate to MariaDB as the
+same login** — separate schemas, one account — and neither checkout says so. A rotation that
+updates `server/.env` and not the bridge's leaves the bridge 500ing every delivery, which is the
+gotcha above compounded: every move that fires while it is down is lost as well. That is not a
+worked example — it happened on 2026-09-14 and ran for 38 hours, and the cards stranded in the
+window were then skipped by the release promote (`card#9660`).
+
+**The procedure, the full consumer list and the command that re-derives it live in
+[`CREDENTIAL-ROTATION.md`](CREDENTIAL-ROTATION.md).** Read it *before* the rotation: the order is
+load-bearing, and the half that can be refused goes first. The bridge's side is watched every 15
+minutes by `~/.local/bin/bridge-db-watch.sh` — which covers the bridge's database reachability and
+nothing else, and which speaks only to a file until someone reads it.
+
 ---
 
 ## What is NOT wired here

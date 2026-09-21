@@ -92,6 +92,14 @@ the app reaches MariaDB); the one key left to you is **`DB_PASSWORD`**. The suit
 account and swaps only the database, to `mezzanine_test` — and `Tests\TestCase` aborts the run
 before it touches anything if the connection resolves to any other connection or database.
 
+⚠ **Before you ever CHANGE that password, read
+[`docs/CREDENTIAL-ROTATION.md`](docs/CREDENTIAL-ROTATION.md).** This file is not the only thing
+holding it: on a host that also runs the agent webhook bridge, that account serves both, and a
+rotation that updates `server/.env` alone leaves the bridge authenticating with a value the server
+no longer accepts — silently, for as long as nobody happens to look. It went unnoticed for 38 hours
+once. That document names every consumer, carries the command that re-derives the list on the host
+you are actually on, and gives the order that fails safe when a step is refused.
+
 ```
 cd server
 composer install                                    # ← local only; a HOST installs --no-dev (below)

@@ -27,6 +27,73 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9660** — **The database password now has a rotation procedure that names every consumer
+  of it, because the last rotation killed a consumer nobody had written down.** On a host that runs
+  this application beside the agent webhook bridge, both authenticate as the **same** MariaDB login
+  — separate schemas, one account — and neither checkout declared it. On 2026-09-14 the password
+  was rotated, `server/.env` was updated, the bridge's was not, and **the bridge returned HTTP 500
+  to every GitHub webhook delivery for 38 hours**: cards stopped advancing on PR events, a merge
+  event was dropped, and the cards stranded in the window were then skipped by the next release
+  promote. Separating the identities is the fix nobody can apply here — there is one login on that
+  host and no route to a second (operator ruling) — so the coupling stays and is made **loud**.
+  **`docs/CREDENTIAL-ROTATION.md` is the new home**, pointed at from `README.md` § Running the
+  server locally (where `DB_PASSWORD` is introduced) and from `docs/KANBAN.md` § Gotchas (the
+  bridge end), because the consumer set spans this repository and one that is not in it, and half
+  a checklist in each end's doc is worse than none.
+  **The consumer list is derived rather than remembered, and it derives by CONTENT.** A sweep for
+  `.env*` is the pattern anyone writes and it is not enough: writing this found a file named
+  `env.bak` holding a non-empty password that no name-based pattern would have reached. The
+  document carries a `DB_PASSWORD=` content population and a classifier that answers `LIVE` or
+  `OTHER` per path — **and prints no value, because the comparison's pattern arrives on a file
+  descriptor rather than in `argv`**. Seen to discriminate before it was written down: the
+  application's, the bridge's and a worktree's `.env` answer `LIVE`, and a retired `.bak` beside
+  the bridge's answers `OTHER`.
+  ⛔ **It walks the tree with `find`, and the reason is a trap worth knowing outside this
+  document: a recursive `grep` may honour `.gitignore`, and `.env` is gitignored in every one of
+  these checkouts.** Measured 2026-09-20 — `grep -rl` from an agent session returns none of the
+  `.env` files on this host, because that session's `grep` is `ugrep` invoked with
+  `--ignore-files`, while `/usr/bin/grep` is GNU grep and does not do it. A credential sweep built
+  on `grep -r` therefore reports a clean host by skipping exactly the files that hold the
+  credential. The document's classifier also refuses rather than running when its reference file
+  holds no password, because an empty pattern file matches every line under one of those two
+  greps — which would answer `LIVE` for every path in a sweep that measured nothing.
+  **The order is reasoned for this install rather than asserted.** The server-side change needs an
+  administrative credential this account does not have; the `.env` writes need nothing. So the
+  server side is the part that can be refused, and it goes **first**: the other order takes every
+  consumer down for the duration of a gate that has not been passed yet, and if that gate is then
+  refused, the only route back is a backup whose sufficiency has never been tested. Going
+  server-first proves you hold the access a rollback needs before anything is overwritten.
+  **And the outage that order implies turns out to be avoidable, which is measured rather than
+  hoped.** MariaDB accepts more than one authentication rule per account, each with its own
+  password — documented in the MariaDB Knowledge Base and then exercised on a throwaway server at
+  the version this fleet pins, `11.8.6`: two `mysql_native_password` rules are accepted, **both**
+  values authenticate, a third is refused, and this stack's own PHP PDO client reaches the second
+  rule as readily as the `mariadb` CLI. So the procedure adds the new password beside the old, moves
+  every consumer across while both work, and retires the old one afterwards — the same
+  add-before-retire shape `docs/design/EVENT-SCHEMA.md § 3.3` already prescribes for the fleet token,
+  which now points at this document and is pointed back at, so the two statements of one doctrine can
+  be read against each other rather than drifting apart unnoticed. Mutual pointers make a divergence
+  **findable**; nothing checks that the two still agree. The single-value path with its real outage
+  stays documented for the case the overlap is unavailable — a hosting panel offers one password box,
+  not a SQL prompt.
+  ⚠ **The overlap is not free, and the document says so rather than selling it.** It keeps the old
+  value **accepted by the server** until the retire step, so the procedure asks first *why* you are
+  rotating: a scheduled rotation can take as long as it likes, a rotation triggered by exposure
+  cannot, because until the retire step the possibly-compromised value still works. The retire step is
+  therefore gated on positive evidence rather than on an absence of complaints — every daemon started
+  after the file edits, and the Laravel config cache cleared in both checkouts — because a daemon's
+  in-memory copy and a `bootstrap/cache/config.php` are the two consumers no file sweep can see, and
+  both survive the whole overlap and break at the retire. **And the statement that carries both
+  plaintexts now runs with the `mariadb` client's own history turned off**: measured 2026-09-20 both
+  ways, that client filters nothing, and the file it writes is not a `DB_PASSWORD=` line — and, under
+  `sudo`'s usual `env_reset`, lands in root's home rather than this account's — so neither of the
+  document's own sweeps could ever have found it, on the line shape alone.
+  **What is NOT checked is named rather than omitted**, which is the failure this card is really
+  about: a declaration with nothing asserting it is a comment, and the next reader gets confidence
+  where they should get a question. The application's own store reachability is watched by nothing;
+  the bridge watcher's verdict reaches a human only when someone runs the reader; all copies can
+  agree and all be wrong. The document proposes a scheduled sync check with those limits stated,
+  and deliberately does not build it here.
 - **card#9933** — **a `server/.env` the deploy never read, because it could not open the scratch
   file it reads with, is refused as that — instead of as a read that stopped short, under advice
   pointing at your disks.** Point `TMPDIR` at a directory `mktemp` cannot make a file in — one that is
