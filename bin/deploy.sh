@@ -361,12 +361,24 @@ done
 #     `env_file_scan`, which refuses, and phase B's smoke check, which cannot refuse and warns. Both said
 #     the read's thing about a read that was never made: A5 told a host whose $TMPDIR was unwritable that
 #     its open had succeeded and its read had stopped short, and sent it to `dmesg` and the mount; phase B
-#     told a host whose scratch file failed INSIDE the window that its `server/.env` had stopped being
-#     readable, on a deploy that finished, exit 0, with the file readable the whole time.
-#   · THE `scratch` KIND CAN ONLY FIRE ON A PROCESS'S FIRST LOAD, which is what decides which of those two
-#     ever sees it: ENV_READ_ERR_FD is opened once and reused, so once any load has succeeded no later one
-#     re-opens it. In phase A the first load is A5's `env_file_scan`; in phase B — a re-exec, so a new
-#     process and a new descriptor — it is the load the smoke check makes before its read of APP_URL.
+#     told a host whose scratch file failed AFTER THE WINDOW CLOSED that its `server/.env` had stopped
+#     being readable, on a deploy that finished, exit 0, with the file readable the whole time.
+#   · WHICH OF THOSE TWO EVER SEES THE `scratch` KIND is decided by WHERE each process makes its FIRST load,
+#     and the reason is narrower than "only the first load can take that branch". ENV_READ_ERR_FD is opened
+#     once and reused — but a load that succeeds inside a `$( )` sets the descriptor in the SUBSHELL only,
+#     so the parent's next load finds it empty and re-attempts `mktemp`. bin/env-mirror-diff.sh, which gives
+#     every cell its own subshell, does re-open per cell. What holds in THIS script is that each process's
+#     first load is a MAIN-SHELL one — A5's `env_file_scan` in phase A, and in phase B (a re-exec, so a new
+#     process and a new descriptor) the load the smoke check makes before its read of APP_URL — and a `$( )`
+#     INHERITS an already-open descriptor, so every later load, inside a command substitution or not, finds
+#     one and cannot reach the scratch branch. That is why `env_unread_refuse` and A10b, which run after
+#     A5's scan, never see this kind and are not written for it.
+#     ⛔ SO DO NOT MOVE A `$( env_get … )` AHEAD OF A5's `env_file_scan`. A5's scan is both the first load
+#     and the caller that owns the scratch REFUSAL; a load placed before it is the first one instead, and
+#     nothing there refuses — an `env_read` turns its status 3 into `env_unread_refuse`, whose body says
+#     the file "has stopped being readable since" A5 scanned it and names ownership, mode, a disk or a
+#     mount (§ env_unread_refuse). A5 would not have scanned yet and none of those is the cause, which is
+#     the defect card#9933 exists to end, reached from the one direction this comment's rule leaves open.
 # It has to be, and card#9561 r4's BLOCKER is why: while `env_file_scan` split on `\r\n`, `\n` and `\r` alike
 # and `env_get` shelled to `grep`, whose terminator is `\n` ONLY, a `.env` ending `# note\rDB_HOST=db.internal`
 # was TWO lines to Dotenv and ONE to the reader that decides — so Laravel went to db.internal over TCP in
@@ -470,7 +482,7 @@ env_lines_load() {
     # ⛔ WHICH REASON IS READ OFF THE STATUS, never assumed (§ env_read_err_open): the two failures send an
     # operator to different places, and the fix for one is not the fix for the other.
     if [ "$scratch_rc" -eq 1 ]; then
-      ENV_LINES_READ_FAILED_WHY="No scratch file could be created for bash's read diagnostic (\`mktemp\` failed), and that diagnostic is the only thing that tells a read error from an end of file here — so the read was never made and no byte of the file was taken. mktemp writes under \$TMPDIR, or /tmp when that is unset: check that whichever applies names a directory this deploy can write to, and that it is not full."
+      ENV_LINES_READ_FAILED_WHY="No scratch file could be created for bash's read diagnostic (\`mktemp\` failed), and that diagnostic is the only thing that tells a read error from an end of file here — so the read was never made and no byte of the file was taken. mktemp writes under \$TMPDIR, or /tmp when that is unset: check that whichever applies exists, that it names a directory this deploy can write to, and that its filesystem has free INODES (\`df -i\`). A \`df\` at 100% is not on its own the finding here: \`mktemp\` creates an EMPTY file, and a filesystem out of free BLOCKS can still give it one."
     else
       ENV_LINES_READ_FAILED_WHY="A scratch file for bash's read diagnostic WAS created and this shell could not OPEN it, and that diagnostic is the only thing that tells a read error from an end of file here — so the read was never made and no byte of the file was taken. \`mktemp\` itself succeeded, so this is not about \$TMPDIR: the usual cause is how many files this deploy may have open at once (\`ulimit -n\`)."
     fi
@@ -732,8 +744,9 @@ env_file_scan() {
   # (card#9933). The loader sets ENV_LINES_READ_FAILED for a read that stopped short AND for a read it
   # never made, and this used to refuse both under the read's headline and the read's body — so a host
   # whose $TMPDIR was unwritable was told the open had succeeded and the read had stopped short, and was
-  # pointed at `dmesg`, the mount and the media, for a scratch file. Every sentence of it named something
-  # the run had not established, while the cause sat one line down in $ENV_LINES_READ_FAILED_WHY.
+  # pointed at `dmesg`, the mount and the media, for a scratch file. The OPEN had in fact succeeded — this
+  # refusal is reached only after it — but every sentence of the ADVICE pointed away from the cause, which
+  # sat one line down in $ENV_LINES_READ_FAILED_WHY.
   # `refuse` never returns, so the scratch kind exits at its own refusal and the one below it is the
   # read's. What both still share is the FLAG, which is what keeps every caller that only needs to know
   # whether a key's value is established — env_get's status 3, and through it A10b — reading one fact:
@@ -1065,8 +1078,9 @@ _scratch() { # _scratch <var> <what it is for> <file|directory> [mktemp option�
   __sc_out="$(mktemp "$@")" || __sc_rc=$?
   [ "$__sc_rc" -eq 0 ] || not_established "no scratch $__sc_kind could be created for $__sc_for (\`mktemp\` exited $__sc_rc)" \
     "mktemp's own error is above this line and names the path it tried. mktemp writes under \$TMPDIR, or" \
-    "/tmp when that is unset: check that whichever applies names a directory this deploy can write to," \
-    "and that it is not full." \
+    "/tmp when that is unset: check that whichever applies exists, that it names a directory this deploy" \
+    "can write to, and that its filesystem has free INODES (\`df -i\`). A \`df\` at 100% is not on its own" \
+    "the finding here: mktemp creates an EMPTY file, and a filesystem out of BLOCKS can still give it one." \
     "Nothing was read in its place, so what it was for is not established — this is not a finding about" \
     "the release."
   printf -v "$__sc_var" '%s' "$__sc_out"
@@ -3778,7 +3792,8 @@ phase_b_post_checkout() {
   # `mktemp` that fails: a deploy that FINISHED — exit 0, `✔ DEPLOYED`, the marker removed — whose single
   # warning told the operator that the open or the read of `server/.env` had failed, that the file had
   # stopped being readable inside the window, and that bash's reason was above. The file was readable
-  # throughout, no read was ever made, and no such diagnostic exists.
+  # throughout, no read was ever made, no such diagnostic exists — and the scratch file this warning is
+  # about is made HERE, after `php artisan up` has already closed the window.
   #
   # ⛔ ONE LOAD ANSWERS, AND IT IS THE LOAD WHOSE FLAGS ARE READ — that is what the skip below is for, and
   # it is a mechanism rather than a hope (card#9933 review round 3). Reading this load's KIND beside a
@@ -3811,7 +3826,7 @@ phase_b_post_checkout() {
   if [ "$url_rc" -eq 2 ]; then
     warn "APP_URL is in a form this script does not read (env_get, bin/deploy.sh) — no smoke check was made. The deploy is UNVERIFIED."
   elif [ "$url_rc" -eq 3 ] && [ "$ENV_LINES_READ_FAILED_KIND" = 'scratch' ]; then
-    warn "server/.env was NOT READ — no scratch file could be opened for bash's read diagnostic, so the read was never made — and no smoke check was made. The deploy is UNVERIFIED. This is not 'APP_URL is unset', and it is NOT a finding about server/.env, which may be perfectly readable: what failed is a scratch file this deploy makes for itself, inside the window. $ENV_LINES_READ_FAILED_WHY The release IS deployed and serving; what was not done is the check on it. Fix that and re-run \`bin/deploy.sh --dry-run\`, which reaches the same loader at A5 — and note it can only name this cause while the cause is still there: a \$TMPDIR that filled during the deploy and has since drained leaves a clean dry run and this line as the only record."
+    warn "server/.env was NOT READ — no scratch file could be opened for bash's read diagnostic, so the read was never made — and no smoke check was made. The deploy is UNVERIFIED. This is not 'APP_URL is unset', and it is NOT a finding about server/.env, which may be perfectly readable: what failed is a scratch file this deploy makes for itself, after the maintenance window closed. $ENV_LINES_READ_FAILED_WHY The release IS deployed and serving; what was not done is the check on it. Fix that and re-run \`bin/deploy.sh --dry-run\`, which reaches the same loader at A5 — and note it can only name this cause while the cause is still there: a \$TMPDIR that was missing, unwritable or out of inodes during this deploy and has been put right since leaves a clean dry run and this line as the only record."
   elif [ "$url_rc" -eq 3 ]; then
     warn "server/.env could not be read (its open or its read failed; bash's reason, if any, is above) — no smoke check was made. The deploy is UNVERIFIED. This is not 'APP_URL is unset': the file was readable in phase A and stopped being so inside the window. \`bin/deploy.sh --dry-run\` names the cause the way A5 does."
   elif [ -z "$url" ]; then

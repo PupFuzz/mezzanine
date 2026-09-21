@@ -29,28 +29,38 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 - **card#9933** — **a `server/.env` the deploy never read, because it could not open the scratch
   file it reads with, is refused as that — instead of as a read that stopped short, under advice
-  pointing at your disks.** Point `TMPDIR` at a directory this deploy cannot write to (or fill it) and
-  run `bin/deploy.sh`: A5 used to stop with *"`<path>` was opened but could not be read to its end"*, and
+  pointing at your disks.** Point `TMPDIR` at a directory `mktemp` cannot make a file in — one that is
+  missing, one this deploy cannot write to, or one whose filesystem is out of inodes — and run
+  `bin/deploy.sh`: A5 used to stop with *"`<path>` was opened but could not be read to its end"*, and
   the lines under it said the open had succeeded so this was neither a permission nor an ownership fault,
   that a read failing on an already-open file is usually a disk or filesystem one — failing media, a
   filesystem remounted read-only, a network mount that stopped answering — and that `dmesg` and the mount
-  the file sits on are where that family is visible. **None of it was true of your host.** The file had
-  been opened and closed again without a byte being read: what failed was `mktemp`, for a scratch file the
-  loader needs because bash's `read` reports an end-of-file and a read ERROR with the same status and
+  the file sits on are where that family is visible. **None of that advice applied to your host** — and
+  the one sentence of it that was TRUE, that the open had succeeded, is true on every path that reaches
+  this refusal and so told you nothing. The file had been opened and closed again without a byte being
+  read: what failed was `mktemp`, for a scratch file the loader needs because bash's `read` reports an
+  end-of-file and a read ERROR with the same status and
   tells them apart only by its diagnostic. The cause was already in the refusal, one line further down,
   contradicted by everything around it. **What you see now:** *"`<path>` could not be read: no scratch
   file could be opened for bash's read diagnostic"*, and a body that says the finding is about neither the
   file nor the disk it sits on and sends you to the directory `mktemp` writes into — `$TMPDIR`, or `/tmp`
-  when that is unset. **What to do about it is unchanged**: give this deploy a writable, non-full
-  temporary directory. A read that really does stop short — failing media, a mount that went away — keeps
-  the old headline, the errno bash reported, and the disk-and-`dmesg` advice, which is correct for it.
-  **The same failure INSIDE the maintenance window is now named too, and that one reached you on a deploy
-  that SUCCEEDED.** Phase B re-executes, so it makes a scratch file of its own after the window opens —
-  and when that one failed you were told, on an `✔ DEPLOYED` run that exited 0, that `server/.env`'s open
-  or read had failed, that the file had stopped being readable inside the window, and that bash's reason
+  when that is unset. **What to do about it is unchanged**: give this deploy a temporary directory it can
+  create a file in. (The advice now sends you to free INODES, `df -i`, and says that a `df` at 100% is not
+  on its own the finding: `mktemp` creates an EMPTY file, and a filesystem out of free blocks can still
+  give it one — measured on a 100%-full tmpfs. The old *"…and that it is not full"* pointed at free space, and
+  it was pointing at the wrong number before this change too, here and on every other scratch file the
+  deploy makes; both messages are corrected in this change.) A read that really does stop short — failing
+  media, a mount that went away — keeps the old headline, the errno bash reported, and the
+  disk-and-`dmesg` advice, which is correct for it.
+  **The same failure in PHASE B is now named too, and that one reached you on a deploy that SUCCEEDED.**
+  Phase B re-executes, so it makes a scratch file of its own — after `php artisan up` has closed the
+  maintenance window and the release is already serving — and when that one failed you were told, on an
+  `✔ DEPLOYED` run that exited 0, that `server/.env`'s open or read had failed, that the file had stopped
+  being readable inside the window, and that bash's reason
   was printed above. The file was readable throughout, no read was ever made, and there was no such
   diagnostic; the offered remedy (re-run `--dry-run`, which names the cause at A5) only works while the
-  cause is still there, so a `/tmp` that filled during composer or npm and drained again left you a clean
+  cause is still there, so a `$TMPDIR` that was missing, unwritable or out of inodes during the deploy and
+  was put right before you re-ran left you a clean
   dry run and nothing else. That warning now names the scratch file, says `server/.env` may be perfectly
   readable, says the release IS deployed and serving so that what is missing is the CHECK on it, and says
   what the `--dry-run` remedy is and is not worth. The deploy still finishes and is still reported

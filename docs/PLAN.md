@@ -604,7 +604,8 @@ rule violations anyone could have committed at the time.
   printed back before anything is decided, and nothing read partway is used. The one shape no reader can see
   is stated in `bin/deploy.sh` rather than assumed away: an I/O error the kernel reports AS an end-of-file.
   **And the file the loader never READ is a refusal of its own, under a headline of its own** (card#9933).
-  The loader needs a scratch file for that diagnostic, and where `mktemp` cannot make one it closes the
+  The loader needs a scratch file for that diagnostic, and where no scratch file can be opened for it —
+  `mktemp` making none, or a file `mktemp` made that this shell could not open — it closes the
   descriptor and returns before the read runs — one flag for both, because every caller asking whether a
   key's value is established acts on one fact, and both are "the file was not read". The REFUSAL used to
   be shared too, and it was the read's: the operator was told the open had succeeded and the read had
@@ -622,13 +623,23 @@ rule violations anyone could have committed at the time.
   an `APP_URL` the host genuinely does not set. Only the last of those is "unset", and reporting the others
   as unset is what card#9610 ended. **The scratch one is a warning of its own and not a fourth way of
   saying the file went bad** (card#9933): phase B is a re-exec, so it makes a scratch file of its own,
-  inside the window — and a deploy that finished, `✔ DEPLOYED`, exit 0, used to report that failure as a
+  after `php artisan up` has closed the window — and a deploy that finished, `✔ DEPLOYED`, exit 0, used
+  to report that failure as a
   `server/.env` whose open or read had failed and which had stopped being readable, with bash's reason
   "above" where no such diagnostic can exist. It now names the scratch file, says the `.env` may be
   perfectly readable, and says outright that the release IS serving and it is the CHECK that was not made.
   It also says what the `--dry-run` remedy is worth here: that run reaches the same loader at A5 and names
-  the cause, but only while the cause is still there, so a `$TMPDIR` that filled during the window and
-  drained leaves the warning as the only record. And **a read of the release
+  the cause, but only while the cause is still there, so a `$TMPDIR` that was missing, unwritable or out
+  of inodes during the deploy and has been put right since leaves the warning as the only record.
+  ⛔ **A `$TMPDIR` out of BLOCKS is not on that list, and its absence is the point**: `mktemp` creates an
+  EMPTY file, so a filesystem with no space left can still give it one — measured on a 100%-full tmpfs, where
+  `mktemp` returned 0 and the `<>` open succeeded, so neither the refusal nor the warning fired at all.
+  INODE exhaustion is the "full" that reaches them. The advice on both scratch-file messages says so now
+  (`df -i`, and a `df` at 100% is not on its own the finding); it used to say *"check … that it is not
+  full"*, which sends an operator to the one number that does not decide this. ⚠ **What a full-by-blocks
+  `$TMPDIR` does instead is card#9932's**, and is neither introduced nor made worse here: the diagnostic
+  write fails, `msg` comes back empty, and because a read error and a clean EOF both return status 1 the
+  loader certifies a failed read as a complete read of an empty file. And **a read of the release
   itself that git could not complete**: every
   precondition that judges the target tree reads it out of the object database before the checkout, and a
   read that FAILED is refused by name (card#9608) — *"the release does not carry this path"* and *"git could
