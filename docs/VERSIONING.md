@@ -66,7 +66,8 @@ specific to Mezzanine and has no counterpart there.
    an incoming change. `dev` is squash-only for everyone, and its merge-method ruleset carries an
    **admin bypass that exists solely so this merge commit can land**: the admin identity merges
    the back-merge with `gh pr merge <N> --merge`, never with `solo-self-merge`, which always
-   squashes. [§ Branch model](#branch-model) carries the measured ruleset.
+   squashes. [§ Branch model](#branch-model) carries why that bypass exists and the command
+   that re-derives it.
 
 ---
 
@@ -78,208 +79,120 @@ merges into `main`, and only a release PR or a scaffolding seed targets it.
 
 **The merge method is enforced by rulesets here, not left to convention** — a genuine
 difference from the repo this policy is adapted from, which relies on the author picking the
-right button on a control that remembers the *last* choice. Measured on the live repo
-2026-08-23 (`GET /repos/PupFuzz/mezzanine/rulesets`):
-
-| Branch | `allowed_merge_methods` | Also enforced |
-|---|---|---|
-| `main` | `merge` only | PR required, no deletion, no force-push |
-| `dev` | `squash` only | PR required, no deletion, no force-push |
-
-So a release PR into `main` *cannot* be squashed and a feature PR into `dev` *cannot* be
-merge-committed: the buttons for the wrong method are not offered — except to the admin
-role on `dev`, whose bypass exists for core rule 5's back-merge alone (the ✅ block at the end of
-this section). That matters beyond
+right button on a control that remembers the *last* choice. A release PR into `main` lands as a
+merge commit and a feature PR into `dev` lands as a squash, because the button for the wrong
+method is not offered — except to the admin role on `dev`, whose bypass exists for core rule 5's
+back-merge alone (the ✅ block at the end of this section). That matters beyond
 tidiness — `docs/KANBAN.md § Release PRs into main must land as MERGE COMMITS` explains what
 a squashed release would cost the card mover (it collapses the per-PR subjects the mover
 correlates on).
 
-> ⛔ **SUPERSEDED — the state is the ✅ block at the end of this stack; read that, not this.**
-> As measured 2026-08-23: *"No ruleset requires a status check (neither branch has classic
-> protection either). 'Wait for CI' in the release flow below is therefore a process obligation
-> with nothing mechanical behind it."* **It is kept as the head of the history below rather than
-> deleted, and it is marked because it was the one paragraph in this stack that was not** — bold,
-> first, and read by anyone who skims one paragraph of this section (card#9054).
->
-> ⚠ **Updated 2026-08-23:** `card-token-lint` **is** now a required status check on both
-> branches, so that one check is mechanically enforced. Everything else in CI still is not —
-> a workflow that is added later is not automatically required, and a required check that
-> never runs (a path-filtered workflow producing no run at all) reads as *pending*, not
-> *passed*. Re-read this section whenever a workflow is added.
->
-> ⚠ **Re-read 2026-08-30 on adding `release-pr-guard` (card#8174), as that instruction
-> requires. Measured live that morning: both rulesets still required exactly
-> `["card-token-lint"]`, so the new gate ran but did NOT block.** It is deliberately safe to
-> require: it carries **no `branches:` filter**, precisely so it produces a completed run on
-> every PR rather than the no-run-reads-as-pending deadlock the paragraph above describes; on a
-> PR that does not target `main` it reports *NOT APPLICABLE* and exits 0.
->
-> ⚠ **SUPERSEDED the same day — re-measured 2026-08-30 while cutting `v0.2.0`
-> (`GET /repos/PupFuzz/mezzanine/rulesets`), and the ruleset edit HAD landed.** Both branches
-> required **`["card-token-lint", "release-pr-guard"]`**, by the *job* id — which is what a
-> ruleset matches, never the workflow's display name. The gate blocks. **The paragraph
-> above is kept rather than deleted because it is the reason the requirement was safe to add;
-> read it as history.** *(And this block is history too — see the state below.)*
->
-> ⛔ **SUPERSEDED 2026-09-17 by card#9746 — READ THE RE-READING BELOW BEFORE ACTING ON THIS BLOCK.**
-> Classic branch protection was **deliberately retired** on `dev` and on `main` that day; rulesets are
-> now the single source of truth, and `main` was brought up to the same eight required contexts as
-> `dev` in the same act. The classic configuration is backed up at
-> `~/.cache/coord/protection-backup/{classic-dev,classic-main}.json`. ⇒ **`solo-self-merge` printing
-> `protection=404` is CORRECT and must not be "fixed"** — it was confirmed empirically on
-> `PupFuzz/mezzanine#184`, which resolved its eight contexts and merged.
->
-> The two-layer description below is kept as the history it now is, because the rest of this section
-> reasons about it:
->
-> ✅ **THE STATE AS IT WAS BEFORE card#9746 — what a PR into `dev` or `main` had to pass. TWO
-> independent layers required status checks on each branch, and BOTH applied: a PR merged only when
-> every context required by EITHER layer had passed.**
->
-> 1. **Rulesets** — `21222661` "dev — integration branch" and `21222660` "main — release branch",
->    both `enforcement: active`, both with `bypass_actors: []`.
-> 2. **Classic branch protection** on `dev` and on `main`, with `enforce_admins` on, so it binds the
->    shared admin identity as well. The superseded 2026-08-23 paragraph above measured *no* classic
->    protection on either branch; it was there when this block was measured on 2026-09-13.
->
-> ⛔ **The two layers carry DIFFERENT lists, and neither is a copy of the other.** A context added to
-> or removed from one layer is not added to or removed from the other — so a context removed from
-> one layer and left in the other is STILL required, and a job deleted on that belief blocks every
-> PR on a check that never reports. They have already come apart: in the 2026-09-13 reading below,
-> `php-tests` is required by the rulesets and not by classic protection, and every classic context
-> is also a ruleset context, so the ruleset list was the effective set that day. That is a reading
-> of the settings, not a property to rely on. **Change a required context on BOTH layers, and
-> re-derive both afterwards.**
->
-> **This is a RESTATEMENT of a repository-settings fact and this file is its one home** — no other
-> document may carry a copy, because two of them already drifted from it (the copies in
-> `.github/workflows/asset-provenance.yml` and `docs/ATTRIBUTION.md` both still said
-> `asset-provenance` was *not* required, i.e. that a red there did not block a merge, for as long
-> as it had been required). ⛔ **A doc cannot verify this; only the API can.** Re-derive it, never
-> relay it — this prints both layers for both branches:
->
-> ```
-> for b in dev main; do
->   echo "== $b · rulesets (every active ruleset that targets the branch)"
->   gh api "repos/PupFuzz/mezzanine/rules/branches/$b" --jq \
->     '[.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | unique'
->   echo "== $b · classic branch protection"
->   gh api "repos/PupFuzz/mezzanine/branches/$b/protection" --jq \
->     '.required_status_checks | {strict, contexts: (.contexts | sort)}'
-> done
-> ```
->
-> The ruleset half reads `rules/branches/<branch>` — the rules in force on the branch, from every
-> active ruleset — rather than looping over ruleset ids, because a per-id loop cannot see a ruleset
-> created after the loop was written. A `404 Branch not protected` from the classic half means that
-> layer is absent; any other 4xx means the read did not happen, not that nothing is required.
->
-> **Measured 2026-09-13 with that command (card#9328) — a dated reading, not the state:**
->
-> | Context | Rulesets (`dev`, `main`) | Classic protection (`dev`, `main`) |
-> |---|---|---|
-> | `asset-provenance` | required | required |
-> | `card-token-lint` | required | required |
-> | `design-artifact` | required | required |
-> | `design-docs` | required | required |
-> | `php-tests` | required | **not listed** |
-> | `release-pr-guard` | required | required |
->
-> Also read that day: classic protection on `main` has `strict: true` — a PR's head must be up to
-> date with `main` before it merges — while classic protection on `dev` and both rulesets'
-> `strict_required_status_checks_policy` are `false`; and classic protection pins every context to
-> the GitHub Actions app (`checks[].app_id`, the id `GET /apps/github-actions` returns), where the
-> rulesets name the context alone.
->
-> **The 2026-08-23 caveat above is not superseded and must stay:** *a workflow that is added later
-> is not automatically required*, and a required check that never runs reads as *pending*, not
-> *passed*. That sentence is exactly why this block goes stale — contexts were added to the rulesets
-> on 2026-08-31 (their `updated_at`, as read on 2026-09-08) and **no document moved with them for
-> eight days** — so **re-read and re-measure this section whenever a workflow is added or removed,
-> and update the copies that point here.**
->
-> ⚠ **Re-read 2026-09-15 on adding the `Shell lint` workflow (card#9635), as that instruction
-> requires. Re-derived that day with the command above: the 2026-09-13 reading held unchanged on
-> both layers and both branches, and `shell-lint` is required by NEITHER layer.** So the lane runs on
-> every PR and a red there does not block a merge today. It is safe to require — it carries no
-> `branches:` filter, so it produces a completed run on every PR rather than the
-> no-run-reads-as-pending deadlock above — but requiring it is a repository-settings act, which is
-> the operator's to perform and not this repo's; it is raised on card#9635.
->
-> ⚠ **Re-read 2026-09-17 on NARROWING `release-pr-guard`'s trigger (card#9732) — narrowing a required
-> check's trigger raises the same question as adding a workflow, so the instruction above applies to
-> it.** That job now carries `if: github.event.pull_request.state == 'open'`, because `edited` fires on
-> a MERGED pull request and re-judged PR #176 into a permanent red after v0.5.0 had shipped. **Being
-> required is unaffected, and that is the point of the form chosen:** every PR that can still merge is
-> open, so an open PR produces the same completed run under the same job id — a `branches:` filter or a
-> `types:` narrowing would have produced no run at all and walked into the deadlock above. What the
-> condition removes is only the run on a PR whose merge button is already gone. No ruleset and no
-> classic-protection list was edited by that change.
->
-> ⛔ **Re-derived with the command above on 2026-09-17, and the 2026-09-13 table no longer describes
-> the branches** — a later settings change moved them and no document moved with it, which is the exact
-> drift the instruction above exists to catch. The two branches now carry DIFFERENT sets, so read them
-> per branch rather than from that table's two columns:
->
-> - **`dev` · rulesets** — `asset-provenance`, `card-token-lint`, `deploy-gate-inputs`,
->   `deploy-selftest`, `design-artifact`, `design-docs`, `php-tests`, `release-pr-guard`.
->   **Classic protection** carries the same set minus `php-tests`, `strict: false`.
-> - **`main` · rulesets** — `asset-provenance`, `card-token-lint`, `design-artifact`, `design-docs`,
->   `php-tests`, `release-pr-guard`. **Classic protection** carries the same set minus `php-tests`,
->   `strict: true`.
->
-> So `deploy-gate-inputs` and `deploy-selftest` are required on `dev` on both layers and on neither
-> layer of `main`, `php-tests` is still ruleset-only on both branches, and `shell-lint` is still
-> required by neither layer on either branch. This is a dated reading like the one above it, not the
-> state: run the command.
->
-> ⚠ **Re-read 2026-09-17 on adding a second JOB to `.github/workflows/card-token-lint.yml`
-> (card#9767), as the instruction above requires — a new job is a new CONTEXT, so it raises the same
-> question a new workflow file does.** Re-derived that afternoon with the command above, and **the
-> reading directly above it no longer describes either branch**, which is again the drift this
-> instruction exists to catch:
->
-> - **`dev` · rulesets** and **`main` · rulesets** now carry the SAME eight contexts:
->   `asset-provenance`, `card-token-lint`, `deploy-gate-inputs`, `deploy-selftest`, `design-artifact`,
->   `design-docs`, `php-tests`, `release-pr-guard`. `main` has gained `deploy-gate-inputs` and
->   `deploy-selftest` since the reading above, so the two branches no longer differ.
-> - ✅ **CLASSIC BRANCH PROTECTION IS GONE FROM BOTH BRANCHES, BY DESIGN — card#9746.**
->   `GET /branches/<b>/protection` returns `404 Branch not protected` for `dev` AND for `main` — the
->   documented ABSENT signal, not a failed read: the same credential read both rulesets successfully
->   in the same command. ⇒ **This is the intended end state, not drift and not an external change to
->   raise:** classic protection was retired deliberately so that rulesets are the single source of
->   truth, and the classic configuration is backed up at `~/.cache/coord/protection-backup/`. ⚠ What
->   genuinely did go away with it is `main`'s `strict: true`, which required a head to be up to date
->   with its base; no ruleset replaced that, so it is a real consequence of the retirement rather
->   than an oversight to reverse silently.
-> - **That job shipped as `pr-body-lint`, and it is required by NEITHER layer.** ⛔ **Its VERDICT
->   ON THE BODY is also REPORT-ONLY: that step prints what it finds and exits 0, so no PR body can
->   report a failure to either layer even if one required the context.** Two facts, not one — the
->   second is the card#9767 decision, the first is this table's subject, and requiring the context
->   would not by itself make the BODY verdict block. ⚠ **Read the scope of that promise exactly:
->   it is about the body, not about the job.** The job's other steps judge the CHECKOUT — the
->   vendored-byte pins, the vendored linter's own controls, and `bin/change-pr-body.selftest.py`
->   (card#9801) — and each of those CAN fail the job, so requiring this context would make a PR
->   that edits a vendored file or breaks the body generator blocking, which is the intent.
->   It remains SAFE to require whenever it is made to block: it carries no `branches:` filter, so it
->   produces a completed run on every PR that can still merge, and its `if:` condition skips only a
->   CLOSED PR — the form `release-pr-guard` already uses for the same reason, so the deadlock the
->   2026-08-23 caveat describes cannot be reached through it. ⇒ **BOTH acts are the operator's:**
->   the dated flip from report-only to blocking, and requiring the context in the ruleset. Neither
->   is this repo's to take, and each is tracked on card#9767.
+⛔ **WHICH CONTEXTS A PR MUST PASS, AND WHICH MERGE METHOD A BRANCH OFFERS, ARE REPOSITORY-SETTINGS
+FACTS. A DOCUMENT CANNOT VERIFY THEM; ONLY THE API CAN.** This section is the one home of **where
+to read them**, and **it carries no list of required contexts and no merge-method table** — that is
+the load-bearing half, because those two are what a reader acts on and what moved under the old
+copies. Settings ARE stated elsewhere in this section — which method each branch offers, the `dev`
+bypass, the two release rulesets — and each is stated as the POLICY it must satisfy, with the
+command that reads the live setting beside it, because the reasoning is what no API call can give
+you. Treat any of them as a claim to re-derive, never as the state. The lists used to be here
+too: a stack of dated
+re-readings, each added because the previous one had gone stale, and each stale again before the
+next card read it — a settings value copied into prose has no reader that re-derives it, which is
+the whole defect. Copies of it in two other files (`.github/workflows/asset-provenance.yml` and
+`docs/ATTRIBUTION.md`) told reviewers that a red `asset-provenance` did not block a merge for as
+long as it had been required. **Re-derive it, never relay it** — what a PR into `dev` must pass:
 
-**Two more rulesets exist that the 2026-08-23 table never measured** — both found live on
-2026-08-30 and both load-bearing on the release flow:
+```
+gh api repos/PupFuzz/mezzanine/rules/branches/dev --jq \
+  '[.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | sort'
+```
 
-| Ruleset | Target | What it does | Bypass |
-|---|---|---|---|
-| *Release tags — v\* immutable after creation* | `refs/tags/v*` | blocks `update` and `deletion` | **none** |
-| *Release review — main requires an approval or a deliberate admin bypass* | `refs/heads/main` | `pull_request`: 1 approving review, `dismiss_stale_reviews_on_push`, `merge` only | `RepositoryRole`, mode `always` |
+and every rule in force on that branch, with the ruleset each one comes from:
+
+```
+gh api repos/PupFuzz/mezzanine/rules/branches/dev --jq '.[] | {type, ruleset_id, parameters}'
+```
+
+Substitute `main` for `dev` to read the release branch; the two branches are free to differ and
+have differed. `rules/branches/<branch>` reads **the rules in force on the branch from every
+active ruleset**, rather than looping over ruleset ids, because a per-id loop cannot see a ruleset
+created after the loop was written. ⚠ **It AGGREGATES, so one rule type can appear MORE THAN ONCE
+with different parameters, and every occurrence binds** — read all the lines the second command
+prints, never the first match. It has already happened here: on 2026-09-20 `main` returned two
+`pull_request` rules in one response whose `required_approving_review_count` differed, and a
+reader that stopped at one of them would have reported the other's requirement as absent. Any
+`4xx` means the read did not happen, not that nothing is required.
+
+**A required context is the name of the CHECK RUN, never the workflow file's name** — so a second
+job added to an existing workflow file is a second, independently requirable context, and that is
+why two jobs in one file can be required separately. In this repo that name is the JOB id, because
+no job declares a `name:`. Derive that rather than trusting it — **the authoritative form is to ask
+GitHub what it actually reported**, since those strings are the ones a ruleset matches:
+
+```
+gh api repos/PupFuzz/mezzanine/commits/<sha>/check-runs --jq '.check_runs[].name' | sort -u
+```
+
+Offline, the same question is a `grep` — but **do not read "nothing printed" as the answer**: the
+wrong directory prints nothing too, and a workflow whose jobs are indented differently would slip
+past the pattern and answer "no" when the truth is "yes", which is the direction that costs a check
+that never reports. `grep` separates the two failures it CAN see in its exit status, so read the
+status rather than the silence, and treat this as the offline approximation of the command above:
+
+```
+grep -n '^    name:' .github/workflows/*.yml
+case $? in
+  0) echo 'a job DOES declare a name: — its context is that string, not the job id' ;;
+  1) echo 'no job declares a name: at THIS indentation — the context IS the job id' ;;
+  *) echo 'THE READ DID NOT HAPPEN (no such path — wrong directory?) — this says nothing either way' ;;
+esac
+```
+
+⚠ **A
+job that gains a `name:` is renaming its context**, and a ruleset would go on requiring the old
+one and wait for a check that never reports.
+
+✅ **CLASSIC BRANCH PROTECTION IS GONE FROM BOTH BRANCHES, BY DESIGN — card#9746.** Rulesets are
+the single source of truth, so the commands above read all of it, and
+`gh api repos/PupFuzz/mezzanine/branches/dev/protection` answering `404 Branch not protected` —
+for `main` too — is the intended end state rather than a failed read or drift to raise. The
+retired configuration is backed up at `~/.cache/coord/protection-backup/`. ⇒ **`solo-self-merge`
+printing `protection=404` is CORRECT and must not be "fixed"**, confirmed empirically on
+`PupFuzz/mezzanine#184`, which resolved its required contexts and merged.
+
+⚠ **Adding a workflow does not make it required, and a required check that never runs reads as
+*pending*, not *passed*.** Requiring a context is a repository-settings act and the operator's to
+perform; until it is performed the lane runs and blocks nothing. The pending trap is the reason
+no workflow meant to be requirable filters its `pull_request:` trigger by `branches:` or
+`paths:`: a filtered workflow produces no run at all on a PR outside the filter, and a ruleset
+requiring that context then waits forever for a check that will never report. ⚠ Workflows here
+DO carry `paths:` on `pull_request:`, and those are exactly the lanes that must never be
+required — read a lane's `on:` block before requiring it. The pending trap is also why
+`release-pr-guard` narrowed with `if: github.event.pull_request.state == 'open'` rather than a
+`types:` narrowing when `edited` fired on a merged PR and re-judged one into a permanent red
+(card#9732): every PR that can still merge is open, so the job still produces a completed run
+under the same context, and being required is unaffected.
+
+**Two rulesets beyond the two branch rulesets are load-bearing on the release flow**, and what
+each is FOR is the part this document owns — their contents are settings, read the same way as
+everything above. The list, and then one of them by id:
+
+```
+gh api repos/PupFuzz/mezzanine/rulesets --jq '.[] | {id,name,target,enforcement}'
+gh api repos/PupFuzz/mezzanine/rulesets/<id> --jq \
+  '{conditions: .conditions.ref_name.include, bypass_actors, rules: [.rules[].type]}'
+```
+
+- ***Release tags — v\* immutable after creation***, targeting the `v*` tags: it must block
+  `update` and `deletion`, and it must carry no bypass actor.
+- ***Release review — main requires an approval or a deliberate admin bypass***, targeting
+  `main`: it must require an approving review, and its bypass is a repository role.
 
 The tag ruleset is the mechanical backstop for § Anti-patterns' *"Don't reuse or move a tag"*
-and core rule 4's *"never moves an existing tag"*, and it has **no bypass actor at all** — the
-strictest rule in this repo. ⚠ **It blocks `update` and `deletion` but NOT `creation`, which is
-exactly right and must stay that way**: a `creation` rule here would silently brick
+and core rule 4's *"never moves an existing tag"*, and **no bypass actor at all** is what makes
+it the strictest rule in this repo — a bypass here would give the strictest rule the weakest
+enforcement. ⚠ **Its rules must stay `update` and `deletion` and must never grow `creation`,
+which is exactly right and not an oversight**: a `creation` rule here would silently brick
 `auto-tag-version`, whose entire job is to create `v<VERSION>` on a push to `main`.
 
 ⛔ **The review ruleset does NOT close step 9's actor gap, and must not be read as doing so.**
@@ -290,30 +203,38 @@ the agent. What the ruleset buys is a **deliberate act** — approve, or knowing
 admin — rather than a silent merge. That is friction on the path PR #38 took, not a wall across
 it, and it is why the release gate asks *what* is merged rather than *who* merges it.
 
-> ✅ **THE MERGE-METHOD STATE ON `dev`: squash-only for everyone, plus an admin bypass for the
-> back-merge.** Read on 2026-09-13 from `GET /repos/PupFuzz/mezzanine/rulesets/21953633`: ruleset
-> `21953633` "dev — merge method (squash only)" (created 2026-08-31, `enforcement: active`,
-> `refs/heads/dev`) allows only `squash`. Its one bypass actor is `RepositoryRole` `actor_id` 5, the
-> admin role, in mode `always`, and the shared identity reads `current_user_can_bypass: always`.
-> **The bypass exists solely so core rule 5's `main` → `dev` back-merge lands as a merge commit.**
-> This is deliberately the model sola-pm uses (PupFuzz/agent-roundtable#385/#386).
+> ✅ **THE MERGE-METHOD POLICY ON `dev`: squash-only for everyone, plus one bypass, held by a ROLE
+> and existing for the back-merge alone.** A ruleset targeting `refs/heads/dev` — `21953633`, "dev
+> — merge method (squash only)" — must allow `squash` and nothing else, and its single bypass actor
+> must be the ADMIN ROLE rather than a person or a head branch. **That bypass exists solely so core
+> rule 5's `main` → `dev` back-merge lands as a merge commit**, and nothing else in this repository
+> depends on it. The values behind each of those sentences are settings: the re-derive command at
+> the end of this block prints them, and it is what to believe when the two disagree. This is
+> deliberately the model sola-pm uses (PupFuzz/agent-roundtable#385/#386).
 >
 > - **How the back-merge lands:** the admin identity merges the `sync/main-to-dev-post-v<version>`
 >   PR with `gh pr merge <N> --merge`. **Not `solo-self-merge`**: it always squashes, which is what
 >   rule 5 forbids. The post-`v0.3.0` back-merge (PR #76, merge commit `834a638`, 2026-09-09) landed
 >   as a merge commit after the ruleset existed, which only the bypass admits.
 > - **What the bypass does not skip:** it bypasses this ruleset only. The required status checks
->   live in ruleset `21222661`, which has no bypass actor (`current_user_can_bypass: never`), and in
->   classic protection with `enforce_admins` on, so a back-merge still waits for every required
->   check. Classic protection on `dev` does not require linear history, which would refuse a merge
->   commit from anyone.
+>   are a rule of a DIFFERENT ruleset, so a back-merge still waits for every required check —
+>   **and that conclusion holds only while that other ruleset grants no bypass of its own.** Read
+>   both halves before relying on it: the `{type, ruleset_id, parameters}` command above says
+>   which ruleset the `required_status_checks` rule on `dev` comes from, and
+>   `gh api repos/PupFuzz/mezzanine/rulesets/<that id> --jq '{bypass_actors,current_user_can_bypass}'`
+>   says whether this identity can step past it. A bypass added there would make the sentence
+>   above false without touching this block. ⚠ **And
+>   no rule on `dev` may require linear history** — that one refuses a merge commit from anyone
+>   its own ruleset does not exempt, and would make core rule 5 unsatisfiable; the same command
+>   lists every rule type in force, which is where to check it.
 > - **The cost, stated:** one identity is shared by the agent and the operator (above), so that
 >   identity *can* merge-commit any PR into `dev`, not only a back-merge. For it, squash on a feature
 >   PR is convention, and `solo-self-merge` is the path that keeps it.
 > - **Re-derive it, never relay it:**
 >   `gh api repos/PupFuzz/mezzanine/rulesets/21953633 --jq '{bypass_actors,current_user_can_bypass,rules}'`.
 >
-> ⛔ **SUPERSEDED on 2026-08-31 by that ruleset — read as history.** The 2026-08-23 block read:
+> ⛔ **SUPERSEDED on 2026-08-31 by that ruleset — read as history.** An earlier reading of these
+> settings, recorded here on 2026-08-23, read:
 > *"✅ Resolved 2026-08-23 — `dev` now allows `squash` AND `merge`."* It was briefly
 > squash-only, which made core rule 5 unsatisfiable: a `sync/main-to-dev-post-v<version>` PR
 > could not land as a merge commit, so `main`'s tip would never have become an ancestor of
@@ -389,12 +310,95 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 5. **State the deploy verdict for BOTH targets** — see
    [§ Deploy is not a tag](#deploy-is-not-a-tag--and-mezzanine-has-two-targets). A release
    that says nothing about a target has not said "nothing to do" about it.
+   Where the verdict states what a host must satisfy, **derive the floors from the gates that
+   enforce them — never copy a number into the notes, and never restate a mapping.**
+   `bin/deploy.sh` declares the bash floor and reads its own declaration; A12 owns the mapping
+   from a lockfile format to an npm floor and is the only thing that should ever state that
+   floor; `tools/verify-php-floor.py` is the PHP one's reader. Run from the repo root of the tree
+   being released:
+
+   ```
+   ( . ./bin/deploy.sh >/dev/null
+     rev=HEAD                                   # or a release's sha — BOTH lines below then speak for that tree
+     floor=$(git show "$rev":bin/deploy.sh | bash_floor_declared)
+     [ -n "$floor" ] \
+       && echo "bash floor declared by $rev: $floor" \
+       || echo "NO BASH FLOOR READ AT $rev — a failed read, never 'that tree has no floor'" >&2
+     gate_a12_asset_lockfile "$rev" "$(npm --version)" )
+   python3 tools/verify-php-floor.py
+   ```
+
+   A12's line names the npm floor and the lockfile version it came from, so **the note quotes that
+   line rather than a number**. ⚠ `npm_lockfile_version` is NOT that floor — it prints the
+   lockfile's own `lockfileVersion`, a file-format number, and a note that carries it as a host
+   requirement asks for an npm that does not exist. The gate needs a checkout that HAS `$rev` (it
+   reads the tree out of the object database, not off disk) and an `npm` on the machine, only so
+   there is a version to compare against.
+
+   ⚠ **`verify-php-floor.py` is the odd one out: it reads the CHECKOUT, never a rev** — its only
+   input is `--root <directory>`. So the first two lines speak for whatever `$rev` you name, and
+   the PHP line speaks for the files on disk; **be checked out on the tree you are releasing** and
+   all three agree. Ask about a release you are not checked out on and the PHP line is answering
+   about a different tree.
+
+   ⚠ **The bash line tests the VALUE, not itself, and that is the whole reason it is written the
+   long way.** `echo "… $(bash_floor_declared …)"` prints its own prefix whatever the reader
+   returns, so an empty read comes out as a confident line with nothing after the colon and the
+   block exits 0 — a PASS over a floor nobody read. The case this shape really guards is a rename
+   or a typo of that declaration, which reads empty in exactly the same way.
+
+   ⚠ **No tag up to `v0.5.0` prints a bash floor**, because `BASH_FLOOR=` entered `bin/deploy.sh`
+   with card#9616, later than all of them — and those tags are immutable, so that stays true. The
+   first release cut after card#9616 will print one. **How the older tags fail is NOT uniform, so
+   run the block over them rather than taking a list from here:** substitute each tag for `rev=`
+   above, or read one rev directly with
+   `git show <rev>:bin/deploy.sh | grep -c '^BASH_FLOOR='` (`0` = the file is there and declares
+   nothing) and `git ls-tree --name-only <rev> -- ':(literal)bin/deploy.sh'` (empty = the file is
+   not in that tree at all).
+
+   ⛔ **Where the rev does not carry `bin/deploy.sh`, git's own error REPLACES the refusal and
+   A12's line does not print either.** Sourcing `bin/deploy.sh` sets `set -Eeuo pipefail` in the
+   CALLING shell — its header says so — so a `git show` that cannot resolve the path fails the
+   assignment and the subshell ABORTS right there, before the `||` and before the gate. The
+   earliest tags are that case. A12 can also refuse on its own (a tree with no
+   `server/package-lock.json`), printing its `⛔ REFUSED` banner instead of its ok-line and
+   exiting the subshell the same way. Fewer lines, same verdict: anything short of three is
+   FAILED, and the stderr text says which of these it was.
+
+   ⛔ **Keep stderr. Never `2>&1` or `2>/dev/null` here**, and read the block as FAILED unless
+   **all three** lines printed — the bash floor, A12's npm line, and the PHP floor line. One
+   missing line is a failure, not a floor that does not apply, and **the exit status is not the
+   tell**: the missing line and the refusal on stderr are.
+   `bin/deploy.sh` sources `bin/supervision.sh` from beside itself,
+   so a copy of the script without its sibling — or a run from the wrong directory — fails at that
+   source, and stderr is the only place that says so. Sourcing runs no deploy: the script's own
+   `main` function runs only when the file is executed (§ library mode), which is what lets a
+   checker call one gate without deploying anything. git is the exception with no floor to print —
+   A3b PROBES the host instead, by design. What the host must satisfy is `bin/deploy.sh`'s header
+   block *"⚑ WHAT THIS HOST'S TOOLS MUST BE"* to state; this step only says the notes must carry
+   it.
 6. **State the wire verdict** if the accepted schema set moved — see
    [§ Wire compatibility](#wire-compatibility--the-reporter-to-ingest-contract-has-its-own-version-line).
 7. **Open the release PR `release/v<version>` → `main`** with full notes. Head is the release
    branch, never `dev` ([§ hazard](#the-release-pr-head-hazard--never-pr-dev-directly-into-main)).
-8. **Wait for every CI check to complete and pass.** Nothing enforces this mechanically here
-   (see [§ Branch model](#branch-model)) — the wait is yours.
+8. **Wait for every CI check to complete and pass — and read WHICH of them GitHub will hold the
+   merge on.** A subset of the lanes is required on `main`, and GitHub holds the merge until
+   exactly that subset has passed, alongside the branch's other rules; every lane outside the
+   subset runs, reports, and blocks nothing. So a wall of ticks is evidence only for the lanes
+   where a red was possible, and counting them is how a release gets read as better-checked than
+   it is. **Derive the subset — do not count ticks, and do not take a list from this document,
+   which carries none:**
+
+   ```
+   gh api repos/PupFuzz/mezzanine/rules/branches/main --jq \
+     '[.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context] | sort'
+   gh pr checks <N>
+   ```
+
+   The first prints what blocks the merge, the second what ran. A lane in the second and not in
+   the first is information about the release, never a gate on it; waiting for those is still
+   yours, and so is judging a red one ([§ Branch model](#branch-model) owns how the required set
+   is read, and why no copy of it lives in prose).
 9. **A human merges it, with "Create a merge commit."** It is the only method `main` offers,
    and it is a deliberate human gate: an agent does not merge a `main`-targeted PR.
 10. **CI takes it from there on the push to `main`:** `auto-tag-version.yml` mints
@@ -460,10 +464,12 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
 > by R5, on some later PR by some other author, and not at all in the fortnight after an archive,
 > when R5's threshold is the whole cliff.
 >
-> ⛔ **Steps 5, 6, 8, 9, 11 and 12 remain unenforced, and deliberately so.** The deploy and
+> ⛔ **The guard checks none of steps 5, 6, 8, 9, 11 and 12, and deliberately so.** The deploy and
 > wire verdicts are human judgement stated in prose — a gate that grepped for a phrase would
-> report having checked a judgement when it had checked a string. "Wait for CI" is about other
-> checks; "a human merges it" cannot be enforced at all here, because one GitHub identity is
+> report having checked a judgement when it had checked a string. Step 8 is enforced for the
+> contexts the `main` ruleset requires and for no others, which is why step 8 says to derive that
+> set rather than count green ticks — it is a repository setting, not something the guard could
+> assert; "a human merges it" cannot be enforced at all here, because one GitHub identity is
 > shared by the agent and the operator, and that is the whole reason card#8174 gates *what* is
 > merged rather than *who* merges it. **Nor is the bump SIZE checked** — nothing mechanical can
 > tell a patch from a minor ([§ Bump sizing](#bump-sizing) is yours). Read the guard's green as

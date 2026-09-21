@@ -27,6 +27,35 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9684** — **`docs/VERSIONING.md § Branch model` no longer keeps a copy of this
+  repository's settings, so the copy can no longer be wrong.** The section carried a stack of
+  dated re-readings — which contexts each branch required on which day, which merge method each
+  branch allowed, what classic branch protection held — every one of them added because the
+  reading before it had gone stale, and every one stale again before the next reader arrived.
+  **Nothing re-derived them, so they were prose ageing into false statements about what would
+  block your merge.** They are deleted. What stays is the part no API call can tell you — why
+  `dev` carries an admin bypass and what it exists for, why the tag ruleset must never gain a
+  `creation` rule, why the review ruleset does not close the actor gap, and the pending trap that
+  makes a filtered workflow unsafe to require — and, where the readings were, **the commands that
+  print the live answer**. A pointer cannot drift.
+  **Statements that had already gone false are corrected in the same act.** The section said that
+  no ruleset had replaced `main`'s `strict: true`; a ruleset has, and the published command prints
+  it for either branch. It said the required status checks also lived in classic protection with
+  `enforce_admins` on, and reasoned from *"Classic protection on `dev` does not require linear
+  history"* — classic protection has been retired from both branches since card#9746, and
+  `gh api repos/PupFuzz/mezzanine/branches/dev/protection` answers `404 Branch not protected` for
+  `dev` and for `main`. And `§ Release flow` step 8 said *"Nothing enforces this mechanically
+  here"*, which stopped being true with the first required context.
+  **`§ Release flow` steps 5 and 8 now carry commands rather than facts**, and the procedure is
+  written down once, there. Step 5 derives the host floors by RUNNING the gates that enforce them
+  instead of asking you to copy a number, so a release note quotes a floor it has just read; step
+  8 derives which contexts GitHub will actually hold the merge on, because the lanes outside that
+  set run and block nothing and a wall of green ticks is evidence only where a red was possible.
+  ⚠ **If you write release notes, read `§ Release flow` step 5 before the next one** — how to run
+  it, which rev each line speaks for, why the npm floor is the one A12 prints rather than the
+  `lockfileVersion` beside it, and how to tell the block failed. **This entry deliberately does
+  not repeat the procedure**: the same instructions in two places is the defect this card is
+  about, and one round of review was enough to make the copies disagree.
 - **card#9801** — **A PR into `dev` now has a body generator, and the shape it emits is the fleet
   standard's.** `bin/change-pr-body.py` writes the scope line, `## Highlights`, optionally
   `## Upgrade warnings`, the `Built:` / `**Coordinated in:**` machine lines and the attribution

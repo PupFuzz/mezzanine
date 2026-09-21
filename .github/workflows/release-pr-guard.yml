@@ -46,9 +46,9 @@
 # subject IS the main-targeted case, so a `branches: [main]` filter would look exactly right.
 # It is still wrong, for two reasons this gate has and that one does not:
 #
-#   1. THE REQUIRED-CHECK PENDING TRAP. `docs/VERSIONING.md § Branch model` records it: "a
-#      required check that never runs (a path-filtered workflow producing no run at all) reads
-#      as PENDING, not passed". Wherever this gate is required — and which contexts those are is
+#   1. THE REQUIRED-CHECK PENDING TRAP, which `docs/VERSIONING.md § Branch model` records: a
+#      filtered workflow produces NO RUN at all on a PR outside its filter, and a required check
+#      that never runs reads as PENDING rather than passed. Wherever this gate is required — and which contexts those are is
 #      a repository-settings fact this file deliberately does not restate, `docs/VERSIONING.md
 #      § Branch model` being its one home — a `branches: [main]` filter would deadlock every
 #      feature PR into `dev` forever, with no run to point at. Producing a completed,
