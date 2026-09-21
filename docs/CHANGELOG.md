@@ -27,6 +27,48 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9660** — **The database password now has a rotation procedure that names every consumer
+  of it, because the last rotation killed a consumer nobody had written down.** On a host that runs
+  this application beside the agent webhook bridge, both authenticate as the **same** MariaDB login
+  — separate schemas, one account — and neither checkout declared it. On 2026-09-14 the password
+  was rotated, `server/.env` was updated, the bridge's was not, and **the bridge returned HTTP 500
+  to every GitHub webhook delivery for 38 hours**: cards stopped advancing on PR events, a merge
+  event was dropped, and the cards stranded in the window were then skipped by the next release
+  promote. Separating the identities is the fix nobody can apply here — there is one login on that
+  host and no route to a second (operator ruling) — so the coupling stays and is made **loud**.
+  **`docs/CREDENTIAL-ROTATION.md` is the new home**, pointed at from `README.md` § Running the
+  server locally (where `DB_PASSWORD` is introduced) and from `docs/KANBAN.md` § Gotchas (the
+  bridge end), because the consumer set spans this repository and one that is not in it, and half
+  a checklist in each end's doc is worse than none.
+  **The consumer list is derived rather than remembered, and it derives by CONTENT.** A sweep for
+  `.env*` is the pattern anyone writes and it is not enough: writing this found a file named
+  `env.bak` holding a non-empty password that no name-based pattern would have reached. The
+  document carries a `DB_PASSWORD=` content population and a classifier that answers `LIVE` or
+  `OTHER` per path — **and prints no value, because the comparison's pattern arrives on a file
+  descriptor rather than in `argv`**. Seen to discriminate before it was written down: the
+  application's, the bridge's and a worktree's `.env` answer `LIVE`, and a retired `.bak` beside
+  the bridge's answers `OTHER`.
+  ⛔ **It walks the tree with `find`, and the reason is a trap worth knowing outside this
+  document: a recursive `grep` may honour `.gitignore`, and `.env` is gitignored in every one of
+  these checkouts.** Measured 2026-09-20 — `grep -rl` from an agent session returns none of the
+  `.env` files on this host, because that session's `grep` is `ugrep` invoked with
+  `--ignore-files`, while `/usr/bin/grep` is GNU grep and does not do it. A credential sweep built
+  on `grep -r` therefore reports a clean host by skipping exactly the files that hold the
+  credential. The document's classifier also refuses rather than running when its reference file
+  holds no password, because an empty pattern file matches every line under one of those two
+  greps — which would answer `LIVE` for every path in a sweep that measured nothing.
+  **The order is reasoned for this install rather than asserted.** The server-side change needs an
+  administrative credential this account does not have; the `.env` writes need nothing. So the
+  server side is the part that can be refused, and it goes **first** — the other order overwrites
+  the only copies of the old value and then discovers it cannot get the new one accepted, and the
+  server cannot tell you what the old one was because it holds a hash. Going server-first also
+  proves, before anything irreplaceable is overwritten, that you hold the access a rollback needs.
+  **What is NOT checked is named rather than omitted**, which is the failure this card is really
+  about: a declaration with nothing asserting it is a comment, and the next reader gets confidence
+  where they should get a question. The application's own store reachability is watched by nothing;
+  the bridge watcher's verdict reaches a human only when someone runs the reader; all copies can
+  agree and all be wrong. The document proposes a scheduled sync check with those limits stated,
+  and deliberately does not build it here.
 - **card#9684** — **`docs/VERSIONING.md § Branch model` no longer keeps a copy of this
   repository's settings, so the copy can no longer be wrong.** The section carried a stack of
   dated re-readings — which contexts each branch required on which day, which merge method each
