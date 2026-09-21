@@ -36,8 +36,8 @@ prints the account's password **hashes** — which are secret values, the same w
 `SELECT … FROM mysql.user` are, and neither of those two is needed anywhere here. Step 1 needs
 `SHOW CREATE USER` for a reason it gives, so read that output on the screen, keep it out of any log
 or paste, and put it nowhere but the statement it is for. Every other command in this document
-resolves no secret at all; the two that can print the database user and host say so where they are
-used.
+resolves no secret at all; where a command's *failure* text can print the database user and host,
+it says so where it is used.
 
 ---
 
