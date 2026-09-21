@@ -32,11 +32,11 @@
 #cfg	directive	bin/deploy-gate-inputs.selftest.sh	disable=SC2016	22
 #cfg	directive	bin/deploy-gate-inputs.sh	disable=SC2034	2
 #cfg	directive	bin/deploy.selftest.sh	disable=SC1090	1
-#cfg	directive	bin/deploy.selftest.sh	disable=SC2016,SC2317	2
+#cfg	directive	bin/deploy.selftest.sh	disable=SC2016,SC2317	3
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2030	1
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2031	1
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2034	1
-#cfg	directive	bin/deploy.selftest.sh	disable=SC2317	1
+#cfg	directive	bin/deploy.selftest.sh	disable=SC2317	3
 #cfg	directive	bin/deploy.selftest.sh	source=bin/supervision.sh	1
 #cfg	directive	bin/deploy.sh	disable=SC2016	1
 #cfg	directive	bin/deploy.sh	disable=SC2086	2
