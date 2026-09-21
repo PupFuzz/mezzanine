@@ -69,11 +69,24 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   the version this fleet pins, `11.8.6`: two `mysql_native_password` rules are accepted, **both**
   values authenticate, a third is refused, and this stack's own PHP PDO client reaches the second
   rule as readily as the `mariadb` CLI. So the procedure adds the new password beside the old, moves
-  every consumer across while both work, and retires the old one afterwards — the same overlap
-  `docs/design/EVENT-SCHEMA.md § 3.3` already prescribes for the fleet token, which now points at
-  this document and is pointed back at, so the two statements of one doctrine cannot drift apart
-  unnoticed. The single-value path with its real outage stays documented for the case the overlap is
-  unavailable — a hosting panel offers one password box, not a SQL prompt.
+  every consumer across while both work, and retires the old one afterwards — the same
+  add-before-retire shape `docs/design/EVENT-SCHEMA.md § 3.3` already prescribes for the fleet token,
+  which now points at this document and is pointed back at, so the two statements of one doctrine can
+  be read against each other rather than drifting apart unnoticed. Mutual pointers make a divergence
+  **findable**; nothing checks that the two still agree. The single-value path with its real outage
+  stays documented for the case the overlap is unavailable — a hosting panel offers one password box,
+  not a SQL prompt.
+  ⚠ **The overlap is not free, and the document says so rather than selling it.** It keeps the old
+  value **accepted by the server** until the retire step, so the procedure asks first *why* you are
+  rotating: a scheduled rotation can take as long as it likes, a rotation triggered by exposure
+  cannot, because until the retire step the possibly-compromised value still works. The retire step is
+  therefore gated on positive evidence rather than on an absence of complaints — every daemon started
+  after the file edits, and the Laravel config cache cleared in both checkouts — because a daemon's
+  in-memory copy and a `bootstrap/cache/config.php` are the two consumers no file sweep can see, and
+  both survive the whole overlap and break at the retire. **And the statement that carries both
+  plaintexts now runs with the `mariadb` client's own history turned off**: measured 2026-09-20 both
+  ways, that client filters nothing, and the file it writes is neither a `DB_PASSWORD=` line nor under
+  this account's home — so neither of the document's own sweeps could ever have found it.
   **What is NOT checked is named rather than omitted**, which is the failure this card is really
   about: a declaration with nothing asserting it is a comment, and the next reader gets confidence
   where they should get a question. The application's own store reachability is watched by nothing;

@@ -24,10 +24,20 @@ what this document is for.
 ⛔ **No password value belongs in any output stream.** Not in `argv` (the process table and your
 shell history read it), not in a log, not in a paste to anyone. Type it at the `mariadb` prompt
 rather than passing it with `-e`; set it into a file with an editor rather than a `sed` command
-line. `SHOW GRANTS` and `SELECT … FROM mysql.user` print a password **hash**, which is a secret
-value — neither appears anywhere below, and neither is needed. **No command in this document
-resolves a password**, so every one of them is safe to run; the two that can print the database
-user and host say so where they are used.
+line.
+
+⚠ **"Not in `argv`, not in shell history" is not the whole of it, and the gap is a file on disk.**
+The `mariadb` client keeps a history of its own and filters **nothing** out of it, so a statement
+typed at its prompt is written to disk in plaintext unless you turn that off. Step 1 turns it off and
+says how; step 7 cleans up after the run where you forgot.
+
+⚠ **One command below does resolve a secret, and it is needed.** `SHOW CREATE USER`, in step 1,
+prints the account's password **hashes** — which are secret values, the same way `SHOW GRANTS` and
+`SELECT … FROM mysql.user` are, and neither of those two is needed anywhere here. Step 1 needs
+`SHOW CREATE USER` for a reason it gives, so read that output on the screen, keep it out of any log
+or paste, and put it nowhere but the statement it is for. Every other command in this document
+resolves no secret at all; the two that can print the database user and host say so where they are
+used.
 
 ---
 
@@ -192,6 +202,21 @@ operator at a terminal there is no gate on it at all.
 
 ⇒ **S is the refusable part. S goes first.**
 
+⚠ **That is established for the overlap form of S and NOT for the single-value form, and the
+difference is a security fact rather than a footnote.** The table below records the unprivileged
+account being refused when it runs the overlap `ALTER USER` against itself. The **same** fixture
+account — `ALL` on its own schema, `USAGE` on `*.*`, no `CREATE USER`, which is the shape `card#9660`
+records for this host's application account — changed its **own** password with
+`SET PASSWORD = PASSWORD('<new>')`, and the new value authenticated at once while the old was refused
+at once (measured 2026-09-20 on the throwaway server described below, obvious fixtures only). So the
+single-value server-side change may need no administrator at all on an account shaped like this one —
+and the security half of that is that **anything able to read `server/.env` can rotate the shared
+login and lock the bridge out**, which is this document's own 38-hour harm reachable from a file
+read. This document's review measured a further consequence: a self-`SET PASSWORD` run during an
+overlap replaces rule 1 and leaves rule 2 standing, so it silently half-undoes step 1. **Not
+established for the live account**, whose privileges no seat here can read. The conclusion is
+unchanged either way — S first.
+
 Work the argument on the simplest form of the rotation — one value replaced by another — because
 that is where it is cleanest. The subsection below removes the outage and leaves the order exactly
 as this argument puts it.
@@ -209,6 +234,19 @@ just proved you have the access to re-run it*. Doing the refusable part first is
 that establishes you can get back **before** anything irreplaceable is overwritten.
 
 ### The outage window is avoidable: this engine holds two passwords at once
+
+⛔ **Ask why you are rotating before you choose this path, because the trigger decides which path is
+right.** The overlap removes the outage by keeping the **old** value accepted by the server until
+step 6 retires it — and step 6 is gated on every consumer being healthy, a gate that can stay unmet
+for as long as it takes to satisfy. For a **scheduled** rotation that is strictly better: the window
+costs nothing and can be as long as you need. For a rotation triggered by **exposure** — a value that
+was printed, pasted, committed, logged, or left readable somewhere another party could reach — it is
+the wrong trade, because the window is a window in which the possibly-compromised value still works,
+and the rotation has not actually happened until step 6 does. On that trigger: take the single-value
+path and accept its outage, or run steps 2 through 6 back to back and treat **step 6**, not step 1,
+as the moment the credential is rotated. Exposure is not a hypothetical trigger on this host — the
+section above records superseded values still readable on disk, and the client history file step 1
+warns about is one more surface the procedure creates for itself.
 
 ⭐ **MariaDB accepts more than one authentication rule for a single account, each rule carrying its
 own password, and a client presenting *either* value authenticates.** The grammar is
@@ -275,19 +313,35 @@ path step 1 needs it too, because it restates the old password. **Step 7 deletes
 skipping that step is how the `.env~` and `.bak` files above came to exist.
 
 **1 — S₁, the refusable part: add the new password *beside* the old.** As an administrative user, at
-the prompt, never with `-e`:
+the prompt, never with `-e`, and with the client's own history turned off:
 
+```sh
+sudo env MYSQL_HISTFILE=/dev/null mariadb
+```
 ```sql
--- at `sudo mariadb`, so neither value lands in argv or shell history
 ALTER USER '<the account DB_USERNAME names>'@'<its host>'
   IDENTIFIED VIA mysql_native_password USING PASSWORD('<the old password>')
             OR mysql_native_password USING PASSWORD('<the new password>');
 ```
 
+⛔ **`MYSQL_HISTFILE=/dev/null` is not decoration: without it this statement writes BOTH plaintext
+passwords to a file on disk.** Keeping a value out of `argv` and out of your *shell* history is not
+the same as keeping it off disk — the `mariadb` client keeps a history of its own and filters
+nothing. Measured 2026-09-20, client 15.2 against server 11.8.6, driving the client under a pty with
+`HOME` pointed at a scratch directory: without the variable the whole `ALTER USER` lands in
+`~/.mariadb_history`, both values readable verbatim; with it in front, **no history file is created
+at all**. That is a control run both ways, not an assurance. `IDENTIFIED BY` and `SET PASSWORD` are
+recorded the same way, so this applies to every statement in this document that carries a value,
+step 6 included. And it matters more here than the usual tidiness argument: the file lands in the
+`HOME` of whoever invoked the client — root's, under `sudo`'s usual `env_reset` — so it is **neither**
+a `DB_PASSWORD=` line **nor** under this account's `~`, and **neither sweep at the top of this file
+can ever find it**. It is this document's own opening defect, in the one place this document's own
+instrument is blind to.
+
 ⚠ **The old value has to be restated, and that is the whole clause doing its job**: an `ALTER USER`
 that does not name an authentication method *removes* it. Step 0's backups hold the old value.
 Confirm with `SHOW CREATE USER '<the account>'@'<its host>'` that **two** rules are present — that
-output carries password hashes, so read it and do not paste it.
+output carries password hashes, so read it and keep it out of any paste or log.
 
 ⚠ **Read that same `SHOW CREATE USER` first, before you write the statement.** The rule above names
 `mysql_native_password` because that is what an account created with `IDENTIFIED BY` uses. An
@@ -295,9 +349,51 @@ account already on another plugin keeps *its* rule as the first one, verbatim, a
 goes in the second — writing `mysql_native_password` over a plugin the account was using changes how
 it authenticates as a side effect of a password change.
 
-**Nothing is broken at this point.** Every consumer still authenticates with the value it already
-holds, and each one authenticates the moment it moves to the new value. That is what removes the
-window, and it is why step 6 exists.
+⭐ **Better: do not retype the old value at all, and let that reading write rule 1 for you.** Rule 1
+can carry the **hash** `SHOW CREATE USER` just printed rather than a plaintext — the `*`-prefixed
+40-character string, in whichever shape the output puts it (an account on a single rule prints
+`IDENTIFIED BY PASSWORD '<hash>'`), together with the plugin that output names — copied verbatim into
+the statement in that same session and nowhere else:
+
+```sql
+ALTER USER '<the account DB_USERNAME names>'@'<its host>'
+  IDENTIFIED VIA <the plugin SHOW CREATE USER named> USING '<the hash it printed>'
+            OR mysql_native_password USING PASSWORD('<the new password>');
+```
+
+Measured 2026-09-20 on the throwaway server: accepted, both the old and the new value authenticate, a
+third value is refused. **This is the form that cannot be mistyped**, which is exactly what the check
+below exists to catch, and it carries the account's existing plugin across by construction instead of
+asking you to notice it. The cost is a secret hash on your screen and — if you skipped
+`MYSQL_HISTFILE=/dev/null` — in the client's history file.
+
+⛔ **Before you touch a single `.env`, prove a consumer still authenticates on the OLD value.** The
+overlap `ALTER USER` replaces **both** rules atomically, so if the old password you restated is wrong
+— a typo, or the wrong backup file, and § "A stale copy of a retired password is a trap" is about the
+superseded values this host has readable on disk — then rule 1 no longer matches what any consumer
+holds and **every consumer is refused immediately**: the full outage the overlap exists to remove,
+arriving unannounced and with nothing between here and step 2 to announce it.
+
+**The `SHOW CREATE USER` check above does not discriminate this.** Measured during this document's
+review (2026-09-20, `card#9660`) on a throwaway server with the old value deliberately mistyped: the
+statement is **accepted**, the output prints **two** rules, and the value the consumers actually hold
+is refused `ERROR 1045`. Two rules being present says the statement parsed — not that rule 1 is the
+value anybody holds. What discriminates is a consumer:
+
+```sh
+cd ~/mezzanine/server && php artisan migrate:status   # a checkout you have NOT yet edited
+```
+
+rc 0 is what makes the next paragraph true. rc 1 carrying `SQLSTATE[HY000] [1045]` means rule 1 does
+not match what your consumers hold: **go back and re-run step 1 with the right old value, and do not
+continue** — you are one step from writing files while everything is already down. Run it in a clean
+shell, because an exported `DB_PASSWORD` beats the file and would answer for the value rather than
+for the file (§ Verifying), and read its failure text rather than pasting it — it carries the
+database user and host.
+
+**With that rc 0 in hand, nothing is broken.** Every consumer still authenticates with the value it
+already holds, and each one authenticates the moment it moves to the new value. That is what removes
+the window, and it is why step 6 exists.
 
 ⛔ **If the server, or your route to it, will not take the two-rule form** — a hosting panel with one
 password box, an `ALTER USER` refused — then this is the single-value path: the statement is
@@ -337,16 +433,45 @@ with a delay fuse on it.
 ⛔ **During the overlap, a successful connection stops telling you which value the consumer used.**
 Both are accepted, so every connection check in the next section passes for a consumer still on the
 old value — including the bridge watcher. The overlap buys the absence of an outage and costs this:
-**step 5 is what discriminates during the window, and it is not optional.** Step 6 is the only thing
-that makes a connection check meaningful again.
+**step 5 is what discriminates during the window for a consumer whose credential is in a FILE, and
+it is not optional.**
+
+⚠ **It discriminates for nothing else, and closing that gap is step 6's gate, not step 5's job.**
+Step 5 re-runs the derivation, and the derivation reads files. Two consumers hold the credential
+where no file sweep reaches, and both are named in this document already:
+
+* **a long-lived daemon that read `.env` before you started** — the delay fuse in step 3's warning.
+  Its file on disk is correct and its memory is not, so step 5 sees nothing wrong;
+* **a Laravel config cache.** `server/config/database.php` resolves `env('DB_PASSWORD')` into config,
+  so a built `bootstrap/cache/config.php` holds the value as a PHP array element — **not** a
+  `DB_PASSWORD=` line, therefore invisible to a content sweep by construction, and inert to the
+  `.env` edit until it is rebuilt. Latent rather than live on this host today: neither checkout
+  carries one, which is one `ls` to confirm and step 3 already prescribes.
+
+Both keep working for the whole overlap and both break at **step 6** — an hour after the rotation you
+thought was finished. That is why step 6 is gated on *evidence that step 3 actually happened* and not
+on the absence of complaints. Step 6 is also the only thing that makes a connection check meaningful
+again.
 
 **5 — Re-run the derivation.** Every consumer you just updated reads `LIVE` again. Anything still
 reading `OTHER` is either a file you missed or a retired copy that wants deleting — read the path
 and decide which. On the overlap path this is the check that catches a consumer you skipped, because
 the skipped one is still working.
 
-**6 — S₂: retire the old password.** Overlap path only, and only once step 4 says every consumer is
-healthy *and* step 5 says every copy is on the new value:
+**6 — S₂: retire the old password.** Overlap path only, and only once every one of these holds:
+
+* step 4 says every consumer is healthy;
+* step 5 says every stored copy is on the new value;
+* **every long-lived daemon started AFTER you edited the files in step 2** — positive evidence, not
+  an absence of complaints. `ps -o pid,lstart,args -p <pid>` for each lock `bin/supervision.sh
+  daemons` names, and compare each start time against when you did step 2. A daemon older than that
+  is still authenticating on the old value, and this statement is what breaks it;
+* **`php artisan config:clear` has been run in BOTH checkouts since step 2** — or
+  `ls server/bootstrap/cache/config.php`, and the bridge's, shows there was no cache to clear.
+
+The last two are precisely what step 5 cannot answer, and skipping them is how a rotation that looked
+finished breaks an hour later. Then, at the same prompt as step 1 and with the same
+`MYSQL_HISTFILE=/dev/null`:
 
 ```sql
 ALTER USER '<the account DB_USERNAME names>'@'<its host>'
@@ -355,6 +480,11 @@ ALTER USER '<the account DB_USERNAME names>'@'<its host>'
 
 Naming only the new rule is what removes the old one. Verify once more afterwards: the old value is
 now refused and the new one still works, which is the rotation finished rather than merely started.
+
+⚠ **Verify that by connection, never by the printed shape.** After S₂ `SHOW CREATE USER` prints the
+single-rule `IDENTIFIED BY PASSWORD '<hash>'` form rather than an `IDENTIFIED VIA … OR …` one
+(measured 2026-09-20) — that is the retire having worked, not having failed.
+
 This step is administrative and therefore refusable too — and a refusal here costs nothing, because
 every consumer is already on the new value. That asymmetry is the reason the refusable half is split
 in two: the expensive refusal is moved to a moment when nothing is broken yet, and the cheap one is
@@ -362,9 +492,18 @@ all that is left at the end.
 **Skipping this step leaves a retired credential the server still accepts** — worse than one lying
 in a `.bak` file, because no file sweep can see it.
 
-**7 — Delete step 0's backups.** Verification is what gates this: once every consumer is confirmed
-healthy and the old value is retired, it has no remaining job, and a retired secret readable on disk
-is a surface.
+**7 — Delete step 0's backups, and the client history file.** Verification is what gates this: once
+every consumer is confirmed healthy and the old value is retired, the backups have no remaining job,
+and a retired secret readable on disk is a surface.
+
+⛔ **And if you ran step 1 or step 6 without `MYSQL_HISTFILE=/dev/null`, delete the history file of
+whichever account ran them** — `~/.mariadb_history` (and `~/.mysql_history`), root's if you used
+`sudo`. It holds, in plaintext, every value those statements carried, and **neither sweep in this
+document can see it**: it is not
+a `DB_PASSWORD=` line and it is not under this account's home. Nothing else in this procedure will
+ever find it for you — and that is the general rule the sweeps at the top cannot express: they find a
+password stored as a `DB_PASSWORD=` line under this account and **nothing else**, so any file a tool
+wrote on your behalf during the rotation is yours to remember rather than theirs to catch.
 
 ---
 
@@ -459,6 +598,7 @@ than passing it.
    step 7 is gated on verification rather than done in the same breath as step 2. On the overlap
    path there is a cheaper answer first: the old value still works, so revert the consumer's file
    and nothing is down while you work out what the server rejected.
-4. **When the system is healthy again**, finish steps 6 and 7 — retire the old value at the server,
-   then delete the backups. A retired credential left on disk, or left accepted by the server, is
-   the next reader's trap.
+4. **When the system is healthy again**, finish steps 6 and 7 **on the overlap path** — retire the
+   old value at the server, then delete the backups and the client history file. On the single-value
+   path there is no step 6, because step 1 already retired the old value, so only step 7 is left. A
+   retired credential left on disk, or left accepted by the server, is the next reader's trap.
