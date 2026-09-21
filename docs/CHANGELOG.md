@@ -115,6 +115,30 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   alongside it; the filename rows were run on this host, the broken form first and failing.
   `docs/design/EVENT-SCHEMA.md` stops glossing that procedure's retire gate as two of its
   conditions in the same act, a partial gloss of a gate being a way to read a gate as met.
+  **The rule about failure text is now a rule about the MECHANISM rather than a note at the sites
+  somebody remembered** (2026-09-21, the same card, after a review found the warning covering one
+  site and silent at the others — the same shape each previous round of this document produced, an
+  instance fixed and the class re-minted one site along). The document had said it warned "where
+  it is used", and it did not: the statement on the **default** path, the one every operator runs,
+  can quote the **old** password — the value every consumer is holding, that step 0 backs up and
+  step 7 exists to delete — while the document warned about the new one where it happened to warn
+  at all. What replaces it is the server's actual behaviour, stated once near the top and needing
+  no per-site upkeep: a failing statement is quoted back **from the point of the error**, so
+  whichever value sits in that span is printed, and any statement here carrying a value can
+  therefore print it. A failure text that has been redirected or pasted is now named as an
+  **exposure**, a trigger § "The outage window is avoidable" already has a rule for. The second
+  leg is named too: **feed these statements to the client through a redirect and the client echoes
+  the whole statement first**, every value in it, ahead of the server's message. The commands that
+  merely *connect* are stated as their own class — account and host, no value, holding for both
+  things this document connects with and withheld from a stack trace by the driver's own
+  sensitive-parameter marking — and the classifier that reads the live value was measured across
+  its failure modes and reproduces no value in any of them. The population was derived over the
+  merged document rather than taken from the review, and every candidate inspection could not
+  clear was measured on a throwaway server at the pinned version under a pty, each against a
+  control seen to produce no value — the correctly-spelled statement returns no message at all,
+  and the detector fires on a stream that does carry one, so an empty result is a measurement.
+  Step 1's fence also carries a pointer to the caveats below it, so the operator who pastes first
+  meets the silent multi-rule failure before running it rather than after.
 - **card#9933** — **a `server/.env` the deploy never read, because it could not open the scratch
   file it reads with, is refused as that — instead of as a read that stopped short, under advice
   pointing at your disks.** Point `TMPDIR` at a directory `mktemp` cannot make a file in — one that is

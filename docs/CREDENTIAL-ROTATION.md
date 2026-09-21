@@ -31,17 +31,52 @@ The `mariadb` client keeps a history of its own and filters **nothing** out of i
 typed at its prompt is written to disk in plaintext unless you turn that off. Step 1 turns it off and
 says how; step 7 cleans up after the run where you forgot.
 
-⚠ **One command below does resolve a secret, and it is needed.** `SHOW CREATE USER`, in step 1,
-prints the account's password **hashes** — which are secret values, the same way `SHOW GRANTS` and
-`SELECT … FROM mysql.user` are, and neither of those two is needed anywhere here. Step 1 needs
-`SHOW CREATE USER` for a reason it gives, so read that output on the screen, keep it out of any log
-or paste, and put it nowhere but the statement it is for. Every other command in this document
-**prints** no secret value. Some do *resolve* one and send it nowhere — the classifier at the top of
+⛔ **A statement that fails on its SYNTAX quotes itself back, so any statement here that carries a
+value can print that value.** This is how the server answers a syntax error and not a property of
+any one step: the message returns your statement **from the point of the error**, for a bounded
+span, and whatever value sits inside that span comes back in the text. So *which* value you get is
+decided by *where* you slipped. Measured 2026-09-21 UTC on a throwaway server of the version this
+host runs, obvious fixtures only, each row against the correctly-spelled statement as its control —
+the correct statement raises no error and therefore returns no message at all, and a failing
+statement that carries no value (a mistyped `SHOW CREATE USER`) returns none either, so the
+measurement discriminates. One mistyped keyword at the head of step 1's statement returns the
+**old** password — the value every consumer is holding at that moment. The same statement slipped
+one line lower returns the **new** one, as do step 6's, the single-value form, and a `SET PASSWORD`;
+the ⭐ variant returns the hash it carries, cut off partway. **The rule is therefore the statement
+and not the site: any statement here that carries a value can print it, and a syntax error is what
+makes it do so.** So read every error one of these statements returns *before* you do anything else
+with it, and treat whatever it showed as printed — a value that has been printed is an **exposure**,
+and § "The outage window is avoidable" is where this document says what an exposure trigger changes.
+
+⚠ **Redirect the input and the client adds its own copy, ahead of the server's.** Typed at the
+prompt, the server's message is all that comes back. Run the same statement with input redirected —
+a heredoc, a script, `<file`, a pipe — and the client echoes the **whole statement**, every value in
+it, before the message. Measured both ways, same statement, same server. This is why step 1 says to
+type these at the prompt rather than feed them to the client.
+
+⚠ **A command below prints a secret when it SUCCEEDS, and it is needed.** `SHOW CREATE USER`, in
+step 1, prints the account's password **hashes** — which are secret values, the same way `SHOW
+GRANTS` and `SELECT … FROM mysql.user` are, and neither of those two is needed anywhere here. Step 1
+needs `SHOW CREATE USER` for a reason it gives, so read that output on the screen, keep it out of
+any log or paste, and put it nowhere but the statement it is for. That is what it prints when it
+**works**; the ⛔ above is what a statement prints when it **fails**. Those are two different
+questions. Some commands do *resolve* a value and send it nowhere — the classifier at the top of
 this file puts the live value on a file descriptor rather than in `argv`, which is the whole of why
 it is shaped that way, and step 2's editor puts it on your screen — and what matters is the stream,
-not the resolution. Where a command's *failure* text can print something this document keeps out of
-pastes and logs — the database user and host, and in one case a password you typed seconds earlier —
-it says so where it is used.
+not the resolution. The classifier's *failure* modes were measured on the same day and for the same
+reason, since it reads the live value in order to compare it: a reference file missing, unreadable
+or empty, an unreadable file in the sweep, a tree root that is not there — each names a **path** and
+none reproduces the value, while the same detector fires on a stream that does carry it.
+
+**A command that merely CONNECTS fails with the database user and host, and no value.** Every
+connection this document makes is made by one of two things, the `mariadb` client or PHP, and both
+were measured on the same throwaway: the client answers
+`ERROR 1045 … for user '<user>'@'<host>' (using password: YES)`, and PHP answers
+`SQLSTATE[HY000] [1045]` naming the same two fields. The value does not reach a stack trace either,
+because the driver marks that parameter sensitive: measured both ways round the setting that would
+otherwise put call arguments in a trace, and the parameter is withheld under either. **Read those
+failures on the screen; do not paste them** — what they carry is the account and the host. The
+statements that carry a value are the other class, and the ⛔ above governs them.
 
 ---
 
@@ -322,6 +357,13 @@ the prompt, never with `-e`, and with the client's own history turned off:
 ```sh
 sudo env MYSQL_HISTFILE=/dev/null mariadb
 ```
+
+⛔ **Do not paste the statement below first — read the blocks under it, and read `SHOW CREATE USER`
+before you write it.** One of those blocks carries a failure this procedure's own checks cannot
+discriminate: on an account that already holds more than one authentication rule, the statement
+below is **accepted**, silently drops every rule it does not name, and step 1's own "two rules are
+present" confirmation passes either way.
+
 ```sql
 ALTER USER '<the account DB_USERNAME names>'@'<its host>'
   IDENTIFIED VIA mysql_native_password USING PASSWORD('<the old password>')
@@ -376,13 +418,14 @@ can take is a syntax error rather than a nuance:**
   instead of asking you to notice it.
 * **The output names no plugin** — `IDENTIFIED BY PASSWORD '*<40 hex>'`, which is what an account
   created with `IDENTIFIED BY` prints and therefore the shape to expect here. **That clause is not
-  valid inside an `OR` form**: pasting it is refused `ERROR 1064` and nothing changes. ⚠ **That
-  refusal quotes your statement back at you, and your NEW password is in it in plaintext — read it,
-  do not paste it.** Measured 2026-09-21 UTC: the server's own message ends `…near 'OR
-  mysql_native_password USING PASSWORD('<the new password>')' at line 1`, and the server composes
-  that message, so it appears at an interactive prompt exactly as it does in batch output — measured
-  under a pty as well as a pipe. It does **not** reach the server's error log (`grep` for the value
-  on a throwaway's `--log-error` file, with the same file answering a control term). The plugin is
+  valid inside an `OR` form**: pasting it is refused `ERROR 1064` and nothing changes. ⚠ **Here the
+  document presents a failure as an expected outcome, so read what the rule at the top of this file
+  says that failure prints** — the error falls on rule 2, so the span the server quotes back carries
+  your **NEW** password in plaintext: the message ends `…near 'OR
+  mysql_native_password USING PASSWORD('<the new password>')' at line 1`. Read it; do not paste it,
+  and do not run this statement through a redirect. The one stream it was measured to stay out of is
+  the server's error log (`grep` for the value on a throwaway's `--log-error` file, with the same
+  file answering a control term). The plugin is
   `mysql_native_password`, and rule 1 is
   `IDENTIFIED VIA mysql_native_password USING '<that same hash>'` — the hash it printed, re-spelled
   as `VIA … USING`.
