@@ -4568,7 +4568,10 @@ observable on **no** surface built before step 10.*
   The skewed seat is `fx-snapshot-4`'s `aimla-impl-1` with its seat-clock members moved +10 minutes,
   and the future start is observed as [§ 2.4](#24-the-clock-and-every-age-on-the-page) clause 1
   renders it: a negative duration is `0s`, so the desk reads *running for 0s* on a call the server
-  has watched run for seconds.
+  has watched run for seconds. The receipt age this test's floor half cannot see on `fx-snapshot-4`,
+  where every seat is `live`, and the gauge age, which that fixture's inherited
+  `sampled_received_at` pins at `0s`, are held by the same suite on a variant run of the same file
+  with one `stale` and one `offline` desk and gauge samples received before `server_time`.
 - **Discriminating control:** the same fixture with the browser clock correct → identical output, so the
   test measures the offset and not the rendering.
 

@@ -821,7 +821,9 @@ else:
             continue
         n = int(c[0])
         for a in re.findall(r"\*\*([^*]+)\*\*", c[1]):
-            if re.search(r"✅|\blanded\b", a, re.I):
+            # the SAME recognizer as the legs below: a bold name that merely contains the word
+            # (`**landed-state animation**`) is an artifact, not a status claim
+            if g5_marker_any.search(a):
                 phantom = re.sub(r"[`\s]+", " ", a).strip().lower()
                 fail.append(f"G5: Appendix B step {n}'s Artifact cell carries a BOLD status marker "
                             f"`**{a}**` — every bold span in an Artifact cell is registered as an "

@@ -45,10 +45,33 @@ class TheAgeReadoutReadsTheServerClockTest extends TestCase
         ': ageFrom(action.started_at ?? null, nowMs);',
     ];
 
-    /** GREEN — every rendered age matches the age computed from `server_time`, on both runs. */
+    /**
+     * The three runs every age leg is held over. `ages_dark_desks` is the one whose `stale` and
+     * `offline` desks draw a receipt age and whose gauge ages are non-zero — the other two are
+     * all-`live` and inherit D2 § 8.2.2's `sampled_received_at`, which is AFTER its own
+     * `server_time`, so their gauge age is a clamped `0s` that no regression could move.
+     */
+    private const RUNS = ['ages', 'ages_skewed_seat', 'ages_dark_desks'];
+
+    /** RED 3 (round-1 review) — the gauge age dropped. */
+    private const PLANT_NO_CONTEXT_AGE = [
+        'context_age: context === null || nowMs === null ? null : ageFrom(context.sampled_received_at ?? null, nowMs),',
+        'context_age: null,',
+    ];
+
+    /** RED 4 (round-1 review) — the receipt age's duration corrupted. */
+    private const PLANT_RECEIPT = ['return age === null ? null : `no data for ${age}`;', 'return age === null ? null : `no data for ${age}` + \'BROKEN\';'];
+
+    /** RED 5 — the `dark-only` gate dropped: a `live` desk ticks a receipt age from a held value. */
+    private const PLANT_RECEIPT_ON_LIVE = [
+        "const dark = seat.link_state === 'stale' || seat.link_state === 'offline';",
+        'const dark = true;',
+    ];
+
+    /** GREEN — every rendered age matches the age computed from `server_time`, on every run. */
     public function test_every_age_is_the_server_clock_minus_its_own_instant_with_the_browser_three_hours_fast(): void
     {
-        foreach (['ages', 'ages_skewed_seat'] as $run) {
+        foreach (self::RUNS as $run) {
             $renders = $this->ageRenders($run, self::THREE_HOURS_MS);
 
             $this->assertSame([], $this->ageDefects($run, $renders), "[{$run}] the floor's ages are not the server clock's");
@@ -93,7 +116,7 @@ class TheAgeReadoutReadsTheServerClockTest extends TestCase
     /** GREEN — every seat-clock timestamp is a labelled claim in the seat's own digits, never an age. */
     public function test_every_seat_clock_instant_renders_as_a_labelled_claim(): void
     {
-        foreach (['ages', 'ages_skewed_seat'] as $run) {
+        foreach (self::RUNS as $run) {
             $seats = $this->snapshotSeats($run);
             $checked = 0;
 
@@ -129,7 +152,7 @@ class TheAgeReadoutReadsTheServerClockTest extends TestCase
     /** Discriminating control — the same fixture with the browser clock correct renders identical output. */
     public function test_a_correct_browser_clock_renders_exactly_what_a_skewed_one_does(): void
     {
-        foreach (['ages', 'ages_skewed_seat'] as $run) {
+        foreach (self::RUNS as $run) {
             $this->assertSame($this->ageRenders($run, 0), $this->ageRenders($run, self::THREE_HOURS_MS),
                 "[{$run}] the floor's ages depend on the browser's clock, so the test measures the rendering and not the offset");
         }
@@ -205,6 +228,50 @@ class TheAgeReadoutReadsTheServerClockTest extends TestCase
             'Second RED observed a different shape than a future start floored to zero');
     }
 
+    /** GREEN — the `dark-only` desks and the gauge ages actually carry values this run can discriminate on. */
+    public function test_the_dark_desks_draw_a_receipt_age_and_the_live_ones_none(): void
+    {
+        $seats = $this->snapshotSeats('ages_dark_desks');
+        $links = array_count_values(array_column($seats, 'link_state'));
+
+        // The premises, read off the fixture: both dark states and a live desk are present, and
+        // every gauge basis is before the server's now, so no gauge age is a clamped zero.
+        $this->assertSame(['live' => 2, 'stale' => 1, 'offline' => 1], $links);
+
+        foreach ($seats as $key => $seat) {
+            $this->assertLessThan($this->serverTimeMs('ages_dark_desks') - 60000, $this->ms($seat['context']['sampled_received_at']),
+                "{$key}'s gauge basis is not a minute before the server's now, so its age cannot discriminate");
+        }
+
+        $last = $this->ageRenders('ages_dark_desks', self::THREE_HOURS_MS);
+        $desks = end($last)['readouts']['desks'];
+
+        foreach ($seats as $key => $seat) {
+            if ($seat['link_state'] === 'live') {
+                $this->assertNull($desks[$key]['receipt_age'], "live desk {$key} draws a receipt age");
+            } else {
+                $this->assertStringStartsWith('no data for ', (string) $desks[$key]['receipt_age'], "dark desk {$key} draws no receipt age");
+            }
+
+            $this->assertNotSame('0s', $desks[$key]['context_age'], "{$key}'s gauge age is a clamped zero");
+        }
+    }
+
+    /** REDs 3–5 — the gauge age dropped, the receipt age corrupted, and the `dark-only` gate removed. */
+    public function test_red_the_gauge_and_receipt_ages_each_diverge_when_broken(): void
+    {
+        foreach ([
+            'gauge age dropped' => self::PLANT_NO_CONTEXT_AGE,
+            'receipt age corrupted' => self::PLANT_RECEIPT,
+            'dark-only gate removed' => self::PLANT_RECEIPT_ON_LIVE,
+        ] as $name => $plant) {
+            $dir = $this->mutatedModules(['age-readout.js', ...$plant]);
+            $defects = $this->ageDefects('ages_dark_desks', $this->ageRenders('ages_dark_desks', self::THREE_HOURS_MS, $dir));
+
+            $this->assertNotSame([], $defects, "RED ({$name}) did not bite: every age still matched the server clock");
+        }
+    }
+
     /**
      * Every age render of one run, the browser clock `skewMs` from the fixture's `server_time`.
      *
@@ -245,8 +312,14 @@ class TheAgeReadoutReadsTheServerClockTest extends TestCase
                 $wanted[] = [$r, $key, 'quiet_age', 'quiet age', ($now - $this->ms($seat['activity']['last_received_at'])) / 1000];
                 $wanted[] = [$r, $key, 'action_elapsed', 'action elapsed',
                     $seat['action'] === null ? null : ($now - $this->ms($seat['action']['started_received_at'])) / 1000];
-                // Every seat in `fx-snapshot-4` is `live`, so no desk draws a receipt age (`dark-only`).
-                $wanted[] = [$r, $key, 'receipt_age', 'receipt age', null];
+                // `dark-only` (§ 2.4): a `stale` or `offline` desk draws the receipt age, ticking, and
+                // a `live` desk draws none at all.
+                $dark = in_array($seat['link_state'], ['stale', 'offline'], true);
+                $wanted[] = [$r, $key, 'receipt_age', 'receipt age',
+                    $dark ? ($now - $this->ms($seat['delivery']['last_receipt_at'])) / 1000 : null];
+                // The gauge's own age: the bare duration, no wording (§ 14 item 17).
+                $wanted[] = [$r, $key, 'context_age', null,
+                    $seat['context'] === null ? null : ($now - $this->ms($seat['context']['sampled_received_at'])) / 1000];
             }
         }
 
@@ -263,7 +336,7 @@ class TheAgeReadoutReadsTheServerClockTest extends TestCase
                 continue;
             }
 
-            $expected = $s === null ? null : $this->wording($fact, $formatted[(string) $s]);
+            $expected = $s === null ? null : ($fact === null ? $formatted[(string) $s] : $this->wording($fact, $formatted[(string) $s]));
             $desk = $r['readouts']['desks'][$key] ?? null;
             $actual = is_array($desk) && array_key_exists($slot, $desk) ? $desk[$slot] : '(no such readout)';
 

@@ -39,11 +39,14 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   those two wordings, the seat-clock label and the corrected clock from `wire/` instead of its own
   copies, and with no server clock it draws no quiet age rather than *nothing done yet*, which
   claims the seat never reported. `Tests\Feature\Floor\TheAgeReadoutReadsTheServerClockTest`
-  replays `fx-snapshot-4` through the harness with the browser three hours fast: every age equals
-  the server clock minus its own instant, with each wording re-read from § 2.4's table; a correct
-  browser clock renders identical output; and ages computed from `Date.now()` (every desk reads
-  *nothing done for 3h…*) and an elapsed time taken from a +10-minute seat's `started_at`
-  (*running for 0s*) are both planted and seen red. The harness's probe gains a browser clock and
+  replays `fx-snapshot-4` through the harness with the browser three hours fast, over three runs:
+  the fixture itself, one with a +10-minute seat clock, and one with a `stale` and an `offline`
+  desk and gauge samples received before `server_time`. On each, all four ages (quiet, action
+  elapsed, receipt, gauge) equal the server clock minus their own instant, with each wording
+  re-read from § 2.4's table, and a `live` desk draws no receipt age; a correct browser clock
+  renders identical output. Planted and seen red: ages from `Date.now()` (every desk reads
+  *nothing done for 3h…*), an elapsed time from a +10-minute seat's `started_at` (*running for
+  0s*), the gauge age dropped, the receipt age corrupted, and the `dark-only` gate removed. The harness's probe gains a browser clock and
   runs the shipped ticker on its scenario timer.
   **Appendix B's landed marker has one form** (Q9): `✅ landed YYYY-MM-DD (card#N …) — `, unbolded,
   at the head of the Artifact cell. `tools/design/verify-floor.py`'s G5 read every bold span in an
