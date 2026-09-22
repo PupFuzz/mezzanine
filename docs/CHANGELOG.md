@@ -27,6 +27,29 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **`docs/design/FLOOR.md` § 14 item 21 (`fx-clear-trace`'s base, patches and
+  hook-order difference) and Q8 (no Appendix B row built § 5.7's coordination line) are both closed.**
+  Design and documentation only; no code changed. Item 21: the fixture's version base is
+  `fx-snapshot-4`'s own `state_version` (48219), continued; `aimla-pm`'s still-open `Bash: composer
+  test` call and its `coder` subagent close in the same delta that opens D2 § 10's trace, named rather
+  than inferred; the clock advances 1 s per delta; and the fixture ships one hook order, because D2 § 10
+  states the wire is identical either way. `§ 11`'s `fx-clear-trace` row and the AT-D3-1 episode walk
+  are amended to state it, and `fx-clear-trace` is now fully determined — step 6's build (Appendix B
+  order 6 → 7) can proceed. Q8: Appendix B step 7 builds the coordination thread line, gated by a new
+  acceptance test, AT-D3-18, and a new fixture, `fx-coord`, covering the join's resolve, no-declarer,
+  duplicate-declaration and cross-install cases. The fixture resolves **two** names, so the line has the
+  two endpoints it is drawn between, and carries the duplicate case on a third name that is nobody's
+  endpoint — a duplicated name resolves to nothing, so a fixture duplicating an endpoint name cannot
+  draw the render it gates. Its two endpoints are in **different check states**, so § 5.7's *a resolved
+  endpoint whose declaration was never checked is rendered as one* row is gated by a resolving
+  `unchecked` declaration with the `checked` endpoint beside it as the control, rather than by the
+  duplicate arm where the check state changes no outcome; and the fixture's `targets: null` sits on a
+  broadcast address, the one wire state D1 § 18.7 assigns `null` to, rather than beside a `to` naming a
+  single seat, which the producer cannot emit. A20's trigger now states the origin precondition its
+  render always assumed: a broadcast whose origin resolves to no desk draws no ring, rather than one on
+  a guessed desk.
+  `tools/design/verify-floor.py` and its selftest are green on both closures.
+
 - **card#9815** — **The deploy names a PHP-FPM pool file it cannot read as `cannot read <file>`, and
   prints FPM's own stderr when `php-fpm -i` fails.** A pool file the FPM config includes and the deploy
   user cannot read (a `pool.d` file at 640 root:root is the ordinary shape) was dropped as if absent:
