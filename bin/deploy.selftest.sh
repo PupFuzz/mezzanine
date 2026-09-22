@@ -4030,7 +4030,8 @@ if [ "$FULL_OK" = 1 ]; then
 
   # F1 — git_ref_oid's stderr file: A7's first candidate, the call after the loader's.
   # Mutation, run: restore the trust-`mktemp`-only `_scratch` and this reds on the headline — the ref
-  # resolves on a healthy store, and the run goes on to die at A13's work directory instead.
+  # resolves on a healthy store, and the run goes on to REFUSE at A13's work directory instead, banner
+  # and all, through this round's write-status check (§ SF-5) rather than the directory's own probe.
   mkfix scratch_full_ref_oid
   full_refused "full TMPDIR, A7's git_ref_oid" 1 \
     "the scratch file for git's error output while resolving 'refs/remotes/origin/main' was created and could not be written" \
