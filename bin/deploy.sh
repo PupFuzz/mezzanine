@@ -112,7 +112,8 @@
 #                         and a URL can carry a credential that this script's own messages print
 #                         and that git redacts in its own errors for some transports and not
 #                         others. A3c refuses a value that is not among `git remote`'s names, in
-#                         phase A, without echoing it (card#9832).
+#                         phase A, without echoing it (card#9832) — and one that is, when that name
+#                         contains ':', which no name `git remote add` creates can (card#9991).
 #   MEZZ_FPM_BIN          the PHP-FPM binary whose opcache settings A14 reads [default:
 #                         php-fpm<this host's CLI PHP minor>, e.g. php-fpm8.5 — derived; see below]
 #   MEZZ_DAEMON_STOP_TIMEOUT_S  seconds the previous daemons get to exit after SIGTERM [default: 30]
@@ -957,6 +958,65 @@ store_locality() {
 }
 
 git_at() { git -C "$DEPLOY_ROOT" "$@"; }
+
+# ── remote NAMES that are not printed (card#9991) ─────────────────────────────────────────────
+# remote_name_unprintable <name> — 0 when a remote NAME carries a `:`. THE ONE RULE, used twice by
+# A3c: it refuses a MEZZ_REMOTE that matches it, and it marks, rather than prints, every entry of
+# the remote list that matches it. One predicate, so the value A3c refuses and the entries it will
+# not print cannot drift apart.
+#   · WHY THE COLON: no name `git remote add` or `git remote rename` creates can carry one —
+#     measured, git 2.53.0: `git remote add a:b <url>` and `git remote rename x a:b` both answer
+#     `'a:b' is not a valid remote name` and write nothing — while every URL form with a place for
+#     a credential in it carries one (`scheme://user:secret@host/…`, and scp-style
+#     `user@host:path`; git-fetch(1) § GIT URLS). A name with a colon was therefore written into .git/config some other way
+#     (`git config 'remote.<url>.url' …` exits 0, measured), and it can be a URL, credential and all.
+#   · A COLON, NEVER `://` OR `@`: the rule is the property `git remote add` enforces on the names it
+#     creates, not a guess at what a URL looks like. `backup@nas` is a legal name and is printed;
+#     A3c's comment states why a pattern is the wrong test.
+#   · WHAT IT DOES NOT CATCH: a name with no colon is printed as the name it is, whatever its
+#     characters. A colon-free string is not a URL git fetches from (the bare filesystem path is
+#     disposed of at A3c), but it is still whatever someone typed as a name.
+remote_name_unprintable() { case "$1" in *:*) return 0 ;; esac; return 1; }
+
+# remote_names_listing <var> <`git remote`'s output> — the list A3c's refusals print, into <var>:
+# one `  · <name>` line per remote, except that a name remote_name_unprintable matches is replaced by
+# a MARKER that says where it is in `git remote`'s list and carries no character of the name. When
+# any entry is marked, the lines that tell the operator how to rename it without printing it follow.
+# The position is what makes a marked entry findable: `git remote` prints its names sorted (measured,
+# git 2.53.0 — config order is not kept), so `sed -n '<N>p'` over the same command selects it.
+# ⛔ NO HERE-STRING AND NO SUBSHELL, for the reason A3c's membership test states: this runs before the
+# `.env` loader, and bash before 5.1 backs a here-string with a temporary file. The loop walks the
+# string by parameter expansion instead. Locals are `__rl_`-prefixed, so <var> cannot be shadowed.
+remote_names_listing() {
+  local __rl_rest="$2" __rl_name __rl_n=0 __rl_marked=0 __rl_list=""
+  while [ -n "$__rl_rest" ]; do
+    __rl_name="${__rl_rest%%$'\n'*}"
+    if [ "$__rl_name" = "$__rl_rest" ]; then __rl_rest=""; else __rl_rest="${__rl_rest#*$'\n'}"; fi
+    __rl_n=$((__rl_n + 1))
+    if remote_name_unprintable "$__rl_name"; then
+      __rl_marked=$((__rl_marked + 1))
+      __rl_list+="  · [name $__rl_n of \`git remote\`'s list — NOT PRINTED: it contains ':', so it can be a"$'\n'
+      __rl_list+="     URL carrying a credential]"$'\n'
+    else
+      __rl_list+="  · $__rl_name"$'\n'
+    fi
+  done
+  if [ "$__rl_marked" -gt 0 ]; then
+    __rl_list+=""$'\n'
+    __rl_list+="\`git remote add\` and \`git remote rename\` both refuse a name with a ':' in it, so a marked"$'\n'
+    __rl_list+="name was written into .git/config directly. A URL belongs in remote.<name>.url, never in the"$'\n'
+    __rl_list+="name. Rename each marked remote, by its number N above, without printing it:"$'\n'
+    __rl_list+="  git -C $DEPLOY_ROOT remote rename \"\$(git -C $DEPLOY_ROOT remote | sed -n '<N>p')\" <a name>"$'\n'
+    __rl_list+="A rename re-sorts the list, so rename one at a time and take each next number from"$'\n'
+    __rl_list+="\`git -C $DEPLOY_ROOT remote | grep -n : | cut -d: -f1\`, which prints numbers and no names."$'\n'
+    __rl_list+="The rename keeps the remote's URL. A remote written in as just its \`.url\` has no fetch"$'\n'
+    __rl_list+="refspec, and without one the deploy finds no <a name>/main after the fetch. If"$'\n'
+    __rl_list+="\`git -C $DEPLOY_ROOT config --get remote.<a name>.fetch\` prints nothing, add the one"$'\n'
+    __rl_list+="\`git remote add\` writes:"$'\n'
+    __rl_list+="  git -C $DEPLOY_ROOT config remote.<a name>.fetch '+refs/heads/*:refs/remotes/<a name>/*'"$'\n'
+  fi
+  printf -v "$1" '%s' "${__rl_list%$'\n'}"
+}
 
 # ── reading the TARGET RELEASE out of git ─────────────────────────────────────────────────────
 # Phase A judges the release being deployed BEFORE it is checked out, so every precondition that
@@ -2358,19 +2418,24 @@ phase_a() {
   # GIT CREATES. `git config` writes a section name straight into `.git/config` with no such
   # check — measured, git 2.53.0:
   #     git config 'remote.https://user:secret@host/o/r.git.url' https://host/o/r.git   # exit 0
-  # `git remote` then LISTS that URL as a name, and this gate PASSES it (verdict measured against
-  # the construct below). ⇒ THE HONEST STATEMENT IS THE NARROW ONE: no name `git remote add` will
-  # CREATE can be a URL — a refname may not contain `:`, and every URL git fetches from carries
-  # one (`https://host/…`, `file://…`, `git://…`, scp-style `user@host:path`) — BUT a name written
-  # directly with `git config` can be, and it IS a configured remote of this checkout.
+  # `git remote` then LISTS that URL as a name, and the membership test PASSES it (verdict
+  # measured against the construct below). ⇒ THE HONEST STATEMENT IS THE NARROW ONE: no name
+  # `git remote add` will CREATE can be a URL — a refname may not contain `:`, and every URL form
+  # with a place for a credential carries one (`https://user:secret@host/…`, `git://…`, scp-style
+  # `user@host:path`) — BUT a name written directly with `git config` can be, and it IS a
+  # configured remote of this checkout.
+  # ⇒ CLOSED BY A SECOND TEST, NOT BY MEMBERSHIP (card#9991, the operator's decision): after
+  # membership passes, a MEZZ_REMOTE whose name contains `:` is refused — see the refusal after the
+  # membership test, and remote_name_unprintable for why the colon is the rule.
   #
-  # ⚠ AND ON SUCH A CHECKOUT THE CREDENTIAL IS ALREADY ON SCREEN WHENEVER THE REMOTES ARE LISTED,
-  # this gate's own refusal included: the list it prints below is `git remote`'s output, so a
-  # credential someone wrote into `.git/config` AS A REMOTE NAME appears under a headline saying
-  # the value is not printed. The value withheld there is `$MEZZ_REMOTE`; the list is the
-  # checkout's own configuration, and nothing here can make `git remote` say less than it says.
+  # ⚠ AND THE LIST THIS GATE PRINTS DOES NOT CARRY SUCH A NAME EITHER (card#9991). Before that card
+  # the list was `git remote`'s output verbatim, so a credential someone wrote into `.git/config` AS
+  # A REMOTE NAME appeared under a headline saying the value is not printed — on every run the
+  # membership test refused, whatever value it refused. remote_names_listing now replaces each name containing `:` with
+  # a marker giving its position in `git remote`'s list, by the same predicate the refusal uses.
+  # ⚠ WHAT THAT DOES NOT REACH: `git remote` itself, run by hand, still prints the name as it is.
   # A credential does not belong in a remote NAME on any host — `remote.<name>.url` is where a URL
-  # goes, and this gate is what makes the NAME the only thing MEZZ_REMOTE may be.
+  # goes — and the refusal tells the operator how to rename it.
   #
   # ⚠ THE ONE FETCH TARGET WITH NO `:` IS A BARE FILESYSTEM PATH, disposed of rather than left
   # unexamined: it carries no credential, and it reaches the fetch only where somebody has
@@ -2382,10 +2447,10 @@ phase_a() {
   # out of the log. It names the VARIABLE and lists the remotes this checkout HAS, and those are
   # NAMES: `git remote` with no options prints one name per line and no `remote.<name>.url`
   # (measured, git 2.53.0; `git remote -v` is the form that prints URLs, and is deliberately not
-  # the form called here). ⚠ WHAT THAT DOES NOT PROMISE is that no URL is on that list — a NAME
-  # written into `.git/config` with `git config` can itself be a URL, and `git remote` prints the
-  # names it is given (see the block above). The withholding is of `$MEZZ_REMOTE`; the list is the
-  # checkout's own configuration, which this gate reports and does not author.
+  # the form called here). ⚠ A NAME written into `.git/config` with `git config` can itself be a
+  # URL, and `git remote` prints the names it is given — so the list is printed through
+  # remote_names_listing, which marks any name containing `:` instead of printing it (card#9991,
+  # the block above). A name with no `:` is printed as the name it is.
   # ⚠ THE COST IS PAID KNOWINGLY: an operator who merely mistyped a remote NAME does not get their
   # typo echoed back. Echoing "only when the value looks safe" would be the same pattern-matching
   # guess by another route, one more rule to keep true, and wrong the first time a value that looks
@@ -2461,9 +2526,9 @@ phase_a() {
          *$'\n'"$REMOTE"$'\n'*) remote_is_configured=1 ;;
        esac ;;
   esac
+  local remote_names="  (none — this checkout has no remotes configured at all)"
+  [ -z "$remotes" ] || remote_names_listing remote_names "$remotes"
   if [ "$remote_is_configured" -ne 1 ]; then
-    local remote_names="  (none — this checkout has no remotes configured at all)"
-    [ -z "$remotes" ] || remote_names="$(printf '%s' "$remotes" | sed 's/^/  · /')"
     refuse "MEZZ_REMOTE does not name a remote of $DEPLOY_ROOT" \
       "ITS VALUE IS NOT PRINTED, AND THAT IS THIS REFUSAL'S POINT. \`git fetch\` accepts a URL as" \
       "well as a remote name, and a URL can carry a credential — so MEZZ_REMOTE may BE a secret," \
@@ -2473,12 +2538,35 @@ phase_a() {
       "MEZZ_REMOTE must be the NAME of a remote of this checkout. The names it has are:" \
       "$remote_names" \
       "" \
-      "Set MEZZ_REMOTE to one of those, or add the remote you mean and pass its NAME:" \
+      "Set MEZZ_REMOTE to one of the names printed there, or add the remote you mean and pass its" \
+      "NAME:" \
       "  git -C $DEPLOY_ROOT remote add <name> <url>" \
       "A URL is refused even when it carries no credential: nothing here can tell one that does" \
       "from one that does not without inspecting it, and whether git redacts a URL in its OWN fetch" \
       "error depends on the transport — measured, git 2.53.0: an https URL is reported with the" \
       "credential stripped and a git:// one verbatim — which is not this script's to rely on."
+  fi
+  # ⛔ AND A CONFIGURED REMOTE WHOSE NAME CONTAINS A COLON IS REFUSED TOO (card#9991), after the
+  # membership test and never instead of it, so the refusal a host sees names its real problem.
+  # The predicate is remote_name_unprintable, the same one that marks the list, so there is one
+  # rule here and not two. Such a name passes membership — it IS a configured remote — and without
+  # this the run went on to print it: measured through bin/deploy.selftest.sh against the tree
+  # before this rule, with a remote named `https://selftest:<fake token>@example.invalid/…` written
+  # in by `git config`, A7's step line printed it and git resolved it as a remote and fetched.
+  # ⚠ THE COST IS THE OPERATOR'S DECISION, ACCEPTED ON card#9991: a checkout that deliberately named
+  # a remote with a URL stops deploying until that remote is renamed. There is no escape hatch.
+  if remote_name_unprintable "$REMOTE"; then
+    refuse "MEZZ_REMOTE names a remote of $DEPLOY_ROOT whose NAME contains ':'" \
+      "ITS VALUE IS NOT PRINTED, AND THAT IS THIS REFUSAL'S POINT. No name \`git remote add\` creates" \
+      "can contain ':', while every URL form with a place for a credential in it does — so a remote" \
+      "named with one was written into .git/config directly, and its name can be a URL carrying a" \
+      "credential. This deploy prints MEZZ_REMOTE when it fetches, so it stops here instead" \
+      "(card#9991)." \
+      "" \
+      "The remotes of this checkout — MEZZ_REMOTE is one of the marked names:" \
+      "$remote_names" \
+      "" \
+      "Then set MEZZ_REMOTE to the name you gave it."
   fi
 
   # A4 — a clean tree. A modified file on the prod checkout IS the hand-deploy D-13 forbids, and

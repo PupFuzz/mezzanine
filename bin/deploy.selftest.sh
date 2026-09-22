@@ -54,7 +54,11 @@
 #     beside a remote NAMED with that same string, which deploys and prints it — so the absence is a
 #     measurement rather than a needle the output could never have carried; `backup@nas`, a legal
 #     remote name, deploying, which is what reds the pattern match the membership test must not become;
-#     and a value joining two ADJACENT remote names with a newline, beside each half deploying alone.
+#     and a value joining two ADJACENT remote names with a newline, beside each half deploying alone;
+#   - a remote NAMED with a credential-bearing URL (card#9991): refused as MEZZ_REMOTE, and marked
+#     rather than printed in any A3c refusal's list, beside the same token as a legal name, which the
+#     list DOES print; and a legal name carrying `/`, `@`, `.` and `-` deploying, which is what reds a
+#     predicate widened from the colon into a guess at what a URL looks like.
 #
 # ⛔ AND THE REFUSAL CONTRACT ITSELF, ASSERTED AT `run_refusal` RATHER THAN PER CASE (card#9646).
 # A refusal is three things together — exit 1, the `⛔ REFUSED — <cause>` banner, and the closing
@@ -3982,12 +3986,12 @@ eq "no scratch file in phase B: server/.env was readable the whole time (read he
 # mutant, it reds there and on the two refusals for values that are not URLs at all — `nowhere`,
 # and `origin` on a checkout with no remotes — because a pattern lets both through to the fetch.
 #
-# ⚠ AND WHAT MEMBERSHIP DOES NOT CLOSE IS NOT TESTED HERE, ON PURPOSE (review round 2). `git config`
-# writes a section name straight into `.git/config` with no name check, so a remote whose NAME is a
-# credential-bearing URL is a CONFIGURED remote and this gate passes it — measured, git 2.53.0, and
-# stated at `bin/deploy.sh`'s A3c and in both docs. No case pins that here: what to do about it is an
-# acceptance question open with the operator, and a characterisation test would read as ratifying the
-# hole. What IS tested below is the leg this round CLOSED — a multi-line value.
+# ⚠ WHAT MEMBERSHIP DOES NOT CLOSE IS TESTED IN § card#9991, NOT HERE. `git config` writes a section
+# name straight into `.git/config` with no name check, so a remote whose NAME is a credential-bearing
+# URL is a CONFIGURED remote and membership passes it — measured, git 2.53.0. card#9832 left that
+# untested while the question was open with the operator; the operator decided it on card#9991 (refuse
+# such a MEZZ_REMOTE, and mark such a name in the list), and that section carries the cases. What IS
+# tested below is the leg card#9832's round 2 CLOSED — a multi-line value.
 section "card#9832 — MEZZ_REMOTE is a remote NAME, and a value that is not one is refused unprinted"
 
 # ⛔ AN OBVIOUSLY FAKE VALUE, by construction: `example.invalid` is reserved by RFC 2606 and can
@@ -4021,16 +4025,15 @@ has "MEZZ_REMOTE as a URL: and says how to add the one that was meant" "remote a
 # universal this card's review round 2 falsified on three other surfaces and which survived HERE, in
 # the one place where it is load-bearing: it is the stated reason those two `hasnt`es get no twin, so
 # a maintainer reads it as the leak path being closed by impossibility — the exact conclusion this
-# card exists to prevent, about the question that is still open with the operator.
+# card exists to prevent, about a question that was then still open with the operator (card#9991
+# has since decided it).
 # WHAT IS TRUE: no name `git remote add` will CREATE can be a URL, so no twin can be built the way
 # the twin above is. A name written straight in with `git config` CAN be a URL — the hole recorded
-# at this section's head, left untested on purpose — and such a run does NOT merely reach the fetch
-# and fail: measured through this harness, git resolves that name as a REMOTE, fetches from its
-# configured `.url` and EXITS 0. A7's step line has printed the credential by then, and what
-# follows depends on that remote's refspec — in the run measured here A8's refusal printed it a
-# second time, which is a property of the fixture's refspec and not a general one.
-# So a twin IS buildable, with `git config`; it is not built because building it is the
-# characterisation test this section deliberately does not ship.
+# at this section's head — and before card#9991 such a run did NOT merely reach the fetch and fail:
+# measured through this harness, git resolved that name as a REMOTE, fetched from its configured
+# `.url` and exited 0, with A7's step line having printed the credential. § card#9991 now refuses
+# that value and carries the case; it is not twinned HERE because this section's value is a URL
+# that names no remote, which is a different refusal.
 # The two needles are asserted absent as the strings CONTAINING the needle that IS twinned, which is
 # what makes their absence meaningful without a twin of their own.
 gitc "$ROOT" remote add "$FAKE_TOKEN" "$ORIGIN"
@@ -4135,6 +4138,131 @@ hasnt "git remote failed: and the value is withheld on this branch too (it is se
 rm -f "$T/knobs/git_remote_fail"; unset MEZZ_REMOTE
 run --dry-run
 eq  "the control: the same fixture with \`git remote\` answering deploys" 0 "$RC"
+
+# ── card#9991 — A REMOTE WHOSE NAME CONTAINS A COLON IS REFUSED AS MEZZ_REMOTE, AND A3c DOES NOT PRINT IT ──
+# card#9832's membership test passes a value that IS a configured remote, and `git config` will
+# write a remote whose NAME is a URL (`git config 'remote.<url>.url' …` exits 0), which `git remote`
+# then lists. Two holes followed, both measured against the tree before this card:
+#   · LEG 1 — MEZZ_REMOTE set to such a name passed A3c, A7's step line printed it, and git resolved
+#     it as a remote and fetched from its `.url`.
+#   · LEG 2 — A3c's membership refusal printed `git remote`'s output as the list of names, so on
+#     such a checkout every run it refused for naming no remote printed the credential.
+# The operator's decision (card#9991): refuse a MEZZ_REMOTE containing `:` after membership passes,
+# and mark such an entry in the list instead of printing it. ONE predicate does both
+# (remote_name_unprintable in bin/deploy.sh). A colon is the test because no name `git remote add`
+# or `git remote rename` creates can carry one — measured, git 2.53.0, both answer `'a:b' is not a
+# valid remote name` — so no remote those two commands created is affected.
+#
+# ⛔ THE ABSENCES ARE MEASUREMENTS BECAUSE OF THE TWIN, as in § card#9832: a remote whose name is the
+# same token WITHOUT the URL around it — a legal name — is listed by the same refusal, and its token
+# is asserted PRESENT. So the needle is one this output carries when the name is printable, and its
+# absence on the colon-bearing fixture is the rule working, not a needle that could never appear.
+#
+# ⭐ THE MUTANTS THIS SECTION CATCHES: widening the predicate into a URL-shape guess (`*@*`, `*/*`)
+# reds the legal-name control, which carries `/`, `@`, `.` and `-` and no colon; a predicate that
+# refuses everything reds every control; dropping the colon refusal reds leg 1; printing the list
+# unmarked reds leg 2.
+section "card#9991 — a remote NAME containing ':' is refused as MEZZ_REMOTE, and no A3c refusal prints it"
+
+# ⛔ OBVIOUSLY FAKE, by construction: `example.invalid` is reserved by RFC 2606 and the token is a
+# literal that says what it is. It is a DIFFERENT token from § card#9832's, so a hit here cannot be
+# that section's fixture leaking forward.
+COLON_TOKEN='SELFTESTFAKECOLONTOKEN'
+COLON_NAME="https://selftest:$COLON_TOKEN@example.invalid/org/repo.git"
+# no_token_in_files <label> — the token is in no file of the checkout outside .git/, where the
+# fixture itself wrote it. A deploy that wrote a marker or a log file would be caught here as well
+# as on its output. ⛔ THE INSTRUMENT IS SEEN TO FIND IT FIRST: the same grep without the exclusion
+# finds the token in .git/config, so an empty answer below is a search that could have hit.
+no_token_in_files() {
+  eq "$1: the instrument finds the token where the fixture wrote it (.git/config)" \
+    "$ROOT/.git/config" "$(grep -rlF -- "$COLON_TOKEN" "$ROOT/.git/config")"
+  eq "$1: and it is in no file of the checkout outside .git/" \
+    "" "$(grep -rlF --exclude-dir=.git -- "$COLON_TOKEN" "$ROOT")"
+}
+
+# LEG 1, RED-FIRST: MEZZ_REMOTE is the colon-bearing name. Against the tree before this card it
+# passed A3c, printed `Fetching <the URL>` and fetched.
+mkfix remote_name_is_a_url
+gitc "$ROOT" config "remote.$COLON_NAME.url" "$ORIGIN"
+# The fixture's own premise, asserted rather than assumed: git lists the URL as a remote NAME, which
+# is the only reason membership could ever have passed it.
+has "fixture: \`git remote\` lists the URL as a remote name" \
+  $'\n'"$COLON_NAME"$'\n' $'\n'"$(gitc "$ROOT" remote)"$'\n'
+export MEZZ_REMOTE="$COLON_NAME"
+run_refusal "a MEZZ_REMOTE that IS a configured remote whose name contains ':'" \
+  "MEZZ_REMOTE names a remote of $ROOT whose NAME contains ':'" --dry-run
+hasnt "colon-named MEZZ_REMOTE: the credential is nowhere in the output" "$COLON_TOKEN" "$OUT"
+hasnt "colon-named MEZZ_REMOTE: nor the host it names" "example.invalid" "$OUT"
+hasnt "colon-named MEZZ_REMOTE: A7's step line, which prints \$REMOTE, never ran" "Fetching" "$OUT"
+hasnt "colon-named MEZZ_REMOTE: not reported as a value that names no remote — it does name one" \
+  "does not name a remote of" "$OUT"
+has "colon-named MEZZ_REMOTE: says outright that the value is withheld" "ITS VALUE IS NOT PRINTED" "$OUT"
+has "colon-named MEZZ_REMOTE: the entry is MARKED in the list, by its position" \
+  "[name 1 of \`git remote\`'s list — NOT PRINTED: it contains ':'" "$OUT"
+has "colon-named MEZZ_REMOTE: the printable name beside it is still listed" "  · origin" "$OUT"
+has "colon-named MEZZ_REMOTE: and it says how to rename it without printing it" \
+  "remote rename \"\$(git -C $ROOT remote | sed -n '<N>p')\" <a name>" "$OUT"
+no_token_in_files "colon-named MEZZ_REMOTE"
+no_shell_death "colon-named MEZZ_REMOTE" "$OUT"
+has "colon-named MEZZ_REMOTE: and how to give the renamed remote the fetch refspec it lacks" \
+  "config remote.<a name>.fetch '+refs/heads/*:refs/remotes/<a name>/*'" "$OUT"
+# ⭐ THE ADVICE, RUN: the two commands the refusal prints, in its order, on a remote written in the
+# way this fixture wrote it. Advice that was never run is a guess (canon #9). The refspec step is not
+# decoration: without it this remote fetches and A8 finds no renamed-mirror/main (measured building
+# this case), because `git config remote.<url>.url` writes no fetch line.
+gitc "$ROOT" remote rename "$(gitc "$ROOT" remote | sed -n '1p')" renamed-mirror
+eq  "the advice: the rename kept the remote's URL" "$ORIGIN" "$(gitc "$ROOT" config --get remote.renamed-mirror.url)"
+eq  "the advice: and the renamed remote has no fetch refspec, which is why the second step exists" \
+  "" "$(gitc "$ROOT" config --get remote.renamed-mirror.fetch)"
+gitc "$ROOT" config remote.renamed-mirror.fetch '+refs/heads/*:refs/remotes/renamed-mirror/*'
+export MEZZ_REMOTE=renamed-mirror
+run --dry-run
+eq  "the advice: the renamed remote deploys" 0 "$RC"
+has "the advice: and it is the remote that was fetched" "Fetching renamed-mirror" "$OUT"
+
+# LEG 2, RED-FIRST: the SAME checkout shape, with MEZZ_REMOTE naming nothing — a refusal that has
+# nothing to do with the colon-bearing remote, and printed it anyway before this card.
+mkfix remote_list_carries_a_url
+gitc "$ROOT" config "remote.$COLON_NAME.url" "$ORIGIN"
+export MEZZ_REMOTE=nowhere
+run_refusal "any A3c refusal on a checkout carrying a colon-named remote" \
+  "MEZZ_REMOTE does not name a remote of $ROOT" --dry-run
+hasnt "the list: the credential in a remote NAME is not printed" "$COLON_TOKEN" "$OUT"
+hasnt "the list: nor the host it names" "example.invalid" "$OUT"
+has "the list: the entry is marked instead, by its position" \
+  "[name 1 of \`git remote\`'s list — NOT PRINTED: it contains ':'" "$OUT"
+has "the list: the printable names are still listed" "  · origin" "$OUT"
+no_token_in_files "the list"
+# ⛔ THE TWIN, one variable away: the token as a LEGAL name, with no URL around it. The same refusal
+# lists it — so the token is a string this list prints when the name is printable, and its absence
+# above is the marker's doing.
+mkfix remote_list_twin
+gitc "$ROOT" remote add "$COLON_TOKEN" "$ORIGIN"
+export MEZZ_REMOTE=nowhere
+run_refusal "the twin: the same refusal with the token as a legal name" \
+  "MEZZ_REMOTE does not name a remote of $ROOT" --dry-run
+has "the twin: the list DOES print the token when it is a printable name" "  · $COLON_TOKEN" "$OUT"
+hasnt "the twin: and nothing is marked, since no name carries ':'" "NOT PRINTED: it contains ':'" "$OUT"
+
+# ⭐ THE CONTROLS — A LEGAL NAME IS NOT CAUGHT. `mirror/prod@nas.example-1` carries `/`, `@`, `.`
+# and `-` — each a character a URL-shape guess would key on — and no colon; `git remote add`
+# accepts it (measured, git 2.53.0). It deploys, and it is printed as the name it is.
+LEGAL_ODD_NAME='mirror/prod@nas.example-1'
+mkfix remote_legal_odd_name
+gitc "$ROOT" remote add "$LEGAL_ODD_NAME" "$ORIGIN"
+export MEZZ_REMOTE="$LEGAL_ODD_NAME"
+run --dry-run
+eq  "⭐ a legal name carrying / @ . - and no ':': deploys (a URL-shape predicate refuses it)" 0 "$RC"
+has "a legal name with no ':': it is the remote that was fetched" "Fetching $LEGAL_ODD_NAME" "$OUT"
+# And the rule is about MEZZ_REMOTE, not the checkout: a checkout that CARRIES a colon-named remote
+# deploys from a legal one — here the default, origin — and the colon-named remote is not printed.
+mkfix remote_colon_beside_default
+gitc "$ROOT" config "remote.$COLON_NAME.url" "$ORIGIN"
+run --dry-run
+eq  "the control: a checkout carrying a colon-named remote deploys from origin" 0 "$RC"
+has "the control: and it fetched origin" "Fetching origin" "$OUT"
+hasnt "the control: and the colon-named remote is not printed by a deploy that never lists it" \
+  "$COLON_TOKEN" "$OUT"
 
 printf '\n──────────────────────────────────────────────\n'
 # ⚠ REPEATED HERE because a line 1,400 assertions up has scrolled past. A condition this runner
