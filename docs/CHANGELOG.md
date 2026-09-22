@@ -34,12 +34,13 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   is defined` for the stream pool — or, when another pool of that user's was still readable, passed A14
   having judged opcache without reading the app's own pool. `bin/deploy.sh`'s `fpm_code_reload_ready`
   now reads every matched pool file or refuses by name through one primitive, `fpm_readable`, which
-  `php-fpm.conf` and the `.user.ini` files use too; a pool directory the include lists and the user
-  cannot list is refused the same way, and an include glob that matches nothing keeps its own report.
+  `php-fpm.conf` and the `.user.ini` files use too; a pool directory the include points into and the
+  user cannot list or search is refused the same way, and an include glob that matches nothing keeps its own report.
   Phase B fails the window on it, as for an unreadable `php-fpm.conf`. On the `did not print an FPM
   phpinfo` refusal, FPM's stderr is now printed beneath it and stays out of a healthy run.
-  `bin/deploy.selftest.sh` covers each case with a mode-000 fixture asserted unopenable first, and its
-  readable twin.
+  `bin/deploy.selftest.sh` covers each case with a fixture whose permissions are asserted first — mode 000,
+  and a `pool.d` at 644 that can be listed and not searched, behind a glob and behind a literal include —
+  beside its readable twin, and pins a file literally named `*.conf` as the pool file it is.
 
 - **card#7341** — **Every desk on the floor now has its render: the ten states, the degraded
   treatments, the null renders and the side table** (`docs/design/FLOOR.md` Appendix B step 5, gated

@@ -2090,7 +2090,10 @@ fpm_judge() {
 }
 
 # fpm_readable <path> <why…> — fpm_code_reload_ready's one read-permission refusal (card#9815): true when this user can
-# read <path> (and, for a directory, list it); otherwise FPM_NOT_READY is "cannot read <path>" and <why>, and it fails.
+# read <path>, and — for a directory — both LIST it (-r) and SEARCH it (-x); otherwise FPM_NOT_READY is "cannot read
+# <path>" and <why>, and it fails. Both bits, because they answer different questions (measured, bash 5.3.9): a
+# directory at 644 can be LISTED, so a glob over it still returns the names, but nothing in it can be stat'ed or opened
+# — so a LITERAL include naming a file in it reads as absent (`-e` false), which is the false cause this card ends.
 # The CALLER decides that <path> is there before asking, because what "there" means differs per file: php-fpm.conf
 # must be, a .user.ini may be absent, and a pool file is whatever the include matched. ⛔ `-r` alone is never read as
 # "absent" in this function: it is false for a file that is there and unreadable too, and a pool file dropped that
@@ -2117,6 +2120,12 @@ fpm_code_reload_ready() {
   fi
   # FPM's stderr is KEPT and printed only if this read fails (card#9815): a healthy FPM prints warnings there as a
   # matter of course, so on the success path it is noise — and on the failure path it is FPM's own reason.
+  # ⚠ WHAT IT CAN CARRY, MEASURED rather than assumed (card#9815 round 2, canon #20 — real php-fpm8.5, dummy
+  # sentinel values only): `-i` does NOT parse php-fpm.conf or any pool file — a pool with broken env[…] and
+  # php_admin_value[…] lines carrying sentinels left `-i` at exit 0 with EMPTY stderr (only `-t` parses pools, and
+  # its errors name file:line, not the value). What `-i` does read is php.ini: thirteen malformed php.ini shapes
+  # carrying sentinels each printed file:line and a parser token, never the value — and each still printed an FPM
+  # phpinfo, so none reached the branch below that prints this. Other PHP builds were not measured.
   scratch_file fpm_err "\`$FPM_BIN -i\`'s error output"
   info="$("$FPM_BIN" -i 2>"$fpm_err" || true)"
   if [ "$(phpinfo_value "$info" 'Server API')" != "FPM/FastCGI" ]; then
@@ -2151,8 +2160,8 @@ fpm_code_reload_ready() {
       if [ "$f" = "$inc" ] && [ ! -e "$f" ]; then
         if [ -d "$(dirname "$f")" ]; then
           fpm_readable "$(dirname "$f")" \
-            "The include '$inc' in $fpm_conf names pool files in it, and none can be seen from here — so" \
-            "whether one of them runs as $me is not known." || return 1
+            "The include '$inc' in $fpm_conf points into it, and nothing there can be opened from here — so" \
+            "whether a pool it defines runs as $me is not known." || return 1
         fi
         continue
       fi

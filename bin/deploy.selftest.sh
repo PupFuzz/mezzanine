@@ -1640,11 +1640,51 @@ hasnt "unreadable pool.d: never says no pool runs as the deploy user" "no PHP-FP
 chmod 755 "$STUB_FPM_ETC/pool.d"; run --dry-run
 eq "control: the same pool directory, readable, deploys" 0 "$RC"
 
+# ⭐ READABLE BUT NOT SEARCHABLE (644) — the shape the DIRECTORY half of fpm_readable exists for, and the one a
+# chmod 000 fixture cannot separate, because 000 takes both bits away together. Measured (bash 5.3.9): a 644
+# directory can be LISTED, so a GLOB over it still returns the file names, and each is then refused by name as a
+# file this user cannot read — the first leg. What only the -x half catches is a LITERAL include into that directory:
+# its path cannot be stat'ed, so `-e` calls it absent, and without -x the pools it defines were dropped exactly as
+# this card's defect dropped them — the second leg, which reds with `[ -x ]` removed from fpm_readable.
+mkfix fpm_pool_dir_unsearchable_glob; chmod 644 "$STUB_FPM_ETC/pool.d"
+eq "644 pool.d (glob): the fixture really is listable and not searchable (a root runner cannot hold this)" \
+  listable-unsearchable "$(ls "$STUB_FPM_ETC/pool.d" >/dev/null 2>&1 && ! { : < "$POOL"; } 2>/dev/null && printf listable-unsearchable || printf other)"
+run_refusal "a 644 pool directory behind a glob include" "cannot read $POOL" --dry-run
+hasnt "644 pool.d (glob): never says no pool runs as the deploy user" "no PHP-FPM pool runs as" "$OUT"
+chmod 755 "$STUB_FPM_ETC/pool.d"
+
+literal_includes() { # the include lines name the two pool files BY PATH, as a host may write them, not by glob
+  sed -i "s|^include=.*|include=$POOL\ninclude=$STREAM_POOL|" "$STUB_FPM_ETC/php-fpm.conf"
+}
+mkfix fpm_pool_dir_unsearchable_literal; literal_includes
+eq "literal includes: php-fpm.conf really names both pool files by path" 2 \
+  "$(grep -cxF -e "include=$POOL" -e "include=$STREAM_POOL" "$STUB_FPM_ETC/php-fpm.conf")"
+run --dry-run
+eq "control: literal includes into a searchable pool.d deploy" 0 "$RC"
+chmod 644 "$STUB_FPM_ETC/pool.d"
+run_refusal "a 644 pool directory behind a LITERAL include" "cannot read $STUB_FPM_ETC/pool.d" --dry-run
+hasnt "644 pool.d (literal): never says no pool runs as the deploy user — two do" "no PHP-FPM pool runs as" "$OUT"
+chmod 755 "$STUB_FPM_ETC/pool.d"
+
 # ⛔ AND THE FIX MUST NOT WIDEN: an include glob that LEGITIMATELY matches nothing, in a directory this user can
 # read, is a host with no pool files — and "no PHP-FPM pool runs as <me>" is then the true cause.
 mkfix fpm_pool_glob_empty; rm -f "$STUB_FPM_ETC"/pool.d/*.conf
 run_refusal "an include glob that matches no file" "no PHP-FPM pool runs as $ME" --dry-run
 hasnt "an empty glob: is not reported as a file it cannot read" "cannot read" "$OUT"
+
+# The one input on which a glob's MATCH is spelled exactly like the glob: a file literally named `*.conf`, the only
+# file in pool.d, so `for f in $inc` hands back the pattern's own text. It exists, so it is a pool file FPM's include
+# reads too, and this deploy must read it rather than take it for an empty glob — the `-e` half of the empty-glob
+# test is what tells the two apart. Readable, it deploys on the pools it defines; unreadable, it is refused by name.
+mkfix fpm_pool_named_like_the_glob
+cat "$POOL" "$STREAM_POOL" > "$STUB_FPM_ETC/pool.d/*.conf"; rm -f "$POOL" "$STREAM_POOL" "$STUB_FPM_ETC/pool.d/www.conf"
+eq "a file named '*.conf': it is the only file in pool.d" '*.conf' "$(ls "$STUB_FPM_ETC/pool.d")"
+run --dry-run
+eq  "a file named '*.conf': read as the pool file it is, and deploys" 0 "$RC"
+has "a file named '*.conf': the stream pool it defines was found" "stream pool [mezz-stream]" "$OUT"
+chmod 000 "$STUB_FPM_ETC/pool.d/*.conf"
+run_refusal "a file named '*.conf' this user cannot read" "cannot read $STUB_FPM_ETC/pool.d/*.conf" --dry-run
+chmod 644 "$STUB_FPM_ETC/pool.d/*.conf"
 
 # PHASE B re-reads the posture before it waits, and a pool that stops being readable INSIDE the window fails
 # the window exactly as `cannot read <php-fpm.conf>` does: exit 2, the app left down, and the true cause.
