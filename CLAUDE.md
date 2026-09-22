@@ -740,26 +740,34 @@ and where they were already stated verbatim while the block duplicated them.
 > must open this file to read it. Reference and rationale only; standing rules that must reach a
 > session belong between the `coord:install-rules` markers above.
 
-## PR bodies are judged against the fleet standard, and the lane REPORTS — it does not block
+## PR bodies are judged against the fleet standard, and a body with findings fails its check
 
 **The standard is not this repository's and is not restated here.** It is `skills/release-pr/SKILL.md
 § PR body — write it for the software installer` in the coord install, ratified twice, governing every
 PR body an agent writes. The linter is upstream's own program, vendored at `bin/pr-body-lint.py`; its
 docstring is the contract, including what it deliberately refuses to judge.
 
-⛔ **THE STEP THAT JUDGES YOUR BODY PRINTS ITS VERDICT AND EXITS 0, WHATEVER IT FINDS.** ⇒ **A green
-CI run says nothing about whether your body meets the standard** — read the job's log, not its tick.
-⚠ The JOB is not the same promise and never was: its pin and selftest steps judge the CHECKOUT — the
-vendored bytes, the vendored linter's own controls, `bin/change-pr-body.py` — and those DO red it. So
-a RED `pr-body-lint` is never a verdict on your prose; read which step failed.
+⛔ **THE STEP THAT JUDGES YOUR BODY FAILS THE `pr-body-lint` JOB WHEN THE BODY HAS FINDINGS** (card#9801).
+It also fails when the linter could not judge the body at all, and says that is a wiring defect rather
+than a verdict on the body. The job's pin and selftest steps judge the CHECKOUT — the vendored bytes,
+the vendored linter's own controls, `bin/change-pr-body.py` — and red it too, so on a red, read which
+step failed before editing anything: the body step's last lines name its outcome. Which branches
+require the context is a repository setting; `docs/VERSIONING.md § Branch model` carries the command
+that reads it. The workflow block that owns this lane's behaviour is the `pr-body-lint` job in
+`.github/workflows/card-token-lint.yml`.
 
-Report-only is the decision recorded on card#9767, and it rests on a measurement rather than a taste.
-⭐ **MOST OF THIS REPOSITORY'S MERGED BODIES FAIL THE STANDARD, AND THOSE REDS ARE CORRECT** — the
-repo wrote house sections that are none of them in the standard's closed allowed set (the
+**To clear a red body verdict, edit the PR body.** The workflow runs on `edited`, so the edit re-runs
+the check with no new push. Judge a body before you open the PR with the commands further down.
+
+The lane began report-only, the decision recorded on card#9767, and it rested on a measurement: most
+of this repository's merged bodies failed the standard, and those reds were correct — the repo wrote
+house sections that are none of them in the standard's closed allowed set (the
 `change-pr-body:house-map` block below is the set, and where each one goes instead). A gate that reds
-ordinary correct-looking work on its first day teaches the people it governs to route around it, so
-the lane reports instead. **No figure is written down here** — a count of failing bodies is false at
-the next merge and nothing re-checks it. Derive it:
+ordinary correct-looking work on its first day teaches the people it governs to route around it. The
+window closed once the shape below was decided, `bin/change-pr-body.py` emitted it, and the open PR
+bodies were measured passing (operator ruling 2026-09-21, card#9801). **No figure is written down
+here** — a count of failing merged bodies is false at the next merge and nothing re-checks it. Derive
+it:
 
 ```
 gh pr list --repo PupFuzz/mezzanine --state merged --limit 20 --jq '.[].number' --json number |
@@ -770,15 +778,10 @@ done
 ```
 
 ⚠ **THAT DERIVATION READS MERGED BODIES, AND A MERGED BODY IS NEVER EDITED** (operator ruling: the
-historical record stands as written). ⇒ Adopting the shape cannot turn the recent set green today;
-it goes green only as compliant bodies merge and displace the old ones, so a run of it measures how
-far the ADOPTION has travelled and never how good the adoption is. Judge a single body you are about
-to push with the second command below instead.
-
-⚠ **THE LANE EXISTING IS NOT THE CLASS BEING HANDLED, AND A PERMANENTLY-RED-AND-IGNORED CHECK IS THE
-SAME BYPASS TRAINING BY A SLOWER ROUTE.** Report-only is a window: it closes when this repo adopts the
-body shape and an operator makes the dated flip to blocking. Both are tracked on card#9767 and
-card#9801; the flip is the operator's call, not this repo's.
+historical record stands as written). ⇒ It goes green only as compliant bodies merge and displace the
+old ones, so a run of it measures how far the ADOPTION has travelled and never how good the adoption
+is. A red there blocks nothing: the job judges open PRs only. Judge a single body you are about to
+push with the second command below instead.
 
 ### The standard binds a CHANGE PR too, and this is the shape it leaves
 
@@ -866,7 +869,7 @@ a body (release bodies especially — `release-pr-body` emits neither), put them
 a line window: put them anywhere outside a fenced block, in either the bold or the plain spelling.
 `built-line.md` owns the `Built:` value set.
 
-Read the verdict on a body before you push it, which is the whole point of a lane that cannot stop you:
+Read the verdict on a body before you push it, the same verdict the check will reach:
 
 ```
 gh api repos/PupFuzz/mezzanine/pulls/<N> --jq .body | python3 bin/pr-body-lint.py --body-file=-
