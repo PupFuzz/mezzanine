@@ -69,6 +69,13 @@ class DrillDownModuleWiringTest extends TestCase
             // implementation here would be two clients disagreeing about one seat's task.
             'taskFacts' => ['wire/task.js'],
             'taskRefLink' => ['wire/task.js'],
+            // card#7341 step 4: the corrected clock, the seat-clock label and the two ages whose
+            // wording § 2.4 publishes, hoisted to `wire/` at their SECOND caller — the floor's age
+            // readout needed exactly what this panel had. One fact, one string (§ 2.4).
+            'correctedNowMs' => ['wire/duration.js'],
+            'seatClock' => ['wire/age-readout.js'],
+            'quietAgeLine' => ['wire/age-readout.js'],
+            'actionElapsedLine' => ['wire/age-readout.js'],
         ];
 
         foreach ($expected as $function => $home) {

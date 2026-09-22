@@ -776,7 +776,7 @@ if not g5_ord_total:
 #   makes co-gating stop masking: the row-10 mention of a split test is qualified, so it discharges the
 #   panel half and leaves the floor half's step-8 mention to be checked on its own artifacts.
 appB = table_rows(raw, r"^\| Order \| Artifact \| Gate \|") or []
-step_of, artifact_step, g5_unread, g5_halves = {}, {}, [], 0
+step_of, artifact_step, g5_unread, g5_halves, g5_landed = {}, {}, [], 0, []
 if not appB:
     fail.append("G5 CONTROL: Appendix B's build-order table did not parse — every acceptance test's "
                 "gate step would be unread and the ordering rule below would be vacuous")
@@ -802,6 +802,48 @@ else:
         fail.append(f"G5: Appendix B names the artifact `{k}` at step {a_} and again at step {b_}. An "
                     f"artifact built at two steps has no step, and every test that reads it would be "
                     f"checked against whichever row this parse saw last")
+    # G5, THE LANDED MARKER HAS ONE FORM (card#7341 Q9).  A row whose step has landed says so in
+    # its Artifact cell, and the rule above reads every BOLD span in that cell as an artifact -- so
+    # a bold `✅ LANDED …` registered as a phantom artifact (step 3 measured it: writing its own
+    # marker bold moved the artifact count by one), and the one row written unbolded to dodge that
+    # left the table holding two forms of one thing.  Skipping bold markers in the parse
+    # would have kept both forms accepted, so the check does the opposite: every marker is held to
+    # ONE form, unbolded, at the head of the Artifact cell, and anything else reds -- a bold marker,
+    # a marker elsewhere in the cell, and a marker in the Gate cell, where one sat on row 1.
+    #   A MARKER is recognised by the glyph or by `landed` followed by a date, case-insensitive,
+    # because `What landed is …` is prose two rows carry and is not a status claim.
+    G5_MARKER_FORM = "✅ landed YYYY-MM-DD (card#N …) — "
+    g5_marker_at_head = re.compile(r"^✅ landed \d{4}-\d{2}-\d{2} \(card#\d+[^()]*\) — ")
+    g5_marker_any = re.compile(r"✅|\blanded\s+\d{4}-\d{2}-\d{2}", re.I)
+    for r in appB:
+        c = cells(r)
+        if len(c) < 3 or not c[0].isdigit():
+            continue
+        n = int(c[0])
+        for a in re.findall(r"\*\*([^*]+)\*\*", c[1]):
+            # the SAME recognizer as the legs below: a bold name that merely contains the word
+            # (`**landed-state animation**`) is an artifact, not a status claim
+            if g5_marker_any.search(a):
+                phantom = re.sub(r"[`\s]+", " ", a).strip().lower()
+                fail.append(f"G5: Appendix B step {n}'s Artifact cell carries a BOLD status marker "
+                            f"`**{a}**` — every bold span in an Artifact cell is registered as an "
+                            f"artifact, so this one is a phantom artifact named `{phantom}`. A "
+                            f"landed step's marker has one form, `{G5_MARKER_FORM}`, unbolded, at "
+                            f"the head of the Artifact cell")
+        head = g5_marker_at_head.match(c[1])
+        if head:
+            g5_landed.append(n)
+        rest = c[1][head.end():] if head else c[1]
+        if g5_marker_any.search(rest):
+            fail.append(f"G5: Appendix B step {n}'s Artifact cell carries a status marker that is not "
+                        f"the one form `{G5_MARKER_FORM}` at the head of the cell — "
+                        f"`{g5_marker_any.search(rest).group(0)}…`. Two forms of one marker is two "
+                        f"formats for one thing, and a reader cannot tell which rows have landed "
+                        f"without reading every cell's prose")
+        if g5_marker_any.search(c[2]):
+            fail.append(f"G5: Appendix B step {n}'s Gate cell carries a status marker "
+                        f"(`{g5_marker_any.search(c[2]).group(0)}…`). A landed step is marked once, "
+                        f"in its Artifact cell, as `{G5_MARKER_FORM}` — the Gate cell names the gate")
     if dd_step is None:
         fail.append("G5 CONTROL: no Appendix B row names the drill-down as its artifact, so the step "
                     "that builds it is unknown and every panel-asserting test would pass this rule")
@@ -2733,7 +2775,8 @@ print(f"G5  acceptance tests: {len(at_ids)}; fixtures declared {len(fx_declared)
       f"{len(fx_used)}, symmetric difference {len(fx_declared ^ fx_used)}; build order: "
       f"{len(artifact_step)} artifacts re-derived from Appendix B's Artifact cells, "
       f"{sum(len(v) for v in step_of.values())} gate mentions over {g5_halves} declared test halves, "
-      f"every half checked against EVERY artifact it declares and at EVERY step that gates it")
+      f"every half checked against EVERY artifact it declares and at EVERY step that gates it; "
+      f"landed steps, each marked in the one form at the head of its Artifact cell: {g5_landed}")
 print(f"    G5 residue — an artifact name a test's body EMPHASISES and its `Reads:` clause does not "
       f"declare: {len(g5_unread)}. Printed in full, never capped: naming an artifact is not reading "
       f"one, so these are not failures — but the gap between what a body names and what it declares "

@@ -45,11 +45,14 @@
  * around it — a bare duration under a label is the smallest thing that can be right, and the
  * smallest thing to retire when that item closes. The two ages that DO have a published wording
  * take it verbatim: *running for 2m 05s* (§ 2.4's action elapsed) and *nothing done for 4m 12s*
- * (the quiet age), and neither is spelled a second way here.
+ * (the quiet age), and neither is spelled here at all — both, and the seat-clock label, are
+ * `wire/age-readout.js`'s, which the desk draws from too (card#7341 step 4 hoisted them there at
+ * their second caller).
  */
 
 import { clockTime } from '../wire/clock.js';
 import { ageFrom } from '../wire/duration.js';
+import { actionElapsedLine, quietAgeLine, seatClock } from '../wire/age-readout.js';
 import { isRenderState } from '../lobby/render-state.js';
 import { taskFacts } from '../wire/task.js';
 
@@ -93,17 +96,6 @@ export const LIST_NOT_SOURCED = 'this response carries no detail member — the 
 
 /** § 2.4: with no corrected clock there is no honest age, and the panel says so rather than tick. */
 export const NO_CORRECTED_CLOCK = 'ages are not shown — this response carried no server clock';
-
-/**
- * A seat-clock instant, LABELLED as one — § 2.4: "a timestamp is not a duration", and every
- * seat-clock value on this page is a narrative claim by the seat rather than something the
- * server measured. `null` in, `null` out; the caller renders the member's own absence.
- */
-function seatClock(wireTime) {
-    const at = clockTime(wireTime);
-
-    return at === null ? null : `${at} (seat clock)`;
-}
 
 /**
  * The panel's UNCAPPED INTERN LIST, out of § 8.2.3's open-call list: the calls that DISPATCHED
@@ -210,8 +202,8 @@ export function drillDownModel(seat, timeline, options = {}) {
         // with nothing to report, which is the confusion this whole product exists to prevent.
         no_clock_statement: ages ? null : NO_CORRECTED_CLOCK,
         task: taskBlock(seat?.task ?? null, options.ref_bases),
-        action: actionBlock(seat?.action ?? null, age),
-        quiet_age: quietAge(seat?.activity ?? null, age),
+        action: actionBlock(seat?.action ?? null, ages ? now : null),
+        quiet_age: quietAge(seat?.activity ?? null, ages ? now : null),
         context: contextBlock(seat?.context ?? null, age),
         interns: internBlock(seat, age),
         activity: activityBlock(timeline, age),
@@ -247,13 +239,11 @@ function taskBlock(task, refBases) {
  * clock, which is what makes it the one honest duration over an action". `started_at` is the
  * seat's own claim and is rendered beside it as a labelled timestamp, subtracted from nothing.
  */
-function actionBlock(action, age) {
+function actionBlock(action, nowMs) {
     if (action === null) {
         // § 5.6, `action`: no monitor content, "never a stale last action".
         return { present: false, statement: NOT_REPORTED };
     }
-
-    const elapsed = age(action.started_received_at ?? null);
 
     return {
         present: true,
@@ -263,7 +253,7 @@ function actionBlock(action, age) {
         // from the tool name".
         descriptor: action.descriptor ?? null,
         started_at: seatClock(action.started_at ?? null),
-        elapsed: elapsed === null ? null : `running for ${elapsed}`,
+        elapsed: actionElapsedLine(action, nowMs),
         // § 5.1: labels, stored for the intern join, and nothing on this page gates on them.
         agent_scope: action.agent_scope ?? null,
         parent_call_id: action.parent_call_id ?? null,
@@ -271,15 +261,12 @@ function actionBlock(action, age) {
 }
 
 /**
- * § 2.4's **quiet age**, verbatim: *nothing done for 4m 12s*, from `activity.last_received_at`.
- * § 5.6 gives its null the sentence *nothing done yet* — "never *nothing done for 0s*, which
- * would claim a measurement at this instant" — and that is the reachable never-reported seat.
+ * § 2.4's **quiet age**, with § 5.6's *nothing done yet* for a null basis — `quietAgeLine`'s, and
+ * the reachable never-reported seat is the case it is for.
  */
-function quietAge(activity, age) {
-    const quiet = age(activity?.last_received_at ?? null);
-
+function quietAge(activity, nowMs) {
     return {
-        line: quiet === null ? 'nothing done yet' : `nothing done for ${quiet}`,
+        line: quietAgeLine(activity, nowMs),
         last_kind: activity?.last_kind ?? null,
         last_event_time: seatClock(activity?.last_event_time ?? null),
     };

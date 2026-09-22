@@ -27,6 +27,34 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **Every age on the floor is measured from the server's clock, re-rendered every
+  second, and a seat's own clock is shown as its labelled claim and never subtracted into an age**
+  (`docs/design/FLOOR.md` Appendix B step 4, gated by AT-D3-10's floor half). New
+  `server/public/js/wire/age-readout.js`: each desk's quiet age (*nothing done for …*), action
+  elapsed (*running for …*), `dark-only` receipt age (*no data for …*, on a `stale` or `offline`
+  desk only) and gauge age, computed from `browser_now + clock_offset_ms` over the offset the
+  client protocol holds, plus every seat-clock instant as `HH:MM:SS (seat clock)`; and
+  `startAgeTicker`, the 1 s re-render, on a timer and clock it is handed. A viewer whose machine
+  clock is hours off reads the same ages as one whose clock is right. The drill-down now takes
+  those two wordings, the seat-clock label and the corrected clock from `wire/` instead of its own
+  copies, and with no server clock it draws no quiet age rather than *nothing done yet*, which
+  claims the seat never reported. `Tests\Feature\Floor\TheAgeReadoutReadsTheServerClockTest`
+  replays `fx-snapshot-4` through the harness with the browser three hours fast, over three runs:
+  the fixture itself, one with a +10-minute seat clock, and one with a `stale` and an `offline`
+  desk and gauge samples received before `server_time`. On each, all four ages (quiet, action
+  elapsed, receipt, gauge) equal the server clock minus their own instant, with each wording
+  re-read from § 2.4's table, and a `live` desk draws no receipt age; a correct browser clock
+  renders identical output. Planted and seen red: ages from `Date.now()` (every desk reads
+  *nothing done for 3h…*), an elapsed time from a +10-minute seat's `started_at` (*running for
+  0s*), the gauge age dropped, the receipt age corrupted, and the `dark-only` gate removed. The harness's probe gains a browser clock and
+  runs the shipped ticker on its scenario timer.
+  **Appendix B's landed marker has one form** (Q9): `✅ landed YYYY-MM-DD (card#N …) — `, unbolded,
+  at the head of the Artifact cell. `tools/design/verify-floor.py`'s G5 read every bold span in an
+  Artifact cell as an artifact, so rows 11 to 13's bold markers each registered as a phantom
+  artifact (G5's summary line prints the artifact count it derives), row 3 was written plain to
+  avoid another, and row 1 carried its marker in the Gate cell. All five rows now use the one form, and G5 reds on a bold marker, a
+  marker anywhere else in the cell and a marker in a Gate cell; `verify-design-docs.selftest.py`
+  plants a bold marker (`embolden`) and requires the red.
 - **card#9745** — **the `deploy-gate-inputs` check now RUNS the deploy's own target-tree gates over
   the PR, so it rejects a commit a real deploy would refuse at phase A, not only one missing a file.**
   What a PR author meets that the check did not reject before — each depends on the commit alone,

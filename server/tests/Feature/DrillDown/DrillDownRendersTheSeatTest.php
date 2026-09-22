@@ -143,6 +143,9 @@ class DrillDownRendersTheSeatTest extends TestCase
         $this->assertFalse($noClock['ages_available']);
         $this->assertNotNull($noClock['no_clock_statement']);
         $this->assertNull($noClock['action']['elapsed']);
+        // …and the quiet age is not drawn either: § 5.6's *nothing done yet* is the render of a
+        // null BASIS, a claim that the seat never reported, and this seat did (card#7341 step 4).
+        $this->assertNull($noClock['quiet_age']['line']);
         $this->assertNull($noClock['context']['age']);
         $this->assertNull($noClock['activity']['rows'][0]['age']);
 
