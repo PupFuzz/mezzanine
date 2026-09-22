@@ -1,0 +1,58 @@
+# release-facts.yml — run `bin/release-facts.py` on every PR and push, and prove its selftest can fail
+# (card#9684).
+#
+# WHAT IT DOES. Runs the reporter's hermetic selftest, then the reporter itself over this checkout, and
+# puts the report in the job log and the run's step summary. The report is `bin/release-facts.py`'s
+# docstring to describe; it is not restated here.
+#
+# WHAT CAN RED IT. The selftest (a reporter whose cases no longer discriminate), and the reporter's
+# exit 1: a job in this tree declaring a key that makes its status context differ from its job id.
+# That is the one fact the reporter CHECKS rather than prints, because every "is this lane required?"
+# answer in this repository joins a ruleset's context against a job id. A live read that fails, a
+# floor it could not read, or a lane that gates nothing never reds it — those are printed and named.
+#
+# ⛔ WHETHER A RED HERE BLOCKS A MERGE IS NOT STATED IN THIS FILE. Requiring a context is a
+# repository-settings act and the operator's; `docs/VERSIONING.md § Branch model` owns how to read
+# what each branch requires — and this job's own report prints it.
+#
+# NO `paths:` FILTER, DELIBERATELY: a filtered lane produces no run on a PR outside the filter, so it
+# could never be safely required (the pending trap in § Branch model), and the report would list
+# this job as NEVER REQUIRABLE about itself.
+#
+# CREDENTIAL. The job's own `GITHUB_TOKEN`, read-only (`contents: read`), passed through `env:` so the
+# reporter names it as the credential that did the reading. That token is not an admin credential,
+# so a ruleset's `bypass_actors` may come back null, and the report says so rather than printing
+# "none". The reporter never prints the token.
+
+name: Release facts
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  release-facts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # FIRST, because a report from a reporter whose cases no longer red is worth nothing. The suite
+      # re-runs every case against a mutated copy of the script and requires it to fail there.
+      - name: Self-test (every case seen to fail against a mutant)
+        run: python3 bin/release-facts.selftest.py
+
+      # `set -o pipefail` so `tee` cannot swallow the reporter's exit status, and `|| rc=$?` so the
+      # runner's `bash -e` does not abort before the closing fence; the fence keeps the report's
+      # column layout in the step summary.
+      - name: Release facts (tree, live rules, named unverifiables)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          { rc=0; echo '```'; python3 bin/release-facts.py || rc=$?; echo '```'; exit "$rc"; } | tee -a "$GITHUB_STEP_SUMMARY"

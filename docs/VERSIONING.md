@@ -381,6 +381,9 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
    [§ Wire compatibility](#wire-compatibility--the-reporter-to-ingest-contract-has-its-own-version-line).
 7. **Open the release PR `release/v<version>` → `main`** with full notes. Head is the release
    branch, never `dev` ([§ hazard](#the-release-pr-head-hazard--never-pr-dev-directly-into-main)).
+   ⛔ **Opening it is ask-first.** The policy is declared in `CLAUDE.md` § Install standing rules,
+   on its `**Merge.**` line, and is stated there only; `python3 bin/release-facts.py` cites that
+   line as it reads it.
 8. **Wait for every CI check to complete and pass — and read WHICH of them GitHub will hold the
    merge on.** A subset of the lanes is required on `main`, and GitHub holds the merge until
    exactly that subset has passed, alongside the branch's other rules; every lane outside the
@@ -399,6 +402,10 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
    the first is information about the release, never a gate on it; waiting for those is still
    yours, and so is judging a red one ([§ Branch model](#branch-model) owns how the required set
    is read, and why no copy of it lives in prose).
+   **`python3 bin/release-facts.py` prints this and the rest of a release's readiness facts in one
+   read**: the lanes, the rules in force on both branches with a per-lane `gates` column, the host
+   floors as their own readers print them, and what it could not verify. Its docstring is the
+   contract. CI runs it as the `release-facts` lane, with the report in the run's step summary.
 9. **A human merges it, with "Create a merge commit."** It is the only method `main` offers,
    and it is a deliberate human gate: an agent does not merge a `main`-targeted PR.
 10. **CI takes it from there on the push to `main`:** `auto-tag-version.yml` mints
