@@ -246,6 +246,19 @@ say()  { printf '%s\n' "$*"; }
 step() { printf '\n▶ %s\n' "$*"; }
 warn() { printf '⚠ %s\n' "$*" >&2; }
 
+# A DEPLOY IGNORES THE READ LEDGER (card#9745, § git_read_ledger_note). MEZZ_GIT_READ_LEDGER is a
+# checker's switch, honoured only by a checker that SOURCES this file; a run is a deploy, and what a
+# deploy decides must not depend on a debugging variable left in an operator's shell. Honoured, it made
+# every git call of the run also write that file — and a path that could not be written ended phase A
+# with bash's own redirection error and exit 1, no ⛔ banner (measured, card#9745 review of e0a409d),
+# or, inside the window, sent the run down in_window_failure for a reason that is not the release's.
+# So a run says once that it was set, and removes it — from this process and from everything it
+# starts, the phase-B re-exec included — before any git_at call can read it.
+if [ "$DEPLOY_IS_RUN" -eq 1 ] && [ -n "${MEZZ_GIT_READ_LEDGER:-}" ]; then
+  warn "MEZZ_GIT_READ_LEDGER is set in this shell and was IGNORED: it is a checker's switch (bin/deploy-gate-inputs.sh), and a deploy writes no read ledger"
+  unset MEZZ_GIT_READ_LEDGER
+fi
+
 # refuse — precondition phase only. Nothing has been touched, and the message says so, because an
 # operator who cannot tell "refused" from "half-deployed" will go looking for damage that is not
 # there (or, worse, will not go looking when it is).
@@ -1017,9 +1030,12 @@ git_at() {
 }
 
 # ── the READ LEDGER (card#9745) ───────────────────────────────────────────────────────────────
-# OFF unless MEZZ_GIT_READ_LEDGER names a file, and then every git_at call appends to it. Nothing in a
-# deploy sets it: a checker does, to learn what a run of this file READ rather than what its source text
-# looks like it reads. The read set is a function of the TREE as well as of this file — A10 reads each
+# OFF unless MEZZ_GIT_READ_LEDGER names a file, and then every git_at call appends to it. A checker sets
+# it, having SOURCED this file, to learn what a run of these functions READ rather than what its source
+# text looks like it reads. A RUN of this file never writes it: the top of this file unsets it in run mode
+# (§ A DEPLOY IGNORES THE READ LEDGER), so a checker that wants a whole phase A ledgered calls `main` in
+# library mode, as bin/deploy.selftest.sh § card#9745 does.
+# The read set is a function of the TREE as well as of this file — A10 reads each
 # migration its listing names, A14 a file whose name comes from the host's phpinfo — so a run over a real
 # commit is the one surface on which "what it reads" and "what it does" are the same fact.
 #   call<TAB><caller><TAB><argv>        one per git_at call: the git process it starts, with <argv>
@@ -3168,8 +3184,9 @@ phase_a() {
 #               with the ledger on, and it must pass there as it must pass here; or
 #   anything else, which is the reason no checker runs it, printed by that checker in these words.
 # ⛔ THIS LIST IS HELD TRUE BY A RUN, NOT BY A READING. bin/deploy.selftest.sh § card#9745 runs a full
-# `--dry-run` with the ledger on and reds unless the functions it attributes a read to are exactly these,
-# naming any other with the path it read; and it runs every host-free row on its own, over the same
+# `--dry-run` with the ledger on (in library mode: a RUN ignores the ledger) and reds unless the
+# functions it attributes a read to are exactly these, naming any other with the path it read; and it
+# runs every host-free row on its own, over the same
 # commit, and reds unless it reads what the gate phase_a called read. A function that starts reading the
 # release belongs here in the change that makes it read.
 # shellcheck disable=SC2034  # read by its consumers, which source this file: the two named above

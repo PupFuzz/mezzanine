@@ -465,7 +465,7 @@ reset_stubs() {
   # `git remote`'s names, so one case's remote leaking into the next would refuse every later
   # fixture — whose clone knows only `origin` — on a cause that case never set.
   unset STUB_UID STUB_CRONTAB_BROKEN MEZZ_DEPLOY_IN_WINDOW MEZZ_DEPLOY_REVALIDATE_FLOOR_S MEZZ_FPM_BIN \
-        MEZZ_REMOTE
+        MEZZ_REMOTE MEZZ_GIT_READ_LEDGER
   kill_streams
   : > "$T/knobs/dies_after_start"; : > "$T/knobs/ignores_term"; : > "$T/knobs/transient_loser"
   rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps" "$T/knobs/mktemp_passes" "$T/knobs/git_magic" \
@@ -695,11 +695,20 @@ leg2() {
   done < <(host_free_readers "$2")
 }
 
+# ledgered_dry_run <ledger> — the whole of phase A, `--dry-run`, with the read ledger on. In LIBRARY mode —
+# the file sourced, DRY_RUN set, `main` called — because a RUN of bin/deploy.sh ignores the ledger
+# variable by design (§ A DEPLOY IGNORES THE READ LEDGER, and the case below that holds it to that).
+# `main` is what a run calls after parsing `--dry-run` into DRY_RUN=1, with REF at its default.
+ledgered_dry_run() {
+  : > "$1"; : > "$CALL_LOG"
+  # shellcheck disable=SC2016  # expanded by the sourcing shell lib starts
+  OUT="$(MEZZ_GIT_READ_LEDGER="$1" lib "$ROOT/bin/deploy.sh" eval 'DRY_RUN=1; main' 2>&1)"; RC=$?
+}
+
 mkfix ledger
-export MEZZ_GIT_READ_LEDGER="$T/ledger.control"; : > "$MEZZ_GIT_READ_LEDGER"
-run --dry-run
-unset MEZZ_GIT_READ_LEDGER
+ledgered_dry_run "$T/ledger.control"
 eq  "ledger: the control deploys with the ledger on" 0 "$RC"
+has "ledger: …and it is the whole dry run, not a part of it" "DRY RUN" "$OUT"
 neq "ledger: it recorded path reads (an empty ledger is a measurement that never happened)" 0 \
     "$(grep -c '^read' "$T/ledger.control")"
 has "ledger: a read is attributed to the GATE that asked, not to the reader it asked through" \
@@ -738,9 +747,7 @@ undeclared_reader() { # a gate that asks a helper nobody declared to read the re
          -e '/^gate_a11_trusted_proxies() {$/a \  extra_reader "$1"' "$1/bin/deploy.sh"
 }
 mkfix ledger_undeclared "" undeclared_reader
-export MEZZ_GIT_READ_LEDGER="$T/ledger.undeclared"; : > "$MEZZ_GIT_READ_LEDGER"
-run --dry-run
-unset MEZZ_GIT_READ_LEDGER
+ledgered_dry_run "$T/ledger.undeclared"
 eq  "LEG 1 mutant: it still deploys — nothing but the declaration is wrong" 0 "$RC"
 eq  "LEG 1 mutant: the undeclared reader is named, with the path it read" \
     "undeclared reader extra_reader read $V2:server/artisan" "$(leg1 "$T/ledger.undeclared" "$ROOT/bin/deploy.sh")"
@@ -750,14 +757,32 @@ divergent_entry() { # a gate whose reads depend on a global a deploy sets and a 
   sed -i '/^gate_a11_trusted_proxies() {$/a \  [ "$DRY_RUN" -eq 0 ] || { local x; git_read_at x "$1" server/artisan || true; }' "$1/bin/deploy.sh"
 }
 mkfix ledger_divergent "" divergent_entry
-export MEZZ_GIT_READ_LEDGER="$T/ledger.divergent"; : > "$MEZZ_GIT_READ_LEDGER"
-run --dry-run
-unset MEZZ_GIT_READ_LEDGER
+ledgered_dry_run "$T/ledger.divergent"
 eq  "LEG 2 mutant: it still deploys" 0 "$RC"
 eq  "LEG 2 mutant: LEG 1 does not see it — the reader IS declared" "" "$(leg1 "$T/ledger.divergent" "$ROOT/bin/deploy.sh")"
 eq  "LEG 2 mutant: the path the entry does not read on its own is named" \
     "gate_a11_trusted_proxies read inside phase_a and NOT on its own: $V2:server/artisan" \
     "$(leg2 "$T/ledger.divergent" "$ROOT/bin/deploy.sh" "$V2")"
+
+# ⛔ A RUN IGNORES THE LEDGER, whatever the variable names. A deploy's decision must not depend on a
+# checker's switch left in an operator's shell: before this case, a set variable made a real run write
+# the ledger, and a path that could not be written ended phase A with bash's own redirection error and
+# exit 1, no ⛔ banner (card#9745 review of e0a409d). Each run is compared with the same run with the
+# variable UNSET — the exit status, and every line of output but the one warning that says it was
+# ignored — and the ledger must not have been written.
+mkfix ledger_ignored
+run --dry-run; unset_rc="$RC"; unset_out="$OUT"
+eq  "a RUN, ledger unset: the control this case compares against deploys" 0 "$unset_rc"
+for target in writable unwritable; do
+  if [ "$target" = writable ]; then led="$T/ledger.ignored"; : > "$led"; else led="$T/no-such-dir/ledger"; fi
+  MEZZ_GIT_READ_LEDGER="$led" run --dry-run
+  unset MEZZ_GIT_READ_LEDGER
+  eq  "a RUN, ledger set to a $target path: the same exit status as with it unset" "$unset_rc" "$RC"
+  eq  "a RUN, ledger set to a $target path: the same output, but for the one warning" "$unset_out" \
+      "$(printf '%s\n' "$OUT" | grep -v '^⚠ MEZZ_GIT_READ_LEDGER is set in this shell and was IGNORED')"
+  has "a RUN, ledger set to a $target path: says it was ignored" "MEZZ_GIT_READ_LEDGER is set in this shell and was IGNORED" "$OUT"
+  eq  "a RUN, ledger set to a $target path: nothing was written to it" "" "$(cat "$led" 2>/dev/null)"
+done
 
 section "REFUSAL — the host is not in a deployable state"
 # ⛔ THE REFUSAL CONTRACT IS ASSERTED HERE, ONCE, FOR EVERY CASE THAT USES THIS (card#9646).

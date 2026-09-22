@@ -41,9 +41,13 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   deliberately. The check runs the gates of the `bin/deploy.sh` in the commit under test, so a PR
   that changes a gate is judged by the changed gate. Operator ruling, card#9745 comment 5701.
   **How it knows what the gates read:** `git_at` — the one function through which `bin/deploy.sh`
-  starts git — appends each call to a read ledger when `MEZZ_GIT_READ_LEDGER` names a file (unset,
-  the default, it does nothing), and `bin/deploy.sh` declares in `GATE_TREE_READERS` the functions
-  phase A reads a path of the release through, and which of them need no host. The check runs those,
+  starts git — appends each call to a read ledger when `MEZZ_GIT_READ_LEDGER` names a file and the
+  script has been SOURCED by a checker. **A deploy ignores that variable:** `bin/deploy.sh --ref …`
+  run with it set in your shell prints one `⚠ MEZZ_GIT_READ_LEDGER is set in this shell and was
+  IGNORED` line, unsets it and writes no ledger; `bin/deploy.selftest.sh` holds a `--dry-run` to the
+  same exit status and the same output either way, with the variable naming a writable path and an
+  unwritable one. `bin/deploy.sh` declares in `GATE_TREE_READERS` the functions phase A reads a path
+  of the release through, and which of them need no host. The check runs those,
   and its report of what was read comes from the ledger. It replaces the parsing of
   `bin/deploy.sh`'s source text that card#9637, card#9693 and card#9644 each had to repair; the
   hand-typed classification table and its disposition digests are gone. A git process a gate starts
