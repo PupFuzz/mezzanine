@@ -611,15 +611,15 @@ rule violations anyone could have committed at the time.
   The loader needs a scratch file for that diagnostic, and where no usable one can be had —
   `mktemp` making none, a file `mktemp` made that this shell could not open, or one it opened that a
   byte written into did not read back (card#9932) — it closes the
-  descriptor and returns before the read runs — one flag for both, because every caller asking whether a
-  key's value is established acts on one fact, and both are "the file was not read". The REFUSAL used to
+  descriptor and returns before the read runs — one flag whichever it was, because every caller asking
+  whether a key's value is established acts on one fact: the file was not read. The REFUSAL used to
   be shared too, and it was the read's: the operator was told the open had succeeded and the read had
   stopped short on a file no byte of which had been read, and was sent to `dmesg` and the mount for a
   `$TMPDIR` this deploy could not write to — every sentence of it pointing away from the cause the run had
   established, which sat one line below in the same refusal. A5 now names the scratch file in the headline
   and says outright that the finding is about neither the file nor the disk it sits on. **Which SCRATCH
-  step failed is read off a status rather than assumed**, because the two send an operator to different
-  places: `mktemp` failing is a `$TMPDIR` finding, a scratch file that was created and could not be
+  step failed is read off a status rather than assumed**, because each sends an operator to a different
+  place: `mktemp` failing is a `$TMPDIR` finding, a scratch file that was created and could not be
   OPENED is not — `mktemp` worked, and what to look at is how many files the deploy may have open — and
   one that was opened and could not be WRITTEN is the free space (`df`) of the filesystem behind
   `$TMPDIR`.

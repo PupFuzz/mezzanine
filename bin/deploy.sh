@@ -524,8 +524,8 @@ env_lines_load() {
     # the same only while TMPDIR is exported. Naming the mechanism is true either way; naming a path would
     # be a specific cause nothing here established (measured 2026-09-18: an unexported TMPDIR is invisible
     # to mktemp, which then writes under /tmp and succeeds).
-    # ⛔ WHICH REASON IS READ OFF THE STATUS, never assumed (§ env_read_err_open): the two failures send an
-    # operator to different places, and the fix for one is not the fix for the other.
+    # ⛔ WHICH REASON IS READ OFF THE STATUS, never assumed (§ env_read_err_open): each failure sends an
+    # operator to a different place, and the fix for one is not the fix for another.
     if [ "$scratch_rc" -eq 1 ]; then
       ENV_LINES_READ_FAILED_WHY="No scratch file could be created for bash's read diagnostic (\`mktemp\` failed), and that diagnostic is the only thing that tells a read error from an end of file here — so the read was never made and no byte of the file was taken. mktemp writes under \$TMPDIR, or /tmp when that is unset: check that whichever applies exists, that it names a directory this deploy can write to, and that its filesystem has free INODES (\`df -i\`). A \`df\` at 100% is not on its own the finding here: \`mktemp\` creates an EMPTY file, and a filesystem out of free BLOCKS can still give it one."
     elif [ "$scratch_rc" -eq 3 ]; then
