@@ -27,6 +27,44 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9745** — **the `deploy-gate-inputs` check now RUNS the deploy's own target-tree gates over
+  the PR, so it rejects a commit a real deploy would refuse at phase A, not only one missing a file.**
+  What a PR author meets that the check did not reject before — each depends on the commit alone,
+  so `bin/deploy.sh --ref <that commit>` refuses it at phase A whatever host runs it, before
+  anything is touched:
+  a migration that alters `events` without declaring `ALGORITHM=INSTANT`/`INPLACE` (A10);
+  `trustProxies('*')` in `server/bootstrap/app.php` (A11); a `require.php` in `server/composer.json`
+  that A6 cannot evaluate, or none (A6); a `server/package-lock.json` whose `lockfileVersion` A12
+  cannot map (A12); a `BASH_FLOOR` in `bin/deploy.sh` that is not a version (A6b). Missing or empty
+  files, and a symlink where a file belongs, are rejected as before. A red names the gate function
+  that refused and prints the deploy's own reason; fix what it names, or change the gate
+  deliberately. The check runs the gates of the `bin/deploy.sh` in the commit under test, so a PR
+  that changes a gate is judged by the changed gate. Operator ruling, card#9745 comment 5701.
+  **How it knows what the gates read:** `git_at` — the one function through which `bin/deploy.sh`
+  starts git — appends each call to a read ledger when `MEZZ_GIT_READ_LEDGER` names a file and the
+  script has been SOURCED by a checker. **A deploy ignores that variable:** `bin/deploy.sh --ref …`
+  run with it set in your shell prints one `⚠ MEZZ_GIT_READ_LEDGER is set in this shell and was
+  IGNORED` line, unsets it and writes no ledger; `bin/deploy.selftest.sh` holds a `--dry-run` to the
+  same exit status and the same output either way, with the variable naming a writable path and an
+  unwritable one. `bin/deploy.sh` declares in `GATE_TREE_READERS` the functions phase A reads a path
+  of the release through, and which of them need no host. The check runs those,
+  and its report of what was read comes from the ledger. It replaces the parsing of
+  `bin/deploy.sh`'s source text that card#9637, card#9693 and card#9644 each had to repair; the
+  hand-typed classification table and its disposition digests are gone. A git process a gate starts
+  without `git_at` stops the check (exit 2): a `git` shim counts them against the ledger on every
+  run. `bin/deploy.selftest.sh` holds the declaration to a full `--dry-run` (the functions it reads
+  through are exactly the declared ones) and runs each host-free one on its own, over the same
+  commit, against what it read inside phase A. What a green does not establish is printed by the
+  check itself, under `NOT PROVED BY A GREEN`.
+  **For an installer, a deploy decides what it decided before.** A6, A6b, A10b, A12 and A13 are each
+  split into a target-tree half (`gate_<id>_target_…`) and the comparison with the host, and phase A
+  calls them in the same order. One order moved: a release with no `bin/supervision.sh` is now
+  refused before A13 makes its scratch directory, so on a host where that directory cannot be made
+  either, the missing file is the refusal you see first. ⚠ **A correction to card#9644's entry below:**
+  it calls `gate_a13_target_plan` A13's host-free half. It is not host-free — the release's install
+  plan it runs calls `crontab -l`, so it reads the crontab of the user running it — and it is now
+  labelled so; A13's host-free half is `gate_a13_target_source`.
+
 - **card#9932** — **a scratch file on a filesystem out of free BLOCKS is now refused as unwritable,
   never read as the tool's silence.** `mktemp` creates an EMPTY file, which costs an inode and no
   block, so on a filesystem with no space left it still succeeds — measured on a real block-full

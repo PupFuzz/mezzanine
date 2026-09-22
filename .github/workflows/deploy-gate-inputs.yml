@@ -1,9 +1,15 @@
-# deploy-gate-inputs.yml — does THIS repository satisfy bin/deploy.sh's own phase-A gates? card#9637
+# deploy-gate-inputs.yml — does THIS repository pass bin/deploy.sh's own phase-A gates? card#9637, card#9745
 #
-# WHAT IT DOES. Runs `bin/deploy-gate-inputs.sh` over the commit under test: it derives, from that
-# commit's OWN `bin/deploy.sh`, every path phase A reads out of the target release, and checks the
-# repository's tree carries the ones an absent copy makes the deploy REFUSE on. It deploys nothing,
-# reaches no host, opens no `.env` and needs no credential — git and bash over the object database.
+# WHAT IT DOES. Runs `bin/deploy-gate-inputs.sh` over the commit under test: it RUNS the target-tree
+# gates that commit's OWN `bin/deploy.sh` declares host-free (GATE_TREE_READERS), with the deploy's read
+# ledger on, and reds when one of them refuses the commit — which is the refusal a real deploy of that
+# commit makes at phase A, on any host. It deploys nothing, reaches no host, opens no `.env` and needs no
+# credential — git and bash over the object database.
+#
+# ⛔ SINCE card#9745 IT ASSERTS THE GATES' CONTENT PREDICATES, not only that their files are present: an
+# `ALTER` on `events` with no `ALGORITHM=`, a `trustProxies('*')`, a PHP constraint A6 cannot evaluate, a
+# lockfileVersion A12 cannot map. Operator ruling, card#9745 comment 5701. A red names the deploy gate
+# that refused and prints its own reason.
 #
 # WHY IT EXISTS. `bin/deploy.sh`'s A12 required `server/package-lock.json`, a file this repository
 # had never contained, so every real deploy refused at phase A from the day that gate landed — and
@@ -14,29 +20,16 @@
 # than the repository. Nothing else in CI ever put the deploy's demands and this tree in the same
 # room. That is the gap this lane closes.
 #
-# THE CHECK'S OWN DERIVATION IS CHECKED FIRST. `bin/deploy-gate-inputs.sh` derives what to look for
-# from `bin/deploy.sh` itself, so the way it fails is not a red — it is a GREEN over a read its
-# pattern did not match, which is absent from both sides of its guard. Six of eight realistic ways
-# to add a read escaped the first version that way. Every one of them is now a red case in
-# `bin/deploy-gate-inputs.selftest.sh`, which runs FIRST below: a verdict from a check that no
-# longer discriminates is worth nothing, in either direction.
+# THE CHECK ITSELF IS CHECKED FIRST. `bin/deploy-gate-inputs.selftest.sh` runs FIRST below: it builds
+# fixture repositories from this checkout, changes ONE thing in each, and watches the check answer —
+# each content predicate red beside a control, a bare `git` inside a gate stopping it, a reader the
+# declaration does not name stopping it, and the exit-1/exit-2 line between a finding about the
+# release and the check having failed. A verdict from a check that no longer discriminates is worth
+# nothing, in either direction.
 #
-# ⛔ A GREEN HERE IS NARROWER THAN "THE DEPLOY'S READS ARE COVERED", AND THE SHAPES THAT ESCAPE ARE
-# NAMED — in ONE place, the `NOT PROVED BY A GREEN` block the check PRINTS in the log of the run
-# below. This header deliberately keeps no copy of that list: it was restated on four surfaces and
-# was incomplete on all four. Read it in the run you are about to trust, not here. The gap is a
-# recorded decision on card#9637. card#9644 carved that seam; what would close the gap is the
-# deploy ENUMERATING its reads through it, which is not built, so those shapes still escape.
-#
-# SCOPE, STATED HERE SO A GREEN IS NOT READ AS MORE THAN IT IS. This lane checks the PRESENCE
-# population — the files phase A reads out of the target tree that the check's derivation SEES
-# (the block named above is where the rest of that sentence lives). It does not evaluate the gates'
-# content predicates (A6's constraint shape, A10's `ALGORITHM=`, A11's `trustProxies('*')`, A13's
-# crontab render). Since card#9644 each of those is a callable gate function of `bin/deploy.sh`
-# taking the commit, and this lane does not call one yet. The script's own
-# output names every excluded gate and every uncovered predicate on each run, so the log says what
-# was and was not measured rather than this comment being the only place it is written.
-#
+# ⛔ WHAT A GREEN HERE DOES NOT ESTABLISH IS NAMED IN ONE PLACE — the `NOT PROVED BY A GREEN` block the
+# check PRINTS in the log of the run below. This header keeps no copy of it.
+
 # NO `paths:` FILTER, DELIBERATELY — the same reasoning as `deploy-selftest.yml`: it is seconds of
 # bash with no service to stand up, and a path-filtered workflow produces NO RUN, which reads as
 # *pending* rather than *passed* for a required check. Filtering on `bin/deploy*` would also be wrong in both directions: a PR that
@@ -71,11 +64,8 @@ jobs:
       # `bash` explicitly rather than relying on the executable bit surviving a checkout: the check
       # is the evidence, so it must fail on its own finding and never on a file mode.
       #
-      # FIRST, because a check that no longer discriminates makes the step below meaningless: it
-      # builds fixture repositories from this checkout, mutates ONE thing in each, and watches the
-      # check refuse — every shape of read the derivation must not miss, every disposition change
-      # the table must not sleep through, and the exit-1/exit-2 line between a finding about the
-      # release and the check having failed. It needs no host, network or credential either.
+      # FIRST, because a check that no longer discriminates makes the step below meaningless (the
+      # header says what it builds and changes). It needs no host, network or credential either.
       - name: Does the check itself still catch what it claims to?
         run: bash bin/deploy-gate-inputs.selftest.sh
 

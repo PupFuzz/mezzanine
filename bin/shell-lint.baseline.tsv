@@ -27,19 +27,18 @@
 #cfg	probe	SC2046
 #cfg	probe	SC2086
 #cfg	probe	SC2218
-#cfg	directive	bin/deploy-gate-inputs.selftest.sh	disable=SC1003	1
-#cfg	directive	bin/deploy-gate-inputs.selftest.sh	disable=SC2015	1
-#cfg	directive	bin/deploy-gate-inputs.selftest.sh	disable=SC2016	22
-#cfg	directive	bin/deploy-gate-inputs.sh	disable=SC2034	2
-#cfg	directive	bin/deploy.selftest.sh	disable=SC1090	1
-#cfg	directive	bin/deploy.selftest.sh	disable=SC2016	2
-#cfg	directive	bin/deploy.selftest.sh	disable=SC2016,SC2317	3
+#cfg	directive	bin/deploy-gate-inputs.selftest.sh	disable=SC2016	8
+#cfg	directive	bin/deploy-gate-inputs.sh	disable=SC2016	3
+#cfg	directive	bin/deploy.selftest.sh	disable=SC1090	2
+#cfg	directive	bin/deploy.selftest.sh	disable=SC2016	7
+#cfg	directive	bin/deploy.selftest.sh	disable=SC2016,SC2317	5
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2030	1
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2031	1
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2034	1
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2317	3
 #cfg	directive	bin/deploy.selftest.sh	source=bin/supervision.sh	1
 #cfg	directive	bin/deploy.sh	disable=SC2016	1
+#cfg	directive	bin/deploy.sh	disable=SC2034	1
 #cfg	directive	bin/deploy.sh	disable=SC2086	2
 #cfg	directive	bin/deploy.sh	source=bin/supervision.sh	1
 #cfg	directive	bin/env-mirror-diff.mirror.sh	disable=SC1091	1
