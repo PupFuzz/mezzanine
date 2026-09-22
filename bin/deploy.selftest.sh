@@ -644,6 +644,121 @@ hasnt "control: a document root with no .user.ini is not warned about" "no docum
 eq  "control: --dry-run left HEAD where it was" "$V1" "$(git -C "$ROOT" rev-parse HEAD)"
 no_shell_death "control" "$OUT"
 
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+section "card#9745 — the READ LEDGER, and the declaration it holds TRUE"
+# bin/deploy.sh DECLARES every function phase A reads a path out of a tree through (GATE_TREE_READERS),
+# and bin/deploy-gate-inputs.sh RUNS every host-free one of them over the commit under test. What makes
+# that declaration a contract rather than a comment is this section: two claims about it, each refereed
+# by a RUN of the real script with its read ledger on, and each seen to fail against a copy of the
+# script built to falsify it.
+#   LEG 1 — the functions a full `--dry-run` attributes a path read to are EXACTLY the declared ones. An
+#           undeclared one is named with the path it read; a declared one that read nothing is named too.
+#   LEG 2 — every host-free row, run ON ITS OWN over the same commit (library mode — the card#9644 seam),
+#           reads exactly what the gate phase_a called read with it.
+# Leg 3 — every git process of a gate run is a git_at call — is bin/deploy-gate-inputs.sh's, which runs
+# on the real tree; bin/deploy-gate-inputs.selftest.sh is where it is seen to fail.
+
+# lib <deploy.sh> <command…> — <deploy.sh> SOURCED, in a shell of its own, with this fixture as its root,
+# then <command…>. The first consumer of the card#9644 seam that is a test: until card#9745 nothing sourced
+# bin/deploy.sh, so "sourcing it runs no deploy" was a claim no run had checked.
+# ⚠ The command is held in an array ACROSS the source: a file sourced with no arguments shares its caller's
+# positional parameters, and bin/deploy.sh's library mode runs `set --` (§ library mode), so "$@" after the
+# `.` is empty — measured: the first version of this helper ran nothing, and every case built on it passed.
+# shellcheck disable=SC1090  # <deploy.sh> is a fixture's copy, named by the caller
+lib() { local d="$1"; shift; local -a __cmd=("$@"); ( export MEZZ_DEPLOY_ROOT="$ROOT"; . "$d"; "${__cmd[@]}" ); }
+# declared_readers <deploy.sh> — the first field of each GATE_TREE_READERS row, as that file declares it.
+# shellcheck disable=SC2016  # expanded by the sourcing shell lib starts
+declared_readers() { lib "$1" eval 'for __r in "${GATE_TREE_READERS[@]}"; do printf "%s\n" "${__r%% *}"; done' | sort -u; }
+# shellcheck disable=SC2016  # expanded by the sourcing shell lib starts
+host_free_readers() { lib "$1" eval 'for __r in "${GATE_TREE_READERS[@]}"; do [ "${__r#* }" != host-free ] || printf "%s\n" "${__r%% *}"; done'; }
+# leg1 <ledger> <deploy.sh> — prints nothing when the functions the ledger attributes a read to EQUAL the
+# declaration, and one line per disagreement otherwise.
+leg1() {
+  local fn
+  while IFS= read -r fn; do
+    awk -F'\t' -v f="$fn" '$1 == "read" && $2 == f { printf "undeclared reader %s read %s:%s\n", f, $3, $4 }' "$1" | sort -u
+  done < <(comm -23 <(awk -F'\t' '$1 == "read" { print $2 }' "$1" | sort -u) <(declared_readers "$2"))
+  comm -13 <(awk -F'\t' '$1 == "read" { print $2 }' "$1" | sort -u) <(declared_readers "$2") \
+    | sed 's/^/declared reader read nothing in this run: /'
+}
+# leg2 <ledger> <deploy.sh> <commit> — prints nothing when each host-free row, run alone over <commit>,
+# reads what the ledger says it read inside phase_a; one line per path read by one and not the other.
+leg2() {
+  local fn own="$T/ledger.own"
+  while IFS= read -r fn; do
+    : > "$own"
+    MEZZ_GIT_READ_LEDGER="$own" lib "$2" "$fn" "$3" >/dev/null 2>&1 \
+      || printf 'host-free %s REFUSED or failed when run on its own over %s\n' "$fn" "$3"
+    diff <(awk -F'\t' -v f="$fn" '$1 == "read" && $2 == f { print $3 ":" $4 }' "$1" | sort) \
+         <(awk -F'\t' -v f="$fn" '$1 == "read" && $2 == f { print $3 ":" $4 }' "$own" | sort) \
+      | sed -n "s/^< /$fn read inside phase_a and NOT on its own: /p; s/^> /$fn read on its own and NOT inside phase_a: /p" | sort -u
+  done < <(host_free_readers "$2")
+}
+
+mkfix ledger
+export MEZZ_GIT_READ_LEDGER="$T/ledger.control"; : > "$MEZZ_GIT_READ_LEDGER"
+run --dry-run
+unset MEZZ_GIT_READ_LEDGER
+eq  "ledger: the control deploys with the ledger on" 0 "$RC"
+neq "ledger: it recorded path reads (an empty ledger is a measurement that never happened)" 0 \
+    "$(grep -c '^read' "$T/ledger.control")"
+has "ledger: a read is attributed to the GATE that asked, not to the reader it asked through" \
+    "$(printf 'read\tgate_a11_trusted_proxies\t%s\tserver/bootstrap/app.php' "$V2")" "$(cat "$T/ledger.control")"
+has "ledger: a path the TREE names (A10's migrations) is recorded as read, with no pattern for it anywhere" \
+    "$(printf 'read\tgate_a10_migration_algorithm\t%s\tserver/database/migrations/2026_01_01_000000_create_fleet_store_tables.php' "$V2")" \
+    "$(cat "$T/ledger.control")"
+# OFF by default, and off means git_at never reaches the ledger code at all — checked by replacing that
+# code with one that announces itself, which is what a hook reached unconditionally would do.
+# shellcheck disable=SC2016  # expanded by the sourcing shell lib starts
+eq  "ledger: OFF by default — with MEZZ_GIT_READ_LEDGER unset, git_at never calls the ledger" "" \
+    "$(lib "$ROOT/bin/deploy.sh" eval 'git_read_ledger_note() { echo CALLED >&2; }; unset MEZZ_GIT_READ_LEDGER; git_at rev-parse HEAD >/dev/null' 2>&1)"
+# shellcheck disable=SC2016  # expanded by the sourcing shell lib starts
+eq  "ledger: …and the same probe, with it set, is called (the control that the probe can see a call)" "CALLED" \
+    "$(lib "$ROOT/bin/deploy.sh" eval 'git_read_ledger_note() { echo CALLED >&2; }; MEZZ_GIT_READ_LEDGER=/dev/null; git_at rev-parse HEAD >/dev/null' 2>&1)"
+
+# Library mode (card#9644): sourcing runs no deploy, and a gate is then callable on its own.
+OUT="$(lib "$ROOT/bin/deploy.sh" true 2>&1)"; RC=$?
+eq  "library mode: sourcing bin/deploy.sh exits 0" 0 "$RC"
+hasnt "library mode: and runs no deploy" "Mezzanine prod deploy" "$OUT"
+OUT="$(lib "$ROOT/bin/deploy.sh" gate_a11_trusted_proxies "$V2" 2>&1)"; RC=$?
+eq  "library mode: a gate runs on its own over a commit" 0 "$RC"
+has "library mode: and says what it says inside phase_a" "no trustProxies() configured" "$OUT"
+
+eq  "LEG 1: the functions the control's run read through ARE the declaration" \
+    "" "$(leg1 "$T/ledger.control" "$ROOT/bin/deploy.sh")"
+neq "LEG 2: the declaration names host-free rows to run (none would make the leg below a pass over nothing)" \
+    "" "$(host_free_readers "$ROOT/bin/deploy.sh")"
+eq  "LEG 2: every host-free row, run alone over the same commit, reads what it read inside phase_a" \
+    "" "$(leg2 "$T/ledger.control" "$ROOT/bin/deploy.sh" "$V2")"
+
+# ── each leg seen to FAIL. Each mutant is a copy of the script with ONE change, deployed from.
+undeclared_reader() { # a gate that asks a helper nobody declared to read the release for it
+  # shellcheck disable=SC2016,SC2317  # injected source; invoked by mkfix, by name
+  sed -i -e '/^gate_a11_trusted_proxies() {$/i extra_reader() { local x; git_read_at x "$1" server/artisan || true; }' \
+         -e '/^gate_a11_trusted_proxies() {$/a \  extra_reader "$1"' "$1/bin/deploy.sh"
+}
+mkfix ledger_undeclared "" undeclared_reader
+export MEZZ_GIT_READ_LEDGER="$T/ledger.undeclared"; : > "$MEZZ_GIT_READ_LEDGER"
+run --dry-run
+unset MEZZ_GIT_READ_LEDGER
+eq  "LEG 1 mutant: it still deploys — nothing but the declaration is wrong" 0 "$RC"
+eq  "LEG 1 mutant: the undeclared reader is named, with the path it read" \
+    "undeclared reader extra_reader read $V2:server/artisan" "$(leg1 "$T/ledger.undeclared" "$ROOT/bin/deploy.sh")"
+
+divergent_entry() { # a gate whose reads depend on a global a deploy sets and a sourced run does not
+  # shellcheck disable=SC2016,SC2317  # injected source; invoked by mkfix, by name
+  sed -i '/^gate_a11_trusted_proxies() {$/a \  [ "$DRY_RUN" -eq 0 ] || { local x; git_read_at x "$1" server/artisan || true; }' "$1/bin/deploy.sh"
+}
+mkfix ledger_divergent "" divergent_entry
+export MEZZ_GIT_READ_LEDGER="$T/ledger.divergent"; : > "$MEZZ_GIT_READ_LEDGER"
+run --dry-run
+unset MEZZ_GIT_READ_LEDGER
+eq  "LEG 2 mutant: it still deploys" 0 "$RC"
+eq  "LEG 2 mutant: LEG 1 does not see it — the reader IS declared" "" "$(leg1 "$T/ledger.divergent" "$ROOT/bin/deploy.sh")"
+eq  "LEG 2 mutant: the path the entry does not read on its own is named" \
+    "gate_a11_trusted_proxies read inside phase_a and NOT on its own: $V2:server/artisan" \
+    "$(leg2 "$T/ledger.divergent" "$ROOT/bin/deploy.sh" "$V2")"
+
 section "REFUSAL — the host is not in a deployable state"
 # ⛔ THE REFUSAL CONTRACT IS ASSERTED HERE, ONCE, FOR EVERY CASE THAT USES THIS (card#9646).
 # What `refuse` promises is three things together — exit 1, the `⛔ REFUSED — <cause>` banner, and

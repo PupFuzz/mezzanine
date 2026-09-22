@@ -234,7 +234,10 @@ BASH_FLOOR=4.4
 # ⚠ SOURCING THIS FILE IS NOT FREE, and the effects are named here rather than left to be found:
 # `set -Eeuo pipefail` above is set in the SOURCING shell, bin/supervision.sh is sourced beside this
 # file, and DEPLOY_ROOT, HOST_PHP_VERSION and FPM_BIN are resolved below — the last two by running
-# `php`. A caller that does not want any of that sources this file in a shell of its own.
+# `php`. And the `set --` below CLEARS THE SOURCING SHELL'S positional parameters when it sources this
+# file with no arguments, because bash then shares them with it: a caller that means to use "$@" after
+# the `.` keeps a copy first (measured, card#9745 — a test helper that did not ran nothing). A caller
+# that does not want any of that sources this file in a shell of its own.
 DEPLOY_IS_RUN=0
 [ "${BASH_SOURCE[0]}" != "$0" ] || DEPLOY_IS_RUN=1
 
@@ -1004,7 +1007,66 @@ store_locality() {
   return 0
 }
 
-git_at() { git -C "$DEPLOY_ROOT" "$@"; }
+# git_at <git argument…> — EVERY git process this script starts, and the one place a checker sees them.
+# ⛔ A BARE `git` ELSEWHERE IN THIS FILE IS A DEFECT, NOT A STYLE: bin/deploy-gate-inputs.sh counts the git
+# processes a run of the target-tree gates starts, and a count that differs from the ledger below is its
+# exit 2 (card#9745).
+git_at() {
+  [ -z "${MEZZ_GIT_READ_LEDGER:-}" ] || git_read_ledger_note "$@"
+  git -C "$DEPLOY_ROOT" "$@"
+}
+
+# ── the READ LEDGER (card#9745) ───────────────────────────────────────────────────────────────
+# OFF unless MEZZ_GIT_READ_LEDGER names a file, and then every git_at call appends to it. Nothing in a
+# deploy sets it: a checker does, to learn what a run of this file READ rather than what its source text
+# looks like it reads. The read set is a function of the TREE as well as of this file — A10 reads each
+# migration its listing names, A14 a file whose name comes from the host's phpinfo — so a run over a real
+# commit is the one surface on which "what it reads" and "what it does" are the same fact.
+#   call<TAB><caller><TAB><argv>        one per git_at call: the git process it starts, with <argv>
+#                                       exactly as git receives it, each word `%q`-quoted. A checker's
+#                                       `git` shim writes the same words, which is how a git process
+#                                       that did NOT go through git_at is named rather than guessed at.
+#   read<TAB><caller><TAB><rev><TAB><path>
+#                                       one per PATH that call names inside a tree. git's CLI names one
+#                                       in two ways, and both are read here: a pathspec after `--`
+#                                       (`ls-tree <rev> -- :(literal)<path>`, the magic dropped), and a
+#                                       `<rev>:<path>` argument (`show <rev>:<path>`). That is a property
+#                                       of git, not a list of this file's call sites, so a read written
+#                                       any way at all is recorded by the call it makes.
+# <caller> is the innermost frame that is NOT one of git_reader_frame's: the gate that asked, never the
+# reader it asked through.
+# ⚠ WHAT IT CANNOT RECORD: a git process this file starts without git_at, and a path handed to git some
+# third way (stdin, a file of pathspecs). None exists in this file; the first is what the checker's
+# process count exists to catch, and the second is not caught by anything here.
+git_read_ledger_note() {
+  local __lg_i __lg_caller="(top level)" __lg_a __lg_rev="" __lg_sub="" __lg_after=0 __lg_skip=0 __lg_argv
+  local -a __lg_paths=() __lg_revs=()
+  for ((__lg_i = 2; __lg_i < ${#FUNCNAME[@]}; __lg_i++)); do
+    git_reader_frame "${FUNCNAME[__lg_i]}" || { __lg_caller="${FUNCNAME[__lg_i]}"; break; }
+  done
+  printf -v __lg_argv '%q ' -C "$DEPLOY_ROOT" "$@"
+  printf 'call\t%s\t%s\n' "$__lg_caller" "${__lg_argv% }" >> "$MEZZ_GIT_READ_LEDGER"
+  for __lg_a in "$@"; do
+    if [ "$__lg_skip" -eq 1 ]; then
+      __lg_skip=0                                   # the value of a `-c`/`-C` before the subcommand
+    elif [ "$__lg_after" -eq 1 ]; then
+      __lg_revs+=("${__lg_rev:--}"); __lg_paths+=("${__lg_a#:(*)}")
+    elif [ "$__lg_a" = -- ]; then
+      __lg_after=1
+    else
+      case "$__lg_sub:$__lg_a" in
+        :-c | :-C) __lg_skip=1 ;;
+        *:-*) ;;
+        :*) __lg_sub="$__lg_a" ;;
+        *:?*:?*) __lg_revs+=("${__lg_a%%:*}"); __lg_paths+=("${__lg_a#*:}") ;;
+        *) __lg_rev="$__lg_a" ;;
+      esac
+    fi
+  done
+  for __lg_i in "${!__lg_paths[@]}"; do
+    printf 'read\t%s\t%s\t%s\n' "$__lg_caller" "${__lg_revs[__lg_i]}" "${__lg_paths[__lg_i]}" >> "$MEZZ_GIT_READ_LEDGER"
+  done
+}
 
 # ── remote NAMES that are not printed (card#9991) ─────────────────────────────────────────────
 # remote_name_unprintable <name> — 0 when a remote NAME carries a `:`. THE ONE RULE, used twice by
@@ -1113,15 +1175,25 @@ remote_names_listing() {
 git_read_call_site() {
   local __i __outer=0
   for __i in "${!FUNCNAME[@]}"; do
-    case "${FUNCNAME[__i]}" in
-      git_read_call_site | not_established | git_read_unusable | git_read_failed | git_read_at | \
-      git_ls_at | _git_ls_at | git_rev_read_failed | git_peel_mismatch | git_commit_of | git_ref_oid | \
-      scratch_file | scratch_dir | _scratch | git_diagnostic_unread)
-        __outer="$__i" ;;
-      *) break ;;
-    esac
+    git_reader_frame "${FUNCNAME[__i]}" || break
+    __outer="$__i"
   done
   printf -v "$1" '%s' "${BASH_LINENO[__outer]:-0}"
+}
+
+# git_reader_frame <function name> — 0 when <function name> is one of the frames named above: a frame
+# BETWEEN a read of git and the caller that asked for it. ONE list, with two readers: the frame walk
+# above, and git_read_ledger_note's, which attributes each git call to the function that asked for it
+# (card#9745). A reader added to one and not the other would name one caller in `failed_line:` and
+# another in the ledger, so there is one list.
+git_reader_frame() {
+  case "$1" in
+    git_read_call_site | not_established | git_read_unusable | git_read_failed | git_read_at | \
+    git_ls_at | _git_ls_at | git_rev_read_failed | git_peel_mismatch | git_commit_of | git_ref_oid | \
+    scratch_file | scratch_dir | _scratch | git_diagnostic_unread)
+      return 0 ;;
+  esac
+  return 1
 }
 
 # not_established <headline> <detail line…> — THE ONE phase-reading exit, for any failure that means a
@@ -3074,24 +3146,54 @@ phase_a() {
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 # PHASE A's TARGET-TREE GATES — callable one at a time, on a commit, with no host (card#9644)
 # ══════════════════════════════════════════════════════════════════════════════════════════════
-# Each takes the commit being deployed as its FIRST argument, bound to a local named SHA: that is
-# the deploy's own name for the rev, and it is what keeps every read in these bodies written
-# `git_read_at <var> "$SHA" <path>` — the one shape bin/deploy-gate-inputs.sh's derivation takes a
-# gate input out of. phase_a calls them in order (§ THE TARGET-TREE GATES); a checker calls one.
+# Each takes the commit being deployed as its FIRST argument, bound to a local named SHA, the deploy's
+# own name for the rev. phase_a calls them in order (§ THE TARGET-TREE GATES); a checker calls one.
 #
-# HOST-FREE is stated per gate and it is a promise about the GATE, not about this file: sourcing
-# bin/deploy.sh has its own effects (§ library mode). A gate marked host-free reads the object
-# database of $DEPLOY_ROOT and the arguments it was handed, and nothing else. The two that are not
-# are marked, with what they read: neither can be, because what they decide IS a comparison with
-# this host — A10b against its `.env`, A13 against its crontab and the SERVING release's locks.
+# HOST-FREE is stated per function and it is a promise about the FUNCTION, not about this file:
+# sourcing bin/deploy.sh has its own effects (§ library mode). A function marked host-free reads the
+# object database of $DEPLOY_ROOT and its arguments, and nothing else. A gate that also compares the
+# release against THIS HOST — A6, A6b and A12 against a version they are handed, A10b against the
+# host's `.env`, A13 against its crontab and the SERVING release's locks — is carved into a TARGET-TREE
+# half, `gate_<id>_target_…`, which reads the release and refuses on what the release alone decides,
+# and the gate phase_a calls, which runs that half and then makes the comparison. A half publishes what
+# it read in upper-case globals (A6_FLOOR_…, A6B_FLOOR, A10B_KEYS, A12_…, A13_TARGET_SUP), as A13 already
+# published TARGET_DAEMONS: a refusal exits the process, so nothing needs handing back but the values.
 
-# gate_a6_php_floor <sha> <host PHP version> — A6. HOST-FREE: it derives the PHP floor from
-# server/composer.json at <sha> and compares it against the version it is HANDED, so a checker
-# names the host version instead of having one. Its first two refusals are properties of the target
-# tree ALONE — no `require.php`, and a constraint this cannot evaluate — which makes them
-# unconditional every-deploy refusals that no lane over fixtures can see (card#9644's comment 5498).
-gate_a6_php_floor() {
-  local SHA="$1" phpver="$2"
+# GATE_TREE_READERS — THE DECLARATION of every function phase A reads a PATH out of a tree through
+# (card#9745). "Reads through" is what the read ledger (§ git_read_ledger_note) attributes a read to: the
+# innermost frame that is not one of git_read_at's family. One row per function — `<function> <how a
+# checker treats it>`, where the second field is either
+#   host-free   bin/deploy-gate-inputs.sh RUNS it, as `<function> <commit>`, over the commit under test,
+#               with the ledger on, and it must pass there as it must pass here; or
+#   anything else, which is the reason no checker runs it, printed by that checker in these words.
+# ⛔ THIS LIST IS HELD TRUE BY A RUN, NOT BY A READING. bin/deploy.selftest.sh § card#9745 runs a full
+# `--dry-run` with the ledger on and reds unless the functions it attributes a read to are exactly these,
+# naming any other with the path it read; and it runs every host-free row on its own, over the same
+# commit, and reds unless it reads what the gate phase_a called read. A function that starts reading the
+# release belongs here in the change that makes it read.
+# shellcheck disable=SC2034  # read by its consumers, which source this file: the two named above
+GATE_TREE_READERS=(
+  'gate_a6_target_php_floor host-free'
+  'gate_a6b_target_bash_floor host-free'
+  'gate_a10_migration_algorithm host-free'
+  'gate_a10b_target_keys host-free'
+  'gate_a11_trusted_proxies host-free'
+  'gate_a12_target_lockfile host-free'
+  'gate_a13_target_source host-free'
+  "fpm_code_reload_ready A14 — the .user.ini it reads out of the release is NAMED by this host's PHP-FPM (user_ini.filename), so with no FPM there is no path to read"
+  "phase_a A3b — its \`:(literal)\` probe lists VERSION in the SERVING checkout's HEAD, which is this host's tree and not the release's"
+)
+A6_FLOOR_CONSTRAINT=""; A6_FLOOR_MIN=""; A6_FLOOR_MAX=""; A6B_FLOOR=""; A10B_KEYS=""
+A12_LOCK_VERSION=""; A12_NPM_FLOOR=""; A13_TARGET_SUP=""
+
+# gate_a6_target_php_floor <sha> — A6's TARGET-TREE half. HOST-FREE: it derives the PHP floor from
+# server/composer.json at <sha> and publishes it (A6_FLOOR_CONSTRAINT, A6_FLOOR_MIN, A6_FLOOR_MAX — MAX empty
+# for `>=`, which is unbounded) for gate_a6_php_floor to compare. Every refusal it makes is a property of
+# the target tree ALONE — the file missing or empty, no `require.php`, a constraint this cannot evaluate —
+# which makes them unconditional every-deploy refusals that no lane over fixtures can see (card#9644's
+# comment 5498), and is why a checker runs this half (card#9745).
+gate_a6_target_php_floor() {
+  local SHA="$1"
   # A6 — THE PHP FLOOR, read from the RELEASE BEING DEPLOYED. Out of letter order on purpose: it
   # needs $SHA (A7), and the floor that matters is the TARGET tree's, not this host's checkout.
   # Those two differ on exactly one deploy — the one that RAISES the floor — and that is the deploy
@@ -3102,7 +3204,7 @@ gate_a6_php_floor() {
   # marker on disk, nothing rolled back and a bare re-run refused (card#7459). This check is that
   # same failure, moved to before anything is touched — and it is DERIVED from composer.json rather
   # than restated, because a restated copy of it is what card#9203 was.
-  local composer_json="" floor_constraint floor_op floor_min floor_max
+  local composer_json="" floor_constraint floor_op floor_min
   # The `|| true` drops ONE status — "no such file at $SHA" — and the line below disposes of it by name,
   # together with a file that is there and empty. A git read that FAILED never reaches either.
   git_read_at composer_json "$SHA" server/composer.json || true
@@ -3132,26 +3234,36 @@ gate_a6_php_floor() {
     "It understands \`^X.Y.Z\` and \`>=X.Y.Z\`, and refuses everything else rather than read" \
     "part of it. Widen \`php_require_constraint\` and this case deliberately, or simplify the" \
     "constraint."
+  A6_FLOOR_CONSTRAINT="$floor_constraint"; A6_FLOOR_MIN="$floor_min"
   # `^X.…` is bounded above at the next major; `>=X.…` is not bounded at all.
-  floor_max=""
-  if [ "$floor_op" = '^' ]; then floor_max="$(( 10#${floor_min%%.*} + 1 )).0.0"; fi
-  if ! ver_ge "$phpver" "$floor_min" || { [ -n "$floor_max" ] && ver_ge "$phpver" "$floor_max"; }; then
-    refuse "PHP $phpver does not satisfy server/composer.json's $floor_constraint at $(git_at rev-parse --short "$SHA")" \
+  A6_FLOOR_MAX=""
+  if [ "$floor_op" = '^' ]; then A6_FLOOR_MAX="$(( 10#${floor_min%%.*} + 1 )).0.0"; fi
+}
+
+# gate_a6_php_floor <sha> <host PHP version> — A6: the target tree's floor (gate_a6_target_php_floor,
+# above), compared against the version it is HANDED, so a checker names the host version instead of
+# having one.
+gate_a6_php_floor() {
+  local SHA="$1" phpver="$2"
+  gate_a6_target_php_floor "$SHA"
+  if ! ver_ge "$phpver" "$A6_FLOOR_MIN" || { [ -n "$A6_FLOOR_MAX" ] && ver_ge "$phpver" "$A6_FLOOR_MAX"; }; then
+    refuse "PHP $phpver does not satisfy server/composer.json's $A6_FLOOR_CONSTRAINT at $(git_at rev-parse --short "$SHA")" \
       "\`composer install\` reads that same constraint and would refuse — but it runs in the" \
       "maintenance window, with the app already down. This refusal is that failure, moved to" \
       "before anything is touched." \
       "" \
-      "Either raise this host's PHP to satisfy $floor_constraint, or deploy a release whose" \
+      "Either raise this host's PHP to satisfy $A6_FLOOR_CONSTRAINT, or deploy a release whose" \
       "floor it already meets."
   fi
-  say "  ok — PHP $phpver satisfies $floor_constraint, declared by server/composer.json at $(git_at rev-parse --short "$SHA")"
+  say "  ok — PHP $phpver satisfies $A6_FLOOR_CONSTRAINT, declared by server/composer.json at $(git_at rev-parse --short "$SHA")"
 }
 
-# gate_a6b_bash_floor <sha> <host bash major.minor> — A6b. HOST-FREE: it reads the BASH_FLOOR that
-# bin/deploy.sh at <sha> declares and compares it against the version it is HANDED, exactly as A6
-# does the PHP one, so a checker names the host version instead of having one.
-gate_a6b_bash_floor() {
-  local SHA="$1" bashver="$2"
+# gate_a6b_target_bash_floor <sha> — A6b's TARGET-TREE half. HOST-FREE: it reads the BASH_FLOOR that
+# bin/deploy.sh at <sha> declares and publishes it as A6B_FLOOR — EMPTY for a release that declares none
+# (it predates card#9616), which gate_a6b_bash_floor says rather than refuses. It refuses a release with
+# no bin/deploy.sh, an empty one, and a floor that is not a version: each a property of the tree alone.
+gate_a6b_target_bash_floor() {
+  local SHA="$1"
   # A6b — THE BASH FLOOR OF THE RELEASE BEING DEPLOYED (card#9616). A1 held this bash to THIS
   # copy's floor. But this copy does not run the maintenance window: after `artisan down` and the
   # checkout, phase B re-execs the DEPLOYED release's bin/deploy.sh (--internal-post-checkout), and
@@ -3178,26 +3290,19 @@ gate_a6b_bash_floor() {
     "that cannot deploy itself. This is NOT \"it declares no bash floor\" — a release that predates" \
     "card#9616 declares none and deploys; this one has nothing in it at all."
   floor="$(printf '%s\n' "$src" | bash_floor_declared)"
-  if [ -z "$floor" ]; then
-    # ⛔ NOT A REFUSAL, and this is the deliberate part. Every release cut before card#9616 declares
-    # no BASH_FLOOR, and that is a fact about WHEN it was written, not a claim that it runs on any
-    # bash. What is enforced for such a release is what exists: A1's floor, on the copy running now.
-    # Refusing instead would make every older release undeployable by this one — a ROLLBACK
-    # included, which is the deploy most likely to be run under pressure — for want of a
-    # declaration it could not have made.
-    say "  ok — bin/deploy.sh at $short declares no BASH_FLOOR (it predates card#9616); only this copy's floor, $BASH_FLOOR, was enforced (A1)"
-    return 0
-  fi
+  A6B_FLOOR="$floor"
+  [ -n "$floor" ] || return 0     # declares none: gate_a6b_bash_floor says so, and why that is not a refusal
   # ⛔ THE SAME TEST A1 HOLDS THIS COPY'S OWN DECLARATION TO (card#9984). It used to be an inline
   # `[0-9]*.[0-9]*` here — a third copy of the pattern, beside A1's looser one and the workflow's —
   # and it admitted `4.4x` and `4.x.5`; the second was enforced as the floor 4.0.5, which is not
   # the floor that release declared. `bash_floor_is_version` states what a floor is, once.
   # ⚠ TIGHTENING THIS GATE STRANDS NO RELEASE, and that was checked rather than assumed, because
-  # refusing a release nobody can re-cut is the failure the branch above exists to avoid. Every
+  # refusing a release nobody can re-cut is the failure the empty-floor branch exists to avoid. Every
   # tag this repository has published was read (`git show <tag>:bin/deploy.sh`) and NONE declares
   # a BASH_FLOOR, so this predicate rejects nothing that is out there — but they do not all reach
   # it by the same route, and the earlier wording said they did:
-  #   · the tags that CARRY bin/deploy.sh declare no floor and take the survivable path above;
+  #   · the tags that CARRY bin/deploy.sh declare no floor and take the survivable path (the
+  #     `return 0` above, then gate_a6b_bash_floor's empty-floor branch);
   #   · the earliest tags carry no bin/deploy.sh at all, so A6b refuses them at the `git_read_at`
   #     branch further up — which it already did before this card, and for a different reason.
   # Re-derive rather than trusting either sentence: for each tag, `git cat-file -e <tag>:bin/
@@ -3208,6 +3313,25 @@ gate_a6b_bash_floor() {
     "one it cannot read — nor read it as far as it parses, which would enforce a floor the release" \
     "did not declare. The line is \`BASH_FLOOR=<major>.<minor>\`, alone on its line: exactly two" \
     "numeric fields."
+}
+
+# gate_a6b_bash_floor <sha> <host bash major.minor> — A6b: the floor the release at <sha> declares
+# (gate_a6b_target_bash_floor, above), compared against the version it is HANDED, exactly as A6 does
+# the PHP one, so a checker names the host version instead of having one.
+gate_a6b_bash_floor() {
+  local SHA="$1" bashver="$2" short floor
+  gate_a6b_target_bash_floor "$SHA"
+  short="$(git_at rev-parse --short "$SHA")"; floor="$A6B_FLOOR"
+  if [ -z "$floor" ]; then
+    # ⛔ NOT A REFUSAL, and this is the deliberate part. Every release cut before card#9616 declares
+    # no BASH_FLOOR, and that is a fact about WHEN it was written, not a claim that it runs on any
+    # bash. What is enforced for such a release is what exists: A1's floor, on the copy running now.
+    # Refusing instead would make every older release undeployable by this one — a ROLLBACK
+    # included, which is the deploy most likely to be run under pressure — for want of a
+    # declaration it could not have made.
+    say "  ok — bin/deploy.sh at $short declares no BASH_FLOOR (it predates card#9616); only this copy's floor, $BASH_FLOOR, was enforced (A1)"
+    return 0
+  fi
   bash_meets_floor "$bashver" "$floor" || refuse \
     "bash $bashver is below the floor the release being deployed declares: BASH_FLOOR=$floor in bin/deploy.sh at $short" \
     "This copy's own floor ($BASH_FLOOR) was met — A1 checked it. But after \`artisan down\` and the" \
@@ -3262,9 +3386,24 @@ gate_a10_migration_algorithm() {
   fi
 }
 
-# gate_a10b_config_drift <sha> — A10b. NOT host-free: it reads the release's server/.env.example
-# out of git and asks env_get what THIS HOST's $ENV_FILE sets, which is the comparison it exists to
-# make. It warns and never refuses ON A FINDING — a key the host does not set, or sets in a form this
+# gate_a10b_target_keys <sha> — A10b's TARGET-TREE half. HOST-FREE: the keys server/.env.example at <sha>
+# names, published as A10B_KEYS (one per line) for gate_a10b_config_drift to ask this host's .env about.
+# A release with no server/.env.example WARNS here — no key of it can be compared — and never refuses.
+gate_a10b_target_keys() {
+  local SHA="$1" example
+  A10B_KEYS=""
+  # "no key of .env.example is unset on this host" and "that file was not read" are the same silence
+  # from here, so the read that produced the key list has to be the one that can tell them apart.
+  if git_read_at example "$SHA" server/.env.example; then
+    A10B_KEYS="$(printf '%s\n' "$example" | grep -Eo '^[A-Z][A-Z0-9_]*=' | tr -d '=' || true)"
+  else
+    warn "the target release has no server/.env.example at $(git_at rev-parse --short "$SHA"), so no key of it was compared against this host's .env"
+  fi
+}
+
+# gate_a10b_config_drift <sha> — A10b. NOT host-free: it takes the keys the release's server/.env.example
+# names (gate_a10b_target_keys, above) and asks env_get what THIS HOST's $ENV_FILE sets, which is the
+# comparison it exists to make. It warns and never refuses ON A FINDING — a key the host does not set, or sets in a form this
 # deploy does not read, is a warning and nothing more. It DOES refuse when the file it is comparing
 # against stopped being readable mid-run (env_get status 3), which is not a finding about config drift
 # but the disappearance of the evidence this gate and every check above it were reading.
@@ -3285,15 +3424,9 @@ gate_a10b_config_drift() {
   # itself not being read, which would put EVERY key of .env.example into that same list and is refused
   # rather than warned about (card#9610). (A5 has run env_file_scan on this file, which is what makes a LINE
   # a unit here at all — env_get's precondition, and the thing a status 3 here says has stopped holding.)
-  local want="" example missing_keys=() unread_keys=() k k_rc
-  # "no key of .env.example is unset on this host" and "that file was not read" are the same silence
-  # from here, so the read that produced the key list has to be the one that can tell them apart.
-  if git_read_at example "$SHA" server/.env.example; then
-    want="$(printf '%s\n' "$example" | grep -Eo '^[A-Z][A-Z0-9_]*=' | tr -d '=' || true)"
-  else
-    warn "the target release has no server/.env.example at $(git_at rev-parse --short "$SHA"), so no key of it was compared against this host's .env"
-  fi
-  for k in $want; do
+  local missing_keys=() unread_keys=() k k_rc
+  gate_a10b_target_keys "$SHA"
+  for k in $A10B_KEYS; do
     k_rc=0; env_get "$k" >/dev/null || k_rc=$?
     case "$k_rc" in
       1) missing_keys+=("$k") ;;
@@ -3352,10 +3485,12 @@ gate_a11_trusted_proxies() {
   fi
 }
 
-# gate_a12_asset_lockfile <sha> <host npm version> — A12. HOST-FREE: server/package-lock.json at
-# <sha>, and the npm version it is HANDED (A1c read it), as A6 is handed the host's PHP.
-gate_a12_asset_lockfile() {
-  local SHA="$1" npmver="$2"
+# gate_a12_target_lockfile <sha> — A12's TARGET-TREE half. HOST-FREE: server/package-lock.json at <sha>,
+# and the npm floor its lockfileVersion implies, published as A12_LOCK_VERSION and A12_NPM_FLOOR (EMPTY
+# where npm's documentation states no floor) for gate_a12_asset_lockfile to compare. It refuses a release
+# with no lockfile, an empty one, and a lockfileVersion it cannot map: each a property of the tree alone.
+gate_a12_target_lockfile() {
+  local SHA="$1"
   # A12 — a lockfile for the asset build. `npm ci` is used below and requires one; more to the
   # point, package.json floats (vite ^8, tailwind ^4), so a lockfile-less prod build can ship
   # different JavaScript from the same commit on two consecutive days, and nothing in the repo
@@ -3408,6 +3543,16 @@ gate_a12_asset_lockfile() {
          "guess that is wrong is found inside the maintenance window, with the app down." \
          "Teach A12 the new lockfile version from npm's docs, deliberately, and re-read this gate." ;;
   esac
+  A12_LOCK_VERSION="$lock_version"; A12_NPM_FLOOR="$npm_floor"
+}
+
+# gate_a12_asset_lockfile <sha> <host npm version> — A12: the release's lockfile and the npm floor it
+# implies (gate_a12_target_lockfile, above), compared against the npm version it is HANDED (A1c read it),
+# as A6 is handed the host's PHP.
+gate_a12_asset_lockfile() {
+  local SHA="$1" npmver="$2" short lock_version npm_floor
+  gate_a12_target_lockfile "$SHA"
+  short="$(git_at rev-parse --short "$SHA")"; lock_version="$A12_LOCK_VERSION"; npm_floor="$A12_NPM_FLOOR"
   if [ -n "$npm_floor" ]; then
     ver_ge "$npmver" "$npm_floor" || refuse \
       "npm $npmver is below npm $npm_floor, which lockfileVersion $lock_version in server/package-lock.json at $short needs" \
@@ -3423,26 +3568,32 @@ gate_a12_asset_lockfile() {
   fi
 }
 
-# gate_a13_target_plan <sha> <workdir> <deploy root> <php binary> — A13's HOST-FREE half, and the
-# one a checker wants: it reads the TARGET release's bin/supervision.sh out of git and runs that
-# release's own install plan in a bash process of its own, writing <workdir>/plan, <workdir>/locks
-# and <workdir>/daemons. Every refusal that install makes is made here — including "it defines no
-# supervision_install_plan", which is an unconditional every-deploy refusal of the target tree
-# (card#9644's comment 5498) — and the caller compares the result against the host.
+# gate_a13_target_source <sha> — A13's TARGET-TREE half. HOST-FREE: the TARGET release's bin/supervision.sh,
+# read out of git and published as A13_TARGET_SUP for gate_a13_target_plan. A release without one, or with
+# an empty one, is refused here — a property of the tree alone.
+gate_a13_target_source() {
+  local SHA="$1" target_sup=""
+  git_read_at target_sup "$SHA" bin/supervision.sh || true
+  [ -n "$target_sup" ] || refuse "bin/supervision.sh is missing or empty at $(git_at rev-parse --short "$SHA")" \
+    "The window installs the deployed release's crontab block from it and restarts the daemons it names." \
+    "A release without it cannot be supervised by this deploy."
+  A13_TARGET_SUP="$target_sup"
+}
+
+# gate_a13_target_plan <sha> <workdir> <deploy root> <php binary> — runs the install plan of the
+# bin/supervision.sh gate_a13_target_source read (A13_TARGET_SUP — call that first) in a bash process of
+# its own, writing <workdir>/plan, <workdir>/locks and <workdir>/daemons. Every refusal that install makes
+# is made here — including "it defines no supervision_install_plan", which is an unconditional every-deploy
+# refusal of the target tree (card#9644's comment 5498) — and the caller compares the result against the
+# host. ⛔ NOT HOST-FREE, whatever it used to be labelled: that install plan runs `crontab -l`
+# (bin/supervision.sh § supervision_install_plan), so it reads THIS HOST's crontab — no crontab binary
+# refuses about the crontab, and an empty one passes by luck (card#9745).
 # <workdir> is the caller's, and this function removes it on the paths that refuse out of the
 # process, since a refusal never returns for the caller to clean up after.
 gate_a13_target_plan() {
   local SHA="$1" work="$2" root="$3" php_bin="$4"
-  local short target_sup eval_err
+  local short target_sup="$A13_TARGET_SUP" eval_err
   short="$(git_at rev-parse --short "$SHA")"
-  target_sup=""
-  git_read_at target_sup "$SHA" bin/supervision.sh || true
-  [ -n "$target_sup" ] || {
-    rm -rf "$work"
-    refuse "bin/supervision.sh is missing or empty at $short" \
-      "The window installs the deployed release's crontab block from it and restarts the daemons it names." \
-      "A release without it cannot be supervised by this deploy."
-  }
   # ⛔ THE ONE-BYTE PROBE THAT MADE $work PROVES A BYTE LANDS, NOT THAT A RELEASE'S WHOLE
   # bin/supervision.sh DOES (card#9932 review, SF-5). With a handful of blocks free, `scratch_dir`'s
   # probe passes and THIS write — the checkout's real payload, kilobytes rather than one byte — can
@@ -3494,7 +3645,7 @@ gate_a13_target_plan() {
 
 # gate_a13_supervision <sha> — A13. NOT host-free: it compares the target release's crontab block
 # against THIS HOST's installed crontab, and the lock files that release would use against the
-# SERVING release's. Its target-tree half is gate_a13_target_plan, above, which a checker calls.
+# SERVING release's. Its target-tree half is gate_a13_target_source, above, which a checker calls.
 gate_a13_supervision() {
   local SHA="$1"
   # A13 — supervision: the DEPLOYED release's crontab block, judged by that release's own bin/supervision.sh.
@@ -3522,6 +3673,7 @@ gate_a13_supervision() {
   local php_bin short work installed added removed serving_locks target_locks
   short="$(git_at rev-parse --short "$SHA")"
   php_bin="$(supervision_default_php)"
+  gate_a13_target_source "$SHA"
   scratch_dir work "A13's reading of $short's crontab block"
   gate_a13_target_plan "$SHA" "$work" "$DEPLOY_ROOT" "$php_bin"
   TARGET_DAEMONS="$(cat "$work/daemons")"; TARGET_DAEMONS="${TARGET_DAEMONS% }"
