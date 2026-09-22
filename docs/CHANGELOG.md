@@ -27,6 +27,36 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9991** — **`bin/deploy.sh` refuses a `MEZZ_REMOTE` that names a remote whose NAME contains
+  `:`, and no A3c refusal prints such a name any more.** `git config` will write a remote whose NAME
+  is a URL (`git config 'remote.https://user:token@host/o/r.git.url' <url>` exits 0), `git remote`
+  then lists it, and card#9832's membership test passes it because it IS a configured remote.
+  Measured against the previous tree with an obviously fake credential: setting `MEZZ_REMOTE` to
+  such a name printed the credential three times in one run — the *"Fetching …"* step line and two
+  lines of the refusal that followed a successful fetch — and on a checkout carrying such a remote,
+  the refusal for a `MEZZ_REMOTE` that names no remote printed it in its list of remote names.
+  **The rule is the colon, never a pattern match for `://` or `@`:** `git remote add` and `git
+  remote rename` both refuse a name containing `:` (measured, git 2.53.0: `'a:b' is not a valid
+  remote name`), and every URL form with a place for a credential carries one, so the rule turns
+  away no remote those two commands created. One predicate does both jobs: it refuses the value, and it marks
+  a matching entry in the printed list as ``[name N of `git remote`'s list — NOT PRINTED …]``, by its
+  position, instead of printing it.
+  **What to do if a deploy refuses with *"whose NAME contains ':'"*:** rename the marked remote
+  without printing it, with the command the refusal prints —
+  `git -C <deploy root> remote rename "$(git -C <deploy root> remote | sed -n '<N>p')" <a name>` —
+  and, if `git -C <deploy root> config --get remote.<a name>.fetch` prints nothing, add the refspec
+  `git remote add` writes: `git -C <deploy root> config remote.<a name>.fetch
+  '+refs/heads/*:refs/remotes/<a name>/*'`. Then set `MEZZ_REMOTE` to the new name. A checkout that
+  deliberately named a remote with a URL stops deploying until it does this; that cost was accepted
+  when the rule was decided. Hosts whose `MEZZ_REMOTE` is unset, or is a name with no `:`, deploy as
+  before, including a checkout that carries a colon-named remote it does not deploy from.
+  `bin/deploy.selftest.sh` gains a § card#9991 section: the colon-named `MEZZ_REMOTE` refused with
+  the credential absent from the output and from every file of the checkout outside `.git/`, the
+  printed rename advice run and the renamed remote deploying, a refusal on such a checkout with the
+  entry marked, a twin in which the same token as a legal name IS listed (so the absences are
+  measurements), a legal name carrying `/`, `@`, `.` and `-` deploying, and a checkout carrying a
+  colon-named remote deploying from `origin`.
+
 - **card#10074** — **README's install step now keeps the new database password out of the
   `mariadb` client's own history file, and warns at the `CREATE USER` that a typo can print it.**
   § Running the server locally told an installer to use `sudo mariadb` "so the password never lands
@@ -420,24 +450,19 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   and a bare `@` are legal remote names — a remote name is a refname component — so a pattern would
   refuse a host that is configured exactly right.
   **What membership does NOT close, said at the size it was measured.** No name `git remote add`
-  will CREATE can be a URL: a refname may not contain `:`, and every URL git fetches from carries
-  one. But `git config` writes a section name straight into `.git/config` with no such check —
-  measured, git 2.53.0, `git config 'remote.https://user:secret@host/o/r.git.url' <url>` exits 0,
-  `git remote` then lists that URL as a NAME, and this gate passes it. That is a configured remote
-  of the checkout, so the claim is the narrow one and not "no URL can be a remote's name".
-  ⚠ **On a checkout like that the credential is already on screen whenever the remotes are listed,
-  this gate's refusal included** — the list it prints is `git remote`'s own output, so a credential
-  someone wrote into `.git/config` AS A REMOTE NAME appears under a headline saying the value is not
-  printed. What is withheld there is `MEZZ_REMOTE`; the list is your checkout's configuration, which
-  the deploy reports and does not author. **If any remote of your deploy checkout is named with a
-  URL, rename it** (`git -C <deploy root> remote rename <the URL> <a name>`): a credential belongs
-  in `remote.<name>.url`, never in the name, and while it is the name it is printed by every tool
-  that lists your remotes, not only by this one.
+  will CREATE can be a URL: a refname may not contain `:`, and every URL form with a place for a
+  credential carries one. But `git config` writes a section name straight into `.git/config` with no
+  such check — measured, git 2.53.0, `git config 'remote.https://user:secret@host/o/r.git.url' <url>`
+  exits 0, `git remote` then lists that URL as a NAME, and membership passes it. That is a configured
+  remote of the checkout, so the claim is the narrow one and not "no URL can be a remote's name".
+  **card#9991 closes that leg** — such a `MEZZ_REMOTE` is refused, and the list this gate prints
+  marks such a name instead of printing it; its bullet says what to do.
   A multi-line `MEZZ_REMOTE` equal to two or more ADJACENT names joined by newlines is refused
   before the list test, since that test is applied to the value and the value is not a name.
   **The refusal does not echo what it rejected**, which is the whole of its point: it names the
   VARIABLE, says outright that the value is withheld, and lists the remotes this checkout HAS, which
-  are names — `git remote` with no options prints no `remote.<name>.url`. The cost is paid
+  are names — `git remote` with no options prints no `remote.<name>.url` (a name containing `:` is
+  marked rather than printed, card#9991). The cost is paid
   knowingly: an operator who
   merely mistyped a name does not get the typo echoed back, and the list of names that would have
   worked is what makes it findable. `git remote`'s own status is read too, so a `git remote` that
