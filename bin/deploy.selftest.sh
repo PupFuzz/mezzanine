@@ -646,7 +646,7 @@ no_shell_death "control" "$OUT"
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 section "card#9745 — the READ LEDGER, and the declaration it holds TRUE"
-# bin/deploy.sh DECLARES every function phase A reads a path out of a tree through (GATE_TREE_READERS),
+# bin/deploy.sh DECLARES the functions phase A reads a path out of a tree through (GATE_TREE_READERS),
 # and bin/deploy-gate-inputs.sh RUNS every host-free one of them over the commit under test. What makes
 # that declaration a contract rather than a comment is this section: two claims about it, each refereed
 # by a RUN of the real script with its read ledger on, and each seen to fail against a copy of the

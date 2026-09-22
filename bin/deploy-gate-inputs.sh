@@ -14,9 +14,10 @@
 #
 # WHAT IT DOES (card#9745). It RUNS the deploy's own target-tree gates over the commit under test —
 # the functions `bin/deploy.sh` at that commit declares host-free in GATE_TREE_READERS — with the
-# deploy's READ LEDGER on, and reports what each one read and whether it passed. A gate that refuses
-# here is the refusal a real `bin/deploy.sh --ref <commit>` makes at phase A on any host, and this
-# exits 1 with the deploy's own words for it.
+# deploy's READ LEDGER on, and reports what each one read and whether it passed. What these gates
+# refuse depends on the commit alone, so a gate that refuses here means a real
+# `bin/deploy.sh --ref <commit>` refuses at phase A whatever host runs it, and this exits 1 with the
+# deploy's own words for it.
 #   ⛔ SO THIS LANE ASSERTS THE GATES' CONTENT PREDICATES, NOT ONLY THE PRESENCE OF THEIR FILES — an
 #   `ALTER` on `events` with no `ALGORITHM=`, a `trustProxies('*')`, a PHP constraint A6 cannot
 #   evaluate, a lockfileVersion A12 cannot map. That is an operator ruling (card#9745 comment 5701):
@@ -33,7 +34,7 @@
 #
 # ⛔ AND THE LEDGER IS ITSELF CHECKED, ON EVERY RUN. A git process that did not go through `git_at` would
 # be absent from the ledger AND from this report — a green over a read nobody saw. So each gate runs with
-# a `git` shim first on PATH that writes down every git process it starts, in the ledger's own words, and
+# a `git` shim first on PATH that writes down each git process started through PATH, in the ledger's own words, and
 # the two lists must be the same list: a git process the ledger does not hold, or a ledger call no git
 # process answered, stops this check (exit 2) and is printed. The other two claims the declaration rests
 # on are held by `bin/deploy.selftest.sh § card#9745`, where a full phase A runs against a stub host:
@@ -60,9 +61,9 @@
 #   about a specific commit instead.
 #
 # EXIT CODES — "the repo is not deployable" and "this check could not speak" are different events:
-#   0  every gate <rev>'s bin/deploy.sh declares host-free RAN over <rev> and passed, and the ledger
-#      of that run held every git process it started
-#   1  a gate REFUSED <rev> — a real `bin/deploy.sh --ref <rev>` refuses at phase A, on any host
+#   0  every gate <rev>'s bin/deploy.sh declares host-free RAN over <rev> and passed, and each git
+#      process those runs started through PATH was a git_at call in the ledger
+#   1  a gate REFUSED <rev> — a real `bin/deploy.sh --ref <rev>` refuses at phase A, whatever host runs it
 #   2  the check could not run: a command line it could not use (`--ref` with no value, an unknown
 #      argument, a <rev> that names no commit), no bin/deploy.sh at <rev> or no declaration in it, a
 #      declared function it does not define, a gate that crashed or whose read of git could not be
@@ -116,7 +117,7 @@ git show "$SHA:bin/deploy.sh" > "$WORK/bin/deploy.sh" \
          "This check runs the gates that file declares. Without it nothing was measured."
 : > "$WORK/bin/supervision.sh"
 
-# The shim. Every git process a gate run starts passes through it — it is first on PATH — and it writes
+# The shim. A git process a gate run starts through PATH passes through it — it is first there — and it writes
 # the arguments that process received, `%q`-quoted and space-joined, which is exactly how the ledger
 # writes a git_at call. Then it becomes the real git.
 {
@@ -221,8 +222,8 @@ for fn in "${HOSTFREE[@]}"; do
     while IFS= read -r l; do detail+=("git_at call that NO git process answered through the shim:   git $l"); done < <(comm -23 "$WORK/calls" "$WORK/procs")
     die "$fn started $(wc -l < "$WORK/procs") git process(es) and the ledger holds $(wc -l < "$WORK/calls") git_at call(s)" \
       "${detail[@]}" "" \
-      "Every read of the release goes through git_at, which is what the ledger records; a git process" \
-      "that does not is a read this check cannot see. Start it with git_at. A call no process answered" \
+      "A read of the release is made through git_at, which is what the ledger records; a git process" \
+      "that is not is a read this check cannot see. Start it with git_at. A call no process answered" \
       "means the shim was bypassed, so the count above measured nothing."
   fi
   n_procs=$((n_procs + $(wc -l < "$WORK/procs")))
@@ -249,7 +250,7 @@ for fn in "${HOSTFREE[@]}"; do
   [ ! -s "$out" ] || printf '%s\n' "$body"
 done
 
-printf '\n  every git process those runs started went through git_at: %d, each matched in the ledger\n' "$n_procs"
+printf '\n  git processes those runs started through PATH: %d, each one a git_at call in the ledger\n' "$n_procs"
 
 # ── what is declared and not run here, in the deploy's own words ─────────────────────────────────
 if [ "${#NOTRUN[@]}" -gt 0 ]; then
@@ -291,8 +292,8 @@ cat <<'LIMITS'
   PROVED. Every function the bin/deploy.sh above declares host-free was RUN over this commit, with
     the arguments phase A gives it, and passed — its content predicates included, not only the
     presence of its files. Every path it read is printed above, taken from the calls git received.
-    Every git process those runs started was a git_at call: a git shim first on PATH wrote down each
-    one, and its list and the ledger's were the same list.
+    Every git process those runs started through PATH was a git_at call: a git shim first on PATH
+    wrote down each one, and its list and the ledger's were the same list.
 
   NOT PROVED:
     * that the declaration names EVERY function phase A reads the release through. This check runs
@@ -315,9 +316,10 @@ if [ "${#refused[@]}" -gt 0 ]; then
   printf '\n⛔ %s — bin/deploy.sh REFUSES %s at phase A: %s\n' "$ME" "$SHORT" "${refused[*]}" >&2
   cat >&2 <<END
 
-   This is the deploy's OWN gate, run early — not a rule of this lane. A real
-   \`bin/deploy.sh --ref $SHORT\` stops at the same line, on any host, before anything is
-   touched, and nothing of this commit deploys until it passes. The gate's own words are
+   This is the deploy's OWN gate, run early — not a rule of this lane. What it refuses
+   depends on the commit alone, so a real \`bin/deploy.sh --ref $SHORT\` refuses at phase A
+   whatever host runs it — at this gate, if no host check before it stops it first — before
+   anything is touched, and nothing of this commit deploys until it passes. The gate's own words are
    printed above under its name, including the line it prints on a host
    ("Nothing was changed…"), which describes the deploy it stopped.
    The gate is not the defect: fix what it names, or change the gate deliberately.

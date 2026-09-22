@@ -1031,8 +1031,9 @@ git_at() {
 #                                       in two ways, and both are read here: a pathspec after `--`
 #                                       (`ls-tree <rev> -- :(literal)<path>`, the magic dropped), and a
 #                                       `<rev>:<path>` argument (`show <rev>:<path>`). That is a property
-#                                       of git, not a list of this file's call sites, so a read written
-#                                       any way at all is recorded by the call it makes.
+#                                       of git, not a list of this file's call sites, so a read made
+#                                       through git_at is recorded by the call it makes, however the
+#                                       line that makes it is written.
 # <caller> is the innermost frame that is NOT one of git_reader_frame's: the gate that asked, never the
 # reader it asked through.
 # ⚠ WHAT IT CANNOT RECORD: a git process this file starts without git_at, and a path handed to git some
@@ -3190,8 +3191,8 @@ A12_LOCK_VERSION=""; A12_NPM_FLOOR=""; A13_TARGET_SUP=""
 # server/composer.json at <sha> and publishes it (A6_FLOOR_CONSTRAINT, A6_FLOOR_MIN, A6_FLOOR_MAX — MAX empty
 # for `>=`, which is unbounded) for gate_a6_php_floor to compare. Every refusal it makes is a property of
 # the target tree ALONE — the file missing or empty, no `require.php`, a constraint this cannot evaluate —
-# which makes them unconditional every-deploy refusals that no lane over fixtures can see (card#9644's
-# comment 5498), and is why a checker runs this half (card#9745).
+# so a release that meets one is refused by every deploy of it, and no lane over fixtures can see it
+# (card#9644's comment 5498). That is why a checker runs this half over the real tree (card#9745).
 gate_a6_target_php_floor() {
   local SHA="$1"
   # A6 — THE PHP FLOOR, read from the RELEASE BEING DEPLOYED. Out of letter order on purpose: it
@@ -3388,7 +3389,7 @@ gate_a10_migration_algorithm() {
 
 # gate_a10b_target_keys <sha> — A10b's TARGET-TREE half. HOST-FREE: the keys server/.env.example at <sha>
 # names, published as A10B_KEYS (one per line) for gate_a10b_config_drift to ask this host's .env about.
-# A release with no server/.env.example WARNS here — no key of it can be compared — and never refuses.
+# A release with no server/.env.example WARNS here — no key of it can be compared — and is not refused.
 gate_a10b_target_keys() {
   local SHA="$1" example
   A10B_KEYS=""

@@ -5,7 +5,7 @@
 # WHY IT EXISTS. `bin/deploy-gate-inputs.sh` RUNS the target-tree gates bin/deploy.sh declares
 # host-free over a commit, and trusts a read ledger for what they read. Both halves fail silently if
 # nothing watches them fail: a lane that stopped running a gate, or a ledger that stopped seeing a
-# read, stays GREEN. So every verdict it can reach is a case here, against the REAL script, each one
+# read, stays GREEN. So each verdict below is a case against the REAL script, each one
 # asserted on the message as well as the exit code — a check with two reasons to exit 2 would
 # otherwise look like it discriminates when it does not.
 #
@@ -108,7 +108,7 @@ eq  "control: every host-free row the fixture's bin/deploy.sh declares was run a
     "$n_declared/$n_declared" "$n_declared/$n_ran"
 has "control: the population is the ledger's — a migration the TREE names is listed as read" \
     "read  server/database/migrations/2026_08_25_100000_create_fleet_store_tables.php" "$OUT"
-has "control: every git process was matched to the ledger"  "went through git_at" "$OUT"
+has "control: each git process was matched to the ledger"  "each one a git_at call in the ledger" "$OUT"
 has "control: names the declared readers it does NOT run, in the deploy's words" "fpm_code_reload_ready — A14" "$OUT"
 # The claim about what a green does NOT establish has ONE home — the block the check prints — and the
 # workflow header and the changelog point at it by name. Deleting it would leave them pointing at
