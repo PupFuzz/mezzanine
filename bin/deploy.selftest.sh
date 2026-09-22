@@ -4053,14 +4053,19 @@ if [ "$FULL_OK" = 1 ]; then
 
   # F2 — A13's work DIRECTORY: after the loader's, A7's and A8's. On a tmpfs `mktemp -d` SUCCEEDS out of
   # blocks too (measured here), so this is the probe's refusal, through a file made inside the directory.
-  # Mutation, run: restore the trust-`mktemp`-only `_scratch` and this dies at A13's first write into the
-  # directory, with no banner.
+  # Mutation, run: restore the trust-`mktemp`-only `_scratch` and this reds on the headline too — the
+  # directory's own probe no longer catches it, but A13's write-status check (§ SF-5) still does, banner
+  # and all: the two are independent, and this mutation only removes one of them.
   mkfix scratch_full_a13
   full_refused "full TMPDIR, A13's work directory" 3 \
     "the scratch directory for A13's reading of $(gitc "$ROOT" rev-parse --short "$V2")'s crontab block was created and could not be written" \
     --dry-run
 
   # F3 — git_commit_of's peel of an ANNOTATED tag: after the loader's and git_ref_oid's two.
+  # Mutation, run: restore the trust-`mktemp`-only `_scratch` and this reds on the headline — the tag
+  # peels clean on a healthy store (`git_commit_of` runs before A13 in the gate order), and the run
+  # goes on to REFUSE at A13's work directory instead, banner and all, same as F1 and F2 under this
+  # mutation and for the same reason (§ SF-5).
   mkfix scratch_full_tag
   gitc "$SRC" tag -a v0.0.2 -m 'selftest: an annotated tag over the release' "$V2"
   gitc "$SRC" push -q origin v0.0.2
