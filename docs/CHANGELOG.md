@@ -27,6 +27,21 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9815** — **The deploy names a PHP-FPM pool file it cannot read as `cannot read <file>`, and
+  prints FPM's own stderr when `php-fpm -i` fails.** A pool file the FPM config includes and the deploy
+  user cannot read (a `pool.d` file at 640 root:root is the ordinary shape) was dropped as if absent:
+  the deploy then refused on a false cause — `no PHP-FPM pool runs as <user>`, or `no pool of that name
+  is defined` for the stream pool — or, when another pool of that user's was still readable, passed A14
+  having judged opcache without reading the app's own pool. `bin/deploy.sh`'s `fpm_code_reload_ready`
+  now reads every matched pool file or refuses by name through one primitive, `fpm_readable`, which
+  `php-fpm.conf` and the `.user.ini` files use too; a pool directory the include points into and the
+  user cannot list or search is refused the same way, and an include glob that matches nothing keeps its own report.
+  Phase B fails the window on it, as for an unreadable `php-fpm.conf`. On the `did not print an FPM
+  phpinfo` refusal, FPM's stderr is now printed beneath it and stays out of a healthy run.
+  `bin/deploy.selftest.sh` covers each case with a fixture whose permissions are asserted first — mode 000,
+  and a `pool.d` at 644 that can be listed and not searched, behind a glob and behind a literal include —
+  beside its readable twin, and pins a file literally named `*.conf` as the pool file it is.
+
 - **card#7341** — **Every desk on the floor now has its render: the ten states, the degraded
   treatments, the null renders and the side table** (`docs/design/FLOOR.md` Appendix B step 5, gated
   by AT-D3-5 and AT-D3-14's desk half). New `server/public/js/desk/desk-render.js` turns one held

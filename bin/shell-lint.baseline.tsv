@@ -35,7 +35,7 @@
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2030	1
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2031	1
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2034	1
-#cfg	directive	bin/deploy.selftest.sh	disable=SC2317	3
+#cfg	directive	bin/deploy.selftest.sh	disable=SC2317	4
 #cfg	directive	bin/deploy.selftest.sh	source=bin/supervision.sh	1
 #cfg	directive	bin/deploy.sh	disable=SC2016	1
 #cfg	directive	bin/deploy.sh	disable=SC2034	1

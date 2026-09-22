@@ -242,6 +242,10 @@ cat > "$T/bin/php-fpm-stub" <<'STUB'
 #!/usr/bin/env bash
 printf '%s %s\n' "$(basename "$0")" "$*" >> "$CALL_LOG"
 [ "${1:-}" = "-i" ] || { echo "stub php-fpm: only -i is stubbed" >&2; exit 1; }
+# STUB_FPM_STDERR: a line on stderr, as a healthy FPM prints warnings and a broken one its reason (card#9815).
+# STUB_FPM_BROKEN: no phpinfo at all, and a failing status.
+[ -z "${STUB_FPM_STDERR:-}" ] || printf '%s\n' "$STUB_FPM_STDERR" >&2
+[ -z "${STUB_FPM_BROKEN:-}" ] || exit 78
 cat <<INFO
 phpinfo()
 Server API => FPM/FastCGI
@@ -465,7 +469,7 @@ reset_stubs() {
   # `git remote`'s names, so one case's remote leaking into the next would refuse every later
   # fixture — whose clone knows only `origin` — on a cause that case never set.
   unset STUB_UID STUB_CRONTAB_BROKEN MEZZ_DEPLOY_IN_WINDOW MEZZ_DEPLOY_REVALIDATE_FLOOR_S MEZZ_FPM_BIN \
-        MEZZ_REMOTE MEZZ_GIT_READ_LEDGER
+        MEZZ_REMOTE MEZZ_GIT_READ_LEDGER STUB_FPM_STDERR STUB_FPM_BROKEN
   kill_streams
   : > "$T/knobs/dies_after_start"; : > "$T/knobs/ignores_term"; : > "$T/knobs/transient_loser"
   rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps" "$T/knobs/mktemp_passes" "$T/knobs/git_magic" \
@@ -1586,6 +1590,131 @@ run_refusal "the PHP-FPM binary is not there" "PHP-FPM binary 'php-fpm-not-insta
 
 mkfix fpm_not_fpm; export MEZZ_FPM_BIN=php
 run_refusal "a binary whose phpinfo is not the FPM SAPI's (the CLI)" "did not print an FPM phpinfo" --dry-run
+
+# ── card#9815 — a pool file the deploy user CANNOT READ is not a pool that is not there ────────────
+# The include loop tested `[ -r ]` alone, which is false for "absent" and for "present, unreadable" alike, so
+# an unreadable pool file was dropped from the set with no trace — and the run then refused naming a cause
+# that is FALSE: "no PHP-FPM pool runs as <me>" when one does, or "no pool of that name is defined" for a
+# stream pool that is. The ordinary shape on a Virtualmin host is a pool.d file at 640 root:root, and the
+# deploy does not run as root. Each state is ASSERTED before anything is asserted about the refusal, because
+# root opens every mode: a root runner reds here by name rather than certifying a refusal that never happened.
+section "card#9815 — an unreadable PHP-FPM pool file is refused as unreadable, never as absent (A14)"
+# The card's own red: EVERY pool file of this user's unreadable, so the set it drops them from holds no pool of
+# this user's at all, and the run refused with "no PHP-FPM pool runs as <me>".
+mkfix fpm_pools_unreadable; chmod 000 "$POOL" "$STREAM_POOL"
+eq "unreadable pools: the fixture really is unopenable by this user (a root runner cannot hold this)" \
+  unopenable "$(env_openability "$POOL")"
+run_refusal "every pool file of the deploy user's is unreadable" "cannot read $POOL" --dry-run
+hasnt "unreadable pools: never says no pool runs as the deploy user — two do" "no PHP-FPM pool runs as" "$OUT"
+# The twin, one variable away: the same files, readable again, deploy.
+chmod 644 "$POOL" "$STREAM_POOL"; run --dry-run
+eq "control: the same pool files, readable, deploy" 0 "$RC"
+
+# ⭐ ONE unreadable pool file beside a readable one of the same user's is the FAIL-OPEN direction, and the reason
+# this is not only a wording defect: the stream pool still ran as this user, so the drop reached no refusal at all
+# and A14 certified the opcache posture of every pool it had READ — exit 0, the app's own pool never looked at.
+# That pool is where a php_admin_flag can turn opcache.validate_timestamps off (§ the pool-override case above).
+mkfix fpm_pool_unreadable; chmod 000 "$POOL"
+eq "unreadable pool: the fixture really is unopenable by this user (a root runner cannot hold this)" \
+  unopenable "$(env_openability "$POOL")"
+run_refusal "the deploy user's app pool file is unreadable, its stream pool readable" "cannot read $POOL" --dry-run
+chmod 644 "$POOL"; run --dry-run
+eq "control: the same pool file, readable, deploys" 0 "$RC"
+
+# The SECOND false cause: the app's pool is readable, so a pool of this user's IS found and the run gets as far
+# as the stream pool, whose unreadable file used to leave "no pool of that name is defined".
+mkfix fpm_stream_pool_unreadable; chmod 000 "$STREAM_POOL"
+eq "unreadable stream pool: the fixture really is unopenable by this user (a root runner cannot hold this)" \
+  unopenable "$(env_openability "$STREAM_POOL")"
+run_refusal "the stream pool's file is unreadable" "cannot read $STREAM_POOL" --dry-run
+hasnt "unreadable stream pool: never says no pool of that name is defined — it is" "no pool of that name is defined" "$OUT"
+chmod 644 "$STREAM_POOL"
+
+# A DIRECTORY the include lists and this user cannot read expands to no file at all, so it reached the same
+# false cause by the other road: the glob came back as its own literal text, which `-r` also calls absent.
+mkfix fpm_pool_dir_unreadable; chmod 000 "$STUB_FPM_ETC/pool.d"
+eq "unreadable pool.d: the fixture really cannot be listed by this user (a root runner cannot hold this)" \
+  unlistable "$(ls "$STUB_FPM_ETC/pool.d" >/dev/null 2>&1 && printf listable || printf unlistable)"
+run_refusal "the pool directory the include lists is unreadable" "cannot read $STUB_FPM_ETC/pool.d" --dry-run
+hasnt "unreadable pool.d: never says no pool runs as the deploy user" "no PHP-FPM pool runs as" "$OUT"
+chmod 755 "$STUB_FPM_ETC/pool.d"; run --dry-run
+eq "control: the same pool directory, readable, deploys" 0 "$RC"
+
+# ⭐ READABLE BUT NOT SEARCHABLE (644) — the shape the DIRECTORY half of fpm_readable exists for, and the one a
+# chmod 000 fixture cannot separate, because 000 takes both bits away together. Measured (bash 5.3.9): a 644
+# directory can be LISTED, so a GLOB over it still returns the file names, and each is then refused by name as a
+# file this user cannot read — the first leg. What only the -x half catches is a LITERAL include into that directory:
+# its path cannot be stat'ed, so `-e` calls it absent, and without -x the pools it defines were dropped exactly as
+# this card's defect dropped them — the second leg, which reds with `[ -x ]` removed from fpm_readable.
+mkfix fpm_pool_dir_unsearchable_glob; chmod 644 "$STUB_FPM_ETC/pool.d"
+eq "644 pool.d (glob): the fixture really is listable and not searchable (a root runner cannot hold this)" \
+  listable-unsearchable "$(ls "$STUB_FPM_ETC/pool.d" >/dev/null 2>&1 && ! { : < "$POOL"; } 2>/dev/null && printf listable-unsearchable || printf other)"
+run_refusal "a 644 pool directory behind a glob include" "cannot read $POOL" --dry-run
+hasnt "644 pool.d (glob): never says no pool runs as the deploy user" "no PHP-FPM pool runs as" "$OUT"
+chmod 755 "$STUB_FPM_ETC/pool.d"
+
+literal_includes() { # the include lines name the two pool files BY PATH, as a host may write them, not by glob
+  sed -i "s|^include=.*|include=$POOL\ninclude=$STREAM_POOL|" "$STUB_FPM_ETC/php-fpm.conf"
+}
+mkfix fpm_pool_dir_unsearchable_literal; literal_includes
+eq "literal includes: php-fpm.conf really names both pool files by path" 2 \
+  "$(grep -cxF -e "include=$POOL" -e "include=$STREAM_POOL" "$STUB_FPM_ETC/php-fpm.conf")"
+run --dry-run
+eq "control: literal includes into a searchable pool.d deploy" 0 "$RC"
+chmod 644 "$STUB_FPM_ETC/pool.d"
+run_refusal "a 644 pool directory behind a LITERAL include" "cannot read $STUB_FPM_ETC/pool.d" --dry-run
+hasnt "644 pool.d (literal): never says no pool runs as the deploy user — two do" "no PHP-FPM pool runs as" "$OUT"
+chmod 755 "$STUB_FPM_ETC/pool.d"
+
+# ⛔ AND THE FIX MUST NOT WIDEN: an include glob that LEGITIMATELY matches nothing, in a directory this user can
+# read, is a host with no pool files — and "no PHP-FPM pool runs as <me>" is then the true cause.
+mkfix fpm_pool_glob_empty; rm -f "$STUB_FPM_ETC"/pool.d/*.conf
+run_refusal "an include glob that matches no file" "no PHP-FPM pool runs as $ME" --dry-run
+hasnt "an empty glob: is not reported as a file it cannot read" "cannot read" "$OUT"
+
+# The one input on which a glob's MATCH is spelled exactly like the glob: a file literally named `*.conf`, the only
+# file in pool.d, so `for f in $inc` hands back the pattern's own text. It exists, so it is a pool file FPM's include
+# reads too, and this deploy must read it rather than take it for an empty glob — the `-e` half of the empty-glob
+# test is what tells the two apart. Readable, it deploys on the pools it defines; unreadable, it is refused by name.
+mkfix fpm_pool_named_like_the_glob
+cat "$POOL" "$STREAM_POOL" > "$STUB_FPM_ETC/pool.d/*.conf"; rm -f "$POOL" "$STREAM_POOL" "$STUB_FPM_ETC/pool.d/www.conf"
+eq "a file named '*.conf': it is the only file in pool.d" '*.conf' "$(ls "$STUB_FPM_ETC/pool.d")"
+run --dry-run
+eq  "a file named '*.conf': read as the pool file it is, and deploys" 0 "$RC"
+has "a file named '*.conf': the stream pool it defines was found" "stream pool [mezz-stream]" "$OUT"
+chmod 000 "$STUB_FPM_ETC/pool.d/*.conf"
+run_refusal "a file named '*.conf' this user cannot read" "cannot read $STUB_FPM_ETC/pool.d/*.conf" --dry-run
+chmod 644 "$STUB_FPM_ETC/pool.d/*.conf"
+
+# PHASE B re-reads the posture before it waits, and a pool that stops being readable INSIDE the window fails
+# the window exactly as `cannot read <php-fpm.conf>` does: exit 2, the app left down, and the true cause.
+unreadable_pool_in_window() {
+  # shellcheck disable=SC2317  # every mutator is called indirectly, by mkfix, which ShellCheck cannot follow
+  sed -i "s|^  fpm_code_reload_ready \\|\\| { printf|  chmod 000 '$POOL' # pool made unreadable by the selftest mutant, inside the window\\n&|" "$1/bin/deploy.sh"
+}
+mkfix fpm_pool_unreadable_phase_b unreadable_pool_in_window
+eq "phase-B mutant: the deployed release really drops the pool's mode before the re-read" 1 \
+   "$(gitc "$SRC" show "HEAD:bin/deploy.sh" | grep -c 'pool made unreadable by the selftest mutant')"
+run
+eq  "a pool unreadable in phase B: exit 2 — the window fails, as for an unreadable php-fpm.conf" 2 "$RC"
+has "a pool unreadable in phase B: names the file it could not read" "cannot read $POOL" "$OUT"
+hasnt "a pool unreadable in phase B: never says no pool runs as the deploy user" "no PHP-FPM pool runs as" "$OUT"
+unlogged "a pool unreadable in phase B: the app is NEVER brought up" "artisan up"
+eq "phase-B mutant: the fixture really is unopenable afterwards (a root runner cannot hold this)" \
+   unopenable "$(env_openability "$POOL")"
+chmod 644 "$POOL"
+
+# S5 — FPM's OWN reason, on the failure branch only. `-i` used to run with stderr sent to /dev/null, so an FPM
+# that could not print its phpinfo was reported with the honest generic and nothing of what FPM said. Healthy
+# FPMs print warnings on stderr as a matter of course, so the capture is printed ONLY where the run fails.
+mkfix fpm_info_fails; export STUB_FPM_STDERR="ERROR: selftest-fpm could not load its configuration" STUB_FPM_BROKEN=1
+run_refusal "an FPM whose -i fails" "did not print an FPM phpinfo" --dry-run
+has "an FPM whose -i fails: FPM's own stderr is printed with the refusal" \
+  "ERROR: selftest-fpm could not load its configuration" "$OUT"
+mkfix fpm_info_warns; export STUB_FPM_STDERR="NOTICE: selftest-fpm healthy-run warning"
+run --dry-run
+eq  "control: a healthy FPM that warns on stderr deploys" 0 "$RC"
+hasnt "control: and its stderr stays out of a healthy run's output" "selftest-fpm healthy-run warning" "$OUT"
 
 section "REFUSAL — a .user.ini over the app's scripts (A14)"
 # Control, mutant, control on ONE host: the document root with no .user.ini, with one turning timestamps
@@ -4057,6 +4186,13 @@ has "A13's work DIRECTORY: its advice rules out neither number, because a direct
   "free INODES (\`df -i\`) AND free BLOCKS (\`df\`)" "$OUT"
 hasnt "A13's work DIRECTORY: and it does not tell that operator to discount a \`df\` at 100%" \
   "A \`df\` at 100% is not on its own" "$OUT"
+
+# S2b — A14's capture of FPM's own stderr (card#9815): after the loader's, A7's, A8's, A13's directory and the
+# one mktemp A13's reading of the target's crontab block makes inside it — MEASURED, not counted from the source:
+# at 4 passes the refusal is A13's "could not be installed here", at 5 it is this one.
+scratch_refused "A14, \`php-fpm -i\`'s stderr" 5 \
+  "no scratch file could be created for \`php-fpm8.4 -i\`'s error output" \
+  --dry-run
 
 # S3 — git_commit_of's peel of an ANNOTATED tag, which is the only path to that file: after the loader's,
 # git_ref_oid on refs/remotes/origin/<tag> (absent) and on refs/tags/<tag> (the tag object).

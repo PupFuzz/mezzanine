@@ -3762,8 +3762,9 @@ opens the error log before it prints anything, so under a user without that priv
 instrument the deploy user cannot run, prescribed as a **deploy gate** at
 [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 9. ⚠ **Whether any instrument
 dumps the EFFECTIVE merged pool configuration under the deploy user is UNMEASURED, and this document
-does not assert one**: reading the pool file is what a deploy user can certainly do, and it sees the
-file rather than the resolution. Card#9300's gate reads the pool FILE — `request_terminate_timeout`,
+does not assert one**: reading the pool file is what a deploy user can do wherever the file is readable
+to it — where it is not (a `pool.d` file at 640 root:root), the gate refuses `cannot read <file>` rather
+than judge without it (card#9815) — and it sees the file rather than the resolution. Card#9300's gate reads the pool FILE — `request_terminate_timeout`,
 `pm.status_path`, `pm.status_listen` and the R1 overrides — and then asks the running pool for its status,
 which proves the pool is up, named as the file says, and reachable by the deploy user; the merged
 configuration itself stays unread, and `pm.max_children`, the proxy's send timeout and the vhost's routing
