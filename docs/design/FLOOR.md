@@ -2023,7 +2023,7 @@ declares nothing draws nothing different at its own desk and still takes no part
 | the thread's named participants | `coord_thread.participants` | `["pm","all"]` | an empty array draws **no participant list** — never *nobody*. `all` is a literal member and is **never expanded here**; each member is bound by clause 1 and the unresolved ones are named as unresolved |
 | a bead per post | `coord_round.post_ref` | `"AIMLA-org/aimla-coordination#742"` | never null. **The bead count is a count of distinct `post_ref`** and a repeat draws nothing new — D2's own words, and the whole of what a consumer may count, because these messages carry no `seq` and *"a lost coordination message is not detectable"* |
 | the envelope's origin | `coord_round.from`, `coord_round.attribution` | `"pm"`, `"resolved"` | read together, exactly as the opener is. A null `from` is *this post evidences no agent* and is not a desk; an origin that resolves under clause 1 is where [A19](#62-the-animation-table--the-closed-set)'s envelope departs from |
-| the address the envelope carries, as written | `coord_round.to` | `["all"]` | an empty array is *addressed to nobody as written*, which is a fact about the **post** and not about its reach — the reach is the row below, and this row's members are never resolved to desks in its place. `all` appears **verbatim**, and that literal — never a boolean, which D2 refuses — is what drives [A20](#62-the-animation-table--the-closed-set)'s broadcast pulse |
+| the address the envelope carries, as written | `coord_round.to` | `["all"]` | an empty array is *addressed to nobody as written*, which is a fact about the **post** and not about its reach — the reach is the row below, and this row's members are never resolved to desks in its place. `all` appears **verbatim**, and that literal — never a boolean, which D2 refuses — is the member [A20](#62-the-animation-table--the-closed-set)'s trigger reads. ⚠ **It is not the whole of that trigger** — the ring is anchored at a desk the address cannot name — and [§ 6.2](#62-the-animation-table--the-closed-set)'s row is the one statement of what else it takes, restated in no cell here |
 | the envelope's destination desks | `coord_round.targets` | `["magento","platform","moodle"]` | ⛔ **`null` and `[]` are different answers and render differently.** `[]` is *this post reached nobody*; `null` is *the fan-out is not resolvable here* and renders as that, never as an empty fan-out and never with the address standing in for it |
 | the *declared the close* marker on a bead | `coord_round.declares_close` | `false` | never null. It renders that **somebody performed the close act**, and ⛔ **never a convergence** — [D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on)'s finding B, carried into D2's not-published table: convergence is a quorum and no object here carries the ledger one would need |
 | the thread's and the post's receipt stamps | `coord_thread.received_at`, `coord_round.received_at` | `"2026-08-27T16:02:11.775Z"` | never null. The receipt clock, and *"the only clock on this object an age may be computed from"* — rendered as a **labelled timestamp** under property 4, so no age is computed from it here either |
@@ -2035,8 +2035,9 @@ under [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)'s rule unchanged
 `coord_thread.lifecycle` for as long as the thread is open;
 [A19](#62-the-animation-table--the-closed-set) is the envelope, an **edge** fired by one applied
 `coord.round`; and [A20](#62-the-animation-table--the-closed-set) is the broadcast pulse, an **edge**
-fired by a `coord.round` whose address carries `all`. ⚠ **All three were unreachable until the join
-landed — on the server's side on card#9296, and on the reporter's on card#9375** — a line needs two
+fired by a `coord.round` whose address carries `all` and whose origin resolves. ⚠ **All three were
+unreachable until the join landed — on the server's side on card#9296, and on the reporter's on
+card#9375** — a line needs two
 resolved endpoints and nothing resolved — and all three are reachable now, wherever the seats a
 thread names have declared themselves in config **and** run a build that includes card#9375.
 **What still gates them is how an install's seats are provisioned rather than this design** — both
@@ -2213,7 +2214,7 @@ it carries the same fact.
 | **A17** | `edge` | `room-tick` — the wall clock's hands step to the viewer's current minute and the windows' sky is re-evaluated for that time | the **floor's room render** — the drawn interior, and not [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s room key (card#9267): its wall clock, and the sky in its windows ([§ 4.2](#42-the-floor)). **On the lobby it is this row or nothing:** [§ 4.1](#41-the-lobby--the-building-summary)'s cross-section renders a per-floor *summary*, and the rooms only by **name**, so it draws no room interior and no wall clock at all; if it draws sky behind the building, that sky is this row's, on this row's driver, and never a second one of its own | `feed.heartbeat` | each `feed.heartbeat` message received on the one stream. **The same trigger as A14, and the pairing is the design rather than a duplication** — the note below is where that is argued | at the new time and the new sky value: one step, no tween | the hands **jump** to position and the sky **steps** to its new value with no cross-fade — the same fact, without the transition ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)) | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables) F1). **A stopped clock is that condition in the form every viewer reads without being told**, which is why this row exists at all |
 | **A18** | `held` | `thread-line` — a line drawn between the desks a thread's participants resolve to, held for as long as the thread is open ([§ 5.7](#57-the-coordination-thread-line)) | floor | `coord_thread.lifecycle` | the last `coord.thread` this client holds for that `thread_ref` says a value other than `closed`, **and at least two of its participants resolve to a desk** — one endpoint is not a line, and a guessed second endpoint is what [§ 5.7](#57-the-coordination-thread-line) clause 1 forbids | when a `coord.thread` arrives whose lifecycle is `closed`, or when the resolved endpoints fall below two | the line is drawn **static** — same line, same endpoints, no travel along it | no open thread on this floor has two participants that resolve to a desk — which is **every** thread on a fleet whose seats declare no protocol agent name or run a reporter build that does not include card#9375, and since card#9296 and card#9375 that is a fact about how an install's seats are provisioned — each seat's config and the build it runs — rather than about a join nothing owns ([§ 5.7](#57-the-coordination-thread-line) clause 1) |
 | **A19** | `edge` | `envelope` — an envelope travels the line once, from the origin desk to each destination desk | floor | `coord.round`, `coord_round.targets` | one `coord.round` message applied, whose `install_id` is this floor's, whose origin resolves to a desk and at least one of whose destinations does. A destination that does not resolve gets **no envelope and no line**, and the ones that do still get theirs | on arrival at the destination desk | the bead is simply present at the destination end, with no travel | no post arrived that this client can draw between two desks. ⛔ **It is not** *the post reached nobody*: that is a `targets` of `[]`, and a `null` `targets` is *the fan-out is not resolvable here* — three states the wire keeps apart and this row does not collapse |
-| **A20** | `edge` | `broadcast-pulse` — one ring expands from the origin desk across the floor | floor | `coord_round.to` | one `coord.round` whose `to` carries the literal `all`, verbatim off the wire. D2 publishes no `is_broadcast` boolean because *"`to` carries `all` verbatim and `targets` carries the resolved fan-out"*, so this row reads the member D2 kept rather than a flag it refused | at the floor's edge — one expansion, and never a repeating ring | the origin desk carries a **static broadcast marker** for that post | the post was addressed to named agents rather than to `all`. The ring says the ADDRESS was a broadcast; it never says how far the post got, which is `coord_round.targets`' answer and A19's render |
+| **A20** | `edge` | `broadcast-pulse` — one ring expands from the origin desk across the floor | floor | `coord_round.to`, `coord_round.from` | one `coord.round` whose `to` carries the literal `all`, verbatim off the wire, **and whose origin resolves to a desk** ([§ 5.7](#57-the-coordination-thread-line) clause 1) — the ring expands **from** that desk, so a post whose origin resolves to nothing has no desk to expand from and draws none, exactly as A19 has none to depart from. ⛔ **The address is not the whole trigger, and reading it as one is how a ring lands on a guessed desk** — it is also what [§ 5.7](#57-the-coordination-thread-line) already says of this row, *"all three were unreachable until the join landed"*, which is false of an address-only trigger. D2 publishes no `is_broadcast` boolean because *"`to` carries `all` verbatim and `targets` carries the resolved fan-out"*, so this row reads the member D2 kept rather than a flag it refused | at the floor's edge — one expansion, and never a repeating ring | the origin desk carries a **static broadcast marker** for that post | the post was addressed to named agents rather than to `all`, or its origin resolves to no desk. The ring says the ADDRESS was a broadcast; it never says how far the post got, which is `coord_round.targets`' answer and A19's render |
 
 **Two rows move with no seat's state behind them — A14 and A17 — and both are driven by
 `feed.heartbeat`, so when the feed dies they stop together and every claim on the page goes still.**
@@ -4029,7 +4030,7 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 | `fx-membership` | **three legs.** (a) deltas for a seat absent from `fx-snapshot-4`, **each patching only `context`** — a patch that carried `render_state` would hand the patch-into-an-empty-object client the member [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched)'s RED reads as missing, and that RED could not fail; (b) a later snapshot missing a seat that was present; (c) **the mid-session install leg** — a `feed.heartbeat` whose `fleet.seats_total` is 6 against the four seats the client holds, then a snapshot carrying a **second install** `aimla-win` with two `live` seats (`aimla-win/win-1`, `aimla-win/win-2`), and a `seat.delta` for `aimla-win/win-1` emitted on the stream **during** that snapshot's round trip, while the client holds no `aimla-win` seat, at `state_version` one above the version both that snapshot and the seat's own fetch return |
 | `fx-gap` | `fx-snapshot-4`, then three deltas for one seat with the middle one dropped. **The dropped delta patches only a member neither delivered delta patches** (`context`, where the two delivered ones patch the call members): a dropped patch that a later delivered one overwrites leaves the apply-unconditionally client holding the served object, and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat)'s RED could not fail |
 | `fx-refusals` | the responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, **a stream whose FIRST message is a `fleet.health` with `db: "down"` and whose LAST is `feed.close{reason:"unavailable"}`, the stream then ENDING** ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)'s stream-connect posture: the connection is accepted to say why, and ends in the same breath), and **a `fleet.reload`, after which the stream also ends** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) declares that message terminal and pairs it with its own `feed.close` — in **two forms**, by operator ruling A4: carrying a `feed_version` the client does not know, and carrying its own, the second followed by re-opens the stub refuses `503` for the spans [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office) names before it accepts one; and **a stream that ends with no `feed.close` at all**, which is the deploy's drain ending a stream that missed the message ([D2 § 2.1](FLEET-STATE.md#21-processes)'s feed-reload row). ⛔ A fixture that held the `db: "down"` stream or the `fleet.reload` stream OPEN would be the posture card#9287's ruling withdrew, and [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office)'s GREEN would certify it — the fixture is where that certification starts, so the end is written here rather than left to the test |
-| `fx-coord` | Two installs. **`aimla`** — four seats: `aimla-pm` declares `protocol_agent_name: "pm"`, `checked`; `aimla-impl-1` and `aimla-impl-2` **both** declare `"coder"` — `checked` and `unchecked` respectively, the **duplicate-declaration** case ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1); `aimla-review` declares nothing (`protocol_agent_name: null`), and its `seat_id` is never itself a declared name. **`win`** — one seat, `win-1`, declares `"reviewer"`, `checked` — a name real on a **different** install. On `aimla`: a `coord.thread` (`thread_ref: "T1"`, `lifecycle: "opened"`, `participants: ["pm", "coder", "reviewer", "aimla-impl-2", "all"]` — one resolvable name, one duplicate, one other-install, one seat-id coincidence, and the literal `all`, unexpanded); `coord.round` **R1** (`from: "pm"`, `to: ["coder"]`, `targets: null` — the fan-out is not resolvable); `coord.round` **R2** (`from: "coder"` — unresolved, duplicate, and the object still renders — `to: ["all"]`, `targets: ["pm"]`, `declares_close: false`); `coord.round` **R3** (`from: "pm"`, `to: ["pm"]`, `targets: ["pm"]`, `declares_close: true` — never rendered as convergence); then a `coord.thread` closing T1 (`lifecycle: "closed"`) |
+| `fx-coord` | Two installs. **`aimla`** — four seats: `aimla-pm` declares `protocol_agent_name: "pm"`, `checked`, and `aimla-impl-1` declares `"coder"`, `checked` — **one declaring seat each**, so both resolve and they are the two endpoints the line is drawn between; `aimla-impl-2` and `aimla-review` **both** declare `"helper"` — `checked` and `unchecked` respectively, the **duplicate-declaration** case ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1), whose duplicate arm counts every seat of the install that **declares** the name whatever its check state, so `"helper"` resolves to **nothing**. ⛔ **The duplicated name is deliberately one no object here needs as an endpoint.** A fixture that duplicates the name it also draws the line to has one resolving name left and cannot demonstrate a two-endpoint line at all — the render this fixture exists to gate ([§ 5.7](#57-the-coordination-thread-line)) — so the clean-resolve case and the must-not-resolve case are carried by different names here, on purpose. No seat's `seat_id` is itself a declared name. **`win`** — one seat, `win-1`, declares `"reviewer"`, `checked` — a name real on a **different** install. On `aimla`: a `coord.thread` (`thread_ref: "T1"`, `lifecycle: "opened"`, `participants: ["pm", "coder", "helper", "reviewer", "aimla-impl-2", "all"]` — **two** resolvable names, one duplicate, one other-install, one seat-id coincidence, and the literal `all`, unexpanded); `coord.round` **R1** (`from: "pm"`, `to: ["coder"]`, `targets: null` — the fan-out is not resolvable); `coord.round` **R2** (`from: "helper"` — unresolved, duplicate, and the object still renders — `to: ["all"]`, `targets: ["pm"]`, `declares_close: false`); `coord.round` **R3** (`from: "coder"`, `to: ["all"]`, `targets: ["pm"]`, `declares_close: false` — R2's address from an origin that **does** resolve, the pair that holds [A19](#62-the-animation-table--the-closed-set)'s and [A20](#62-the-animation-table--the-closed-set)'s origin precondition apart from the address they read); `coord.round` **R4** (`from: "pm"`, `to: ["pm"]`, `targets: []` — *this post reached nobody*, which is not R1's *the fan-out is not resolvable here* — and `declares_close: true`, never rendered as convergence); then a `coord.thread` closing T1 (`lifecycle: "closed"`) |
 | `fx-nulls` | **two** seats, because the **39** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `blocked_since`, `model_label`, `badges_since`, `enabled`, `protocol_agent_name`, `protocol_agent_name_check`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat (a fixture sets values and renders none: **`named-not-rendered`**); all three nullable `reporter.*`. The two together cover all 39, and neither covers them alone. **`nulls-a`'s `render_state` is `idle`**, a state whose desk draws a character ([§ 7.1](#71-the-render-per-state)) — stated because [§ 5.1](#51-the-desk)'s thought bubble is anchored to one, so on a desk without a character *no bubble* would be true whatever `task` held and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero)'s assertion would pass without being able to fail. **`nulls-b` is the never-reported seat above**, which [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints `offline`: its desk draws no character, so it asserts nothing about the bubble and is not asked to |
 
 ### AT-D3-1 no animation without its event
@@ -4910,27 +4911,40 @@ clock and windows are drawn at step 7 though step 6's animation set is what move
 
 - **Build:** apply `fx-snapshot-4` (its four `aimla` seats already carry
   [§ 3.2](#32-the-desk-slot-function)'s worked floor positions, so `aimla-pm` and `aimla-impl-1` both
-  have a desk to draw a line to), then replay `fx-coord`'s `coord.thread` and `coord.round` messages
+  have a desk to draw a line to), take `fx-coord`'s declarations over those same four seats and its
+  `win` seat as that row states it — ⚠ **`fx-coord`'s declarations are the ones in force**, because
+  [§ 11](#11-acceptance-tests)'s `fx-snapshot-4` row gives each of its seats a name **of its own** and
+  this fixture duplicates one on purpose, so which row wins is stated here rather than left to a builder
+  holding two — then replay `fx-coord`'s `coord.thread` and `coord.round` messages
   against it, in order; collect the animation log. **Reads:** **the harness**, the **floor layout**, the
   **animation set**, the **animation log**.
 - **GREEN:** `T1`'s line is drawn once, held (an [A18](#62-the-animation-table--the-closed-set) `entered`
-  row) between the `aimla-pm` and `aimla-impl-1` desks — the two names that resolve to exactly one desk
-  each, `"pm"` and `"coder"` (`aimla-impl-1`, `checked`) — and to **no other desk**: `"coder"`'s
-  duplicate at `aimla-impl-2` does not add a second endpoint, `"reviewer"` (declared only on `win`) and
+  row) between the `aimla-pm` and `aimla-impl-1` desks — `"pm"` and `"coder"`, the two names **exactly
+  one seat of this install declares**, each `checked` — and to **no other desk**: `"helper"` is declared
+  by **two** seats (`aimla-impl-2` `checked`, `aimla-review` `unchecked`), which
+  [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1's duplicate arm counts **both** of,
+  whatever their check state, so it adds no endpoint; `"reviewer"` (declared only on `win`) and
   `"aimla-impl-2"` (a seat-id coincidence, not a declaration) resolve to **nothing**, and `"all"` is
   drawn on **no** endpoint of its own — the literal is never expanded on the thread's participant list.
-  `"coder"`'s unresolved reason is rendered `duplicate_declaration`; `"reviewer"`'s and
+  `"helper"`'s unresolved reason is rendered `duplicate_declaration`; `"reviewer"`'s and
   `"aimla-impl-2"`'s are both `no_declaring_seat` — **two different reasons, both distinguishable from a
   plain absence, and neither the same word.** `R1` (`from: "pm"`, resolved) fires no
   [A19](#62-the-animation-table--the-closed-set) envelope: `targets: null` renders as *the fan-out is
   not resolvable here*, never as an empty fan-out and never with `to`'s address standing in for it. `R2`
-  (`from: "coder"`, unresolved) still renders `to`/`targets`/`declares_close` — an unresolved origin does
-  not suppress the rest of the object — and fires one A19 envelope at `aimla-pm`'s desk
-  (`targets: ["pm"]`) and one [A20](#62-the-animation-table--the-closed-set) broadcast pulse at
-  `aimla-impl-1`'s desk (`to` carries `all` verbatim). `R3`'s `declares_close: true` renders **that
-  somebody performed the close act** and nothing that reads as convergence — no change to `T1`'s line
-  until the paired `coord.thread` arrives. T1's closing `coord.thread` ends the line: an
-  [A18](#62-the-animation-table--the-closed-set) `left` row, `motion: false`. Throughout: no desk's
+  (`from: "helper"`, unresolved) still renders `to`/`targets`/`declares_close` — an unresolved origin does
+  not suppress the rest of the object — and fires **neither** an A19 envelope **nor** an
+  [A20](#62-the-animation-table--the-closed-set) broadcast pulse, though its `targets: ["pm"]` resolves
+  and its `to` carries `all` verbatim: both animations leave **the origin desk**, and this post has
+  none. `R3` (`from: "coder"`, resolved to `aimla-impl-1`) carries R2's own address and fires **one**
+  A19 envelope, along `T1`'s line to `aimla-pm`'s desk (`targets: ["pm"]`), and **one** A20 broadcast
+  pulse from `aimla-impl-1`'s desk — two rows for one post and not one fact drawn twice
+  ([§ 5.7](#57-the-coordination-thread-line)), the ring reading the address as written and the envelope
+  the resolved fan-out. `R4` fires no A19 either, and for a **different** reason it renders as such:
+  `targets: []` is *this post reached nobody*, never R1's *the fan-out is not resolvable here*. Its
+  `declares_close: true` renders **that somebody performed the close act** and nothing that reads as
+  convergence — no change to `T1`'s line until the paired `coord.thread` arrives. T1's closing
+  `coord.thread` ends the line: an [A18](#62-the-animation-table--the-closed-set) `left` row,
+  `motion: false`. Throughout: no desk's
   `render_state`, badges or currency label changes — [D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state)'s
   rule, asserted as a **discriminating control** below rather than assumed.
 - **RED — the guessed desk:** resolve `"aimla-impl-2"` to the desk of the same `seat_id` when no seat
@@ -4939,10 +4953,19 @@ clock and windows are drawn at step 7 though step 6's animation set is what move
   is the exact defect [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 3's discriminating
   control names.
 - **Second RED:** fold `duplicate_declaration` into the same *unresolved* rendering as
-  `no_declaring_seat` → an install misconfiguration (two seats declaring `"coder"`) reads as *no seat
+  `no_declaring_seat` → an install misconfiguration (two seats declaring `"helper"`) reads as *no seat
   may resolve it*, the opposite diagnosis, on a floor an operator would otherwise act on correctly.
+- **Third RED — the ring with no desk to leave:** fire `R2`'s broadcast pulse on the strength of its
+  `to` carrying `all` alone, and anchor the ring wherever the implementation can reach — the floor's
+  centre, or one of the two desks that declare `"helper"` → a ring an operator reads as *this desk
+  broadcast* expands from a desk the post never resolved to, which is
+  [§ 5.7](#57-the-coordination-thread-line) clause 1's guessed desk arriving through the one animation
+  whose trigger reads an address. `R3` is the control on it: the same address, an origin that resolves,
+  and the ring **is** drawn.
 - **Discriminating control:** replay `fx-coord`'s messages with `fx-snapshot-4` applied and no seat
-  declaring any of them → no line is ever drawn, no A18/A19/A20 row is written, and every desk's
+  declaring any of them → no line is ever drawn, no A18/A19/A20 row is written — **A20 included, and it
+  is the row this control would lose first**: `R2` and `R3` still address `all`, and with nothing
+  resolving there is no origin desk for either ring to leave — and every desk's
   `render_state` is exactly [§ 11](#11-acceptance-tests)'s `fx-snapshot-4` row — an empty coordination
   layer changes nothing about any seat, and this fixture is where that absence would first be visible if
   it were false.
@@ -5566,7 +5589,13 @@ reason to leave two readings live.
     an authorial fact about the fixture, not an inferred completion: D2 § 10 already says of itself that
     it "is a test of the FOLD, not a claim about what the harness emits," and a hand-authored fixture
     combining two real, nameable closes with the turn that follows them is the same kind of compression,
-    named rather than left to be found. `open_calls` is **0** immediately after `E0` (matching
+    named rather than left to be found. **The alternative this rejects, named so the choice is legible
+    rather than silent:** base `fx-clear-trace` on a **fresh seat with no open call and no subagent**,
+    which needs no compound `E0` because D2 § 10's trace then replays byte-for-byte. It loses on
+    **reuse** — `fx-snapshot-4` is the one baseline most of this document's D3 tests already apply, and a
+    second bespoke base fixture is a second seat population to hold true against D2's published snapshot
+    on every future change, which is a standing cost against a compression this ruling pays for once.
+    `open_calls` is **0** immediately after `E0` (matching
     [§ 11](#11-acceptance-tests)'s walk), `open_turn` is `true` throughout (rule 3: `T` alone renders
     `working`, exactly D2 § 10's own E5→E7 gap), and the walk's **A3 left (episode 1); A4 entered
     (episode 1)** at `E0` is unchanged — now with its mechanism named. **What this costs, named rather
@@ -5654,8 +5683,30 @@ reason to leave two readings live.
     have: something to break to make it RED. **[AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk)**
     is minted for it, gated at step 7 beside [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart), and
     a new fixture, `fx-coord` ([§ 11](#11-acceptance-tests)'s fixture table), carries the join cases D2 §
-    8.3.3 rule 1 names: a resolving name, a duplicate declaration, a name declared only on another
+    8.3.3 rule 1 names: **two** resolving names, a duplicate declaration, a name declared only on another
     install, and a name that merely equals a `seat_id` it was never declared on.
+
+    ⛔ **Two resolving names, and the duplicate on a third — because this render is drawn BETWEEN
+    desks.** Rule 1's duplicate arm counts every seat of the install that **declares** the name, whatever
+    its check state, so a fixture that duplicates one of the two names it also draws the line to has one
+    endpoint left and gates nothing it was minted to gate. The clean-resolve case and the
+    must-not-resolve case are therefore carried by **different** names. All four `aimla` seats declare as
+    a result, and the *declares nothing* seat the fixture would otherwise hold is not lost with it:
+    [AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk)'s
+    discriminating control replays the same messages with **no** seat declaring anything at all, which is
+    that case over every desk rather than one.
+
+    **One amendment the fixture forced, named rather than folded in.**
+    [A20](#62-the-animation-table--the-closed-set)'s trigger read `coord_round.to` alone while its render
+    expands a ring **from the origin desk** — so a broadcast whose origin resolved to nothing had a
+    trigger and no anchor, and the only rings left to draw were one on a guessed desk or one at the
+    floor's centre, which [§ 5.7](#57-the-coordination-thread-line) clause 1 forbids and this document
+    publishes no element for. [A18](#62-the-animation-table--the-closed-set) and
+    [A19](#62-the-animation-table--the-closed-set) each state their resolution precondition in their own
+    trigger cell; A20's omitted it, and [§ 5.7](#57-the-coordination-thread-line)'s own *"all three were
+    unreachable until the join landed"* is false of an address-only trigger. The trigger cell now states
+    it, AT-D3-18's **Third RED** plants the ring with no desk to leave, and `fx-coord`'s `R2`/`R3` pair —
+    one address, two origins — is what makes both sides of it visible.
     **Reopens:** a second render of coordination facts (a lobby-level summary, a drill-down panel row)
     that reads the same objects and needs its own gate.
 

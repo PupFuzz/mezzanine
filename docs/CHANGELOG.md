@@ -37,8 +37,12 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   are amended to state it, and `fx-clear-trace` is now fully determined — step 6's build (Appendix B
   order 6 → 7) can proceed. Q8: Appendix B step 7 builds the coordination thread line, gated by a new
   acceptance test, AT-D3-18, and a new fixture, `fx-coord`, covering the join's resolve, no-declarer,
-  duplicate-declaration and cross-install cases. `tools/design/verify-floor.py` and its selftest are
-  green on both closures.
+  duplicate-declaration and cross-install cases. The fixture resolves **two** names, so the line has the
+  two endpoints it is drawn between, and carries the duplicate case on a third name that is nobody's
+  endpoint — a duplicated name resolves to nothing, so a fixture duplicating an endpoint name cannot
+  draw the render it gates. A20's trigger now states the origin precondition its render always assumed:
+  a broadcast whose origin resolves to no desk draws no ring, rather than one on a guessed desk.
+  `tools/design/verify-floor.py` and its selftest are green on both closures.
 
 - **card#9815** — **The deploy names a PHP-FPM pool file it cannot read as `cannot read <file>`, and
   prints FPM's own stderr when `php-fpm -i` fails.** A pool file the FPM config includes and the deploy
