@@ -27,6 +27,35 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9932** — **a scratch file on a filesystem out of free BLOCKS is now refused as unwritable,
+  never read as the tool's silence.** `mktemp` creates an EMPTY file, which costs an inode and no
+  block, so on a filesystem with no space left it still succeeds — measured on a real block-full
+  tmpfs: `mktemp` exit 0, a real path, and the first byte written into it lost to ENOSPC. Every
+  reader of such a file (`_scratch`, used by A7's `git_ref_oid` and by `git_commit_of`'s tag peel;
+  the `.env` loader's own `env_read_err_open`) took that empty read for "the tool printed nothing" —
+  git's silence, or bash's — rather than for a write that never landed, so a rev whose walk git
+  genuinely reported FAILING could be told apart from one that does not exist only by a message that
+  a full `$TMPDIR` had just lost.
+  **The fix is a probe, not a guess:** `scratch_writable` writes a byte into a scratch file or
+  directory and reads it back before the caller is handed it; one that fails is refused as *"created
+  and could not be written,"* naming free BLOCKS (`df`) as the number to read, distinct from a
+  `mktemp` that failed outright (free INODES, card#9816) and from a scratch file `mktemp` made that
+  this shell could not open (the open-file limit, `ulimit -n`, card#9933). `env_read_err_open` gains
+  this as a third, distinct failure return, and the `.env` loader's refusal (at A5) and its phase-B
+  warning both name it under their own reason rather than `mktemp`'s.
+  **git's own stderr is read back with its status checked too:** a `cat` of the scratch file that
+  captured `git rev-parse --verify`'s diagnostic can itself fail after git has written a real answer
+  into it, and `git_ref_oid` and `git_commit_of` now refuse *"git's error output could not be read
+  back"* rather than treating that failed read as git's silence.
+  `bin/deploy.selftest.sh` gains a § card#9932 section built on a REAL block-full filesystem — a
+  private tmpfs in an unprivileged user + mount namespace (`unshare -Ur -m`, `unshare --map-user`,
+  no root), filled with `dd` immediately before the scratch call under test — covering the `.env`
+  loader, `git_ref_oid` over a healthy and a broken store, A13's work directory, and
+  `git_commit_of`'s annotated-tag peel, plus the `cat`-can't-read-git's-stderr case (a `git` stub
+  that makes the diagnostic file unreadable the instant the real `git` has written it). A runner
+  that cannot make the namespaces this needs reports NOT VERIFIED by name rather than passing
+  silently. Mutation-tested: reverting the probe reds each new case on its own headline.
+
 - **card#9991** — **`bin/deploy.sh` refuses a `MEZZ_REMOTE` that names a remote whose NAME contains
   `:`, and no A3c refusal prints such a name any more.** `git config` will write a remote whose NAME
   is a URL (`git config 'remote.https://user:token@host/o/r.git.url' <url>` exits 0), `git remote`

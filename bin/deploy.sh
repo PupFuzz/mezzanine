@@ -355,7 +355,7 @@ done
 # a single thing here.
 #   · ⚠ ENV_LINES_READ_FAILED IS ONE FLAG OVER TWO DIFFERENT FAILURES, and ENV_LINES_READ_FAILED_KIND is
 #     which one (card#9933): `read` for a read that RAN and stopped short, `scratch` for a read that never
-#     ran at all, because no scratch file could be opened for the diagnostic that would judge it. Every
+#     ran at all, because no usable scratch file could be had for the diagnostic that would judge it. Every
 #     caller asking only "is what this file sets established?" reads the FLAG and needs no more — env_get
 #     answers 3 for both, which is the whole of what those callers act on.
 #   · THE KIND IS FOR THE CALLERS THAT TELL AN OPERATOR WHICH FAULT IT IS, AND THERE ARE TWO — A5's
@@ -446,20 +446,39 @@ ENV_READ_ERR_FD=
 # runs in BOTH phases and inside bin/env-mirror-diff.mirror.sh, where neither `refuse` nor `not_established` is the
 # right answer, so it sets the flag — with a KIND of its own, so the callers that tell an OPERATOR can name
 # THIS cause rather than the read's — and lets the caller decide.
-# ⚠ IT HAS TWO FAILURE RETURNS AND THEY ARE NOT THE SAME FAULT (card#9933 review), which matters because
-# each sends the operator somewhere different:
+# ⚠ IT HAS THREE FAILURE RETURNS AND THEY ARE NOT THE SAME FAULT (card#9933 review, card#9932), which
+# matters because each sends the operator somewhere different:
 #   · 1 — `mktemp` failed. NOTHING was created, and the directory it writes into is where the fix is.
 #   · 2 — a scratch file WAS created and this shell could not OPEN it. `mktemp` succeeded, so $TMPDIR is
 #     not the finding; the realistic cause is how many files this deploy may have open at once.
-# Both errors are silenced, so the STATUS is the only thing that tells them apart — and the loader writes
-# its reason FROM that status rather than attributing both to `mktemp`, which is the same defect this card
-# is about, one layer down. ⛔ A status-1 reason on a status-2 failure sends an operator to inspect a
-# $TMPDIR that is working.
+#   · 3 — a scratch file was created AND opened, and a byte written into it did not read back
+#     (`scratch_writable`, the probe `_scratch` uses too). The usual cause is a filesystem out of free
+#     BLOCKS: `mktemp` makes an EMPTY file, which costs none, so it succeeds there and the open does too —
+#     measured on a real block-full tmpfs (card#9932). Without this return that file is handed to the
+#     loader, bash's read diagnostic is lost writing into it, and an EMPTY diagnostic is exactly what the
+#     loader reads as end of file — so a read of `.env` that genuinely failed at the same time would be certified as a complete
+#     read of an empty file (card#9932 comment 6034). The descriptor is CLOSED and emptied on this return,
+#     as on status 2, so a later load re-attempts rather than inheriting a file nothing can be kept in —
+#     which also keeps the phase B skip's premise true (§ the smoke check): a load that FAILED at the
+#     scratch step leaves no descriptor behind.
+# All three errors are silenced, so the STATUS is the only thing that tells them apart — and the loader
+# writes its reason FROM that status rather than attributing all of them to `mktemp`, which is the same
+# defect card#9933 was about, one layer down. ⛔ A status-1 reason on a status-2 failure sends an operator
+# to inspect a $TMPDIR that is working, and a status-2 reason on a status-3 one sends them to `ulimit -n`.
+# ⚠ THE PROBE RUNS ONCE, WHEN THE DESCRIPTOR IS OPENED, NOT PER LOAD — deliberately, and the gap it leaves
+# is named here rather than assumed away. A filesystem that fills AFTER this process's first load is not
+# seen by it, and a read of `.env` that genuinely fails in that window would still be certified empty:
+# that needs two faults coinciding after A5 (or after phase B's own first load). A probe per load would
+# close it at the price of the invariant the callers are written on — that only a process's FIRST load
+# can come back with the `scratch` kind (§ env_lines_load) — so a later load inside a `$( env_get … )`
+# could then answer status 3 for a scratch file, and `env_unread_refuse` and A10b would tell the operator
+# the `.env` stopped being readable, which is the false cause card#9933 ended.
 env_read_err_open() {
   local t
   t="$(mktemp 2>/dev/null)" || return 1
   { exec {ENV_READ_ERR_FD}<> "$t"; } 2>/dev/null || { rm -f "$t"; ENV_READ_ERR_FD=; return 2; }
   rm -f "$t"
+  scratch_writable "/dev/fd/$ENV_READ_ERR_FD" 2>/dev/null || { exec {ENV_READ_ERR_FD}>&-; ENV_READ_ERR_FD=; return 3; }
 }
 
 env_lines_load() {
@@ -484,6 +503,8 @@ env_lines_load() {
     # operator to different places, and the fix for one is not the fix for the other.
     if [ "$scratch_rc" -eq 1 ]; then
       ENV_LINES_READ_FAILED_WHY="No scratch file could be created for bash's read diagnostic (\`mktemp\` failed), and that diagnostic is the only thing that tells a read error from an end of file here — so the read was never made and no byte of the file was taken. mktemp writes under \$TMPDIR, or /tmp when that is unset: check that whichever applies exists, that it names a directory this deploy can write to, and that its filesystem has free INODES (\`df -i\`). A \`df\` at 100% is not on its own the finding here: \`mktemp\` creates an EMPTY file, and a filesystem out of free BLOCKS can still give it one."
+    elif [ "$scratch_rc" -eq 3 ]; then
+      ENV_LINES_READ_FAILED_WHY="A scratch file for bash's read diagnostic WAS created and opened, and a byte written into it did not read back — so that diagnostic, the only thing that tells a read error from an end of file here, could not have been kept, and the read was never made and no byte of the file was taken. The usual cause is the filesystem behind \$TMPDIR (or /tmp when that is unset) out of free BLOCKS: read \`df\` on it. \`mktemp\` and the open both succeed on such a filesystem, because an empty file costs no block — it is the first byte written that fails."
     else
       ENV_LINES_READ_FAILED_WHY="A scratch file for bash's read diagnostic WAS created and this shell could not OPEN it, and that diagnostic is the only thing that tells a read error from an end of file here — so the read was never made and no byte of the file was taken. \`mktemp\` itself succeeded, so this is not about \$TMPDIR: the usual cause is how many files this deploy may have open at once (\`ulimit -n\`)."
     fi
@@ -754,14 +775,15 @@ env_file_scan() {
   # the file was not read. Phase B's smoke check is the other caller that speaks to an OPERATOR, so it
   # reads the kind as well, and it warns where this refuses (§ env_lines_load).
   if [ "$ENV_LINES_READ_FAILED" = 1 ] && [ "$ENV_LINES_READ_FAILED_KIND" = 'scratch' ]; then
-    refuse "$ENV_FILE could not be read: no scratch file could be opened for bash's read diagnostic" \
+    refuse "$ENV_FILE could not be read: no usable scratch file for bash's read diagnostic" \
       "$ENV_LINES_READ_FAILED_WHY" \
       "THIS IS NOT A FINDING ABOUT $ENV_FILE. The file opened, the descriptor was closed again, and the" \
-      "read was never made — so nothing here says that file is unreadable, damaged or short, and nothing" \
-      "here is about the disk, the filesystem or the mount it sits on. What failed is a scratch file THIS" \
+      "read was never made — so nothing here says that file is unreadable, damaged or short, or that the" \
+      "disk, the filesystem or the mount it sits on failed a read. What failed is a scratch file THIS" \
       "DEPLOY makes for itself, and the line above says at which step, because the fix is not the same" \
-      "one: the directory \`mktemp\` writes into, where none could be created, and how many files this" \
-      "deploy may have open at once, where one was created and could not be opened." \
+      "one: the directory \`mktemp\` writes into, where none could be created; how many files this deploy" \
+      "may have open at once, where one was created and could not be opened; and the free space of the" \
+      "filesystem behind \$TMPDIR, where one was opened and a byte written into it did not read back." \
       "NOTHING WAS READ. Without this refusal the file comes back as an EMPTY one and the deploy stops on" \
       "the first key A5 checks, naming a cause that is not the real one." \
       "No byte of its content was read, and none is printed here — it may carry a credential."
@@ -1069,7 +1091,7 @@ git_read_call_site() {
     case "${FUNCNAME[__i]}" in
       git_read_call_site | not_established | git_read_unusable | git_read_failed | git_read_at | \
       git_ls_at | _git_ls_at | git_rev_read_failed | git_peel_mismatch | git_commit_of | git_ref_oid | \
-      scratch_file | scratch_dir | _scratch)
+      scratch_file | scratch_dir | _scratch | git_diagnostic_unread)
         __outer="$__i" ;;
       *) break ;;
     esac
@@ -1116,16 +1138,28 @@ git_read_unusable() {
 #     that way), `set -e` does not apply at all, so the run carried on with an EMPTY path and refused on
 #     a cause nothing established: "'main' does not resolve to a commit on origin" for a ref that is
 #     there, and "git could not resolve the tag …" for a tag git never got to peel.
-# ⚠ A filesystem out of BLOCKS and a filesystem out of INODES are DIFFERENT failures, and only the second
-# one reaches this exit. `mktemp` creates an EMPTY file, which costs an inode and no block: on a 100%-full
-# filesystem it SUCCEEDS (measured on a real full tmpfs — card#9932 — exit 0, a real path), and what then
-# fails is the WRITE of git's stderr into the file it made, which this exit never sees and which is
-# card#9932's. Out of INODES `mktemp` FAILS (measured — card#9933's round-4 review — rc 1, with `df`
-# showing free space and `df -i` showing none), and that is the "full" the advice below is written for:
-# it names `df -i`, and it denies `df` at 100% for the FILE kind ONLY. A scratch DIRECTORY is not covered
-# by that denial — a directory needs an inode and, on a filesystem that allocates one for it, a data block
-# as well, which is UNTESTED in either kind here: no fixture has produced a full filesystem at these call
-# sites at all; the missing TMPDIR named above is what was measured.
+# ⚠ A filesystem out of BLOCKS and a filesystem out of INODES are DIFFERENT failures, and for a scratch
+# FILE only the second one reaches the `mktemp` exit below. `mktemp` creates an EMPTY file, which costs an
+# inode and no block: on a 100%-full filesystem it SUCCEEDS (measured on a real full tmpfs — card#9932 —
+# exit 0, a real path). Out of INODES `mktemp` FAILS (measured — card#9933's round-4 review — rc 1, with
+# `df` showing free space and `df -i` showing none), and that is the "full" the `mktemp` advice below is
+# written for: it names `df -i`, and it denies `df` at 100% for the FILE kind ONLY. A scratch DIRECTORY
+# is not covered by that denial: on a block-full TMPFS `mktemp -d` succeeded too (measured, card#9932),
+# but a filesystem that allocates a data block for a directory can fail it on blocks — unmeasured here —
+# so the directory's advice names both numbers.
+# ⛔ A FULL-BY-BLOCKS FILESYSTEM IS THE SECOND EXIT, AND IT IS WHY `mktemp`'s STATUS IS NOT TRUSTED ALONE
+# (card#9932). What fails on one is the first byte WRITTEN into what `mktemp` made — and every caller of
+# this writes a DIAGNOSTIC there and reads an EMPTY one back as "the tool printed nothing", which is the
+# discriminator each of them decides on. Measured on a real block-full tmpfs (card#9932): `mktemp` 0, the
+# write of git's stderr lost, `cat` 0 with an empty string, and A7 refusing "'<ref>' does not resolve to a
+# commit on origin" for a rev whose walk git had reported failing. So the scratch space is PROVED before it
+# is handed back — `scratch_writable` writes a byte into it and reads it back — and a space that fails that
+# is refused as what the run established: created, and not writable. bash's own write error is on screen
+# above that refusal, and it names the errno; an ENOSPC there is the block-full case and `df` is its number.
+# ⚠ THE RESIDUAL, named rather than assumed away: the probe proves ONE byte at the moment it runs. A
+# filesystem that fills between the probe and the write it guards, or that has room for the probe and
+# not for the whole message, still loses the write — git's diagnostics are a line or two, well under one
+# block, so the second needs a filesystem within a block of full, and neither is reproduced by any case.
 # mktemp's own error is NOT silenced: it names the path it tried, which is the TMPDIR mktemp actually
 # read (its ENVIRONMENT's, not necessarily this shell's — § env_lines_load).
 #   · <var> is written with `printf -v`, never returned through `$(…)`: a refusal inside a command
@@ -1139,7 +1173,7 @@ git_read_unusable() {
 scratch_file() { _scratch "$1" "$2" file; }
 scratch_dir()  { _scratch "$1" "$2" directory -d; }
 _scratch() { # _scratch <var> <what it is for> <file|directory> [mktemp option…]
-  local __sc_var="$1" __sc_for="$2" __sc_kind="$3" __sc_out __sc_rc=0
+  local __sc_var="$1" __sc_for="$2" __sc_kind="$3" __sc_out __sc_rc=0 __sc_probe
   local -a __sc_space
   shift 3
   __sc_out="$(mktemp "$@")" || __sc_rc=$?
@@ -1164,7 +1198,54 @@ _scratch() { # _scratch <var> <what it is for> <file|directory> [mktemp option�
       "Nothing was read in its place, so what it was for is not established — this is not a finding about" \
       "the release."
   fi
+  # The probe (§ ⛔ FULL-BY-BLOCKS above). A directory is probed through a file inside it, because what its
+  # caller does with it is write files there; that file is removed again, and a file is left EMPTY.
+  __sc_probe="$__sc_out"
+  [ "$__sc_kind" != directory ] || __sc_probe="$__sc_out/.scratch-probe"
+  if ! scratch_writable "$__sc_probe"; then
+    rm -rf "$__sc_out"
+    not_established "the scratch $__sc_kind for $__sc_for was created and could not be written" \
+      "\`mktemp\` created it, and a byte written into it did not read back — so anything written there would" \
+      "be lost, and an EMPTY read of it would pass for a tool that printed nothing. bash's own error is above" \
+      "this line and names why: \"No space left on device\" is the filesystem behind \$TMPDIR (or /tmp when" \
+      "that is unset) out of free BLOCKS — read \`df\` on it; \`mktemp\` still succeeds there, because an" \
+      "empty file costs no block. Nothing was read in its place, so what it was for is not established —" \
+      "this is not a finding about the release."
+  fi
+  [ "$__sc_kind" != directory ] || rm -f "$__sc_probe"
   printf -v "$__sc_var" '%s' "$__sc_out"
+}
+
+# scratch_writable <path> — 0 when a byte written to <path> reads back, leaving <path> an EMPTY file;
+# 1 otherwise. THE scratch probe (card#9932), for `_scratch` and the .env loader's `env_read_err_open`
+# alike: `mktemp` succeeding says a file exists, and only a write says bytes can land in it — on a
+# filesystem out of BLOCKS the first does and the second does not (measured on a real full tmpfs).
+# Builtins only, no fork: the loader is on the scan path `bin/env-mirror-diff.sh` holds fork-free.
+# ⚠ Errors are NOT silenced here — the caller decides: `_scratch` shows bash's write error, which names
+# the errno, and the loader silences it as it silences its other scratch errors.
+# `read`'s STATUS is not the test: the probe carries no newline, so `read` answers 1 (end of file) on the
+# byte it did read. The VALUE is the test, and a read that could not open the path leaves it empty.
+scratch_writable() {
+  local __sw_back=""
+  printf 'x' > "$1" || return 1
+  IFS= read -r -n 1 __sw_back < "$1" || :
+  [ "$__sw_back" = x ] || return 1
+  : > "$1"
+}
+
+# git_diagnostic_unread <what> <git subcommand> <status> <cat status> — git answered <status>, and the
+# stderr it was given to read could NOT BE READ BACK (card#9932). git_ref_oid and git_commit_of decide a
+# failing status on git's own words — whether it spoke, and what it said — so without them neither "there
+# is no ref of that name" nor "a read failed" is established, and this says exactly that. Before this,
+# `cat`'s status was dropped, and its empty output was read as git's silence: a failed read of git's
+# message became the absence of the ref.
+git_diagnostic_unread() {
+  git_read_unusable "git's error output could not be read back while trying to $1 (\`git $2\` exited $3, \`cat\` exited $4)" \
+    "\`cat\`'s own error is above this line and names the scratch file it could not read. This deploy" \
+    "tells a ref that is not there from a read that failed by what git PRINTED, and that is exactly what" \
+    "could not be read — so neither is claimed. Nothing was resolved, so nothing about what was asked is" \
+    "known, and this is not a finding about the release: it is the scratch space under \$TMPDIR (or /tmp" \
+    "when that is unset) that failed."
 }
 
 git_read_failed() { # git_read_failed <git subcommand> <rev> <path> <status>
@@ -1379,16 +1460,20 @@ git_peel_mismatch() {
 # Its locals are `__ro_`-prefixed rather than `__`: git_commit_of calls it WITH `__oid` as <var>,
 # and a local of that name here would swallow the write — the shadowing hazard _git_ls_at states.
 git_ref_oid() {
-  local __ro_var="$1" __ro_cand="$2" __ro_err __ro_msg __ro_out __ro_rc=0
+  local __ro_var="$1" __ro_cand="$2" __ro_err __ro_msg __ro_out __ro_rc=0 __ro_cat=0
   printf -v "$__ro_var" '%s' ""
   scratch_file __ro_err "git's error output while resolving '$__ro_cand'"
   # --end-of-options because the candidate can be `$REF` as the operator typed it: a leading `-` is
   # a ref name here and must not be read as an option. NO `^{commit}`: that peel is what drags the
   # object store into this question and collapses its failure onto status 1 (above).
   __ro_out="$(git_at rev-parse --verify --quiet --end-of-options "$__ro_cand" 2>"$__ro_err")" || __ro_rc=$?
-  __ro_msg="$(cat "$__ro_err")"; rm -f "$__ro_err"
+  __ro_msg="$(cat "$__ro_err")" || __ro_cat=$?; rm -f "$__ro_err"
   [ -z "$__ro_msg" ] || printf '%s\n' "$__ro_msg" >&2
   if [ "$__ro_rc" -eq 0 ]; then printf -v "$__ro_var" '%s' "$__ro_out"; return 0; fi
+  # Every branch below decides on whether git SPOKE, so a diagnostic that could not be read back is not
+  # git's silence and is refused as what it is (card#9932). At status 0 nothing decides on it: stdout is
+  # the answer, and `cat`'s own error is on screen.
+  [ "$__ro_cat" -eq 0 ] || git_diagnostic_unread "resolve '$__ro_cand'" "rev-parse --verify" "$__ro_rc" "$__ro_cat"
   # ⛔ AND A LOUD ANSWER IS NOT ALWAYS A FAILED READ — THERE IS A THIRD SHAPE AT STATUS 1, AND EVERY
   # READ IN IT SUCCEEDED (card#9611 r4). `--ref 'main^{blob}'` reaches it on a COMPLETELY HEALTHY
   # store. It is asked here, ABOVE the status split rather than inside the status-1 branch, because
@@ -1440,7 +1525,7 @@ git_ref_oid() {
 # Every local is `__`-prefixed, for the reason stated at _git_ls_at: <var> is written with
 # `printf -v` and a caller naming one of these would have its own variable shadowed.
 git_commit_of() {
-  local __var="$1" __cand="" __oid="" __peeled __type __rc=0 __err __msg
+  local __var="$1" __cand="" __oid="" __peeled __type __rc=0 __err __msg __cat=0
   shift
   printf -v "$__var" '%s' ""
   for __cand in "$@"; do
@@ -1475,8 +1560,11 @@ git_commit_of() {
             __rc=0
             scratch_file __err "git's error output while peeling the tag '$__cand' ($__oid)"
             __peeled="$(git_at rev-parse --verify --end-of-options "$__oid^{commit}" 2>"$__err")" || __rc=$?
-            __msg="$(cat "$__err")"; rm -f "$__err"
+            __msg="$(cat "$__err")" || __cat=$?; rm -f "$__err"
             [ -z "$__msg" ] || printf '%s\n' "$__msg" >&2
+            # git's wording is the discriminator below, so an unread one is refused as unread (card#9932).
+            [ "$__rc" -eq 0 ] || [ "$__cat" -eq 0 ] || git_diagnostic_unread \
+              "resolve the tag '$__cand' ($__oid) to a commit" "rev-parse --verify" "$__rc" "$__cat"
             [ "$__rc" -eq 0 ] || git_peel_mismatch "the tag '$__cand' ($__oid)" "$__msg" || :
             [ "$__rc" -eq 0 ] || git_rev_read_failed "resolve the tag '$__cand' ($__oid) to a commit" \
               "rev-parse --verify" "$__rc" \
@@ -3935,7 +4023,7 @@ phase_b_post_checkout() {
   if [ "$url_rc" -eq 2 ]; then
     warn "APP_URL is in a form this script does not read (env_get, bin/deploy.sh) — no smoke check was made. The deploy is UNVERIFIED."
   elif [ "$url_rc" -eq 3 ] && [ "$ENV_LINES_READ_FAILED_KIND" = 'scratch' ]; then
-    warn "server/.env was NOT READ — no scratch file could be opened for bash's read diagnostic, so the read was never made — and no smoke check was made. The deploy is UNVERIFIED. This is not 'APP_URL is unset', and it is NOT a finding about server/.env, which may be perfectly readable: what failed is a scratch file this deploy makes for itself, after the maintenance window closed. $ENV_LINES_READ_FAILED_WHY The release IS deployed and serving; what was not done is the check on it. Fix that and re-run \`bin/deploy.sh --dry-run\`, which reaches the same loader at A5 — and note it can only name this cause while the cause is still there: a \$TMPDIR that was missing, unwritable or out of inodes during this deploy and has been put right since leaves a clean dry run and this line as the only record."
+    warn "server/.env was NOT READ — no usable scratch file could be had for bash's read diagnostic, so the read was never made — and no smoke check was made. The deploy is UNVERIFIED. This is not 'APP_URL is unset', and it is NOT a finding about server/.env, which may be perfectly readable: what failed is a scratch file this deploy makes for itself, after the maintenance window closed. $ENV_LINES_READ_FAILED_WHY The release IS deployed and serving; what was not done is the check on it. Fix that and re-run \`bin/deploy.sh --dry-run\`, which reaches the same loader at A5 — and note it can only name this cause while the cause is still there: a \$TMPDIR that was missing, unwritable, out of inodes or out of space during this deploy and has been put right since leaves a clean dry run and this line as the only record."
   elif [ "$url_rc" -eq 3 ]; then
     warn "server/.env could not be read (its open or its read failed; bash's reason, if any, is above) — no smoke check was made. The deploy is UNVERIFIED. This is not 'APP_URL is unset': the file was readable in phase A and stopped being so between phase A and this check. \`bin/deploy.sh --dry-run\` names the cause the way A5 does."
   elif [ -z "$url" ]; then
