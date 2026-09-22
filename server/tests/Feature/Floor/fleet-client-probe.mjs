@@ -14,12 +14,16 @@
  *      "repeat":     N                          // run the same scenario N times IN ONE PROCESS
  *      "browser_clock_ms": N                    // the BROWSER's clock at scenario t=0 (default 0)
  *      "age_ticker": true                       // start `age-readout.js`'s 1 s ticker after start()
+ *      "desk_floor": true                       // start `desk/desk-floor.js` after start(): its own
+ *                                               //  1 s tick, and `render()` after every settled
+ *                                               //  event that is not a tick
  *      "durations":  [ <seconds>, … ]           // `formatDuration` sampled on these, for a test's
  *                                               //  expected string — the shipped format, not a copy
  *    }`
  * stdout — JSON: `{ "runs": [ <one run per repeat> ], "durations": [ … ] }`, each run
  *   `{ "records": [ … ], "final": <the last record>, "unscripted": [], "listeners": [ {type: n} ],
- *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ] }`
+ *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
+ *      "desk_renders": [ {at, trigger, frame} ], "animation_log": [ <§ 11 rows> ] }`
  *   and each record
  *   `{ "at", "label", "outcome", "seats", "event_log", "requests", "phase", "clock_offset_ms",
  *      "read_status": { "<key>": {missing, failStreak, confirmedAt} }, "discrepancy_state" }`.
@@ -41,6 +45,12 @@
  * a repeating event on the same queue every message and response is on, so an age render lands
  * at an exact scenario instant and is recorded as `age_renders[]` — the headless observation of
  * every age readout AT-D3-10's floor half asserts on.
+ *
+ * ⛔ THE DESK FLOOR IS THE SHIPPED ONE, OVER THE SHIPPED CLIENT, WRITING THE SHIPPED ANIMATION LOG.
+ * `render()` is § 2.5's apply path, so the probe calls it after each settled event exactly as a
+ * page calls it after an apply; its tick is the shipped ticker on the scenario's timer. Every frame
+ * is recorded as `desk_renders[]` with the trigger that drew it — the headless observation of a
+ * desk that AT-D3-5 and AT-D3-14's desk half assert on — and the log's rows as `animation_log`.
  *
  * ⛔ THE SCENARIO CLOCK IS THE ONLY CLOCK, AND IT STARTS AT `start()`. Every `at_ms` and every
  * `delay_ms` is measured on it, and a response resolves at `request time + delay_ms`. That is what
@@ -84,6 +94,8 @@ if (typeof dir !== 'string' || dir === '') {
 const { FleetClient } = await import(pathToFileURL(join(dir, 'fleet-client.js')).href);
 const { startAgeTicker } = await import(pathToFileURL(join(dir, 'age-readout.js')).href);
 const { formatDuration } = await import(pathToFileURL(join(dir, 'duration.js')).href);
+const { createAnimationLog } = await import(pathToFileURL(join(dir, 'animation-log.js')).href);
+const { startDeskFloor } = await import(pathToFileURL(join(dir, '..', 'desk', 'desk-floor.js')).href);
 
 const fx = JSON.parse(readFileSync(0, 'utf8') || '{}');
 
@@ -161,6 +173,9 @@ async function replay(scenario) {
     const client = new FleetClient(http.fetch, FakeEventSource, clock);
     const records = [];
     const ageRenders = [];
+    const deskRenders = [];
+    const log = createAnimationLog();
+    let floor = null;
 
     // The shipped ticker's timer, on the scenario queue: one repeating event per interval.
     const intervals = new Set();
@@ -218,7 +233,14 @@ async function replay(scenario) {
         });
     }
 
+    if (scenario.desk_floor === true) {
+        floor = startDeskFloor(client, clock, timersImpl, log, (frame, trigger) => {
+            deskRenders.push({ at: now, trigger, frame: JSON.parse(JSON.stringify(frame)) });
+        });
+    }
+
     await turn();
+    floor?.render();
     snap('start');
 
     for (;;) {
@@ -236,6 +258,11 @@ async function replay(scenario) {
         const outcome = timer.fire();
 
         await turn();
+
+        if (timer.label !== 'age tick') {
+            floor?.render();
+        }
+
         snap(timer.label, outcome ?? null);
     }
 
@@ -251,5 +278,7 @@ async function replay(scenario) {
         pending_timers: timers.length,
         rejections: [...rejections],
         age_renders: ageRenders,
+        desk_renders: deskRenders,
+        animation_log: log.rows,
     };
 }

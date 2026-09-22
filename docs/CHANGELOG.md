@@ -27,6 +27,41 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **Every desk on the floor now has its render: the ten states, the degraded
+  treatments, the null renders and the side table** (`docs/design/FLOOR.md` Appendix B step 5, gated
+  by AT-D3-5 and AT-D3-14's desk half). New `server/public/js/desk/desk-render.js` turns one held
+  seat into one desk, switched on `render_state` alone: the pose and glyph per § 7.1, the state's
+  label line, the *was: … (last event …, seat clock)* currency label on `catching_up` and
+  `disabled`, the empty chair with *no data since HH:MM:SS — no data for …* on `stale` and
+  `offline` (*no data yet* for a seat that never reported), the hatched overlay and *this state is
+  1m 57s behind — as of HH:MM:SS* on a `fold_lag` seat with its loop stopped, the monitor, the
+  gauge, the thought bubble and the side table's stools with *+N more* from `subagents_open`. New
+  `server/public/js/desk/desk-floor.js` runs it over every held seat, re-renders the ages on step
+  4's 1 s tick (`startAgeTicker`'s first shipped caller) and enters and leaves each desk's `held`
+  render in the animation log. The client protocol now holds, per seat member, the `server_time`
+  that delivered it, which is what the lag line's *as of* stamp reads. Every seat-clock claim reads
+  `HH:MM:SS (seat clock)`, the one precision FLOOR publishes as a rule for a timestamp. Shared
+  pieces moved to `wire/` at their next caller: the gauge and its *not reported* null render
+  (`context-gauge.js`, from the drill-down) and the words *not reported*, *untitled* and *no data
+  yet* (`null-render.js`, from the drill-down and the lobby). `fx-degraded` and `fx-nulls` ship.
+  `Tests\Feature\Floor\TheDeskRenderShowsADegradedSeatAsDegradedTest` replays `fx-degraded` for
+  60 s: every desk is distinct from every other by picture and by label line, each dark age moves while
+  its timestamp does not, the lag line and its stamp do not move across a later heartbeat, the
+  lagged desk's held episode is entered with `motion: false`, and the dark desks are the empty chair
+  beside a live sleeper. Planted and seen red: the desk switched on `activity_state` (both dark
+  desks drawn asleep), the `fold_lag` treatment dropped, the sleeping pose on the dark desks with
+  every label kept, and the stamp taken from the newest message; the control is `fx-snapshot-4`'s
+  live working desk, full colour and entered with motion.
+  `Tests\Feature\Floor\TheDeskRenderNeverDrawsANullAsAZeroTest` walks every member `fx-nulls`'s
+  `nulls-b` sets null, read from the fixture, against its § 5.6 cell; planted and seen red: a null
+  gauge drawn at 0 % and a null quiet age drawn *nothing done for 0s*, with a measured 0.0 % as the
+  control. `Tests\Feature\Desk\TheDeskSpeaksTheDocumentsWordsTest` holds every string the desk
+  restates to § 7.1, § 7.6, § 7.2 and § 7.3.
+  **§ 14 item 23 is closed**: `derivation.fold_lag_ms` = 117,000 lives on `fx-degraded`'s `fold_lag`
+  seat and no longer on AT-D3-16's retirement announcement, and the item records that D2's worked
+  `117` is 117 ms, a different, healthy seat. `fx-degraded` also carries a `live` `idle` seat, the
+  sleeper AT-D3-5 compares the dark desks against, which is the desk AT-D3-5's *all six desks* counts.
+
 - **card#7341** — **Every age on the floor is measured from the server's clock, re-rendered every
   second, and a seat's own clock is shown as its labelled claim and never subtracted into an age**
   (`docs/design/FLOOR.md` Appendix B step 4, gated by AT-D3-10's floor half). New

@@ -76,6 +76,9 @@ class DrillDownModuleWiringTest extends TestCase
             'seatClock' => ['wire/age-readout.js'],
             'quietAgeLine' => ['wire/age-readout.js'],
             'actionElapsedLine' => ['wire/age-readout.js'],
+            // card#7341 step 5: the context gauge and its null render, hoisted at its second
+            // caller — the desk draws the same gauge from the same member.
+            'contextGauge' => ['wire/context-gauge.js'],
         ];
 
         foreach ($expected as $function => $home) {

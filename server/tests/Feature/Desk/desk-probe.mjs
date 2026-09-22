@@ -12,7 +12,11 @@
  *                   "layout": { "bubbles": [...], "char_w": 10, "line_h": 20,
  *                               "no_measurer": false } }`
  * stdout — JSON: `{ "bubble", "characters", "no_character_states", "max_chars",
- *                   "truncation_mark", "layout", "measurer_error" }`
+ *                   "truncation_mark", "layout", "measurer_error", "words" }`, where `words` is
+ *          every published string `desk-render.js` restates — § 7.1's state sentences and its
+ *          `unknown_reason` sentences, § 7.6's `api_error_type` phrases, the Desk column's pictures,
+ *          and the few single words § 7.2, § 7.3 and § 5.6 fix — for the guard that holds them to
+ *          the document.
  *
  * ⚠ THE MEASURER IS THE PROBE'S, AND THAT IS THE POINT. `docs/design/FLOOR.md § 5.1` rule 4
  * requires the box to be sized from MEASURED text and forbids a guess, so the module takes the
@@ -38,6 +42,8 @@ if (typeof dir !== 'string' || dir === '') {
 const url = (file) => pathToFileURL(join(dir, file)).href;
 
 const bubble = await import(url('task-bubble.js'));
+const render = await import(url('desk-render.js'));
+const absence = await import(url('../wire/null-render.js'));
 
 const payload = JSON.parse(readFileSync(0, 'utf8') || '{}');
 
@@ -68,4 +74,14 @@ console.log(JSON.stringify({
     truncation_mark: bubble.TRUNCATION_MARK,
     layout,
     measurer_error: measurerError,
+    words: {
+        label: render.LABEL,
+        unknown_reason: render.UNKNOWN_REASON,
+        api_error_phrase: render.API_ERROR_PHRASE,
+        desk: render.DESK,
+        sending_nothing: render.SENDING_NOTHING,
+        oldest_badge_since: render.OLDEST_BADGE_SINCE,
+        no_data_yet: absence.NO_DATA_YET,
+        dash: render.DASH,
+    },
 }, null, 2));

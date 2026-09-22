@@ -487,6 +487,7 @@ final class FleetClientPlants
                             if (d.state_version === h.state_version + 1) {
                                 this.#seats.set(k, { ...h, ...d.patch, state_version: d.state_version });
                                 this.#confirm(k);
+                                this.#stamp(k, Object.keys(d.patch), d.server_time);
                             }
                         }
             

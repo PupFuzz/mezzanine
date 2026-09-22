@@ -207,8 +207,10 @@ class DrillDownRendersTheSeatTest extends TestCase
         // CONTROL 1 — THE ZEROED GAUGE. § 7.5's "Zeroed" bullet and AT-D3-14: a null `context`
         // rendered as 0 % is a measurement claimed where none was made, and it is the one defect
         // this gauge is famous for. Plant it and require the assertions above to see it.
+        // The gauge's null render is `wire/context-gauge.js`'s since card#7341 step 5 hoisted it
+        // there for the desk, so the plant goes where the one copy of the rule now lives.
         $dir = $this->mutatedModules([
-            'drilldown-model.js',
+            '../wire/context-gauge.js',
             'return { reported: false, statement: NOT_REPORTED, bar: null, pct: null };',
             "return { reported: true, statement: null, bar: 0, pct: '0.0 %' };",
         ]);

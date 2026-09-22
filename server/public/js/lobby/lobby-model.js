@@ -44,6 +44,7 @@
 import { RENDER_STATES, isRenderState } from './render-state.js';
 import { clockTime } from '../wire/clock.js';
 import { disagrees, DiscrepancyBudget } from '../wire/discrepancy-budget.js';
+import { NOT_REPORTED } from '../wire/null-render.js';
 
 /**
  * ⚠ `clockTime` MOVED to `../wire/clock.js` at its second caller (card#8300's coordination
@@ -57,8 +58,10 @@ export { clockTime };
  * § 5.6's default, in decision 13's own word: "a null is rendered as **not reported**, never as a
  * zero … where the element's own space is drawn unconditionally, it reads *not reported*". The
  * three indicators and the two fleet readouts are drawn unconditionally, so they take this.
+ * ⚠ The word is `../wire/null-render.js`'s, hoisted there at the desk, its third caller (card#7341
+ * step 5), and re-exported so this module stays the lobby's one import.
  */
-export const NOT_REPORTED = 'not reported';
+export { NOT_REPORTED };
 
 /**
  * § 4.1's per-floor state summary: "a count per `render_state` member present, e.g. *2 working ·

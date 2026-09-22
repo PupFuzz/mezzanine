@@ -11,9 +11,10 @@ use Tests\TestCase;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⚠ AT-D3-4 HAS TWO SURFACES AND THIS FILE COVERS ONE. Its GREEN reads "the side table, the
  * drill-down, the uncapped intern list": the side table's stools and its *+N more* tag are the
- * DESK's, from the seat object's capped `subagents[]`, and there is no desk — the floor screen
- * is card#9208-blocked. So the two side-table clauses of that test are UNASSERTED here and are
- * named rather than quietly folded in; what is asserted is every clause that reads the panel.
+ * DESK's, from the seat object's capped `subagents[]` — `desk/desk-render.js`, Appendix B step 5
+ * — and AT-D3-4 as a whole is gated at step 10. So the two side-table clauses of that test are
+ * UNASSERTED here and are named rather than quietly folded in; what is asserted is every clause
+ * that reads the panel.
  *
  * ⛔ AND THIS FILE PINS A CONTRADICTION IN D3 RATHER THAN RESOLVING IT SILENTLY. § 5.2's rule
  * cell and § 8's *the full list* row select this list on `agent_scope == "subagent"` / a
