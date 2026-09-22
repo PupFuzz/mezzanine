@@ -1173,18 +1173,29 @@ git_read_unusable() {
 # but a filesystem that allocates a data block for a directory can fail it on blocks — unmeasured here —
 # so the directory's advice names both numbers.
 # ⛔ A FULL-BY-BLOCKS FILESYSTEM IS THE SECOND EXIT, AND IT IS WHY `mktemp`'s STATUS IS NOT TRUSTED ALONE
-# (card#9932). What fails on one is the first byte WRITTEN into what `mktemp` made — and every caller of
-# this writes a DIAGNOSTIC there and reads an EMPTY one back as "the tool printed nothing", which is the
-# discriminator each of them decides on. Measured on a real block-full tmpfs (card#9932): `mktemp` 0, the
+# (card#9932). What fails on one is the first byte WRITTEN into what `mktemp` made — and every caller
+# that asks `_scratch` for a scratch FILE (git_ref_oid, git_commit_of — the .env loader's own scratch
+# file is NOT one of these calls, § the ⛔ below) writes a DIAGNOSTIC there and reads an EMPTY one back
+# as "the tool printed nothing", which is the discriminator each of them decides on. Measured on a real
+# block-full tmpfs (card#9932): `mktemp` 0, the
 # write of git's stderr lost, `cat` 0 with an empty string, and A7 refusing "'<ref>' does not resolve to a
 # commit on origin" for a rev whose walk git had reported failing. So the scratch space is PROVED before it
 # is handed back — `scratch_writable` writes a byte into it and reads it back — and a space that fails that
 # is refused as what the run established: created, and not writable. bash's own write error is on screen
 # above that refusal, and it names the errno; an ENOSPC there is the block-full case and `df` is its number.
-# ⚠ THE RESIDUAL, named rather than assumed away: the probe proves ONE byte at the moment it runs. A
-# filesystem that fills between the probe and the write it guards, or that has room for the probe and
-# not for the whole message, still loses the write — git's diagnostics are a line or two, well under one
-# block, so the second needs a filesystem within a block of full, and neither is reproduced by any case.
+# ⚠ THE RESIDUAL, named rather than assumed away: the probe proves ONE byte at the moment it runs. For a
+# scratch FILE, a filesystem that fills between the probe and the write it guards, or that has room for
+# the probe and not for the whole message, still loses the write — git's diagnostics are a line or two,
+# well under one block, so the second needs a filesystem within a block of full, and neither is
+# reproduced by any case. A scratch DIRECTORY's payload is not bounded the same way: A13's is a whole
+# release's bin/supervision.sh, kilobytes rather than one byte, for which this probe is no guarantee at
+# all — gate_a13_target_plan checks THAT write's own status rather than trusting the directory probe for
+# it (card#9932 review, SF-5).
+# ⚠ AND THE BOUND ITSELF IS MEASURED FOR ORDINARY BLOCK ALLOCATION, NOT EVERY LAYOUT (card#9932 review,
+# N-2): a filesystem that stores a short file INLINE in the inode — ext4's `inline_data` (not a default
+# mount option), btrfs's inline extents — can let this one byte land with no data block spent at all,
+# which is a different mechanism from "within a block of full" and not bounded by it the same way.
+# Unmeasured here, on either side.
 # mktemp's own error is NOT silenced: it names the path it tried, which is the TMPDIR mktemp actually
 # read (its ENVIRONMENT's, not necessarily this shell's — § env_lines_load).
 #   · <var> is written with `printf -v`, never returned through `$(…)`: a refusal inside a command
@@ -3432,7 +3443,26 @@ gate_a13_target_plan() {
       "The window installs the deployed release's crontab block from it and restarts the daemons it names." \
       "A release without it cannot be supervised by this deploy."
   }
-  printf '%s\n' "$target_sup" > "$work/supervision.sh"
+  # ⛔ THE ONE-BYTE PROBE THAT MADE $work PROVES A BYTE LANDS, NOT THAT A RELEASE'S WHOLE
+  # bin/supervision.sh DOES (card#9932 review, SF-5). With a handful of blocks free, `scratch_dir`'s
+  # probe passes and THIS write — the checkout's real payload, kilobytes rather than one byte — can
+  # still run the filesystem out mid-write: measured (§ the probe test above `_scratch`), `printf`
+  # returns non-zero with `write error: No space left on device` on its own line above, and
+  # `$work/supervision.sh` is left truncated. Checked here rather than left to `set -e`: A13 runs
+  # before phase A installs any ERR trap (those are phase B's, at `in_window_failure`), so an
+  # unchecked failure here would exit the process on bash's own diagnostic alone — no ⛔ banner, no
+  # "Nothing was changed" — the exact no-refusal shape card#9816 already ended for `mktemp` itself.
+  printf '%s\n' "$target_sup" > "$work/supervision.sh" || {
+    local rc=$?
+    rm -rf "$work"
+    refuse "the scratch file for $short's bin/supervision.sh (A13) was created and could not be fully written (exit $rc)" \
+      "bash's own write error is above this line and names why: \"No space left on device\" is the" \
+      "filesystem behind \$TMPDIR (or /tmp when that is unset) out of free BLOCKS — read \`df\` on it." \
+      "A single byte written into this scratch directory DID read back before this write started; what" \
+      "ran out is room for the release's own bin/supervision.sh, which a one-byte probe cannot see coming." \
+      "Nothing was read in its place, so what it was for is not established — this is not a finding" \
+      "about the release."
+  }
   # ⛔ `"$BASH"`, THIS PROCESS'S OWN INTERPRETER, NOT PATH'S (the review at `0de8857`, card#9616
   # comment 5846). This used to be a
   # bare `bash -c`, which is the same defect the re-exec had and is worse HERE, because of what this
