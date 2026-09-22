@@ -60,10 +60,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
+      # § card#9932's block-full-filesystem cases need an UNPRIVILEGED USER NAMESPACE
+      # (`unshare -Ur -m`), and Ubuntu 24.04 restricts those by default through an AppArmor
+      # policy — measured on this job (CI run 35678901985): `unshare: write failed
+      # /proc/self/uid_map: Operation not permitted`, where the same suite made one locally
+      # (card#9932 review). The sysctl below is a CANDIDATE lever, recalled rather than sourced from
+      # a citation checked here; it is UNVERIFIED IN THIS CHANGE — nothing in this sandbox reproduces
+      # an AppArmor-restricted runner to try it against — so the step below is followed by the gate
+      # that finds out for real (§ NOT VERIFIED, below): if this does not lift the restriction, that
+      # step fails loudly instead of the section going quiet.
+      - name: Allow unprivileged user namespaces (Ubuntu 24.04 AppArmor restriction)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
       # `bash` explicitly rather than relying on the executable bit surviving a checkout: the
       # suite is the evidence, so it must fail on its own assertions and never on a file mode.
+      #
+      # ⛔ NOT VERIFIED HERE ON THIS ONE SECTION IS A HARD FAILURE, deliberately (card#9932 review,
+      # SF-1): `bin/deploy.selftest.sh`'s own exit code does not red on a NOT VERIFIED line — that
+      # is the whole point of the distinction (card#9646), an honest "this did not run" rather than
+      # a false pass — but a suite worth nothing if it only ever ran on the day it was written is
+      # worth just as little if a later revert of the write probe can stay green here because this
+      # ONE property silently never runs on CI. Grepped rather than reasoned about: a probe revert
+      # would still pass every OTHER assertion the block-full section makes as long as the section
+      # itself is skipped, so nothing but a positive check on its own having run catches that.
       - name: Self-test (every refusal exercised against the real script)
-        run: bash bin/deploy.selftest.sh
+        run: |
+          set -o pipefail
+          bash bin/deploy.selftest.sh 2>&1 | tee /tmp/selftest.log
+          if grep -q 'NOT VERIFIED HERE  card#9932: a filesystem out of BLOCKS could not be produced on this runner' /tmp/selftest.log; then
+            echo "::error::the card#9932 block-full-filesystem section did NOT run on this runner (NOT VERIFIED, above) — an unprivileged user namespace could not be made even after the AppArmor step. This is a hard failure: those cases are the only ones that make the write probe actually FAIL rather than trust it, and a suite that quietly never runs them is worth nothing (§ this job's own header). Fix what unshare needs on this runner, or replace the sysctl step above with whatever this runner's image actually requires."
+            exit 1
+          fi
 
   # ── the bash floor, MEASURED — and measured to be the floor, not merely to be met (card#9616) ──
   # `bin/deploy.sh` declares `BASH_FLOOR`. THIS JOB IS WHAT MAKES THAT NUMBER A MEASUREMENT rather
@@ -97,6 +124,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # § card#9932's block-full-filesystem cases, exercised again here under the floor bash — see
+      # the `deploy-selftest` job's own step of this name for what this is and why it is unverified
+      # in this change. One step covers both suite runs below: the sysctl is process-VM-wide, not
+      # per-shell, so it does not need repeating for the below-floor control.
+      - name: Allow unprivileged user namespaces (Ubuntu 24.04 AppArmor restriction)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
       # DERIVED from bin/deploy.sh, through bin/deploy.sh's OWN reader (`bash_floor_declared`) and
       # its OWN validator (`bash_floor_is_version`) — the two A1 and A6b use — never by a pattern
@@ -167,13 +201,19 @@ jobs:
 
       # AT THE FLOOR: the whole suite, with that bash FIRST ON PATH so the re-exec after the
       # checkout runs the same interpreter rather than the runner's own. It must pass.
+      # ⛔ NOT VERIFIED HERE ON card#9932's BLOCK-FULL SECTION IS A HARD FAILURE HERE TOO — same
+      # reasoning as the `deploy-selftest` job's own step of this name; not restated.
       - name: The suite passes on bash ${{ steps.floor.outputs.floor }} — the floor
         env:
           FLOOR: ${{ steps.floor.outputs.floor }}
         run: |
           set -Eeuo pipefail
           "/tmp/bash-$FLOOR/bin/bash" -c 'echo "measuring with: $BASH_VERSION"'
-          PATH="/tmp/path-$FLOOR:$PATH" "/tmp/bash-$FLOOR/bin/bash" bin/deploy.selftest.sh
+          PATH="/tmp/path-$FLOOR:$PATH" "/tmp/bash-$FLOOR/bin/bash" bin/deploy.selftest.sh 2>&1 | tee /tmp/floor-run.log
+          if grep -q 'NOT VERIFIED HERE  card#9932: a filesystem out of BLOCKS could not be produced on this runner' /tmp/floor-run.log; then
+            echo "::error::the card#9932 block-full-filesystem section did NOT run on bash $FLOOR — see the deploy-selftest job's step of this name for what that means and why it is a hard failure."
+            exit 1
+          fi
 
       # THE CONTROL, one minor below — in a COPY of the tree whose BASH_FLOOR is lowered to match,
       # so the gate is not what stops it. It must FAIL, and this step fails if it passes.
