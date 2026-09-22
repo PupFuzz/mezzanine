@@ -5,6 +5,11 @@ Every case drives the REAL script as a subprocess over a SYNTHETIC workflow tree
 bodies (`--responses`), and asserts on the PRINTED TEXT, never on an exit code alone. No network,
 no credential, no repository settings: nothing here is a copy of this repo's rulesets.
 
+The `c_transport_*` cases are the exception on transport: they load the script as a module and
+drive its REAL urllib transport, with `API` pointed at a loopback server this file runs, which
+answers every request with the Authorization value it received. Nothing leaves the host, and a
+token that reached any output stream is caught by the same server that would have echoed it.
+
 RED-FIRST, IN THE SUITE. A case that has never failed is a decoration, so § 2 re-runs each case
 against a mutated copy of the script — one edit that reintroduces the defect the case exists to
 catch — and requires that case to FAIL there. A mutation whose target text is not in the script
@@ -12,16 +17,22 @@ exactly once is itself a failure, so a refactor cannot silently turn a control i
 """
 from __future__ import annotations
 
+import contextlib
+import importlib.util
+import io
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parent / "release-facts.py"
 REPO = "o/r"
 TOKEN = "ghp_selftestFAKEtoken0123456789abcdef"  # fed in, and must never come back out
+SENTINEL = "FAKE_TOKEN_SENTINEL_selftest"  # the same, for the refusal and real-transport cases
 
 WORKFLOWS = {
     "gate.yml": "name: Gate\non:\n  pull_request:\n    types: [opened]\n  push:\n    branches: [dev]\n"
@@ -173,6 +184,75 @@ def c_no_token_leak(s):
     return f
 
 
+def c_token_refused(s):
+    f = []
+    for token in (SENTINEL + "\r", SENTINEL + " x"):  # a CRLF file's CR; a pasted space
+        rc, out, err = run(s, token=token)
+        expect(f, f"{token!r}: the refusal names the variable", "credential: GH_TOKEN REFUSED" in out)
+        expect(f, f"{token!r}: nothing is read, so both branches are NOT VERIFIED",
+               "dev: NOT VERIFIED" in out and "main: NOT VERIFIED" in out)
+        expect(f, f"{token!r}: every dev cell is UNKNOWN", set(column(out, "dev").values()) == {"UNKNOWN"})
+        expect(f, f"{token!r}: a refused credential does not change the exit", rc == 0)
+        expect(f, f"{token!r}: the value appears in neither stream", SENTINEL not in out + err)
+    return f
+
+
+def _echo_server() -> str:
+    """A loopback HTTP 'server' that answers each request with the Authorization value it received
+    as its status line: http.client reads that as a BadStatusLine whose text carries the token."""
+    srv = socket.create_server(("127.0.0.1", 0))
+
+    def serve():
+        while True:
+            conn, _ = srv.accept()
+            with conn:
+                data = b""
+                while b"\r\n\r\n" not in data and (chunk := conn.recv(4096)):
+                    data += chunk
+                auth = [l.split(b":", 1)[1].strip() for l in data.split(b"\r\n")
+                        if l.lower().startswith(b"authorization:")]
+                conn.sendall((auth[0] if auth else b"no-authorization") + b"\r\n")
+    threading.Thread(target=serve, daemon=True).start()
+    return f"http://127.0.0.1:{srv.getsockname()[1]}"
+
+
+def live_in_process(script: Path, token: str):
+    """-> (escaped exception or None, combined stdout+stderr) of the script's live section, run
+    in this process over its REAL transport, pointed at the loopback echo server."""
+    for k in ("http_proxy", "https_proxy", "all_proxy"):  # a proxy would carry the request off-host
+        os.environ.pop(k, None), os.environ.pop(k.upper(), None)
+    os.environ["no_proxy"] = os.environ["NO_PROXY"] = "*"
+    spec = importlib.util.spec_from_file_location("release_facts_under_test", script)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.API = _echo_server()
+    buf, escaped = io.StringIO(), None
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        try:
+            mod.live_section(REPO, {"lint": True}, mod.make_get(None, token), "GH_TOKEN")
+        except Exception as e:  # noqa: BLE001 — an escape IS the defect under test; record, never crash
+            escaped = e
+    return escaped, buf.getvalue()
+
+
+def c_transport_header_error(s):
+    f, (escaped, out) = [], live_in_process(s, SENTINEL + "\r")  # http.client refuses it before connecting
+    dev = next((l for l in out.splitlines() if l.strip().startswith("dev:")), "")
+    expect(f, "the illegal header is caught, not raised", escaped is None)
+    expect(f, "it prints NOT VERIFIED naming the TYPE", "NOT VERIFIED" in dev and "ValueError" in dev)
+    expect(f, "the token appears nowhere in the output", SENTINEL not in out and SENTINEL not in repr(escaped))
+    return f
+
+
+def c_transport_http_exception(s):
+    f, (escaped, out) = [], live_in_process(s, SENTINEL)  # a clean token: the server echoes it back
+    dev = next((l for l in out.splitlines() if l.strip().startswith("dev:")), "")
+    expect(f, "an http.client.HTTPException is caught, so the exit cannot change", escaped is None)
+    expect(f, "it prints NOT VERIFIED naming the TYPE", "NOT VERIFIED" in dev and "BadStatusLine" in dev)
+    expect(f, "the echoed token appears nowhere in the output", SENTINEL not in out)
+    return f
+
+
 def c_every_instance(s):
     f, (rc, out, err) = [], run(s)
     expect(f, "both pull_request instances on main are printed",
@@ -190,7 +270,8 @@ def c_no_floor_invented(s):
 
 
 CASES = {c.__name__: c for c in (c_positive, c_empty_200, c_403, c_404, c_named_job, c_flow_refused, c_paths_filtered,
-                                  c_null_bypass, c_no_token_leak, c_every_instance, c_no_floor_invented)}
+                                  c_null_bypass, c_no_token_leak, c_token_refused, c_transport_header_error,
+                                  c_transport_http_exception, c_every_instance, c_no_floor_invented)}
 
 # (case that must red, text in the script, replacement that reintroduces the defect)
 MUTANTS = [
@@ -202,7 +283,11 @@ MUTANTS = [
     ("c_paths_filtered",'PR_FILTERS = ("paths", "paths-ignore", "branches", "branches-ignore")',
      'PR_FILTERS = ("paths-ignore", "branches-ignore")'),
     ("c_null_bypass", "        if bp is None:\n", "        if False:\n"),
-    ("c_no_token_leak", "return var, os.environ[var]", 'return f"{var}={os.environ[var]}", os.environ[var]'),
+    ("c_no_token_leak", "return var, value, None", 'return f"{var}={value}", value, None'),
+    ("c_token_refused", 'if not all("!" <= c <= "~" for c in value):', "if False:"),
+    ("c_transport_header_error", "return None, _type_names(e)", 'return None, f"{type(e).__name__}: {e}"'),
+    ("c_transport_http_exception", "except (OSError, ValueError, http.client.HTTPException) as e:",
+     "except (OSError, ValueError) as e:"),
     ("c_every_instance", "for rule in body:", 'for rule in {r.get("type"): r for r in body}.values():'),
     ("c_no_floor_invented", "if rc == 0 and out:", "if True:"),
     ("c_positive", '("yes" if lane in r else "no")', '("yes" if lane in r else "UNKNOWN")'),

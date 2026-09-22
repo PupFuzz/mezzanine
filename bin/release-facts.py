@@ -20,12 +20,18 @@ so that join is a CHECKED fact here rather than an assumption; 2 the tree could 
 A live read that fails never changes the exit status.
 
 CREDENTIAL: `GH_TOKEN`, else `GITHUB_TOKEN`, else unauthenticated. Which one is named in the
-output; the value never is. `--responses FILE` replaces the network with a JSON map of
-`"<path>": {"status": N, "body": <json>}` (the selftest's hermetic transport).
+output; the value never is. A value holding anything but printable ASCII without spaces (so any
+whitespace or control character) is REFUSED: the variable is named, nothing live is requested,
+and both branches print NOT VERIFIED. A failed live read is reported by the exception's TYPE name
+only, never its text, which can carry the request's headers.
+
+`--responses FILE` replaces the network with a JSON map of `"<path>": {"status": N, "body": <json>}`
+(the selftest's hermetic transport).
 """
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import os
 import re
@@ -36,6 +42,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+API = "https://api.github.com"
 BRANCHES = ("dev", "main")
 PAGE = 100  # the API's per_page maximum; a full page is reported as possibly truncated
 PR_EVENTS = ("pull_request", "pull_request_target")
@@ -175,10 +182,18 @@ def floors(root: Path, lanes) -> None:
 
 
 def credential():
+    """-> (label, token, refused). The label names the variable, never the value. A GitHub token is
+    printable ASCII with no spaces; anything else (a CR from a CRLF file, a pasted newline) is
+    refused here rather than sent, because http.client quotes an illegal header value, token and
+    all, in the text of the error it raises."""
     for var in ("GH_TOKEN", "GITHUB_TOKEN"):
-        if os.environ.get(var):
-            return var, os.environ[var]
-    return "unauthenticated", None
+        value = os.environ.get(var)
+        if value:
+            if not all("!" <= c <= "~" for c in value):
+                return (f"{var} REFUSED — its value holds whitespace, a control character or non-ASCII,"
+                        " so nothing live is requested"), None, True
+            return var, value, None
+    return "unauthenticated", None, None
 
 
 def make_get(responses: Path | None, token: str | None):
@@ -194,15 +209,23 @@ def make_get(responses: Path | None, token: str | None):
         hdr = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
         if token:
             hdr["Authorization"] = f"Bearer {token}"
-        req = urllib.request.Request(f"https://api.github.com/{path}", method="GET", headers=hdr)
+        req = urllib.request.Request(f"{API}/{path}", method="GET", headers=hdr)
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
                 return resp.status, json.load(resp)
         except urllib.error.HTTPError as e:
             return e.code, None
-        except (urllib.error.URLError, OSError, ValueError) as e:
-            return None, f"{type(e).__name__}: {e}"
+        except (OSError, ValueError, http.client.HTTPException) as e:  # every transport failure: NOT VERIFIED
+            return None, _type_names(e)
     return get
+
+
+def _type_names(e: BaseException) -> str:
+    """TYPE NAMES ONLY, never str(e): an illegal header value is quoted, Authorization included, in
+    the ValueError http.client raises, and a server's reply can come back inside a BadStatusLine.
+    URLError wraps the socket or TLS error that caused it, so that type is named too."""
+    reason = getattr(e, "reason", None)
+    return type(e).__name__ + (f"({type(reason).__name__})" if isinstance(reason, BaseException) else "")
 
 
 def live_section(repo: str, lanes, get, cred: str) -> tuple:
@@ -285,14 +308,16 @@ def main(argv=None) -> int:
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "PupFuzz/mezzanine"))
     ap.add_argument("--responses", type=Path, help="canned API responses (hermetic tests)")
     a = ap.parse_args(argv)
-    cred, token = credential()
+    cred, token, refused = credential()
     print(f"release-facts — {a.repo}, tree {a.root}")
     try:
         lanes, broken = tree_section(a.root)
     except (TreeError, OSError) as e:
         print(f"release-facts: cannot read the workflow tree — {e}", file=sys.stderr)
         return 2
-    hidden, unread = live_section(a.repo, lanes, make_get(a.responses, token), cred)
+    get = ((lambda path: (None, "not requested, the credential was refused")) if refused
+           else make_get(a.responses, token))
+    hidden, unread = live_section(a.repo, lanes, get, cred)
     unverifiable_section(a.root, hidden, unread)
     return 1 if broken else 0
 
