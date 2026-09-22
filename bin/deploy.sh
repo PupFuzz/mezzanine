@@ -473,6 +473,31 @@ ENV_READ_ERR_FD=
 # can come back with the `scratch` kind (§ env_lines_load) — so a later load inside a `$( env_get … )`
 # could then answer status 3 for a scratch file, and `env_unread_refuse` and A10b would tell the operator
 # the `.env` stopped being readable, which is the false cause card#9933 ended.
+# scratch_writable <path> — 0 when a byte written to <path> reads back, leaving <path> an EMPTY file;
+# 1 otherwise. THE scratch probe (card#9932), for `_scratch` and the .env loader's `env_read_err_open`
+# alike: `mktemp` succeeding says a file exists, and only a write says bytes can land in it — on a
+# filesystem out of BLOCKS the first does and the second does not (measured on a real full tmpfs).
+# Builtins only, no fork: the loader is on the scan path `bin/env-mirror-diff.sh` holds fork-free.
+# ⚠ Errors are NOT silenced here — the caller decides: `_scratch` shows bash's write error, which names
+# the errno, and the loader silences it as it silences its other scratch errors.
+# `read`'s STATUS is not the test: the probe carries no newline, so `read` answers 1 (end of file) on the
+# byte it did read. The VALUE is the test, and a read that could not open the path leaves it empty.
+# ⛔ DEFINED INSIDE THE `.env reading` BLOCK, ABOVE `env_read_err_open`, even though `_scratch` (outside the
+# block, defined later) is its other caller: `bin/env-mirror-diff.mirror.sh` extracts and sources only the
+# text from `# ── .env reading` to `git_at() {`, and `env_read_err_open` — inside that range — calls this.
+# Left where a plain read of deploy.sh top-to-bottom would put it (after `_scratch`), the mirror would
+# source `env_read_err_open` without it: an undefined command, status 127, silenced by `2>/dev/null` into
+# `|| return 3` — "not writable" for a probe that never ran (card#9932 review, B-1). `_scratch` calling a
+# function defined earlier in the file is fine either way: bash resolves a function by name at CALL time,
+# once the whole script has been sourced, not by its textual position.
+scratch_writable() {
+  local __sw_back=""
+  printf 'x' > "$1" || return 1
+  IFS= read -r -n 1 __sw_back < "$1" || :
+  [ "$__sw_back" = x ] || return 1
+  : > "$1"
+}
+
 env_read_err_open() {
   local t
   t="$(mktemp 2>/dev/null)" || return 1
@@ -1214,23 +1239,6 @@ _scratch() { # _scratch <var> <what it is for> <file|directory> [mktemp option�
   fi
   [ "$__sc_kind" != directory ] || rm -f "$__sc_probe"
   printf -v "$__sc_var" '%s' "$__sc_out"
-}
-
-# scratch_writable <path> — 0 when a byte written to <path> reads back, leaving <path> an EMPTY file;
-# 1 otherwise. THE scratch probe (card#9932), for `_scratch` and the .env loader's `env_read_err_open`
-# alike: `mktemp` succeeding says a file exists, and only a write says bytes can land in it — on a
-# filesystem out of BLOCKS the first does and the second does not (measured on a real full tmpfs).
-# Builtins only, no fork: the loader is on the scan path `bin/env-mirror-diff.sh` holds fork-free.
-# ⚠ Errors are NOT silenced here — the caller decides: `_scratch` shows bash's write error, which names
-# the errno, and the loader silences it as it silences its other scratch errors.
-# `read`'s STATUS is not the test: the probe carries no newline, so `read` answers 1 (end of file) on the
-# byte it did read. The VALUE is the test, and a read that could not open the path leaves it empty.
-scratch_writable() {
-  local __sw_back=""
-  printf 'x' > "$1" || return 1
-  IFS= read -r -n 1 __sw_back < "$1" || :
-  [ "$__sw_back" = x ] || return 1
-  : > "$1"
 }
 
 # git_diagnostic_unread <what> <git subcommand> <status> <cat status> — git answered <status>, and the
