@@ -3930,7 +3930,9 @@ scratch_refused "A7, git_commit_of's tag peel" 3 \
 #
 # ⛔ THE FILESYSTEM IS REALLY FULL. `run_full` mounts a small tmpfs in a user and mount namespace of its
 # own (`unshare -Ur -m`, no root) and runs the deploy inside it, mapped back to this user's own uid by a
-# second, nested user namespace — so every ownership and mode the deploy reads is what it reads outside.
+# second, nested user namespace — so ownership and mode on the fixtures these cases touch, all of them
+# this user's own, read the same as outside. The mapping is single-user: a file owned by root or any
+# other uid would read as the overflow uid inside it, which no fixture here has occasion to be.
 # The mktemp pass-through fills that tmpfs with `dd` just before the Nth call (§ the stub), so the scratch
 # files made before it are made on a filesystem with room, exactly as on a host that fills mid-run. Inodes
 # are left free on purpose: out of INODES is the `mktemp`-FAILS case the § card#9816 cases already cover.
