@@ -32,7 +32,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   body is fixed. Which branches require it is a repository setting; `docs/VERSIONING.md § Branch model`
   carries the command that reads it. **To clear the red, edit the PR body**: the check re-runs on the
   edit, with no new push. The failed step's log lists each finding, where it is and which rule it
-  breaks, and ends with a line naming the outcome. To check a body before you open the PR, run
+  breaks, then a closing block whose first line names the outcome. **Re-running the failed job
+  does not clear it**: a re-run judges the body the original event carried, so edit the body
+  instead. To check a body before you open the PR, run
   `python3 bin/pr-body-lint.py --body-file=<file>` and look for exit 0; `bin/change-pr-body.py`
   writes a skeleton that passes it (`CLAUDE.md § PR bodies are judged against the fleet standard`).
   **A red that says the linter could not judge the body is a wiring defect, not a finding**, and

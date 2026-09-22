@@ -229,10 +229,11 @@ jobs:
           echo
           case "$rc" in
             0) echo "pr-body-lint · rc=0 — this body meets the standard." ;;
-            1) echo "pr-body-lint · rc=1 — this body does not meet the standard, so this job fails."
-               echo "Fix: edit the PR body to clear the findings above; the edit re-runs this check."
+            1) echo "pr-body-lint · rc=1 — this job fails. If the log above lists findings, this body"
+               echo "does not meet the standard. Fix: edit the PR body to clear them; the edit re-runs"
+               echo "this check. Re-running this job does not help: it judges the body as it was."
                echo "If the log above shows a Python traceback instead of findings, the linter"
-               echo "crashed: that is a defect in this repository, not in the body." ;;
+               echo "crashed: that is a defect in this repository, and editing the body does not fix it." ;;
             *) echo "pr-body-lint · rc=$rc — the linter could not judge this body (usage/input"
                echo "fault). No verdict was produced. This is a WIRING defect in this step, not a"
                echo "finding about the body, and a check that could not judge fails rather than"
