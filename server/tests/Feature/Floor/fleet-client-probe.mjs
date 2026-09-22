@@ -12,15 +12,36 @@
  *      "until_ms":   N,
  *      "status_keys":[ "<install/seat>", … ]   // keys to poll readStatus() for, held or not
  *      "repeat":     N                          // run the same scenario N times IN ONE PROCESS
+ *      "browser_clock_ms": N                    // the BROWSER's clock at scenario t=0 (default 0)
+ *      "age_ticker": true                       // start `age-readout.js`'s 1 s ticker after start()
+ *      "durations":  [ <seconds>, … ]           // `formatDuration` sampled on these, for a test's
+ *                                               //  expected string — the shipped format, not a copy
  *    }`
- * stdout — JSON: `{ "runs": [ <one run per repeat> ] }`, each run
+ * stdout — JSON: `{ "runs": [ <one run per repeat> ], "durations": [ … ] }`, each run
  *   `{ "records": [ … ], "final": <the last record>, "unscripted": [], "listeners": [ {type: n} ],
- *      "pending_timers": N, "rejections": [] }`
+ *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ] }`
  *   and each record
  *   `{ "at", "label", "outcome", "seats", "event_log", "requests", "phase", "clock_offset_ms",
  *      "read_status": { "<key>": {missing, failStreak, confirmedAt} }, "discrepancy_state" }`.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * ⛔ THE BROWSER'S CLOCK IS THE SCENARIO CLOCK PLUS `browser_clock_ms`, and nothing else. That
+ * one offset is how AT-D3-10 puts the viewer's machine three hours ahead of the server: the client
+ * and the age ticker both read it, and neither can tell it from a real fast clock. A run that
+ * names none starts the browser at the epoch, which is itself a wrong clock, and every existing
+ * run's recorded offset is measured against it.
+ *
+ * ⛔ `Date.now` IS THAT SAME BROWSER CLOCK for the length of a replay, and the real one is put
+ * back after it. No shipped module here reads it — `age-readout.js` and `fleet-client.js` are
+ * both scanned for it — so this exists for one reader: a PLANTED module that reads the browser's
+ * own clock where it should read the corrected one must read the scenario's browser, three hours
+ * fast, and not the build host's calendar, or AT-D3-10's RED would be red for a reason nobody wrote.
+ *
+ * ⛔ THE AGE TICKER IS THE SHIPPED ONE, ON THE SCENARIO'S OWN TIMER. `setInterval` here schedules
+ * a repeating event on the same queue every message and response is on, so an age render lands
+ * at an exact scenario instant and is recorded as `age_renders[]` — the headless observation of
+ * every age readout AT-D3-10's floor half asserts on.
+ *
  * ⛔ THE SCENARIO CLOCK IS THE ONLY CLOCK, AND IT STARTS AT `start()`. Every `at_ms` and every
  * `delay_ms` is measured on it, and a response resolves at `request time + delay_ms`. That is what
  * makes § 2.2's 500 ms connect window REACHABLE at all: against a live D2 the stream delivers a
@@ -61,6 +82,8 @@ if (typeof dir !== 'string' || dir === '') {
 }
 
 const { FleetClient } = await import(pathToFileURL(join(dir, 'fleet-client.js')).href);
+const { startAgeTicker } = await import(pathToFileURL(join(dir, 'age-readout.js')).href);
+const { formatDuration } = await import(pathToFileURL(join(dir, 'duration.js')).href);
 
 const fx = JSON.parse(readFileSync(0, 'utf8') || '{}');
 
@@ -77,13 +100,18 @@ for (let i = 0; i < (fx.repeat ?? 1); i++) {
     runs.push(await replay(fx));
 }
 
-console.log(JSON.stringify({ runs }, null, 2));
+console.log(JSON.stringify({
+    runs,
+    durations: (fx.durations ?? []).map((seconds) => formatDuration(seconds)),
+}, null, 2));
 
 async function replay(scenario) {
     rejections = [];
 
     let now = 0;
-    const clock = { now: () => now };
+    const clock = { now: () => (scenario.browser_clock_ms ?? 0) + now };
+    const realDateNow = Date.now;
+    Date.now = clock.now;
 
     const timers = [];
     let seq = 0;
@@ -132,6 +160,34 @@ async function replay(scenario) {
 
     const client = new FleetClient(http.fetch, FakeEventSource, clock);
     const records = [];
+    const ageRenders = [];
+
+    // The shipped ticker's timer, on the scenario queue: one repeating event per interval.
+    const intervals = new Set();
+    let intervalId = 0;
+    const timersImpl = {
+        setInterval(fire, ms) {
+            const id = ++intervalId;
+            const arm = (at) => schedule(at, 'age tick', () => {
+                if (!intervals.has(id)) {
+                    return 'cleared';
+                }
+
+                fire();
+                arm(at + ms);
+
+                return 'ticked';
+            });
+
+            intervals.add(id);
+            arm(now + ms);
+
+            return id;
+        },
+        clearInterval(id) {
+            intervals.delete(id);
+        },
+    };
 
     const snap = (label, outcome = null) => {
         const seats = [...client.seats];
@@ -155,6 +211,13 @@ async function replay(scenario) {
     snap('pre-start');
 
     client.start();
+
+    if (scenario.age_ticker === true) {
+        startAgeTicker(client, clock, timersImpl, (readouts) => {
+            ageRenders.push({ at: now, readouts: JSON.parse(JSON.stringify(readouts)) });
+        });
+    }
+
     await turn();
     snap('start');
 
@@ -176,6 +239,8 @@ async function replay(scenario) {
         snap(timer.label, outcome ?? null);
     }
 
+    Date.now = realDateNow;
+
     return {
         records,
         final: records[records.length - 1],
@@ -185,5 +250,6 @@ async function replay(scenario) {
         )),
         pending_timers: timers.length,
         rejections: [...rejections],
+        age_renders: ageRenders,
     };
 }

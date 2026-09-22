@@ -27,9 +27,10 @@
  * against.
  *
  * ⛔ NOTHING HERE DRAWS ANYTHING, AND NOTHING HERE SETS A TIMER. The protocol holds data: the seat
- * map, the record's lines, the clock offset, the read status. Every render is a later step's
- * (Appendix B rows 4, 6, 9, 10), and the one renderer owns every hook. No `setTimeout`, no
- * `Date.now`, no `Math.random`: the clock is injected, which is what lets the harness replay a
+ * map, the record's lines, the clock offset, the read status. Every render is another module's
+ * (Appendix B rows 4, 6, 9, 10 — row 4's ages are `wire/age-readout.js`, which reads this
+ * client's seats and offset and ticks on a timer it is handed), and the one renderer owns every
+ * hook. No `setTimeout`, no `Date.now`, no `Math.random`: the clock is injected, which is what lets the harness replay a
  * scenario and get the same records every time — `Tests\Feature\Floor`'s determinism check scans
  * this file's own source for those identifiers.
  *
@@ -171,7 +172,7 @@ export class FleetClient {
         return this.#phase;
     }
 
-    /** § 2.4's offset, or `null` before any `server_time` arrived. Every AGE is a later step's. */
+    /** § 2.4's offset, or `null` before any `server_time` arrived. Every AGE is `age-readout.js`'s. */
     get clockOffsetMs() {
         return this.#offset;
     }

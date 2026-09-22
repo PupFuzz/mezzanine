@@ -20,7 +20,7 @@
  * The bar is written at its value, which is A12's own reduced-motion form.
  */
 
-import { clockOffsetMs } from '../wire/duration.js';
+import { clockOffsetMs, correctedNowMs } from '../wire/duration.js';
 import { drillDownModel } from './drilldown-model.js';
 
 /** Text into a slot, or nothing when this panel does not carry that element. */
@@ -56,18 +56,17 @@ function putRows(root, selector, rows) {
 }
 
 /**
- * § 2.1 row 1's corrected clock: `server_time − browser_now`, applied to `browser_now`. It is
- * arithmetic over a value the response carries, not a judgement — which is why it is admitted
- * into this layer while nothing else is.
+ * § 2.1 row 1's corrected clock, from this panel's own response: `server_time − browser_now`,
+ * applied to `browser_now` by `wire/duration.js`'s one `correctedNowMs`. It is arithmetic over a
+ * value the response carries, not a judgement — which is why it is admitted into this layer while
+ * nothing else is.
  *
  * `null` when the response carried no readable `server_time`: the model then renders no age at
  * all rather than one measured against the viewer's own machine clock, which § 2.4 admits at
  * exactly one place on this product and it is not here.
  */
-function correctedNowMs(seat, browserNowMs) {
-    const offset = clockOffsetMs(seat?.server_time ?? null, browserNowMs);
-
-    return offset === null ? null : browserNowMs + offset;
+function panelNowMs(seat, browserNowMs) {
+    return correctedNowMs(clockOffsetMs(seat?.server_time ?? null, browserNowMs), browserNowMs);
 }
 
 /**
@@ -79,7 +78,7 @@ function correctedNowMs(seat, browserNowMs) {
  */
 export function renderDrillDown(root, seat, timeline, options = {}) {
     const model = drillDownModel(seat, timeline, {
-        now_ms: options.now_ms ?? correctedNowMs(seat, Date.now()),
+        now_ms: options.now_ms ?? panelNowMs(seat, Date.now()),
         ref_bases: options.ref_bases ?? null,
     });
 

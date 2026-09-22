@@ -114,6 +114,13 @@ because a gate can only be proven on a defect of its own class:
             -- replace the first hyphen of the anchored name with an underscore, which is the class
                "a name was malformed into a shape the gate's token does not read".  Also #164 round 1:
                G5's undeclared-fixture control read only `fx-` names, so `fx_gap` was invisible to it.
+  `embolden`
+            -- wrap the anchored span in `**`, which is the class "a status marker was written in
+               the form a parse reads as a name".  card#7341 Q9 is why this exists: G5 registers
+               every bold span in an Appendix B Artifact cell as an artifact, so three bold
+               `✅ LANDED` markers each minted a phantom artifact, and a fourth row was written
+               unbolded to dodge it -- two forms of one marker.  The plant emboldens a marker
+               already in the one form, so what reds is the emphasis alone.
 
 TWO VERDICTS.  `PLANTS` must RED, as described above.  `HOLDS` must NOT: the mutant must carry no
 line containing the named substring that the control lacks -- the same differential, pointed the
@@ -533,6 +540,19 @@ PLANTS = [
         "an instrument covers only a test that the Appendix B row building it also gates",
     ),
     (
+        # card#7341 Q9, G5's marker leg.  Step 3's row carries its landed marker in the one form
+        # (unbolded, at the head of the Artifact cell); emboldening it is the shape rows 11-13 had,
+        # which G5 read as three artifacts named after a date.  The anchor pins the row number and
+        # the marker's shape, never its date or card, so a later marker edit moves the plant with it.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\n\| 3 \| )(✅ landed \d{4}-\d{2}-\d{2} \(card#\d+[^()\n]*\))( — )",
+        "embolden",
+        "step 3's landed marker in Appendix B, written bold, which G5 must refuse as a phantom "
+        "artifact rather than parse into the artifact map (card#7341 Q9)",
+        "carries a BOLD status marker",
+    ),
+    (
         # card#7341 step 3, G13.  § 2.3 row 5 makes a HELD seat the client cannot confirm render the
         # empty chair, and `idle`'s Never cell forbade exactly that in absolute terms.  The drop
         # takes the QUALIFICATION and leaves the explanation that follows it — which is the shape a
@@ -646,6 +666,7 @@ MUTATIONS = {
                                  re.M).group(1) + "**", m.group(2), count=1)
                              + m.group(3)),
     "separator": lambda m: m.group(1) + m.group(2).replace("-", "_", 1) + m.group(3),
+    "embolden": lambda m: m.group(1) + "**" + m.group(2) + "**" + m.group(3),
 }
 
 # The spawning kinds.  Each reads the column, its width and its table out of the anchored migration
