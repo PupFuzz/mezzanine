@@ -4114,9 +4114,11 @@ fi
 # TREE — the healthy-store peel-mismatch fixture above, § ⛔ THE ANNOTATED TAG) and makes only the PEEL's
 # own `rev-parse --verify` — the third call this run makes, after the two candidate resolutions the loop
 # tries first — come back unreadable. The knob's skip count is what steers past the first two.
-# Mutation, run: drop `|| [ "$__cat" -eq 0 ]` from git_commit_of's own `git_diagnostic_unread` guard
-# and the refusal becomes the peel-mismatch text, "dereferences to tree type" — git's real answer,
-# taken for read even though it was not.
+# Mutation, run: drop `|| __cat=$?` from git_commit_of's capture of the peel's stderr, so `$__cat`
+# stays 0 as if `cat` had succeeded, and this case's own headline reds: the unreadable diagnostic is
+# no longer told apart from a read one. (The guard's `[ "$__cat" -eq 0 ]` clause is not what this
+# case controls: here `$__rc` is already non-zero, so that clause cannot change the outcome. It is
+# exercised by the healthy-store `tree tag` fixture, card#9611, whose `cat` succeeds.)
 if [ "$(/usr/bin/id -u)" = 0 ]; then
   notverified "card#9932: an unreadable git stderr file cannot be produced by a ROOT runner" \
     "root opens a mode-000 file, so \`cat\` succeeds and the case would certify nothing."
