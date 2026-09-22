@@ -40,8 +40,14 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   duplicate-declaration and cross-install cases. The fixture resolves **two** names, so the line has the
   two endpoints it is drawn between, and carries the duplicate case on a third name that is nobody's
   endpoint — a duplicated name resolves to nothing, so a fixture duplicating an endpoint name cannot
-  draw the render it gates. A20's trigger now states the origin precondition its render always assumed:
-  a broadcast whose origin resolves to no desk draws no ring, rather than one on a guessed desk.
+  draw the render it gates. Its two endpoints are in **different check states**, so § 5.7's *a resolved
+  endpoint whose declaration was never checked is rendered as one* row is gated by a resolving
+  `unchecked` declaration with the `checked` endpoint beside it as the control, rather than by the
+  duplicate arm where the check state changes no outcome; and the fixture's `targets: null` sits on a
+  broadcast address, the one wire state D1 § 18.7 assigns `null` to, rather than beside a `to` naming a
+  single seat, which the producer cannot emit. A20's trigger now states the origin precondition its
+  render always assumed: a broadcast whose origin resolves to no desk draws no ring, rather than one on
+  a guessed desk.
   `tools/design/verify-floor.py` and its selftest are green on both closures.
 
 - **card#9815** — **The deploy names a PHP-FPM pool file it cannot read as `cannot read <file>`, and
