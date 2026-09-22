@@ -49,13 +49,32 @@ export const AGE_REFRESH_MS = 1000;
 export const NOTHING_DONE_YET = 'nothing done yet';
 
 /**
+ * The label every seat-clock claim carries (§ 2.4's seat-clock bullet: "rendered **as the seat's
+ * own claim**, labelled *seat clock*"). One spelling, read by `seatClock` below and by the one form
+ * that puts the label inside a parenthetical of its own — § 7.6's *was:* currency label, *(last
+ * event 12:47, seat clock)* — so the two forms cannot label one claim two ways.
+ */
+export const SEAT_CLOCK = 'seat clock';
+
+/**
  * A seat-clock instant, LABELLED as one: `HH:MM:SS (seat clock)`, from the wire's own digits
  * (`wire/clock.js`). `null` in, `null` out — the caller draws the member's own absence.
+ *
+ * ⭐ THE PRECISION IS `HH:MM:SS`, ON EVERY SURFACE, AND THAT WAS DECIDED RATHER THAN INHERITED
+ * (card#7341 step 5, the builder's call per comment 6246 item 3). FLOOR's worked instances write a
+ * seat-clock claim as `HH:MM` — *since 14:31 (seat clock)*, *(last event 12:47, seat clock)* —
+ * and § 7.1 is explicit that a worked instance is never a rule. Every timestamp form FLOOR DOES
+ * publish as a rule carries seconds — § 2.4's *as of HH:MM:SS* stamp, § 4.1's *membership as of
+ * HH:MM:SS*, § 6.2 A14's *last message HH:MM:SS*, § 9's *not live since HH:MM:SS* — and the desk
+ * itself draws one of them beside these claims (§ 7.4's lag line). A desk that wrote its seat-clock
+ * claims in minutes beside a stamp in seconds would render one kind of fact at two precisions, and
+ * truncating a seat's claim to the minute throws away the digits the wire sent for no reader's
+ * benefit. So one primitive, `wire/clock.js`'s `clockTime`, and one precision.
  */
 export function seatClock(wireTime) {
     const at = clockTime(wireTime);
 
-    return at === null ? null : `${at} (seat clock)`;
+    return at === null ? null : `${at} (${SEAT_CLOCK})`;
 }
 
 /**

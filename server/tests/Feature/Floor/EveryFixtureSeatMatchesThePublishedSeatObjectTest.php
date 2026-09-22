@@ -490,7 +490,7 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
     {
         $files = [];
 
-        foreach (['fx-snapshot-4', 'fx-gap', 'fx-membership', 'fx-confirm'] as $file) {
+        foreach ($this->fixtureFileNames() as $file) {
             $files[$file] = $this->fixtureFile($file);
         }
 

@@ -27,10 +27,11 @@
  * against.
  *
  * ⛔ NOTHING HERE DRAWS ANYTHING, AND NOTHING HERE SETS A TIMER. The protocol holds data: the seat
- * map, the record's lines, the clock offset, the read status. Every render is another module's
- * (Appendix B rows 4, 6, 9, 10 — row 4's ages are `wire/age-readout.js`, which reads this
- * client's seats and offset and ticks on a timer it is handed), and the one renderer owns every
- * hook. No `setTimeout`, no `Date.now`, no `Math.random`: the clock is injected, which is what lets the harness replay a
+ * map, each held member's delivery stamp (§ 2.4's stamp rule, `stampOf`), the record's lines, the
+ * clock offset, the read status. Every render is another module's (Appendix B rows 4, 5, 6, 9, 10
+ * — row 4's ages are `wire/age-readout.js`, which reads this client's seats and offset and ticks
+ * on a timer it is handed; row 5's desks are `desk/desk-floor.js`, which reads the same), and the
+ * one renderer owns every hook. No `setTimeout`, no `Date.now`, no `Math.random`: the clock is injected, which is what lets the harness replay a
  * scenario and get the same records every time — `Tests\Feature\Floor`'s determinism check scans
  * this file's own source for those identifiers.
  *
@@ -144,6 +145,12 @@ export class FleetClient {
     #confirmedAt = new Map();
 
     /**
+     * key → `{ member: server_time }`: for each top-level member of the held object, the
+     * `server_time` of whatever DELIVERED the value now held — § 2.4's stamp rule.
+     */
+    #stamps = new Map();
+
+    /**
      * @param {Function} fetchImpl the browser's own `fetch`, unbound — called as a plain function
      *   through `wire/building.js`'s `request()`
      * @param {Function} EventSourceImpl constructed as `new EventSourceImpl('/api/fleet/stream')`;
@@ -175,6 +182,30 @@ export class FleetClient {
     /** § 2.4's offset, or `null` before any `server_time` arrived. Every AGE is `age-readout.js`'s. */
     get clockOffsetMs() {
         return this.#offset;
+    }
+
+    /**
+     * § 2.4's STAMP RULE for one member of one held seat: the `server_time` of whatever delivered
+     * the value the client now holds for it, or `null` for a member it holds nothing for.
+     *
+     * > "A block's *as of HH:MM:SS* stamp is the `server_time` of whatever delivered the values the
+     * > block is currently showing — a fetch, a snapshot apply, a resync, or a delta whose shallow
+     * > merge re-sent that nested object whole. The stamp advances **with** the values and never
+     * > independently of them."
+     *
+     * ⛔ IT IS HELD HERE BECAUSE ONLY THE PROTOCOL SEES THE ENVELOPE. The held object is D2
+     * § 8.2.1's seat object with the REST envelope stripped (see `#fetchSeat`), so by the time a
+     * renderer reads a `derivation` block the `server_time` that dates it is gone — and a renderer
+     * that stamped it with the client's newest `server_time` instead would date a two-minute-old
+     * `fold_lag_ms` to a heartbeat that never carried it (§ 7.4's lag line, AT-D3-5).
+     *
+     * ⛔ A REPLACED ROW STAMPS EVERY MEMBER; A `+1` PATCH STAMPS ONLY THE MEMBERS IT CARRIED. That
+     * is the shallow merge's own boundary (D2 § 8.3.1): a patch that touched `delivery.no_data_since`
+     * re-sent the whole `delivery` object, so `delivery` moves to that delta's `server_time`, and a
+     * `derivation` block it did not carry keeps the stamp of the fetch that last delivered it.
+     */
+    stampOf(k, member) {
+        return this.#stamps.get(k)?.[member] ?? null;
     }
 
     /**
@@ -330,6 +361,7 @@ export class FleetClient {
         for (const install of body.installs) {
             for (const row of install.seats) {
                 this.#replaceIfHigher(row);
+                this.#stampIfHeld(row, body.server_time);
             }
         }
     }
@@ -421,6 +453,7 @@ export class FleetClient {
         if (d.state_version === held.state_version + 1) {
             this.#seats.set(k, { ...held, ...d.patch, state_version: d.state_version });
             this.#confirm(k);
+            this.#stamp(k, Object.keys(d.patch), d.server_time);
 
             return;
         }
@@ -512,6 +545,7 @@ export class FleetClient {
                 if (d.state_version === h.state_version + 1) {
                     this.#seats.set(k, { ...h, ...d.patch, state_version: d.state_version });
                     this.#confirm(k);
+                    this.#stamp(k, Object.keys(d.patch), d.server_time);
                 }
             }
 
@@ -522,6 +556,7 @@ export class FleetClient {
         const inserted = !this.#seats.has(k);
 
         this.#replaceIfHigher(row);
+        this.#stampIfHeld(row, res.body.server_time);
         this.#confirm(k);
 
         if (inserted) {
@@ -547,6 +582,32 @@ export class FleetClient {
             this.#seats.set(k, row);
             this.#confirm(k);
         }
+    }
+
+    /**
+     * § 2.4's stamp rule, for a whole row: every member it carries was delivered by the response
+     * whose `server_time` is given — but ONLY if the row is now what the client holds. A row the
+     * version rule dropped delivered nothing the client shows, and stamping from it would date the
+     * held values to a response they did not come from.
+     */
+    #stampIfHeld(row, serverTime) {
+        const k = key(row.install_id, row.seat_id);
+
+        if (this.#seats.get(k) === row) {
+            this.#stamps.set(k, {});
+            this.#stamp(k, Object.keys(row), serverTime);
+        }
+    }
+
+    /** § 2.4's stamp rule, per member: these members' values arrived with `serverTime`. */
+    #stamp(k, members, serverTime) {
+        const stamps = this.#stamps.get(k) ?? {};
+
+        for (const member of members) {
+            stamps[member] = serverTime ?? null;
+        }
+
+        this.#stamps.set(k, stamps);
     }
 
     /**

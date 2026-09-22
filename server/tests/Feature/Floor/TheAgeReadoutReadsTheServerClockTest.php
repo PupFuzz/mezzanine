@@ -2,8 +2,6 @@
 
 namespace Tests\Feature\Floor;
 
-use DateTimeImmutable;
-use DateTimeZone;
 use Tests\TestCase;
 
 /**
@@ -369,51 +367,6 @@ class TheAgeReadoutReadsTheServerClockTest extends TestCase
         return $out;
     }
 
-    /**
-     * The SHIPPED `formatDuration` over these seconds, in order.
-     *
-     * @param  list<int|float>  $seconds
-     * @return list<string>
-     */
-    private function formatDurations(array $seconds): array
-    {
-        return $this->probe(['repeat' => 0, 'durations' => $seconds])['durations'];
-    }
-
-    /**
-     * § 2.4's wording for one fact, with `duration` in place of the table's own exemplar — read out
-     * of the wording table on every call, so the words are the document's.
-     */
-    private function wording(string $fact, string $duration): string
-    {
-        $doc = $this->floorMd();
-        $start = strpos($doc, '| Duration | Field | The string, verbatim | Where it may appear |');
-
-        $this->assertNotFalse($start, '§ 2.4\'s wording table was not found — every wording below would be unread');
-
-        $this->assertSame(1, preg_match('/^\s*\| \*\*'.preg_quote($fact, '/').'\*\* \| [^|]+ \| \*\*\*([^*]+)\*\*\* \|/m',
-            substr($doc, $start), $m), "§ 2.4's wording table has no row for the {$fact}");
-
-        $this->assertSame(1, preg_match('/^(.*?)\d+[hms](?: \d{2}[hms])?(.*)$/', $m[1], $parts),
-            "the {$fact}'s published string carries no duration to substitute");
-
-        return $parts[1].$duration.$parts[2];
-    }
-
-    /** @return array<string, array<string, mixed>> the run's served snapshot, keyed as the client holds it */
-    private function snapshotSeats(string $run): array
-    {
-        $seats = [];
-
-        foreach ($this->fixture($run)['http']['/api/fleet/snapshot'][0]['body']['installs'] as $install) {
-            foreach ($install['seats'] as $seat) {
-                $seats["{$seat['install_id']}/{$seat['seat_id']}"] = $seat;
-            }
-        }
-
-        return $seats;
-    }
-
     /** § 12's *Age readout refresh* row, in milliseconds. */
     private function refreshMs(): int
     {
@@ -421,20 +374,5 @@ class TheAgeReadoutReadsTheServerClockTest extends TestCase
             '§ 12 has no Age readout refresh row in seconds — the tick is checked against nothing');
 
         return (int) $m[1] * 1000;
-    }
-
-    private function serverTimeMs(string $run): int
-    {
-        return $this->ms($this->fixture($run)['http']['/api/fleet/snapshot'][0]['body']['server_time']);
-    }
-
-    /** An `rfc3339_ms` wire instant as epoch milliseconds — UTC-designated, so no zone question. */
-    private function ms(string $wire): int
-    {
-        $t = DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s.v\Z', $wire, new DateTimeZone('UTC'));
-
-        $this->assertNotFalse($t, "`{$wire}` is not an rfc3339_ms instant");
-
-        return $t->getTimestamp() * 1000 + (int) $t->format('v');
     }
 }

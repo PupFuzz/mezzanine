@@ -27,16 +27,16 @@
  *     ⛔ This is why NO *as of* stamp is drawn anywhere below: the stamp is owed by a
  *     `fetch-fresh` value, this slice renders none of the ten, and a stamp over values that do
  *     not need one would be a marker with nothing behind it.
- *   · LIVE PATCHING while the panel is open (§ 4.3). No delta-feed client exists in this
- *     repository yet — `lobby/main.js` says so of its own screen — so there is nothing to patch
- *     from. The model is pure over one fetch pair and takes the corrected clock as an argument,
- *     which is what a patching caller will need anyway.
- *   · the SIDE TABLE's stools and its *+N more* tag (§ 8, Appendix B step 5). That artifact is
- *     the DESK's, from the seat object's capped `subagents[]`, and there is no desk: the floor
- *     screen is card#9208-blocked on a D2 read surface for an authored map. What this panel owes
- *     § 8 is the UNCAPPED list, which is below and is a different artifact from a different
- *     source. The count beside it is `subagents_open` — the wire's — and never the list's length
- *     (§ 2.1's forbidden computations, AT-D3-4's second RED).
+ *   · LIVE PATCHING while the panel is open (§ 4.3). The delta-feed client exists
+ *     (`wire/fleet-client.js`, Appendix B step 3), but no page constructs it before step 8's
+ *     stream recovery, so nothing hands this panel a patched object yet. The model is pure over
+ *     one fetch pair and takes the corrected clock as an argument, which is what a patching
+ *     caller will need anyway.
+ *   · the SIDE TABLE's stools and its *+N more* tag (§ 8). That artifact is the DESK's, from the
+ *     seat object's capped `subagents[]`, and it is `desk/desk-render.js` (Appendix B step 5).
+ *     What this panel owes § 8 is the UNCAPPED list, which is below and is a different artifact
+ *     from a different source. The count beside it is `subagents_open` — the wire's — and never
+ *     the list's length (§ 2.1's forbidden computations, AT-D3-4's second RED).
  *
  * ⚠ TWO AGES ARE RENDERED IN A WORDING THIS DOCUMENT HAS NOT CHOSEN, and § 14 item 17 is what
  * permits it: the context sample's age and the timeline row's age are named there as sites whose
@@ -51,7 +51,9 @@
  */
 
 import { clockTime } from '../wire/clock.js';
+import { contextGauge } from '../wire/context-gauge.js';
 import { ageFrom } from '../wire/duration.js';
+import { NOT_REPORTED, UNTITLED } from '../wire/null-render.js';
 import { actionElapsedLine, quietAgeLine, seatClock } from '../wire/age-readout.js';
 import { isRenderState } from '../lobby/render-state.js';
 import { taskFacts } from '../wire/task.js';
@@ -70,17 +72,11 @@ import { taskFacts } from '../wire/task.js';
 export { taskRefLink, STALE_TITLE_DROPPED } from '../wire/task.js';
 
 /**
- * § 5.6's default for a member whose element space is drawn unconditionally. ⛔ It is never a
- * zero: "a zero is a measurement and a null is the absence of one" (§ 7.5).
+ * § 5.6's two shared words — *not reported* and *untitled* — are `wire/null-render.js`'s, which
+ * the desk speaks them from too (card#7341 step 5 hoisted them at the desk, their third caller).
+ * RE-EXPORTED, NOT RE-SPELLED: this panel's published surface keeps both names.
  */
-export const NOT_REPORTED = 'not reported';
-
-/**
- * § 8 / § 5.6 for a `subagents[].title` of `null` — "the honest orphan D1 § 6.8 and D2 § 8.2.1
- * both refuse to paper over". ⛔ NEVER the `subagent_type`, the tool name or the word
- * *subagent*: that is AT-D3-4's first RED, "a label for a spawn event that was never received".
- */
-export const UNTITLED = 'untitled';
+export { NOT_REPORTED, UNTITLED } from '../wire/null-render.js';
 
 /** § 5.2, verbatim: an empty timeline window is a fact, not an empty panel. */
 export const NO_ACTIVITY = 'no activity in this window';
@@ -204,7 +200,7 @@ export function drillDownModel(seat, timeline, options = {}) {
         task: taskBlock(seat?.task ?? null, options.ref_bases),
         action: actionBlock(seat?.action ?? null, ages ? now : null),
         quiet_age: quietAge(seat?.activity ?? null, ages ? now : null),
-        context: contextBlock(seat?.context ?? null, age),
+        context: contextGauge(seat?.context ?? null, age(seat?.context?.sampled_received_at ?? null)),
         interns: internBlock(seat, age),
         activity: activityBlock(timeline, age),
     };
@@ -273,47 +269,11 @@ function quietAge(activity, nowMs) {
 }
 
 /**
- * § 4.3's **context gauge**: the bar, the percentage to one decimal, `used_tokens /
- * total_tokens` when non-null, the sample's own age, and `context.source`.
- *
- * ⛔ A NULL `context` READS *not reported* AND DRAWS NO BAR — not a bar at 0 % (§ 5.6, § 7.5,
- * AT-D3-14). `bar` is `null` rather than `0` for exactly that reason: a zero here is the one
- * defect this gauge is famous for.
- *
- * ⛔ NO PERCENTAGE IS RECOMPUTED FROM THE TOKEN PAIR (§ 5.6, `context.total_tokens`), and the
- * bar still renders when the numerals are null, because `used_pct` is not nullable.
+ * § 4.3's **context gauge** is `wire/context-gauge.js`'s `contextGauge` — the bar, the percentage
+ * to one decimal, the numerals, `context.source`, the sampled-at claim and the sample's own age —
+ * hoisted there at its second caller, the desk (card#7341 step 5). § 14 item 17's meantime clause
+ * owns the age's wording, which is why the panel hands it the bare duration and no sentence.
  */
-function contextBlock(context, age) {
-    // ⛔ THE SECOND CONDITION IS BOUNDARY VALIDATION, NOT A DEFENCE AGAINST A STATE THAT CANNOT
-    // HAPPEN. D2 § 8.2.1 declares `used_pct` NOT nullable, so an object arriving without a
-    // readable one is a malformed wire object rather than a seat state — and the one thing this
-    // gauge may never do is turn that into a bar at 0 %, which is exactly what `Number(null)`
-    // would produce two lines below. A percentage the wire did not send is a percentage this
-    // panel does not report, on the same terms as a sample that was never taken.
-    const pct = typeof context?.used_pct === 'number' && Number.isFinite(context.used_pct)
-        ? context.used_pct
-        : null;
-
-    if (context === null || pct === null) {
-        return { reported: false, statement: NOT_REPORTED, bar: null, pct: null };
-    }
-
-    const used = context.used_tokens ?? null;
-    const total = context.total_tokens ?? null;
-
-    return {
-        reported: true,
-        bar: pct,
-        pct: `${pct.toFixed(1)} %`,
-        numerals: used === null || total === null ? NOT_REPORTED : `${used} / ${total}`,
-        // D1 § 6.11 / § 4.3: `harness` or `computed`, never mixed and never averaged.
-        source: context.source ?? null,
-        sampled_at: seatClock(context.sampled_at ?? null),
-        // The sample's own age, from the SERVER-clock receipt. § 14 item 17's meantime clause
-        // owns the wording, which is why this is the bare duration and no sentence.
-        age: age(context.sampled_received_at ?? null),
-    };
-}
 
 /**
  * § 4.3's **interns** row — the uncapped list from `detail`, with `subagents_open` beside it.
