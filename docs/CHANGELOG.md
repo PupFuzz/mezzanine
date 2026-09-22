@@ -91,7 +91,22 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   AppArmor-restricted runner was not possible in the environment this was built in, so whether it
   actually lifts the restriction on GitHub's runner is what this PR's own CI run establishes, not this
   text; if it does not, the new failure names exactly that rather than the section going quiet.
-
+- **card#9801** — **A PR body that does not meet the fleet PR-body standard now fails the
+  `pr-body-lint` check**, so on a branch that requires that check the red blocks the merge until the
+  body is fixed. Which branches require it is a repository setting; `docs/VERSIONING.md § Branch model`
+  carries the command that reads it. **To clear the red, edit the PR body**: the check re-runs on the
+  edit, with no new push. The failed step's log lists each finding, where it is and which rule it
+  breaks, then a closing block whose first line names the outcome. **Re-running the failed job
+  does not clear it**: a re-run judges the body the original event carried, so edit the body
+  instead. To check a body before you open the PR, run
+  `python3 bin/pr-body-lint.py --body-file=<file>` and look for exit 0; `bin/change-pr-body.py`
+  writes a skeleton that passes it (`CLAUDE.md § PR bodies are judged against the fleet standard`).
+  **A red that says the linter could not judge the body is a wiring defect, not a finding**, and
+  editing the body does not clear it; it fails the check so that a verdict that never happened does
+  not read as a pass. The job's other steps, which check this repository's own files, are
+  unchanged, and the generator's selftest now also runs after a red body verdict, so one run shows
+  both results. A merged PR is not re-checked, so the bodies of PRs merged before this change stay
+  as they were written.
 - **card#9991** — **`bin/deploy.sh` refuses a `MEZZ_REMOTE` that names a remote whose NAME contains
   `:`, and no A3c refusal prints such a name any more.** `git config` will write a remote whose NAME
   is a URL (`git config 'remote.https://user:token@host/o/r.git.url' <url>` exits 0), `git remote`
@@ -381,10 +396,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   them, so re-vendoring a linter that adds a rule reds the suite for under-coverage instead of
   leaving a coverage sentence that has quietly stopped being true. The suite runs in the
   `pr-body-lint` job and can fail it.
-  **What has NOT changed is what the repository rejects.** The lane's verdict on a PR body is still
-  report-only and `pr-body-lint` is still required by no ruleset; the flip to blocking is the
-  operator's act, gated on the verdict being RE-DERIVED over the recent merged bodies rather than
-  on any figure written down — `CLAUDE.md` carries the loop that prints it.
+  **This change left what the repository rejects as it was.** The lane's verdict on a PR body
+  stayed report-only here; the flip to blocking came later in this release, in the card#9801 bullet
+  at the top of this section.
   **A false claim about that lane is corrected, and the sweep that finds it is written down
   instead of being asserted complete.** Every surface describing the `pr-body-lint` job said the
   JOB prints its verdict and exits 0 — in the words "nothing in this job can fail a pull request",
@@ -396,9 +410,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   round's narrower sweep had not:
 
   ```
-  for f in $(git grep -l "pr-body-lint" -- CLAUDE.md README.md docs/ .github/ bin/ \
-             | grep -v 'fixtures\|changelog/v0'); do
-    git grep -n -i -E "exits? 0|can fail|cannot fail|never block|never fails" -- "$f"
+  for f in $(git grep -l "pr-body-lint" \
+             | grep -v -e '^bin/pr-body-lint-fixtures/.*\.md\.txt$' -e '^docs/changelog/v0'); do
+    git grep -n -i -E "exits? 0|can fail|cannot fail|never block|never fails|report-only" -- "$f"
   done
   ```
 
@@ -408,13 +422,20 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   the subject word land on different lines and a line-oriented second stage drops the pair. At
   the base commit it silently omitted `docs/VERSIONING.md:256`, which carried the claim verbatim.
   Dropping `bin/` from the pathspec hid the last copy of all, inside `bin/pr-body-lint.py`'s own
-  header. ⇒ The cost of the version above is NOISE — it returns every "exit 0" in the changelog's
+  header. The selector now carries no pathspec at all and excludes the captured PR bodies by file
+  name rather than the fixtures directory by path (card#9801's blocking change): a listed pathspec
+  stays complete only until somebody adds a directory, and excluding the whole directory also hid
+  the directory's README, which is prose about this lane's fixtures and belongs in the sweep.
+  `report-only` joined the predicate in the same change, because once the verdict blocks, a copy
+  still calling it report-only is the claim that goes stale.
+  ⇒ The cost of the version above is NOISE — it returns every "exit 0" in the changelog's
   history, and you discard those by eye. That is the right trade: a reader who skims a screenful of
   irrelevant lines still finds the wrong sentence, and a filtered sweep that returns a clean-looking
   set hands the next author CONFIDENCE instead of a question, which is worse than the universal it
-  replaced. The promise is, and always was, about the BODY: no PR body can fail this job. The
-  generator's selftest now runs in the same job and can red it too, and it is ordered AFTER the
-  report step so that a broken generator can never suppress the body verdict the author reads.
+  replaced. The promise was about the BODY: under this change no PR body could fail this job,
+  until the blocking change at the top of this section. The generator's selftest now runs in the
+  same job and can red it too, and it is ordered AFTER the body step so that a broken generator
+  does not suppress the body verdict the author reads.
 - **card#9984** — **`bin/deploy.sh`'s version comparison refuses operands it cannot read, so a
   `BASH_FLOOR` that is not a version is refused by name instead of certified.** Until this change
   the comparison behind every one of phase A's version floors — A1's bash floor, A6's PHP floor,
@@ -858,7 +879,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   phpunit.xml no longer pins`. `docs/design/FLEET-STATE.md` § 6.2 records the leg and AT-D2-14 carries
   the fixture control as its fourth RED.
 - **card#9767** — **this repository now runs the FLEET's PR-body linter on every open PR, and its
-  verdict on a body REPORTS rather than blocks.** `bin/pr-body-lint.py` is upstream's own program — the one every coord
+  verdict on a body REPORTS rather than blocks.** ⚠ Later in this release the verdict was made to
+  block: see the card#9801 bullet at the top of this section. `bin/pr-body-lint.py` is upstream's
+  own program — the one every coord
   install's CI runs and the review path spawns — vendored byte-for-byte under a `#` provenance header
   that records the source commit and plugin version, because the upstream repository is private and a
   public runner cannot clone it. The new **`pr-body-lint` job** in
