@@ -4014,7 +4014,9 @@ if [ "$FULL_OK" = 1 ]; then
   # F0 — the operator's own sequence: a whole `bin/deploy.sh --dry-run` on a host whose TMPDIR is out of
   # blocks from the start. The .env loader makes phase A's first scratch file, so this is where it stops —
   # on its OWN probe (env_read_err_open's status 3), since the loader does not use `_scratch`.
-  # Mutation, run: drop the probe from env_read_err_open and this deploys — exit 0, the .env read.
+  # Mutation, run: drop the probe from env_read_err_open and this refuses at A7's scratch file instead —
+  # exit 1 and the ⛔ banner stay green (git_ref_oid's `_scratch` probe still catches the same full tmpfs
+  # one step later), and the loader's own headline and reason red: 3 of this case's assertions.
   mkfix scratch_full_loader
   full_refused "full TMPDIR, the .env loader" 0 \
     "$ROOT/server/.env could not be read: no usable scratch file for bash's read diagnostic" --dry-run
