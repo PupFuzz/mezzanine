@@ -371,10 +371,18 @@ fi
 # `rev-parse --verify`'s diagnostic into a scratch FILE and reads it back with `cat`, and this is the one
 # way to make that `cat` fail with the real git's real answer already written. Only a stderr that is a
 # regular file is touched, so no captured pipe and no terminal is.
+# The knob's CONTENT is a skip count (empty means 0 — fire on the first matching call, C1's own usage):
+# git_commit_of's tag peel is not the first `rev-parse --verify` of a run, so its own twin (SF-2, card#9932
+# review) counts past the candidate resolutions ahead of it instead of tripping on one of those first.
 if [ -e "$KNOBS/git_stderr_unreadable" ]; then
   case " $* " in *" rev-parse --verify "*)
-    errf="$(readlink "/proc/$$/fd/2" 2>/dev/null)"
-    if [ -f "$errf" ]; then "$REAL_GIT" "$@"; rc=$?; chmod 000 "$errf"; exit "$rc"; fi ;;
+    n="$(cat "$KNOBS/git_stderr_unreadable" 2>/dev/null)"; n="${n:-0}"
+    if [ "$n" -gt 0 ]; then
+      printf '%s\n' "$((n - 1))" > "$KNOBS/git_stderr_unreadable"
+    else
+      errf="$(readlink "/proc/$$/fd/2" 2>/dev/null)"
+      if [ -f "$errf" ]; then "$REAL_GIT" "$@"; rc=$?; chmod 000 "$errf"; exit "$rc"; fi
+    fi ;;
   esac
 fi
 mode="$(cat "$KNOBS/git_magic" 2>/dev/null)"
@@ -4098,6 +4106,36 @@ else
     "does not resolve to a commit on" "$OUT"
   hasnt "git's stderr unreadable: claims no read of the store that failed — that is what could not be read" \
     "git could not resolve 'refs/remotes/origin/main~2'" "$OUT"
+fi
+
+# C1b — C1's TWIN, on git_commit_of's OWN cat-status branch rather than git_ref_oid's (card#9932 review,
+# SF-2): C1 never reaches git_commit_of's peel — it refuses inside git_ref_oid first, over a candidate
+# that does not resolve at all. This fixture resolves the CANDIDATE cleanly (an annotated tag over a
+# TREE — the healthy-store peel-mismatch fixture above, § ⛔ THE ANNOTATED TAG) and makes only the PEEL's
+# own `rev-parse --verify` — the third call this run makes, after the two candidate resolutions the loop
+# tries first — come back unreadable. The knob's skip count is what steers past the first two.
+# Mutation, run: drop `|| [ "$__cat" -eq 0 ]` from git_commit_of's own `git_diagnostic_unread` guard
+# and the refusal becomes the peel-mismatch text, "dereferences to tree type" — git's real answer,
+# taken for read even though it was not.
+if [ "$(/usr/bin/id -u)" = 0 ]; then
+  notverified "card#9932: an unreadable git stderr file cannot be produced by a ROOT runner" \
+    "root opens a mode-000 file, so \`cat\` succeeds and the case would certify nothing."
+else
+  three_releases scratch_stderr_unreadable_tag
+  gitc "$SRC" tag -a treeonly -m 'a tag whose object is a TREE, not a commit' "$V2^{tree}"
+  gitc "$SRC" push -q origin treeonly
+  gitc "$ROOT" fetch -q --tags origin
+  TAG_OID="$(gitc "$ROOT" rev-parse treeonly)"
+  printf '2\n' > "$T/knobs/git_stderr_unreadable"
+  run_refusal "git's stderr unreadable at \`cat\`, on git_commit_of's own tag peel" \
+    "⛔ REFUSED — git's error output could not be read back while trying to resolve the tag 'refs/tags/treeonly' ($TAG_OID) to a commit (\`git rev-parse --verify\` exited 128, \`cat\` exited 1)" \
+    --dry-run --ref treeonly
+  rm -f "$T/knobs/git_stderr_unreadable"
+  has "git_commit_of's stderr unreadable: cat's own error is on screen and names the file" "Permission denied" "$OUT"
+  hasnt "git_commit_of's stderr unreadable: never the peel-mismatch text — git's message was not read, not absent" \
+    "dereferences to tree type" "$OUT"
+  hasnt "git_commit_of's stderr unreadable: never a ref that does not resolve — git's message was not read, not absent" \
+    "does not resolve to a commit on" "$OUT"
 fi
 
 # ── card#9933 — THE LOADER'S SCRATCH FILE FAILS IN PHASE B, WHERE THERE IS NO REFUSAL TO MAKE ──
