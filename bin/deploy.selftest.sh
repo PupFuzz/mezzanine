@@ -315,13 +315,34 @@ STUB
 # later one is handed a TMPDIR that does not exist, so it fails with mktemp's OWN error, exactly as on a
 # host whose TMPDIR is gone (card#9816). Each call is logged while the knob is set. A count, because the
 # .env loader makes phase A's FIRST scratch file, and a TMPDIR broken from the start stops every run there.
+# ⛔ AND, while the `mktemp_fill_after` knob holds N, the first N calls pass and the next one FILLS the
+# filesystem behind TMPDIR with `dd` before letting the real mktemp run (card#9932) — a real block-full
+# filesystem, not a simulated one, and only ever the private tmpfs `run_full` mounts (§ card#9932). The
+# fill REFUSES unless TMPDIR is that mount point AND it is on a different device from $T — a tmpfs that
+# was not mounted is a plain directory on this runner's own disk, which a `dd` must never fill — and the
+# `dd` is capped besides. It logs `mktemp FILLED` so a case can prove the fill happened.
 {
-  printf '#!/usr/bin/env bash\nKNOBS=%q\nREAL_MKTEMP=%q\nBROKEN_TMPDIR=%q\n' "$T/knobs" "$REAL_MKTEMP" "$T/no-such-dir"
+  printf '#!/usr/bin/env bash\nKNOBS=%q\nREAL_MKTEMP=%q\nBROKEN_TMPDIR=%q\nFULL_TMP=%q\nT=%q\n' \
+    "$T/knobs" "$REAL_MKTEMP" "$T/no-such-dir" "$T/full-tmp" "$T"
   cat <<'STUB'
 if [ -e "$KNOBS/mktemp_passes" ]; then
   printf 'mktemp %s\n' "$*" >> "$CALL_LOG"
   n="$(cat "$KNOBS/mktemp_passes")"
   if [ "$n" -gt 0 ]; then printf '%s\n' "$((n - 1))" > "$KNOBS/mktemp_passes"; else export TMPDIR="$BROKEN_TMPDIR"; fi
+fi
+if [ -e "$KNOBS/mktemp_fill_after" ]; then
+  printf 'mktemp %s\n' "$*" >> "$CALL_LOG"
+  n="$(cat "$KNOBS/mktemp_fill_after")"
+  if [ "$n" -gt 0 ]; then printf '%s\n' "$((n - 1))" > "$KNOBS/mktemp_fill_after"
+  else
+    rm -f "$KNOBS/mktemp_fill_after"
+    if [ "${TMPDIR:-}" = "$FULL_TMP" ] && [ "$(stat -c %d "$FULL_TMP")" != "$(stat -c %d "$T")" ]; then
+      dd if=/dev/zero of="$FULL_TMP/selftest-fill" bs=4096 count=1024 2>/dev/null
+      printf 'mktemp FILLED %s\n' "$FULL_TMP" >> "$CALL_LOG"
+    else
+      printf 'mktemp REFUSED TO FILL %s (not the private mount)\n' "${TMPDIR:-unset}" >> "$CALL_LOG"
+    fi
+  fi
 fi
 exec "$REAL_MKTEMP" "$@"
 STUB
@@ -345,6 +366,24 @@ if [ -e "$KNOBS/git_remote_fail" ]; then
   for a in "$@"; do
     if [ "$a" = remote ]; then echo "fatal: unable to read config file (selftest shim)" >&2; exit 128; fi
   done
+fi
+# git's stderr made UNREADABLE the moment git is done with it (card#9932): the deploy captures a
+# `rev-parse --verify`'s diagnostic into a scratch FILE and reads it back with `cat`, and this is the one
+# way to make that `cat` fail with the real git's real answer already written. Only a stderr that is a
+# regular file is touched, so no captured pipe and no terminal is.
+# The knob's CONTENT is a skip count (empty means 0 — fire on the first matching call, C1's own usage):
+# git_commit_of's tag peel is not the first `rev-parse --verify` of a run, so its own twin (SF-2, card#9932
+# review) counts past the candidate resolutions ahead of it instead of tripping on one of those first.
+if [ -e "$KNOBS/git_stderr_unreadable" ]; then
+  case " $* " in *" rev-parse --verify "*)
+    n="$(cat "$KNOBS/git_stderr_unreadable" 2>/dev/null)"; n="${n:-0}"
+    if [ "$n" -gt 0 ]; then
+      printf '%s\n' "$((n - 1))" > "$KNOBS/git_stderr_unreadable"
+    else
+      errf="$(readlink "/proc/$$/fd/2" 2>/dev/null)"
+      if [ -f "$errf" ]; then "$REAL_GIT" "$@"; rc=$?; chmod 000 "$errf"; exit "$rc"; fi
+    fi ;;
+  esac
 fi
 mode="$(cat "$KNOBS/git_magic" 2>/dev/null)"
 if [ -n "$mode" ]; then
@@ -430,7 +469,8 @@ reset_stubs() {
   kill_streams
   : > "$T/knobs/dies_after_start"; : > "$T/knobs/ignores_term"; : > "$T/knobs/transient_loser"
   rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps" "$T/knobs/mktemp_passes" "$T/knobs/git_magic" \
-        "$T/knobs/bash_calls" "$T/knobs/git_remote_fail"
+        "$T/knobs/bash_calls" "$T/knobs/git_remote_fail" "$T/knobs/mktemp_fill_after" \
+        "$T/knobs/git_stderr_unreadable"
   # 9.2.0 is ABOVE the npm 7 the fixture's lockfileVersion 3 implies without BEING it, so a case
   # that passes A12 here is not passing on an accidental exact match (card#9616).
   export STUB_NPM_VERSION=9.2.0 STUB_NPM_VERSION_RC=0
@@ -843,7 +883,7 @@ has "no scratch file for the diagnostic: the phase-A promise" \
 # the scratch refusal the read's headline back and this reds, alone, with the exit code and the banner
 # still green — the measurement PR #191 made about exit-code-only cases, on this class.
 has "no scratch file for the diagnostic: the headline names the scratch file the run actually failed on" \
-    "could not be read: no scratch file could be opened for bash's read diagnostic" "$OUT"
+    "could not be read: no usable scratch file for bash's read diagnostic" "$OUT"
 has "no scratch file for the diagnostic: names the scratch file as the reason" \
     "No scratch file could be created for bash's read diagnostic" "$OUT"
 hasnt "no scratch file for the diagnostic: never the READ's headline — no read was made on this path" \
@@ -880,9 +920,14 @@ OUT="$( env_lib "$ROOT/server/.env" env_scan_unopenable_scratch 2>&1 )"; RC=$?
 eq  "a scratch file that cannot be opened: exit 1" 1 "$RC"
 has "a scratch file that cannot be opened: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
 has "a scratch file that cannot be opened: the same headline — no scratch file, whichever step failed" \
-    "could not be read: no scratch file could be opened for bash's read diagnostic" "$OUT"
+    "could not be read: no usable scratch file for bash's read diagnostic" "$OUT"
 has "a scratch file that cannot be opened: the reason says the file WAS created and could not be opened" \
     "WAS created and this shell could not OPEN it" "$OUT"
+# The number that advice names, pinned here because THIS is the fixture that reaches it — it needed no new
+# mechanism, only this line (the card#9933 final review's MINOR-1). Mutation: drop `(\`ulimit -n\`)` from
+# the status-2 reason in bin/deploy.sh and this reds, alone.
+has "a scratch file that cannot be opened: names the number to read — the open-file limit" \
+    "(\`ulimit -n\`)" "$OUT"
 hasnt "a scratch file that cannot be opened: does not blame mktemp, which succeeded" \
     "\`mktemp\` failed" "$OUT"
 hasnt "a scratch file that cannot be opened: does not send the operator to check \$TMPDIR" \
@@ -3809,7 +3854,7 @@ has "TMPDIR gone: the phase-A promise" "Nothing was changed. The previous releas
 # § card#9610 case beside it asserted the READ's headline for this same failure, so a refusal blaming a
 # read that never happened was pinned by a green suite.
 has "TMPDIR gone: the headline names the scratch file, not a read of .env that was never made" \
-  "⛔ REFUSED — $ROOT/server/.env could not be read: no scratch file could be opened for bash's read diagnostic" "$OUT"
+  "⛔ REFUSED — $ROOT/server/.env could not be read: no usable scratch file for bash's read diagnostic" "$OUT"
 hasnt "TMPDIR gone: never the READ's headline" "was opened but could not be read to its end" "$OUT"
 hasnt "TMPDIR gone: does not send the operator to \`dmesg\` and the mount for a scratch file" "dmesg" "$OUT"
 # ⭐ AND THE NUMBER THE ADVICE NAMES, which nothing asserted until now — the round-4 review found both
@@ -3884,6 +3929,217 @@ scratch_refused "A7, git_commit_of's tag peel" 3 \
   "no scratch file could be created for git's error output while peeling the tag 'refs/tags/v0.0.2'" \
   --dry-run --ref v0.0.2
 
+# ── card#9932 — A SCRATCH FILE ON A FILESYSTEM OUT OF BLOCKS: `mktemp` SUCCEEDS AND THE WRITE IS LOST ──
+# Every case above reaches the scratch helpers through a `mktemp` that FAILS. On a filesystem out of free
+# BLOCKS it does not: an empty file costs no block, so `mktemp` answers 0 with a real path, and what fails
+# is the first byte written into it — git's stderr, or bash's read diagnostic — and every reader here takes
+# an EMPTY diagnostic as "the tool printed nothing". Measured (card#9932 comment 6016) and re-measured by
+# the fixture probe below on every run: `mktemp` 0, the write ENOSPC.
+#
+# ⛔ THE FILESYSTEM IS REALLY FULL. `run_full` mounts a small tmpfs in a user and mount namespace of its
+# own (`unshare -Ur -m`, no root) and runs the deploy inside it, mapped back to this user's own uid by a
+# second, nested user namespace — so ownership and mode on the fixtures these cases touch, all of them
+# this user's own, read the same as outside. The mapping is single-user: a file owned by root or any
+# other uid would read as the overflow uid inside it, which no fixture here has occasion to be.
+# The mktemp pass-through fills that tmpfs with `dd` just before the Nth call (§ the stub), so the scratch
+# files made before it are made on a filesystem with room, exactly as on a host that fills mid-run. Inodes
+# are left free on purpose: out of INODES is the `mktemp`-FAILS case the § card#9816 cases already cover.
+# ⛔ THE HEADLINE IS THE ASSERTION (card#9646). A trust-`mktemp` primitive refuses these on a DIFFERENT
+# headline or deploys — each case below names what it reds on, and that mutation was run against it.
+section "card#9932 — a scratch file on a filesystem out of BLOCKS is refused as unwritable, never read as silence"
+FULL_TMP="$T/full-tmp"; mkdir -p "$FULL_TMP"
+MY_UID="$(/usr/bin/id -u)"; MY_GID="$(/usr/bin/id -g)"
+
+# in_full_ns <command…> — <command> in a mount namespace where $FULL_TMP is a private 256 KiB tmpfs,
+# as this user, with TMPDIR exported to it. Its exit status is the command's; 97 is the mount failing.
+in_full_ns() {
+  # shellcheck disable=SC2016  # expanded by the bash it is handed to
+  unshare -Ur -m "$REAL_BASH" -c '
+      mount -t tmpfs -o size=256k tmpfs "$1" || exit 97
+      exec unshare -U --map-user="$2" --map-group="$3" env TMPDIR="$1" "${@:4}"
+    ' full "$FULL_TMP" "$MY_UID" "$MY_GID" "$@"
+}
+# run_full <mktemp calls that pass before the fill> <args…> — `run`, inside that namespace.
+run_full() {
+  local after="$1"; shift
+  : > "$CALL_LOG"
+  printf '%s\n' "$after" > "$T/knobs/mktemp_fill_after"
+  OUT="$(MEZZ_DEPLOY_ROOT="$ROOT" in_full_ns "$ROOT/bin/deploy.sh" "$@" 2>&1)"
+  RC=$?
+  rm -f "$T/knobs/mktemp_fill_after"
+}
+
+# THE FIXTURE, MEASURED BEFORE IT IS TRUSTED: inside the namespace, filled from the first call, `mktemp`
+# must SUCCEED and a byte written into what it made must FAIL — and it must be the private mount that
+# filled, never this runner's own disk. A runner that cannot make a user namespace (a kernel or an
+# AppArmor policy that forbids unprivileged ones) is NAMED, never counted as a pass (card#9646).
+: > "$CALL_LOG"
+printf '0\n' > "$T/knobs/mktemp_fill_after"
+# shellcheck disable=SC2016
+full_probe="$(in_full_ns "$REAL_BASH" -c '
+    f="$(mktemp)" && printf "mktemp-ok"
+    { printf x > "$f"; } 2>/dev/null || printf " write-failed"
+    printf " ifree=%s" "$(df --output=iavail "$TMPDIR" | tail -1 | tr -d " ")"' 2>&1)"
+rm -f "$T/knobs/mktemp_fill_after"
+FULL_OK=0
+case "$full_probe" in
+  "mktemp-ok write-failed ifree="[1-9]*) grep -q '^mktemp FILLED ' "$CALL_LOG" && FULL_OK=1 ;;
+esac
+if [ "$FULL_OK" = 1 ]; then
+  ok "fixture: a block-full tmpfs in a user namespace — mktemp succeeds, the write fails, inodes are free ($full_probe)"
+  cases=$((cases+1))
+else
+  notverified "card#9932: a filesystem out of BLOCKS could not be produced on this runner, so its cases did not run" \
+    "It needs \`unshare -Ur -m\` (an unprivileged user + mount namespace) and \`unshare --map-user\`." \
+    "This runner answered: ${full_probe:-nothing}" \
+    "Not run: the whole deploy on a full TMPDIR (A5's loader), A7's git_ref_oid on a healthy and on a broken" \
+    "store, A13's work directory, git_commit_of's tag peel — every case in this section but the \`cat\` one."
+fi
+
+if [ "$FULL_OK" = 1 ]; then
+  # THE CONTROL, one variable away: the same namespace and mount, with no fill — the deploy passes, so
+  # the namespace is not itself what refuses the cases below.
+  mkfix scratch_full_sites
+  run_full 99 --dry-run
+  eq  "full-TMPDIR control: the same namespace with room on the tmpfs deploys" 0 "$RC"
+  unlogged "full-TMPDIR control: nothing was filled" "mktemp FILLED"
+
+  # full_refused <label> <passes> <headline needle> <args…> — the refusal every case here shares.
+  full_refused() {
+    local label="$1" passes="$2" needle="$3"; shift 3
+    run_full "$passes" "$@"
+    logged "$label: the tmpfs was filled before the call under test" "mktemp FILLED"
+    eq  "$label: exit 1" 1 "$RC"
+    has "$label: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" "⛔ REFUSED — " "$OUT"
+    has "$label: the phase-A promise" "Nothing was changed. The previous release is still serving." "$OUT"
+    has "$label: the headline names the scratch space the run could not write" "⛔ REFUSED — $needle" "$OUT"
+    hasnt "$label: never a ref that does not resolve — no read of the refs was lost into an empty file" \
+      "does not resolve to a commit on" "$OUT"
+    unlogged "$label: never opened the window" "artisan down"
+    no_shell_death "$label" "$OUT"
+  }
+
+  # F0 — the operator's own sequence: a whole `bin/deploy.sh --dry-run` on a host whose TMPDIR is out of
+  # blocks from the start. The .env loader makes phase A's first scratch file, so this is where it stops —
+  # on its OWN probe (env_read_err_open's status 3), since the loader does not use `_scratch`.
+  # Mutation, run: drop the probe from env_read_err_open and this refuses at A7's scratch file instead —
+  # exit 1 and the ⛔ banner stay green (git_ref_oid's `_scratch` probe still catches the same full tmpfs
+  # one step later), and the loader's own headline and reason red: 3 of this case's assertions.
+  mkfix scratch_full_loader
+  full_refused "full TMPDIR, the .env loader" 0 \
+    "$ROOT/server/.env could not be read: no usable scratch file for bash's read diagnostic" --dry-run
+  has "full TMPDIR, the .env loader: the reason is the WRITE that failed, not mktemp and not the open" \
+    "WAS created and opened, and a byte written into it did not read back" "$OUT"
+  has "full TMPDIR, the .env loader: and the number it names is free BLOCKS" "out of free BLOCKS: read \`df\` on it" "$OUT"
+  hasnt "full TMPDIR, the .env loader: does not blame mktemp, which succeeded" "\`mktemp\` failed" "$OUT"
+  hasnt "full TMPDIR, the .env loader: does not send the operator to the open-file limit" "ulimit -n" "$OUT"
+  hasnt "full TMPDIR, the .env loader: never the READ's headline" "was opened but could not be read to its end" "$OUT"
+  hasnt "full TMPDIR, the .env loader: no DB password is printed" "$FAKE_PW" "$OUT"
+
+  # F1 — git_ref_oid's stderr file: A7's first candidate, the call after the loader's.
+  # Mutation, run: restore the trust-`mktemp`-only `_scratch` and this reds on the headline — the ref
+  # resolves on a healthy store, and the run goes on to REFUSE at A13's work directory instead, banner
+  # and all, through this round's write-status check (§ SF-5) rather than the directory's own probe.
+  mkfix scratch_full_ref_oid
+  full_refused "full TMPDIR, A7's git_ref_oid" 1 \
+    "the scratch file for git's error output while resolving 'refs/remotes/origin/main' was created and could not be written" \
+    --dry-run
+  has "full TMPDIR, A7's git_ref_oid: bash's own write error names the errno" "No space left on device" "$OUT"
+  has "full TMPDIR, A7's git_ref_oid: and the advice is free BLOCKS" "out of free BLOCKS — read \`df\` on it" "$OUT"
+  hasnt "full TMPDIR, A7's git_ref_oid: the loader's scratch file was let through" \
+    "no usable scratch file for bash's read diagnostic" "$OUT"
+
+  # F1b — ⭐ THE CARD'S OWN HARM, reproduced: a rev whose walk git reports FAILING (a blinded object, as
+  # in § card#9611 r2) on a full TMPDIR. git's `unable to open loose object` is lost into the empty file,
+  # and a trust-`mktemp` primitive reads that silence as absence — measured with the mutation: "⛔ REFUSED
+  # — 'main~2' does not resolve to a commit on origin", which `full_refused` asserts absent.
+  three_releases scratch_full_broken_store
+  blind_object "$V2"
+  full_refused "full TMPDIR over a broken store, --ref main~2" 1 \
+    "the scratch file for git's error output while resolving 'refs/remotes/origin/main~2' was created and could not be written" \
+    --dry-run --ref 'main~2'
+
+  # F2 — A13's work DIRECTORY: after the loader's, A7's and A8's. On a tmpfs `mktemp -d` SUCCEEDS out of
+  # blocks too (measured here), so this is the probe's refusal, through a file made inside the directory.
+  # Mutation, run: restore the trust-`mktemp`-only `_scratch` and this reds on the headline too — the
+  # directory's own probe no longer catches it, but A13's write-status check (§ SF-5) still does, banner
+  # and all: the two are independent, and this mutation only removes one of them.
+  mkfix scratch_full_a13
+  full_refused "full TMPDIR, A13's work directory" 3 \
+    "the scratch directory for A13's reading of $(gitc "$ROOT" rev-parse --short "$V2")'s crontab block was created and could not be written" \
+    --dry-run
+
+  # F3 — git_commit_of's peel of an ANNOTATED tag: after the loader's and git_ref_oid's two.
+  # Mutation, run: restore the trust-`mktemp`-only `_scratch` and this reds on the headline — the tag
+  # peels clean on a healthy store (`git_commit_of` runs before A13 in the gate order), and the run
+  # goes on to REFUSE at A13's work directory instead, banner and all, same as F1 and F2 under this
+  # mutation and for the same reason (§ SF-5).
+  mkfix scratch_full_tag
+  gitc "$SRC" tag -a v0.0.2 -m 'selftest: an annotated tag over the release' "$V2"
+  gitc "$SRC" push -q origin v0.0.2
+  run_full 99 --dry-run --ref v0.0.2
+  eq "full-TMPDIR control: the same tag with room on the tmpfs deploys" 0 "$RC"
+  full_refused "full TMPDIR, git_commit_of's tag peel" 3 \
+    "the scratch file for git's error output while peeling the tag 'refs/tags/v0.0.2' ($(gitc "$SRC" rev-parse v0.0.2)) was created and could not be written" \
+    --dry-run --ref v0.0.2
+fi
+
+# C1 — THE `cat` THAT READS git's STDERR BACK, with its status read (card#9932). The probe above proves a
+# scratch file can be WRITTEN; this is the other half — one that was written and then cannot be READ.
+# The git pass-through makes git's stderr file mode 000 the moment the real git has written it, over the
+# broken store F1b uses, so the message that says WHICH answer this was exists and cannot be read.
+# Mutation, run: drop `|| __ro_cat=$?` and the refusal is "'main~2' does not resolve to a commit on
+# origin" — git's `unable to open loose object`, unread, taken for git's silence.
+if [ "$(/usr/bin/id -u)" = 0 ]; then
+  notverified "card#9932: an unreadable git stderr file cannot be produced by a ROOT runner" \
+    "root opens a mode-000 file, so \`cat\` succeeds and the case would certify nothing."
+else
+  three_releases scratch_stderr_unreadable
+  blind_object "$V2"
+  : > "$T/knobs/git_stderr_unreadable"
+  run_refusal "git's stderr unreadable at \`cat\`, over a broken store" \
+    "⛔ REFUSED — git's error output could not be read back while trying to resolve 'refs/remotes/origin/main~2' (\`git rev-parse --verify\` exited 1, \`cat\` exited 1)" \
+    --dry-run --ref 'main~2'
+  rm -f "$T/knobs/git_stderr_unreadable"
+  has "git's stderr unreadable: cat's own error is on screen and names the file" "Permission denied" "$OUT"
+  hasnt "git's stderr unreadable: never a ref that does not resolve — git's message was not read, not absent" \
+    "does not resolve to a commit on" "$OUT"
+  hasnt "git's stderr unreadable: claims no read of the store that failed — that is what could not be read" \
+    "git could not resolve 'refs/remotes/origin/main~2'" "$OUT"
+fi
+
+# C1b — C1's TWIN, on git_commit_of's OWN cat-status branch rather than git_ref_oid's (card#9932 review,
+# SF-2): C1 never reaches git_commit_of's peel — it refuses inside git_ref_oid first, over a candidate
+# that does not resolve at all. This fixture resolves the CANDIDATE cleanly (an annotated tag over a
+# TREE — the healthy-store peel-mismatch fixture above, § ⛔ THE ANNOTATED TAG) and makes only the PEEL's
+# own `rev-parse --verify` — the third call this run makes, after the two candidate resolutions the loop
+# tries first — come back unreadable. The knob's skip count is what steers past the first two.
+# Mutation, run: drop `|| __cat=$?` from git_commit_of's capture of the peel's stderr, so `$__cat`
+# stays 0 as if `cat` had succeeded, and this case's own headline reds: the unreadable diagnostic is
+# no longer told apart from a read one. (The guard's `[ "$__cat" -eq 0 ]` clause is not what this
+# case controls: here `$__rc` is already non-zero, so that clause cannot change the outcome. It is
+# exercised by the healthy-store `tree tag` fixture, card#9611, whose `cat` succeeds.)
+if [ "$(/usr/bin/id -u)" = 0 ]; then
+  notverified "card#9932: an unreadable git stderr file cannot be produced by a ROOT runner" \
+    "root opens a mode-000 file, so \`cat\` succeeds and the case would certify nothing."
+else
+  three_releases scratch_stderr_unreadable_tag
+  gitc "$SRC" tag -a treeonly -m 'a tag whose object is a TREE, not a commit' "$V2^{tree}"
+  gitc "$SRC" push -q origin treeonly
+  gitc "$ROOT" fetch -q --tags origin
+  TAG_OID="$(gitc "$ROOT" rev-parse treeonly)"
+  printf '2\n' > "$T/knobs/git_stderr_unreadable"
+  run_refusal "git's stderr unreadable at \`cat\`, on git_commit_of's own tag peel" \
+    "⛔ REFUSED — git's error output could not be read back while trying to resolve the tag 'refs/tags/treeonly' ($TAG_OID) to a commit (\`git rev-parse --verify\` exited 128, \`cat\` exited 1)" \
+    --dry-run --ref treeonly
+  rm -f "$T/knobs/git_stderr_unreadable"
+  has "git_commit_of's stderr unreadable: cat's own error is on screen and names the file" "Permission denied" "$OUT"
+  hasnt "git_commit_of's stderr unreadable: never the peel-mismatch text — git's message was not read, not absent" \
+    "dereferences to tree type" "$OUT"
+  hasnt "git_commit_of's stderr unreadable: never a ref that does not resolve — git's message was not read, not absent" \
+    "does not resolve to a commit on" "$OUT"
+fi
+
 # ── card#9933 — THE LOADER'S SCRATCH FILE FAILS IN PHASE B, WHERE THERE IS NO REFUSAL TO MAKE ──
 # Every case above stops in phase A. This one cannot: phase B is a RE-EXEC, so it is a new process with a
 # new descriptor, and the first load it makes is the smoke check's — AFTER `php artisan up`, with the new
@@ -3899,11 +4155,12 @@ scratch_refused "A7, git_commit_of's tag peel" 3 \
 # window was the wrong place to look. The remedy it offered — re-run `--dry-run`, which names the cause at
 # A5 — only works while the cause is still there, so a $TMPDIR that was missing, unwritable or out of
 # inodes during the deploy and was put right afterwards left a clean dry run and nothing at all.
-# ⚠ A $TMPDIR OUT OF BLOCKS IS NOT ON THAT LIST, and its absence is the point: `mktemp` creates an EMPTY
-# file, so a filesystem with no space left can still give it one — measured on a 100%-full tmpfs
-# (card#9933 review round 3: mktemp rc 0, the `<>` open rc 0), where this branch was never taken at all.
-# INODE exhaustion is the "full" that reaches here, and it is what a fixture for this case on a real
-# filesystem would have to do; the knob above reaches it by shadowing `mktemp` instead.
+# ⚠ A $TMPDIR OUT OF BLOCKS reaches this warning by a third route, not by a failing `mktemp`: `mktemp`
+# creates an EMPTY file, so a filesystem with no space left can still give it one (card#9933 review round
+# 3: mktemp rc 0, the `<>` open rc 0), and it is the loader's write probe that fails there — status 3 of
+# env_read_err_open (card#9932), whose REASON is asserted on a real full tmpfs in § card#9932 (at A5).
+# INODE exhaustion is the "full" that makes `mktemp` fail; the knob above reaches that by making `mktemp`
+# fail instead.
 # The value that fixes it is the KIND the loader now carries, and phase B can only read it because the
 # load is made in its own shell (§ the smoke check).
 #
@@ -3938,7 +4195,7 @@ has "no scratch file in phase B: the deploy is UNVERIFIED, by name" "The deploy 
 # Mutation, run against the fix: drop the `scratch` arm of the status-3 branch so it falls to the warning
 # below it, and these red while the exit code, `DEPLOYED` and `UNVERIFIED` stay green.
 has "no scratch file in phase B: names the scratch file as what failed" \
-  "no scratch file could be opened for bash's read diagnostic" "$OUT"
+  "no usable scratch file could be had for bash's read diagnostic" "$OUT"
 has "no scratch file in phase B: says server/.env may be perfectly readable" \
   "may be perfectly readable" "$OUT"
 has "no scratch file in phase B: says the release IS serving, so the gap is the CHECK" \

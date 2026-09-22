@@ -27,6 +27,70 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9932** — **a scratch file on a filesystem out of free BLOCKS is now refused as unwritable,
+  never read as the tool's silence.** `mktemp` creates an EMPTY file, which costs an inode and no
+  block, so on a filesystem with no space left it still succeeds — measured on a real block-full
+  tmpfs: `mktemp` exit 0, a real path, and the first byte written into it lost to ENOSPC. Every
+  reader of such a file (`_scratch`, used by A7's `git_ref_oid` and by `git_commit_of`'s tag peel;
+  the `.env` loader's own `env_read_err_open`) took that empty read for "the tool printed nothing" —
+  git's silence, or bash's — rather than for a write that never landed, so a rev whose walk git
+  genuinely reported FAILING could be told apart from one that does not exist only by a message that
+  a full `$TMPDIR` had just lost.
+  **The fix is a probe, not a guess:** `scratch_writable` writes a byte into a scratch file or
+  directory and reads it back before the caller is handed it; one that fails is refused as *"created
+  and could not be written,"* naming free BLOCKS (`df`) as the number to read, distinct from a
+  `mktemp` that failed outright (free INODES, card#9816) and from a scratch file `mktemp` made that
+  this shell could not open (the open-file limit, `ulimit -n`, card#9933). `env_read_err_open` gains
+  this as a third, distinct failure return, and the `.env` loader's refusal (at A5) and its phase-B
+  warning both name it under their own reason rather than `mktemp`'s.
+  **git's own stderr is read back with its status checked too:** a `cat` of the scratch file that
+  captured `git rev-parse --verify`'s diagnostic can itself fail after git has written a real answer
+  into it, and `git_ref_oid` and `git_commit_of` now refuse *"git's error output could not be read
+  back"* rather than treating that failed read as git's silence.
+  **A13's OWN write into its scratch directory is checked too, not left to the directory's one-byte
+  probe:** that probe proves a byte lands, not that a whole release's `bin/supervision.sh` — kilobytes,
+  several blocks — does; on a filesystem down to a handful of free blocks the probe passed and the
+  larger write died under `set -e` with no ⛔ banner, before phase A installs any ERR trap. It is now
+  checked on its own status and refused by name.
+  **This new check is verified by reproduction, not by a dedicated fixture in the shipped suite** —
+  named rather than left implied. tmpfs allocates a full page even for a one-byte file (no `inline_data`
+  the way ext4 can have), so the existing block-full fixture drives free space to literally zero and the
+  DIRECTORY's own one-byte probe catches A13's case first, the same way it already did before this
+  change; the new write-status check sits behind a probe that a fully-full filesystem never gets past.
+  Reproduced directly instead (a tmpfs left with a handful of pages free, not zero: the probe passes, the
+  12 KB write does not, `printf` exits non-zero with `write error: No space left on device`) and
+  confirmed against the real code by disabling `_scratch`'s directory probe under mutation, which lets
+  a fully-full run reach this check and refuse through it, banner and all. A fixture that leaves the
+  filesystem at a handful of free pages rather than zero would exercise it directly; building one is
+  future work, not done here.
+  `bin/deploy.selftest.sh` gains a § card#9932 section built on a REAL block-full filesystem — a
+  private tmpfs in an unprivileged user + mount namespace (`unshare -Ur -m`, `unshare --map-user`,
+  no root), filled with `dd` immediately before the scratch call under test — covering the `.env`
+  loader, `git_ref_oid` over a healthy and a broken store, A13's work directory, and
+  `git_commit_of`'s annotated-tag peel, plus TWO `cat`-can't-read-git's-stderr cases (a `git` stub
+  that makes the diagnostic file unreadable the instant the real `git` has written it): one on
+  `git_ref_oid`'s own candidate resolution, over a broken store, and one on `git_commit_of`'s own tag
+  peel, over a healthy one. A runner that cannot make the namespaces this needs, or cannot make an
+  unreadable file as root, reports NOT VERIFIED by name rather than passing silently.
+  Mutation-tested: reverting the write probe reds each of the block-full cases on its own headline;
+  a separate mutation reds each `cat`-status case on its own.
+  **Found in review and fixed in the same change:** `bin/env-mirror-diff.mirror.sh` sources only the
+  `# ── .env reading` block of `bin/deploy.sh`, and `scratch_writable` was defined outside it — inside
+  the mirror it was an undefined command, status 127, silenced by `|| return 3` into "not writable" for
+  every fixture, so the differential that holds this reader against Laravel's own parser measured
+  nothing (CI: `env-mirror-differential`, 9 FAILURES). It is now defined inside that block, and named
+  in the mirror's own required-function list so a future move dies loudly instead of refusing
+  silently.
+  **CI could not run the block-full section at all** (`unshare: write failed /proc/self/uid_map:
+  Operation not permitted` — Ubuntu 24.04 restricts unprivileged user namespaces by AppArmor by
+  default): `deploy-selftest.yml`'s `deploy-selftest` and `bash-floor` jobs now attempt
+  `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` before the suite and fail the job
+  outright if the section still reports NOT VERIFIED afterward, so a later revert of the probe cannot
+  stay green by way of a section that silently never runs. **The sysctl is a candidate lever for this
+  restriction, recalled rather than sourced, and it is UNVERIFIED in this change** — reproducing an
+  AppArmor-restricted runner was not possible in the environment this was built in, so whether it
+  actually lifts the restriction on GitHub's runner is what this PR's own CI run establishes, not this
+  text; if it does not, the new failure names exactly that rather than the section going quiet.
 - **card#9801** — **A PR body that does not meet the fleet PR-body standard now fails the
   `pr-body-lint` check**, so on a branch that requires that check the red blocks the merge until the
   body is fixed. Which branches require it is a repository setting; `docs/VERSIONING.md § Branch model`

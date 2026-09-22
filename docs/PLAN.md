@@ -535,7 +535,7 @@ rule violations anyone could have committed at the time.
     already open when the code moves keeps the old code until it ends, which is
     `mezzanine:feed-reload`'s job and the drain's (the stream bullet below).
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
-  an unreviewed failure marker, a modified prod tree, `.env` (missing, unreadable by the deploy user, **opened and not readable to its end** (card#9610), **not read at all because no scratch file could be opened for the loader's read diagnostic** (card#9933), world-readable, non-production,
+  an unreviewed failure marker, a modified prod tree, `.env` (missing, unreadable by the deploy user, **opened and not readable to its end** (card#9610), **not read at all because no usable scratch file could be had for the loader's read diagnostic** (card#9933, card#9932), world-readable, non-production,
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, a store on another host without `MYSQL_ATTR_SSL_CA`, a
   non-persistent `CACHE_STORE`, a key A5 reads written in a form other than plain `KEY=value`, a file Laravel's
   own parser does not read as the lines it is written in, a file carrying a NUL byte), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
@@ -608,18 +608,21 @@ rule violations anyone could have committed at the time.
   printed back before anything is decided, and nothing read partway is used. The one shape no reader can see
   is stated in `bin/deploy.sh` rather than assumed away: an I/O error the kernel reports AS an end-of-file.
   **And the file the loader never READ is a refusal of its own, under a headline of its own** (card#9933).
-  The loader needs a scratch file for that diagnostic, and where no scratch file can be opened for it —
-  `mktemp` making none, or a file `mktemp` made that this shell could not open — it closes the
-  descriptor and returns before the read runs — one flag for both, because every caller asking whether a
-  key's value is established acts on one fact, and both are "the file was not read". The REFUSAL used to
+  The loader needs a scratch file for that diagnostic, and where no usable one can be had —
+  `mktemp` making none, a file `mktemp` made that this shell could not open, or one it opened that a
+  byte written into did not read back (card#9932) — it closes the
+  descriptor and returns before the read runs — one flag whichever it was, because every caller asking
+  whether a key's value is established acts on one fact: the file was not read. The REFUSAL used to
   be shared too, and it was the read's: the operator was told the open had succeeded and the read had
   stopped short on a file no byte of which had been read, and was sent to `dmesg` and the mount for a
   `$TMPDIR` this deploy could not write to — every sentence of it pointing away from the cause the run had
   established, which sat one line below in the same refusal. A5 now names the scratch file in the headline
   and says outright that the finding is about neither the file nor the disk it sits on. **Which SCRATCH
-  step failed is read off a status rather than assumed**, because the two send an operator to different
-  places: `mktemp` failing is a `$TMPDIR` finding, and a scratch file that was created and could not be
-  OPENED is not — `mktemp` worked, and what to look at is how many files the deploy may have open.
+  step failed is read off a status rather than assumed**, because each sends an operator to a different
+  place: `mktemp` failing is a `$TMPDIR` finding, a scratch file that was created and could not be
+  OPENED is not — `mktemp` worked, and what to look at is how many files the deploy may have open — and
+  one that was opened and could not be WRITTEN is the free space (`df`) of the filesystem behind
+  `$TMPDIR`.
   **After the window there is no refusal to make**, because the new release is already serving — so a
   `server/.env` the smoke check cannot read leaves the deploy **UNVERIFIED and says which reason it is**:
   `APP_URL` in a form the script does not read, a `server/.env` that stopped being readable between phase A
@@ -634,25 +637,35 @@ rule violations anyone could have committed at the time.
   perfectly readable, and says outright that the release IS serving and it is the CHECK that was not made.
   It also says what the `--dry-run` remedy is worth here: that run reaches the same loader at A5 and names
   the cause, but only while the cause is still there, so a `$TMPDIR` that was missing, unwritable or out
-  of inodes during the deploy and has been put right since leaves the warning as the only record.
-  ⛔ **A `$TMPDIR` out of BLOCKS is not on that list, and its absence is the point**: `mktemp` creates an
-  EMPTY file, so a filesystem with no space left can still give it one — measured on a 100%-full tmpfs, where
-  `mktemp` returned 0 and the `<>` open succeeded, so neither the refusal nor the warning fired at all.
-  INODE exhaustion is the "full" that reaches them. The advice on every scratch-file message names `df -i`
-  now; it used to say *"check … that it is not full"*, which sends an operator to the one number that does
-  not decide this. ⛔ **The DENIAL that goes with it — that a `df` at 100% is not on its own the finding —
+  of inodes or out of space during the deploy and has been put right since leaves the warning as the
+  only record. ⛔ **A `$TMPDIR` out of BLOCKS is not a `mktemp` failure, and it is refused as what it
+  is** (card#9932): `mktemp` creates an EMPTY file, so a filesystem with no space left can still give it
+  one — measured on a 100%-full tmpfs, where `mktemp` returned 0 and the `<>` open succeeded, and what
+  failed was the first byte written. So the scratch space is PROVED before it is used — one probe,
+  `scratch_writable`, writes a byte and reads it back — and a space that fails it is refused as created
+  and not writable, with free BLOCKS (`df`) as the number to read. INODE exhaustion is the "full" that
+  makes `mktemp` itself fail. The advice on every scratch-file message about a `mktemp` that FAILED names
+  `df -i` now; it used to say *"check … that it is not full"*, which sends an operator to the one number
+  that does not decide that failure. ⛔ **The DENIAL that goes with it — that a `df` at 100% is not on its own the finding —
   is made for a scratch FILE and not for a scratch DIRECTORY** — A13's is the one live directory — because what
   was measured is that an EMPTY FILE costs an inode and no block; a directory can cost a block as well on
   a filesystem that allocates one for it, which is unmeasured, so `scratch_dir`'s advice names both
-  numbers rather than ruling either out. ⚠ **A full-by-blocks `$TMPDIR` reaches the loader in the same
-  CLASS as card#9932**, and needs a SECOND, COINCIDENT fault before it does anything: on its own the
-  `mktemp` succeeds, the open succeeds, the read of `.env` succeeds, and `rc=1` with an empty `msg` is the
-  ordinary end-of-file path. It is where the read of `.env` ALSO fails that the coincidence bites — the
-  diagnostic write fails into the full scratch file, `msg` comes back empty, and because a read error and
-  a clean EOF both return status 1 the loader certifies a failed read as a complete read of an empty file.
-  That is neither introduced nor made worse here, and it is a THIRD instance of card#9932's class rather
-  than one of the two sites card#9932 names (`git_ref_oid`, `git_commit_of`) — appended to that card so
-  it is not orphaned if those two are fixed and it closes. And **a read of the release
+  numbers rather than ruling either out (on a block-full tmpfs `mktemp -d` succeeded too, and the probe
+  refuses it; a filesystem that spends a block on a directory is unmeasured). ⚠ **A full-by-blocks
+  `$TMPDIR` used to mis-certify the `.env` loader** — with a SECOND, coincident fault: the read of `.env`
+  genuinely failing, its diagnostic lost into the full scratch file, and an empty diagnostic read as end of
+  file, so a failed read became a complete read of an empty file (card#9932 comment 6034). The loader does
+  not use `_scratch` (it runs in both phases and in the mirror, and answers for its own failure), so it
+  runs the same probe when it opens its scratch file and refuses at A5 — or warns in phase B — under the
+  scratch headline. ⚠ **The probe runs once per process, when that file is opened, and the gap is named
+  in `bin/deploy.sh` (§ env_read_err_open)**: a filesystem that fills AFTER a process's first load, while
+  a read of `.env` genuinely fails, is still unseen. Probing per load would close it at the price of the
+  invariant the loader's callers are written on — that only a process's first load can come back with the
+  scratch kind — and would put a scratch failure behind the refusal that says the `.env` stopped being
+  readable. **git's stderr is read back with its status read too** (card#9932): `git_ref_oid` and
+  `git_commit_of` decide a failing status on what git printed, so a `cat` of that file that FAILED is
+  refused as *"git's error output could not be read back"* — claiming neither an absent ref nor a failed
+  read — where its empty output used to pass for git's silence. And **a read of the release
   itself that git could not complete**: every
   precondition that judges the target tree reads it out of the object database before the checkout, and a
   read that FAILED is refused by name (card#9608) — *"the release does not carry this path"* and *"git could
@@ -709,7 +722,8 @@ rule violations anyone could have committed at the time.
   made while `--ref` is resolved, sit inside calls where `set -e` does not apply, so a failed
   `mktemp` there carried on with an empty path and refused on a cause nothing established: *"does not
   resolve to a commit on origin"* for a ref that is there, and a failed git read for a tag git never got to
-  peel. The `.env` loader's own scratch file is the one exception: it runs in both phases and in the
+  peel. A scratch file `mktemp` DID make is proved writable before it is used, for the reason above
+  (card#9932). The `.env` loader's own scratch file is the one exception: it runs in both phases and in the
   mirror, so it answers for that failure itself, refusing at A5 — under a headline naming the scratch
   file, not the read that failure prevented (card#9610, card#9933). It warns,
   rather than refusing, where the doc's own reading is that the state is
