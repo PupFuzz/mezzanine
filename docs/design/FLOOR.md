@@ -4022,13 +4022,14 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 | Fixture | Contents |
 |---|---|
 | `fx-snapshot-4` | [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot, extended to the four `aimla` seats of [§ 3.2](#32-the-desk-slot-function)'s worked assignment. **All four are `link_state: "live"`**, because D2's own `fleet` block in that snapshot reads `"seats_total": 4, "seats_live": 4` and [D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object) defines `seats_live` as `link_state == "live"` — so a non-live seat here would contradict the fixture's own fleet object. The three D2 does not publish are stated here rather than left to the builder, because [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s control asserts an **exact** log over all four: `aimla-pm` is D2's published seat verbatim (`working`, `open_calls: 1`, `open_turn: true`, one subagent, `badges: ["lossy"]` with its `badges_since` — [§ 14](#14-open-questions-for-the-review-loop) item 22). The other three take `aimla-pm`'s members except where [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) ties a member to one this row states, and those are stated here: **`aimla-impl-1`** is `working` with `open_calls: 1`, `open_turn: true` and a non-null `action`, its one open call; **`aimla-impl-2`** is `idle` with `open_calls: 0`, `open_turn: false`, `action: null`; **`aimla-review`** is `blocked` with `open_calls: 0`, `open_turn: false`, `action: null` and a non-null `blocked_since`. Those three carry `subagents: []` with `subagents_open: 0`, `badges: []` with `badges_since: null`, their own `session.session_id`, and their own `protocol_agent_name`, which D2 § 8.2.1 holds unique within one install. All four carry `enabled: true`, a non-null `context` and a non-null `session`; every `activity_state` equals its `render_state`. **No desk in this fixture renders a receipt age** — that readout is `dark-only` ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) and every seat here is `live` |
-| `fx-clear-trace` | `fx-snapshot-4`, then the **ten** deltas of [D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end)'s trace applied to `aimla-pm`, in order, in **both** hook orders D2 runs |
+| `fx-clear-trace` | `fx-snapshot-4`, then the **ten** deltas of [D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end)'s trace applied to `aimla-pm`, in order, in **one** hook order ([§ 14](#14-open-questions-for-the-review-loop) item 21 part 4: D2 § 10 states the wire is identical either way, so this document does not ship a second, byte-identical replay). `state_version` continues from `fx-snapshot-4`'s own **48219**, running **48220**…**48229** across the ten deltas (E0…E9); `at` advances **1 s** per delta from `fx-snapshot-4`'s own `server_time`, `E0` at `…:15.400Z` through `E9` at `…:24.400Z` ([item 21](#14-open-questions-for-the-review-loop) parts 1 and 3). **`E0` is authored to carry three facts at once, named so the fixture is buildable without guessing** ([item 21](#14-open-questions-for-the-review-loop) part 2): `aimla-pm`'s still-open `Bash: composer test` call closes (`completed`), its `coder` subagent stops (`completed`), and the trace's own `turn.start` fires (`T := true`) — `open_calls: 0`, `open_turn: true`, `action: null`, `subagents: []`, `subagents_open: 0` immediately after. E1…E9 are otherwise D2 § 10's own nine remaining rows, unamended, continuing from that state |
 | `fx-degraded` | one seat per non-`live` render a snapshot can carry: `catching_up` (with `oldest_unsent_age_s` = 4,000), `stale`, `offline`, `disabled`, plus a `live` `working` seat badged `fold_lag` with `derivation.fold_lag_ms` = 117,000 — which [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s duration format renders *1m 57s*, the lag line [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) asserts — and a `live` `idle` seat, the sleeper AT-D3-5's sleeper assertion compares the dark desks against in the same run. ⛔ **`retired` is deliberately not among them (card#9078)** — a retired seat leaves D2's read surfaces at `retired_at` ([§ 3.5](#35-retirement-and-the-only-removal)), so a snapshot fixture carrying one would be a fixture of a response the server cannot produce; the state is exercised by [AT-D3-16](#at-d3-16-retirement-removes-the-desk-and-the-removal-is-explained), which delivers the announcement instead. The `stale` and `offline` seats carry `delivery.no_data_since` **equal to** their `delivery.last_receipt_at`, which is what [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) declares on those two states and what makes the desk's timestamp and its ticking age one instant ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s `dark-only`, [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded)), and an `activity_state` of `idle` underneath, which is what AT-D3-5's RED switches the desk onto. A fixture sets values; it renders none, so this row is **`named-not-rendered`** |
 | `fx-interns` | one seat whose `subagents` goes 0 → 8 → 8-with-`subagents_open`-9, including one element with `title: null` |
 | `fx-collision` | `fx-snapshot-4`, then a delta for `aimla-impl-4` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)) |
 | `fx-membership` | **three legs.** (a) deltas for a seat absent from `fx-snapshot-4`, **each patching only `context`** — a patch that carried `render_state` would hand the patch-into-an-empty-object client the member [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched)'s RED reads as missing, and that RED could not fail; (b) a later snapshot missing a seat that was present; (c) **the mid-session install leg** — a `feed.heartbeat` whose `fleet.seats_total` is 6 against the four seats the client holds, then a snapshot carrying a **second install** `aimla-win` with two `live` seats (`aimla-win/win-1`, `aimla-win/win-2`), and a `seat.delta` for `aimla-win/win-1` emitted on the stream **during** that snapshot's round trip, while the client holds no `aimla-win` seat, at `state_version` one above the version both that snapshot and the seat's own fetch return |
 | `fx-gap` | `fx-snapshot-4`, then three deltas for one seat with the middle one dropped. **The dropped delta patches only a member neither delivered delta patches** (`context`, where the two delivered ones patch the call members): a dropped patch that a later delivered one overwrites leaves the apply-unconditionally client holding the served object, and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat)'s RED could not fail |
 | `fx-refusals` | the responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, **a stream whose FIRST message is a `fleet.health` with `db: "down"` and whose LAST is `feed.close{reason:"unavailable"}`, the stream then ENDING** ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)'s stream-connect posture: the connection is accepted to say why, and ends in the same breath), and **a `fleet.reload`, after which the stream also ends** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) declares that message terminal and pairs it with its own `feed.close` — in **two forms**, by operator ruling A4: carrying a `feed_version` the client does not know, and carrying its own, the second followed by re-opens the stub refuses `503` for the spans [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office) names before it accepts one; and **a stream that ends with no `feed.close` at all**, which is the deploy's drain ending a stream that missed the message ([D2 § 2.1](FLEET-STATE.md#21-processes)'s feed-reload row). ⛔ A fixture that held the `db: "down"` stream or the `fleet.reload` stream OPEN would be the posture card#9287's ruling withdrew, and [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office)'s GREEN would certify it — the fixture is where that certification starts, so the end is written here rather than left to the test |
+| `fx-coord` | Two installs. **`aimla`** — four seats: `aimla-pm` declares `protocol_agent_name: "pm"`, `checked`; `aimla-impl-1` and `aimla-impl-2` **both** declare `"coder"` — `checked` and `unchecked` respectively, the **duplicate-declaration** case ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1); `aimla-review` declares nothing (`protocol_agent_name: null`), and its `seat_id` is never itself a declared name. **`win`** — one seat, `win-1`, declares `"reviewer"`, `checked` — a name real on a **different** install. On `aimla`: a `coord.thread` (`thread_ref: "T1"`, `lifecycle: "opened"`, `participants: ["pm", "coder", "reviewer", "aimla-impl-2", "all"]` — one resolvable name, one duplicate, one other-install, one seat-id coincidence, and the literal `all`, unexpanded); `coord.round` **R1** (`from: "pm"`, `to: ["coder"]`, `targets: null` — the fan-out is not resolvable); `coord.round` **R2** (`from: "coder"` — unresolved, duplicate, and the object still renders — `to: ["all"]`, `targets: ["pm"]`, `declares_close: false`); `coord.round` **R3** (`from: "pm"`, `to: ["pm"]`, `targets: ["pm"]`, `declares_close: true` — never rendered as convergence); then a `coord.thread` closing T1 (`lifecycle: "closed"`) |
 | `fx-nulls` | **two** seats, because the **39** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `blocked_since`, `model_label`, `badges_since`, `enabled`, `protocol_agent_name`, `protocol_agent_name_check`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat (a fixture sets values and renders none: **`named-not-rendered`**); all three nullable `reporter.*`. The two together cover all 39, and neither covers them alone. **`nulls-a`'s `render_state` is `idle`**, a state whose desk draws a character ([§ 7.1](#71-the-render-per-state)) — stated because [§ 5.1](#51-the-desk)'s thought bubble is anchored to one, so on a desk without a character *no bubble* would be true whatever `task` held and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero)'s assertion would pass without being able to fail. **`nulls-b` is the never-reported seat above**, which [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints `offline`: its desk draws no character, so it asserts nothing about the bubble and is not asked to |
 
 ### AT-D3-1 no animation without its event
@@ -4087,7 +4088,7 @@ observable before both exist, so the test is **re-gated** rather than split furt
   | At | The facts that moved | Episodes |
   |---|---|---|
   | snapshot apply | `working`, `open_calls: 1`, `open_turn: true` | A3 **entered** (episode 1) — cause is the snapshot object's `state_version` |
-  | E0 `turn.start` | `T := true`; no call is open, so `open_calls: 0` | A3 **left** (episode 1); A4 **entered** (episode 1) |
+  | E0 `turn.start` | `T := true`; `aimla-pm`'s pre-existing `Bash: composer test` call and its `coder` subagent close (`completed`) in this same delta ([§ 14](#14-open-questions-for-the-review-loop) item 21 part 2 — `turn.start` alone touches neither, so the close is authored into `E0` rather than inferred), so `open_calls: 0` | A3 **left** (episode 1); A4 **entered** (episode 1) |
   | E1 `tool.start` A | `open_calls: 1` | A4 **left** (episode 1); A3 **entered** (episode 2) |
   | E2 · E3 · E4 | `open_calls` 1 → 2 → 1, `render_state` never leaves `working` | no episode boundary: A3's condition holds throughout |
   | E5 `tool.end` A | `open_calls: 0`, **`T` still true** | A3 **left** (episode 2); A4 **entered** (episode 2) |
@@ -4143,14 +4144,15 @@ observable before both exist, so the test is **re-gated** rather than split furt
 *The D3 half of D1's and D2's headline test
 ([AT-D2-2](FLEET-STATE.md#at-d2-2-the-clear-trace-mints-no-idle)).*
 
-- **Build:** replay `fx-clear-trace`, both hook orders, capturing the rendered `render_state` and the
+- **Build:** replay `fx-clear-trace`, capturing the rendered `render_state` and the
   animation log at every applied delta. **Reads:** **the harness**, the **desk render**, the **side table**, the
   **animation log**, the **animation set**.
 - **GREEN:** the desk renders `working` from E0 through E6, `unknown` from E7 onward, and **never
   `idle` at any version**; the animation log contains **no** `idle` row (A6) and no `depart` (A2); the
-  side table gains an intern at E1 (title-less), gains its title at E2, and empties at E5; `action`
-  changes four times — at E1, E3, E4 and E5 — which is four A5 rows and no more, each an `edge` row
-  with its own one-row episode and no `left` row, because an edge animation is an instant.
+  side table empties at E0 (the `coder` stool, [§ 14](#14-open-questions-for-the-review-loop) item 21
+  part 2), gains a new intern at E1 (title-less), gains its title at E2, and empties again at E5;
+  `action` changes five times — at E0, E1, E3, E4 and E5 — which is five A5 rows and no more, each an
+  `edge` row with its own one-row episode and no `left` row, because an edge animation is an instant.
 - **RED — the inferred finish:** add a *finished* render when `open_calls` reaches 0 — which the E5→E7
   window makes true while the turn is still open — and the desk animates a completion for a seat whose
   work was **killed**. That is the false idle, arriving through the render layer after D1 and D2 both
@@ -4897,6 +4899,54 @@ buffering and the line the record gains are the protocol's and are observable at
 - **Second RED:** animate the insert as an arrival → a seat that came online hours ago walks in the
   moment the client notices it.
 
+### AT-D3-18 the coordination thread line resolves or renders unresolved, never a guessed desk
+
+*[§ 14](#14-open-questions-for-the-review-loop) item 24 (Q8): no other acceptance test binds
+[§ 5.7](#57-the-coordination-thread-line)'s render map, so this document had a headline render with no
+gate. Gated at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 7, beside
+[AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart): drawing a line **between** two desks needs
+their floor positions, which is step 7's artifact, exactly as [A17](#62-the-animation-table--the-closed-set)'s
+clock and windows are drawn at step 7 though step 6's animation set is what moves them.*
+
+- **Build:** apply `fx-snapshot-4` (its four `aimla` seats already carry
+  [§ 3.2](#32-the-desk-slot-function)'s worked floor positions, so `aimla-pm` and `aimla-impl-1` both
+  have a desk to draw a line to), then replay `fx-coord`'s `coord.thread` and `coord.round` messages
+  against it, in order; collect the animation log. **Reads:** **the harness**, the **floor layout**, the
+  **animation set**, the **animation log**.
+- **GREEN:** `T1`'s line is drawn once, held (an [A18](#62-the-animation-table--the-closed-set) `entered`
+  row) between the `aimla-pm` and `aimla-impl-1` desks — the two names that resolve to exactly one desk
+  each, `"pm"` and `"coder"` (`aimla-impl-1`, `checked`) — and to **no other desk**: `"coder"`'s
+  duplicate at `aimla-impl-2` does not add a second endpoint, `"reviewer"` (declared only on `win`) and
+  `"aimla-impl-2"` (a seat-id coincidence, not a declaration) resolve to **nothing**, and `"all"` is
+  drawn on **no** endpoint of its own — the literal is never expanded on the thread's participant list.
+  `"coder"`'s unresolved reason is rendered `duplicate_declaration`; `"reviewer"`'s and
+  `"aimla-impl-2"`'s are both `no_declaring_seat` — **two different reasons, both distinguishable from a
+  plain absence, and neither the same word.** `R1` (`from: "pm"`, resolved) fires no
+  [A19](#62-the-animation-table--the-closed-set) envelope: `targets: null` renders as *the fan-out is
+  not resolvable here*, never as an empty fan-out and never with `to`'s address standing in for it. `R2`
+  (`from: "coder"`, unresolved) still renders `to`/`targets`/`declares_close` — an unresolved origin does
+  not suppress the rest of the object — and fires one A19 envelope at `aimla-pm`'s desk
+  (`targets: ["pm"]`) and one [A20](#62-the-animation-table--the-closed-set) broadcast pulse at
+  `aimla-impl-1`'s desk (`to` carries `all` verbatim). `R3`'s `declares_close: true` renders **that
+  somebody performed the close act** and nothing that reads as convergence — no change to `T1`'s line
+  until the paired `coord.thread` arrives. T1's closing `coord.thread` ends the line: an
+  [A18](#62-the-animation-table--the-closed-set) `left` row, `motion: false`. Throughout: no desk's
+  `render_state`, badges or currency label changes — [D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state)'s
+  rule, asserted as a **discriminating control** below rather than assumed.
+- **RED — the guessed desk:** resolve `"aimla-impl-2"` to the desk of the same `seat_id` when no seat
+  declares it → the line is drawn to a desk this document's own rule (`equality between an agent name
+  and a seat_id remains a coincidence this plane cannot check`) forbids resolving to. Watch it once: it
+  is the exact defect [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 3's discriminating
+  control names.
+- **Second RED:** fold `duplicate_declaration` into the same *unresolved* rendering as
+  `no_declaring_seat` → an install misconfiguration (two seats declaring `"coder"`) reads as *no seat
+  may resolve it*, the opposite diagnosis, on a floor an operator would otherwise act on correctly.
+- **Discriminating control:** replay `fx-coord`'s messages with `fx-snapshot-4` applied and no seat
+  declaring any of them → no line is ever drawn, no A18/A19/A20 row is written, and every desk's
+  `render_state` is exactly [§ 11](#11-acceptance-tests)'s `fx-snapshot-4` row — an empty coordination
+  layer changes nothing about any seat, and this fixture is where that absence would first be visible if
+  it were false.
+
 ---
 
 ## 12. Every number, and where it comes from
@@ -5485,21 +5535,70 @@ reason to leave two readings live.
     the silent reconnect possible at all: without it the end is F1's silence. **Reopens:** a release that
     changed the wire and shipped without a bump.
 
-21. **⇢ Review — `fx-clear-trace`'s base, patches and hook-order difference.**
-    [§ 11](#11-acceptance-tests) states the fixture as "`fx-snapshot-4`, then the **ten** deltas of
-    [D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end)'s trace applied to
-    `aimla-pm`, in order, in **both** hook orders D2 runs," and does not state: the fixture's version
-    base, where `fx-snapshot-4`'s own `state_version` and D2 § 10's starting figure might disagree;
-    `open_calls: 0` at E0 against D2 § 10's own facts column, and what E0's `turn.start` does to pm's
-    still-open Bash action and its `coder` subagent, neither of which is given a stated fate; the clock
-    advance behind every `at` this fixture needs, stated nowhere in D2 § 10 or here; and what "both hook
-    orders" changes, given D2 § 10's own worked deltas are identical either way. **Blocks:** step
-    6 onward — the lowest [Appendix B](#appendix-b--what-an-implementer-builds-from-this) gate of any
-    test replaying this fixture or a fixture [§ 11](#11-acceptance-tests)'s fixture table builds on it.
-    **In the meantime:** no `fx-clear-trace.json` ships; every test citing it is unbuildable until this
-    item closes, and no step before the one it blocks needs it. **Closes it:** the doc
-    owner states the base, pm's E0 action/subagent fate, the clock advances, and the hook-order
-    difference (or its absence), here.
+21. **✅ CLOSED — the version base is `fx-snapshot-4`'s own `state_version`; pm's still-open Bash call
+    and its `coder` subagent close in the same delta that opens the trace; the clock advances 1 s per
+    delta; and the fixture ships one hook order, not two.** Doc-owner ruling, card#7341 step 6.
+    [§ 11](#11-acceptance-tests)'s `fx-clear-trace` row and the [AT-D3-1](#at-d3-1-no-animation-without-its-event)
+    walk are both amended to state it rather than assume it.
+
+    **1 — the version base.** `fx-snapshot-4`'s `aimla-pm.state_version` is **48219**
+    ([D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot), carried verbatim into `fx-snapshot-4` by
+    [item 22](#14-open-questions-for-the-review-loop)). [D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end)'s
+    own `0…10` is a fact about *its own* illustration — a hand-picked fresh seat, chosen so its trace's
+    ten transitions "run 1…10 rather than from an arbitrary base" — and is not a figure this derived
+    fixture must reproduce. **`fx-snapshot-4`'s value wins**: `state_version` runs **48220** through
+    **48229** across `fx-clear-trace`'s ten deltas (D2 § 10's own E0…E9, with `E0` carrying the
+    additional facts named in part 2). No GREEN in this document compares a literal version number — every comparison is symbolic
+    ("that seat's `state_version`", "a `state_version` the client holds") — so this costs nothing to any
+    assertion already written. **Reopens:** an assertion that pins a literal figure.
+
+    **2 — pm's E0 state, and the fate of its open call and subagent.** `fx-snapshot-4`'s `aimla-pm` is
+    mid-turn: one open call (`Bash: composer test`, main scope) and one background-task subagent
+    (`coder`, "draft the D1 event schema"). D2 § 10's own trace is calibrated for the opposite shape —
+    "a fresh seat with no prior events" — and `turn.start`'s own field table
+    ([D1 § 6.3](EVENT-SCHEMA.md#63-turnstart): `prompt_chars`, `project_label`) and its one fold effect
+    ([D2 § 4.3](FLEET-STATE.md#43-the-derivation-function) rule 3: `T := true`) touch neither `open_calls`
+    nor `subagents` — nothing in this document closes a call by turn.start alone, and the two states
+    cannot compose literally. **Ruling: `fx-clear-trace`'s first delta — labelled `E0` for continuity
+    with D2 § 10's own numbering, and still the first of "the ten" — is authored to carry both facts at
+    once: `Bash: composer test` closes (`completed`, not `aborted` — nothing interrupts it) and its
+    `coder` subagent stops (`completed`), alongside `turn.start`'s own `T := true`.** This is stated as
+    an authorial fact about the fixture, not an inferred completion: D2 § 10 already says of itself that
+    it "is a test of the FOLD, not a claim about what the harness emits," and a hand-authored fixture
+    combining two real, nameable closes with the turn that follows them is the same kind of compression,
+    named rather than left to be found. `open_calls` is **0** immediately after `E0` (matching
+    [§ 11](#11-acceptance-tests)'s walk), `open_turn` is `true` throughout (rule 3: `T` alone renders
+    `working`, exactly D2 § 10's own E5→E7 gap), and the walk's **A3 left (episode 1); A4 entered
+    (episode 1)** at `E0` is unchanged — now with its mechanism named. **What this costs, named rather
+    than left implicit:** `E0` fires a fifth `action`-changing delta (`Bash: composer test` → `null`)
+    ahead of [AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere)'s four (E1, E3, E4, E5), so that
+    test's GREEN is corrected to *five* A5 rows, at `E0, E1, E3, E4, E5`; and the side table's `coder`
+    stool empties at `E0`, ahead of the title-less intern [AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere)
+    already asserts arriving at `E1` — so the side table is never simultaneously occupied by both.
+    **Reopens:** a reading of `turn.start` that gives it its own close semantics, which would let this
+    ruling's bundling be un-done in favour of a true, separate bridging delta.
+
+    **3 — the clock advance.** Each of `fx-clear-trace`'s ten deltas advances the fixture's clock by
+    **1 s** from the previous one, starting 1 s after `fx-snapshot-4`'s own `server_time`
+    (`2026-08-23T14:23:14.400Z`): `E0` is `…:15.400Z`, and `E9` is `…:24.400Z`. The interval is
+    arbitrary — no GREEN in this document depends on its size — and is stated only so it is monotonic,
+    collision-free, and buildable without guessing. **Reopens:** a test that asserts a specific duration
+    across this fixture's own events (none does).
+
+    **4 — both hook orders.** [D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end)
+    states its own conclusion plainly: *"the wire is the same sequence of kinds, so the fold's inputs are
+    the same and the state path is identical."* The hook-order difference is which **server-side hook**
+    (`Stop`/`StopFailure` vs. `SessionStart`) performs the reap that closes `B` and `A` — a fact about the
+    fold's own bookkeeping (`close_source`, `match`), invisible on the wire and asserted by
+    [AT-D2-2](FLEET-STATE.md#at-d2-2-the-clear-trace-mints-no-idle) at the fold layer, where it is real.
+    `fx-clear-trace` is a **wire**-level fixture — the ten deltas a D3 client receives — and D2's own
+    text is that those ten deltas do not differ between the two orders. **Dropped, and this is why: a
+    second replay of byte-identical input proves nothing a D3 test does not already have from the
+    first.** `fx-clear-trace` ships **one** hook order;
+    [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s closed-set half and
+    [AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere)'s Build bullets drop "both hook orders"
+    accordingly. **Reopens:** a finding that the wire genuinely differs between the two orders (contrary
+    to D2 § 10's own statement), which would make the second replay load-bearing again.
 22. **✅ CLOSED — `fx-snapshot-4`'s `aimla-pm` carries `badges: ["lossy"]`, verbatim from D2, and the
     three seats D2 does not publish are restated at [§ 11](#11-acceptance-tests).** Doc-owner ruling,
     card#7341 step 3. [§ 11](#11-acceptance-tests) stated `aimla-pm` as *D2's published seat verbatim*
@@ -5529,7 +5628,36 @@ reason to leave two readings live.
     its line would read *0s behind*. The *1m 57s* exemplar is 117,000 ms, and so is this fixture's
     figure. D2's `117` is coherent with its own `fleet.fold` of `ok`, so this is no D2 defect.
     **Reopens:** a test that needs the lag figure on a retirement announcement.
----
+24. **✅ CLOSED — Q8: [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 7 builds
+    [§ 5.7](#57-the-coordination-thread-line)'s coordination line, gated by a new acceptance test,
+    [AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk).**
+    Doc-owner ruling, card#7341 step 7. Raised in card#7341 comment 5557 ("no Appendix B row builds
+    § 5.7's coordination line"), owned by this seat and positioned with step 7's plan per that comment
+    and comment 6256.
+
+    **Which row.** The coordination thread line is drawn **between** two desks
+    ([§ 5.7](#57-the-coordination-thread-line)'s own framing — "the only render drawn between desks
+    rather than at one"), so drawing it needs the floor's desk **positions**, which is step 7's artifact
+    (the slot function, [§ 3.2](#32-the-desk-slot-function)) — not step 6's, which builds the animation
+    **set** ([A18](#62-the-animation-table--the-closed-set)–[A20](#62-the-animation-table--the-closed-set)'s
+    triggers) but nothing that places a desk to draw a line to. The parallel already in this table is
+    [A17](#62-the-animation-table--the-closed-set): step 6 is what *moves* the wall clock and the
+    windows, and step 7 is where they are *drawn*, for the same reason — a room element with nowhere to
+    render is a room element nobody builds. The coordination line is the second render step 7 owns for
+    that reason, not the first, and [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
+    row 7's Artifact cell now says so.
+
+    **The acceptance test.** § 5.7 had none — not a gap in an existing test's `Reads:` clause, a
+    section with no test at all — and its four numbered properties (resolve-or-render-unresolved,
+    the never-guessed-desk rule, the duplicate-vs-no-declarer distinction, no coordination fact touching
+    a desk) are exactly the shape [§ 11](#11-acceptance-tests)'s preamble asks a headline render to
+    have: something to break to make it RED. **[AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk)**
+    is minted for it, gated at step 7 beside [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart), and
+    a new fixture, `fx-coord` ([§ 11](#11-acceptance-tests)'s fixture table), carries the join cases D2 §
+    8.3.3 rule 1 names: a resolving name, a duplicate declaration, a name declared only on another
+    install, and a name that merely equals a `seat_id` it was never declared on.
+    **Reopens:** a second render of coordination facts (a lobby-level summary, a drill-down panel row)
+    that reads the same objects and needs its own gate.
 
 ## Appendix A — every obligation addressed to this document
 
@@ -5656,7 +5784,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | 4 | ✅ landed 2026-09-22 (card#7341 step 4) — every **age readout**, over the clock offset the client protocol holds from step 3 ([§ 2.4](#24-the-clock-and-every-age-on-the-page)): the desk's quiet age, action elapsed, `dark-only` receipt age and gauge age, each seat-clock instant as its labelled claim, and the 1 s tick that re-renders them ([§ 2.5](#25-what-re-renders-and-when)) — `server/public/js/wire/age-readout.js`, whose wordings the drill-down draws from too. The fleet's sweep and ingest ages are not in it: they have no published wording ([§ 14](#14-open-questions-for-the-review-loop) item 17) and sit on step 8's status strip | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(floor half)** |
 | 5 | ✅ landed 2026-09-22 (card#7341 step 5) — the **desk render**: the render map, the ten state renders, and the desk's **side table** ([§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [§ 8](#8-interns--subagent-rendering-and-the-cap)) — `server/public/js/desk/desk-render.js`, one desk from the held seat object and the ages step 4's tick renders, and `server/public/js/desk/desk-floor.js`, which runs it over every held seat, re-renders ages on step 4's 1 s tick, and enters and leaves each desk's `held` render in the animation log. The *as of* stamp on the lag line is the `server_time` that delivered the seat's `derivation` block, which the client protocol now holds per member ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule). ⚠ No page calls it yet: the client protocol has no page before step 8 | [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded), [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(desk half)** |
 | 6 | the **animation set** ([§ 6.2](#62-the-animation-table--the-closed-set)) | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** and **[AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere)** — the two hard gates on trusting the floor at all — plus [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), whose whole claim is about motion and is unobservable before there is any, and the render halves of [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(render half)** and [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(render half)** |
-| 7 | the **floor layout**: the map, the slot function, overflow (card #7341). The map is what draws the room interior the desks stand in — fetched from [D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s surface since card#9208's reversal, with the **shipped default** `resources/floor/default.tmj` as what every room renders until it is authored ([§ 10.3](#103-the-floor-map)); **the wall clock and the windows** are the FLOOR's one room render, drawn once for it rather than once per room's map ([§ 4.2](#42-the-floor), card#9267) — named here because a room element nobody schedules is a room element nobody builds. Step 6's set is what *moves* them ([§ 6.2](#62-the-animation-table--the-closed-set) A17); this step draws them and sets them on first render, which is not an animation ([§ 6.5](#65-a-snapshot-never-animates)); and the floor's composition — each room's grid at its `origin` over the floor's `hallway`, or the default arrangement at § 12's gap, the floor's extent as their union, and F18's named overlap ([§ 4.6](#46-the-building-layout), [§ 4.2](#42-the-floor), card#9292) | [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) |
+| 7 | the **floor layout**: the map, the slot function, overflow (card #7341). The map is what draws the room interior the desks stand in — fetched from [D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s surface since card#9208's reversal, with the **shipped default** `resources/floor/default.tmj` as what every room renders until it is authored ([§ 10.3](#103-the-floor-map)); **the wall clock and the windows** are the FLOOR's one room render, drawn once for it rather than once per room's map ([§ 4.2](#42-the-floor), card#9267) — named here because a room element nobody schedules is a room element nobody builds. Step 6's set is what *moves* them ([§ 6.2](#62-the-animation-table--the-closed-set) A17); this step draws them and sets them on first render, which is not an animation ([§ 6.5](#65-a-snapshot-never-animates)); and the floor's composition — each room's grid at its `origin` over the floor's `hallway`, or the default arrangement at § 12's gap, the floor's extent as their union, and F18's named overlap ([§ 4.6](#46-the-building-layout), [§ 4.2](#42-the-floor), card#9292). **The coordination thread line** ([§ 5.7](#57-the-coordination-thread-line), [§ 14](#14-open-questions-for-the-review-loop) item 24 — Q8): drawn between two desks, so it needs this step's own artifact, the floor's desk positions, exactly as A17's clock and windows are drawn here though step 6's set is what moves them | [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart), [AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk) |
 | 8 | the **failure renders** and the **status strip** ([§ 9](#9-failure-paths-and-their-observables)), and the **stream recovery**: [§ 2.2](#22-connect-snapshot-deltas) steps 7–9 — dead-feed detection, the re-open on the 10 s cadence and on the backed-off one, the reload grace, and the re-run from step 1. ⛔ No page constructs the client protocol before this step: a page holding a real `EventSource` without the stream recovery inherits the browser's own reconnect ([§ 2.2](#22-connect-snapshot-deltas)), which re-runs none of steps 1–5, so a seat whose delta fell in the drop holds its old state for as long as it stays quiet | [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(floor half)**, [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised), and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(strip half)** |
 | 9 | the **lobby** ([§ 4.1](#41-the-lobby--the-building-summary)) — which renders the record's *membership changes* lines ([§ 5.5](#55-the-clients-own-narration)) for a seat or an install a discovery fetch adds, written by the client protocol in `server/public/js/wire/fleet-client.js` at this step, and replaces `server/public/js/lobby/main.js`'s own discrepancy trigger with the protocol's | [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) |
 | 10 | the **drill-down**, and its **uncapped intern list** ([§ 8](#8-interns--subagent-rendering-and-the-cap)) (card #7342) | [AT-D3-4](#at-d3-4-the-subagent-cap-boundary), [AT-D3-16](#at-d3-16-retirement-removes-the-desk-and-the-removal-is-explained), and the panel halves of [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(panel half)**, [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(panel half)** and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(panel half)** ([§ 11](#11-acceptance-tests)'s ordering rule) |
