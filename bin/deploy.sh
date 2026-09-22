@@ -1976,7 +1976,9 @@ npm_lockfile_version() {
 #   · opcache.preload set               → REFUSED. Preloaded code is fixed for the master's life.
 # Read from the FPM SAPI (`php-fpm -i`; the CLI reads a different php.ini) and then from every pool
 # that runs as THIS user, because a pool's php_value / php_admin_value beats the ini and Virtualmin
-# writes a domain's PHP options exactly there. The worst case across those pools wins.
+# writes a domain's PHP options exactly there. The worst case across those pools wins. Every pool file the
+# FPM config's includes match is READ or REFUSED by name (`cannot read <file>`), never skipped — which pools
+# run as this user is only known after reading them all (card#9815, fpm_readable).
 # And then from every `.user.ini` that sits over the app's scripts — in the vhost's document root
 # (MEZZ_DOCROOT) and in the release's server/public/ — because opcache.enable, validate_timestamps and
 # revalidate_freq are all PHP_INI_ALL, so such a file beats the pool for every request under it
@@ -2087,12 +2089,25 @@ fpm_judge() {
   if [ "$freq" -gt "$max_f" ]; then max_f="$freq"; fi
 }
 
+# fpm_readable <path> <why…> — fpm_code_reload_ready's one read-permission refusal (card#9815): true when this user can
+# read <path> (and, for a directory, list it); otherwise FPM_NOT_READY is "cannot read <path>" and <why>, and it fails.
+# The CALLER decides that <path> is there before asking, because what "there" means differs per file: php-fpm.conf
+# must be, a .user.ini may be absent, and a pool file is whatever the include matched. ⛔ `-r` alone is never read as
+# "absent" in this function: it is false for a file that is there and unreadable too, and a pool file dropped that
+# way refused on a FALSE cause — "no PHP-FPM pool runs as <me>" when one does — or, beside another pool of this
+# user's, refused on nothing at all and certified an opcache posture without reading the app's own pool.
+fpm_readable() {
+  if [ -r "$1" ] && { [ ! -d "$1" ] || [ -x "$1" ]; }; then return 0; fi
+  FPM_NOT_READY=("cannot read $1" "${@:2}")
+  return 1
+}
+
 # R1's ini directives, read wherever opcache's are: the ini baseline, a pool's php_(admin_)value/flag, a .user.ini.
 R1_KEYS='output_buffering|output_handler|zlib\\.output_compression|ignore_user_abort'
 
 fpm_code_reload_ready() {
   FPM_NOT_READY=(); FPM_POSTURE=""; FPM_REVALIDATE_S=0; STREAM_POSTURE=""; STREAM_STATUS_LISTEN=""; STREAM_NOT_READY=()
-  local me info ini_file fpm_conf inc f rows
+  local me info ini_file fpm_conf inc f rows fpm_err fpm_said
   me="$(id -un)"
   if ! command -v "$FPM_BIN" >/dev/null 2>&1; then
     FPM_NOT_READY=("PHP-FPM binary '$FPM_BIN' was not found"
@@ -2100,25 +2115,53 @@ fpm_code_reload_ready() {
       "different minor, name its binary with MEZZ_FPM_BIN.")
     return 1
   fi
-  info="$("$FPM_BIN" -i 2>/dev/null || true)"
+  # FPM's stderr is KEPT and printed only if this read fails (card#9815): a healthy FPM prints warnings there as a
+  # matter of course, so on the success path it is noise — and on the failure path it is FPM's own reason.
+  scratch_file fpm_err "\`$FPM_BIN -i\`'s error output"
+  info="$("$FPM_BIN" -i 2>"$fpm_err" || true)"
   if [ "$(phpinfo_value "$info" 'Server API')" != "FPM/FastCGI" ]; then
     FPM_NOT_READY=("\`$FPM_BIN -i\` did not print an FPM phpinfo"
       "Without it nothing here can say what the workers' opcache does with a changed file.")
+    # Nothing is decided on it, so a read-back that fails costs only the diagnostic — and is said to, never
+    # reported as an FPM that was silent.
+    if ! fpm_said="$(cat "$fpm_err")"; then
+      FPM_NOT_READY+=("What it printed on stderr could not be read back; \`cat\`'s error above names the scratch file.")
+    elif [ -n "$fpm_said" ]; then
+      FPM_NOT_READY+=("What it printed on stderr:" "$fpm_said")
+    else
+      FPM_NOT_READY+=("It printed nothing on stderr.")
+    fi
+    rm -f "$fpm_err"
     return 1
   fi
+  rm -f "$fpm_err"
   ini_file="$(phpinfo_value "$info" 'Loaded Configuration File')"
   fpm_conf="$(dirname "$ini_file")/php-fpm.conf"
-  if [ ! -r "$fpm_conf" ]; then
-    FPM_NOT_READY=("cannot read $fpm_conf"
-      "It is looked for beside the FPM SAPI's php.ini ($ini_file); the pools that serve the app"
-      "are defined from it.")
-    return 1
-  fi
+  fpm_readable "$fpm_conf" \
+    "It is looked for beside the FPM SAPI's php.ini ($ini_file); the pools that serve the app" \
+    "are defined from it." || return 1
   local -a pool_files=("$fpm_conf")
   while IFS= read -r inc; do
     # An include is a glob (Debian: pool.d/*.conf), expanded here on purpose.
     # shellcheck disable=SC2086
-    for f in $inc; do if [ -r "$f" ]; then pool_files+=("$f"); fi; done
+    for f in $inc; do
+      # A glob that matched nothing comes back as its own text, and so does a literal include that names no file.
+      # Either is a host with no such pool file — unless the directory it names cannot be listed or searched by this
+      # user, which ALSO comes back that way, and then whether it defines a pool is not known (card#9815).
+      if [ "$f" = "$inc" ] && [ ! -e "$f" ]; then
+        if [ -d "$(dirname "$f")" ]; then
+          fpm_readable "$(dirname "$f")" \
+            "The include '$inc' in $fpm_conf names pool files in it, and none can be seen from here — so" \
+            "whether one of them runs as $me is not known." || return 1
+        fi
+        continue
+      fi
+      # Matched by the glob, or named by the include and there: a pool file this deploy must read.
+      fpm_readable "$f" \
+        "The include '$inc' in $fpm_conf matches it, so the pools it defines are ones PHP-FPM runs." \
+        "Which of them run as $me, and what they set for opcache, is not known without it." || return 1
+      pool_files+=("$f")
+    done
   done < <(awk -F= '/^[[:space:]]*include[[:space:]]*=/ { v = $2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); print v }' "$fpm_conf")
 
   # One row per pool running as this user ("<pool> - -"), then one per opcache or R1 override in it, and one per
@@ -2166,11 +2209,8 @@ fpm_code_reload_ready() {
     fi
     for f in "$docroot/$uif" "$APP_DIR/public/$uif"; do
       [ -e "$f" ] || continue
-      if [ ! -r "$f" ]; then
-        FPM_NOT_READY=("cannot read $f"
-          "A $uif can override opcache for every request under it, so it is read, never skipped.")
-        return 1
-      fi
+      fpm_readable "$f" "A $uif can override opcache for every request under it, so it is read, never skipped." \
+        || return 1
       ui_src+=("$f"); ui_text+=("$(cat "$f")")
     done
     # Phase A reads the RELEASE's copy as well, which the checkout has not written yet; phase B, run after

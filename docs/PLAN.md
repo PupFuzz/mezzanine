@@ -548,7 +548,10 @@ rule violations anyone could have committed at the time.
   release with no `bin/supervision.sh` or one that no longer defines what the deploy runs from it, a
   release that would move the daemons' lock files, a PHP-FPM whose opcache would not re-read changed files (timestamps
   off in the ini, a pool or a `.user.ini`; preload set; no pool running as the deploy user; no FPM
-  binary), a missing `cgi-fcgi` or `timeout`, a malformed `MEZZ_FEED_DRAIN_CEILING_S`, and a host
+  binary; an FPM whose `-i` prints no FPM phpinfo, with FPM's own stderr printed beneath it), **a pool
+  file or pool directory the FPM config includes that the deploy user cannot read**, named as `cannot
+  read <path>` (card#9815) — the ordinary shape is a `pool.d` file at 640 root:root, and the fix is to
+  let the deploy user read it — a missing `cgi-fcgi` or `timeout`, a malformed `MEZZ_FEED_DRAIN_CEILING_S`, and a host
   that cannot serve or drain the feed's stream (card#9300): no `MEZZ_STREAM_POOL`, or one naming no
   pool, another user's pool, a `request_terminate_timeout` other than 0, no `pm.status_path` or
   `pm.status_listen`, a status that does not answer over that listener for that pool; and on that
