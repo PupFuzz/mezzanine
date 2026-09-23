@@ -79,19 +79,21 @@ export const ANIMATION_SET = Object.freeze({
  *                   and left by `held()` against the object that holds it.
  *   · `slot`      — A16, whose trigger is § 3.3's displacement and therefore a fact about the
  *                   SLOT FUNCTION, Appendix B row 7's artifact. `displaced()` is the entry that
- *                   row calls; the log row it writes is fully specified here (§ 11 names A16's
- *                   own `cause`), so what row 7 owes is the trigger and not a second decision.
- *   · `coord`     — ⚠ A18/A19/A20, DECLARED AND WRITTEN BY NO CALL HERE. Their triggers are
- *                   already built and are NOT this file's to re-mint: `coord/coord-model.js`'s
- *                   `threadAnimations()` and `roundAnimations()` decide them from the rendered
- *                   `coord.thread` / `coord.round` objects (card#8300). What is missing is the LOG
- *                   ROW, not the trigger — § 11's `cause` column enumerates four causing messages
- *                   and a `coord.round` is none of them, and its `held` column reads a seat
- *                   object's `state_version`, which a `coord.thread` has none of. A row written
- *                   here would therefore fail AT-D3-1's own closed-set GREEN (*one of the four
- *                   causing messages*) on a correct client, so this step writes none and the gap
- *                   is reported rather than guessed at — the same under-specification § 11 closed
- *                   for A14 and A17 with one line, still open for these three.
+ *                   row calls, and `floor/floor-screen.js` calls it (card#7341 step 7); the log row
+ *                   it writes was fully specified here before there was a caller (§ 11 names A16's
+ *                   own `cause`), so what row 7 owed was the trigger and not a second decision.
+ *   · `coord`     — A18/A19/A20, whose triggers are `coord/coord-model.js`'s `threadAnimations()`
+ *                   and `roundAnimations()` over the rendered `coord.thread` / `coord.round`
+ *                   objects (card#8300) and are NOT this file's to re-mint. What this file owns is
+ *                   the LOG ROW, and § 11's forward contract for it landed with step 6: `seat_id`
+ *                   is `null` on all three (they are drawn BETWEEN desks and claim nothing about
+ *                   any one desk), `install_id` is the message's own (§ 5.7 clause 3's room), and
+ *                   `cause` is the identity of the causing message — `post_ref` for A19 and A20,
+ *                   `thread_ref` for A18 on the way in and again on the way out. ⭐ card#7341
+ *                   step 7 is the first consumer that applies those messages, so the rows are
+ *                   written now and AT-D3-1's causing-message set gains `coord.round` and
+ *                   `coord.thread` in the same change, with AT-D3-18 as the discriminating test
+ *                   that fires one — which is exactly the condition § 11 published.
  */
 export const FIRED_BY = Object.freeze({
     A1: 'delta',
@@ -175,8 +177,26 @@ export function animationForm(animationId, reduce = false) {
 }
 
 /**
+ * § 6.4's *identical* — the reduced-motion form of a row that has NO motion to replace, which is
+ * the whole of what makes a held row static by design. § 11 names that population in words (*the
+ * two states with no motion by design*) and this is where it is DERIVED: a row whose reduced form
+ * is its ordinary one is a row nothing was removed from.
+ *
+ * ⛔ IT IS NOT `loops()`, AND THE DIFFERENCE IS A18. `loops()` answers *does this row run frames at
+ * § 12's rate*, which decides a frame interval; this answers *does this row move at all*. Every
+ * held row of § 6.2 was a 4 fps loop or one of those two states until A18 — a line whose reduced
+ * cell says *drawn static … no travel along it*, so its ordinary form DOES move and it runs no
+ * frame loop. Deriving motion from `loops()` drew that line with `motion: false`, which is § 11's
+ * claim that one of its three reasons applied when none did (card#7341 step 7, the step that first
+ * fires the row).
+ */
+function staticByDesign(animationId) {
+    return (ANIMATION_SET[animationId]?.reduced ?? null) === 'identical';
+}
+
+/**
  * ⛔ THE ONE PLACE § 6.4's CONDITION DECIDES `motion`, for every row of either class. § 11's
- * `motion` column names three reasons a row is drawn without it — a held row that loops at all,
+ * `motion` column names three reasons a row is drawn without it — a held render static by design,
  * a loop a § 7.3 currency treatment stopped, and reduced motion — and this is where all three
  * meet, so a second caller cannot answer the question differently.
  *
@@ -185,11 +205,16 @@ export function animationForm(animationId, reduce = false) {
  * nobody at it), and for an `edge` row there is no treatment to consult and it is simply true.
  */
 function motionOf(animationId, permitted, reduce) {
-    if (!permitted || reduce) {
+    const cls = classOf(animationId);
+
+    // An id this closed set does not carry answers *no motion*, as every other reader of the set
+    // answers for one: a caller passing one has a bug either way, and what this keeps is that the
+    // bug looks the same wherever it lands.
+    if (cls === null || !permitted || reduce) {
         return false;
     }
 
-    return classOf(animationId) === 'edge' || loops(animationId);
+    return cls === 'edge' || !staticByDesign(animationId);
 }
 
 /**
@@ -262,6 +287,9 @@ export class AnimationSet {
     /** key → the open `held` episode: `{ episode_id, animation_id, motion }`. */
     #episodes = new Map();
 
+    /** `thread_ref` → the open A18 episode. § 5.7 makes the ref the thread's identity. */
+    #lines = new Map();
+
     /**
      * @param {object} log  `wire/animation-log.js`'s `createAnimationLog()` — the one instrument
      *                      every row below is written through
@@ -328,12 +356,84 @@ export class AnimationSet {
      * its new one. `cause` is § 11's own answer for this row — the seat-set change, recorded as
      * the ARRIVING seat's key — while the row itself names the desk that MOVED.
      *
-     * ⚠ NO CALLER ON A PAGE YET: the trigger is a fact about the slot function, which is
-     * Appendix B row 7's artifact, and AT-D3-3 is gated there. This entry exists so that step
-     * reads § 6.4's form and § 11's `cause` off this set rather than minting a second answer.
+     * ⚠ THE CALLER IS `floor/floor-screen.js` (card#7341 step 7), and it is the slot function's
+     * own answer rather than a diff of two renders: the screen re-assigns § 3.2's slots over the
+     * new seat set and compares each incumbent's slot with the one it held. This entry existed
+     * before that caller so that the step read § 6.4's form and § 11's `cause` off this set rather
+     * than minting a second answer.
      */
     displaced(installId, seatId, arrivingKey, at) {
         this.#edge('A16', arrivingKey, installId, seatId, at);
+    }
+
+    /**
+     * § 6.2 A19: one envelope leaves the origin desk for EACH destination desk, so the caller calls
+     * this once per resolved destination — "a destination that does not resolve gets no envelope and
+     * no line, and the ones that do still get theirs". `cause` is § 11's forward contract for this
+     * row: the post's own `post_ref`.
+     */
+    envelope(installId, postRef, at) {
+        this.#edge('A19', postRef, installId, null, at);
+    }
+
+    /** § 6.2 A20: ONE ring per broadcast post, expanding from the origin desk it resolved to. */
+    broadcast(installId, postRef, at) {
+        this.#edge('A20', postRef, installId, null, at);
+    }
+
+    /**
+     * § 6.2 A18 over one room's rendered threads — the `held` class, entered and left exactly as a
+     * desk's held render is, and for the same reason: a line is held for as long as the thread the
+     * client holds says it is open with two endpoints that resolve.
+     *
+     * ⛔ THE EPISODE IS KEYED ON `thread_ref`, WHICH IS THE THREAD'S IDENTITY (§ 5.7): "two messages
+     * carrying it are one thread and not two", so a reopen replaces a close rather than opening a
+     * second line. The desk episodes above are keyed on a seat key and the two spaces never meet.
+     *
+     * ⛔ A LINE THAT STOPS RESOLVING ENDS ITS EPISODE, not only a closed one. § 6.2 A18's *Ends*
+     * cell names both — "when a `coord.thread` arrives whose lifecycle is `closed`, or when the
+     * resolved endpoints fall below two" — and a renderer that watched only the lifecycle would
+     * keep a line drawn between desks one of which no longer resolves.
+     *
+     * @param {list<{thread_ref: string, install_id: string, animations: list<string>}>} threads one
+     *        room's rendered threads, as `coord/coord-model.js` returns them
+     * @param {number} at § 2.4's corrected server-clock instant
+     */
+    lines(threads, at) {
+        // ⛔ THE EPISODE KEY IS `(install_id, thread_ref)` AND THE `cause` IS THE REF ALONE. A
+        // thread_ref is a coordination repository's own issue reference (§ 5.7), so two installs
+        // posting into one thread deliver two objects carrying one ref — and each is drawn in its
+        // own room (clause 3), which is two lines and not one. § 11 fixes what the ROW carries and
+        // says nothing about what an implementation keys its own bookkeeping on.
+        const drawn = new Map(threads
+            .filter((thread) => thread.animations.includes('A18'))
+            .map((thread) => [`${thread.install_id}/${thread.thread_ref}`, thread]));
+
+        for (const [key, open] of this.#lines) {
+            if (!drawn.has(key)) {
+                // § 11: the exit row carries the `thread_ref` of the `coord.thread` that ENDED the
+                // hold — which is this thread's own, because a thread is its `thread_ref`.
+                this.#log.leaveHeld(open.episode_id, { cause: open.thread_ref, at });
+                this.#lines.delete(key);
+            }
+        }
+
+        for (const [key, thread] of drawn) {
+            if (this.#lines.has(key)) {
+                continue;
+            }
+
+            const episodeId = this.#log.enterHeld({
+                animation_id: 'A18',
+                cause: thread.thread_ref,
+                install_id: thread.install_id,
+                seat_id: null,
+                motion: motionOf('A18', true, this.#reduce),
+                at,
+            });
+
+            this.#lines.set(key, { episode_id: episodeId, thread_ref: thread.thread_ref });
+        }
     }
 
     /** Every `edge` row goes through here, so `motion` has one answer for the whole class. */

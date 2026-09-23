@@ -71,6 +71,18 @@ export class DeskFloor {
         this.#options = options;
     }
 
+    /**
+     * The animation set this floor writes every § 6.2 row through.
+     *
+     * ⛔ IT IS EXPOSED SO THAT A SCREEN ABOVE THIS ONE WRITES THROUGH THE SAME SET, never so that a
+     * caller may reach past it: `floor/floor-screen.js` draws A16 and the three coordination rows,
+     * and a set of its own would be a second way into the one record AT-D3-1 reads — which is the
+     * defect step 6 removed between this file and the log.
+     */
+    get set() {
+        return this.#set;
+    }
+
     /** The seats the last `render()` read — the age ticker's population (§ 2.5's tick row). */
     get seats() {
         return new Map(this.#held);
@@ -82,15 +94,30 @@ export class DeskFloor {
     }
 
     /**
-     * § 2.5's apply path: re-read the held seats, re-derive every desk, and hand the animation
-     * set what the protocol applied and what it holds having applied it. Returns the frame.
+     * § 2.5's apply path for a screen that draws DESKS AND NOTHING ELSE: drain the journal and
+     * draw over it.
+     *
+     * ⛔ THE DRAIN BELONGS TO WHOEVER OWNS THE APPLY, which is the SCREEN. This entry is the
+     * desk-only screen's — the one step 5 built, when a floor of desks was the whole of what a
+     * renderer was. `floor/floor-screen.js` (step 7) draws desks BESIDE a room, a composition and a
+     * coordination line from the same journal, so it drains once itself and calls `renderWith()`
+     * below. The two are mutually exclusive by construction: a screen that owns the drain never
+     * calls this, so there is one drain per apply on either path and never two.
      */
     render() {
-        // ⛔ THE JOURNAL IS DRAINED HERE AND NOWHERE ELSE, and it describes the same instant the
-        // seats below do: what the protocol just handled, and what it holds having handled it.
-        // The 1 s tick calls `view()` and drains nothing — a tick is not an apply (§ 2.5).
-        const journal = this.#source.takeWire();
+        return this.renderWith(this.#source.takeWire());
+    }
 
+    /**
+     * § 2.5's apply path over a journal the CALLER drained: re-read the held seats, re-derive every
+     * desk, and hand the animation set what the protocol applied and what it holds having applied
+     * it. Returns the frame.
+     *
+     * The journal describes the same instant the seats do: what the protocol just handled, and what
+     * it holds having handled it. The 1 s tick calls `view()` and drains nothing — a tick is not an
+     * apply (§ 2.5).
+     */
+    renderWith(journal) {
         this.#held = this.#source.seats;
         this.#facts = new Map([...this.#held.keys()].map((k) => [k, {
             missing: this.#source.readStatus(k).missing,

@@ -81,7 +81,15 @@ import {
     COORD_THREAD_MEMBERS,
     COORD_THREAD_MESSAGE,
 } from './coord-members.js';
+import { NO_DECLARING_SEAT, UNCHECKED_WORDS, reasonWords } from '../floor/coord-join.js';
 import { clockTime } from '../wire/clock.js';
+
+/**
+ * What a caller supplies BESIDE the join — D2 § 8.3.3 rule 1's two unresolved reasons, and the
+ * resolving seat's check state per bound name (§ 5.7's *rests on an UNCHECKED declaration* row).
+ * A caller with no builder passes none and every unresolved name takes rule 1's own default token.
+ */
+const EMPTY_META = Object.freeze({ reasons: Object.freeze({}), checks: Object.freeze({}) });
 
 /**
  * ⚠ `clockTime` IS SHARED, NOT COPIED. It was the lobby's; card#8300 is its second caller, so it
@@ -117,17 +125,38 @@ export const TRUNCATION_MARK = '…';
  * this plane cannot check", and card#7957 exists to stop an unvalidated join becoming a
  * ratified one by being written here.
  */
-export function resolve(name, join) {
+export function resolve(name, join, meta = EMPTY_META) {
     const agent = typeof name === 'string' ? name : String(name);
     const seat = join === null || typeof join !== 'object' ? undefined : join[agent];
     const bound = typeof seat === 'string' && seat !== '';
+    const check = bound ? (meta.checks?.[agent] ?? null) : null;
 
-    return Object.freeze({ name: agent, seat_id: bound ? seat : null, resolved: bound });
+    return Object.freeze({
+        name: agent,
+        seat_id: bound ? seat : null,
+        resolved: bound,
+        // ⛔ WHY THE REASON IS THE BUILDER'S AND NOT THIS FUNCTION'S. `resolve()` cannot tell an
+        // EXCLUDED name from an undeclared one — a duplicated name is absent from the map exactly
+        // as a never-declared one is — so the builder hands the two reasons BESIDE the map
+        // (`floor/coord-join.js`) and this function reads them. Asking it to decide would put D2
+        // § 8.3.3 rule 1's counting inside a function that never sees the seat population.
+        // Absent ⇒ `no_declaring_seat`, which is that arm's own token for a name no seat mentions.
+        reason: bound ? null : (meta.reasons?.[agent] ?? NO_DECLARING_SEAT),
+        // § 5.7's *rests on an UNCHECKED declaration* row: the resolving seat's own check state, and
+        // the marker ONLY on `unchecked` — `checked` draws nothing extra, "or every line would
+        // carry one".
+        check,
+        marker: check === 'unchecked' ? UNCHECKED_WORDS : null,
+        // The duplicate arm's words, because § 5.7 renders that reason as a SENTENCE and the other
+        // as plain `unresolved`: "an install misconfiguration must not read as *no seat may
+        // resolve it*".
+        words: bound ? null : reasonWords(meta.reasons?.[agent] ?? NO_DECLARING_SEAT),
+    });
 }
 
 /** Every name in `names`, bound. Order is the wire's, which D2 already sorted and deduplicated. */
-function bindAll(names, join) {
-    return (Array.isArray(names) ? names : []).map((n) => resolve(n, join));
+function bindAll(names, join, meta) {
+    return (Array.isArray(names) ? names : []).map((n) => resolve(n, join, meta));
 }
 
 /**
@@ -139,22 +168,22 @@ function bindAll(names, join) {
  * whenever the name is. A caller that renders `agent` and drops `state` re-mints exactly the
  * defect D2 named.
  */
-function attributedName(name, attribution, join) {
+function attributedName(name, attribution, join, meta) {
     const named = typeof name === 'string' && name !== '';
 
     return Object.freeze({
         state: typeof attribution === 'string' ? attribution : null,
-        agent: named ? resolve(name, join) : null,
+        agent: named ? resolve(name, join, meta) : null,
     });
 }
 
 /** `coord_round.targets`: `null`, `[]` and a populated array are THREE answers, kept apart. */
-function fanout(targets, join) {
+function fanout(targets, join, meta) {
     if (targets === null || targets === undefined) {
         return Object.freeze({ known: false, statement: FANOUT_UNRESOLVABLE, desks: [], members: [] });
     }
 
-    const members = bindAll(targets, join);
+    const members = bindAll(targets, join, meta);
 
     return Object.freeze({
         known: true,
@@ -171,7 +200,7 @@ function fanout(targets, join) {
  * ended treatment applies to, and `lifecycle` itself is carried through raw so a value this
  * client has not met is SHOWN rather than mapped to the nearest one it knows.
  */
-export function threadRender(thread, join) {
+export function threadRender(thread, join, meta = EMPTY_META) {
     const t = thread === null || typeof thread !== 'object' ? {} : thread;
     const subject = typeof t.subject === 'string' ? t.subject : null;
 
@@ -185,8 +214,8 @@ export function threadRender(thread, join) {
         label: subject === null ? null : subject + (t.subject_truncated === true ? TRUNCATION_MARK : ''),
         truncated: t.subject_truncated === true,
         carrier: typeof t.carrier === 'string' ? t.carrier : null,
-        opener: attributedName(t.opened_by, t.attribution, join),
-        participants: bindAll(t.participants, join),
+        opener: attributedName(t.opened_by, t.attribution, join, meta),
+        participants: bindAll(t.participants, join, meta),
         // The receipt clock, as a LABELLED TIMESTAMP. No age is computed from it here.
         received: clockTime(t.received_at),
         // GitHub's clock — a third clock. Labelled as the poster's own, subtracted from nothing.
@@ -195,7 +224,7 @@ export function threadRender(thread, join) {
 }
 
 /** One `coord.round` object, rendered. § 5.7's remaining rows. */
-export function roundRender(round, join) {
+export function roundRender(round, join, meta = EMPTY_META) {
     const r = round === null || typeof round !== 'object' ? {} : round;
     const to = Array.isArray(r.to) ? r.to.map((v) => (typeof v === 'string' ? v : String(v))) : [];
 
@@ -203,11 +232,11 @@ export function roundRender(round, join) {
         post_ref: typeof r.post_ref === 'string' ? r.post_ref : null,
         thread_ref: typeof r.thread_ref === 'string' ? r.thread_ref : null,
         install_id: typeof r.install_id === 'string' ? r.install_id : null,
-        origin: attributedName(r.from, r.attribution, join),
+        origin: attributedName(r.from, r.attribution, join, meta),
         // The address AS WRITTEN. `all` is a literal member and is never expanded here.
         to,
         broadcast: to.includes('all'),
-        targets: fanout(r.targets, join),
+        targets: fanout(r.targets, join, meta),
         carrier: typeof r.carrier === 'string' ? r.carrier : null,
         // Somebody performed the close act. NOT a convergence, and not worded as one.
         declares_close: r.declares_close === true,
@@ -234,12 +263,22 @@ export function threadAnimations(thread) {
 
 export function roundAnimations(round) {
     const out = [];
+    // ⛔ BOTH ROWS LEAVE THE ORIGIN DESK, so both need one. A19 has nowhere to depart from without
+    // it and A20 has nothing to expand from.
+    const origin = round.origin.agent !== null && round.origin.agent.resolved;
 
-    if (round.origin.agent !== null && round.origin.agent.resolved && round.targets.desks.length > 0) {
+    if (origin && round.targets.desks.length > 0) {
         out.push('A19');
     }
 
-    if (round.broadcast) {
+    // ⛔ THE ADDRESS IS NOT THE WHOLE TRIGGER, and reading it as one is how a ring lands on a
+    // guessed desk. § 6.2 A20's trigger cell states BOTH halves — `to` carries the literal `all`
+    // AND the origin resolves to a desk — since the amendment § 14 item 24 records: "a broadcast
+    // whose origin resolved to nothing had a trigger and no anchor, and the only rings left to
+    // draw were one on a guessed desk or one at the floor's centre", which § 5.7 clause 1 forbids
+    // and this document publishes no element for. AT-D3-18's Third RED plants the address-only
+    // reading and `fx-coord`'s R2/R3 pair — one address, two origins — is its control.
+    if (origin && round.broadcast) {
         out.push('A20');
     }
 
@@ -268,6 +307,10 @@ export function coordModel(messages, options) {
     const opts = options === null || typeof options !== 'object' ? {} : options;
     const floor = typeof opts.install_id === 'string' ? opts.install_id : null;
     const join = opts.join === null || typeof opts.join !== 'object' ? null : opts.join;
+    const meta = Object.freeze({
+        reasons: opts.reasons === null || typeof opts.reasons !== 'object' ? EMPTY_META.reasons : opts.reasons,
+        checks: opts.checks === null || typeof opts.checks !== 'object' ? EMPTY_META.checks : opts.checks,
+    });
     const inbox = Array.isArray(messages) ? messages : [];
 
     const threads = new Map();
@@ -292,7 +335,7 @@ export function coordModel(messages, options) {
         }
 
         if (m.t === COORD_THREAD_MESSAGE) {
-            const rendered = threadRender(body, join);
+            const rendered = threadRender(body, join, meta);
 
             // The LAST `coord.thread` for a `thread_ref` is the thread's state: `thread_ref` is
             // the identity, so a reopen replaces the close rather than appending to it.
@@ -301,7 +344,7 @@ export function coordModel(messages, options) {
             continue;
         }
 
-        const rendered = roundRender(body, join);
+        const rendered = roundRender(body, join, meta);
 
         // Distinct `post_ref`, and the repeat is DROPPED rather than counted — an operator
         // Redeliver older than the digest store's retention is the one path that reaches this
@@ -334,17 +377,27 @@ export function coordModel(messages, options) {
     });
 
     const unresolved = new Set();
+    // ⛔ THE TWO REASONS ARE CARRIED PER NAME, not summed into one count. § 5.7 clause 1: a
+    // `duplicate_declaration` rendered as a plain `unresolved` shows an install misconfiguration as
+    // *no seat may resolve it* — the opposite diagnosis, and the one an operator would act on
+    // wrongly. AT-D3-18's Second RED is the collapse.
+    const reasons = {};
+
+    const report = (bound) => {
+        unresolved.add(bound.name);
+        reasons[bound.name] = bound.reason;
+    };
 
     for (const line of lines) {
-        line.unresolved.forEach((n) => unresolved.add(n));
+        line.participants.filter((p) => !p.resolved).forEach(report);
     }
 
     for (const round of rounds) {
         if (round.origin.agent !== null && !round.origin.agent.resolved) {
-            unresolved.add(round.origin.agent.name);
+            report(round.origin.agent);
         }
 
-        round.targets.members.filter((m) => !m.resolved).forEach((m) => unresolved.add(m.name));
+        round.targets.members.filter((m) => !m.resolved).forEach(report);
     }
 
     return Object.freeze({
@@ -354,6 +407,8 @@ export function coordModel(messages, options) {
         threads: lines,
         rounds,
         unresolved: [...unresolved].sort(),
+        // name → D2 § 8.3.3's own token for WHY it did not resolve, over every object on this floor.
+        unresolved_reasons: Object.freeze(reasons),
         drawn_lines: lines.filter((l) => l.animations.includes('A18')).length,
         off_floor,
         // ⛔ NEVER a *no coordination* or *quiet* rendering. § 5.7: no REST surface carries these

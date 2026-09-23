@@ -178,7 +178,14 @@ export function floors(snapshot, layout) {
         // would turn a delivered number into a name the operator never wrote.
         const label = typeof floor?.label === 'string' ? floor.label : null;
 
-        rows.push(plate(String(floor?.floor), label, rooms, held));
+        // ⭐ § 4.6's PLAN, the floor's half (card#9292): its `hallway` — the corridor drawn at the
+        // floor's origin UNDER its rooms — carried exactly as delivered, for `origin`'s reason
+        // above. The lobby draws no interior and ignores it (§ 4.1, card#9267); the floor route
+        // reads "one floor, the rooms on it, and its plan — each room's `origin` and the floor's
+        // `hallway`, or neither" (§ 4.6's reader table), and it reads it HERE rather than going
+        // back to the raw document, because a second composition of one floor is two answers to
+        // *which rooms are on it*.
+        rows.push(plate(String(floor?.floor), label, rooms, held, floor?.hallway ?? null));
     }
 
     for (const install_id of Object.keys(held)) {
@@ -186,7 +193,10 @@ export function floors(snapshot, layout) {
         // as its key — the `install_id` the wire already carries, which is a name and not a
         // placeholder.
         if (!placed.has(install_id)) {
-            rows.push(plate(install_id, null, [{ install_id, form: 'open', reported: true }], held));
+            // An implicit floor is one room and no plan at all (§ 4.6): no `origin` on its room and
+            // no `hallway` on it, because "a corridor with no rooms placed along it is a picture of
+            // nothing" and nobody placed this one.
+            rows.push(plate(install_id, null, [{ install_id, form: 'open', reported: true }], held, null));
         }
     }
 
@@ -203,11 +213,12 @@ export function floors(snapshot, layout) {
  * and the cab's stop in `building-model.js` — a label is display text, and the moment anything
  * looked one up by it, editing a label would move a viewer's floor.
  */
-function plate(floor, label, rooms, held) {
+function plate(floor, label, rooms, held, hallway) {
     const seats = rooms.flatMap((room) => held[room.install_id] ?? []);
 
     return {
         floor,
+        hallway,
         label,
         // § 4.6 (card#9273): "its label when the layout gives it one, else its key — the key is
         // honest and no placeholder is invented".

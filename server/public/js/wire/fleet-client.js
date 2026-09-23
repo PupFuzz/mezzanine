@@ -139,6 +139,27 @@ export class FleetClient {
     #log = [];
 
     /**
+     * D2 § 8.3.3's two COORDINATION OBJECTS, in arrival order — the envelopes this client applied,
+     * which `coord/coord-model.js` renders and `floor/floor-screen.js` draws the line from
+     * (§ 5.7). card#7341 step 7 is the first consumer that applies them.
+     *
+     * ⛔ THEY RIDE THE FEED AND NO REST SURFACE CARRIES THEM (D2's no-snapshot ruling), so this
+     * list starts EMPTY on every connect and "a client that has just connected draws no thread line
+     * until the next post on that thread" (§ 5.7). An empty coordination layer is therefore never
+     * evidence that the fleet is not talking, and nothing may render it as *quiet*.
+     *
+     * ⛔ NO DEDUPLICATION AND NO CAP HERE, both deliberate. Identity is `post_ref` / `thread_ref`
+     * and what a consumer may do with a repeat is D2's own rule, which `coordModel()` already
+     * implements over a list — a second implementation here would be two homes for one rule (the
+     * defect card#7341 step 6 removed one class up). And § 5.7 publishes no cap for this
+     * population as § 5.5 publishes 200 for the record, so a number invented here would be a bound
+     * with no derivation behind it; what bounds it in practice is that these messages are a
+     * human's posts. ⚠ Named rather than left to be found: a page left open for a very long time
+     * on a very busy thread holds every post it was sent.
+     */
+    #coord = [];
+
+    /**
      * THE WIRE JOURNAL: every message this client handled and every seat row it took from a REST
      * surface, in handling order, with what it DID with each. It is the renderer's one honest
      * source for *did the client apply this, and what did it carry* — and every input
@@ -193,6 +214,24 @@ export class FleetClient {
     /** § 5.5's record, newest first, at most `LOG_CAP` lines — a copy, for the same reason. */
     get eventLog() {
         return [...this.#log];
+    }
+
+    /** D2 § 8.3.3's coordination envelopes this client has applied, oldest first — a copy. */
+    get coordMessages() {
+        return [...this.#coord];
+    }
+
+    /**
+     * Write one line into § 5.5's record from a surface ABOVE the protocol.
+     *
+     * ⚠ THE RECORD IS THIS MODULE's ARTIFACT AND THAT IS WHY THE DOOR IS HERE RATHER THAN THE
+     * STORE BEING SHARED. Appendix B row 13 owes step 7 "one event-log line written" for an applied
+     * `room.map`: `wire/building.js` RETURNS the line and does not hold a record, and the floor
+     * route is what delivers the message to that apply — so the line is composed there and written
+     * here, through the one capped, stamped, newest-first path every other line takes.
+     */
+    record(text) {
+        this.#line(text);
     }
 
     /**
@@ -427,9 +466,11 @@ export class FleetClient {
      * `t` is the sole discriminator (D2 § 8.4).
      *
      * ⚠ EVERY OTHER `t` IS IGNORED AT THIS STEP, BY DESIGN AND NOT BY OVERSIGHT: `room.map` and
-     * `building.layout` are step 7's, `seat.retired` and `fleet.reload`/`feed.close` are steps 10
-     * and 8's, `coord.*` has its own surface, and an unrecognised `t` is D2's own forward
-     * compatibility rule — ignore it. Counting the unknown ones is step 8's strip.
+     * `building.layout` are journalled and applied by the floor screen (step 7) through
+     * `wire/building.js`, because an authored document is FETCHED by version and no message carries
+     * one; `seat.retired` and `fleet.reload`/`feed.close` are steps 10 and 8's; and an unrecognised
+     * `t` is D2's own forward compatibility rule — ignore it. Counting the unknown ones is step 8's
+     * strip.
      */
     #dispatch(envelope) {
         this.#observeTime(envelope.server_time);
@@ -452,10 +493,53 @@ export class FleetClient {
                     this.#note(envelope.t, 'discarded', { server_time: envelope.server_time });
                 }
                 break;
+            case 'room.map':
+            case 'building.layout':
+                // ⛔ THE OUTCOME IS THIS MODULE'S AND IT IS HONEST: the PROTOCOL applies nothing for
+                // a layout act — it holds no layout and no map — so `ignored` is what it did. What
+                // applies them is `wire/building.js`, driven by the floor screen off this very
+                // journal (§ 2.5's two rules, § 4.4's floor route), and that is also why the line
+                // carries the members those applies read: a journal line that named the message
+                // type and dropped its version would leave the screen to compare a version it was
+                // never told, which is how a `building.layout` whose version EQUALS the held one
+                // gets re-fetched for nothing.
+                this.#note(envelope.t, 'ignored', {
+                    server_time: envelope.server_time,
+                    install_id: envelope.install_id ?? null,
+                    map_version: envelope.map_version ?? null,
+                    layout_version: envelope.layout_version ?? null,
+                });
+                break;
+            case 'coord.thread':
+            case 'coord.round':
+                // ⛔ THESE ARE HELD, NOT MERELY SEEN (D2 § 8.3.3). No REST surface carries them, so
+                // the stream is the only place they exist and a renderer that did not hold them
+                // could draw a thread only for as long as one message was in flight. § 5.7 clause 3
+                // scopes each to the room its own `install_id` names, which is the RENDERER's
+                // filter and not a reason to drop one here: a floor draws several rooms.
+                this.#coord.push(envelope);
+                this.#note(envelope.t, 'applied', {
+                    server_time: envelope.server_time,
+                    install_id: this.#coordBody(envelope)?.install_id ?? null,
+                    // § 11's `cause` for A18/A19/A20 — the identity of the message that caused the
+                    // row, which is the whole of what D2 publishes as *the identities a consumer
+                    // needs*.
+                    coord_ref: envelope.t === 'coord.round'
+                        ? (this.#coordBody(envelope)?.post_ref ?? null)
+                        : (this.#coordBody(envelope)?.thread_ref ?? null),
+                });
+                break;
             default:
                 this.#note(envelope.t, 'ignored', { server_time: envelope.server_time });
                 break;
         }
+    }
+
+    /** The object under a coordination envelope — D2 § 8.3.3's two member names, and no third. */
+    #coordBody(envelope) {
+        const body = envelope.t === 'coord.round' ? envelope.coord_round : envelope.coord_thread;
+
+        return body !== null && typeof body === 'object' ? body : null;
     }
 
     /** One journal line. Every write to `#wire` is here, so no path can invent a shape. */

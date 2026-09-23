@@ -17,6 +17,11 @@
  *      "desk_floor": true                       // start `desk/desk-floor.js` after start(): its own
  *                                               //  1 s tick, and `render()` after every settled
  *                                               //  event that is not a tick
+ *      "floor":      { "key": "<floor>",        // start `floor/floor-screen.js` after start():
+ *                      "local_hours": N,        //  `enter()` once, then `render()` after every
+ *                      "local_minutes": N }     //  settled event. `local_*` is the VIEWER's civil
+ *                                               //  time for § 4.2's clock and sky; absent, the
+ *                                               //  scenario clock read as UTC
  *      "reduce":     true                       // § 6.4's `prefers-reduced-motion: reduce`, as a
  *                                               //  page reads it — every § 6.2 row draws its
  *                                               //  reduced-motion form and logs `motion: false`
@@ -26,7 +31,8 @@
  * stdout — JSON: `{ "runs": [ <one run per repeat> ], "durations": [ … ] }`, each run
  *   `{ "records": [ … ], "final": <the last record>, "unscripted": [], "listeners": [ {type: n} ],
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
- *      "desk_renders": [ {at, trigger, frame} ], "animation_log": [ <§ 11 rows> ] }`
+ *      "desk_renders": [ {at, trigger, frame} ], "floor_renders": [ {at, frame} ],
+ *      "animation_log": [ <§ 11 rows> ] }`
  *   and each record
  *   `{ "at", "label", "outcome", "seats", "event_log", "requests", "phase", "clock_offset_ms",
  *      "read_status": { "<key>": {missing, failStreak, confirmedAt} }, "discrepancy_state" }`.
@@ -79,6 +85,18 @@
  * would report a green run for a client that has stopped discovering anything for the rest of the
  * connection.
  *
+ * ⛔ THE FLOOR SCREEN IS THE SHIPPED ONE, OVER THE SHIPPED CLIENT AND THE SHIPPED BUILDING CLIENT,
+ * AND IT IS MUTUALLY EXCLUSIVE WITH `desk_floor`. Both own § 2.5's apply path and both drain the
+ * journal, so a scenario naming the two would be a run with two renderers racing for one drain — and
+ * the floor screen already runs the desk floor inside itself. A scenario naming both is refused
+ * rather than resolved in favour of one.
+ *
+ * ⛔ THE VIEWER'S CIVIL TIME IS THE SCENARIO'S, NEVER THE BUILD HOST'S. § 4.2's sky has four phases
+ * by the viewer's own hour, and a host in another zone would read a different one out of the same
+ * fixture — a test whose answer depends on where it ran. So the probe supplies § 4.2's civil-time
+ * reader: the scenario's own `local_hours`/`local_minutes` where it states them, else the scenario
+ * clock read as UTC, and the shipped `Date`-based reader is left for a browser.
+ *
  * ⛔ AN UNSCRIPTED REQUEST IS REPORTED IN THE RECORD, NOT AS AN EXIT CODE. A planted control must
  * red on the FIELD its plant diverges on; a plant that also happens to issue an extra request
  * would otherwise kill the probe and "pass" for the wrong reason.
@@ -102,6 +120,7 @@ const { startAgeTicker } = await import(pathToFileURL(join(dir, 'age-readout.js'
 const { formatDuration } = await import(pathToFileURL(join(dir, 'duration.js')).href);
 const { createAnimationLog } = await import(pathToFileURL(join(dir, 'animation-log.js')).href);
 const { startDeskFloor } = await import(pathToFileURL(join(dir, '..', 'desk', 'desk-floor.js')).href);
+const { startFloorScreen } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
 
 const fx = JSON.parse(readFileSync(0, 'utf8') || '{}');
 
@@ -135,9 +154,23 @@ async function replay(scenario) {
     let seq = 0;
     const schedule = (at, label, fire) => timers.push({ at, seq: seq++, label, fire });
 
-    const http = scriptedFetch(scenario.http, {
+    // ⛔ TWO TRANSPORTS OVER ONE RESPONSE MAP, AND THE SPLIT IS THE POINT. The protocol's requests
+    // settle on the SCENARIO CLOCK, because § 2.2's 500 ms connect window is a timing rule the
+    // protocol is judged on. The building surface's settle on the next MICROTASK, because the floor
+    // screen awaits them INSIDE its own apply path (§ 4.4's entry, and the `room.map` act § 2.5
+    // gives it) — a response that could only settle when this loop pumps would deadlock a render
+    // the loop is itself awaiting. § 4.4 states no timing rule for either building request, so
+    // nothing is lost: what a test asserts about them is WHICH path was asked for and WHAT the
+    // screen did with the answer.
+    const buildingPaths = Object.fromEntries(Object.entries(scenario.http ?? {})
+        .filter(([path]) => path.startsWith('/api/building')));
+    const fleetPaths = Object.fromEntries(Object.entries(scenario.http ?? {})
+        .filter(([path]) => !path.startsWith('/api/building')));
+
+    const http = scriptedFetch(fleetPaths, {
         schedule: (delay, label, fire) => schedule(now + delay, label, fire),
     });
+    const buildingHttp = scriptedFetch(buildingPaths);
 
     const streams = [];
 
@@ -180,8 +213,14 @@ async function replay(scenario) {
     const records = [];
     const ageRenders = [];
     const deskRenders = [];
+    const floorRenders = [];
     const log = createAnimationLog();
     let floor = null;
+    let screen = null;
+
+    if (scenario.desk_floor === true && scenario.floor !== undefined) {
+        throw new Error('a scenario names both `desk_floor` and `floor`: two renderers, one journal');
+    }
 
     // The shipped ticker's timer, on the scenario queue: one repeating event per interval.
     const intervals = new Set();
@@ -220,7 +259,10 @@ async function replay(scenario) {
             outcome,
             seats: Object.fromEntries(seats.map(([k, v]) => [k, JSON.parse(JSON.stringify(v))])),
             event_log: client.eventLog,
-            requests: [...http.requests],
+            // The protocol's requests in the scenario clock's order, then the building's. A test
+            // asserts over a FILTERED surface (`seatRequests()`, `snapshotRequests()`), so the two
+            // lists are concatenated rather than interleaved on a clock only one of them reads.
+            requests: [...http.requests, ...buildingHttp.requests],
             phase: client.phase,
             clock_offset_ms: client.clockOffsetMs,
             read_status: Object.fromEntries(keys.map((k) => [k, client.readStatus(k)])),
@@ -245,8 +287,29 @@ async function replay(scenario) {
         }, { reduce: scenario.reduce === true });
     }
 
+    if (scenario.floor !== undefined) {
+        screen = startFloorScreen(client, buildingHttp.fetch, clock, log, (frame) => {
+            floorRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)) });
+        }, {
+            floor: scenario.floor.key,
+            reduce: scenario.reduce === true,
+            local_time: (ms) => (scenario.floor.local_hours === undefined
+                ? { hours: new Date(ms).getUTCHours(), minutes: new Date(ms).getUTCMinutes() }
+                : { hours: scenario.floor.local_hours, minutes: scenario.floor.local_minutes ?? 0 }),
+        });
+    }
+
     await turn();
     floor?.render();
+
+    if (screen !== null) {
+        // § 4.4's floor entry: the layout, then each room's map. It runs after `start()` because
+        // "deep-linking to a floor on a cold start runs the whole of § 2.2 first".
+        await screen.enter();
+        await turn();
+        await screen.render();
+    }
+
     snap('start');
 
     for (;;) {
@@ -267,6 +330,11 @@ async function replay(scenario) {
 
         if (timer.label !== 'age tick') {
             floor?.render();
+
+            if (screen !== null) {
+                await screen.render();
+                await turn();
+            }
         }
 
         snap(timer.label, outcome ?? null);
@@ -277,7 +345,7 @@ async function replay(scenario) {
     return {
         records,
         final: records[records.length - 1],
-        unscripted: [...http.unscripted],
+        unscripted: [...http.unscripted, ...buildingHttp.unscripted],
         listeners: streams.map((s) => Object.fromEntries(
             Object.entries(s.listeners).map(([type, list]) => [type, list.length]),
         )),
@@ -285,6 +353,7 @@ async function replay(scenario) {
         rejections: [...rejections],
         age_renders: ageRenders,
         desk_renders: deskRenders,
+        floor_renders: floorRenders,
         animation_log: log.rows,
     };
 }

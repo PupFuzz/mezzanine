@@ -37,6 +37,24 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
      */
     private const POPULATION_EXEMPT = ['lobby_persistent_unheld', 'missing_discovery_repeating', 'missing_discovery_sparse'];
 
+    /**
+     * The runs that carry a DUPLICATED `protocol_agent_name` on purpose — an install
+     * MISCONFIGURATION, which is the scenario under test rather than a fixture defect.
+     *
+     * ⛔ THE INVARIANT IS DECLARED ON D2's PLANE AND ENFORCED AT THE CONSUMER, and that is exactly
+     * why a fixture has to be able to break it: "a seat cannot enforce it — its own check asks
+     * whether its name is in the roster, and two seats declaring one name both pass"
+     * (D2 § 13 row 50). So the only surface that can see the violation is this client, and
+     * `docs/design/FLOOR.md § 11`'s `fx-coord` row duplicates `"helper"` deliberately so that
+     * AT-D3-18 can assert `duplicate_declaration` is rendered as its own reason. A check that
+     * refused such a fixture would forbid the one input the render is gated on.
+     *
+     * ⚠ IT IS A RUN ALLOWLIST AND NOT A CHECK THAT WAS LOOSENED: every other run is still held to
+     * uniqueness, and a run added here without a fixture row stating the misconfiguration is the
+     * review question this comment leaves for its reader.
+     */
+    private const MISCONFIGURED_DECLARATIONS = ['coord'];
+
     /** The published shape itself, checked over every object every fixture file holds. */
     public function test_every_seat_object_every_fixture_carries_matches_8_2_1(): void
     {
@@ -200,7 +218,7 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
 
             $duplicated = array_keys(array_filter(array_count_values(array_filter($names)), static fn (int $n): bool => $n > 1));
 
-            if ($duplicated !== []) {
+            if ($duplicated !== [] && ! in_array($run, self::MISCONFIGURED_DECLARATIONS, true)) {
                 $defects[] = 'protocol_agent_name '.implode(', ', $duplicated)
                     ." is not unique within install {$install['install_id']} (§ 8.2.1)";
             }
