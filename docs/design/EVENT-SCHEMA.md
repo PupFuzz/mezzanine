@@ -5371,11 +5371,11 @@ finding**, and the same shape again: a quiet-seat fill time superseded twice in
 [§ 10.3](#103-idempotency-and-the-dedup-window) and left standing in the three sections that quote
 it.
 
-**Rows 40–48 are [§ 18](#18-the-coordination-event-producer)'s**, and they are a different kind from
+**Rows 40–49 are [§ 18](#18-the-coordination-event-producer)'s**, and they are a different kind from
 every row above: rows 1–39 decide how one producer's wire is shaped; these decide **whether a second
 producer exists at all, what it may claim, and what it must refuse to claim.** Read row 40 first — it
 is a correction to the card that commissioned the section — and row 44 last, because it is the only
-one of the nine that **deletes** a requested feature, and a deletion on the record is the part a later
+one of them that **deletes** a requested feature, and a deletion on the record is the part a later
 reader is most likely to undo without knowing why it happened.
 
 **Rows 46–48 are the review round's, and three findings in them are one shape — rows 47, 48 and row
@@ -5388,6 +5388,13 @@ value reused across a population change from seats to the open internet. **Row 4
 and is the one to read first**: it is a discrimination finding — a field keyed on a signal that is
 true of 78.1% of posts, replaced by one that is true of 2.12% — and the only row here that changes
 what a field on the wire means.
+
+**Row 49 is later than all of them and belongs to no round above** (card#10227). It is the shape
+[§ 18.7](#187-coordround)'s second worked example already names about `participants` — *"a worked example
+becomes a second, disagreeing specification"* — found one field over: `targets`' derivation was *shown*
+by that section's FIRST worked example and stated in no Bounds cell, so the example was the only place
+the rule existed. What made it visible was a fixture in `docs/design/FLOOR.md` asserting four `targets`
+values no published rule derived.
 
 | # | Decision | Alternative considered | Why this one | Cost if wrong |
 |---|---|---|---|---|
@@ -5439,6 +5446,7 @@ what a field on the wire means.
 | 46 | **`declares_close`, keyed on the protocol's `[CLOSE]` token, replaces `converges`; thread-level convergence is declared NON-DERIVABLE** | keep a field on the *"zero open questions"* phrase — the observable card #7897 names — renaming it to `carries_convergence_phrase` so at least the name is honest | **Measured, not argued.** Over the coordination repository's entire comment population (10,552 comments, 2026-08-28) the phrase is on **78.1%** of posts — it is a per-post sign-off, so a flag keyed on it is true **11.5** times per closed thread and `converges + lifecycle: closed` collapses to `lifecycle: closed`. The anchored `[CLOSE]` token is on **2.12%** of posts, **37.8%** of closed threads and **0.6%** of open ones (that one a reopen), and 224/224 carry a `FROM:` line — so it is precise, and it is the only one of the two that **names the closer**, which `issues.closed` never can. Renaming the phrase field would have made it honest and left it inert, which is a worse trade than under-reporting | **62.2% of closed threads carry no token and draw no spark.** That is under-reporting, which is the safe direction here, and it is exactly the *"a close is not necessarily a convergence"* distinction made real. If the protocol later puts required participants on the wire, the quorum becomes a count and this row is what to reopen |
 | 47 | **One declared `install_facts` input — `roster[]` and `shared_identity` — provisioned with the hook registration, with a drift GUARD on the copy** | let each field read `coordination.config.json` at runtime (a live cross-repo coupling and a second credential); or hardcode the roster (a restatement with neither pointer nor guard); or leave it unstated, which is what the draft did | Four fields reached past [§ 18.3](#183-the-bridge-as-prior-art-what-the-source-read-found)'s derivability test for one input nobody declared, in four separate places — one input consolidated, not four patches. Two of the four dissolved on inspection: `carrier` reads the bracketed token syntactically and `participants` stops expanding anything, so **only the roster genuinely varies**. The input is a copy, so it carries the config revision it was copied at, and the copy is **guarded**: a body-derived name absent from it increments `coord_roster_unknown_name` on that seat's first post | the guard is **one-directional** — it sees an addition, never a removal — and a stale roster under-expands a broadcast until the next provisioning. Both are stated at [§ 18.3.1](#1831-the-install-facts-input-declared-once) rather than discovered. If a runtime read is ever affordable, [decision 40](#15-decisions-taken-revisable-at-review) is the decision to reopen, not this row |
 | 48 | **[§ 7.3](#73-redaction-rules-applied-in-this-order) gains a `coord.subject` PROFILE differing in exactly one rule, and [§ 7.5](#75-red-fixtures--required-tests) gains real title fixtures** | reuse the pass unchanged, which is what the draft claimed to do; or narrow rule 4 for every caller; or write a second redactor for titles | Reuse was measured and it corrupts **7.0%** of 728 real titles, 49 of the 51 hits being rule 4's bare-whitespace separator firing on English (`token that` → `token ‹redacted›`). Narrowing rule 4 to an explicit `:`/`=` cuts that to **0.7%** and still catches every credential shape planted in a title. Narrowing it for **all** callers was rejected outright: it deletes the control [fixture 9](#75-red-fixtures--required-tests) holds, and a widened guard is one weaker path for both callers rather than a second path. A second redactor was rejected because two redactors disagree about what a secret looks like | a title with `password hunter2` — whitespace, no separator — survives on this profile where a descriptor would not. That is the accepted residual, and rule 3 remains the backstop for every prefixed credential. Rule 7's title false positive is **kept** and pinned as [fixture 17](#75-red-fixtures--required-tests) rather than narrowed away, because dropping it buys 1 title in 728 and gives up the unprefixed-blob backstop |
+| 49 | **`targets`' whole derivation is stated on the field — `to`, with the literal `all` replaced by [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s `roster[]` and the author removed — and a named addressee is never filtered against that roster** | **(a)** keep the author, so `targets` is `to` with `all` expanded and nothing removed; **(b)** intersect `to` with the roster, dropping a name the copy does not know; **(c)** leave the field stating the `all` expansion and the `null` case only, with sender exclusion shown by [§ 18.7](#187-coordround)'s worked example and stated nowhere — which is what this document did | Option (c) is the one that was in force and it is the defect: the example expanded a broadcast to fewer names than the roster it read, so the document carried two answers — one in the field spec and one in the example — and the example was the only place the difference was visible. That is the failure this document already names about itself one field over, *"a worked example becomes a second, disagreeing specification"*. Option (a) contradicts that example rather than the spec, and it makes `targets` mean something else: the field is **who the post reaches**, and an author is not reached by their own post. Option (b) drops a name with nothing counting it: [§ 18.12](#1812-the-anti-requirements-checked-against-the-derivation)'s no-silent-cap anti-requirement enumerates the two paths that may drop a fan-out — the counted truncation at 32 members, and `targets: null` — and both are reported, while a roster-filtered name would be a third reported by nothing. On a body-derived name it also deletes the evidence `coord_roster_unknown_name` exists to raise, and on a label-derived one that counter is not even in scope — so a roster copy gone stale would under-report every fan-out with no counter moving | The field now carries a five-clause rule (order, expansion, author removal, first-occurrence-only, and the `null` case) where it carried two sentences, and **the first-occurrence clause is asserted by no test in this document** — it is reachable only by a `TO:` line naming `all` and a roster member together, which no fixture writes. And `[]` is now an ordinary derived value rather than an oddity, so the two empty answers have to be read apart by every consumer: `null` is the alarmed one (`coord_targets_unresolved`) and `[]` is not alarmed at all |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health
@@ -6341,7 +6349,7 @@ for one fact: they carry different facts about it.
 | `from` | slug | **yes** | ≤ 48 B — the author this post evidences; `null` when it evidences none | `"pm"` |
 | `attribution` | slug | no | ≤ 16 B — as [§ 18.6](#186-coordthread) | `"resolved"` |
 | `to` | array\<slug\> | no | 0…32 members, each ≤ 48 B — the address **as written**: the body `TO:` line, else the thread's `to:` labels. `all` appears here verbatim | `["all"]` |
-| `targets` | array\<slug\> | **yes** | 0…32 members, each ≤ 48 B — the **resolved** fan-out, `all` expanded against [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s roster. `null` — never `[]` — when `to` contains `all` and that roster is unreadable | `["magento","platform","moodle"]` |
+| `targets` | array\<slug\> | **yes** | 0…32 members, each ≤ 48 B — the **resolved** fan-out, and it is derived from `to` in full: **take `to` in its own order, replace the literal `all` with [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s `roster[]` in the roster's order, remove `from`, and keep the first occurrence of each name** — a `null` `from` removes nothing. Every other member of `to` is carried unchanged, **including one the roster does not know**. `null` — never `[]` — when `to` contains `all` and that roster is unreadable, and that is the **only** path to `null`: the roster is consulted only to expand `all`, so a `to` naming seats needs none and always resolves | `["magento","platform","moodle"]` |
 | `carrier` | slug | **yes** | ≤ 16 B — the thread's leading bracketed token, repeated so a post is legible alone | `"brief"` |
 | `declares_close` | bool | no | — this post carries the protocol's `[CLOSE]` token, anchored past the addressing preamble and any leading markdown marks. **Not** a convergence: [§ 18.5](#185-the-three-findings-the-audit-turns-on) | `false` |
 | `posted_at` | rfc3339_ms | **yes** | the comment's own timestamp; `null` when the payload carries none | `"2026-08-27T13:17:33.000Z"` |
@@ -6357,6 +6365,36 @@ operator's floor-scoping ruling a property of the event rather than of the pictu
 are different answers and the field keeps them apart**: `[]` says *this post reached nobody*, `null`
 says *the fan-out is not resolvable here* — the same distinction `attribution` draws for a name, for
 the same reason.
+
+**The derivation is stated on the field because a worked example is not a specification**, and three
+parts of it carry their own reason rather than being left for a reader to infer from the example below:
+
+- **The roster is consulted only to expand `all`.** That is the one job
+  [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s table gives `roster[]`, and it is *why*
+  `null` belongs to the broadcast case alone: a `to` that names seats asks the roster nothing, so there
+  is no unreadable input for it to fail on and the field always resolves. The two halves of that used to
+  sit in two places with neither saying the other follows from it.
+- **A named addressee is never filtered out.** A member of `to` the copied roster does not know is
+  **carried**, because the roster is an expansion input and not a membership test. Where that member came
+  from the body, [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s drift guard already alarms it
+  by name — `coord_roster_unknown_name`, on that seat's first post — so filtering it would delete the
+  evidence the guard exists to raise. ⚠ **Where it came from the LABEL fallback, nothing alarms it at
+  all** — that guard is scoped to names derived from a body `FROM:`/`TO:` line, and `to` falls back to
+  labels on the residual the paragraph below measures — which makes carrying the name the only option
+  that loses nothing: filtering would drop a member with no counter moving at either source, and
+  [§ 18.12](#1812-the-anti-requirements-checked-against-the-derivation)'s no-silent-cap anti-requirement
+  enumerates the two paths that may drop a fan-out — the counted truncation at 32 members, and
+  `targets: null` — each of them reported. A roster-filtered name would be a third, reported by nothing.
+- **The author is removed, and `[]` is the ordinary result of a post addressed only to its own author.**
+  `targets` is who the post reaches, and an author is not reached by what they wrote. So `[]` is a value
+  the rule produces rather than a state to guard against — `to: ["pm"]` from `pm` yields it — and it
+  reads as *this post reached nobody*, which is exactly what the paragraph above pins it to.
+
+**The first worked example below therefore follows from this field's spec rather than standing beside
+it.** Expanding `all` against the roster and then removing the author is what leaves that example's
+array, so a reader re-derives it instead of taking it on the example's word. That is the failure the
+second example's `participants` note names one field over — *"a worked example becomes a second,
+disagreeing specification"* — and this rule is what keeps `targets` off that list.
 
 **`to`'s second source is not rare, and the rate is stated as a residual rather than left as a
 footnote.** [Finding A](#185-the-three-findings-the-audit-turns-on) establishes that labels are the
@@ -6397,7 +6435,9 @@ classification obligation attaches then** — and the trigger for it is that pub
 round.
 
 **Worked example — a broadcast round on a thread that is later closed.** The `[ANNOUNCE]` is opened
-by `pm` addressed to `all`; the resolved fan-out is this install's three implementation seats.
+by `pm` addressed to `all`; expanding `all` against this install's roster and then removing the author
+`pm` leaves its implementation seats, which is the `targets` below — read off the rule above rather
+than asserted here.
 
 ```json
 {

@@ -27,6 +27,26 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#10227** — **`coord.round.targets` had its derivation SHOWN by a worked example and stated in no
+  field spec, so `docs/design/FLOOR.md` § 11's `fx-coord` asserted four fan-out values no reader could
+  reproduce. D1 states the rule now, and the fixture re-derives from it.** `docs/design/EVENT-SCHEMA.md`
+  § 18.7's `targets` Bounds cell carries the whole derivation — `to` in its own order, the literal `all`
+  replaced by § 18.3.1's `roster[]`, the author removed, the first occurrence of each name kept — and the
+  prose beneath it states the three clauses that were implied: the roster is consulted **only** to expand
+  `all`, which is why `null` belongs to the broadcast case alone and a `to` naming seats always resolves; a
+  named addressee is never filtered against that roster, because `coord_roster_unknown_name` already alarms
+  a name the copy does not know and filtering it would delete the guard's own evidence; and the author is
+  removed, so `[]` is the ordinary result of a post addressed only to its own author. § 18.7's first worked
+  example is re-derivable from the field spec as a result, rather than a second specification standing
+  beside it — the defect that example's own `participants` note names one field over — and § 15 row 49
+  records the decision with the two readings it rejects. `fx-coord` states the install-facts roster it runs
+  under, `["pm", "coder", "helper"]`, and every round's fan-out follows from it: R1's `null` (the input
+  unreadable there) and R4's `[]` are unchanged, R2 is `["pm", "coder"]` and R3 is `["pm", "helper"]` —
+  one address from two authors, and different fan-outs because the rule removes each post's own author.
+  AT-D3-18's GREEN moves with them and gains an assertion this document had nowhere else: R3's `targets`
+  names one desk that resolves and one that does not, so § 6.2's A19 clause *a destination that does not
+  resolve gets no envelope and no line, and the ones that do still get theirs* is gated on a rendered
+  floor, by this test alone.
 - **card#7341** — **the ANIMATION SET lands (`docs/design/FLOOR.md` Appendix B step 6): § 6.2's closed
   set A1–A20 as the renderer's own artifact, and the two hard gates on trusting the floor at all are
   green.** `server/public/js/wire/animation-set.js` holds each row's class, its § 6.4 reduced-motion form
