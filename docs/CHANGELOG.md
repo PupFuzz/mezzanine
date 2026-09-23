@@ -47,6 +47,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   names one desk that resolves and one that does not, so § 6.2's A19 clause *a destination that does not
   resolve gets no envelope and no line, and the ones that do still get theirs* is gated on a rendered
   floor, by this test alone.
+- **card#10227** — **D2's `coord_round.targets` row stops half-restating D1 § 18.7's derivation and points at it instead, and § 18.7's removal clause now names every occurrence of `from` rather than one.** The clarifications close ambiguities: the author is removed from the fan-out in EVERY mention, not at the implementer's discretion, and the derivation is stated once in the field spec where an agent can reach it.
 - **card#7341** — **the ANIMATION SET lands (`docs/design/FLOOR.md` Appendix B step 6): § 6.2's closed
   set A1–A20 as the renderer's own artifact, and the two hard gates on trusting the floor at all are
   green.** `server/public/js/wire/animation-set.js` holds each row's class, its § 6.4 reduced-motion form
