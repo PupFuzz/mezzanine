@@ -23,15 +23,18 @@
  * ⛔ THE STRINGS BELOW RESTATE PUBLISHED TABLES AND ARE GUARDED, NOT TRUSTED. A browser cannot read
  * FLOOR.md, so § 7.1's state sentences, its seven `unknown_reason` sentences and § 7.6's twelve
  * `api_error_type` phrases live here as copies — and
- * `Tests\Feature\Floor\TheDeskSpeaksTheDocumentsWordsTest` re-derives each of them from the
+ * `Tests\Feature\Desk\TheDeskSpeaksTheDocumentsWordsTest` re-derives each of them from the
  * document on every run and set-differences both directions. § 7.1's cells are WORKED INSTANCES
  * (its own convention: "never a rule"), so what is copied is each cell's fixed words — the values
  * spliced into them come from the fields § 5.1 names, through § 2.4's formats.
  *
  * ⚠ WHAT IS NOT HERE, named rather than left as a silence:
- *   · MOTION ITSELF. `motion` below is the TREATMENT's verdict — whether § 7.3 permits the held
- *     render's loop — and `desk-floor.js` writes it on the render's `held` row; the loops, the
- *     edge animations and their reduced-motion forms are the animation set, Appendix B step 6.
+ *   · WHICH § 6.2 ROW A HELD RENDER IS, AND WHAT IT LOOKS LIKE. `wire/animation-set.js` holds
+ *     the closed set — each row's class, its § 6.4 form and whether it loops at all — and
+ *     `heldRendering()` below is what turns this file's one input into that row's rendering. What
+ *     is THIS file's is the § 7.3 TREATMENT: whether a lag, a `config_invalid` reporter, an
+ *     unrecognised state or a desk with nobody at it permits the render's loop to run. The edge
+ *     animations and the frames a loop is actually drawn at are the set's and a drawing layer's.
  *   · MEMBERSHIP TESTING of `activity_state`, `link_state` and the badges (§ 5.4). `render_state`
  *     is membership-tested here because the desk switches on it; the other sets' unrecognised
  *     render is AT-D3-11's, gated at step 8. The *was:* form and the badge cluster carry the raw
@@ -44,6 +47,7 @@ import { isRenderState } from '../lobby/render-state.js';
 import { clockTime } from '../wire/clock.js';
 import { contextGauge } from '../wire/context-gauge.js';
 import { formatDuration } from '../wire/duration.js';
+import { heldRendering } from '../wire/animation-set.js';
 import { NO_DATA_YET, UNTITLED } from '../wire/null-render.js';
 import { SEAT_CLOCK, seatClock } from '../wire/age-readout.js';
 import { deskDrawsCharacter, taskBubble } from './task-bubble.js';
@@ -129,10 +133,17 @@ export const DESK = Object.freeze({
 const THINKING = { pose: 'leaning-back', glyph: 'thinking', lighting: 'full', monitor: 'on' };
 
 /**
- * § 6.2's `held` rows, by the member (and A4's condition) that holds each. `null` is a state
- * whose desk holds no render at all — § 7.1's Animation column reads *none* for it.
- * `stalled` and `unknown` hold a render that has no motion by design (§ 11: "the two states with
- * no motion by design").
+ * § 6.2's `held` rows, by the `render_state` each row's own condition names (and A4's, which adds
+ * two more members). `null` is a state whose desk holds no render at all — § 7.1's Animation
+ * column reads *none* for it.
+ *
+ * ⛔ WHICH OF THESE HOLDS MOTION IS NOT HERE. § 11's *two states with no motion by design* are
+ * `stalled` and `unknown`, and `wire/animation-set.js` answers that from A8's and A9's own § 6.2
+ * Animation cells — which name no loop where every other held row names a 4 fps one — rather than
+ * from a pair of ids kept beside this map, which is what this file held until card#7341 step 6
+ * and what nothing re-derived from the document.
+ * `Tests\Feature\Floor\TheAnimationSetIsTheDocumentsClosedSetTest` re-derives this map itself
+ * from § 6.2's held conditions.
  */
 const HELD = Object.freeze({
     // A4 when the THINKING pose is drawn instead — the two are exclusive (§ 6.2's A3 row).
@@ -143,7 +154,6 @@ const HELD = Object.freeze({
     unknown: 'A9',
     catching_up: 'A15',
 });
-const STATIC_BY_DESIGN = Object.freeze(['A8', 'A9']);
 
 /**
  * § 7.1's Label line for one member, completed from the fields and ages its cell names.
@@ -316,7 +326,9 @@ function monitor(desk, seat, label) {
  * @param {object} [facts]      what only the client protocol knows:
  *   `missing` — § 2.3 row 5: the client can no longer confirm the seat;
  *   `derivation_stamp` — the `server_time` that delivered the held `derivation` block.
- * @param {object} [options]    `{ ref_bases }` for the thought bubble (§ 5.2's link rule).
+ * @param {object} [options]    `{ ref_bases }` for the thought bubble (§ 5.2's link rule), and
+ *   `reduce` — § 6.4's `prefers-reduced-motion`, which selects each § 6.2 row's reduced-motion
+ *   FORM. It is not a degradation: the same fact, carried without motion.
  */
 export function deskModel(seat, ages, facts = {}, options = {}) {
     const state = seat.render_state;
@@ -356,13 +368,11 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
     const dark = state === 'stale' || state === 'offline' ? darkPair(seat, ages) : null;
     const label = recognised ? labelLine(state, seat, ages, dark) : `${state} (${UNRECOGNISED})`;
 
-    // § 6.2's held render and whether its loop may run (§ 7.3): a lag, a `config_invalid` reporter,
-    // an unrecognised state and a desk with nobody at it all stop it.
+    // § 6.2's held render, and § 7.3's TREATMENT of whether its loop may run: a lag, a
+    // `config_invalid` reporter, an unrecognised state and a desk with nobody at it all stop it.
+    // Whether the row loops at all, and § 6.4's form, are the animation set's answer.
     const heldId = character ? (desk === THINKING ? 'A4' : (HELD[state] ?? null)) : null;
-    const motion = heldId !== null
-        && !STATIC_BY_DESIGN.includes(heldId)
-        && !lagged
-        && !configInvalid;
+    const permitted = !lagged && !configInvalid;
 
     return {
         install_id: seat.install_id,
@@ -406,6 +416,6 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
         // § 5.1 rule 3: "A desk that draws no character draws no bubble", which covers the
         // unconfirmed seat too — the bubble module reads `render_state` alone and cannot know.
         bubble: character ? taskBubble(seat, { ref_bases: options.ref_bases ?? null }) : null,
-        held: heldId === null ? null : { animation_id: heldId, motion },
+        held: heldId === null ? null : heldRendering(heldId, permitted, options.reduce === true),
     };
 }

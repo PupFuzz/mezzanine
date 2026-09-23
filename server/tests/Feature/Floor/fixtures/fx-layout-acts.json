@@ -1,0 +1,319 @@
+{
+  "note": "NOT one of docs/design/FLOOR.md \u00a7 11's nine tabled fixtures. Appendix B row 13 owes step 6 ONE half of T39's client side: *no \u00a7 6.2 row fired* on a `room.map` apply. \u00a7 2.5 says the same of `building.layout` (\"no animation, for the same reason\"), so both are delivered here \u2014 a map or a layout is a LAYOUT ACT and not a fleet event, so no row fires and a desk that moved appears at its new slot. The two envelopes carry the members D2 \u00a7 8.7 declares for them and nothing this client reads: step 3's protocol applies neither, which is exactly the state the row-13 test asserts the animation set fires nothing in.",
+  "snapshot": {
+    "api_version": 1,
+    "server_time": "2026-08-23T14:23:14.400Z",
+    "fleet": {
+      "db": "ok",
+      "fold": "ok",
+      "sweep": "ok",
+      "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+      "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+      "max_fold_lag_ms": 117,
+      "seats_total": 1,
+      "seats_live": 1
+    },
+    "installs": [
+      {
+        "install_id": "aimla",
+        "seats": [
+          {
+            "install_id": "aimla",
+            "seat_id": "aimla-layout",
+            "state_version": 5501,
+            "render_state": "working",
+            "link_state": "live",
+            "activity_state": "working",
+            "unknown_reason": null,
+            "api_error_type": null,
+            "blocked_since": null,
+            "action": {
+              "call_id": "7BC655J8KF8TH9EWZK4EXDAGBQ",
+              "tool_name": "Bash",
+              "descriptor": "Bash: composer test",
+              "started_at": "2026-08-23T14:23:06.400Z",
+              "started_received_at": "2026-08-23T14:23:10.400Z",
+              "agent_scope": "main",
+              "parent_call_id": null
+            },
+            "open_calls": 1,
+            "open_turn": true,
+            "subagents": [],
+            "subagents_open": 0,
+            "task": {
+              "title": "ingest endpoint",
+              "source": "board_card",
+              "ref": "card#7338",
+              "as_of": "2026-08-23T14:05:00.000Z",
+              "degraded": false
+            },
+            "context": {
+              "used_pct": 73.2,
+              "used_tokens": 146401,
+              "total_tokens": 200000,
+              "source": "harness",
+              "sampled_at": "2026-08-23T14:41:00.310Z",
+              "sampled_received_at": "2026-08-23T14:41:04.880Z"
+            },
+            "model_label": "claude-opus-5",
+            "session": {
+              "session_id": "0000157d-0000-4000-8000-000000005501",
+              "started_at": "2026-08-23T14:21:14.400Z",
+              "source": "startup",
+              "project_label": "mezzanine",
+              "harness_label": "claude-code/2.1.240"
+            },
+            "activity": {
+              "last_event_time": "2026-08-23T14:23:06.400Z",
+              "last_received_at": "2026-08-23T14:23:10.400Z",
+              "last_kind": "tool.start"
+            },
+            "delivery": {
+              "last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+              "no_data_since": null,
+              "clock_skew_ms": 412,
+              "spool_lag_events": 0,
+              "oldest_unsent_age_s": null,
+              "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+              "last_seq": 48211
+            },
+            "badges": [],
+            "badges_since": null,
+            "enabled": true,
+            "protocol_agent_name": "layout",
+            "protocol_agent_name_check": "checked",
+            "reporter": {
+              "version": "0.1.0",
+              "platform": "linux",
+              "uptime_s": 401150,
+              "selftest_failed": []
+            },
+            "retired": null,
+            "derivation": {
+              "computed_at": "2026-08-23T14:23:14.318Z",
+              "fold_lag_ms": 117,
+              "cursor_event_id": 9912837
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "runs": {
+    "layout_acts": {
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 1,
+                "seats_live": 1
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-layout",
+                      "state_version": 5501,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "7BC655J8KF8TH9EWZK4EXDAGBQ",
+                        "tool_name": "Bash",
+                        "descriptor": "Bash: composer test",
+                        "started_at": "2026-08-23T14:23:06.400Z",
+                        "started_received_at": "2026-08-23T14:23:10.400Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "0000157d-0000-4000-8000-000000005501",
+                        "started_at": "2026-08-23T14:21:14.400Z",
+                        "source": "startup",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:23:06.400Z",
+                        "last_received_at": "2026-08-23T14:23:10.400Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "layout",
+                      "protocol_agent_name_check": "checked",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "messages": [
+        {
+          "at_ms": 1000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "room.map",
+            "server_time": "2026-08-23T14:23:15.400Z",
+            "install_id": "aimla",
+            "map_version": 4,
+            "revision_id": 881
+          }
+        },
+        {
+          "at_ms": 2000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "building.layout",
+            "server_time": "2026-08-23T14:23:16.400Z",
+            "layout_version": 7,
+            "revision_id": 882
+          }
+        }
+      ],
+      "until_ms": 3000,
+      "final": {
+        "aimla/aimla-layout": {
+          "install_id": "aimla",
+          "seat_id": "aimla-layout",
+          "state_version": 5501,
+          "render_state": "working",
+          "link_state": "live",
+          "activity_state": "working",
+          "unknown_reason": null,
+          "api_error_type": null,
+          "blocked_since": null,
+          "action": {
+            "call_id": "7BC655J8KF8TH9EWZK4EXDAGBQ",
+            "tool_name": "Bash",
+            "descriptor": "Bash: composer test",
+            "started_at": "2026-08-23T14:23:06.400Z",
+            "started_received_at": "2026-08-23T14:23:10.400Z",
+            "agent_scope": "main",
+            "parent_call_id": null
+          },
+          "open_calls": 1,
+          "open_turn": true,
+          "subagents": [],
+          "subagents_open": 0,
+          "task": {
+            "title": "ingest endpoint",
+            "source": "board_card",
+            "ref": "card#7338",
+            "as_of": "2026-08-23T14:05:00.000Z",
+            "degraded": false
+          },
+          "context": {
+            "used_pct": 73.2,
+            "used_tokens": 146401,
+            "total_tokens": 200000,
+            "source": "harness",
+            "sampled_at": "2026-08-23T14:41:00.310Z",
+            "sampled_received_at": "2026-08-23T14:41:04.880Z"
+          },
+          "model_label": "claude-opus-5",
+          "session": {
+            "session_id": "0000157d-0000-4000-8000-000000005501",
+            "started_at": "2026-08-23T14:21:14.400Z",
+            "source": "startup",
+            "project_label": "mezzanine",
+            "harness_label": "claude-code/2.1.240"
+          },
+          "activity": {
+            "last_event_time": "2026-08-23T14:23:06.400Z",
+            "last_received_at": "2026-08-23T14:23:10.400Z",
+            "last_kind": "tool.start"
+          },
+          "delivery": {
+            "last_receipt_at": "2026-08-23T14:23:14.201Z",
+            "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+            "no_data_since": null,
+            "clock_skew_ms": 412,
+            "spool_lag_events": 0,
+            "oldest_unsent_age_s": null,
+            "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+            "last_seq": 48211
+          },
+          "badges": [],
+          "badges_since": null,
+          "enabled": true,
+          "protocol_agent_name": "layout",
+          "protocol_agent_name_check": "checked",
+          "reporter": {
+            "version": "0.1.0",
+            "platform": "linux",
+            "uptime_s": 401150,
+            "selftest_failed": []
+          },
+          "retired": null,
+          "derivation": {
+            "computed_at": "2026-08-23T14:23:14.318Z",
+            "fold_lag_ms": 117,
+            "cursor_event_id": 9912837
+          }
+        }
+      }
+    }
+  }
+}

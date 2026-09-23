@@ -11,19 +11,15 @@ use Tests\Feature\Support\DrivesAShippedClientModule;
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ WHAT IS LEFT HERE IS WHAT IS THE LOG'S: which file ships (`wire/animation-log.js`, which has
- * no screen directory of its own), which probe drives it, and the two things `docs/design/FLOOR.md`
- * says about a row that a test must read rather than restate — § 11's row tuple and § 6.2's
- * id→class column. Both are re-derived from the document on every run.
+ * no screen directory of its own), which probe drives it, and § 11's row tuple, re-derived from the
+ * document on every run. § 6.2's own table is `ReadsTheAnimationTable`'s — hoisted there at
+ * card#7341 step 6, when the animation set, AT-D3-1's hold predicate and the desk render's
+ * state→id map all became readers of the one walk this file used to own alone.
  */
 trait DrivesTheAnimationLogModule
 {
     use DrivesAShippedClientModule;
-
-    /** § 6.2's table, by the header row that opens it. */
-    private const S62_TABLE = '| # | Class | Animation |';
-
-    /** § 6.2's closing anchor — the next heading, which is where the walk must stop. */
-    private const S62_CLOSE = '### 6.3 ';
+    use ReadsTheAnimationTable;
 
     /** The one class every refusal throws, by the name the probe reports. */
     protected const REFUSAL = 'AnimationLogRefusal';
@@ -68,47 +64,6 @@ trait DrivesTheAnimationLogModule
         }
 
         return array_map('trim', explode(',', $m[1][0]));
-    }
-
-    /**
-     * § 6.2's **Class** column, RE-DERIVED from `FLOOR.md` on every run: `['A1' => 'edge', …]`.
-     *
-     * ⛔ `strpos` IS CHECKED BEFORE IT IS USED AS A BOUND. A renamed closing heading answers
-     * `false`, and `false` in arithmetic is `0` — which would hand the parse the whole document.
-     * `AnimationLogClassPopulationMatchesTheDocumentTest`'s CONTROL 1 plants that rename.
-     *
-     * ⛔ EVERY `| **A` ROW IN THE SLICE MUST PARSE, OR NONE IS RETURNED. A row whose Class cell is
-     * spelled some other way would otherwise drop out silently and the population would shrink
-     * with nothing reporting it.
-     *
-     * @return array<string, string>
-     */
-    protected function documentAnimationClasses(?string $md = null): array
-    {
-        $md ??= $this->floorMd();
-        $open = strpos($md, self::S62_TABLE);
-        $close = $open === false ? false : strpos($md, self::S62_CLOSE, $open);
-
-        if ($open === false || $close === false) {
-            return [];
-        }
-
-        $classes = [];
-        $candidates = 0;
-
-        foreach (explode("\n", substr($md, $open, $close - $open)) as $line) {
-            if (! str_starts_with($line, '| **A')) {
-                continue;
-            }
-
-            $candidates++;
-
-            if (preg_match('/^\| \*\*(A\d+)\*\* \| `(edge|held)` \|/', $line, $m) === 1) {
-                $classes[$m[1]] = $m[2];
-            }
-        }
-
-        return $candidates === count($classes) ? $classes : [];
     }
 
     /**

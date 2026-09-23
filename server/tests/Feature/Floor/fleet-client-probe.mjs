@@ -17,6 +17,9 @@
  *      "desk_floor": true                       // start `desk/desk-floor.js` after start(): its own
  *                                               //  1 s tick, and `render()` after every settled
  *                                               //  event that is not a tick
+ *      "reduce":     true                       // § 6.4's `prefers-reduced-motion: reduce`, as a
+ *                                               //  page reads it — every § 6.2 row draws its
+ *                                               //  reduced-motion form and logs `motion: false`
  *      "durations":  [ <seconds>, … ]           // `formatDuration` sampled on these, for a test's
  *                                               //  expected string — the shipped format, not a copy
  *    }`
@@ -46,11 +49,14 @@
  * at an exact scenario instant and is recorded as `age_renders[]` — the headless observation of
  * every age readout AT-D3-10's floor half asserts on.
  *
- * ⛔ THE DESK FLOOR IS THE SHIPPED ONE, OVER THE SHIPPED CLIENT, WRITING THE SHIPPED ANIMATION LOG.
- * `render()` is § 2.5's apply path, so the probe calls it after each settled event exactly as a
- * page calls it after an apply; its tick is the shipped ticker on the scenario's timer. Every frame
- * is recorded as `desk_renders[]` with the trigger that drew it — the headless observation of a
- * desk that AT-D3-5 and AT-D3-14's desk half assert on — and the log's rows as `animation_log`.
+ * ⛔ THE DESK FLOOR IS THE SHIPPED ONE, OVER THE SHIPPED CLIENT, WRITING THE SHIPPED ANIMATION LOG
+ * THROUGH THE SHIPPED ANIMATION SET. `render()` is § 2.5's apply path, so the probe calls it after
+ * each settled event exactly as a page calls it after an apply — which is also what drains the
+ * client's wire journal, so a run whose floor is not started journals and animates nothing. Its
+ * tick is the shipped ticker on the scenario's timer, and a tick drains nothing. Every frame is
+ * recorded as `desk_renders[]` with the trigger that drew it — the headless observation of a desk
+ * that AT-D3-5 and AT-D3-14's desk half assert on — and every § 6.2 row the floor started as
+ * `animation_log`, which is what AT-D3-1, AT-D3-2, AT-D3-13 and two render halves read.
  *
  * ⛔ THE SCENARIO CLOCK IS THE ONLY CLOCK, AND IT STARTS AT `start()`. Every `at_ms` and every
  * `delay_ms` is measured on it, and a response resolves at `request time + delay_ms`. That is what
@@ -236,7 +242,7 @@ async function replay(scenario) {
     if (scenario.desk_floor === true) {
         floor = startDeskFloor(client, clock, timersImpl, log, (frame, trigger) => {
             deskRenders.push({ at: now, trigger, frame: JSON.parse(JSON.stringify(frame)) });
-        });
+        }, { reduce: scenario.reduce === true });
     }
 
     await turn();

@@ -27,6 +27,40 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **the ANIMATION SET lands (`docs/design/FLOOR.md` Appendix B step 6): § 6.2's closed
+  set A1–A20 as the renderer's own artifact, and the two hard gates on trusting the floor at all are
+  green.** `server/public/js/wire/animation-set.js` holds each row's class, its § 6.4 reduced-motion form
+  and whether it loops — the last derived from the row's own Animation cell rather than from a second
+  list — and is the one entry every § 6.2 row is started through, writing step 2's animation log.
+  `wire/fleet-client.js` gains a WIRE JOURNAL: what the protocol did with each message it handled, with
+  the `changed[]`, `before` and `after` every `edge` condition is written over, drained by the renderer at
+  each apply. § 6.5's rule that a snapshot, a resync and a per-seat fetch animate nothing therefore lives
+  in the renderer, which is what lets AT-D3-9's own RED reach it. `desk/desk-floor.js`'s held-render path
+  MOVED into the set rather than being copied, and `desk/desk-render.js`'s unguarded
+  `STATIC_BY_DESIGN = ['A8', 'A9']` is gone: which rows carry motion by design is now re-derived from the
+  document. Gated by **AT-D3-1** (both halves, unqualified), **AT-D3-2**, **AT-D3-13**, and the render
+  halves of **AT-D3-9** and **AT-D3-17**, each with the plant its RED names observed to fail first; and by
+  Appendix B row 13's half that was owed to step 6 alone — a `room.map` apply fires no § 6.2 row, asserted
+  over a `building.layout` too, because § 2.5 gives the two one rule. Four new fixtures: `fx-clear-trace`
+  (every figure re-derived from § 14 item 21's closure and from `fx-snapshot-4`'s own published snapshot,
+  and the replay reproduces § 11's *five held episodes, nine held rows* walk exactly), `fx-interns`, and
+  two carrying seats and messages § 11's nine do not.
+- **card#7341** — **one wrong render on a real wire transition, found while building the set and fixed
+  with it: an `offline → retired` delta played an arrival at a desk being removed.** A1 fires on a delta
+  that LEAVES `offline` and A13 on one whose new `render_state` is `retired`, and § 6.2 stated no
+  exclusion between them, so a retirement was also an arrival. A1's condition now states *and not A13's
+  condition* — hosted on the row that yields, exactly as A3 states its exclusion of A4 — and the shipped
+  predicate reads A13's own definition rather than a copy of it. A2 is unaffected and no exclusion is
+  stated on it: `offline → retired` never makes the new value `offline`.
+- **card#7341** — **three § 11 claims this build made false, corrected in the same change.** AT-D3-2's
+  *the animation log contains no `idle` row* read as total over the log while its own base fixture
+  delivers an `idle` seat, so as written it would have reddened a correct client; it is now scoped to the
+  seat the trace is about, with the reason. Bound (v) said a table is never hand-copied into *the module*
+  when there was one module, and is now stated over the property — a copy a renderer cannot avoid is
+  GUARDED, in both directions. Appendix B row 5's cell said `desk-floor.js` enters and leaves each held
+  render, which step 6 moved. § 11 also gains a FORWARD CONTRACT for A18/A19/A20's log rows: they belong
+  to no seat, `cause` is the message's own `post_ref` or `thread_ref`, and AT-D3-1's causing-message set
+  stays FOUR until the first consumer that applies a `coord.*` message arrives with a test that fires one.
 - **card#7341** — **`docs/design/FLOOR.md` § 14 item 21 (`fx-clear-trace`'s base, patches and
   hook-order difference) and Q8 (no Appendix B row built § 5.7's coordination line) are both closed.**
   Design and documentation only; no code changed. Item 21: the fixture's version base is

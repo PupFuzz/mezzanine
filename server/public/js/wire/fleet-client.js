@@ -138,6 +138,27 @@ export class FleetClient {
     /** § 5.5's record: newest first, text only. */
     #log = [];
 
+    /**
+     * THE WIRE JOURNAL: every message this client handled and every seat row it took from a REST
+     * surface, in handling order, with what it DID with each. It is the renderer's one honest
+     * source for *did the client apply this, and what did it carry* — and every input
+     * `docs/design/FLOOR.md § 6.2`'s `edge` conditions are written over, none of which is
+     * recoverable from a diff of two renders (§ 2.5: re-sending a held value still counts as a
+     * change, which is what `changed[]` is for).
+     *
+     * ⛔ IT SAYS WHAT HAPPENED AND DECIDES NOTHING. § 6.5's rule — a snapshot, a resync, a fetch
+     * and a reconnect animate nothing — is `wire/animation-set.js`'s to keep, which is why the
+     * snapshot's rows and the fetch's are journalled here beside the deltas rather than withheld:
+     * a renderer that never sees them cannot be shown to have refused them, and an empty journal
+     * would satisfy *no `edge` row* for free.
+     *
+     * ⛔ IT IS DRAINED, NOT READ (`takeWire()` below), so it only ever holds what happened between
+     * two renders. A client whose renderer never drains it grows it without bound, exactly as an
+     * unreleased `#buffers` entry does, and that is a wiring defect in the page rather than a case
+     * to handle here.
+     */
+    #wire = [];
+
     /** § 2.3 row 5: key → consecutive failed reads, cleared by any confirmed apply. */
     #failStreak = new Map();
 
@@ -172,6 +193,42 @@ export class FleetClient {
     /** § 5.5's record, newest first, at most `LOG_CAP` lines — a copy, for the same reason. */
     get eventLog() {
         return [...this.#log];
+    }
+
+    /**
+     * Every message handled and every REST row taken since the last call, oldest first, and the
+     * journal is CLEARED by the call.
+     *
+     * ⛔ WHY A DRAIN AND NOT A CALLBACK. The renderer's own instrument (§ 11's animation log)
+     * REFUSES by throwing, and `desk/desk-floor.js` deliberately does not catch. A callback fired
+     * from inside `#applyDelta` would carry that throw out through a drain loop and abandon a
+     * seat's remaining buffered deltas half-applied — a state no rule in § 2.2 describes. Draining
+     * at the render keeps a renderer defect inside the render.
+     *
+     * Each entry carries `t` — the wire message's own, or `snapshot` / `seat.fetch` for a row a
+     * REST surface delivered — and `outcome`:
+     *   · `applied`   — a delta merged at `+1`, or a row that replaced what was held
+     *   · `buffered`  — held back for the connect window, a gap, or a seat fetch in flight
+     *   · `discarded` — at or below the held version (§ 2.2's watermark), a row not higher, or a
+     *                   `fleet{}` an older envelope carried (T40)
+     *   · `ignored`   — a message this step applies nothing for, and one arriving after a failed
+     *                   first snapshot
+     * An `applied` `seat.delta` also carries `changed` (D2 § 8.3.1: the patch's own keys) and the
+     * held object `before` and `after` the merge.
+     *
+     * ⚠ ONE OUTCOME IS NOT WRITTEN, named rather than left to be found: a buffered delta the
+     * failed-fetch drain abandons at a gap gets its `buffered` line and no resolution line. The
+     * drain stops at the gap (`#fetchSeat`) and nothing downstream reads a resolution, so this
+     * journal records the buffering and the merges and says nothing about that remainder.
+     *
+     * @returns {list<object>}
+     */
+    takeWire() {
+        const taken = this.#wire;
+
+        this.#wire = [];
+
+        return taken;
     }
 
     /** `'connecting' | 'live' | 'snapshot-failed'` (`'idle'` before `start()`). */
@@ -360,7 +417,7 @@ export class FleetClient {
 
         for (const install of body.installs) {
             for (const row of install.seats) {
-                this.#replaceIfHigher(row);
+                this.#replaceIfHigher(row, 'snapshot', body.server_time);
                 this.#stampIfHeld(row, body.server_time);
             }
         }
@@ -383,13 +440,38 @@ export class FleetClient {
                 break;
             case 'feed.heartbeat':
             case 'fleet.health':
+                // ⛔ THE JOURNAL LINE IS WRITTEN FOR THE MESSAGE RECEIVED, NOT FOR THE `fleet{}`
+                // ADMITTED. § 6.2's A14 and A17 fire on "each `feed.heartbeat` message received",
+                // and T40's filter below decides only whose `fleet{}` this client holds — a
+                // heartbeat overtaken by a newer one still arrived, and a room render stopped on
+                // it would claim § 9 F1's feed-down condition on a live feed.
                 if (this.#acceptFleet(envelope.server_time, envelope.fleet)) {
+                    this.#note(envelope.t, 'applied', { server_time: envelope.server_time });
                     this.#check();
+                } else {
+                    this.#note(envelope.t, 'discarded', { server_time: envelope.server_time });
                 }
                 break;
             default:
+                this.#note(envelope.t, 'ignored', { server_time: envelope.server_time });
                 break;
         }
+    }
+
+    /** One journal line. Every write to `#wire` is here, so no path can invent a shape. */
+    #note(t, outcome, fields = {}) {
+        this.#wire.push({ t, outcome, ...fields });
+    }
+
+    /** One journal line for a delta, carrying the members every § 6.2 `edge` row is written over. */
+    #noteDelta(d, outcome, fields = {}) {
+        this.#note('seat.delta', outcome, {
+            install_id: d.install_id,
+            seat_id: d.seat_id,
+            state_version: d.state_version,
+            server_time: d.server_time,
+            ...fields,
+        });
     }
 
     /**
@@ -426,6 +508,8 @@ export class FleetClient {
      */
     #applyDelta(d) {
         if (this.#phase === 'snapshot-failed' || this.#phase === 'idle') {
+            this.#noteDelta(d, 'ignored');
+
             return;
         }
 
@@ -447,13 +531,13 @@ export class FleetClient {
         }
 
         if (d.state_version <= held.state_version) {
+            this.#noteDelta(d, 'discarded');
+
             return;
         }
 
         if (d.state_version === held.state_version + 1) {
-            this.#seats.set(k, { ...held, ...d.patch, state_version: d.state_version });
-            this.#confirm(k);
-            this.#stamp(k, Object.keys(d.patch), d.server_time);
+            this.#merge(k, held, d);
 
             return;
         }
@@ -462,12 +546,33 @@ export class FleetClient {
         this.#fetchSeat(d.install_id, d.seat_id, held.state_version);
     }
 
+    /**
+     * § 2.2's `+1` shallow merge, in the ONE place both paths that perform it reach it.
+     *
+     * ⚠ HOISTED HERE AT CARD#7341 STEP 6, AT ITS SECOND REAL CALLER. `#applyDelta` and
+     * `#fetchSeat`'s failure drain each carried their own copy of these three lines; a journal line
+     * written into one of them would have left the other applying deltas the renderer never hears
+     * about — the animation a viewer sees and the log the honesty tests read parting company on
+     * exactly the path a failed seat fetch takes.
+     */
+    #merge(k, held, d) {
+        const after = { ...held, ...d.patch, state_version: d.state_version };
+
+        this.#seats.set(k, after);
+        this.#confirm(k);
+        this.#stamp(k, Object.keys(d.patch), d.server_time);
+        // D2 § 8.3.1: `changed` is the patch's own keys, which is what § 6.2's `edge` conditions
+        // are gated on — never a diff, which cannot tell a re-sent value from one never sent.
+        this.#noteDelta(d, 'applied', { changed: Object.keys(d.patch), before: held, after });
+    }
+
     #push(k, d) {
         if (!this.#buffers.has(k)) {
             this.#buffers.set(k, []);
         }
 
         this.#buffers.get(k).push(d);
+        this.#noteDelta(d, 'buffered');
     }
 
     /**
@@ -543,9 +648,7 @@ export class FleetClient {
                 }
 
                 if (d.state_version === h.state_version + 1) {
-                    this.#seats.set(k, { ...h, ...d.patch, state_version: d.state_version });
-                    this.#confirm(k);
-                    this.#stamp(k, Object.keys(d.patch), d.server_time);
+                    this.#merge(k, h, d);
                 }
             }
 
@@ -555,7 +658,7 @@ export class FleetClient {
         const { api_version, server_time, detail, ...row } = res.body;
         const inserted = !this.#seats.has(k);
 
-        this.#replaceIfHigher(row);
+        this.#replaceIfHigher(row, 'seat.fetch', res.body.server_time);
         this.#stampIfHeld(row, res.body.server_time);
         this.#confirm(k);
 
@@ -574,14 +677,34 @@ export class FleetClient {
      * newer members from the delta chain beside older ones from the snapshot — and nothing
      * downstream could tell it from a real seat.
      */
-    #replaceIfHigher(row) {
+    #replaceIfHigher(row, source, serverTime) {
         const k = key(row.install_id, row.seat_id);
         const held = this.#seats.get(k);
 
         if (held === undefined || row.state_version > held.state_version) {
             this.#seats.set(k, row);
             this.#confirm(k);
+            this.#noteRow(source, row, serverTime, 'applied');
+
+            return;
         }
+
+        this.#noteRow(source, row, serverTime, 'discarded');
+    }
+
+    /**
+     * One journal line for a row a REST surface delivered. § 6.5 is why it is written at all: the
+     * renderer must be able to SEE the snapshot, the resync and the insert and animate none of
+     * them, and a GREEN over a journal that never carried them would be satisfied by a client that
+     * renders nothing.
+     */
+    #noteRow(source, row, serverTime, outcome) {
+        this.#note(source, outcome, {
+            install_id: row.install_id,
+            seat_id: row.seat_id,
+            state_version: row.state_version,
+            server_time: serverTime,
+        });
     }
 
     /**

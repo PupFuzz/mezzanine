@@ -1,0 +1,438 @@
+{
+  "note": "docs/design/FLOOR.md \u00a7 11's `fx-interns`: one seat whose `subagents` goes 0 -> 8 -> 8-with-`subagents_open`-9, including one element with `title: null`. The array stops at \u00a7 8.1's cap of 8, so the second delta patches the COUNT and not the array \u2014 which is why it gains and loses no `call_id` and fires no \u00a7 6.2 A10 row.",
+  "snapshot": {
+    "api_version": 1,
+    "server_time": "2026-08-23T14:23:14.400Z",
+    "fleet": {
+      "db": "ok",
+      "fold": "ok",
+      "sweep": "ok",
+      "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+      "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+      "max_fold_lag_ms": 117,
+      "seats_total": 1,
+      "seats_live": 1
+    },
+    "installs": [
+      {
+        "install_id": "aimla",
+        "seats": [
+          {
+            "install_id": "aimla",
+            "seat_id": "aimla-interns",
+            "state_version": 9001,
+            "render_state": "working",
+            "link_state": "live",
+            "activity_state": "working",
+            "unknown_reason": null,
+            "api_error_type": null,
+            "blocked_since": null,
+            "action": {
+              "call_id": "TQR10T4VZ13040000000000000",
+              "tool_name": "Bash",
+              "descriptor": "Bash: composer test",
+              "started_at": "2026-08-23T14:23:09.400Z",
+              "started_received_at": "2026-08-23T14:23:13.400Z",
+              "agent_scope": "main",
+              "parent_call_id": null
+            },
+            "open_calls": 1,
+            "open_turn": true,
+            "subagents": [],
+            "subagents_open": 0,
+            "task": {
+              "title": "ingest endpoint",
+              "source": "board_card",
+              "ref": "card#7338",
+              "as_of": "2026-08-23T14:05:00.000Z",
+              "degraded": false
+            },
+            "context": {
+              "used_pct": 73.2,
+              "used_tokens": 146401,
+              "total_tokens": 200000,
+              "source": "harness",
+              "sampled_at": "2026-08-23T14:41:00.310Z",
+              "sampled_received_at": "2026-08-23T14:41:04.880Z"
+            },
+            "model_label": "claude-opus-5",
+            "session": {
+              "session_id": "b4d1c7e2-3f06-4a19-8c25-71ea9d3f6b08",
+              "started_at": "2026-08-23T14:22:44.400Z",
+              "source": "startup",
+              "project_label": "mezzanine",
+              "harness_label": "claude-code/2.1.240"
+            },
+            "activity": {
+              "last_event_time": "2026-08-23T14:23:09.882Z",
+              "last_received_at": "2026-08-23T14:23:14.201Z",
+              "last_kind": "tool.start"
+            },
+            "delivery": {
+              "last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+              "no_data_since": null,
+              "clock_skew_ms": 412,
+              "spool_lag_events": 0,
+              "oldest_unsent_age_s": null,
+              "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+              "last_seq": 48211
+            },
+            "badges": [],
+            "badges_since": null,
+            "enabled": true,
+            "protocol_agent_name": "interns",
+            "protocol_agent_name_check": "checked",
+            "reporter": {
+              "version": "0.1.0",
+              "platform": "linux",
+              "uptime_s": 401150,
+              "selftest_failed": []
+            },
+            "retired": null,
+            "derivation": {
+              "computed_at": "2026-08-23T14:23:14.318Z",
+              "fold_lag_ms": 117,
+              "cursor_event_id": 9912837
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "runs": {
+    "fx-interns": {
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 1,
+                "seats_live": 1
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-interns",
+                      "state_version": 9001,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "TQR10T4VZ13040000000000000",
+                        "tool_name": "Bash",
+                        "descriptor": "Bash: composer test",
+                        "started_at": "2026-08-23T14:23:09.400Z",
+                        "started_received_at": "2026-08-23T14:23:13.400Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "b4d1c7e2-3f06-4a19-8c25-71ea9d3f6b08",
+                        "started_at": "2026-08-23T14:22:44.400Z",
+                        "source": "startup",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:23:09.882Z",
+                        "last_received_at": "2026-08-23T14:23:14.201Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "interns",
+                      "protocol_agent_name_check": "checked",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "messages": [
+        {
+          "at_ms": 1000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "seat.delta",
+            "server_time": "2026-08-23T14:23:15.400Z",
+            "install_id": "aimla",
+            "seat_id": "aimla-interns",
+            "state_version": 9002,
+            "at": "2026-08-23T14:23:15.400Z",
+            "changed": [
+              "subagents",
+              "subagents_open",
+              "open_calls"
+            ],
+            "patch": {
+              "subagents": [
+                {
+                  "call_id": "2SJ650Q0KMCRB0000000000000",
+                  "title": "slice 1",
+                  "subagent_type": "coder",
+                  "started_at": "2026-08-23T14:23:15.400Z"
+                },
+                {
+                  "call_id": "MCBER9GSAVH650000000000000",
+                  "title": "slice 2",
+                  "subagent_type": "coder",
+                  "started_at": "2026-08-23T14:23:16.400Z"
+                },
+                {
+                  "call_id": "6Z4PBH9H12NNE0000000000000",
+                  "title": null,
+                  "subagent_type": "coder",
+                  "started_at": "2026-08-23T14:23:17.400Z"
+                },
+                {
+                  "call_id": "RJXYYS29R9S370000000000000",
+                  "title": "slice 4",
+                  "subagent_type": "coder",
+                  "started_at": "2026-08-23T14:23:18.400Z"
+                },
+                {
+                  "call_id": "A5P6J2V1EGXH10000000000000",
+                  "title": "slice 5",
+                  "subagent_type": "coder",
+                  "started_at": "2026-08-23T14:23:19.400Z"
+                },
+                {
+                  "call_id": "WREE5AKS5R2ZA0000000000000",
+                  "title": "slice 6",
+                  "subagent_type": "coder",
+                  "started_at": "2026-08-23T14:23:20.400Z"
+                },
+                {
+                  "call_id": "EB7PRKCHWZ6D40000000000000",
+                  "title": "slice 7",
+                  "subagent_type": "coder",
+                  "started_at": "2026-08-23T14:23:21.400Z"
+                },
+                {
+                  "call_id": "0Y0YBV59K6AVD0000000000000",
+                  "title": "slice 8",
+                  "subagent_type": "coder",
+                  "started_at": "2026-08-23T14:23:22.400Z"
+                }
+              ],
+              "subagents_open": 8,
+              "open_calls": 9
+            }
+          }
+        },
+        {
+          "at_ms": 2000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "seat.delta",
+            "server_time": "2026-08-23T14:23:16.400Z",
+            "install_id": "aimla",
+            "seat_id": "aimla-interns",
+            "state_version": 9003,
+            "at": "2026-08-23T14:23:16.400Z",
+            "changed": [
+              "subagents_open",
+              "open_calls"
+            ],
+            "patch": {
+              "subagents_open": 9,
+              "open_calls": 10
+            }
+          }
+        }
+      ],
+      "until_ms": 4000,
+      "final": {
+        "aimla/aimla-interns": {
+          "install_id": "aimla",
+          "seat_id": "aimla-interns",
+          "state_version": 9003,
+          "render_state": "working",
+          "link_state": "live",
+          "activity_state": "working",
+          "unknown_reason": null,
+          "api_error_type": null,
+          "blocked_since": null,
+          "action": {
+            "call_id": "TQR10T4VZ13040000000000000",
+            "tool_name": "Bash",
+            "descriptor": "Bash: composer test",
+            "started_at": "2026-08-23T14:23:09.400Z",
+            "started_received_at": "2026-08-23T14:23:13.400Z",
+            "agent_scope": "main",
+            "parent_call_id": null
+          },
+          "open_calls": 10,
+          "open_turn": true,
+          "subagents": [
+            {
+              "call_id": "2SJ650Q0KMCRB0000000000000",
+              "title": "slice 1",
+              "subagent_type": "coder",
+              "started_at": "2026-08-23T14:23:15.400Z"
+            },
+            {
+              "call_id": "MCBER9GSAVH650000000000000",
+              "title": "slice 2",
+              "subagent_type": "coder",
+              "started_at": "2026-08-23T14:23:16.400Z"
+            },
+            {
+              "call_id": "6Z4PBH9H12NNE0000000000000",
+              "title": null,
+              "subagent_type": "coder",
+              "started_at": "2026-08-23T14:23:17.400Z"
+            },
+            {
+              "call_id": "RJXYYS29R9S370000000000000",
+              "title": "slice 4",
+              "subagent_type": "coder",
+              "started_at": "2026-08-23T14:23:18.400Z"
+            },
+            {
+              "call_id": "A5P6J2V1EGXH10000000000000",
+              "title": "slice 5",
+              "subagent_type": "coder",
+              "started_at": "2026-08-23T14:23:19.400Z"
+            },
+            {
+              "call_id": "WREE5AKS5R2ZA0000000000000",
+              "title": "slice 6",
+              "subagent_type": "coder",
+              "started_at": "2026-08-23T14:23:20.400Z"
+            },
+            {
+              "call_id": "EB7PRKCHWZ6D40000000000000",
+              "title": "slice 7",
+              "subagent_type": "coder",
+              "started_at": "2026-08-23T14:23:21.400Z"
+            },
+            {
+              "call_id": "0Y0YBV59K6AVD0000000000000",
+              "title": "slice 8",
+              "subagent_type": "coder",
+              "started_at": "2026-08-23T14:23:22.400Z"
+            }
+          ],
+          "subagents_open": 9,
+          "task": {
+            "title": "ingest endpoint",
+            "source": "board_card",
+            "ref": "card#7338",
+            "as_of": "2026-08-23T14:05:00.000Z",
+            "degraded": false
+          },
+          "context": {
+            "used_pct": 73.2,
+            "used_tokens": 146401,
+            "total_tokens": 200000,
+            "source": "harness",
+            "sampled_at": "2026-08-23T14:41:00.310Z",
+            "sampled_received_at": "2026-08-23T14:41:04.880Z"
+          },
+          "model_label": "claude-opus-5",
+          "session": {
+            "session_id": "b4d1c7e2-3f06-4a19-8c25-71ea9d3f6b08",
+            "started_at": "2026-08-23T14:22:44.400Z",
+            "source": "startup",
+            "project_label": "mezzanine",
+            "harness_label": "claude-code/2.1.240"
+          },
+          "activity": {
+            "last_event_time": "2026-08-23T14:23:09.882Z",
+            "last_received_at": "2026-08-23T14:23:14.201Z",
+            "last_kind": "tool.start"
+          },
+          "delivery": {
+            "last_receipt_at": "2026-08-23T14:23:14.201Z",
+            "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+            "no_data_since": null,
+            "clock_skew_ms": 412,
+            "spool_lag_events": 0,
+            "oldest_unsent_age_s": null,
+            "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+            "last_seq": 48211
+          },
+          "badges": [],
+          "badges_since": null,
+          "enabled": true,
+          "protocol_agent_name": "interns",
+          "protocol_agent_name_check": "checked",
+          "reporter": {
+            "version": "0.1.0",
+            "platform": "linux",
+            "uptime_s": 401150,
+            "selftest_failed": []
+          },
+          "retired": null,
+          "derivation": {
+            "computed_at": "2026-08-23T14:23:14.318Z",
+            "fold_lag_ms": 117,
+            "cursor_event_id": 9912837
+          }
+        }
+      }
+    }
+  }
+}
