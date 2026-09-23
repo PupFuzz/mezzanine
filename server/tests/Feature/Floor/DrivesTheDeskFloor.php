@@ -31,11 +31,18 @@ trait DrivesTheDeskFloor
     /**
      * One run, with the desk floor running over it.
      *
+     * ⚠ `$overrides` CARRIES PAGE CONDITIONS, NEVER SCENARIO BYTES. § 6.4's `reduce` is what a page
+     * reads off `prefers-reduced-motion`, so it is a property of the VIEWER and not of the fixture —
+     * the same bytes under a different viewer. A snapshot, a delta or a scripted response passed here
+     * would be a scenario only this test's author has read, which is what the fixture files exist to
+     * prevent (`DrivesTheFleetClientModule`'s own header states that rule).
+     *
+     * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
-    protected function deskRun(string $run, ?string $dir = null): array
+    protected function deskRun(string $run, ?string $dir = null, array $overrides = []): array
     {
-        $result = $this->replay($run, $dir, ['desk_floor' => true]);
+        $result = $this->replay($run, $dir, ['desk_floor' => true] + $overrides);
 
         $this->assertNotSame([], $result['desk_renders'], "[{$run}] the desk floor drew no frame — there is no desk to assert on");
 

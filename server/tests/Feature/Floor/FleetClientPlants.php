@@ -105,6 +105,8 @@ final class FleetClientPlants
         [
             <<<'JS'
                     if (d.state_version <= held.state_version) {
+                        this.#noteDelta(d, 'discarded');
+            
                         return;
                     }
             
@@ -235,6 +237,29 @@ final class FleetClientPlants
         ],
     ];
 
+    /**
+     * card#7341 step 6 — THE APPLIED SNAPSHOT DRESSED AS A DELTA, and an unheld seat defaulted to
+     * `offline`. Both halves are one realistic client defect: a client that routes every row a REST
+     * surface delivers through the delta journal, and that reads *this seat was absent* as *this seat
+     * was `offline`*. `wire/animation-set.js` then animates a snapshot (AT-D3-9's third RED) and plays
+     * an arrival on an inserted desk (AT-D3-17's second RED) with the SET UNMUTATED — which is what
+     * makes those two REDs statements about the set's own § 6.5 guard rather than about a plant.
+     */
+    public const SNAPSHOT_AS_DELTA = [
+        [
+            <<<'JS'
+                        this.#noteRow(source, row, serverTime, 'applied');
+            JS,
+            <<<'JS'
+                        this.#noteDelta({ ...row, server_time: serverTime }, 'applied', {
+                            changed: Object.keys(row),
+                            before: held ?? { render_state: 'offline' },
+                            after: row,
+                        });
+            JS,
+        ],
+    ];
+
     /** P10 / P26b — a snapshot row replaces the held object unconditionally, lowering a version the stream already advanced. */
     public const STALE = [
         [
@@ -242,11 +267,17 @@ final class FleetClientPlants
                     if (held === undefined || row.state_version > held.state_version) {
                         this.#seats.set(k, row);
                         this.#confirm(k);
+                        this.#noteRow(source, row, serverTime, 'applied');
+            
+                        return;
                     }
+            
+                    this.#noteRow(source, row, serverTime, 'discarded');
             JS,
             <<<'JS'
                     this.#seats.set(k, row);
                     this.#confirm(k);
+                    this.#noteRow(source, row, serverTime, 'applied');
             JS,
         ],
     ];
@@ -485,9 +516,7 @@ final class FleetClientPlants
                             }
             
                             if (d.state_version === h.state_version + 1) {
-                                this.#seats.set(k, { ...h, ...d.patch, state_version: d.state_version });
-                                this.#confirm(k);
-                                this.#stamp(k, Object.keys(d.patch), d.server_time);
+                                this.#merge(k, h, d);
                             }
                         }
             
