@@ -134,10 +134,17 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
                 "{$id} carries a frame interval under `reduce`, which is a rate nothing is using");
             $this->assertFalse($rendering['treated']['motion'],
                 "{$id} draws motion with § 7.3's treatment refusing it");
+            // ⛔ WHETHER A HELD ROW MOVES IS ITS REDUCED CELL AND NOT ITS LOOP, and the two part
+            // company at A18 (card#7341 step 7). § 6.4's reduced form REPLACES the motion, so a cell
+            // reading *identical* is a row with no motion to replace — § 11's *two states with no
+            // motion by design* — while A18's says *drawn static … no travel along it*, which is a
+            // removal and therefore a row that moves without running frames at § 12's rate. Reading
+            // `loops()` here answers *does it run frames* and logged that line as drawn still,
+            // claiming one of § 11's three reasons for no motion where none applied.
             $this->assertSame(
-                $row['class'] === 'edge' || $shipped['loops'][$id],
+                $row['class'] === 'edge' || $row['reduced'] !== 'identical',
                 $rendering['permitted']['motion'],
-                "{$id}'s ordinary rendering disagrees with whether its own § 6.2 cell names motion",
+                "{$id}'s ordinary rendering disagrees with whether its own § 6.2 cells name motion",
             );
         }
 
@@ -319,10 +326,23 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
 
         // CONTROL 5 — § 6.4's condition removed from the one place it decides: every row would then
         // draw motion under `reduce`, which is AT-D3-13's own claim broken at its source.
-        $moving = $this->plantedSet("    if (!permitted || reduce) {\n        return false;\n    }",
-            "    if (!permitted) {\n        return false;\n    }");
+        $moving = $this->plantedSet("    if (cls === null || !permitted || reduce) {\n        return false;\n    }",
+            "    if (cls === null || !permitted) {\n        return false;\n    }");
         $this->assertTrue($this->shippedSet([], $moving)['held_renderings']['A3']['permitted_reduced']['motion'],
             'CONTROL 5 did not bite: § 6.4\'s condition was removed and A3 still drew no motion under `reduce`');
+
+        // CONTROL 6 — a held row's motion derived from its LOOP rather than from its reduced cell,
+        // which is the defect card#7341 step 7 corrected: A18 moves along its length and runs no
+        // frames, so under this plant the line is drawn static and the log claims it was.
+        $byLoop = $this->plantedSet('return cls === \'edge\' || !staticByDesign(animationId);',
+            'return cls === \'edge\' || loops(animationId);');
+        $planted = $this->shippedSet([], $byLoop);
+        $this->assertFalse($planted['held_renderings']['A18']['permitted']['motion'],
+            'CONTROL 6 mutated nothing — `motionOf` is not spelled the way this plant anchors on');
+        $this->assertTrue($this->shippedSet()['held_renderings']['A18']['permitted']['motion'],
+            'the shipped set draws A18 static, so § 11\'s two-states-with-no-motion population has a third member');
+        $this->assertFalse($planted['held_renderings']['A8']['permitted']['motion'],
+            'CONTROL 6 moved a row the correction must not move: A8 is static by design under either derivation');
     }
 
     /**

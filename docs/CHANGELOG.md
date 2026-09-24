@@ -27,6 +27,52 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **the floor renders: every desk is in a slot that is a function of its identity, the
+  rooms of a floor are composed where the operator put them, and a coordination thread is drawn between
+  the two desks it resolves to.** `docs/design/FLOOR.md` Appendix B step 7. A floor is now drawn from the
+  documents a client already holds: `server/public/js/floor/floor-layout.js` assigns each seat to a desk
+  slot by § 3.2's published hash of `(install_id, seat_id)`, so two browsers, two reloads and two server
+  restarts agree without any stored position and without a new wire field, and seats past a map's slot
+  count are rendered in a labelled overflow row instead of disappearing. It composes a floor's rooms at
+  the origins the building layout authored, over that floor's hallway, or side by side at § 12's published
+  gap where no plan exists, takes the floor's extent as their union, and draws one wall clock and one band
+  of windows across the whole of it at minute resolution from the viewer's own clock. Two rooms whose
+  footprints share a pixel are both drawn and named rather than one being hidden, a room whose map request
+  failed renders every desk it holds under *room map could not be loaded — HTTP N*, a layout request that
+  failed composes no building at all and says so, and an applied `room.map` re-renders that one room and
+  writes one line into the client's event record. `floor/coord-join.js` builds the
+  `protocol_agent_name` → `seat_id` join `docs/design/FLEET-STATE.md` § 8.3.3 specifies and which nothing
+  had built: a name exactly one seat of the room declares resolves to that desk, a name two seats declare
+  resolves to nothing and renders *declared by more than one seat*, a resolved endpoint whose declaration
+  no roster checked carries the word *unchecked*, and a name that merely equals a `seat_id` resolves to
+  nothing at all. `floor/floor-screen.js` runs all of it over the client protocol and writes § 6.2's A16,
+  A18, A19 and A20 rows into the animation log through step 6's animation set. ⚠ Nothing on a page calls
+  it yet: no page constructs the client protocol before Appendix B step 8, so this is the floor route's
+  renderer and not yet a route a viewer can open. Gated by
+  `Tests\Feature\Floor\IdentityIsStableAcrossARestartTest` (AT-D3-3),
+  `Tests\Feature\Floor\TheCoordinationLineResolvesOrRendersUnresolvedTest` (AT-D3-18) and
+  `Tests\Feature\Floor\TheFloorComposesItsRoomsTest`, each leg with a planted defect seen to fail it.
+- **card#7341** — **a broadcast ring was drawn from a desk the post never resolved to.**
+  `server/public/js/coord/coord-model.js` fired § 6.2's A20 on a post whose address carried the literal
+  `all`, without also requiring that the post's origin resolve to a desk — which is the clause that row's
+  trigger cell gained when the amendment landed, and which the code half never took. A `coord.round` whose
+  author resolved to nothing therefore expanded a ring an operator reads as *this desk broadcast* from
+  whichever desk the renderer could reach. The condition is now read from both members, and AT-D3-18's
+  third planted defect re-mints exactly the line that shipped.
+- **card#7341** — **a layout act carried no version into the apply that needed one.**
+  `server/public/js/wire/fleet-client.js` journalled a `room.map` and a `building.layout` with the message
+  type and its `server_time` alone, so the surface that applies them was left comparing a version it had
+  never been told: a `building.layout` announcing the version already held was re-fetched for nothing, and
+  a `room.map` was not applied at all. Both journal lines now carry `install_id`, `map_version` and
+  `layout_version`.
+- **card#7341** — **a held animation that moves was logged as one drawn static.** Whether a § 6.2 row
+  carries motion was derived from whether its Animation cell names a frame loop, which answers a different
+  question: A18's thread line moves along its length without running frames at a fixed rate, so it was
+  recorded with `motion: false` — a claim that one of the three reasons `docs/design/FLOOR.md` § 11 gives
+  for a still render applied, when none did. `server/public/js/wire/animation-set.js` now derives it from
+  the row's own reduced-motion form, which is *identical* for exactly the rows that have no motion to
+  replace.
+
 - **card#10227** — **`coord.round.targets` had its derivation SHOWN by a worked example and stated in no
   field spec, so `docs/design/FLOOR.md` § 11's `fx-coord` asserted four fan-out values no reader could
   reproduce. D1 states the rule now, and the fixture re-derives from it.** `docs/design/EVENT-SCHEMA.md`

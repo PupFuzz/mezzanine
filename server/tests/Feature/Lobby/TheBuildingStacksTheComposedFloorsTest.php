@@ -244,10 +244,8 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
         // that stayed clean here would be measuring the layout and not the rule.
         $holed = $this->mutatedModules([
             'lobby-model.js',
-            '        if (!placed.has(install_id)) {
-            rows.push(',
-            '        if (false) {
-            rows.push(',
+            '        if (!placed.has(install_id)) {',
+            '        if (false) {',
         ]);
         $hole = $this->probe(['snapshot' => $body, 'layout' => $layout], $holed)['building']['plates'];
 

@@ -68,8 +68,16 @@ class CoordDrawsNoLineWithoutAJoinTest extends TestCase
             'the thread’s label was suppressed because its participants did not resolve');
         $this->assertSame(1, $model['threads'][0]['beads'],
             'the bead count was suppressed because the participants did not resolve');
-        $this->assertSame(['A20'], $model['rounds'][0]['animations'],
-            'the broadcast pulse was suppressed although `to` carries `all` — which needs no join at all');
+        // ⛔ AND THE BROADCAST PULSE IS NOT DRAWN EITHER, WHICH IS THE OPPOSITE OF WHAT THIS LINE
+        // ASSERTED. § 6.2 A20's trigger is the literal `all` carried verbatim **and an origin that
+        // resolves to a desk** — the ring expands FROM that desk, so a post whose origin resolves to
+        // nothing has none to expand from. The clause landed in the amendment § 14 item 24 records and
+        // `roundAnimations()` went on firing on the address alone; card#7341 step 7 took the code half,
+        // and AT-D3-18's Third RED is where the defect is now planted and watched.
+        $this->assertSame([], $model['rounds'][0]['animations'],
+            'a ring was drawn for a post whose origin resolves to no desk, so it expands from a desk the '
+            .'post never named — § 5.7 clause 1\'s guessed desk arriving through the one animation whose '
+            .'trigger reads an address');
     }
 
     /** One resolved, one not: the ruling's part (c) at its exact boundary. */
@@ -151,8 +159,12 @@ class CoordDrawsNoLineWithoutAJoinTest extends TestCase
         // join at all it binds every name to a desk and draws a line to each.
         $guessed = $this->probe($payload, $this->mutatedModules([
             'coord-model.js',
-            '    return Object.freeze({ name: agent, seat_id: bound ? seat : null, resolved: bound });',
-            '    return Object.freeze({ name: agent, seat_id: bound ? seat : agent, resolved: true });',
+            "        name: agent,
+        seat_id: bound ? seat : null,
+        resolved: bound,",
+            "        name: agent,
+        seat_id: bound ? seat : agent,
+        resolved: true,",
         ]))['model'];
         $this->assertNotSame(0, $guessed['drawn_lines'],
             'CONTROL 1 did not bite: the client was made to bind every agent name to a same-named '
@@ -162,7 +174,7 @@ class CoordDrawsNoLineWithoutAJoinTest extends TestCase
         // still absent, so only the reported-as-unresolved assertion can see this one.
         $dropped = $this->probe($payload, $this->mutatedModules([
             'coord-model.js',
-            '        round.targets.members.filter((m) => !m.resolved).forEach((m) => unresolved.add(m.name));',
+            '        round.targets.members.filter((m) => !m.resolved).forEach(report);',
             '',
         ]))['model'];
         $this->assertSame(0, $dropped['drawn_lines'],

@@ -8,13 +8,13 @@
  * appears below that is not in that module, it is in the wrong file.
  *
  * ⛔ NO JOIN IS CONSTRUCTED HERE, AND THIS FILE IS NOT WHERE ONE EVER WILL BE. `coordModel`
- * takes an `options.join` and this file passes NONE. ⚠ The reason is no longer that no mapping
- * exists: card#7957's ruling (d) is built on the server's side on card#9296 and on the
- * reporter's on card#9375, so a seat DECLARES its own protocol agent
- * name and D2 § 8.2.1 publishes it on the seat object with its check state. What has not been
- * built is the code that reads the seat population and hands `coordModel` a map — that is a
- * follow-up build slice, and until it lands every participant renders `unresolved` and no
- * thread line is drawn, which is D3 § 5.7 clause 1's permanent arm rather than a stub.
+ * takes an `options.join` and this file passes NONE. ⚠ The reason is no longer that no builder
+ * exists: `../floor/coord-join.js` builds one (card#7341 step 7), from the seat population the
+ * client protocol holds. THIS page holds no seat population — it is the coordination surface's own
+ * page and constructs no client protocol — so it has nothing to build a map FROM, and every
+ * participant here renders `unresolved` with no thread line drawn, which is D3 § 5.7 clause 1's
+ * permanent arm rather than a stub. The floor is where a resolved line is drawn, because the floor
+ * is where the desks are (D3 § 14 item 24).
  * Synthesising a join HERE — from `seat_id` equality, from the roster's order, from a prefix —
  * would still be precisely the unvalidated-join-becoming-a-ratified-one that card#7957 was
  * filed to prevent, and it would be invisible on screen because a wrong line looks exactly like
