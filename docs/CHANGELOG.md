@@ -27,6 +27,16 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#10368** — **the deploy-gate-inputs selftest no longer fails a pull request because git packed
+  a fixture object.** Its failed-read case makes the loose object behind the fixture's
+  `server/composer.json` unreadable, and git's own housekeeping (`gc --auto`, a clone arriving as a
+  pack) sometimes stores that blob packed instead, leaving no per-object file to change. That runner
+  now prints `⚠ NOT VERIFIED HERE` naming the packed blob, exactly as a runner where root reads every
+  mode already did, and the run continues with every other assertion; the summary repeats how many
+  cases could not be built. The lane's exit status reflects the assertions that ran, so the same commit
+  gets the same verdict on every re-run. `bin/deploy-gate-inputs.selftest.sh` was watched both ways
+  with the blob repacked in the fixture: the previous script FAILs, this one reports the case as not
+  verified and passes, and a planted real failure alongside it still exits 1.
 - **card#7341** — **a room whose map could not be loaded is now inside the building it is on.** The
   floor's extent is the union of EVERY room the layout places on it, the room whose map request failed
   included, so the back-wall band that carries the wall clock and the windows spans that room too and
