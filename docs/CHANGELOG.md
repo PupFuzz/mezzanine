@@ -27,6 +27,24 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **a room whose map could not be loaded is now inside the building it is on.** The
+  floor's extent is the union of EVERY room the layout places on it, the room whose map request failed
+  included, so the back-wall band that carries the wall clock and the windows spans that room too and
+  its placeholder desks are drawn against the building's backdrop like every other desk. Before this
+  change the extent was the union of the rooms that carry a footprint alone: a room whose map fetch
+  failed has none, so during a room-map outage that room's desks were drawn outside the backdrop and
+  read as a rendering defect rather than as the map failure they are — the moment a viewer most needs
+  the floor to still read as one place. A room with no map enters the union as the point its origin is,
+  which is the corner its placeholder grid is drawn at, and it takes no size from anywhere: the room is
+  placed where the layout says it is rather than relocated inside the old extent, it still has no
+  footprint of its own, and the read-time overlap notice still leaves it out. A floor whose every map
+  arrived composes exactly as it did, which the suite asserts as an equality against the previous
+  arithmetic over the default, planned and overlapping floors. `docs/design/FLOOR.md` § 4.6 carries the
+  rule as its fifth, with the operator's reasoning and with the one case it leaves to a drawing layer
+  named in place; § 4.2 and § 9 F16 state it where they state the extent, and F16's row says which half
+  of its old wording is reversed. `Tests\Feature\Floor\TheFloorComposesItsRoomsTest` gates it with a
+  green, a planted red that reverts the union and watches the mapless room fall outside the band, and a
+  control that ties the two together.
 - **card#7341** — **the floor renders: every desk is in a slot that is a function of its identity, the
   rooms of a floor are composed where the operator put them, and a coordination thread is drawn between
   the two desks it resolves to.** `docs/design/FLOOR.md` Appendix B step 7. A floor is now drawn from the

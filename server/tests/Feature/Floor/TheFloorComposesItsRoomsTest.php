@@ -9,7 +9,8 @@ use Tests\TestCase;
  * Appendix B row 7's own claims, card#7341 step 7 — the ones AT-D3-3 and AT-D3-18 do not reach:
  *
  *   · § 4.6's floor PLAN — each room's grid at its `origin` over the floor's `hallway`, the default
- *     arrangement at § 12's gap where there is none, and the floor's extent as their union.
+ *     arrangement at § 12's gap where there is none, and the floor's extent as their union —
+ *     rule 5's union, over EVERY room placed on the floor and not only the ones with a footprint.
  *   · § 4.2's ONE back-wall band — the wall clock and the windows, drawn once across that extent —
  *     and § 6.5's rule for when their value is SET and when they have none at all.
  *   · § 3.2's overflow row, and § 4.6's room the fleet reports no seat for.
@@ -209,8 +210,9 @@ class TheFloorComposesItsRoomsTest extends TestCase
 
     /**
      * GREEN — Appendix B row 13's F16 half, owed here: the room renders its desks with NO map, in a
-     * plain grid, under *room map could not be loaded — HTTP N* naming the room; it has no extent, so
-     * F18's determination leaves it out; and the shipped default is NOT drawn in its place.
+     * plain grid, under *room map could not be loaded — HTTP N* naming the room; it has no FOOTPRINT,
+     * so F18's determination leaves it out; and the shipped default is NOT drawn in its place. Where
+     * it is NOT left out is the floor's extent — § 4.6 rule 5, gated by its own leg below.
      */
     public function test_green_a_room_whose_map_failed_draws_placeholders_under_its_own_notice(): void
     {
@@ -235,7 +237,8 @@ class TheFloorComposesItsRoomsTest extends TestCase
                 "[{$desk['key']}] a mapless room's desk was put in the floor's overflow row");
         }
 
-        // The extent leaves it out, which is what F18's determination does with it.
+        // F18's determination leaves it out; the floor's EXTENT does not (§ 4.6 rule 5), and the
+        // union re-derived here is that rule's — the leg below is where it is asserted as one.
         $this->assertSame($this->unionOf($frame), $frame['extent']);
     }
 
@@ -298,6 +301,159 @@ class TheFloorComposesItsRoomsTest extends TestCase
             $this->assertSame($this->roomOf($before, $other)['map'], $this->roomOf($after, $other)['map'],
                 "[{$other}] another room's `room.map` re-fetched this one");
         }
+    }
+
+    /**
+     * GREEN — § 4.6 rule 5, the operator's ruling on card#7341: the floor's extent is the union of
+     * EVERY room placed on the floor, the room whose map FAILED included, and § 4.2's back-wall band
+     * spans that union. The band is the building's backdrop and a room on the floor is on the floor;
+     * a room the union leaves out has its desks drawn outside the backdrop, which is what makes a
+     * room-map outage read as a rendering defect instead.
+     *
+     * ⛔ THE OBSERVABLE IS THE ROOM'S ORIGIN, AND THAT IS F16's OWN GEOMETRY RATHER THAN A PROXY: a
+     * mapless room's desks carry no `x`/`y` at all — the placeholder grid is drawn at the room's
+     * origin and the drawing layer sizes it — so the origin is where those desks are, and an origin
+     * outside the band is desks outside the building.
+     */
+    public function test_green_the_extent_and_its_band_span_every_room_placed_on_the_floor(): void
+    {
+        $frame = $this->lastFloor($this->floorRun(self::MAP_FAILS));
+        $mapless = array_values(array_filter($frame['rooms'],
+            static fn (array $room): bool => $room['footprint'] === null));
+
+        $this->assertCount(1, $mapless,
+            'no room on this floor is without a footprint, so rule 5 is not exercised by this run');
+        $this->assertTrue($mapless[0]['mapless'], 'the footprintless room is not the one whose map failed');
+        $this->assertNull($mapless[0]['footprint'],
+            'the mapless room grew a footprint — rule 5 places it by its ORIGIN and F16 still gives it no extent of its own');
+
+        // The extent is rule 5's union, re-derived from the frame the way every other leg here
+        // re-derives it — never transcribed.
+        $this->assertSame($this->unionOf($frame), $frame['extent'],
+            "the floor's extent is not the union of every room placed on it");
+        $this->assertSame([
+            'x' => $frame['extent']['x'],
+            'y' => $frame['extent']['y'],
+            'width' => $frame['extent']['width'],
+        ], $frame['band'], "the band does not span the floor's whole extent on a floor with a failed map");
+
+        // EVERY room the floor drew begins inside the band, the mapless one included.
+        foreach ($frame['rooms'] as $room) {
+            $this->assertGreaterThanOrEqual($frame['band']['x'], $room['origin']['x'],
+                "[{$room['install_id']}] is drawn left of the floor's band, so its desks are outside the building's backdrop");
+            $this->assertLessThanOrEqual($frame['band']['x'] + $frame['band']['width'], $room['origin']['x'],
+                "[{$room['install_id']}] is drawn right of the floor's band, so its desks are outside the building's backdrop");
+            $this->assertGreaterThanOrEqual($frame['extent']['y'], $room['origin']['y'],
+                "[{$room['install_id']}] is drawn above the floor's extent");
+        }
+
+        // ⭐ AND THE MAPLESS ROOM IS THE EDGE ITSELF on this run, which is what makes the loop above
+        // a measurement: a footprint-only union cannot produce this `x`, because no footprint is
+        // there to produce it.
+        $this->assertSame($frame['extent']['x'], $mapless[0]['origin']['x'],
+            'the mapless room is no longer at the floor\'s outer edge, so this run no longer tells rule 5\'s union from a footprint-only one');
+    }
+
+    /**
+     * ⛔ RED — THE FOOTPRINT-ONLY UNION. Take the extent over the rooms that carry a footprint and
+     * the mapless room falls OUTSIDE the band: its placeholder desks are drawn at an origin the
+     * backdrop does not reach, apparently detached from the floor — a map outage rendered as a
+     * rendering defect, which is the failure F16 exists to make legible shown as a different and
+     * wrong one.
+     */
+    public function test_red_a_footprint_only_union_draws_a_mapless_rooms_desks_outside_the_band(): void
+    {
+        $planted = $this->lastFloor($this->floorRun(self::MAP_FAILS, $this->footprintsOnly()));
+        $shipped = $this->lastFloor($this->floorRun(self::MAP_FAILS));
+
+        $plantedRoom = $this->roomOf($planted, 'aimla');
+        $shippedRoom = $this->roomOf($shipped, 'aimla');
+
+        $this->assertNull($plantedRoom['footprint'],
+            'the planted run drew a footprint for the mapless room, so this RED is red for a reason nobody wrote');
+        $this->assertLessThan($planted['band']['x'], $plantedRoom['origin']['x'],
+            'the RED did not bite: the union was reverted to footprints only and the mapless room is still inside the band');
+        $this->assertLessThan($shipped['extent']['width'], $planted['extent']['width'],
+            'the RED did not bite: the reverted union is as wide as the one that includes the mapless room');
+
+        // The shipped client draws the same room inside the same band, over the same bytes.
+        $this->assertGreaterThanOrEqual($shipped['band']['x'], $shippedRoom['origin']['x'],
+            'the shipped client draws the mapless room left of the floor\'s band');
+        $this->assertLessThanOrEqual($shipped['band']['x'] + $shipped['band']['width'], $shippedRoom['origin']['x'],
+            'the shipped client draws the mapless room right of the floor\'s band');
+    }
+
+    /**
+     * GREEN — THE CONTROL ON RULE 5: a floor whose every room carries a footprint composes
+     * IDENTICALLY with the rule and without it, geometry for geometry.
+     *
+     * ⛔ THIS EQUALITY CANNOT DISCRIMINATE ON ITS OWN AND IS NOT ASKED TO. A fix that did nothing at
+     * all would satisfy every `assertSame` below, so the run that makes them a measurement is the
+     * LAST assertion: the same plant, over the `plan_map_fails` run, must CHANGE the composition.
+     * Together they say what the ruling requires — the union is wider exactly where a room's map
+     * failed, and nowhere else. The equality's own job is the other direction: a rule that widened a
+     * planned or a default arrangement would break it.
+     */
+    public function test_green_the_union_over_every_room_changes_nothing_where_every_map_arrived(): void
+    {
+        $reverted = $this->footprintsOnly();
+
+        foreach ([self::UNPLANNED, self::PLANNED, self::OVERLAP] as $run) {
+            $shipped = $this->lastFloor($this->floorRun($run));
+            $without = $this->lastFloor($this->floorRun($run, $reverted));
+
+            foreach ($shipped['rooms'] as $room) {
+                $this->assertNotNull($room['footprint'],
+                    "[{$run}] a room on this floor carries no footprint, so this run is not the every-map-arrived control it claims to be");
+            }
+
+            $this->assertSame($this->geometryOf($shipped), $this->geometryOf($without),
+                "[{$run}] the floor composes differently with rule 5 than without it, on a floor where no room's map failed");
+        }
+
+        $this->assertNotSame(
+            $this->geometryOf($this->lastFloor($this->floorRun(self::MAP_FAILS))),
+            $this->geometryOf($this->lastFloor($this->floorRun(self::MAP_FAILS, $reverted))),
+            'the plant changes nothing on the run WITH a failed map either, so every equality above is a tautology',
+        );
+    }
+
+    /**
+     * GREEN — rule 5's other half: a room's origin WIDENS an extent and never MINTS one, so a floor
+     * with nothing measurable on it has no extent at all — not a zero-sized box at a room's origin,
+     * which is the band over nothing § 4.2 refuses. On a one-room floor, which is every floor today,
+     * that is the whole render of a room-map outage.
+     *
+     * ⛔ THE FLOOR THIS ASSERTS OVER IS BUILT BY A PLANT, BECAUSE NO FIXTURE REACHES IT: every
+     * scenario this rig ships holds a map for at least one room. The plant takes the GRID away from
+     * the screen's read — every room is then placed with no footprint, which is what a fleet-wide map
+     * outage delivers — and what is under test is the shipped `floor-layout.js` arithmetic over that
+     * placement, not the plant.
+     */
+    public function test_green_a_floor_with_nothing_measurable_on_it_still_has_no_extent(): void
+    {
+        $gridless = $this->mutatedModules([self::FLOOR_SCREEN,
+            '            const grid = mapGrid(map);',
+            '            const grid = null;',
+        ]);
+
+        $frame = $this->lastFloor($this->floorRun(self::MAP_FAILS, $gridless));
+
+        $this->assertNotSame([], $frame['rooms'], 'the planted run composed no room, so this leg asserts nothing');
+
+        foreach ($frame['rooms'] as $room) {
+            $this->assertNull($room['footprint'],
+                "[{$room['install_id']}] kept a footprint under the plant, so this floor is not the nothing-measurable one");
+        }
+
+        $this->assertNull($frame['extent'],
+            'a floor with nothing measurable on it was given an extent — a box nothing is inside, at a room\'s origin');
+        $this->assertNull($frame['band'], 'a band was drawn over a floor with no extent');
+
+        // The same rig over the shipped read still measures the rooms that DO hold a map, so the
+        // plant is what removed the geometry and not this scenario.
+        $this->assertNotNull($this->lastFloor($this->floorRun(self::MAP_FAILS))['extent'],
+            'the unplanted run has no extent either, so the plant above is not what produced this one');
     }
 
     /**
@@ -485,6 +641,50 @@ class TheFloorComposesItsRoomsTest extends TestCase
             'the shipped client set the room on a page that never established a live feed');
     }
 
+    /**
+     * The rule-5 plant: the union taken over the rooms that carry a footprint ONLY, which is what
+     * this floor did before the ruling. One anchored edit, so the copy is the shipped tree in every
+     * other respect.
+     */
+    private function footprintsOnly(): string
+    {
+        return $this->mutatedModules([self::FLOOR_LAYOUT,
+            '        .filter((room) => room.footprint === null)',
+            '        .filter(() => false)',
+        ]);
+    }
+
+    /**
+     * Everything a frame says about WHERE things are — the comparison the rule-5 control is an
+     * equality over. It carries the extent, the band and every room's own placement and desk
+     * positions, so a change to the union that moved anything else on the floor would show here.
+     *
+     * @param  array<string, mixed>  $frame
+     * @return array<string, mixed>
+     */
+    private function geometryOf(array $frame): array
+    {
+        return [
+            'extent' => $frame['extent'],
+            'band' => $frame['band'],
+            'draw_order' => $frame['draw_order'],
+            'overlaps' => $frame['overlaps'],
+            'hallway' => $frame['hallway'],
+            'rooms' => array_map(static fn (array $room): array => [
+                'install_id' => $room['install_id'],
+                'origin' => $room['origin'],
+                'footprint' => $room['footprint'],
+                'desks' => array_map(static fn (array $desk): array => [
+                    'key' => $desk['key'],
+                    'slot' => $desk['slot'],
+                    'grid_index' => $desk['grid_index'],
+                    'x' => $desk['x'],
+                    'y' => $desk['y'],
+                ], $room['desks']),
+            ], $frame['rooms']),
+        ];
+    }
+
     /** § 12's *Gap between rooms on a floor with no plan*, read out of that table on every run. */
     private function publishedGap(): int
     {
@@ -498,8 +698,14 @@ class TheFloorComposesItsRoomsTest extends TestCase
     }
 
     /**
-     * The union of everything the frame draws — every room's footprint and the hallway — computed
-     * from the frame rather than from a figure written here.
+     * The union of everything the frame draws — every room's footprint, the hallway, and every
+     * placed room that has NO footprint as the point its origin is (§ 4.6 rule 5) — computed from
+     * the frame rather than from a figure written here.
+     *
+     * ⛔ AN ORIGIN WIDENS A UNION AND NEVER MINTS ONE, which is rule 5's own clause and the reason
+     * the sized boxes are counted BEFORE the origins are added: a floor with nothing measurable on
+     * it has no extent at all rather than a zero-sized box at a room's origin, which is the band
+     * over nothing § 4.2 refuses.
      *
      * @param  array<string, mixed>  $frame
      * @return array{x: int, y: int, width: int, height: int}|null
@@ -519,6 +725,17 @@ class TheFloorComposesItsRoomsTest extends TestCase
 
         if ($boxes === []) {
             return null;
+        }
+
+        foreach ($frame['rooms'] as $room) {
+            if ($room['footprint'] === null) {
+                $boxes[] = [
+                    'x' => $room['origin']['x'],
+                    'y' => $room['origin']['y'],
+                    'width' => 0,
+                    'height' => 0,
+                ];
+            }
         }
 
         $x = min(array_column($boxes, 'x'));

@@ -404,8 +404,10 @@ export class FloorScreen {
 
             held.set(room.install_id, { state, map, grid });
             // § 9 F16: a mapless room "keeps the extent of the last map the client held for it, and
-            // with none held it has NO extent" — so the extent is the held document's whether or not
-            // the last request failed, and `null` where nothing is held.
+            // with none held it has NO footprint" — so the footprint is the held document's whether
+            // or not the last request failed, and `null` where nothing is held. `null` is not the
+            // room leaving the floor's extent: § 4.6 rule 5 puts its origin in that union, which
+            // `placeRooms()` reads from the placement it just made rather than from this map.
             extents.set(room.install_id, grid);
         }
 
