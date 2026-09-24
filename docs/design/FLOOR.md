@@ -1294,7 +1294,9 @@ each with its reason — and the list is the count, so nothing here states one:
    rather than a hope: where a room has a footprint, that footprint's corner **is** its origin, so
    the point is already inside the box the union takes. **A room's origin widens an extent and never
    mints one** — a floor with nothing measurable on it has no extent at all, as before, rather than a
-   zero-sized box at a room's origin, which is the band over nothing [§ 4.2](#42-the-floor) refuses.
+   box drawn from origins alone — zero-sized where one such room is placed and not zero-sized where
+   several are, and in both cases the band over nothing [§ 4.2](#42-the-floor) refuses, because an
+   origin says where a room begins and nothing the client holds says how far its content reaches.
    **F18 is untouched:** an overlap is a determination over footprints, and a room with none is left
    out of it exactly as it was. ⚠ **The point carries NO SIZE, and what that leaves unchecked is
    named rather than filled:** nothing the client holds gives a placeholder grid a width, and the one
