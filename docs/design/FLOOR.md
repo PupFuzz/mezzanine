@@ -1029,7 +1029,9 @@ planned floor draws its `hallway`'s tile layers first, at the floor's origin; th
 at its `origin`, opaque over whatever hallway tiles lie under it; then every desk. A floor with no plan
 draws its rooms side by side, left to right in `install_id` order ([§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed) row 6), top
 edges aligned, [§ 12](#12-every-number-and-where-it-comes-from)'s gap apart, and no hallway. The floor's extent is the
-union of all of it — computed from documents the client holds, stored nowhere — and
+union of all of it — **every room placed on the floor, the room whose map failed included**, which is
+[§ 4.6](#46-the-building-layout) rule 5 and is where its reasoning is — computed from documents the
+client holds and from where the plan put them, stored nowhere — and
 [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera pans and zooms over it as over any floor wider than the viewport.
 **The wall clock and the windows are drawn ONCE, on a back-wall band the floor screen itself owns,
 spanning the floor's whole extent above the composed slab** — inside no room's map and inside no
@@ -1236,7 +1238,8 @@ layout entry's — operator-stated, 2026-09-12, card#9292, closing [§ 14](#14-o
 The operator's words, correcting a report that the configurable unit was the room and not the
 floor: *"However the floor needs to be configurable too. For example, i might want to divide a floor into a hallway with 5 office rooms for solo agents, or maybe a big room for PM+3impl agents and a small room for PM+1impl agent"*. Item 19 had asked in what ORDER N rooms sit on one screen;
 the operator answered about how a floor is divided — extent, position and the space between — which
-neither an authored order nor a derived one has a member for. Four rules, each with its reason:
+neither an authored order nor a derived one has a member for. The rules below are that answer,
+each with its reason — and the list is the count, so nothing here states one:
 
 1. **Extent lives in the room, position lives on the floor, and nothing lives in both.** A room's
    footprint on the floor is the pixel size of its map's grid — `width × tilewidth` by
@@ -1275,12 +1278,41 @@ neither an authored order nor a derived one has a member for. Four rules, each w
    rule for the floor's clock and names that no check stands behind it. The floor's ONE wall clock
    and windows are the floor screen's, drawn once across the floor's whole extent ([§ 4.2](#42-the-floor)),
    never inside a hallway or a room map.
+5. **The floor's extent is the union of EVERY room placed on it — the room whose map failed
+   included — and [§ 4.2](#42-the-floor)'s back-wall band spans that union.** A room's footprint is
+   its map's grid (rule 1) and a room whose map the client does not hold has none
+   ([§ 9](#9-failure-paths-and-their-observables) F16); it is on the floor all the same, so it enters
+   the union as the **point its origin is** — the corner its placeholder grid is drawn at.
+   **Operator-ruled, card#7341, and the reasoning is what a later maintainer needs:** the band is
+   the **building's** backdrop and a room on the floor is on the floor, so a room the union leaves
+   out has its desks drawn outside the backdrop, apparently detached from the building. And a map
+   outage is exactly when a viewer most needs the floor to still read as one coherent place — desks
+   floating outside the building are indistinguishable from a rendering defect, which makes a real
+   failure look like a different, wrong failure. The alternative weighed and refused was
+   **relocating** the mapless room inside the existing extent, which misrepresents where that room
+   actually is. ⭐ **It changes nothing on a floor whose every map arrived**, and that is arithmetic
+   rather than a hope: where a room has a footprint, that footprint's corner **is** its origin, so
+   the point is already inside the box the union takes. **A room's origin widens an extent and never
+   mints one** — a floor with nothing measurable on it has no extent at all, as before, rather than a
+   box drawn from origins alone — zero-sized where one such room is placed and not zero-sized where
+   several are, and in both cases the band over nothing [§ 4.2](#42-the-floor) refuses, because an
+   origin says where a room begins and nothing the client holds says how far its content reaches.
+   **F18 is untouched:** an overlap is a determination over footprints, and a room with none is left
+   out of it exactly as it was. ⚠ **The point carries NO SIZE, and what that leaves unchecked is
+   named rather than filled:** nothing the client holds gives a placeholder grid a width, and the one
+   figure that could — [§ 12](#12-every-number-and-where-it-comes-from)'s desk sprite width — is
+   measured off the bridge tileset that row retires with, so a size derived from it would pin a
+   permanent geometry to a temporary asset. ⇒ A mapless room at the union's right or bottom edge has
+   its placeholder grid drawn from that edge outward, and keeping the grid inside the band is the
+   drawing layer's — the same residue this section already carries for an absurd `origin`, and for
+   the same reason: a number with no derivation is worse than a named gap.
 
 **What the plan is not.** It is not an eighth entry for [§ 2.1](#21-the-seven-values-the-client-computes-about-a-seat-or-about-itself-closed)'s closed list, for the
 reason the implicit-floor rule below is not: placing a delivered document at a delivered origin is
-a rendering of the wire, and the floor's extent — the bounding box of the hallway and every room's
-footprint — is geometry of documents the client holds, computed the way a desk's `x`, `y` is and
-stored nowhere. It is not a route into the desk-slot function: `origin` names a room and never a seat,
+a rendering of the wire, and the floor's extent — the bounding box of the hallway, every room's
+footprint and every placed room's own origin (rule 5) — is geometry of documents the client holds and
+of where the plan put them, computed the way a desk's `x`, `y` is and stored nowhere.
+It is not a route into the desk-slot function: `origin` names a room and never a seat,
 the hallway declares no slot, and [§ 3.2](#32-the-desk-slot-function) reads the plan not at all — rearranging a floor
 moves no desk inside any room (card#9071, [§ 10.3](#103-the-floor-map)). And it is not a size: a floor has no
 authored width or height, and a room has none outside its map.
@@ -3107,7 +3139,7 @@ indistinguishable from a fleet that has gone home.
 | F13 | **Floor map has fewer slots than the install has seats** | `S` against the rendered seat count | the surplus seats render in a labelled **overflow row**, and a persistent notice reads *floor map is short N desks* — one per short room, naming it, on a floor of several rooms ([§ 3.2](#32-the-desk-slot-function), card#9292) | an operator edits the map | dropping a seat |
 | F14 | **An asset fails to load** — a tile, a sprite sheet | the load error | the desk renders its **placeholder**: a plain rectangle carrying the nameplate, the state label and the badge cluster — every fact, no art — and the status strip reads *some art failed to load* | retry on reload | a blank desk, which reads as an empty office |
 | F15 | **The browser tab is backgrounded and returns** | the gap in the age ticker, or a stream the platform closed | on return, the client re-runs [§ 2.2](#22-connect-snapshot-deltas) from step 1 and renders **without animation** ([§ 6.5](#65-a-snapshot-never-animates)) | — | replaying the deltas that arrived while hidden, which would animate a history the operator did not watch |
-| F16 | **A room's map request fails** — any non-200 from `GET /api/building/rooms/{install_id}/map`, the `503` included ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the status code | the room renders its desks with **no map**: every desk is F14's placeholder in a plain grid — nameplate, state label and badge cluster; every fact, no room — under a notice reading **room map could not be loaded — HTTP N**, naming the room. For the floor's arithmetic ([§ 4.6](#46-the-building-layout) — an unplanned floor's origins, a planned floor's extent, F18) the mapless room keeps the extent of the last map the client held for it, and with none held it has **no extent**: the placeholder grid is drawn at the room's origin over whatever lies there, under this notice, and F18's determination leaves the room out — an overlap a failed fetch causes is this failure's render, already named, never a plan defect (card#9292) | retry on the user's action, and on the next `room.map` for that room | **drawing the shipped default in its place.** A default drawn silently is a room the operator authored rendering as one they did not — the *which of the two am I looking at* defect [§ 4.6](#46-the-building-layout) refuses at building scale — and for a `503` it is D2's forbidden clean zero one surface over |
+| F16 | **A room's map request fails** — any non-200 from `GET /api/building/rooms/{install_id}/map`, the `503` included ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the status code | the room renders its desks with **no map**: every desk is F14's placeholder in a plain grid — nameplate, state label and badge cluster; every fact, no room — under a notice reading **room map could not be loaded — HTTP N**, naming the room. For the floor's arithmetic ([§ 4.6](#46-the-building-layout) — an unplanned floor's origins, a planned floor's extent, F18) the mapless room keeps the extent of the last map the client held for it, and with none held it has **no footprint**: the placeholder grid is drawn at the room's origin over whatever lies there, under this notice, and F18's determination leaves the room out — an overlap a failed fetch causes is this failure's render, already named, never a plan defect (card#9292). ⭐ **The room is in the FLOOR's extent all the same, as the point its origin is** ([§ 4.6](#46-the-building-layout) rule 5, operator-ruled on card#7341): that union is taken over every room placed on the floor, so [§ 4.2](#42-the-floor)'s back-wall band spans this room too. ⚠ **This row used to say the mapless room had no extent for a planned floor's extent, and that one sentence was answering two questions** — the room's own footprint and the floor's union. The footprint half stands and the union half is REVERSED: a room the union left out drew its desks outside the building's backdrop, where a real map outage is indistinguishable from a rendering defect | retry on the user's action, and on the next `room.map` for that room | **drawing the shipped default in its place.** A default drawn silently is a room the operator authored rendering as one they did not — the *which of the two am I looking at* defect [§ 4.6](#46-the-building-layout) refuses at building scale — and for a `503` it is D2's forbidden clean zero one surface over |
 | F17 | **The layout request fails** — any non-200 from `GET /api/building` ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), on connect or after a `building.layout` | the status code | the lobby renders a full-width statement **the building layout could not be loaded — HTTP N** over the floors it already holds, labelled *last known layout*; on a cold start there is no layout to keep, so under that statement it lists the snapshot's installs as rooms with **no floor claimed**, each a link to `/floor/{install_id}` that [§ 4.4](#44-routes-and-what-each-one-fetches) resolves **once the layout is readable** — until then, following it lands on this same render. **The floor route renders the same statement**: over the rooms it already holds when the layout was fetched before, and, on a cold-start deep link ([§ 4.4](#44-routes-and-what-each-one-fetches)), over the same uncomposed list — it does **not** compose the segment into a one-room floor, because deciding whether a segment is a floor's key or a room on someone else's floor needs the very document that failed. Every seat stays reachable; no composition is asserted on either screen | retry with backoff, and on the next `building.layout` | **composing the EMPTY layout's building** — one floor per install, `open` — from a failed fetch. An empty layout is a legal document ([§ 4.6](#46-the-building-layout)); a failed fetch is not that document, and a building composed from it is the wrong building drawn with confidence, which is F16's silent default one level up |
 | F18 | **Two rooms overlap on a planned floor** — reachable only past every write's refusal ([§ 4.6](#46-the-building-layout)): a deploy changed the shipped default's grid ([§ 10.3](#103-the-floor-map)) while a planned floor holds a room rendering it | the footprints the client computes from the maps it holds | both rooms are drawn, the later `install_id` on top, under a notice reading ***rooms `X` and `Y` overlap on this floor*** — the two `install_id`s in key order ([§ 5.5](#55-the-clients-own-narration)); every desk of both stays reachable | an operator moves one room — one layout save | **refusing the layout**, which takes the building down for a deploy the console never saw; and clipping either room, which hides desks |
 | F19 | **The stream opened and never spoke** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) R1 false: something between PHP-FPM and this browser is buffering the stream | F1's 45 s of silence **on a stream that has delivered zero messages since `open`** — the on-connect `fleet.health` is the handler's first byte, so a stream that opened and delivered nothing is not a feed that died, it is one that was never let through | F1's render, with the strip's words specific: **feed down — polling; the stream opened and never spoke (check the proxy: D2 § 8.3 R1)**. The floor renders from the polled snapshot | as F1 — and nothing the client does recovers it; the sentence is addressed to the operator | rendering it as F1's bare *feed down*, which sends an operator to look for a dead daemon this transport does not have |
@@ -5627,7 +5659,7 @@ reason to leave two readings live.
     each at its own size — is now [§ 4.6](#46-the-building-layout)'s **default** for a floor with no plan, and the room
     map is still the unit of a room's interior.
 
-    **Where it landed:** the plan's two members, its four rules and both of the operator's floors
+    **Where it landed:** the plan's two members, its rules and both of the operator's floors
     worked, at [§ 4.6](#46-the-building-layout); a room's extent as its map's grid, one home, at [§ 10.3](#103-the-floor-map); the composed
     screen and the floor's one clock at [§ 4.2](#42-the-floor); the read-time overlap at [§ 9](#9-failure-paths-and-their-observables) F18; the
     decisions at [§ 13](#13-decisions-taken-revisable-at-review) rows 31–33, with rows 25 and 27 amended; the surface, the write path and the

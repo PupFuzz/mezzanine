@@ -24,8 +24,15 @@
  *
  * ⛔ EXTENT LIVES IN THE ROOM AND POSITION ON THE FLOOR (§ 4.6 rule 1). A room's footprint is its
  * map's grid in pixels and nothing here invents one: a room whose map the client does not hold has
- * NO extent (§ 9 F16), is left out of the extent union and out of F18's determination, and its
- * desks are drawn as F14 placeholders under F16's notice.
+ * NO footprint (§ 9 F16), is left out of F18's determination, and its desks are drawn as F14
+ * placeholders under F16's notice.
+ *
+ * ⛔ AND IT IS STILL ON THE FLOOR, SO IT IS STILL IN THE FLOOR'S EXTENT (§ 4.6 rule 5). A room with
+ * no footprint enters the extent union as the POINT its origin is — the corner its placeholder grid
+ * is drawn at — because the band above the slab is the BUILDING's backdrop and a room the union
+ * leaves out draws its desks outside it, which makes a room-map outage look like a rendering defect
+ * instead. The point carries no size: nothing the client holds gives that grid one, and a size
+ * invented here is the number with no derivation § 4.6 refuses.
  *
  * ⛔ F18 IS A READ-TIME RENDER AND NOT A REFUSAL, and that is why the arithmetic is here as well
  * as in `App\Building\FloorPlan`. The two answer different questions over the same predicate: the
@@ -206,9 +213,10 @@ export function footprintsIntersect(a, b) {
  * On an unplanned floor: side by side, left to right in `install_id` ascending (§ 2.1 row 6), top
  * edges aligned, each at its own map's size, `ROOM_GAP_PX` apart, and no hallway.
  *
- * A room with NO extent (F16 — its map request failed and the client holds none) is placed in its
- * turn and contributes no width: it has no footprint, so it enters neither the extent union nor
- * F18's determination, and its desks are drawn as placeholders at its origin.
+ * A room with NO FOOTPRINT (F16 — its map request failed and the client holds none) is placed in its
+ * turn and contributes no width: it has no footprint, so F18's determination leaves it out, and its
+ * desks are drawn as placeholders at its origin. It is in the floor's EXTENT all the same, as that
+ * origin (§ 4.6 rule 5).
  *
  * @param {list<{install_id: string, form?: string, origin?: {x: number, y: number}}>} rooms one floor's rooms
  * @param {Map<string, {pixel_width: number, pixel_height: number}|null>} extents install_id → its footprint size, or `null`
@@ -245,15 +253,27 @@ export function placeRooms(rooms, extents, hallway = null) {
     // the write, so an unplanned floor delivered with one is drawn without it rather than half).
     const hall = planned ? mapGrid(hallway) : null;
 
-    const boxes = placed.map((room) => room.footprint).filter((box) => box !== null);
+    // Everything on the floor with a SIZE: each room's footprint, and the hallway's own grid.
+    const sized = placed.map((room) => room.footprint).filter((box) => box !== null);
 
     if (hall !== null) {
-        boxes.push({ x: 0, y: 0, width: hall.pixel_width, height: hall.pixel_height });
+        sized.push({ x: 0, y: 0, width: hall.pixel_width, height: hall.pixel_height });
     }
+
+    // ⛔ EVERY ROOM PLACED ON THE FLOOR IS IN THE FLOOR'S EXTENT, F16's MAPLESS ROOM INCLUDED
+    // (§ 4.6 rule 5) — as the POINT its origin is, which is the corner its placeholder grid is
+    // drawn at and the whole of what the client holds about where that room is.
+    const points = placed
+        .filter((room) => room.footprint === null)
+        .map((room) => ({ x: room.origin.x, y: room.origin.y, width: 0, height: 0 }));
 
     // § 4.6: the floor's extent is the union of all of it — computed from documents the client
     // holds, stored nowhere. A floor with nothing measurable on it has no extent at all rather
-    // than a zero-sized one at the origin, which would be a box nothing is inside.
+    // than a zero-sized one at the origin, which would be a box nothing is inside — so a room's
+    // origin WIDENS an extent and never mints one. And where a room has a footprint, that
+    // footprint's corner IS its origin, so this arithmetic is unchanged on every floor whose every
+    // map arrived.
+    const boxes = sized.length === 0 ? [] : [...sized, ...points];
     const extent = boxes.length === 0 ? null : Object.freeze({
         x: Math.min(...boxes.map((b) => b.x)),
         y: Math.min(...boxes.map((b) => b.y)),
