@@ -34,8 +34,8 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   pixel draw one desk over another; two desks may share an edge but never a pixel. Move one of them and
   save again.* The
   undersized-slot refusal, the `/admin/floors` paragraph over the rooms whose map fails the furniture box,
-  and the revisions page's *no preview* notice keep their wording with the `docs/design/FLOOR.md`
-  references removed; those references now live in the code's comments.
+  the revisions page's *no preview* notice and the layout editor's revision notice keep their wording
+  with the `docs/design/` references removed; those references now live in the code's comments.
 
 - **card#7341** — **The console refuses desk slots that overlap or are smaller than the furniture box,
   and lists the rooms whose stored map fails it (Appendix B row 14, slice C).** Saving a room map, and

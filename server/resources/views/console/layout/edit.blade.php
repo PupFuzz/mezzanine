@@ -79,9 +79,10 @@
     </ul>
 
     <p>
-        ⚠ Every save is a <strong>revision</strong> and any of them can be restored
-        (<code>docs/design/FLEET-STATE.md § 6.11</code>). A save that changes nothing is refused
-        rather than recorded, so a revision always records a change. There is no
+        {{-- Revisions and restore: docs/design/FLEET-STATE.md § 6.11 (citation kept off-screen by
+             the operator's wording ruling, 2026-09-25, card#7341 c6585). --}}
+        ⚠ Every save is a <strong>revision</strong> and any of them can be restored. A save that
+        changes nothing is refused rather than recorded, so a revision always records a change. There is no
         <strong>preview</strong> yet — the floor's own renderer is built, and this console does not
         draw with it yet — so until then the restore is what stands between a bad save and every
         viewer.
