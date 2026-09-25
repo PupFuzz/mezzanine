@@ -79,16 +79,20 @@ final class DeskSlots
     }
 
     /**
+     * § 14 item 28(1)(i): every desk is drawn inside its own slot (`docs/design/FLOOR.md § 10.3`,
+     * Appendix B row 14), so two slots may share an edge and never a pixel. The on-screen wording
+     * carries no design-doc citation — operator ruling 2026-09-25, card#7341 comment 6585.
+     *
      * @param  array{name: string, x: float, y: float, w: float, h: float}  $a
      * @param  array{name: string, x: float, y: float, w: float, h: float}  $b
      */
     private static function intersecting(array $a, array $b): string
     {
         return sprintf(
-            'Desk slots %s and %s intersect: %s spans %g–%g × %g–%g and %s spans %g–%g × %g–%g. '
-            .'Every desk is drawn inside its own slot (docs/design/FLOOR.md § 10.3, Appendix B row '
-            .'14), so two slots that share a pixel draw one desk over another; they may share an '
-            .'EDGE and never a pixel (§ 14 item 28(1)(i)). Move one of them and save again.',
+            'Desk slots %s and %s overlap: %s spans %g–%g × %g–%g and %s spans %g–%g × %g–%g. '
+            .'Every desk is drawn inside its own slot, so two slots that share a pixel draw one desk '
+            .'over another; two desks may share an edge but never a pixel. Move one of them and save '
+            .'again.',
             $a['name'],
             $b['name'],
             $a['name'], $a['x'], $a['x'] + $a['w'], $a['y'], $a['y'] + $a['h'],
@@ -96,14 +100,19 @@ final class DeskSlots
         );
     }
 
-    /** @param array{name: string, x: float, y: float, w: float, h: float} $desk */
+    /**
+     * § 14 item 28(1)(ii): the furniture box is `docs/design/FLOOR.md § 12`'s (Appendix B row 14).
+     * The on-screen wording carries no design-doc citation — operator ruling 2026-09-25, card#7341
+     * comment 6585.
+     *
+     * @param  array{name: string, x: float, y: float, w: float, h: float}  $desk
+     */
     private static function undersized(array $desk, FurnitureBox $box): string
     {
         return sprintf(
-            'Desk slot %s is %g × %g pixels, smaller than the furniture box of %d × %d '
-            .'(docs/design/FLOOR.md § 12, Appendix B row 14). Everything drawn for one desk at the '
-            .'cap lies inside that box, so a smaller slot cannot hold a desk (§ 14 item 28(1)(ii)). '
-            .'Make it at least %d × %d and save again.',
+            'Desk slot %s is %g × %g pixels, smaller than the furniture box of %d × %d. '
+            .'Everything drawn for one desk at the cap lies inside that box, so a smaller slot '
+            .'cannot hold a desk. Make it at least %d × %d and save again.',
             $desk['name'],
             $desk['w'],
             $desk['h'],

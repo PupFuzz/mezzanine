@@ -172,8 +172,11 @@ class TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest extends TestCase
             ->assertSessionHasErrors('map');
 
         $refusal = (string) session('errors')->first('map');
-        $this->assertStringContainsString('Desk slots id 1 and id 2 intersect', $refusal);
+        $this->assertStringContainsString('Desk slots id 1 and id 2 overlap', $refusal);
         $this->assertStringNotContainsString('id 3', $refusal, 'a slot that shares only an edge was named as intersecting');
+        // Operator ruling 2026-09-25 (card#7341 comment 6585): the on-screen refusal cites no design doc.
+        $this->assertStringNotContainsString('FLOOR.md', $refusal);
+        $this->assertStringNotContainsString('§', $refusal);
 
         // § 6.11: a refused save writes nothing.
         $this->assertNull(Floors::forInstall(self::INSTALL));
@@ -226,7 +229,7 @@ class TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest extends TestCase
             ->assertRedirect(route('admin.floors.revisions', self::INSTALL))
             ->assertSessionHasErrors('revision');
 
-        $this->assertStringContainsString('Desk slots id 1 and id 2 intersect', (string) session('errors')->first('revision'));
+        $this->assertStringContainsString('Desk slots id 1 and id 2 overlap', (string) session('errors')->first('revision'));
 
         // Nothing moved: revision 3 is still current and no revision was written.
         $this->assertSame(3, (int) Floors::forInstall(self::INSTALL)->map_version);
@@ -253,6 +256,9 @@ class TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest extends TestCase
             sprintf('Desk slot id 1 is %d × %d pixels, smaller than the furniture box of %d × %d', $box->width - 1, $box->height, $box->width, $box->height),
             (string) session('errors')->first('map'),
         );
+        // Operator ruling 2026-09-25 (card#7341 comment 6585): the on-screen refusal cites no design doc.
+        $this->assertStringNotContainsString('FLOOR.md', (string) session('errors')->first('map'));
+        $this->assertStringNotContainsString('§', (string) session('errors')->first('map'));
         $this->assertNull(Floors::forInstall(self::INSTALL));
         $this->assertSame(0, Revisions::history(Revisions::ROOM_MAP, self::INSTALL)->count());
 

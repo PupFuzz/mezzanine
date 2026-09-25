@@ -19,17 +19,18 @@
     </p>
 
     {{-- ⭐ docs/design/FLOOR.md § 14 item 28(1)(iii): every room whose current map fails the
-         furniture box it was not validated against — LISTED, never refused. --}}
+         furniture box it was not validated against — LISTED, never refused. The box is FLOOR.md
+         § 12's (Appendix B row 14); the on-screen text carries no design-doc citation (operator
+         ruling 2026-09-25, card#7341 comment 6585). --}}
     @php($failing = array_values(array_filter($rows, fn (array $row) => $row['fails_the_box'] !== [])))
     @if ($failing !== [])
         <section id="rooms-failing-the-box">
             <h2>Rooms whose map fails the furniture box</h2>
             <p>
                 Each map below was stored before the furniture box it is now held to — the box every
-                desk is drawn inside (<code>docs/design/FLOOR.md § 12</code>, Appendix B row 14) —
-                and does not fit it. <strong>Nothing was refused:</strong> each room stays on the
-                floor as it is, drawn with the floor's notice naming the desk slots, until its
-                author saves a map that passes.
+                desk is drawn inside — and does not fit it. <strong>Nothing was refused:</strong>
+                each room stays on the floor as it is, drawn with the floor's notice naming the desk
+                slots, until its author saves a map that passes.
             </p>
             <ul>
                 @foreach ($failing as $row)
