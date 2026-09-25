@@ -784,7 +784,16 @@ else:
     dd_step, artifact_dupe = None, []    # step_of: AT -> [(step, half-or-None)]
     for r in appB:
         c = cells(r)
-        if len(c) < 3 or not c[0].isdigit():
+        if len(c) < 3:
+            continue
+        if not c[0].isdigit():
+            # A row the ordering rule cannot compare is a row it must not silently skip: every bold
+            # name in it would go unregistered and every gate in it unenforced, while the run
+            # reported clean (card#7341's rows 14-16 design round found this on a proposed `8a`).
+            fail.append(f"G5: Appendix B row `{c[0]}` has an Order cell that is not an integer step. "
+                        f"The ordering rule compares integer steps, so this row's artifacts and gates "
+                        f"would be read by nothing — a suffixed row is a row the gate cannot see. Use a "
+                        f"new number and state the dependency order in the cell")
             continue
         n = int(c[0])
         for a in re.findall(r"\*\*([^*]+)\*\*", c[1]):

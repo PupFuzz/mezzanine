@@ -27,6 +27,24 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **`docs/design/FLOOR.md` Appendix B gains the rows that paint a room and move the camera
+  (rows 14–16), ahead of their build.** Rows 0–13 built every model and no row drew a room or a camera, so the
+  step-8 floor page draws each desk as a line of text, § 9 F14 was unreachable, and the card's own title had
+  no row delivering it. **Row 14, the room drawing**: the scene — a headless model emitting what is drawn
+  where, from step 7's frame and the held map — the tileset reader (`.tsx` and `.tsj`, both spellings § 10.1
+  admits), the painter (the DOM half, one scaled space for tiles, desks, nameplates, bubbles and the thread
+  line), and F14's placeholder, with the strip's *some art failed to load* line. **Row 15, the camera**:
+  wheel-zoom to the cursor, drag-pan, fit-floor including the overflow strip, whole-building; navigation that
+  writes no animation-log row and survives every re-render; and the capability floor, below which step 8's text
+  render is served as § 4.5's list view. **Row 16, the building cross-section**: § 4.1's plates and the
+  elevator ride, ending at `/floor/{key}`, drawn over row 9's lobby model. Three acceptance tests gate them —
+  AT-D3-19 (F14), AT-D3-20 (the no-overlap check the card asks the build to keep) and AT-D3-21 (the camera, a
+  floor half and a building half). Rows 0 and 2 now carry the landed markers they lacked (PR #15, 2026-08-25;
+  PR #157, 2026-09-14). § 4.1, § 4.4, § 4.5, § 9 F14 and § 12's viewport row point at the rows; § 14 item 28
+  records what stays open (the console's overlapping-slot refusal, the unscheduled vector art, the viewport
+  measurement row 15 owes). `tools/design/verify-floor.py` G5 now reds on an Appendix B Order cell that is not
+  an integer instead of skipping the row, which is why the rows are numbered rather than suffixed. § 11's
+  fixture count in words — *nine*, over a table of ten — is replaced by the derivation the gate already runs.
 - **card#10423** — **the deploy selftest names a fixture object git packed as NOT VERIFIED HERE and
   carries on.** `bin/deploy.selftest.sh`'s `blind_object` makes one loose object of a fixture's store
   unreadable for the cases that need a failed git read; when git's own housekeeping has stored that
