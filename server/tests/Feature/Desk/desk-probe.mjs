@@ -7,7 +7,7 @@
  * directory — which is how every planted control in `tests/Feature/Desk` re-mints its defect
  * against the real code rather than against a second copy of the logic.
  *
- * stdin  — JSON: `{ "seat": <a seat object>, "ref_bases": {…}|null,
+ * stdin  — JSON: `{ "seat": <a seat object>,
  *                   "character_probe": ["working", …],
  *                   "layout": { "bubbles": [...], "char_w": 10, "line_h": 20,
  *                               "no_measurer": false } }`
@@ -66,7 +66,7 @@ if (payload.layout) {
 }
 
 console.log(JSON.stringify({
-    bubble: bubble.taskBubble(payload.seat ?? null, { ref_bases: payload.ref_bases ?? null }),
+    bubble: bubble.taskBubble(payload.seat ?? null),
     // Positional rather than keyed, so a probe of `null` or of a non-string is expressible.
     characters: (payload.character_probe ?? []).map((state) => bubble.deskDrawsCharacter(state)),
     no_character_states: [...bubble.NO_CHARACTER_STATES],

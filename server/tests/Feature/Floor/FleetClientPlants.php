@@ -167,10 +167,10 @@ final class FleetClientPlants
     public const KEEPDETAIL = [
         [
             <<<'JS'
-            const { api_version, server_time, detail, ...row } = res.body;
+            const { api_version, server_time, detail, ...row } = body;
             JS,
             <<<'JS'
-            const { api_version, server_time, ...row } = res.body;
+            const { api_version, server_time, ...row } = body;
             JS,
         ],
     ];
@@ -179,10 +179,10 @@ final class FleetClientPlants
     public const ENVELOPE = [
         [
             <<<'JS'
-            const { api_version, server_time, detail, ...row } = res.body;
+            const { api_version, server_time, detail, ...row } = body;
             JS,
             <<<'JS'
-            const { detail, ...row } = res.body;
+            const { detail, ...row } = body;
             JS,
         ],
     ];
@@ -225,12 +225,14 @@ final class FleetClientPlants
     public const NODRAIN = [
         [
             <<<'JS'
-                    this.#confirm(k);
+                        this.#confirm(k);
+                    }
             
                     this.#release(k);
             JS,
             <<<'JS'
-                    this.#confirm(k);
+                        this.#confirm(k);
+                    }
             
                     this.#buffers.delete(k);
             JS,
@@ -268,11 +270,11 @@ final class FleetClientPlants
     public const STALE = [
         [
             <<<'JS'
-                    if (held === undefined || row.state_version > held.state_version) {
+                    if (!this.#retired.has(k) && (held === undefined || row.state_version > held.state_version)) {
                         const arrived
             JS,
             <<<'JS'
-                    if (true) {
+                    if (!this.#retired.has(k)) {
                         const arrived
             JS,
         ],
@@ -425,12 +427,12 @@ final class FleetClientPlants
                     if (failed(res)) {
                         this.#budget.refund(held, total);
                     } else {
-                        this.#applySnapshot(res.body);
+                        this.#applySnapshot(res.body, issued);
                     }
             JS,
             <<<'JS'
                     if (!failed(res)) {
-                        this.#applySnapshot(res.body);
+                        this.#applySnapshot(res.body, issued);
                     }
             JS,
         ],
@@ -486,7 +488,7 @@ final class FleetClientPlants
         [
             <<<'JS'
                     } else {
-                        this.#applySnapshot(res.body);
+                        this.#applySnapshot(res.body, issued);
                     }
             JS,
             <<<'JS'

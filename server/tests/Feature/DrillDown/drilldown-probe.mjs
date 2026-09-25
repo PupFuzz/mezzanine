@@ -8,7 +8,8 @@
  * defect against the real code rather than against a second copy of the logic.
  *
  * stdin  — JSON: `{ "seat": <a GET /api/fleet/seats/… body>, "timeline": <its body|null>,
- *                   "now_ms": <the corrected clock>, "ref_bases": {…}|null,
+ *                   "now_ms": <the corrected clock>, "options": {…} — the model's other options
+ *                   (`stamps`, `detail_failure`, `timeline_failure`, `detail_pending`, `floor`),
  *                   "durations": [<seconds>, …], "drive_main": true }`
  * stdout — JSON: `{ "model", "durations", "selections", "main" }`
  *
@@ -64,32 +65,30 @@ function stubRoot() {
         },
         read: () => Object.fromEntries([...slots].map(([k, v]) => [k, {
             text: v.textContent,
+            hidden: v.hidden === true,
             attributes: v.attributes,
             rows: v.children.map((c) => ({ text: c.textContent, data: c.dataset })),
         }])),
     };
 }
 
+const options = { ...(payload.options ?? {}), now_ms: payload.now_ms };
+const drawn = seat === null ? null : model.drillDownModel(seat, payload.timeline ?? null, options);
+
 let main = null;
 
-if (payload.drive_main === true) {
+if (payload.drive_main === true && drawn !== null) {
     const { renderDrillDown } = await import(url('main.js'));
     const root = stubRoot();
 
-    renderDrillDown(root, seat, payload.timeline ?? null, {
-        now_ms: payload.now_ms,
-        ref_bases: payload.ref_bases ?? null,
-    });
+    renderDrillDown(root, drawn);
 
     main = { dom: root.read() };
 }
 
 console.log(JSON.stringify({
     main,
-    model: seat === null ? null : model.drillDownModel(seat, payload.timeline ?? null, {
-        now_ms: payload.now_ms,
-        ref_bases: payload.ref_bases ?? null,
-    }),
+    model: drawn,
     // § 2.4's function, sampled on the inputs the caller names — the boundary table's own
     // column, handed in from the document rather than written here.
     durations: (payload.durations ?? []).map((s) => duration.formatDuration(s)),
@@ -99,5 +98,4 @@ console.log(JSON.stringify({
         interns: model.internCalls(openCalls).map((c) => c.call_id),
         subagent_scoped: model.subagentScopedCalls(openCalls).map((c) => c.call_id),
     },
-    refs: (payload.ref_probe ?? []).map((ref) => model.taskRefLink(ref, payload.ref_bases ?? null)),
 }, null, 2));

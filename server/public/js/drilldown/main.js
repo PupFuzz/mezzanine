@@ -1,42 +1,39 @@
 /**
- * The drill-down panel's thin DOM half — `docs/design/FLOOR.md § 4.3`.
+ * The drill-down panel's thin DOM half — `docs/design/FLOOR.md § 4.3`, on the floor page.
+ * Appendix B row 10, card#7342.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THIS FILE DECIDES NOTHING, and that is the whole reason it is separate. There is no browser
- * on the build host, so nothing here is exercised by any check in this repository; every string,
- * every absence render and every selection is `drilldown-model.js`'s, which is pure and is
- * driven directly. If a rule appears below that is not in that module, it is in the wrong file.
+ * on the build host, so nothing here is exercised by any check in this repository beyond a stub;
+ * every string, every absence render and every selection is `drilldown-model.js`'s, which is pure
+ * and is driven directly. If a rule appears below that is not in that module, it is in the wrong
+ * file. What it does is put the model's strings into the `[data-panel-*]` slots the floor page
+ * declares (`resources/views/floor.blade.php`), and hide a slot the model left empty — an absence
+ * the model decided, drawn as an absence.
  *
- * ⛔ NO FETCH LIVES HERE, AND THAT IS DELIBERATE. § 4.3 puts two requests on the panel's open and
- * § 4.4 names the route that makes them — `/floor/{floor}/{seat_id}`, which is not served: the
- * floor page serves `/floor/{floor}` alone (Appendix B step 8) and the drill-down that opens on a
- * desk is step 10, so nothing in this deployment can open a panel. A `fetch` written here today
- * would be code no page can reach, wired to a route that is not served, exercised by nothing. What this file owes that
- * route is a render function it can call with the two response bodies, and that is what it is.
+ * ⛔ NO FETCH AND NO CLOCK LIVE HERE. The panel's two requests, its live patching and its stamps are
+ * `drilldown-panel.js`'s, over the floor page's one client protocol; the floor page hands this file
+ * the model the floor screen composed. `Tests\Feature\DrillDown\DrillDownModuleWiringTest` holds the
+ * slot contract both ways against the floor page.
  *
- * ⛔ NO ANIMATION. § 6.2 A12 eases the context bar over 250 ms on a delta whose `changed[]`
- * carries `context`; the delta-feed client exists (`wire/fleet-client.js`, Appendix B step 3),
- * and the floor page constructs it (Appendix B step 8), but no page opens this panel before step
- * 10, so nothing hands it a delta to animate from, and § 6.5's
- * "a snapshot never animates" covers the one input this file has.
- * The bar is written at its value, which is A12's own reduced-motion form.
+ * ⛔ NO ANIMATION. § 6.2 A12 eases the context bar over 250 ms on a delta whose `changed[]` carries
+ * `context`, on the DESK's gauge; the panel writes the bar at its value, which is A12's own
+ * reduced-motion form, and § 6.5's "a snapshot never animates" covers the fetch it opened on.
  */
 
-import { clockOffsetMs, correctedNowMs } from '../wire/duration.js';
-import { drillDownModel } from './drilldown-model.js';
-
-/** Text into a slot, or nothing when this panel does not carry that element. */
+/** Text into a slot — hidden when the model left it empty — or nothing when the page has no such slot. */
 function put(root, selector, text) {
     const el = root.querySelector(selector);
 
     if (el !== null) {
         el.textContent = text ?? '';
+        el.hidden = text === null || text === undefined || text === '';
     }
 
     return el;
 }
 
-/** A list slot, rebuilt from rows the model has already decided the text of. */
+/** A list slot, rebuilt from rows the model has already decided the text of; hidden when empty. */
 function putRows(root, selector, rows) {
     const list = root.querySelector(selector);
 
@@ -55,78 +52,54 @@ function putRows(root, selector, rows) {
 
         return li;
     }));
+    list.hidden = rows.length === 0;
+}
+
+/** The model's own parts of one line, joined; a part the model left null is not drawn. */
+function joined(parts) {
+    return parts.filter((v) => v !== null && v !== undefined && v !== '').join(' · ');
+}
+
+/** `name: value` rows, or the model's statement for a list it could not source. */
+function counterRows(rows) {
+    return Array.isArray(rows) ? rows.map((row) => ({ data: { name: row.name }, text: `${row.name}: ${row.value}` })) : [];
 }
 
 /**
- * § 2.1 row 1's corrected clock, from this panel's own response: `server_time − browser_now`,
- * applied to `browser_now` by `wire/duration.js`'s one `correctedNowMs`. It is arithmetic over a
- * value the response carries, not a judgement — which is why it is admitted into this layer while
- * nothing else is.
- *
- * `null` when the response carried no readable `server_time`: the model then renders no age at
- * all rather than one measured against the viewer's own machine clock, which § 2.4 admits at
- * exactly one place on this product and it is not here.
+ * Render one open panel's model into `root`. The model is `drilldown-panel.js`'s `view()` —
+ * `drilldown-model.js`'s `drillDownModel()` over the composed seat.
  */
-function panelNowMs(seat, browserNowMs) {
-    return correctedNowMs(clockOffsetMs(seat?.server_time ?? null, browserNowMs), browserNowMs);
-}
-
-/**
- * Render one seat's panel into `root`.
- *
- * `seat` is `GET /api/fleet/seats/{install_id}/{seat_id}`'s body — `api_version` and `server_time`
- * first, then the seat object's members, then `detail`; `timeline` is `…/timeline?limit=50`'s, or
- * `null` when it has not been fetched.
- */
-export function renderDrillDown(root, seat, timeline, options = {}) {
-    const model = drillDownModel(seat, timeline, {
-        now_ms: options.now_ms ?? panelNowMs(seat, Date.now()),
-        ref_bases: options.ref_bases ?? null,
-    });
-
-    put(root, '[data-panel-seat]', model.seat.seat_id);
-    put(root, '[data-panel-floor]', model.seat.install_id);
+export function renderDrillDown(root, model) {
+    put(root, '[data-panel-seat]', model.header.seat_id ?? model.seat.seat_id);
+    put(root, '[data-panel-floor]', model.header.floor);
     put(root, '[data-panel-state]', model.render_state.label);
+    put(root, '[data-panel-line]', model.header.line);
+    put(root, '[data-panel-currency]', model.header.currency);
     put(root, '[data-panel-clock]', model.no_clock_statement);
 
     const task = model.task;
 
     put(root, '[data-panel-task]', task.present ? task.title : task.statement);
-    put(root, '[data-panel-task-source]', task.present ? task.source : '');
-    put(root, '[data-panel-task-degraded]', task.present ? task.degraded_note : '');
-
-    // § 5.2: the reference is a LINK only when a base URL is configured for its shape, and plain
-    // text otherwise. The element is written either way; only its `href` differs.
-    const ref = root.querySelector('[data-panel-task-ref]');
-
-    if (ref !== null) {
-        ref.textContent = task.present ? (task.ref ?? '') : '';
-
-        if (task.present && task.ref_href !== null) {
-            ref.setAttribute('href', task.ref_href);
-        } else {
-            ref.removeAttribute('href');
-        }
-    }
+    put(root, '[data-panel-task-source]', task.present ? task.source : null);
+    // § 5.2: the reference is PLAIN TEXT, never a link — the slot is not an anchor.
+    put(root, '[data-panel-task-ref]', task.present ? task.ref : null);
+    put(root, '[data-panel-task-degraded]', task.present ? task.degraded_note : null);
 
     const action = model.action;
 
-    put(root, '[data-panel-action]', action.present
-        ? (action.descriptor ?? action.tool_name)
-        : action.statement);
-    put(root, '[data-panel-action-started]', action.present ? action.started_at : '');
-    put(root, '[data-panel-action-elapsed]', action.present ? action.elapsed : '');
-    put(root, '[data-panel-action-scope]', action.present ? action.agent_scope : '');
+    put(root, '[data-panel-action]', action.present ? (action.descriptor ?? action.tool_name) : action.statement);
+    put(root, '[data-panel-action-started]', action.present ? action.started_at : null);
+    put(root, '[data-panel-action-elapsed]', action.present ? action.elapsed : null);
+    put(root, '[data-panel-action-scope]', action.present ? action.agent_scope : null);
 
-    put(root, '[data-panel-quiet]', model.quiet_age.line);
-    put(root, '[data-panel-last-kind]', model.quiet_age.last_kind);
+    put(root, '[data-panel-last-kind]', joined([model.quiet_age.last_kind, model.quiet_age.last_event_time]));
 
     const context = model.context;
 
     put(root, '[data-panel-context]', context.reported ? context.pct : context.statement);
-    put(root, '[data-panel-context-tokens]', context.reported ? context.numerals : '');
-    put(root, '[data-panel-context-source]', context.reported ? context.source : '');
-    put(root, '[data-panel-context-age]', context.reported ? context.age : '');
+    put(root, '[data-panel-context-tokens]', context.reported ? context.numerals : null);
+    put(root, '[data-panel-context-source]', context.reported ? context.source : null);
+    put(root, '[data-panel-context-age]', context.reported ? joined([context.sampled_at, context.age]) : null);
 
     // ⛔ THE BAR IS ABSENT WHEN THE SAMPLE IS (§ 5.6, § 7.5): a bar at 0 % is the one thing this
     // gauge may never draw, so the element's own value is removed rather than set to zero.
@@ -135,29 +108,95 @@ export function renderDrillDown(root, seat, timeline, options = {}) {
     if (bar !== null) {
         if (context.bar === null) {
             bar.removeAttribute('value');
+            bar.hidden = true;
         } else {
             bar.setAttribute('value', String(context.bar));
+            bar.hidden = false;
         }
     }
 
     // § 8: the count is the wire's `subagents_open`, drawn beside the uncapped list and never
-    // computed from it.
-    put(root, '[data-panel-interns-open]', model.interns.open === null ? '' : String(model.interns.open));
-    put(root, '[data-panel-interns-statement]', model.interns.statement);
-    putRows(root, '[data-panel-interns]', model.interns.rows.map((intern) => ({
+    // computed from it; an empty list is absent (AT-D3-14's panel half), not drawn empty.
+    const interns = model.interns;
+
+    put(root, '[data-panel-interns-open]', interns.listed && interns.open !== null ? String(interns.open) : null);
+    put(root, '[data-panel-interns-statement]', interns.statement);
+    putRows(root, '[data-panel-interns]', interns.rows.map((intern) => ({
         data: { callId: intern.call_id, untitled: intern.untitled, type: intern.type },
-        text: [intern.label, intern.type, intern.started_at]
-            .filter((v) => v !== null && v !== '')
-            .join(' · '),
+        text: joined([intern.label, intern.type, intern.untitled ? intern.call_id : null, intern.started_at]),
     })));
 
-    put(root, '[data-panel-activity-statement]', model.activity.statement);
-    putRows(root, '[data-panel-activity]', model.activity.rows.map((row) => ({
+    const activity = model.activity;
+
+    put(root, '[data-panel-activity-statement]', activity.statement);
+    putRows(root, '[data-panel-activity]', activity.rows.map((row) => ({
         data: { kind: row.kind },
-        text: [row.kind, row.event_time, row.received_at, row.age]
-            .filter((v) => v !== null && v !== '')
-            .join(' · '),
+        text: joined([row.kind, row.event_time, row.received_at, row.age]),
     })));
+
+    const transport = model.transport;
+
+    put(root, '[data-panel-transport-asof]', transport.as_of);
+    put(root, '[data-panel-receipt]', transport.receipt_age);
+    put(root, '[data-panel-quiet]', transport.quiet_age);
+    put(root, '[data-panel-heartbeat]', transport.heartbeat);
+    put(root, '[data-panel-no-data-since]', transport.no_data_since);
+    put(root, '[data-panel-skew]', transport.clock_skew);
+    put(root, '[data-panel-spool]', transport.spool_lag_events);
+    put(root, '[data-panel-oldest-unsent]', transport.oldest_unsent);
+    put(root, '[data-panel-seq-epoch]', transport.seq_epoch);
+    put(root, '[data-panel-last-seq]', transport.last_seq);
+
+    const derivation = model.derivation;
+
+    put(root, '[data-panel-derivation-asof]', derivation.as_of);
+    put(root, '[data-panel-lag]', derivation.lag_line);
+    put(root, '[data-panel-computed-at]', derivation.computed_at);
+    put(root, '[data-panel-cursor]', derivation.cursor_event_id);
+
+    const reporter = model.reporter;
+
+    put(root, '[data-panel-reporter-asof]', reporter.as_of);
+    put(root, '[data-panel-reporter-version]', reporter.version);
+    put(root, '[data-panel-reporter-platform]', reporter.platform);
+    put(root, '[data-panel-uptime]', reporter.uptime);
+    put(root, '[data-panel-enabled]', reporter.enabled);
+    putRows(root, '[data-panel-selftest]', reporter.selftest_failed.map((check) => ({ data: { check }, text: check })));
+
+    const badges = model.badges;
+
+    put(root, '[data-panel-badges-since]', badges.since);
+    putRows(root, '[data-panel-badges]', badges.rows.map((badge) => ({
+        data: { badge: badge.badge, recognised: badge.recognised },
+        text: joined([
+            badge.line,
+            Array.isArray(badge.counters) ? badge.counters.map((c) => `${c.name}: ${c.value}`).join(', ') : badge.counters,
+            badge.since_reporter_start,
+        ]),
+    })));
+
+    const session = model.session;
+
+    put(root, '[data-panel-session]', session.present ? session.session_id : session.statement);
+    put(root, '[data-panel-session-started]', session.present ? session.started_at : null);
+    put(root, '[data-panel-session-source]', session.present ? session.source : null);
+    put(root, '[data-panel-session-project]', session.present ? session.project_label : null);
+    put(root, '[data-panel-session-harness]', session.present ? session.harness_label : null);
+    put(root, '[data-panel-model]', session.model_label);
+
+    const counters = model.counters;
+
+    put(root, '[data-panel-counters-asof]', counters.available ? counters.as_of : counters.statement);
+    putRows(root, '[data-panel-counters]', counterRows(counters.server));
+    put(root, '[data-panel-reporter-counters-since]', counters.reporter?.since ?? null);
+    put(root, '[data-panel-reporter-counters-statement]', typeof counters.reporter?.rows === 'string' ? counters.reporter.rows : null);
+    putRows(root, '[data-panel-reporter-counters]', counterRows(counters.reporter?.rows));
+    put(root, '[data-panel-predicates-statement]', typeof counters.predicates === 'string' ? counters.predicates : null);
+    putRows(root, '[data-panel-predicates]', counterRows(counters.predicates));
+
+    put(root, '[data-panel-state-version]', model.raw.state_version);
+    put(root, '[data-panel-raw-seq-epoch]', model.raw.seq_epoch);
+    put(root, '[data-panel-raw-last-seq]', model.raw.last_seq);
 
     return model;
 }

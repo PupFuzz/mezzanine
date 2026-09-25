@@ -39,17 +39,18 @@
  *     `unrecognisedValues()` below — and a desk carrying any value outside its set is treated as
  *     not-current: its loop stops and the value is listed, raw, as unrecognised. AT-D3-11.)
  *   · The DRILL-DOWN's fidelity — the uncapped intern list, the transport, derivation and
- *     reporter blocks, the session — which is step 10's.
+ *     reporter blocks, the session — which is `drilldown/drilldown-model.js`'s (Appendix B step 10).
+ *     The panel's header draws this file's label line and currency label rather than a copy of them
+ *     (`deskModel`, `wasLabel`).
  */
 
 import { isRenderState } from '../lobby/render-state.js';
 import { clockTime } from '../wire/clock.js';
 import { contextGauge } from '../wire/context-gauge.js';
-import { formatDuration } from '../wire/duration.js';
 import { heldRendering } from '../wire/animation-set.js';
 import { ACTIVITY_STATES, BADGES, LINK_STATES } from '../wire/member-sets.js';
 import { NO_DATA_YET, UNTITLED } from '../wire/null-render.js';
-import { SEAT_CLOCK, seatClock } from '../wire/age-readout.js';
+import { SEAT_CLOCK, derivationLagLine, seatClock } from '../wire/age-readout.js';
 import { deskDrawsCharacter, taskBubble } from './task-bubble.js';
 
 /** § 5.4 / AT-D3-11: an unrecognised member renders as unrecognised, carrying the raw string. */
@@ -235,7 +236,7 @@ function darkPair(seat, ages) {
  * clock)*. The parenthetical is `activity.last_event_time` as a labelled seat-clock TIMESTAMP and
  * never an elapsed time; with no last event it is not drawn (§ 5.6).
  */
-function wasLabel(seat) {
+export function wasLabel(seat) {
     const at = clockTime(seat.activity?.last_event_time ?? null);
     const activity = seat.activity_state ?? null;
 
@@ -253,14 +254,10 @@ function wasLabel(seat) {
  * it; nothing here adds the time since it arrived, because nothing has delivered a new one.
  */
 function lagLine(seat, stamp) {
-    const ms = seat.derivation?.fold_lag_ms;
+    const words = derivationLagLine(seat.derivation?.fold_lag_ms);
     const asOf = clockTime(stamp);
 
-    if (typeof ms !== 'number' || asOf === null) {
-        return null;
-    }
-
-    return `this state is ${formatDuration(ms / 1000)} behind${DASH}as of ${asOf}`;
+    return words === null || asOf === null ? null : `${words}${DASH}as of ${asOf}`;
 }
 
 /**
@@ -359,8 +356,7 @@ export function unrecognisedValues(seat) {
  *   `stilled` — § 9 F6: the session is gone, so the floor beneath the sign-in prompt is dimmed and
  *   moves nothing ("a frozen floor that still animates is the lie this whole document is written
  *   against").
- * @param {object} [options]    `{ ref_bases }` for the thought bubble (§ 5.2's link rule), and
- *   `reduce` — § 6.4's `prefers-reduced-motion`, which selects each § 6.2 row's reduced-motion
+ * @param {object} [options]    `{ reduce }` — § 6.4's `prefers-reduced-motion`, which selects each § 6.2 row's reduced-motion
  *   FORM. It is not a degradation: the same fact, carried without motion.
  */
 export function deskModel(seat, ages, facts = {}, options = {}) {
@@ -454,7 +450,7 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
         side_table: sideTable(seat),
         // § 5.1 rule 3: "A desk that draws no character draws no bubble", which covers the
         // unconfirmed seat too — the bubble module reads `render_state` alone and cannot know.
-        bubble: character ? taskBubble(seat, { ref_bases: options.ref_bases ?? null }) : null,
+        bubble: character ? taskBubble(seat) : null,
         held: heldId === null ? null : heldRendering(heldId, permitted, options.reduce === true),
     };
 }

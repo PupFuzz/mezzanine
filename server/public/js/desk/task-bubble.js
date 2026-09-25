@@ -145,12 +145,12 @@ export function bubbleText(facts) {
  * instant drawn beside a title is read as the title's freshness, and those are different claims.
  * The member is rendered at full fidelity in the drill-down (§ 5.2).
  */
-export function taskBubble(seat, options = {}) {
+export function taskBubble(seat) {
     if (!deskDrawsCharacter(seat?.render_state)) {
         return null;
     }
 
-    const facts = taskFacts(seat?.task ?? null, options.ref_bases);
+    const facts = taskFacts(seat?.task ?? null);
 
     if (facts === null) {
         return null;

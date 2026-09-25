@@ -68,8 +68,8 @@ export class DeskFloor {
      * @param {{now: function(): number}} clock  the browser's own clock, corrected here by the
      *                         protocol's offset before any row is dated with it
      * @param {object} log     `wire/animation-log.js`'s `createAnimationLog()`
-     * @param {object} [options] `{ ref_bases }`, handed to the thought bubble, and `reduce`
-     *                         (§ 6.4), handed to the desk render and to the animation set
+     * @param {object} [options] `{ reduce }` (§ 6.4), handed to the desk render and to the
+     *                         animation set
      */
     constructor(source, clock, log, options = {}) {
         this.#source = source;
@@ -146,7 +146,11 @@ export class DeskFloor {
         // The `edge` rows first — each is caused by one of the messages in the journal — and the
         // `held` transitions after, because they are consequences of the state those messages left.
         this.#set.edges(journal, at);
-        this.#set.held(frame.desks, this.#held, at);
+        // A seat the protocol REMOVED in this journal (§ 3.5's announcement, § 2.3 row 4's backstop)
+        // has no held object left, so the version that ended its desk's held render is the removal's.
+        this.#set.held(frame.desks, this.#held, at, new Map(journal
+            .filter((entry) => entry.t === 'seat.removed')
+            .map((entry) => [`${entry.install_id}/${entry.seat_id}`, entry.cause])));
 
         return frame;
     }
@@ -196,7 +200,7 @@ export class DeskFloor {
  * @param {{setInterval: Function, clearInterval: Function}} timers  injected, as the ticker's are
  * @param {object} log      the animation log every § 6.2 row is recorded in
  * @param {function(object, string): void} draw  receives each frame and its trigger, `apply` or `tick`
- * @param {object} [options] `{ ref_bases, reduce }`
+ * @param {object} [options] `{ reduce }`
  */
 export function startDeskFloor(source, clock, timers, log, draw, options = {}) {
     const floor = new DeskFloor(source, clock, log, options);

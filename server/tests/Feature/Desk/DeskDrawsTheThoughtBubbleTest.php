@@ -194,8 +194,8 @@ class DeskDrawsTheThoughtBubbleTest extends TestCase
             ['seat' => $this->seatBody(['task' => null])],
             $this->mutatedModules([
                 'task-bubble.js',
-                'const facts = taskFacts(seat?.task ?? null, options.ref_bases);',
-                "const facts = taskFacts(seat?.task ?? { title: 'untitled' }, options.ref_bases);",
+                'const facts = taskFacts(seat?.task ?? null);',
+                "const facts = taskFacts(seat?.task ?? { title: 'untitled' });",
             ]),
         )['bubble'];
 
@@ -276,8 +276,8 @@ class DeskDrawsTheThoughtBubbleTest extends TestCase
         // THE CONTROL — the exact machine § 5.1 refuses, planted in the shipped file.
         $withLinger = $this->mutatedModules([
             'task-bubble.js',
-            'export function taskBubble(seat, options = {}) {',
-            "export function taskBubble(seat, options = {}) {\n    setTimeout(() => {}, 1200);",
+            'export function taskBubble(seat) {',
+            "export function taskBubble(seat) {\n    setTimeout(() => {}, 1200);",
         ]);
 
         $this->assertSame(['setTimeout'], $this->motionIn((string) file_get_contents($withLinger.'/task-bubble.js')),

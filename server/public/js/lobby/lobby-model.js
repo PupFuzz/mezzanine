@@ -410,6 +410,38 @@ export function indicators(fleet) {
     ];
 }
 
+/** § 5.3's fleet-counters row, verbatim: "a `null` `counters` renders as *unreadable*, never as zeros". */
+export const UNREADABLE = 'unreadable';
+
+/**
+ * § 5.3's **fleet counters** row — `GET /api/fleet/health`'s `counters`, "rendered on an operator view
+ * of the health endpoint only" — as `{ readable, statement, rows }`, each row `{ name, value }` in name
+ * order.
+ *
+ * ⛔ A `null` OBJECT IS *unreadable*, NEVER A COLUMN OF ZEROS (§ 5.3, AT-D3-14's panel half). D2
+ * § 8.2.4: "`null` says *we could not read these*; `0` would say *nothing has happened*" — and it is
+ * null exactly when `db` is `down`, so a zero column there would be the clean zero on the one surface
+ * D2's read posture is built to keep honest.
+ *
+ * ⚠ NO PAGE DRAWS THIS YET, AND THAT IS STATED RATHER THAN HIDDEN. § 5.3 places the counters on "an
+ * operator view of the health endpoint", and no Appendix B row builds that view; the render is decided
+ * here, where the lobby's other § 5.3 rows are, so the view that lands inherits the null rule rather than
+ * minting its own. AT-D3-14's panel half asserts it (`Tests\Feature\Floor\TheDrillDownNeverDrawsANullAsAZeroTest`).
+ */
+export function healthCounters(counters) {
+    if (counters === null || typeof counters !== 'object') {
+        return { readable: false, statement: UNREADABLE, rows: [] };
+    }
+
+    return {
+        readable: true,
+        statement: null,
+        rows: Object.entries(counters)
+            .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+            .map(([name, value]) => ({ name, value: String(value) })),
+    };
+}
+
 /**
  * § 9 F17's statement, from the failed layout request's `{ status }` (`../wire/building.js`):
  * "**the building layout could not be loaded — HTTP N**".

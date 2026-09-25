@@ -36,22 +36,24 @@ class DrillDownRendersTheSeatTest extends TestCase
         $this->assertTrue($model['render_state']['recognised']);
         $this->assertSame('working', $model['render_state']['label']);
 
-        // § 4.3's CURRENT TASK: the title, the tier that answered, and the reference — which is
-        // PLAIN TEXT here because no base URL is configured for `card#N` in this deployment
-        // (§ 5.2, § 14 item 3: "a guessed URL is a link that goes somewhere wrong").
+        // § 4.3's CURRENT TASK: the title, the tier that answered, and the reference — PLAIN TEXT,
+        // never a link (§ 5.2, operator ruling 2026-09-13: "a guessed URL is a link that goes
+        // somewhere wrong, which is worse than no link").
         $this->assertTrue($model['task']['present']);
         $this->assertSame('ingest endpoint', $model['task']['title']);
         $this->assertSame('board_card', $model['task']['source']);
         $this->assertSame('card#7338', $model['task']['ref']);
-        $this->assertNull($model['task']['ref_href']);
+        $this->assertArrayNotHasKey('ref_href', $model['task']);
         $this->assertNull($model['task']['degraded_note']);
 
         // § 4.3's CURRENT ACTION. The elapsed time is § 2.4's action elapsed, verbatim, over
         // `started_received_at` — both ends the server clock. `started_at` is the seat's own
-        // claim and is labelled as one, subtracted from nothing.
+        // claim and is labelled as one, subtracted from nothing — and with the seat's
+        // `clock_skew_ms` non-null it carries the skew beside it (§ 5.2: "beside EVERY seat-clock
+        // timestamp in the panel, so a narrative time is never read as an absolute one").
         $this->assertSame('Bash: composer test', $model['action']['descriptor']);
         $this->assertSame('running for 19m 55s', $model['action']['elapsed']);
-        $this->assertSame('14:23:09 (seat clock)', $model['action']['started_at']);
+        $this->assertSame('14:23:09 (seat clock) — seat clock is +412 ms from the server\'s', $model['action']['started_at']);
 
         // § 2.4's quiet age, verbatim.
         $this->assertSame('nothing done for 19m 55s', $model['quiet_age']['line']);
@@ -67,7 +69,7 @@ class DrillDownRendersTheSeatTest extends TestCase
 
         // § 5.2's timeline: only the fields something upstream declares on a stored event.
         $this->assertSame('tool.start', $model['activity']['rows'][0]['kind']);
-        $this->assertSame('14:38:53 (seat clock)', $model['activity']['rows'][0]['event_time']);
+        $this->assertSame('14:38:53 (seat clock) — seat clock is +412 ms from the server\'s', $model['activity']['rows'][0]['event_time']);
         $this->assertSame('14:38:57', $model['activity']['rows'][0]['received_at']);
         $this->assertSame('4m 12s', $model['activity']['rows'][0]['age']);
         $this->assertNull($model['activity']['statement']);
@@ -78,7 +80,18 @@ class DrillDownRendersTheSeatTest extends TestCase
         $this->assertSame('73.2', $dom['[data-panel-context-bar]']['attributes']['value']);
         $this->assertSame('running for 19m 55s', $dom['[data-panel-action-elapsed]']['text']);
         $this->assertSame('ingest endpoint', $dom['[data-panel-task]']['text']);
+        $this->assertSame('card#7338', $dom['[data-panel-task-ref]']['text']);
         $this->assertArrayNotHasKey('href', $dom['[data-panel-task-ref]']['attributes']);
+
+        // § 5.6's skew rule, the other direction: a null skew is NO note on any seat-clock stamp,
+        // never *+0 ms*.
+        $unskewed = $this->probe([
+            'seat' => $this->seatBody(['delivery' => array_merge($this->seatBody()['delivery'], ['clock_skew_ms' => null])]),
+            'now_ms' => $this->nowMs(),
+        ])['model'];
+
+        $this->assertSame('14:23:09 (seat clock)', $unskewed['action']['started_at']);
+        $this->assertNull($unskewed['skew']);
     }
 
     /** § 5.6, member by member, over the same object with each nullable member nulled. */
@@ -160,45 +173,39 @@ class DrillDownRendersTheSeatTest extends TestCase
         $this->assertStringContainsString('unrecognised', $unknown['render_state']['label']);
     }
 
-    /** § 5.2's reference rule: a link only where a base is configured for that shape. */
-    public function test_a_task_reference_becomes_a_link_only_under_a_configured_base(): void
+    /**
+     * § 5.2's reference rule since the operator's 2026-09-13 ruling: "renders as **plain text, never a
+     * link** … no link base URL is configured, because the board is private". The panel's slot is
+     * text and carries no `href` whatever the reference's shape, and `task.degraded` carries § 4.3's
+     * own sentence while a null `task.ref` carries no reference text at all (§ 5.6).
+     */
+    public function test_a_task_reference_is_plain_text_and_never_a_link(): void
     {
-        $bases = ['card' => 'https://board.example/task/{id}', 'repo' => 'https://example.test/{repo}/issues/{id}'];
+        foreach (['card#7338', 'PupFuzz/mezzanine#88', 'something-else'] as $ref) {
+            $task = array_merge($this->seatBody()['task'], ['ref' => $ref]);
+            $probe = $this->probe([
+                'seat' => $this->seatBody(['task' => $task]), 'now_ms' => $this->nowMs(), 'drive_main' => true,
+            ]);
 
-        $probe = $this->probe([
-            'seat' => $this->seatBody(), 'now_ms' => $this->nowMs(), 'ref_bases' => $bases,
-            'ref_probe' => ['card#7338', 'PupFuzz/mezzanine#88', 'something-else', null],
-            'drive_main' => true,
-        ]);
+            $this->assertSame($ref, $probe['model']['task']['ref']);
+            $this->assertArrayNotHasKey('ref_href', $probe['model']['task'], "a link was derived for `{$ref}`");
+            $this->assertSame($ref, $probe['main']['dom']['[data-panel-task-ref]']['text']);
+            $this->assertSame([], $probe['main']['dom']['[data-panel-task-ref]']['attributes'],
+                "the reference slot for `{$ref}` carries an attribute — a link is the one thing it may not be");
+        }
 
-        $this->assertSame('https://board.example/task/7338', $probe['model']['task']['ref_href']);
-        $this->assertSame('https://board.example/task/7338',
-            $probe['main']['dom']['[data-panel-task-ref]']['attributes']['href']);
-
-        // Both shapes D3 § 5.2's rule admits resolve — `card#N`, which is D2 § 4.9's tier 1, and
-        // `<repo>#N`, which was tier 2's and outlived the tier's retirement (card#9234) because
-        // that rule is written over the shape rather than over the tier. A ref of any OTHER shape
-        // gets no link at all rather than being forced into the nearer of the two.
-        $this->assertSame([
-            'https://board.example/task/7338',
-            'https://example.test/PupFuzz/mezzanine/issues/88',
-            null,
-            null,
-        ], $probe['refs']);
-
-        // `task.degraded` carries § 4.3's own sentence, and `task.ref` null carries neither a
-        // link nor a reference text (§ 5.6).
         $degraded = $this->probe([
             'seat' => $this->seatBody(['task' => [
                 'title' => 'the newest open dispatch call', 'source' => 'telemetry', 'ref' => null,
                 'as_of' => '2026-08-23T14:41:00.000Z', 'degraded' => true,
             ]]),
-            'now_ms' => $this->nowMs(), 'ref_bases' => $bases,
-        ])['model'];
+            'now_ms' => $this->nowMs(), 'drive_main' => true,
+        ]);
 
-        $this->assertSame('stale title dropped', $degraded['task']['degraded_note']);
-        $this->assertNull($degraded['task']['ref']);
-        $this->assertNull($degraded['task']['ref_href']);
+        $this->assertSame('stale title dropped', $degraded['model']['task']['degraded_note']);
+        $this->assertNull($degraded['model']['task']['ref']);
+        $this->assertTrue($degraded['main']['dom']['[data-panel-task-ref]']['hidden'],
+            '§ 5.6: a null `task.ref` renders NO reference text, not an empty reference');
     }
 
     /** ⛔ THE CONTROLS — each defect planted in the SHIPPED module and seen to reach the panel. */
@@ -242,5 +249,18 @@ class DrillDownRendersTheSeatTest extends TestCase
             'CONTROL 2 did not bite: the wall-clock fallback was planted and the model still '
             .'reported no ages, so the corrected-clock assertion cannot fail');
         $this->assertNotNull($drifted['action']['elapsed']);
+
+        // CONTROL 3 — THE GUESSED LINK. The reference slot turned back into a link: the plain-text
+        // assertion must see the `href` a guessed URL would carry (§ 5.2's ruling, § 14 item 3).
+        $linked = $this->mutatedModules([
+            'main.js',
+            "    put(root, '[data-panel-task-ref]', task.present ? task.ref : null);",
+            "    put(root, '[data-panel-task-ref]', task.present ? task.ref : null)?.setAttribute('href', 'https://board.example/' + task.ref);",
+        ]);
+
+        $dom = $this->probe(['seat' => $this->seatBody(), 'now_ms' => $this->nowMs(), 'drive_main' => true], $linked)['main']['dom'];
+
+        $this->assertNotSame([], $dom['[data-panel-task-ref]']['attributes'],
+            'CONTROL 3 did not bite: a link was planted on the reference and the slot still carried no attribute');
     }
 }

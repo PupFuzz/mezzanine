@@ -133,8 +133,15 @@ Route::middleware(['auth', 'mfa'])->group(function () {
     // against the composed floors it fetches; a segment naming a room that is not its floor's key
     // is redirected BY THE CLIENT (§ 4.4 row 3), because only the fetched layout knows which floor
     // holds the room. Like the lobby it carries no layout and no fleet data — both are fetched.
-    Route::get('/floor/{floor}', fn (string $floor) => view('floor', ['floor' => $floor]))
+    Route::get('/floor/{floor}', fn (string $floor) => view('floor', ['floor' => $floor, 'seat' => null]))
         ->name('floor');
+
+    // § 4.4's `/floor/{floor}/{seat_id}` — the drill-down open (Appendix B row 10). The SAME page: "the
+    // drill-down is a panel over the floor rather than a route of its own, because closing it must not
+    // cost a reconnect" (§ 4), so the seat segment is handed over as data exactly as the floor's is,
+    // and the client resolves it against the floor's own desks once it holds them.
+    Route::get('/floor/{floor}/{seat}', fn (string $floor, string $seat) => view('floor', ['floor' => $floor, 'seat' => $seat]))
+        ->name('floor.seat');
 });
 
 /*
