@@ -21,7 +21,12 @@ question this file is asking -- does the verdict RESPOND to this defect -- and k
 while the document is broken.
 
 WHAT IT DELIBERATELY DOES NOT ASSERT.  Not coverage: the plants below prove the guards they target
-live -- never that the rest of the guard classes those verifiers carry do.  How many plants, over
+live -- never that the rest of the guard classes those verifiers carry do.  And not the GUARD: the
+differential attributes a red to the plant, never to the leg the plant's comment names -- a plant
+that a broader leg of the same verifier refuses anyway reds whether or not the narrower leg works,
+so it is the author's job to plant where only the named leg can catch it, and the harness cannot
+tell when that was not done (PR #232 round 3, F1: `nonascii-digit` on a `[1-9]` digit red with and
+without the `re.ASCII` it stood for).  How many plants, over
 how many verifiers, in which kinds, is counted at run time and printed on the last line rather than
 written here, so the sentence cannot drift from the list.  Two plants can share one guard class
 (both G3 equalities do) without either being redundant: they discriminate opposite
@@ -114,11 +119,20 @@ because a gate can only be proven on a defect of its own class:
                large enough — the defect is the object getting SMALLER, by one pixel, which is the
                boundary the check states.
   `nonascii-digit`
-            -- replace the anchored figure's first digit with its Arabic-Indic form (U+0660 + d), which
+            -- replace the anchored figure's LAST digit with its Arabic-Indic form (U+0660 + d), which
                is the class "a figure the gate reads with `\\d` is not the ASCII digit its other reader
                requires".  PR #232 round 2 (MINOR-B) is why this exists: G8 compiled `FurnitureBox`'s
                PCRE with Python's Unicode `\\d`, so `4٤0` matched, int()'d to 440 and passed the gate
-               while PHP's ASCII `\\d` refused the same file.
+               while PHP's ASCII `\\d` refused the same file.  The LAST digit, because the shape's
+               first is `[1-9]`, ASCII-only in both engines: a plant there reds with or without the
+               binding and discriminates nothing (round 3, F1).
+  `php-escape`
+            -- insert `\\\\` (a PHP single-quoted literal's escape for one backslash) into the anchored
+               PCRE, which is the class "the literal's bytes are not the pattern's, and a translation
+               that reads the literal compiles a pattern PHP never ran".  PR #232 round 3 (F2) is why
+               this exists: G8 reads `FurnitureBox::DECLARATION` out of the PHP source and refuses the
+               two escapes it cannot pass through byte-for-byte, and until this plant nothing had seen
+               that control fire.
   `instrument`
             -- replace the bold artifact name in the anchored span with the first gate Appendix B's
                Artifact cells name (a bold name whose head noun is `gate` / `gates`), which is the
@@ -637,9 +651,9 @@ PLANTS = [
     (
         # The same leg over the FILE: every `desks` object of the shipped default at least the box.
         # The first object's width is shrunk by one pixel — the boundary the check states — which is
-        # the state the default shipped in until slice B, one object instead of twelve.  The anchor
-        # pins the first `width` after the layer's name and not its value, so a re-authored default
-        # moves the plant.
+        # the state every object of the default shipped in until slice B, here planted on one.  The
+        # anchor pins the first `width` after the layer's name and not its value, so a re-authored
+        # default moves the plant.
         "verify-floor.py",
         "resources/floor/default.tmj",
         r"(\"desks\"[\s\S]*?\"width\":)(\d+)(,)",
@@ -662,8 +676,12 @@ PLANTS = [
     ),
     (
         # PR #232 round 2, MINOR-B — G8e reads the box with the DECLARATION's `\d` bound to ASCII, as
-        # PHP's is.  A non-ASCII digit in the file must red as a box declared zero times in the one
-        # shape, never be read as 440.
+        # PHP's is.  The plant's digit is the width's LAST one, and the position is the whole plant
+        # (round 3, F1): the DECLARATION's first digit is `[1-9]`, an ASCII-only range in either
+        # engine, so a plant on it reds with or without `re.ASCII` and proves nothing about the
+        # binding — while a trailing Arabic-Indic digit is matched by Python's Unicode `\d`, int()'d
+        # to the ASCII figure and passed, and is refused only under `re.ASCII`.  Seen both ways in
+        # round 4: with `re.ASCII` removed from G8e this plant runs GREEN and the harness reds on it.
         "verify-floor.py",
         "resources/floor/furniture-box.js",
         r"(export const FURNITURE_BOX = Object\.freeze\(\{ width: )(\d+)(, height:)",
@@ -671,6 +689,19 @@ PLANTS = [
         "the furniture box's width written with an Arabic-Indic digit, which G8 must refuse as a box "
         "declared in no admitted shape rather than read as the ASCII figure (PR #232 round 2, MINOR-B)",
         "times in the one shape",
+    ),
+    (
+        # PR #232 round 3, F2 — G8e's control over the shape it TRANSLATES.  The DECLARATION is a PHP
+        # single-quoted literal, and `\\` is one of the two escapes whose bytes are not the pattern's;
+        # the control refuses it by name rather than compile a pattern that is not PHP's.  The anchor
+        # pins the constant's name and the pattern's first token, so a re-authored pattern moves it.
+        "verify-floor.py",
+        "server/app/Floor/FurnitureBox.php",
+        r"(private const DECLARATION = '/\^export const FURNITURE_BOX = )(Object)(\\\.freeze)",
+        "php-escape",
+        "the `\\\\` escape written into `FurnitureBox::DECLARATION`, which G8's control must refuse as a "
+        "literal whose bytes are not the PCRE's rather than translate (PR #232 round 3, F2)",
+        "G8 CONTROL: `FurnitureBox::DECLARATION` is",
     ),
     (
         # PR #232 round 1, MAJOR-2 — G8f, section 12's viewport arithmetic.  Three figures the cell
@@ -796,7 +827,8 @@ HOLDS = [
 MUTATIONS = {
     "bump": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) + 1) + m.group(3),
     "shrink": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) - 1) + m.group(3),
-    "nonascii-digit": lambda m: m.group(1) + chr(0x0660 + int(m.group(2)[0])) + m.group(2)[1:] + m.group(3),
+    "nonascii-digit": lambda m: m.group(1) + m.group(2)[:-1] + chr(0x0660 + int(m.group(2)[-1])) + m.group(3),
+    "php-escape": lambda m: m.group(1) + "\\\\" + m.group(2) + m.group(3),
     "bold-bump": lambda m: (m.group(1) + "**"
                             + re.sub(r"^\d+", lambda d: str(int(d.group(0)) + 1), m.group(2)) + "**"
                             + m.group(3)),
@@ -1067,7 +1099,8 @@ if failures:
     sys.exit(1)
 
 print(f"ALL PLANTS CAUGHT — {len(PLANTS)} plants over {len({p[0] for p in PLANTS})} verifiers, "
-       f"each seen to red on a defect of the class its guard exists for "
-       f"({', '.join(sorted({p[3] for p in PLANTS}))}), each red attributable to its plant; "
+       f"each seen to red on a defect of a named class "
+       f"({', '.join(sorted({p[3] for p in PLANTS}))}), each red attributable to its plant and "
+       f"to the guard it names only where the plant is that guard's own discriminant; "
        f"{len(HOLDS)} holds ({', '.join(sorted({p[3] for p in HOLDS}))}), each correct form "
        f"planted and seen NOT to red")

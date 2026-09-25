@@ -1855,14 +1855,17 @@ if m_sprite:
 # The box is parsed with the ONE shape `App\Floor\FurnitureBox` admits -- and the shape is READ OUT
 # OF THAT CLASS (its `DECLARATION` constant, a PCRE this leg translates), never copied here (PR #232
 # round 1, MINOR-4): a copy would be a second home for the one contract that keeps PHP's reading and
-# `import`'s equal, free to drift from it while this gate reported clean.  The translation is held to
-# what the two engines share: Python's `\d` is bound to ASCII with `re.ASCII`, as PCRE's is without
-# `/u` (round 2, MINOR-B: `4٤0` matched here and int()'d to 440 while PHP refused it), and the two
-# escapes a PHP single-quoted literal can carry whose bytes are NOT the pattern's (`\\`, `\'`) are refused
-# by the control below rather than mistranslated.  And the shipped default's every `desks`
-# object is held AT LEAST the box: section 10.3 makes the object the box its desk is drawn inside, so an
-# object smaller than it is section 9 F21's undersized line on every viewer's floor -- the state the
-# default shipped in until slice B, and the one this leg exists to keep it out of.
+# `import`'s equal, free to drift from it while this gate reported clean.  The translation binds
+# Python's `\d` to ASCII with `re.ASCII`, as PCRE's is without `/u` (round 2, MINOR-B: `4٤0` matched
+# here and int()'d to 440 while PHP refused it), and the control below screens exactly three things:
+# the flag set (`m` alone), the capture-group count (two), and the two escapes a PHP single-quoted
+# literal can carry whose bytes are NOT the pattern's (`\\`, `\'`), refused rather than mistranslated.
+# It screens nothing else: an escape the two engines read differently (`\Z`, `\h`) passes it, and is
+# kept out only by the pattern as it stands carrying none (round 3, hygiene b).  And the shipped
+# default's every `desks` object is held AT LEAST the box: section 10.3 makes the object the box its
+# desk is drawn inside, so an object smaller than it is section 9 F21's undersized line on every
+# viewer's floor -- the state the default shipped in until slice B, and the one this leg exists to
+# keep it out of.
 BOX_DECL = prose(r"The furniture box at the cap is (\d+) px wide and (\d+) px tall\*\* \(`([^`]+)`\)")
 GRID_DECL = prose(r"The shipped default's grid is ([\d,]+) px wide and ([\d,]+) px tall\*\*")
 BOX_READER = ROOT / "server/app/Floor/FurnitureBox.php"
