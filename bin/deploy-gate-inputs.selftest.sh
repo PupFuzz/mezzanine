@@ -26,7 +26,11 @@
 # line moves or the gate is renamed, `mutate` reds on the spot rather than letting the case run over
 # the unmutated script and read its green as the check's.
 #
-# RUN: bin/deploy-gate-inputs.selftest.sh          (exit 0 = every case passed)
+# ⚠ A CASE THIS RUNNER CANNOT BUILD IS NAMED, NOT COUNTED. Where the environment prevents constructing a
+# case, `notverified` prints ⚠ NOT VERIFIED HERE saying which and why, the count is repeated in the
+# summary, and the suite does not fail: nothing was measured, so there is no finding either way.
+#
+# RUN: bin/deploy-gate-inputs.selftest.sh          (exit 0 = every case passed; ⚠ lines name what did not run)
 
 set -uo pipefail
 
@@ -39,9 +43,12 @@ REPO="$(cd "$HERE/.." && pwd)"
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 
-fails=0; cases=0
+fails=0; cases=0; unverified=0
 ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1" >&2; fails=$((fails + 1)); }
+# notverified <reason> — a case THIS RUNNER COULD NOT BUILD. Not a pass and not a failure: the case did
+# not run, and naming it is the result (card#10368). The summary repeats the count.
+notverified() { unverified=$((unverified + 1)); printf '  ⚠ NOT VERIFIED HERE  %s\n' "$1" >&2; }
 # `eq` branches rather than chaining `A && ok || bad`: in that chain the reporter's OWN exit status
 # is a second way to reach `bad`, so a printf that fails (a closed or full stdout under a CI lane's
 # redirection) turns a case that PASSED into a FAIL, for a reason that is not about the check.
@@ -251,23 +258,26 @@ has "no deploy script: says nothing was measured"      "is not readable at" "$OU
 section "COULD NOT SPEAK — a failure of the check is never a finding about the release"
 
 # A read of git that FAILED is not a missing file: the deploy refuses it as not established, and here
-# that is this check's exit 2. The object is made unreadable in the fixture's store; a runner on which
-# that is not possible (root reads every mode) is named rather than counted as a pass.
+# that is this check's exit 2. The object is made unreadable in the fixture's store. Two runners cannot
+# build that, and each is named rather than counted as a pass or a fail: one where git has PACKED the
+# blob (its own housekeeping — `gc --auto`, a clone arriving as a pack — decides that, never the change
+# under test), so there is no per-object file to make unreadable; and one where root reads every mode.
+# ⛔ Forcing the object loose would only move this dependency on git's storage layout one layer down.
 mkcase; run
 blob="$(G "$DIR" rev-parse HEAD:server/composer.json)"
 obj="$DIR/.git/objects/${blob:0:2}/${blob:2}"
-if [ -f "$obj" ]; then
+if [ ! -f "$obj" ]; then
+  notverified "the fixture's server/composer.json blob is packed (no loose object at $obj), so the failed-read case did not run"
+else
   chmod 000 "$obj"
   if G "$DIR" cat-file -p "$blob" >/dev/null 2>&1; then
-    printf '  ⚠ NOT VERIFIED HERE  a git object at mode 000 is still readable on this runner (root?), so the failed-read case did not run\n' >&2
+    notverified "a git object at mode 000 is still readable on this runner (root?), so the failed-read case did not run"
   else
     OUT="$(cd "$DIR" && bash "$CHECK" --ref HEAD 2>&1)"; RC=$?
     eq  "a read of the release git could not complete: exit 2, NOT 1" 2 "$RC"
     has "failed read: named as not established, not as a finding" "could not establish a read of" "$OUT"
   fi
   chmod 644 "$obj"
-else
-  bad "the fixture's server/composer.json blob is not a loose object at $obj — the failed-read case cannot be built"
 fi
 
 # The check CRASHING must not be readable as a finding. `set -E` + the ERR trap keep the two apart, and
@@ -296,6 +306,9 @@ eq  "an unknown argument: exit 2"                      2 "$RC"
 has "an unknown argument: stops with the banner, naming it" "⛔ deploy-gate-inputs.sh — unknown argument: --reff" "$OUT"
 
 printf '\n──────────────────────────────────────────────\n'
+if [ "$unverified" -gt 0 ]; then
+  printf '⚠ %d case(s) could NOT BE BUILT on this runner and did not run; each is named above with why.\n' "$unverified" >&2
+fi
 if [ "$fails" -eq 0 ]; then
   printf 'deploy-gate-inputs.selftest.sh: %d assertions, all passed\n' "$cases"; exit 0
 fi
