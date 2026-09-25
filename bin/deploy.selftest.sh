@@ -1956,17 +1956,36 @@ run_refusal "trustProxies('*')" "trusts ALL proxies" --dry-run
 # The condition is produced FOR REAL: one loose object of the fixture's own store, mode 000. Nothing is
 # stubbed and no path is removed — the path is still in the tree at $V2, which is what makes each of these
 # the read-failed case and not the file-missing case beside it.
-blind_object() { # blind_object <rev-expr> — the ONE object <rev-expr> names, unreadable in $ROOT
-  local o f
-  o="$(git -C "$ROOT" rev-parse "$1")"
-  f="$ROOT/.git/objects/${o:0:2}/${o:2}"
+#
+# blind_object <rev-expr> <what does not run> — the ONE object <rev-expr> names, unreadable in $ROOT.
+# Status 0 = the condition HOLDS and the caller runs its cases; non-zero = it does not, and the caller
+# skips exactly the assertions that need it, keeping every other one (card#10423). BLINDED_OBJ is the
+# path of the object file it blinded, for a caller that makes it readable again.
+# ⚠ TWO RUNNERS CANNOT BUILD THIS, and each is NAMED through `notverified`, never counted as a pass or
+# a fail: one where git has PACKED the object — git's own housekeeping (`gc --auto`, a clone arriving
+# as a pack) decides that, never the change under test — so there is no per-object file to make
+# unreadable; and a ROOT one, which reads mode 000. ⛔ Forcing the object loose would only move this
+# dependency on git's storage layout one layer down. Everything else here is a fixture the suite
+# built wrong and stays a RED: a rev that does not resolve, and a hardlink that did not break.
+blind_object() {
+  local o f mode
+  BLINDED_OBJ=
   cases=$((cases+1))
-  if [ -f "$f" ]; then ok "fixture: $1 is a loose object"
-  else bad "fixture: $1 is not a loose object under \$ROOT ($f is not there)"; return 1; fi
+  if o="$(git -C "$ROOT" rev-parse --verify --quiet --end-of-options "$1")"
+  then ok "fixture: $1 resolves in \$ROOT ($o)"
+  else bad "fixture: $1 does not resolve in \$ROOT, so there is no object to blind"; return 1; fi
+  f="$ROOT/.git/objects/${o:0:2}/${o:2}"
+  if [ ! -f "$f" ]; then
+    notverified "$1 is PACKED in the fixture (no loose object at $f), so it cannot be made unreadable here" \
+      "Not run: $2." \
+      "Whether an object is loose or packed is git's own housekeeping, not the change under test."
+    return 1
+  fi
   # $ROOT is a LOCAL clone, so its loose objects are hardlinks to $ORIGIN's and a chmod on one lands
   # on both — which would make the fixture a broken REMOTE as well as a broken checkout, and the
   # deploy's own `git fetch` would then be the thing that failed, before any of this. Break the link
   # first: the condition these cases are about is this CHECKOUT's object store (card#9611).
+  mode="$(stat -c %a "$f")"
   cp -p "$f" "$f.unlinked" && mv -f "$f.unlinked" "$f"
   chmod 000 "$f"
   cases=$((cases+1))
@@ -1974,29 +1993,37 @@ blind_object() { # blind_object <rev-expr> — the ONE object <rev-expr> names, 
   then ok "fixture: \$ORIGIN can still read $1 — only the checkout's copy is blinded"
   else bad "fixture: \$ORIGIN lost $1 too (the hardlink was not broken)"; fi
   # ASSERTED, not assumed — root opens every mode, and under a root runner these cases would certify
-  # nothing while looking like they had. They red HERE, naming why, rather than skipping (canon #9).
-  cases=$((cases+1))
-  if git -C "$ROOT" cat-file -p "$1" >/dev/null 2>&1
-  then bad "fixture: git can still read $1 (a root runner cannot hold this condition)"
-  else ok "fixture: git really cannot read $1 as this user"; fi
+  # nothing while looking like they had. The object gets its mode back, since nothing was blinded.
+  if git -C "$ROOT" cat-file -p "$o" >/dev/null 2>&1; then
+    chmod "$mode" "$f"
+    notverified "git can still read $1 at mode 000 on this runner (root?), so it cannot be made unreadable here" \
+      "Not run: $2."
+    return 1
+  fi
+  cases=$((cases+1)); ok "fixture: git really cannot read $1 as this user"
+  BLINDED_OBJ="$f"
 }
 
 # THE SECURITY INSTANCE, in the release where it costs something: this v2 DOES `trustProxies('*')` — the
 # case four lines above, which refuses on it — and with its blob unreadable the old reader handed A11 an
 # empty string, so the refusal could not fire and the run reported the SAFE state and exited 0.
 mkfix git_read_trust_star trust_star
-blind_object "$V2:server/bootstrap/app.php"
-run_refusal "unreadable bootstrap/app.php (a release that DOES trust \`*\`)" \
-  "git could not read server/bootstrap/app.php" --dry-run
-hasnt "unreadable bootstrap/app.php: makes no claim about a file it never read" \
-  "no trustProxies() configured" "$OUT"
+if blind_object "$V2:server/bootstrap/app.php" \
+  "the unreadable bootstrap/app.php case, in a release that DOES trust \`*\`"; then
+  run_refusal "unreadable bootstrap/app.php (a release that DOES trust \`*\`)" \
+    "git could not read server/bootstrap/app.php" --dry-run
+  hasnt "unreadable bootstrap/app.php: makes no claim about a file it never read" \
+    "no trustProxies() configured" "$OUT"
+fi
 
 # The § 6.9 gate's own denominator: the migrations TREE object, unreadable, with every migration still in
 # the tree. Both directions are proven — this, and the legitimate empty directly below it.
 mkfix git_read_migrations
-blind_object "$V2:server/database/migrations"
-run_refusal "unreadable migrations tree" "git could not read server/database/migrations" --dry-run
-hasnt "unreadable migrations tree: does not certify the list it never got" "no undeclared ALTER" "$OUT"
+if blind_object "$V2:server/database/migrations" \
+  "the unreadable migrations-tree case (the § 6.9 gate)"; then
+  run_refusal "unreadable migrations tree" "git could not read server/database/migrations" --dry-run
+  hasnt "unreadable migrations tree: does not certify the list it never got" "no undeclared ALTER" "$OUT"
+fi
 
 # THE OTHER DIRECTION, one variable away: a release that genuinely ships no migration at all. An empty
 # list at status 0 is an honest answer and must still PASS — a fix that refused here would be a
@@ -2026,8 +2053,10 @@ hasnt "app.php as a directory: claims nothing about the trusted proxies it never
 
 # A10b's key list, from a .env.example whose blob cannot be read: zero keys compared, nothing warned.
 mkfix git_read_env_example
-blind_object "$V2:server/.env.example"
-run_refusal "unreadable .env.example" "git could not read server/.env.example" --dry-run
+if blind_object "$V2:server/.env.example" \
+  "the unreadable .env.example case (A10b)"; then
+  run_refusal "unreadable .env.example" "git could not read server/.env.example" --dry-run
+fi
 
 # ── card#9608 r2 — the reader's remaining false readings ──────────────────────────────────────
 # ⛔ A SYMLINK IS `blob` TO ls-tree (measured, git 2.53.0: `120000 blob …`), so the TYPE check passed
@@ -2206,45 +2235,47 @@ three_releases() {
 }
 
 three_releases git_rev_unreadable_object
-blind_object "$V2"
+if blind_object "$V2" \
+  "A7's unreadable --ref <sha>, its absent-ref twin on that store, and A8's unreadable ancestry"; then
 
-# A7. `--ref <sha>` is the deploy's own documented recovery path (the in-window banner: "deploy the
-# previous commit deliberately with --ref <sha> --allow-unreleased"), and it is the path that meets
-# a damaged object first. The ref RESOLVES — a full object name always does — and the object behind
-# it does not come back. The old call got exit 1 for that, the same status a ref that is not there
-# gives, and told the operator to go looking for a bad ref name.
-run_refusal "--ref <sha> whose object git cannot read (A7)" \
-  "git could not read the object $V2" --dry-run --ref "$V2"
-hasnt "unreadable object: makes no claim about the ref, which resolved" \
-  "does not resolve to a commit on" "$OUT"
-has  "unreadable object: git's own error reaches the operator (never silenced)" \
-  "unable to open loose object" "$OUT"
-has  "unreadable object: says what was and was not established" \
-  "The REFS were read; the object behind them did not come back." "$OUT"
+  # A7. `--ref <sha>` is the deploy's own documented recovery path (the in-window banner: "deploy the
+  # previous commit deliberately with --ref <sha> --allow-unreleased"), and it is the path that meets
+  # a damaged object first. The ref RESOLVES — a full object name always does — and the object behind
+  # it does not come back. The old call got exit 1 for that, the same status a ref that is not there
+  # gives, and told the operator to go looking for a bad ref name.
+  run_refusal "--ref <sha> whose object git cannot read (A7)" \
+    "git could not read the object $V2" --dry-run --ref "$V2"
+  hasnt "unreadable object: makes no claim about the ref, which resolved" \
+    "does not resolve to a commit on" "$OUT"
+  has  "unreadable object: git's own error reaches the operator (never silenced)" \
+    "unable to open loose object" "$OUT"
+  has  "unreadable object: says what was and was not established" \
+    "The REFS were read; the object behind them did not come back." "$OUT"
 
-# THE OTHER DIRECTION, over the SAME broken store, one --ref apart: a name that is genuinely not
-# there still refuses as absent. The refs are read from `packed-refs` and loose refs, never from the
-# object store, so this answer IS established even on this host — and a fix that answered "git could
-# not read it" here would be the same defect pointing the other way.
-run_refusal "a ref that is genuinely absent, on that same broken store" \
-  "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
-hasnt "absent ref: names no read that failed" "git could not read" "$OUT"
-has  "absent ref: says the refs WERE read" "The refs were read and carry no such name" "$OUT"
+  # THE OTHER DIRECTION, over the SAME broken store, one --ref apart: a name that is genuinely not
+  # there still refuses as absent. The refs are read from `packed-refs` and loose refs, never from the
+  # object store, so this answer IS established even on this host — and a fix that answered "git could
+  # not read it" here would be the same defect pointing the other way.
+  run_refusal "a ref that is genuinely absent, on that same broken store" \
+    "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
+  hasnt "absent ref: names no read that failed" "git could not read" "$OUT"
+  has  "absent ref: says the refs WERE read" "The refs were read and carry no such name" "$OUT"
 
-# A8, on the same fixture: `hotfix`'s own commit is readable, so A7 passes and the ancestry walk is
-# what meets the blinded object. `--is-ancestor` exits 1 for "it is not one" and 128 when it could
-# not read the graph; `2>/dev/null` on an `if !` read the second as the first.
-run_refusal "the ancestry cannot be read (A8)" \
-  "is contained in origin/main (\`git merge-base --is-ancestor\` exited 128)" --dry-run --ref hotfix
-hasnt "unreadable ancestry: states nothing about the commit graph" "is not contained in origin/main" "$OUT"
-has  "unreadable ancestry: git's own error reaches the operator" "unable to open loose object" "$OUT"
+  # A8, on the same fixture: `hotfix`'s own commit is readable, so A7 passes and the ancestry walk is
+  # what meets the blinded object. `--is-ancestor` exits 1 for "it is not one" and 128 when it could
+  # not read the graph; `2>/dev/null` on an `if !` read the second as the first.
+  run_refusal "the ancestry cannot be read (A8)" \
+    "is contained in origin/main (\`git merge-base --is-ancestor\` exited 128)" --dry-run --ref hotfix
+  hasnt "unreadable ancestry: states nothing about the commit graph" "is not contained in origin/main" "$OUT"
+  has  "unreadable ancestry: git's own error reaches the operator" "unable to open loose object" "$OUT"
 
-# --allow-unreleased waives a FINDING — "this commit is not released". There is no finding here to
-# waive, so the flag does not apply and the deploy still refuses. Its control is two cases below,
-# where the same flag deploys the same hotfix once the store is readable.
-run --dry-run --ref hotfix --allow-unreleased
-eq  "unreadable ancestry: --allow-unreleased waives no question that was never answered" 1 "$RC"
-has "unreadable ancestry: and says why the flag does not apply" "--allow-unreleased does NOT apply here" "$OUT"
+  # --allow-unreleased waives a FINDING — "this commit is not released". There is no finding here to
+  # waive, so the flag does not apply and the deploy still refuses. Its control is two cases below,
+  # where the same flag deploys the same hotfix once the store is readable.
+  run --dry-run --ref hotfix --allow-unreleased
+  eq  "unreadable ancestry: --allow-unreleased waives no question that was never answered" 1 "$RC"
+  has "unreadable ancestry: and says why the flag does not apply" "--allow-unreleased does NOT apply here" "$OUT"
+fi
 
 # ── THE CONTROLS: the same fixture, the same three --ref values, every object readable ──────────
 three_releases git_rev_readable_object
@@ -2326,29 +2357,31 @@ has  "tree tag: says outright that this establishes nothing about the object sto
 # each has a control one variable away.
 
 three_releases git_rev_syntax_walks_the_store
-blind_object "$V2"
+if blind_object "$V2" \
+  "A7's rev-syntax walk over an unreadable object, and its absent-name twin on that store"; then
 
-# `--ref main~2` is V1, and reaching it means READING V2 — the blinded object — for its parent. The
-# first candidate tried is `refs/remotes/origin/main~2`, so this is the string concatenation of
-# $REF, not some exotic third path.
-run_refusal "--ref <rev syntax> whose walk meets an unreadable object (A7)" \
-  "git could not resolve 'refs/remotes/origin/main~2'" --dry-run --ref 'main~2'
-hasnt "rev syntax over a broken store: does NOT call it the ref's absence" \
-  "does not resolve to a commit on" "$OUT"
-hasnt "rev syntax over a broken store: does not send the operator to check the spelling" \
-  "Check the spelling" "$OUT"
-has "rev syntax over a broken store: git's own error reaches the operator" \
-  "unable to open loose object" "$OUT"
-has "rev syntax over a broken store: names the discriminator it used — git's silence" \
-  "that answer is SILENT" "$OUT"
-# THE OTHER DIRECTION, same store, one --ref apart: an absent NAME is answered by the refs alone and
-# is still an absence. This is the claim the fix must not weaken, asserted against the fix that
-# could have.
-run_refusal "an absent name on that same store is still an absence, not a read" \
-  "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
-hasnt "absent name beside it: no read-failure claim" "git could not resolve" "$OUT"
-hasnt "absent name beside it: no abbreviation note (the --ref is not hex)" \
-  "looked for it as an ABBREVIATED commit id" "$OUT"
+  # `--ref main~2` is V1, and reaching it means READING V2 — the blinded object — for its parent. The
+  # first candidate tried is `refs/remotes/origin/main~2`, so this is the string concatenation of
+  # $REF, not some exotic third path.
+  run_refusal "--ref <rev syntax> whose walk meets an unreadable object (A7)" \
+    "git could not resolve 'refs/remotes/origin/main~2'" --dry-run --ref 'main~2'
+  hasnt "rev syntax over a broken store: does NOT call it the ref's absence" \
+    "does not resolve to a commit on" "$OUT"
+  hasnt "rev syntax over a broken store: does not send the operator to check the spelling" \
+    "Check the spelling" "$OUT"
+  has "rev syntax over a broken store: git's own error reaches the operator" \
+    "unable to open loose object" "$OUT"
+  has "rev syntax over a broken store: names the discriminator it used — git's silence" \
+    "that answer is SILENT" "$OUT"
+  # THE OTHER DIRECTION, same store, one --ref apart: an absent NAME is answered by the refs alone and
+  # is still an absence. This is the claim the fix must not weaken, asserted against the fix that
+  # could have.
+  run_refusal "an absent name on that same store is still an absence, not a read" \
+    "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
+  hasnt "absent name beside it: no read-failure claim" "git could not resolve" "$OUT"
+  hasnt "absent name beside it: no abbreviation note (the --ref is not hex)" \
+    "looked for it as an ABBREVIATED commit id" "$OUT"
+fi
 
 # ── CONTROL: the same --ref, one variable away — every object readable ─────────────────────────
 three_releases git_rev_syntax_readable_store
@@ -2458,72 +2491,74 @@ eq  "no release branch: the flag waives it for a branch too" 0 "$RC"
 # the refusal now carries the way out, because on THIS store the recovery deploy above is refused
 # too and the old text left an operator with the app down no next step at all.
 three_releases git_rev_unreadable_ancestry
-blind_object "$V2"
-run --dry-run --ref hotfix --allow-unreleased
-eq  "unreadable ancestry: still refused — a question never answered has no finding to waive" 1 "$RC"
-has "unreadable ancestry: says origin/main itself was THERE, and what was not read" \
-  "origin/main IS there" "$OUT"
-has "unreadable ancestry: names the repair as the next step" \
-  "git -C $ROOT fsck" "$OUT"
-has "unreadable ancestry: tells the operator the recovery deploy meets this same refusal" \
-  "--ref <sha> --allow-unreleased" "$OUT"
-# ⛔ AND THE PRESCRIBED REPAIR MUST ACTUALLY REPAIR (card#9611 r4). The refusal used to name
-# `fetch --prune` as "asks origin for the objects behind its refs again" — and it does not: fetch
-# negotiates from REFS, and this refusal is reached only AFTER git_commit_of proved $SHA readable
-# and git_ref_oid resolved refs/remotes/origin/main, so the object that cannot be read is an
-# INTERIOR graph object this checkout's own refs already claim, and origin is never asked for it.
-# Measured, git 2.53.0, on clones of a local origin with one middle commit's loose object damaged
-# (the hardlink broken first, exactly as blind_object does):
-#   object mode 000, remote unchanged  → `fetch --prune origin` exit 0, nothing transferred, mode
-#                                         still 000, `cat-file -t` still 128
-#   object mode 000, remote advanced   → exit 128, object still unreadable
-#   object DELETED                     → exit 0, `cat-file -t` still 128 afterwards
-# An operator with the app down ran it, got exit 0 and no output, read that as the repair having
-# worked, and met the identical refusal. The two repairs that DO work were measured on those same
-# clones: `chmod 644` on the blinded file → `cat-file -t` 0; and replacing .git alone from a
-# `clone --no-checkout` then `checkout --force <sha>` → exit 0, object readable, with server/.env,
-# server/storage/ and .deploy-failed still in place because only .git moved.
-# ⚠ A `has` on a command STRING cannot catch advice that does not work — that is how the false
-# claim survived a green suite. So the assertions below are over the CLAIM: the prescription that
-# does not work must be named as not working, and the ones that do must be present with the
-# sentence that makes them usable.
-hasnt "unreadable ancestry: never prescribes a fetch as the way to get the object back" \
-  "asks origin for the objects behind its refs again" "$OUT"
-has "unreadable ancestry: says outright that fetch cannot restore it" \
-  "⛔ git fetch CANNOT bring that object back" "$OUT"
-has "unreadable ancestry: and why — the refs already claim the commit, so origin is never asked" \
-  "ALREADY claim that commit, so origin is never asked for the objects behind it" "$OUT"
-has "unreadable ancestry: names the in-place repair for a file that is there but unreadable" \
-  "chmod 444 $ROOT/.git/objects/" "$OUT"
-has "unreadable ancestry: and the last resort for one that is GONE — the object store only" \
-  "git clone --no-checkout" "$OUT"
-has "unreadable ancestry: which moves .git and nothing else" \
-  "mv $ROOT/.git $ROOT/.git.broken" "$OUT"
-has "unreadable ancestry: and puts the deploy's own commit back in the tree afterwards" \
-  "git -C $ROOT checkout --force" "$OUT"
-# repack stays in the refusal, described as what it IS. Measured all-or-nothing, git 2.53.0:
-# blinded object → `fatal: Failed to traverse parents of commit …`, exit 128, no new pack written
-# and nothing deleted; deleted object → exit 128; unreadable ref file → `fatal: bad object
-# refs/heads/keep`, exit 128, the pack and the branch-only commit both still there. It salvages
-# nothing, so it is named as the CONFIRMATION step it is.
-has "unreadable ancestry: names repack as the confirmation step" \
-  "git -C $ROOT repack -a -d" "$OUT"
-hasnt "unreadable ancestry: and does not call repack a salvage" \
-  "from what it can still read" "$OUT"
-has "unreadable ancestry: says repack refuses outright rather than salvaging" \
-  "refuses outright if anything reachable cannot be read" "$OUT"
-# ⛔ SAFETY, and the reason this assertion exists at all (card#9611 r3). This refusal is read by an
-# operator with the app DOWN, and the advice used to end "re-fetch it from origin, or RE-CLONE
-# $DEPLOY_ROOT from it". A re-clone destroys `server/.env` — created on the host, in no commit (this
-# repo's own .gitignore), so this host's APP_KEY and DB_PASSWORD exist nowhere else and backups are
-# out of scope on this install — along with `server/storage/` (the logs the in-window banner tells
-# the operator to tail) and `.deploy-failed` (the marker it says must be reviewed). Every repair the
-# refusal now names works inside the checkout's .git and touches none of them.
-hasnt "unreadable ancestry: never tells a mid-incident operator to re-clone the deploy root" \
-  "re-clone $ROOT from it" "$OUT"
-has "unreadable ancestry: says so, so the operator does not reach for one" \
-  "DO NOT RE-CLONE $ROOT" "$OUT"
-has "unreadable ancestry: and names what a re-clone would destroy" "server/.env" "$OUT"
+if blind_object "$V2" \
+  "the unreadable-ancestry refusal under --allow-unreleased, and every repair it prescribes"; then
+  run --dry-run --ref hotfix --allow-unreleased
+  eq  "unreadable ancestry: still refused — a question never answered has no finding to waive" 1 "$RC"
+  has "unreadable ancestry: says origin/main itself was THERE, and what was not read" \
+    "origin/main IS there" "$OUT"
+  has "unreadable ancestry: names the repair as the next step" \
+    "git -C $ROOT fsck" "$OUT"
+  has "unreadable ancestry: tells the operator the recovery deploy meets this same refusal" \
+    "--ref <sha> --allow-unreleased" "$OUT"
+  # ⛔ AND THE PRESCRIBED REPAIR MUST ACTUALLY REPAIR (card#9611 r4). The refusal used to name
+  # `fetch --prune` as "asks origin for the objects behind its refs again" — and it does not: fetch
+  # negotiates from REFS, and this refusal is reached only AFTER git_commit_of proved $SHA readable
+  # and git_ref_oid resolved refs/remotes/origin/main, so the object that cannot be read is an
+  # INTERIOR graph object this checkout's own refs already claim, and origin is never asked for it.
+  # Measured, git 2.53.0, on clones of a local origin with one middle commit's loose object damaged
+  # (the hardlink broken first, exactly as blind_object does):
+  #   object mode 000, remote unchanged  → `fetch --prune origin` exit 0, nothing transferred, mode
+  #                                         still 000, `cat-file -t` still 128
+  #   object mode 000, remote advanced   → exit 128, object still unreadable
+  #   object DELETED                     → exit 0, `cat-file -t` still 128 afterwards
+  # An operator with the app down ran it, got exit 0 and no output, read that as the repair having
+  # worked, and met the identical refusal. The two repairs that DO work were measured on those same
+  # clones: `chmod 644` on the blinded file → `cat-file -t` 0; and replacing .git alone from a
+  # `clone --no-checkout` then `checkout --force <sha>` → exit 0, object readable, with server/.env,
+  # server/storage/ and .deploy-failed still in place because only .git moved.
+  # ⚠ A `has` on a command STRING cannot catch advice that does not work — that is how the false
+  # claim survived a green suite. So the assertions below are over the CLAIM: the prescription that
+  # does not work must be named as not working, and the ones that do must be present with the
+  # sentence that makes them usable.
+  hasnt "unreadable ancestry: never prescribes a fetch as the way to get the object back" \
+    "asks origin for the objects behind its refs again" "$OUT"
+  has "unreadable ancestry: says outright that fetch cannot restore it" \
+    "⛔ git fetch CANNOT bring that object back" "$OUT"
+  has "unreadable ancestry: and why — the refs already claim the commit, so origin is never asked" \
+    "ALREADY claim that commit, so origin is never asked for the objects behind it" "$OUT"
+  has "unreadable ancestry: names the in-place repair for a file that is there but unreadable" \
+    "chmod 444 $ROOT/.git/objects/" "$OUT"
+  has "unreadable ancestry: and the last resort for one that is GONE — the object store only" \
+    "git clone --no-checkout" "$OUT"
+  has "unreadable ancestry: which moves .git and nothing else" \
+    "mv $ROOT/.git $ROOT/.git.broken" "$OUT"
+  has "unreadable ancestry: and puts the deploy's own commit back in the tree afterwards" \
+    "git -C $ROOT checkout --force" "$OUT"
+  # repack stays in the refusal, described as what it IS. Measured all-or-nothing, git 2.53.0:
+  # blinded object → `fatal: Failed to traverse parents of commit …`, exit 128, no new pack written
+  # and nothing deleted; deleted object → exit 128; unreadable ref file → `fatal: bad object
+  # refs/heads/keep`, exit 128, the pack and the branch-only commit both still there. It salvages
+  # nothing, so it is named as the CONFIRMATION step it is.
+  has "unreadable ancestry: names repack as the confirmation step" \
+    "git -C $ROOT repack -a -d" "$OUT"
+  hasnt "unreadable ancestry: and does not call repack a salvage" \
+    "from what it can still read" "$OUT"
+  has "unreadable ancestry: says repack refuses outright rather than salvaging" \
+    "refuses outright if anything reachable cannot be read" "$OUT"
+  # ⛔ SAFETY, and the reason this assertion exists at all (card#9611 r3). This refusal is read by an
+  # operator with the app DOWN, and the advice used to end "re-fetch it from origin, or RE-CLONE
+  # $DEPLOY_ROOT from it". A re-clone destroys `server/.env` — created on the host, in no commit (this
+  # repo's own .gitignore), so this host's APP_KEY and DB_PASSWORD exist nowhere else and backups are
+  # out of scope on this install — along with `server/storage/` (the logs the in-window banner tells
+  # the operator to tail) and `.deploy-failed` (the marker it says must be reviewed). Every repair the
+  # refusal now names works inside the checkout's .git and touches none of them.
+  hasnt "unreadable ancestry: never tells a mid-incident operator to re-clone the deploy root" \
+    "re-clone $ROOT from it" "$OUT"
+  has "unreadable ancestry: says so, so the operator does not reach for one" \
+    "DO NOT RE-CLONE $ROOT" "$OUT"
+  has "unreadable ancestry: and names what a re-clone would destroy" "server/.env" "$OUT"
+fi
 
 # ── card#9611 r3 — ONE CASE PER DECLARED ANSWER OF git_ref_oid ─────────────────────────────────
 # ⛔ WHY THE COVERAGE IS SHAPED THIS WAY, which is this round's lesson and not a note. r2 covered
@@ -2839,27 +2874,28 @@ eq "the control: the same checkout, index readable, deploys" 0 "$RC"
 # unguarded fetch died with git's own 1, the status the exit table says means "refused, nothing was
 # touched". THE BANNER AND THE PROMISE ARE THE RED. That is the whole shape of this card.
 three_releases fetch_tip_blind
-FETCH_TIP_OID="$(gitc "$ROOT" rev-parse refs/remotes/origin/main)"
-FETCH_TIP_OBJ="$ROOT/.git/objects/${FETCH_TIP_OID:0:2}/${FETCH_TIP_OID:2}"
-blind_object refs/remotes/origin/main
-run --dry-run
-eq  "fetch on an unreadable tip: exit 1" 1 "$RC"
-has "fetch on an unreadable tip: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" \
-  "⛔ REFUSED — " "$OUT"
-has "fetch on an unreadable tip: the phase-A promise" \
-  "Nothing was changed. The previous release is still serving." "$OUT"
-has "fetch on an unreadable tip: named as the fetch, with the status git gave" \
-  "git could not fetch origin (\`git fetch\` exited 1)" "$OUT"
-has "fetch on an unreadable tip: git's own message reaches the operator" "bad object" "$OUT"
-hasnt "fetch on an unreadable tip: nothing claims the ref did not resolve — no ref was resolved" \
-  "does not resolve to a commit on" "$OUT"
-has "fetch on an unreadable tip: says the failure is in THIS checkout's store, not at the remote" \
-  "a ref of THIS CHECKOUT that git could not read" "$OUT"
-has "fetch on an unreadable tip: and that a fetch is not the repair for it" \
-  "it is the thing that failed" "$OUT"
-unlogged "fetch on an unreadable tip: never opened the window" "artisan down"
-# THE CONTROL, one variable away: the same fixture with that object readable deploys.
-chmod 444 "$FETCH_TIP_OBJ"
+if blind_object refs/remotes/origin/main \
+  "F1, the fetch over an unreadable remote-tracking tip (its control below still runs)"; then
+  run --dry-run
+  eq  "fetch on an unreadable tip: exit 1" 1 "$RC"
+  has "fetch on an unreadable tip: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" \
+    "⛔ REFUSED — " "$OUT"
+  has "fetch on an unreadable tip: the phase-A promise" \
+    "Nothing was changed. The previous release is still serving." "$OUT"
+  has "fetch on an unreadable tip: named as the fetch, with the status git gave" \
+    "git could not fetch origin (\`git fetch\` exited 1)" "$OUT"
+  has "fetch on an unreadable tip: git's own message reaches the operator" "bad object" "$OUT"
+  hasnt "fetch on an unreadable tip: nothing claims the ref did not resolve — no ref was resolved" \
+    "does not resolve to a commit on" "$OUT"
+  has "fetch on an unreadable tip: says the failure is in THIS checkout's store, not at the remote" \
+    "a ref of THIS CHECKOUT that git could not read" "$OUT"
+  has "fetch on an unreadable tip: and that a fetch is not the repair for it" \
+    "it is the thing that failed" "$OUT"
+  unlogged "fetch on an unreadable tip: never opened the window" "artisan down"
+  chmod 444 "$BLINDED_OBJ"
+fi
+# THE CONTROL, one variable away: the same fixture with that object readable deploys. It runs on every
+# runner — where the tip could not be blinded, the object was readable all along.
 run --dry-run
 eq "the control: the same checkout, that object readable, deploys" 0 "$RC"
 
@@ -4330,10 +4366,12 @@ if [ "$FULL_OK" = 1 ]; then
   # and a trust-`mktemp` primitive reads that silence as absence — measured with the mutation: "⛔ REFUSED
   # — 'main~2' does not resolve to a commit on origin", which `full_refused` asserts absent.
   three_releases scratch_full_broken_store
-  blind_object "$V2"
-  full_refused "full TMPDIR over a broken store, --ref main~2" 1 \
-    "the scratch file for git's error output while resolving 'refs/remotes/origin/main~2' was created and could not be written" \
-    --dry-run --ref 'main~2'
+  if blind_object "$V2" \
+    "F1b, the full-TMPDIR refusal over a broken store (--ref main~2)"; then
+    full_refused "full TMPDIR over a broken store, --ref main~2" 1 \
+      "the scratch file for git's error output while resolving 'refs/remotes/origin/main~2' was created and could not be written" \
+      --dry-run --ref 'main~2'
+  fi
 
   # F2 — A13's work DIRECTORY: after the loader's, A7's and A8's. On a tmpfs `mktemp -d` SUCCEEDS out of
   # blocks too (measured here), so this is the probe's refusal, through a file made inside the directory.
@@ -4371,17 +4409,19 @@ if [ "$(/usr/bin/id -u)" = 0 ]; then
     "root opens a mode-000 file, so \`cat\` succeeds and the case would certify nothing."
 else
   three_releases scratch_stderr_unreadable
-  blind_object "$V2"
-  : > "$T/knobs/git_stderr_unreadable"
-  run_refusal "git's stderr unreadable at \`cat\`, over a broken store" \
-    "⛔ REFUSED — git's error output could not be read back while trying to resolve 'refs/remotes/origin/main~2' (\`git rev-parse --verify\` exited 1, \`cat\` exited 1)" \
-    --dry-run --ref 'main~2'
-  rm -f "$T/knobs/git_stderr_unreadable"
-  has "git's stderr unreadable: cat's own error is on screen and names the file" "Permission denied" "$OUT"
-  hasnt "git's stderr unreadable: never a ref that does not resolve — git's message was not read, not absent" \
-    "does not resolve to a commit on" "$OUT"
-  hasnt "git's stderr unreadable: claims no read of the store that failed — that is what could not be read" \
-    "git could not resolve 'refs/remotes/origin/main~2'" "$OUT"
+  if blind_object "$V2" \
+    "C1, git's stderr unreadable at \`cat\` over a broken store"; then
+    : > "$T/knobs/git_stderr_unreadable"
+    run_refusal "git's stderr unreadable at \`cat\`, over a broken store" \
+      "⛔ REFUSED — git's error output could not be read back while trying to resolve 'refs/remotes/origin/main~2' (\`git rev-parse --verify\` exited 1, \`cat\` exited 1)" \
+      --dry-run --ref 'main~2'
+    rm -f "$T/knobs/git_stderr_unreadable"
+    has "git's stderr unreadable: cat's own error is on screen and names the file" "Permission denied" "$OUT"
+    hasnt "git's stderr unreadable: never a ref that does not resolve — git's message was not read, not absent" \
+      "does not resolve to a commit on" "$OUT"
+    hasnt "git's stderr unreadable: claims no read of the store that failed — that is what could not be read" \
+      "git could not resolve 'refs/remotes/origin/main~2'" "$OUT"
+  fi
 fi
 
 # C1b — C1's TWIN, on git_commit_of's OWN cat-status branch rather than git_ref_oid's (card#9932 review,
