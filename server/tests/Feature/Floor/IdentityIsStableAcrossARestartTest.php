@@ -147,6 +147,41 @@ class IdentityIsStableAcrossARestartTest extends TestCase
     }
 
     /**
+     * GREEN — TWO ARRIVALS IN ONE RENDER (§ 14 item 27). `fx-collision`'s `two_arrivals` run inserts
+     * § 3.3's colliding `aimla-impl-4` and the free-slotted `aimla-win-1` in one turn, both released
+     * by one discovery snapshot. `aimla-pm` is displaced once, so the log carries exactly one A16
+     * row, and § 11 now states its cause for this case: the key of the arrival that sorts LOWEST in
+     * § 3.2's `order`, ascending by `(h, seat_id)`.
+     *
+     * ⛔ THE EXPECTED CAUSE IS RE-DERIVED FROM § 3.2's PUBLISHED FUNCTION, never transcribed, and the
+     * run is first checked to BE the case the ruling is about: a run whose two seats landed in two
+     * renders would hold two single-arrival turns, where any rule answers the same, and this GREEN
+     * would pass over the case it exists to pin.
+     *
+     * ⚠ THE PAIR ALSO SEPARATES § 3.2's ORDER FROM PLAIN KEY ORDER, and that is asserted rather than
+     * assumed: `aimla-win-1` hashes lower and `aimla/aimla-impl-4` is the lower string, so a client
+     * that sorted keys as text would name the other seat and red here.
+     */
+    public function test_green_two_arrivals_in_one_render_record_the_lowest_sorting_arrival_as_a16s_cause(): void
+    {
+        $result = $this->floorRun('two_arrivals');
+        [$lowest, $highest] = $this->twoArrivalsInOneRender($result);
+
+        $this->assertNotSame(min($lowest, $highest), $lowest,
+            'the fixture no longer separates § 3.2\'s order from plain key order, so this GREEN would '
+            .'not tell the published rule from a text sort');
+
+        $rows = $this->rowsFor($result, 'A16');
+
+        $this->assertCount(1, $rows, 'the log does not carry exactly one A16 row for one displacement');
+        $this->assertSame($this->documentCollision()['displaced'], $rows[0]['seat_id'],
+            'the A16 row names a seat other than the one § 3.3 says the colliding arrival displaces');
+        $this->assertSame($lowest, $rows[0]['cause'],
+            "A16's cause is not the arrival that sorts lowest in § 3.2's order, which is § 11's "
+            .'answer for several arrivals in one render (§ 14 item 27)');
+    }
+
+    /**
      * ⛔ RED — THE DESK KEYED ON `session.session_id`. § 3.2's key is `(install_id, seat_id)`; a
      * client that hashes the session instead moves a desk, character and all, every time a seat
      * restarts its session. Watch it once: it is the identity defect D1 § 3.4's 30-day incident is
@@ -223,6 +258,68 @@ class IdentityIsStableAcrossARestartTest extends TestCase
             array_intersect_key($this->slotsOf($this->lastFloor($shipped), self::ROOM), $this->documentSlots()['slots']),
             'the shipped assignment shifted a desk when one seat was provisioned',
         );
+    }
+
+    /**
+     * ⛔ THIRD RED — THE HIGHEST-SORTING ARRIVAL RECORDED AS A16's CAUSE. The two-arrival run's A16
+     * row then names the other seat, which is what makes the GREEN above evidence about the rule
+     * rather than about a fixture with one possible answer.
+     */
+    public function test_red_recording_the_highest_sorting_arrival_names_the_other_seat(): void
+    {
+        $highestFirst = $this->mutatedModules([self::FLOOR_SCREEN,
+            'this.#set.displaced(install_id, seat_id, arrivals[0], at);',
+            'this.#set.displaced(install_id, seat_id, arrivals[arrivals.length - 1], at);',
+        ]);
+
+        $result = $this->floorRun('two_arrivals', $highestFirst);
+        [$lowest, $highest] = $this->twoArrivalsInOneRender($result);
+        $rows = $this->rowsFor($result, 'A16');
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($highest, $rows[0]['cause'],
+            'the plant did not take: the highest-sorting arrival was planted and is not the recorded cause');
+        $this->assertNotSame($lowest, $rows[0]['cause'],
+            'the RED did not bite: the plant records the same cause as the published rule');
+    }
+
+    /**
+     * The two keys the `two_arrivals` run adds to the room, in § 3.2's `order` — after asserting
+     * that no frame drew one of them without the other, which is what makes the run two arrivals
+     * in ONE render.
+     *
+     * @param  array<string, mixed>  $result
+     * @return array{0: string, 1: string}
+     */
+    private function twoArrivalsInOneRender(array $result): array
+    {
+        $published = $this->documentSlots()['slots'];
+        $arrived = array_values(array_diff(
+            array_keys($this->slotsOf($this->lastFloor($result), self::ROOM)),
+            array_keys($published),
+        ));
+
+        $this->assertCount(2, $arrived, 'the run did not add exactly two seats to the room');
+
+        foreach ($result['floor_renders'] as $render) {
+            foreach ($render['frame']['rooms'] ?? [] as $room) {
+                if (($room['install_id'] ?? null) !== self::ROOM) {
+                    continue;
+                }
+
+                $drawn = array_intersect($arrived, array_column($room['desks'] ?? [], 'key'));
+
+                $this->assertContains(count($drawn), [0, 2],
+                    'a frame drew one of the two arrivals without the other — they landed in two renders, '
+                    .'and the case § 14 item 27 rules on never occurred');
+            }
+        }
+
+        // § 3.2: `order` = the room's seats ascending by (h, seat_id).
+        usort($arrived, fn (string $a, string $b): int => [$this->fnv1a32($a), explode('/', $a)[1]]
+            <=> [$this->fnv1a32($b), explode('/', $b)[1]]);
+
+        return [$arrived[0], $arrived[1]];
     }
 
     /** § 3.2's published hash, for the one expectation this file computes rather than reads. */

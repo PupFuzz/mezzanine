@@ -605,10 +605,10 @@ export class FloorScreen {
             }
 
             // § 3.2's order over the seats that arrived with a delta this journal carries. § 11
-            // names A16's cause as *the arriving seat's key*, singular; with more than one arrival
-            // settling in one turn the lowest-sorting of them is recorded, so that two browsers
-            // replaying one journal agree. ⚠ § 11 states no answer for that case and this is the
-            // one chosen, not one read off the document.
+            // names A16's cause as *the arriving seat's key*; with more than one arrival settling
+            // in one turn it is the one that sorts lowest in that order, so that two browsers
+            // replaying one journal agree — § 14 item 27's ruling, which adopted the rule this
+            // line was first written with, and AT-D3-3's two-arrival GREEN pins it.
             const arrivals = assignment.order.filter((key) => !before.has(key) && arrived.has(key));
 
             if (arrivals.length === 0) {
