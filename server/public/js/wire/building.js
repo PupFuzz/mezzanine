@@ -20,12 +20,11 @@
  * fetch, what to reuse, what a failure leaves — is driven under `node` against a scripted `fetch`
  * (`tests/Feature/Lobby/lobby-probe.mjs`) over bodies the real routes served.
  *
- * ⚠ WHO CALLS WHAT, TODAY. The lobby (`lobby/lobby-entry.js`) fetches the layout. NOTHING YET CALLS
- * `enterRooms()` OR THE TWO MESSAGE APPLIES: rooms are entered by § 4.4's floor route, which is
- * Appendix B step 7 (card#7341) and unbuilt, and messages arrive on § 2.2's stream, which the
- * client protocol opens — `wire/fleet-client.js`, built at step 3, which NO PAGE CONSTRUCTS before
- * step 8, so the lobby still opens no stream. They are here because row 13 is the cache, and are
- * exercised by `Tests\Feature\Building\TheClientHoldsRoomMapsByVersionTest`.
+ * ⚠ WHO CALLS WHAT. The lobby (`lobby/lobby-entry.js`) fetches the layout. `enterRooms()` and the
+ * two message applies are called by the floor screen (`floor/floor-screen.js`, Appendix B step 7),
+ * which the floor page (`floor/main.js`, step 8) runs over the client protocol's stream; the lobby
+ * still opens no stream (step 9). They are exercised by
+ * `Tests\Feature\Building\TheClientHoldsRoomMapsByVersionTest` and the floor suite.
  */
 
 /** § 8.7's layout endpoint. */

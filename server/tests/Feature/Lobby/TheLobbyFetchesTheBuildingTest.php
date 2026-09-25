@@ -27,8 +27,8 @@ use Tests\Feature\Feed\FeedTestCase;
  * the page carries no layout for the client to read instead of the fetch.
  *
  * ⚠ AND THE LOBBY OPENS NO STREAM. § 2.2's steps 1–2 are Appendix B step 3's protocol, which IS
- * built (`public/js/wire/fleet-client.js`) and which no page constructs before step 8, so no
- * `building.layout` reaches this page yet; the message is applied here by calling the client's own
+ * built (`public/js/wire/fleet-client.js`) and which the floor page constructs (step 8) and this
+ * page does not until step 9, so no `building.layout` reaches this page yet; the message is applied here by calling the client's own
  * apply, which is the half this slice owns.
  */
 class TheLobbyFetchesTheBuildingTest extends FeedTestCase

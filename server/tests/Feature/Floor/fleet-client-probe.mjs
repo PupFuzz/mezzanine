@@ -27,15 +27,27 @@
  *                                               //  reduced-motion form and logs `motion: false`
  *      "durations":  [ <seconds>, … ]           // `formatDuration` sampled on these, for a test's
  *                                               //  expected string — the shipped format, not a copy
+ *      "recovery":   true                       // FLOOR § 2.2 steps 7–9: construct the client WITH
+ *                                               //  its scheduler, on the scenario's queue, so it
+ *                                               //  detects a dead feed and re-opens; and the fake
+ *                                               //  stream fires `open` / `error` as a browser's does
+ *      "stream_refusals": [ {from_ms, until_ms} ] // an `EventSource` constructed inside a window
+ *                                               //  errors before `open` — the `503` a maintenance
+ *                                               //  window answers a re-open with (AT-D3-8)
  *    }`
+ *   A message entry `{ "at_ms": N, "end": true }` ends the current stream at N — the server closing
+ *   it, which a browser reports as `error` — rather than delivering an envelope.
  * stdout — JSON: `{ "runs": [ <one run per repeat> ], "durations": [ … ] }`, each run
  *   `{ "records": [ … ], "final": <the last record>, "unscripted": [], "listeners": [ {type: n} ],
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
+ *      "streams": [ {opened_at, open_fired, refused, ended_at, closed_at} ],
  *      "desk_renders": [ {at, trigger, frame} ], "floor_renders": [ {at, frame} ],
  *      "animation_log": [ <§ 11 rows> ] }`
  *   and each record
  *   `{ "at", "label", "outcome", "seats", "event_log", "requests", "phase", "clock_offset_ms",
- *      "read_status": { "<key>": {missing, failStreak, confirmedAt} }, "discrepancy_state" }`.
+ *      "read_status": { "<key>": {missing, failStreak, confirmedAt} }, "discrepancy_state",
+ *      "strip", "failure" }` — the last two the SHIPPED status strip and failure renders over the
+ *   client's own `feed`, which is what AT-D3-7's strip half and AT-D3-8 read without a floor.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE BROWSER'S CLOCK IS THE SCENARIO CLOCK PLUS `browser_clock_ms`, and nothing else. That
@@ -121,6 +133,8 @@ const { formatDuration } = await import(pathToFileURL(join(dir, 'duration.js')).
 const { createAnimationLog } = await import(pathToFileURL(join(dir, 'animation-log.js')).href);
 const { startDeskFloor } = await import(pathToFileURL(join(dir, '..', 'desk', 'desk-floor.js')).href);
 const { startFloorScreen } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
+const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'status-strip.js')).href);
+const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 
 const fx = JSON.parse(readFileSync(0, 'utf8') || '{}');
 
@@ -152,7 +166,13 @@ async function replay(scenario) {
 
     const timers = [];
     let seq = 0;
-    const schedule = (at, label, fire) => timers.push({ at, seq: seq++, label, fire });
+    const schedule = (at, label, fire) => {
+        const timer = { at, seq: seq++, label, fire };
+
+        timers.push(timer);
+
+        return timer;
+    };
 
     // ⛔ TWO TRANSPORTS OVER ONE RESPONSE MAP, AND THE SPLIT IS THE POINT. The protocol's requests
     // settle on the SCENARIO CLOCK, because § 2.2's 500 ms connect window is a timing rule the
@@ -169,21 +189,59 @@ async function replay(scenario) {
 
     const http = scriptedFetch(fleetPaths, {
         schedule: (delay, label, fire) => schedule(now + delay, label, fire),
+        clock: () => now,
     });
     const buildingHttp = scriptedFetch(buildingPaths);
 
     const streams = [];
+
+    const recovery = scenario.recovery === true;
+    const refusedAt = (t) => (scenario.stream_refusals ?? []).some((w) => t >= w.from_ms && t < w.until_ms);
 
     class FakeEventSource {
         constructor(path) {
             this.path = path;
             this.openedAt = now;
             this.listeners = {};
+            this.refused = false;
+            this.openFired = false;
             streams.push(this);
+
+            // ⛔ ONLY A RECOVERY SCENARIO HEARS `open` AND `error`. Every scenario written before
+            // Appendix B step 8 replays exactly as it did — the same events on the same queue — and
+            // a client with no scheduler registers no listener for either.
+            if (recovery) {
+                const refused = refusedAt(now);
+
+                schedule(now, refused ? 'stream refused' : 'stream open', () => {
+                    if (this.closedAt !== undefined) {
+                        return 'closed';
+                    }
+
+                    if (refused) {
+                        this.refused = true;
+                        this.endedAt = now;
+                        this.fire('error');
+
+                        return 'refused';
+                    }
+
+                    this.openFired = true;
+                    this.fire('open');
+
+                    return 'opened';
+                });
+            }
         }
 
         addEventListener(type, callback) {
             (this.listeners[type] ??= []).push(callback);
+        }
+
+        fire(type) {
+            for (const callback of this.listeners[type] ?? []) {
+                callback({ type });
+            }
         }
 
         close() {
@@ -192,12 +250,30 @@ async function replay(scenario) {
     }
 
     for (const message of scenario.messages ?? []) {
+        if (message.end === true) {
+            schedule(message.at_ms, 'stream end', () => {
+                const es = streams[streams.length - 1];
+
+                if (es === undefined || es.closedAt !== undefined || es.refused || es.endedAt !== undefined) {
+                    return 'dropped';
+                }
+
+                es.endedAt = now;
+                es.fire('error');
+
+                return 'ended';
+            });
+
+            continue;
+        }
+
         const label = `message ${message.envelope.t} ${message.envelope.seat_id ?? ''} ${message.envelope.state_version ?? ''}`;
 
         schedule(message.at_ms, label, () => {
             const es = streams[streams.length - 1];
 
-            if (es === undefined || es.openedAt > message.at_ms || es.closedAt !== undefined) {
+            if (es === undefined || es.openedAt > message.at_ms || es.closedAt !== undefined
+                || es.refused || es.endedAt !== undefined) {
                 return 'dropped';
             }
 
@@ -209,7 +285,26 @@ async function replay(scenario) {
         });
     }
 
-    const client = new FleetClient(http.fetch, FakeEventSource, clock);
+    // The recovery's scheduler, on the scenario queue. A cancelled timer is REMOVED from the queue
+    // rather than left to fire as a no-op, so a cancellation takes no turn and draws no render.
+    const recoveryTimers = {
+        after(ms, fire) {
+            return schedule(now + ms, 'recovery timer', () => {
+                fire();
+
+                return 'fired';
+            });
+        },
+        cancel(timer) {
+            const i = timers.indexOf(timer);
+
+            if (i >= 0) {
+                timers.splice(i, 1);
+            }
+        },
+    };
+
+    const client = new FleetClient(http.fetch, FakeEventSource, clock, recovery ? recoveryTimers : null);
     const records = [];
     const ageRenders = [];
     const deskRenders = [];
@@ -267,6 +362,8 @@ async function replay(scenario) {
             clock_offset_ms: client.clockOffsetMs,
             read_status: Object.fromEntries(keys.map((k) => [k, client.readStatus(k)])),
             discrepancy_state: client.discrepancyState(),
+            strip: JSON.parse(JSON.stringify(statusStrip(client.feed, client.fleet, { reduce: scenario.reduce === true }))),
+            failure: JSON.parse(JSON.stringify(failureRender(client.feed))),
         });
     };
 
@@ -350,6 +447,13 @@ async function replay(scenario) {
             Object.entries(s.listeners).map(([type, list]) => [type, list.length]),
         )),
         pending_timers: timers.length,
+        streams: streams.map((s) => ({
+            opened_at: s.openedAt,
+            open_fired: s.openFired,
+            refused: s.refused,
+            ended_at: s.endedAt ?? null,
+            closed_at: s.closedAt ?? null,
+        })),
         rejections: [...rejections],
         age_renders: ageRenders,
         desk_renders: deskRenders,

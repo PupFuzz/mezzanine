@@ -14,8 +14,8 @@
  *
  * ⛔ AND IT DRIVES THE SET OVER THE REAL LOG. `ops` below runs `edges()`, `held()` and
  * `displaced()` against a real `createAnimationLog()`, which is the only way a row the set writes
- * for a trigger no page supplies yet — A16's, whose trigger is Appendix B row 7's slot function —
- * is seen at all rather than taken on the module's word.
+ * for a trigger this probe cannot reach through a page — A16's, whose trigger is Appendix B row 7's
+ * slot function — is seen at all rather than taken on the module's word.
  *
  * stdin  — JSON: `{ "reduce": bool, "ops": [ { "op": "edges", "journal": [ … ] }
  *                                          | { "op": "held", "desks": {…}, "seats": {…}, "at": N }

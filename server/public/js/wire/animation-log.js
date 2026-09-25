@@ -21,6 +21,13 @@
  * scans this file's source for both.
  *
  * `rows` is every row written, in call order, as a frozen copy per read. A row is never amended.
+ *
+ * ⛔ RETENTION IS THE CONSTRUCTING CALLER's OPT-IN (§ 11, § 14 item 26). `createAnimationLog(n)` keeps
+ * the most recent `n` rows written, the oldest dropped first; with no argument it keeps every row,
+ * which is the contract as step 2 built it and how the harness and every acceptance test construct
+ * it. The floor page passes § 12's figure. Retention drops ROWS and never the registry of open
+ * episodes, so bound (i)'s refusals are the same under any window — and what a window cannot promise
+ * (a `left` row whose `entered` row has been dropped) is § 11's to state.
  */
 
 /** The error every refusal throws — one class, so a caller and a test can tell it from a bug. */
@@ -31,8 +38,9 @@ export class AnimationLogRefusal extends Error {
     }
 }
 
-export function createAnimationLog() {
+export function createAnimationLog(retention) {
     const written = [];
+    const keep = Number.isInteger(retention) && retention > 0 ? retention : null;
     const open = new Map();
     let seq = 0;
     const freshId = () => `ep-${++seq}`;
@@ -44,6 +52,10 @@ export function createAnimationLog() {
             throw new AnimationLogRefusal(`${op}: no \`at\` was supplied, and this log reads no clock of its own`);
         }
         written.push(Object.freeze({ ...fields, at }));
+
+        if (keep !== null && written.length > keep) {
+            written.splice(0, written.length - keep);
+        }
     }
 
     // The § 11 row tuple, in its order, for the two calls that open an episode.

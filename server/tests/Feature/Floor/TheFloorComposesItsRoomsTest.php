@@ -149,8 +149,12 @@ class TheFloorComposesItsRoomsTest extends TestCase
         // ⛔ NO SECOND HAND. Minute resolution only: the value carries hours and minutes and the two
         // angles a face is drawn from, and nothing at second resolution — a second hand stepping in
         // 15 s jumps is the *looks broken* a later maintainer repairs with a `setInterval`.
-        $this->assertSame(['hours', 'minutes', 'hour_angle_deg', 'minute_angle_deg', 'sky', 'label'],
+        // `text` is § 6.2 A17 constraint 5's ACCESSIBLE TEXT — the same minute, as `HH:MM`, set in the
+        // same render as the hands (card#7341 step 8) — and it is minute resolution too.
+        $this->assertSame(['hours', 'minutes', 'hour_angle_deg', 'minute_angle_deg', 'sky', 'text', 'label'],
             array_keys($set), 'the room render carries a member beyond § 4.2\'s minute-resolution clock and sky');
+        $this->assertSame(sprintf('%02d:%02d', $set['hours'], $set['minutes']), $set['text'],
+            'the clock\'s accessible text does not read the minute its hands show');
 
         // § 6.5: a cold start onto a feed that never came up sets NOTHING — "a plausible time on a
         // page that has never been live is exactly the zero that rule refuses".
@@ -624,14 +628,15 @@ class TheFloorComposesItsRoomsTest extends TestCase
     /**
      * ⛔ RED — THE ROOM SET ON EVERY RENDER. § 6.5's property is that A17's value is set by a render
      * that establishes or re-establishes a LIVE feed and by nothing else; a client that sets it on
-     * every render shows a plausible time on a page that has never been live, and — once step 8's
-     * poll exists — re-reads the viewer's clock every 10 s for the whole duration of a dead feed,
-     * which is § 6.3's second forbidden form arriving through the recovery path.
+     * every render shows a plausible time on a page that has never been live, and — with step 8's
+     * poll — re-reads the viewer's clock every 10 s for the whole duration of a dead feed, which is
+     * § 6.3's second forbidden form arriving through the recovery path (AT-D3-6's Fourth RED,
+     * `TheFeedDyingIsVisibleWithinFortyFiveSecondsTest`, plants that half).
      */
     public function test_red_a_room_set_on_every_render_shows_a_time_on_a_page_that_was_never_live(): void
     {
         $always = $this->mutatedModules([self::FLOOR_SCREEN,
-            '        if (heartbeat || established) {',
+            '        if (set) {',
             '        if (true) {',
         ]);
 

@@ -28,7 +28,8 @@
  *
  * ⚠ WHAT IS NOT HERE, named rather than left as a silence. § 5.3's sweep age and ingest-recency
  * age are fleet readouts with no published wording (§ 14 item 17), which the lobby draws as
- * labelled timestamps and the floor draws on the status strip at step 8. The derivation lag is
+ * labelled timestamps, and the floor's status strip (`floor/status-strip.js`, step 8) draws them the
+ * same way, through the lobby's own `indicators()`. The derivation lag is
  * `fetch-fresh` and never ticked (§ 7.4), so it is no 1 s readout. The panel's own ages — the
  * receipt age under the transport block's stamp, the timeline row's age — are step 10's.
  */

@@ -13,8 +13,8 @@
  *
  * ⛔ NO POLL AND NO SOCKET ON THIS PAGE. The delta feed (D2 § 8.3, § 8.4) and § 2.2's ADMIT — which
  * is the discovery snapshot itself since card#7341 step 3 — live in the client protocol,
- * `wire/fleet-client.js`, which is built and which no page constructs before Appendix B step 8;
- * § 9 F1's 10 s degraded poll is out of this slice too. The one repeat fetch this file can make is
+ * `wire/fleet-client.js`, which the FLOOR page constructs (Appendix B step 8) and this page does
+ * not yet; § 9 F1's 10 s degraded poll is that protocol's too, so the lobby has none. The one repeat fetch this file can make is
  * § 4.1's discrepancy budget, which is bounded by `DiscrepancyBudget` — now `wire/discrepancy-budget.js`,
  * the same budget the protocol spends — and is not a cadence. ⚠ Step 9 replaces THIS file's own
  * trigger with the protocol's, so that one disagreement costs one fetch rather than two.
@@ -27,7 +27,8 @@
  * to a re-render is the person this line is for.
  */
 
-import { lobbyModel, storeUnavailableStatement, DiscrepancyBudget } from './lobby-model.js';
+import { lobbyModel, DiscrepancyBudget } from './lobby-model.js';
+import { LAST_KNOWN_GOOD, keptLabel, snapshotRefusalStatement } from '../wire/failure-render.js';
 import { buildingModel } from './building-model.js';
 import { enter, fetchSnapshot } from './lobby-entry.js';
 import { Building } from '../wire/building.js';
@@ -266,7 +267,7 @@ function render(snapshot) {
             : `${indicator.label}: ${indicator.value} · ${indicator.detail}`;
     }
 
-    statement(model.store_unavailable, model.store_unavailable === null ? null : 'last known good');
+    statement(model.store_unavailable, model.store_unavailable === null ? null : LAST_KNOWN_GOOD);
 
     holding = true;
 
@@ -282,32 +283,15 @@ async function load() {
 
 /** One snapshot response, rendered — or refused in words. */
 async function show(response) {
-    if (response.status === null) {
-        // The request never reached a status. Say so; do not draw an empty lobby.
-        statement(
-            'fleet state could not be requested — the browser could not reach the server',
-            holding ? 'last known good' : null,
-        );
+    // § 9 F4, and every other refusal — including a request that never reached a status — in the
+    // words `wire/failure-render.js` owns for every screen. Never an empty lobby.
+    if (response.status === null || !response.ok) {
+        statement(snapshotRefusalStatement(response.status, response.body), keptLabel(holding));
 
         return;
     }
 
     const body = response.body ?? {};
-
-    if (!response.ok) {
-        // § 9 F4 — `503 fleet_unavailable`, with the refusal's own `server_time`.
-        // Every other non-200 is reported with the code D2 § 8.6 puts in the body rather than
-        // being folded into F4's sentence, which would name a cause that is not true.
-        statement(
-            response.status === 503
-                ? storeUnavailableStatement(body.server_time)
-                : `fleet state is unavailable — the read surface answered HTTP ${response.status}`
-                    + (typeof body.error === 'string' ? ` (${body.error})` : ''),
-            holding ? 'last known good' : 'nothing has been rendered yet — there is no earlier floor to keep',
-        );
-
-        return;
-    }
 
     const model = render(body);
 

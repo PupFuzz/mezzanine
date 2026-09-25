@@ -12,9 +12,10 @@
  * reason is theirs: there is no browser on the build host, so a decision in a DOM file is a
  * decision no check can exercise.
  *
- * ⚠ NO PAGE CONSTRUCTS THE CLIENT PROTOCOL BEFORE Appendix B ROW 8, so nothing calls this on a
- * page yet either. What row 8 adds is the stream recovery and the page that owns it; what this
- * module owns is what a floor looks like once something has applied a message to it.
+ * ⛔ ITS PAGE IS `floor/main.js` (Appendix B row 8), which constructs the client protocol with its
+ * stream recovery and draws each frame this module returns. What this module owns is what a floor
+ * looks like once something has applied a message to it — the status strip and the failure renders
+ * included, on every frame shape.
  *
  * ⛔ THE DRAIN IS HERE, AND THE DESK FLOOR IS HANDED WHAT THIS SCREEN DRAINED. § 2.5's apply path
  * belongs to whoever owns the apply, which is the screen; `desk/desk-floor.js` keeps its own
@@ -46,6 +47,8 @@ import { coordModel } from '../coord/coord-model.js';
 import { correctedNowMs } from '../wire/duration.js';
 import { floors } from '../lobby/lobby-model.js';
 import { buildJoin } from './coord-join.js';
+import { statusStrip } from './status-strip.js';
+import { failureRender } from '../wire/failure-render.js';
 import {
     assignSlots,
     backWallBand,
@@ -164,10 +167,10 @@ export class FloorScreen {
     /** § 4.2's wall clock and sky, `null` until a render that established a LIVE feed (§ 6.5). */
     #tick = null;
 
-    /** Whether the last render saw the protocol holding a live feed — § 6.5's ESTABLISHMENT edge. */
-    #wasLive = false;
-
-    /** The `post_ref`s whose A19/A20 rows have been written, so a redelivery draws nothing new. */
+    /**
+     * The `post_ref`s whose A19/A20 rows have been written, so a redelivery draws nothing new —
+     * trimmed on every draw to the posts the protocol still holds (`#coordinate`, § 14 item 25).
+     */
     #drawn = new Set();
 
     /**
@@ -335,6 +338,19 @@ export class FloorScreen {
         const composed = this.#composed();
         const failure = this.#building.layoutFailure;
 
+        // § 9 F6: "ANY read returns 401" — the building surface's two requests included, which go
+        // through `wire/building.js` and not through the protocol's own reads.
+        if (failure?.status === 401 || this.#roomRefused()) {
+            this.#client.readRefused(401);
+        }
+
+        // Appendix B row 8: the status strip and the failure renders, on every frame this screen
+        // draws — a failure is never allowed to be the one thing a frame shape leaves out.
+        const narration = {
+            strip: statusStrip(this.#client.feed, this.#client.fleet, { reduce: this.#options.reduce === true }),
+            failure: failureRender(this.#client.feed),
+        };
+
         // ⛔ THE DESKS ARE DRAWN WHATEVER THE LAYOUT SAYS, and they are drawn first: F17's "every
         // seat stays reachable; no composition is asserted on either screen" is a statement about
         // the COMPOSITION, not about the desks, and a screen that withheld them would have made a
@@ -359,6 +375,7 @@ export class FloorScreen {
                 room: this.#tick,
                 desks: deskFrame,
                 notices: Object.freeze([]),
+                ...narration,
             });
         }
 
@@ -378,46 +395,40 @@ export class FloorScreen {
                 notices: route.redirect === null
                     ? Object.freeze([`the floor ${this.#segment} is not in the building`])
                     : Object.freeze([]),
+                ...narration,
             });
         }
 
-        return this.#drawFloor(route.floor, deskFrame, failure, journal, at);
+        return this.#drawFloor(route.floor, deskFrame, failure, journal, at, narration);
     }
 
     /**
      * § 6.5's property, and not a list of renders: A17's wall clock and sky are set by a render that
      * establishes or re-establishes a LIVE feed, and by nothing else.
      *
-     * A `feed.heartbeat` is what A17 FIRES on (§ 6.2), and the connect sequence's snapshot — and a
-     * successful reconnect's — SETS the value with no log row at all, because nothing happened to any
-     * seat. Before either, the room has no value and is rendered as having none: "a plausible time
-     * on a page that has never been live is exactly the zero that rule refuses".
+     * A `feed.heartbeat` is what A17 FIRES on (§ 6.2). What SETS the value with no log row at all is
+     * the ESTABLISHMENT the protocol journals (`feed.established`): the connect sequence's snapshot,
+     * and the first message on a re-opened stream — a successful reconnect. Before either the room has
+     * no value and is rendered as having none: "a plausible time on a page that has never been live is
+     * exactly the zero that rule refuses".
      *
-     * ⚠ WHAT THIS CANNOT YET TELL APART, named rather than guarded against: F1's 10 s POLL response
-     * is also a snapshot apply, and § 6.5 says it sets nothing — the poll being the timer that
-     * amendment removed. No polling mode exists before Appendix B step 8, so no poll response can
-     * reach this journal; the step that builds one owes its own marking of those responses, and this
-     * comment is where that obligation is left rather than a branch no input can select today.
+     * ⛔ A POLL SETS NOTHING (§ 6.5, § 9 F1; AT-D3-6's Fourth RED). A poll's rows are a full snapshot
+     * in the journal like any other, and they are deliberately not what is read here: "the poll IS the
+     * timer" the amendment removed, so a client that set the room on one would advance the clock every
+     * 10 s of a dead feed. Only the protocol can tell a live feed coming back from a read it made
+     * because the feed is down, which is why the establishment is its journal line and not a guess
+     * from the rows.
      */
     #setRoom(journal) {
-        const live = this.#client.phase === 'live';
-        // ⛔ THE ESTABLISHMENT IS THE EDGE INTO `live`, NOT A SNAPSHOT ROW IN THE JOURNAL. The two
-        // agree on a fleet with seats and part company on one with none: the journal carries a row per
-        // SEAT a snapshot delivered, so a live feed over an empty population journals nothing and a
-        // reader looking for a row would leave the clock unset on a healthy fleet — which is § 9 F1's
-        // feed-down claim made falsely, the exact inverse of the defect A17 exists to prevent.
-        const established = live && !this.#wasLive;
-        const heartbeat = journal.some((entry) => entry.t === 'feed.heartbeat');
+        const set = journal.some((entry) => entry.t === 'feed.heartbeat' || entry.t === 'feed.established');
 
-        this.#wasLive = live;
-
-        if (heartbeat || established) {
+        if (set) {
             this.#tick = roomTick(this.#clock.now(), this.#options.local_time);
         }
     }
 
     /** One composed floor: its rooms placed, its desks slotted, its band, and its lines. */
-    #drawFloor(floor, deskFrame, failure, journal, at) {
+    #drawFloor(floor, deskFrame, failure, journal, at, narration) {
         const held = new Map();
         const extents = new Map();
 
@@ -572,7 +583,15 @@ export class FloorScreen {
             desk_positions: Object.fromEntries(positions),
             coord,
             notices: Object.freeze(notices),
+            ...narration,
         });
+    }
+
+    /** Whether any room's last map request was refused `401` (§ 9 F6's *any read*). */
+    #roomRefused() {
+        const target = this.#target();
+
+        return target !== null && target.rooms.some((room) => this.#building.room(room.install_id)?.failure?.status === 401);
     }
 
     /** The held seats grouped by their install — each room's own rendered seat set (§ 3.2). */
@@ -666,6 +685,7 @@ export class FloorScreen {
                 join,
                 reasons,
                 checks,
+                truncated: this.#client.coordTruncated,
             });
 
             // The line's endpoints are DESK POSITIONS, which is why this render is step 7's at all:
@@ -692,6 +712,20 @@ export class FloorScreen {
         // § 6.2 A18 over every thread on the floor: entered while the thread is open with two
         // endpoints that resolve, left when either stops being true.
         this.#set.lines(threads, at);
+
+        // § 5.7 / § 14 item 25: the record of animated posts takes no figure of its own — it is
+        // trimmed to the `post_ref`s the protocol still holds, so it is bounded by the protocol's
+        // cap. The stated cost: a post redelivered after its thread was evicted animates again,
+        // because nothing held says it was drawn before.
+        const held = new Set(messages
+            .filter((m) => m.t === 'coord.round')
+            .map((m) => m.coord_round?.post_ref ?? null));
+
+        for (const ref of this.#drawn) {
+            if (!held.has(ref)) {
+                this.#drawn.delete(ref);
+            }
+        }
 
         return Object.freeze(rooms);
     }
@@ -757,6 +791,8 @@ export function startFloorScreen(client, fetchImpl, clock, log, draw, options = 
     const screen = new FloorScreen(client, new Building(fetchImpl), clock, log, options);
 
     return {
+        // The desk floor the screen runs — the 1 s age tick's population (§ 2.5), for a page.
+        desks: screen.desks,
         enter: async () => {
             await screen.enter();
         },

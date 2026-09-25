@@ -66,7 +66,7 @@ export function renderCoordLayer(root, messages, installId) {
             // written here, in the layer that decides nothing, precisely so that no fact is
             // resting on it; § 14 item 17's closure act is what would ratify a string.
             row.textContent = [thread.label, thread.carrier,
-                `${thread.beads} post${thread.beads === 1 ? '' : 's'}`, thread.received]
+                `${thread.beads_label} post${thread.beads === 1 ? '' : 's'}`, thread.received]
                 .filter((v) => v !== null && v !== '')
                 .join(' · ');
 

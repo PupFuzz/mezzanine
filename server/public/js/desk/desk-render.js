@@ -35,10 +35,9 @@
  *     is THIS file's is the § 7.3 TREATMENT: whether a lag, a `config_invalid` reporter, an
  *     unrecognised state or a desk with nobody at it permits the render's loop to run. The edge
  *     animations and the frames a loop is actually drawn at are the set's and a drawing layer's.
- *   · MEMBERSHIP TESTING of `activity_state`, `link_state` and the badges (§ 5.4). `render_state`
- *     is membership-tested here because the desk switches on it; the other sets' unrecognised
- *     render is AT-D3-11's, gated at step 8. The *was:* form and the badge cluster carry the raw
- *     wire value in the meantime, which § 5.4 permits and never guesses past.
+ *   · (Since Appendix B step 8, every one of § 7.6's six member sets is membership-tested here —
+ *     `unrecognisedValues()` below — and a desk carrying any value outside its set is treated as
+ *     not-current: its loop stops and the value is listed, raw, as unrecognised. AT-D3-11.)
  *   · The DRILL-DOWN's fidelity — the uncapped intern list, the transport, derivation and
  *     reporter blocks, the session — which is step 10's.
  */
@@ -48,6 +47,7 @@ import { clockTime } from '../wire/clock.js';
 import { contextGauge } from '../wire/context-gauge.js';
 import { formatDuration } from '../wire/duration.js';
 import { heldRendering } from '../wire/animation-set.js';
+import { ACTIVITY_STATES, BADGES, LINK_STATES } from '../wire/member-sets.js';
 import { NO_DATA_YET, UNTITLED } from '../wire/null-render.js';
 import { SEAT_CLOCK, seatClock } from '../wire/age-readout.js';
 import { deskDrawsCharacter, taskBubble } from './task-bubble.js';
@@ -318,6 +318,36 @@ function monitor(desk, seat, label) {
 }
 
 /**
+ * § 5.4 / § 9 F9: every value on this seat that is NOT a member of the set § 7.1, § 7.2 or § 7.6
+ * publishes for its field, as `{ field, value }` with the raw string. A `null` is not a member and
+ * is not unrecognised either — it is § 5.6's null render — so it is never listed.
+ *
+ * ⛔ A MEMBERSHIP TEST, NEVER A NEAREST MATCH. A value this returns is rendered as unrecognised
+ * carrying the raw string; it is never mapped to the closest member and never defaulted to a
+ * healthy-looking one (AT-D3-11's two REDs).
+ */
+export function unrecognisedValues(seat) {
+    const found = [];
+    const check = (field, value, known) => {
+        if (value !== null && value !== undefined && !known(value)) {
+            found.push({ field, value: String(value) });
+        }
+    };
+
+    check('render_state', seat.render_state, isRenderState);
+    check('link_state', seat.link_state, (v) => LINK_STATES.has(v));
+    check('activity_state', seat.activity_state, (v) => ACTIVITY_STATES.has(v));
+    check('unknown_reason', seat.unknown_reason, (v) => Object.hasOwn(UNKNOWN_REASON, v));
+    check('api_error_type', seat.api_error_type, (v) => Object.hasOwn(API_ERROR_PHRASE, v));
+
+    for (const badge of Array.isArray(seat.badges) ? seat.badges : []) {
+        check('badges', badge, (v) => BADGES.has(v));
+    }
+
+    return found;
+}
+
+/**
  * One desk, or `null` for a seat with no desk at all (`retired`, § 7.1: "the instruction to stop
  * rendering one").
  *
@@ -325,7 +355,10 @@ function monitor(desk, seat, label) {
  * @param {object} ages         this seat's readouts from `wire/age-readout.js`'s `deskAgeReadout`
  * @param {object} [facts]      what only the client protocol knows:
  *   `missing` — § 2.3 row 5: the client can no longer confirm the seat;
- *   `derivation_stamp` — the `server_time` that delivered the held `derivation` block.
+ *   `derivation_stamp` — the `server_time` that delivered the held `derivation` block;
+ *   `stilled` — § 9 F6: the session is gone, so the floor beneath the sign-in prompt is dimmed and
+ *   moves nothing ("a frozen floor that still animates is the lie this whole document is written
+ *   against").
  * @param {object} [options]    `{ ref_bases }` for the thought bubble (§ 5.2's link rule), and
  *   `reduce` — § 6.4's `prefers-reduced-motion`, which selects each § 6.2 row's reduced-motion
  *   FORM. It is not a degradation: the same fact, carried without motion.
@@ -372,7 +405,10 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
     // `config_invalid` reporter, an unrecognised state and a desk with nobody at it all stop it.
     // Whether the row loops at all, and § 6.4's form, are the animation set's answer.
     const heldId = character ? (desk === THINKING ? 'A4' : (HELD[state] ?? null)) : null;
-    const permitted = !lagged && !configInvalid;
+    // § 9 F9: "treated as not-current" — a desk carrying a value this client does not know draws
+    // no loop, exactly as a lag does, because motion would claim a currency nothing supports.
+    const unrecognised = unrecognisedValues(seat);
+    const permitted = !lagged && !configInvalid && unrecognised.length === 0 && facts.stilled !== true;
 
     return {
         install_id: seat.install_id,
@@ -409,6 +445,9 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
         // § 5.6: a null model label is omitted — no label, no *(unknown model)*.
         model_label: seat.model_label ?? null,
         badges: [...badges],
+        // § 5.4 / F9: every value outside its published set, raw, as `field: value` — the badge
+        // cluster draws a badge listed here with the unrecognised marker rather than as a known one.
+        unrecognised: unrecognised.map((u) => `${u.field}: ${u.value}`),
         oldest_badge_since: (seat.badges_since ?? null) === null
             ? null
             : `${OLDEST_BADGE_SINCE} ${clockTime(seat.badges_since)}`,
