@@ -82,7 +82,8 @@
         ⚠ Every save is a <strong>revision</strong> and any of them can be restored
         (<code>docs/design/FLEET-STATE.md § 6.11</code>). A save that changes nothing is refused
         rather than recorded, so a revision always records a change. There is no
-        <strong>preview</strong> yet — it draws with the floor's own renderer, which is not built —
-        so until then the restore is what stands between a bad save and every viewer.
+        <strong>preview</strong> yet — the floor's own renderer is built, and this console does not
+        draw with it yet — so until then the restore is what stands between a bad save and every
+        viewer.
     </p>
 @endsection

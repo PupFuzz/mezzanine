@@ -595,7 +595,8 @@ PLANTS = [
         # a red from that path alone would not satisfy it.
         "verify-floor.py",
         "docs/design/FLOOR.md",
-        r"(\n\| )(14)( \| the \*\*room drawing\*\*)",
+        # Anchored past the row's landing marker (slice C, 2026-09-25), which now heads the cell.
+        r"(\n\| )(14)( \| ✅ landed [^|]*? — the \*\*room drawing\*\*)",
         "rename",
         "Appendix B row 14's Order cell suffixed to a non-integer, which G5 must refuse as a row the "
         "ordering rule cannot see rather than skip (card#7341 rows 14-16, PR #227 round 1 F11)",

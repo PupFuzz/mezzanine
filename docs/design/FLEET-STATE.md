@@ -1920,6 +1920,13 @@ CREATE TABLE authored_revisions (
   restored_from  INT UNSIGNED NULL,         -- the revision this one copies, when it is a restore
   authored_by    VARCHAR(255) NOT NULL,
   authored_at    DATETIME(3)  NOT NULL,
+  furniture_box  VARCHAR(16)  CHARACTER SET ascii COLLATE ascii_bin NULL,
+                                            -- a room_map's: App\Floor\FurnitureBox::signature()
+                                            -- ("<w>x<h>") of the box its document was validated
+                                            -- against at this write (FLOOR.md § 14 item 28(1)).
+                                            -- NULL on a layout, on a removal, and on every revision
+                                            -- written before the column: validated against no
+                                            -- recorded box, so re-validated, never assumed passing
   UNIQUE KEY uq_revision (kind, subject, revision)
 ) ENGINE=InnoDB;
 ```
@@ -2563,13 +2570,20 @@ them and says which one it does not:
 | **revert** | `authored_revisions` is append-only: a save inserts revision N+1 for its `(kind, subject)` and points `floors.map_version` — or `building_layout.layout_version` — at it in one transaction. A **restore** is a new revision whose `document` copies revision K's, with `restored_from = K`; history is never rewritten, and *undo the restore* is itself a restore. A **removal** is a revision with `document NULL`, so a removed map is as retrievable as an edited one, and the room renders the shipped default until it is authored again | **yes**, to any prior revision |
 | **blame** | `authored_by` and `authored_at` on every revision — the console session's user, the same value `floors.updated_by` already records | **yes** |
 | **diff** | the console shows two revisions side by side and names what moved: the tile layers whose data differ, the desk count `S` before and after, and a line diff of the two documents pretty-printed. A CSV-encoded map is reviewable in a diff — [FLOOR.md § 10.1](FLOOR.md#101-the-manifest-and-the-two-gates) clause 3 chose CSV partly for that — and the store keeps the document byte for byte, so the diff is of what was authored | **yes**, read in the console rather than in a pull request |
-| **review** | **not recovered, and stated.** There is no approval step: every authenticated user is an operator (the console's own rule, card#9070), so no second person stands between a save and the floor. What stands in its place is weaker and is named exactly — the console **previews** a document with the floor's own renderer before it is saved ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) — ⚠ a stand-in that exists only once that renderer does ([FLOOR.md Appendix B](FLOOR.md#appendix-b--what-an-implementer-builds-from-this) step 7), so until then the revert below is the only thing between a bad save and every viewer, and that is said rather than implied — and the revert makes a wrong save cost one restore rather than a redeploy | **no** |
+| **review** | **not recovered, and stated.** There is no approval step: every authenticated user is an operator (the console's own rule, card#9070), so no second person stands between a save and the floor. What stands in its place is weaker and is named exactly — the console **previews** a document with the floor's own renderer before it is saved ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) — ⚠ a stand-in not yet built: the renderer exists ([FLOOR.md Appendix B](FLOOR.md#appendix-b--what-an-implementer-builds-from-this) rows 7 and 14) and the console does not yet preview with it, so until it does the revert below is the only thing between a bad save and every viewer, and that is said rather than implied — and the revert makes a wrong save cost one restore rather than a redeploy | **no** |
 
 **The write path, stated once.** The admin console is the only writer of all three tables — its
 **floors** module (card#9085) writes a room's map and its **building layout** module (card#9208's
 build slice 1) writes the layout, and both go through the one serialised path below — and one save is
 one transaction: validate the document — a room map by
-`App\Floor\FloorMap`, whose refusals [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states; the layout
+`App\Floor\FloorMap`, whose refusals [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states, and, at
+its save and its restore, by `App\Floor\DeskSlots`: two `desks` objects whose half-open rects
+intersect, or one smaller than the furniture box, refused naming them
+([FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 28(1), since Appendix B row 14's
+slice C), the revision then recording the box it passed in `furniture_box`. That one is a rule of the
+WRITE and never of the reader: a stored map a later box fails — or one stored before the column, whose
+`furniture_box` is NULL, validated against no recorded box — stays current and on the floor and is
+listed on the console's room index until its author saves one that passes; the layout
 by `App\Building\BuildingLayout`, whose refusals [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)
 states — since card#9292 the floor plan's among them: a placed room's `origin`; a planned floor's
 `hallway`, held to `App\Floor\FloorMap`'s rules with its `desks` layer refused rather than required;
@@ -4395,7 +4409,7 @@ from the snapshot's row.
         "rooms": [ { "install": "aimla", "form": "open" } ] },
       { "floor": "sola", "label": "the solos",
         "rooms": [ { "install": "sola", "form": "office", "origin": { "x": 0,   "y": 160 } },
-                   { "install": "zeta", "form": "office", "origin": { "x": 288, "y": 160 } } ],
+                   { "install": "zeta", "form": "office", "origin": { "x": 480, "y": 160 } } ],
         "hallway": { "type": "map", "orientation": "orthogonal", "width": 50, "height": 5,
                      "tilewidth": 32, "tileheight": 32,
                      "tilesets": [ { "firstgid": 1, "source": "tiles/furniture-kit.tsx" } ],
@@ -4421,8 +4435,9 @@ from the snapshot's row.
   authored, whole, because it is part of the layout document and not a room's; a floor with neither
   is laid out by that section's default rule in the client. `origin` is a position and never a size: a
   room's extent is the grid of the map this surface answers for it below, which is why no member
-  here says how big a room is — the worked floor's `sola` and `zeta` are authored, 256 px wide, which
-  is why they may sit 288 px apart; two unauthored rooms would take the shipped default's grid and the
+  here says how big a room is — the worked floor's `sola` and `zeta` are authored, 448 px wide (one desk
+  at [FLOOR.md § 12](FLOOR.md#12-every-number-and-where-it-comes-from)'s furniture box, the least a room
+  map may hold since FLOOR.md § 14 item 28(1)), which is why they may sit 480 px apart; two unauthored rooms would take the shipped default's grid and the
   save would be checked against that. **The response grows by every hallway on every connect**, bounded by
   the layout's own write bound ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions))
   and by nothing this surface adds; the hallway endpoint of its own that was declined is

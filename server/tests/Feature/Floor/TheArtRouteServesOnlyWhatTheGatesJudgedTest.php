@@ -79,6 +79,23 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
         $this->assertSame([], $this->servedDefects($this->signedIn()->get('/art/characters/index.js'), 'text/javascript'));
     }
 
+    /**
+     * ⛔ An SVG or an XML file opened directly is a script-capable document on this origin, inside
+     * the operator's session; each is served under the sandboxing policy, and the module graph and
+     * the images are served exactly as before (card#7341 row 14 slice C, MINOR-E).
+     */
+    public function test_svg_and_xml_are_served_sandboxed_and_javascript_and_images_are_not(): void
+    {
+        $this->assertSame([], $this->sandboxDefects($this->signedIn()->get('/art/floor/tiles/floor-plane/planks.svg'), 'image/svg+xml'));
+        $this->assertSame([], $this->sandboxDefects($this->signedIn()->get('/art/floor/tiles/furniture-kit.tsx'), 'application/xml'));
+
+        foreach (['/art/characters/index.js' => 'text/javascript', '/art/floor/furniture-box.js' => 'text/javascript', '/art/floor/tiles/furniture-kit/desk.png' => 'image/png'] as $uri => $type) {
+            $response = $this->signedIn()->get($uri);
+            $this->assertSame([], $this->servedDefects($response, $type), $uri);
+            $this->assertNull($response->headers->get('Content-Security-Policy'), "{$uri} gained a policy it was not meant to");
+        }
+    }
+
     public function test_the_painters_own_import_specifiers_are_served_as_javascript(): void
     {
         $this->assertSame([], $this->specifierDefects($this->painterSource()));
@@ -113,6 +130,10 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
         $this->assertNotSame([], $this->servedDefects($this->signedIn()->get('/art/floor/tiles/furniture-kit/desk.png'), 'text/javascript'),
             'CONTROL (a served file checked against the wrong media type) did not bite');
 
+        // A handler that serves the SVG with no policy — what this route did before MINOR-E.
+        $this->assertNotSame([], $this->sandboxDefects($this->signedIn()->get('/art-plant/tiles/floor-plane/planks.svg'), 'image/svg+xml'),
+            'CONTROL (an SVG served with no sandboxing policy) did not bite');
+
         $misnamed = str_replace("CHARACTER_TREE = '/art/characters/index.js'", "CHARACTER_TREE = '/art/characters/nobody-ships-this.js'", $this->painterSource());
         $this->assertNotSame($misnamed, $this->painterSource());
         $this->assertNotSame([], $this->specifierDefects($misnamed), 'CONTROL (a painter importing what the route does not serve) did not bite');
@@ -123,6 +144,31 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
     }
 
     // ── The checks ─────────────────────────────────────────────────────────────────────────────
+
+    /** Served, with its type, AND under a policy that runs nothing and sandboxes the document. */
+    private function sandboxDefects(TestResponse $response, string $type): array
+    {
+        $defects = $response->getStatusCode() === 200 ? [] : ['answered '.$response->getStatusCode()];
+        $declared = strtolower(explode(';', (string) $response->headers->get('Content-Type'))[0]);
+
+        if ($declared !== $type) {
+            $defects[] = "served as {$declared}, not {$type}";
+        }
+
+        $policy = array_map('trim', explode(';', (string) $response->headers->get('Content-Security-Policy')));
+
+        foreach (["default-src 'none'", 'sandbox'] as $directive) {
+            if (! in_array($directive, $policy, true)) {
+                $defects[] = "served without `{$directive}`";
+            }
+        }
+
+        if (preg_grep('/^script-src\b/', $policy) !== []) {
+            $defects[] = 'served with a script-src that admits script';
+        }
+
+        return $defects;
+    }
 
     private function refusalDefects(TestResponse $response): array
     {

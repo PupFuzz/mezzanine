@@ -29,10 +29,13 @@ use Illuminate\Validation\Rule;
  * away the four things version control gave a build artifact — a diff, a review, a revert and a
  * blame — and gives back three. This module is those three. ⚠ The fourth, REVIEW, is the one it
  * does not give back: "every authenticated user is an operator (card#9070), so no second person
- * stands between a save and the floor", and until the console can PREVIEW a document with the
- * floor's own renderer — Appendix B step 7's renderer, which does not exist — **restore is the
- * only thing between a bad save and every viewer.** That is why restore ships in this slice and
- * the preview does not: one of them can be built today.
+ * stands between a save and the floor", and until the console PREVIEWS a document with the
+ * floor's own renderer — which exists now (Appendix B step 7's layout and row 14's room drawing),
+ * and which the console does not yet draw with — **restore is the only thing between a bad save
+ * and every viewer.** That is why restore shipped in card#9208's slice and the preview did not.
+ * Since row 14's slice C the WRITE also refuses a map whose desk slots intersect or are smaller
+ * than the furniture box (`App\Floor\DeskSlots`, § 14 item 28(1)), at a save and at a restore
+ * alike; `restore()` below renders that refusal on the revisions page like any other.
  *
  * ⛔ WHAT THIS MODULE AUTHORS IS A ROOM, NEVER A SEATING PLAN. `docs/design/FLOOR.md § 3.2`
  * assigns each seat to a desk slot by a pure function of the rendered seat set, "so two browsers,

@@ -26,9 +26,27 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
  * the character tree is CODE and a page holding yesterday's copy after a deploy runs a module that
  * no longer matches its siblings. `nosniff` because every type below is declared, and a browser
  * guessing a type from bytes is how a tileset XML becomes something else.
+ *
+ * ⛔ AN SVG OR AN XML FILE IS A DOCUMENT THAT CAN RUN SCRIPT, SO IT IS SERVED SANDBOXED
+ * (`DOCUMENT_POLICY`). § 10.1's gates judge a file's provenance and never screen its content for
+ * `<script>`, `on*` handlers or a `foreignObject`, and this route serves same-origin, inside the
+ * operator's session — so an SVG opened directly (a link, a new tab) would otherwise run whatever
+ * it carries with the console's cookies. XML is the same shape one type over: a `.tsx`/`.tmx`
+ * rendered by the browser can carry XHTML-namespaced script. The policy governs only a response the
+ * browser renders AS A DOCUMENT: the painter draws the SVG tiles as `<image>` (image context runs no
+ * script and loads nothing external regardless) and the tileset reader `fetch()`es the XML, and
+ * neither reads a policy off the response it loads, so nothing the floor does changes. JavaScript,
+ * PNG, JSON and text are left as they were: they are not documents that execute here, and the
+ * module graph the painter imports is the one surface this change must not touch.
  */
 class ArtController extends Controller
 {
+    /** The media types served under `DOCUMENT_POLICY` — the two that render as script-capable documents. */
+    public const SANDBOXED_TYPES = ['image/svg+xml', 'application/xml'];
+
+    /** Nothing loads, nothing runs, and the document is its own opaque origin — styles alone kept. */
+    public const DOCUMENT_POLICY = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+
     public function floor(Request $request, string $path): BinaryFileResponse
     {
         return $this->serve($request, 'floor', $path);
@@ -49,6 +67,10 @@ class ArtController extends Controller
             'Content-Type' => $served['type'],
             'X-Content-Type-Options' => 'nosniff',
         ], public: false, autoLastModified: true);
+
+        if (in_array($served['type'], self::SANDBOXED_TYPES, true)) {
+            $response->headers->set('Content-Security-Policy', self::DOCUMENT_POLICY);
+        }
 
         $response->headers->addCacheControlDirective('no-cache');
         $response->isNotModified($request);

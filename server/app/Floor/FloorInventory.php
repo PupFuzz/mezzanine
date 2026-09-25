@@ -7,8 +7,10 @@ use App\Building\Layouts;
 use App\Read\Snapshot;
 
 /**
- * What the floors module SHOWS: every floor this deploy has, the map it was given, and the two
- * disagreements between the two that an operator can only fix here.
+ * What the floors module SHOWS: every floor this deploy has, the map it was given, the two
+ * disagreements between the two that an operator can only fix here — and, since Appendix B row 14's
+ * slice C, every current map that fails a furniture box it was not validated against
+ * (`docs/design/FLOOR.md § 14` item 28(1)(iii)), listed and never refused.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE SEAT SIDE IS `App\Read\Snapshot::seats()` — THE READ THE FLOOR ITSELF USES — AND NOT A

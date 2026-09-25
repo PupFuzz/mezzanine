@@ -27,6 +27,22 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **The console refuses desk slots that overlap or are smaller than the furniture box,
+  and lists the rooms whose stored map fails it (Appendix B row 14, slice C).** Saving a room map, and
+  restoring a revision of one, is now refused when two of its `desks` objects share a pixel (sharing an
+  edge is fine) — the refusal names both by their Tiled `id` — or when an object is smaller than the
+  furniture box, 440 × 228 px. The room index at `/admin/floors` lists every room whose current map fails
+  the box it is held to today, with each failing slot named; such a room is **not** refused or blanked: it
+  stays on the floor, drawn with the floor's notice, until its author saves a map that passes. A migration
+  adds `authored_revisions.furniture_box`, recording the box each revision was checked against, so a later
+  change of the box re-checks every room. Art served from `/art/…` as SVG or XML now carries a sandboxing
+  `Content-Security-Policy`, so a file opened directly in the browser runs no script; JavaScript and PNG
+  art is served as before. **Upgrade effect:** every map authored before this release was checked against
+  no box, so it is re-checked on the room index — a map with a slot smaller than 440 × 228 px (a slot
+  sized to the desk sprite, as the old shipped default's were, is one) is listed there, keeps drawing, and
+  cannot be saved again or restored until its slots are at least the box and disjoint. Run
+  `php artisan migrate` as part of the deploy (`bin/deploy.sh` does).
+
 - **card#7341** — **The shipped default map is re-authored to the furniture box, in two rows on a drawn
   floor plane (Appendix B row 14, slice B).** `resources/floor/default.tmj`, the room every unauthored
   install renders, now lays its desk slots in two rows of six, each slot at least the furniture box (440 ×
