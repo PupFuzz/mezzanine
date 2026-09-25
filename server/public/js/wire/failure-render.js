@@ -7,7 +7,8 @@
  * (`lobby/main.js`) carried F4's *last known good*, its cold-start sentence and the read surface's
  * other refusals inline — decisions in a file whose header says it decides nothing, and a second
  * screen needing them would have been a second copy free to disagree. `storeUnavailableStatement`
- * moved here from `lobby/lobby-model.js`, which re-exports it so every lobby import is unchanged.
+ * moved here from `lobby/lobby-model.js`; since card#7341 step 9 the lobby renders `failureRender()`
+ * over the client protocol exactly as the floor does, so both pages read one set of words.
  *
  * ⛔ PURE. Every function reads a value it is handed — the client protocol's `feed` for
  * `failureRender()` — and nothing here reads a clock, a document or a request.

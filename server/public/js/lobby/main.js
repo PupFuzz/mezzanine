@@ -1,78 +1,43 @@
 /**
- * The lobby, wired to the page — `docs/design/FLOOR.md § 4.1` and § 4.4's `/` row
- * ("Fetches on entry: `GET /api/fleet/snapshot`, then `GET /api/building`").
+ * The lobby, wired to the page — `docs/design/FLOOR.md § 4.1`, § 4.4's `/` row, Appendix B row 9.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ THIS FILE DECIDES NOTHING. Every string it writes comes from `lobby-model.js`, which is
- * pure and is exercised directly. This layer is elements and the browser's `fetch` handed to
- * `lobby-entry.js`, whose order is exercised directly too, and it is the part of
- * the client that NO CHECK IN THIS REPOSITORY EXERCISES — there is no browser on the build host,
- * so nothing here has been laid out, painted or clicked. What IS checked is that every element
- * id it addresses exists on the page and vice versa (`LobbyPageWiringTest`). Keeping the split
- * sharp is what keeps the uncovered part free of decisions.
+ * ⛔ THIS FILE DECIDES NOTHING. Every string it writes comes from `lobby-screen.js`'s frame — built
+ * over `lobby-model.js`, `building-model.js`, `../floor/status-strip.js` and
+ * `../wire/failure-render.js` — and every one of those is exercised headlessly under `node`. This
+ * layer is elements, and it is the part of the client that NO CHECK IN THIS REPOSITORY EXERCISES —
+ * there is no browser on the build host, so nothing here has been laid out, painted or clicked.
+ * What IS checked is that every element id it addresses exists on the page and vice versa, and that
+ * it constructs the client protocol with its stream recovery (`LobbyPageWiringTest`).
  *
- * ⛔ NO POLL AND NO SOCKET ON THIS PAGE. The delta feed (D2 § 8.3, § 8.4) and § 2.2's ADMIT — which
- * is the discovery snapshot itself since card#7341 step 3 — live in the client protocol,
- * `wire/fleet-client.js`, which the FLOOR page constructs (Appendix B step 8) and this page does
- * not yet; § 9 F1's 10 s degraded poll is that protocol's too, so the lobby has none. The one repeat fetch this file can make is
- * § 4.1's discrepancy budget, which is bounded by `DiscrepancyBudget` — now `wire/discrepancy-budget.js`,
- * the same budget the protocol spends — and is not a cadence. ⚠ Step 9 replaces THIS file's own
- * trigger with the protocol's, so that one disagreement costs one fetch rather than two.
- * ⚠ So no `building.layout` reaches this page, and F17's "retry with backoff" is not built either:
- * F17 publishes no backoff figure, and the snapshot's own F4 retry is unbuilt beside it. A failed
- * layout request is retried when the viewer presses Refresh, which re-runs the entry fetches.
+ * ⛔ THE LOBBY RUNS THE CLIENT PROTOCOL (card#7341 step 9). `wire/live-page.js` constructs it with
+ * its scheduler — the floor page's own construction, shared — so this page opens the stream, reads
+ * the snapshot through the protocol, and renders the population the protocol holds. § 4.1's
+ * discrepancy trigger is the protocol's alone: this page issues no snapshot fetch of its own, so one
+ * disagreement costs one request, not two.
  *
- * ⛔ NO ANIMATION. § 6.5: "a snapshot never animates". There is no animation in this slice at
- * all, so there is nothing here to suppress — stated because the next reader adding a transition
- * to a re-render is the person this line is for.
+ * ⛔ NO ANIMATION. § 6.5: "a snapshot never animates", and § 4.1's plates carry no § 6.2 row — so
+ * there is nothing here to suppress, stated because the next reader adding a transition to a
+ * re-render is the person this line is for.
  */
 
-import { lobbyModel, DiscrepancyBudget } from './lobby-model.js';
-import { LAST_KNOWN_GOOD, keptLabel, snapshotRefusalStatement } from '../wire/failure-render.js';
-import { buildingModel } from './building-model.js';
-import { enter, fetchSnapshot } from './lobby-entry.js';
-import { Building } from '../wire/building.js';
-
-const budget = new DiscrepancyBudget();
-
-/** Whether a floor has ever been rendered — § 9 F4's "on a cold start there is no floor to keep". */
-let holding = false;
+import { livePage } from '../wire/live-page.js';
+import { startLobbyScreen } from './lobby-screen.js';
 
 /**
  * THE VIEWER'S OWN CAB POSITION, and it lives here because § 4.5 says navigation is never state:
- * it is not in the model's snapshot-derived facts, it is never sent anywhere, and no fact on this
- * page is read out of it. `null` is "the viewer has not ridden yet", which `building-model.js`
- * resolves to the first plate.
+ * it is not in the model's facts, it is never sent anywhere, and no fact on this page is read out
+ * of it. `null` is "the viewer has not ridden yet", which `building-model.js` resolves to the first
+ * plate.
  */
 let cab = null;
 
 /**
- * The last snapshot body this page rendered. An elevator ride is a camera move (§ 4.5), so it
- * re-renders the building from the body already in hand and issues NO request — a ride that
- * fetched would make navigation a source of load on the read plane, and would make the stack
- * change under the viewer for a reason that is not the fleet moving.
- *
- * ⚠ NOT `body`: `load()` already binds that name to the response it is parsing, and a module
- * scope and a function scope holding one name for two values is how the wrong one gets rendered.
- */
-let lastSnapshot = null;
-
-/**
  * The last building this page RENDERED — the model the plates and the ride control were drawn
  * from, kept so the elevator's click can re-ask the model that produced the button rather than
- * composing a second one. See the click handler: composing a second one is what dropped the
- * layout.
+ * composing a second one.
  */
 let lastBuilding = null;
-
-/**
- * THE BUILDING — `docs/design/FLOOR.md § 4.6`, card#9267: a room is an install and a floor is an
- * operator-composed set of rooms. The layout is fetched from `GET /api/building`
- * (`docs/design/FLEET-STATE.md § 8.7`) by `lobby-entry.js`, after the snapshot, and held here with
- * its last failure; the page carries none (Appendix B row 13, card#9208).
- *
- */
-const surface = new Building(fetch);
 
 /**
  * ⛔ A MISSING ELEMENT THROWS RATHER THAN BEING GUARDED PAST. The guarded form — `if (node ===
@@ -80,9 +45,7 @@ const surface = new Building(fetch);
  * renders, the fetch runs, and one fact is written nowhere at all. A throw leaves the page's own
  * placeholders standing — each of which says it is WAITING, never a zero and never a calm
  * fleet — and puts the cause in the console; `LobbyPageWiringTest` makes it unreachable in the
- * first place by set-differencing these ids against the page's, in both directions. Between a
- * loud failure and a quiet one, on a product whose entire subject is quiet degradation, this is
- * not a close call.
+ * first place by set-differencing these ids against the page's, in both directions.
  */
 function el(id) {
     const node = document.getElementById(id);
@@ -94,20 +57,26 @@ function el(id) {
     return node;
 }
 
-/**
- * The one statement region. § 9's rule for every failure row is that the user SEES something:
- * "a floor that fails quietly is indistinguishable from a fleet that has gone home."
- */
-function statement(text, keptLabel) {
-    const box = el('lobby-statement');
+/** Text into an element, hidden when there is none. */
+function say(id, text) {
+    const node = el(id);
 
-    box.textContent = text ?? '';
-    box.hidden = text === null;
+    node.textContent = text ?? '';
+    node.hidden = text === null || text === undefined || text === '';
+}
 
-    const kept = el('lobby-kept');
+/** A list element rebuilt from lines the model has already decided the text of. */
+function list(id, lines) {
+    const node = el(id);
 
-    kept.textContent = keptLabel ?? '';
-    kept.hidden = !keptLabel;
+    node.replaceChildren(...lines.map((line) => {
+        const item = document.createElement('li');
+
+        item.textContent = line;
+
+        return item;
+    }));
+    node.hidden = lines.length === 0;
 }
 
 /**
@@ -115,25 +84,21 @@ function statement(text, keptLabel) {
  * plate being the link, with the elevator cab standing at one of them. A floor of more than one
  * room names its rooms on the plate (§ 4.1 row 1), and a room the client holds no seat for says
  * so in § 4.6's words — the client's own narration (§ 5.5), about SEATS and never about the
- * install, because the snapshot groups seats by install and cannot tell an install with no seats
- * from one that does not exist.
+ * install.
  *
  * ⛔ ONE RENDERING OF ONE FACT. The plates REPLACE the flat list rather than joining it — § 4.1's
- * cross-section "is a *rendering* of this table", not a second surface beside it, and two
- * renderings of one floor's summary on one page is exactly what § 2.4's one-form-per-fact rule
- * refuses. There is one `#lobby-floors` and the plates are its children.
+ * cross-section "is a *rendering* of this table", not a second surface beside it.
  *
  * ⚠ THE STACK IS DRAWN FIRST-AT-THE-TOP, which is the reference artifact's direction and not a
- * ruling in the document — see `building-model.js`, which keeps `level` an index into § 4.1's
- * ascending order and leaves the direction here, where a rendering choice belongs.
+ * ruling in the document — see `building-model.js`.
  */
 function renderBuilding(building, unclaimed) {
-    const list = el('lobby-floors');
+    const rows = el('lobby-floors');
 
-    list.textContent = '';
+    rows.textContent = '';
 
     // § 9 F17's cold start: no layout was ever loaded, so no floor is composed and each install
-    // the snapshot carries is listed as a room with no floor claimed — every seat still reachable
+    // the client holds is listed as a room with no floor claimed — every seat still reachable
     // through its own link, which § 4.4 resolves once the layout is readable.
     for (const room of unclaimed) {
         const row = document.createElement('li');
@@ -141,41 +106,35 @@ function renderBuilding(building, unclaimed) {
         link.href = room.href;
         link.textContent = `${room.install_id} — no floor claimed`;
         row.append(link);
-        list.append(row);
+        rows.append(row);
     }
 
-    // § 9 F4's "never an empty office" has a sibling that is not a failure at all: a fleet with
-    // no installs provisioned. It is rendered IN WORDS rather than as an empty list, because an
-    // empty list and a lobby that failed to draw are the same pixels.
+    // A fleet with no installs provisioned is rendered IN WORDS rather than as an empty list,
+    // because an empty list and a lobby that failed to draw are the same pixels.
     if (building.plates.length === 0 && unclaimed.length === 0) {
         const none = document.createElement('li');
         none.textContent = 'no installs are provisioned — the fleet reports none';
-        list.append(none);
+        rows.append(none);
     }
 
     for (const plate of building.plates) {
         const row = document.createElement('li');
-        // § 4.1: "one row per floor, THE ROW BEING THE LINK to the floor" — and the cross-section
-        // changes nothing in that row: "**the plate is the link** exactly as the list row was".
+        // § 4.1: "one row per floor, THE ROW BEING THE LINK to the floor".
         const link = document.createElement('a');
         link.href = plate.href;
 
         const name = document.createElement('span');
         // § 4.6 (card#9273): the floor reads as its LABEL where the layout gives it one, else as
-        // its key. The link above is the key either way — a label is display text and routes
-        // nothing.
+        // its key. The link above is the key either way.
         name.textContent = plate.name;
 
         const summary = document.createElement('span');
-        // § 2.1 row 5: the per-floor count is labelled as a count of the seats THE CLIENT HOLDS,
-        // never as a fleet fact. The label is what keeps it from being read as the second.
+        // § 2.1 row 5: the per-floor count is labelled as a count of the seats THE CLIENT HOLDS.
         summary.textContent = plate.summary === '' ? 'no seats held' : plate.summary;
 
         link.append(name, document.createTextNode(' — '), summary);
         row.append(link);
 
-        // The rooms, when there is anything to say beyond the floor's own key: a composed floor
-        // names each room and its form; an unreported room carries § 4.6's sentence.
         if (plate.rooms.length > 1 || plate.rooms.some((room) => !room.reported)) {
             const rooms = document.createElement('span');
             rooms.textContent = ' — rooms: ' + plate.rooms
@@ -185,149 +144,105 @@ function renderBuilding(building, unclaimed) {
         }
 
         if (plate.floor === building.elevator.at) {
-            // § 4.5: "Colour is never the only carrier of a fact" — and while the cab carries no
-            // FACT at all, a viewer who cannot see where the elevator is standing cannot use it.
-            // So the cab is a word, not a highlight.
+            // § 4.5: "Colour is never the only carrier of a fact" — so the cab is a word.
             const here = document.createElement('span');
             here.textContent = ' — the elevator is here';
             row.append(here);
         }
 
-        list.append(row);
+        rows.append(row);
     }
 
     const ride = el('lobby-elevator');
 
-    // The destination is named on the control, so a ride is chosen rather than discovered — and
-    // it is named the way the plate is (§ 4.6, card#9273: the label else the key), because a
-    // button offering a key while the plate above it reads a label names two floors for one ride.
+    // The destination is named on the control the way the plate is (§ 4.6: the label else the key).
     ride.textContent = building.elevator.next === null
         ? 'Ride the elevator'
         : `Ride the elevator to ${building.elevator.destination}`;
-    // ⛔ THE DARK CASE IS REFUSED AT THE CONTROL, not only explained beside it. The reason is the
-    // notices below; a control that still invited a click would be a working elevator drawn over
-    // a building that has no second floor.
+    // ⛔ THE DARK CASE IS REFUSED AT THE CONTROL, not only explained beside it.
     ride.disabled = building.elevator.next === null;
 
-    const notices = el('lobby-elevator-notices');
-
-    notices.textContent = '';
-    notices.hidden = building.elevator.notices.length === 0;
-
-    for (const notice of building.elevator.notices) {
-        const line = document.createElement('li');
-        line.textContent = notice;
-        notices.append(line);
-    }
+    list('lobby-elevator-notices', [...building.elevator.notices]);
 }
 
-function render(snapshot) {
-    const model = lobbyModel(snapshot, surface.floors, surface.layoutFailure);
-    const section = buildingModel(snapshot, cab, surface.floors);
+/** One lobby frame onto the page. */
+function paint(frame) {
+    // § 5.5 / § 4.1: the feed status with the resync count beside it — this page's own connection.
+    say('lobby-feed', `feed: ${frame.strip.feed}`);
+    say('lobby-resyncs', frame.strip.resyncs);
 
-    lastSnapshot = snapshot;
-    lastBuilding = section;
+    // § 9 F4/F5, F6/F7 and F8 — the failure renders, the floor page's words for the lobby too.
+    const failure = frame.failure;
 
-    // The cab is re-seated on what the model RESOLVED it to, so a stranded cab reports itself
-    // once and the next render is an ordinary one. An uncomposed lobby (§ 9 F17) resolved nothing,
-    // so the viewer's cab stays where it was for the building to come back to.
-    if (section.composed) {
-        cab = section.elevator.at;
+    say('lobby-statement', failure.statement);
+    say('lobby-kept', failure.kept);
+    say('lobby-banner', failure.banner);
+    el('lobby-signin').hidden = failure.sign_in === null;
+    say('lobby-signin-prompt', failure.sign_in?.prompt ?? null);
+    say('lobby-not-live', failure.sign_in?.label ?? null);
+
+    // § 4.1: the disagreement, rendered rather than resolved by picking a winner.
+    say('lobby-discrepancy', frame.discrepancy);
+
+    // § 5.5's record: this client's own narration, newest first.
+    list('lobby-log', [...frame.event_log]);
+
+    const summary = frame.summary;
+
+    // Nothing applied yet: the placeholders say the page is waiting, and the failure render above
+    // says why when a read failed. A building drawn now would be a calm empty office.
+    if (summary === null) {
+        return;
     }
 
-    renderBuilding(section, model.unclaimed);
+    const building = frame.building;
 
-    // § 9 F17's statement, in its own region: it can stand beside F4/F5's store statement, which is
-    // the snapshot's, and one region would have to drop one of the two.
-    const layoutBox = el('lobby-layout-statement');
+    lastBuilding = building;
 
-    layoutBox.textContent = model.layout_statement ?? '';
-    layoutBox.hidden = model.layout_statement === null;
+    // The cab is re-seated on what the model RESOLVED it to, so a stranded cab reports itself once
+    // and the next render is an ordinary one. An uncomposed lobby (§ 9 F17) resolved nothing.
+    if (building.composed) {
+        cab = building.elevator.at;
+    }
 
-    const layoutKept = el('lobby-layout-kept');
+    renderBuilding(building, summary.unclaimed);
 
-    layoutKept.textContent = model.layout_kept ?? '';
-    layoutKept.hidden = model.layout_kept === null;
+    // § 9 F17's statement, in its own region beside F4/F5's store statement.
+    say('lobby-layout-statement', summary.layout_statement);
+    say('lobby-layout-kept', summary.layout_kept);
 
-    el('lobby-totals').textContent = model.totals;
+    el('lobby-totals').textContent = summary.totals;
+    el('lobby-stamp').textContent = summary.stamp;
 
-    const discrepancy = el('lobby-discrepancy');
-
-    discrepancy.textContent = model.discrepancy ?? '';
-    discrepancy.hidden = model.discrepancy === null;
-
-    el('lobby-stamp').textContent = model.stamp;
-
-    // Three indicators plus § 5.3's ingest recency, each into its OWN element. There is no
-    // element on this page that carries a combined verdict, which is D2 § 8.2.4's "no aggregate
-    // rolls three health facts into one" held by the shape of the page and not by a convention.
-    for (const indicator of model.indicators) {
+    // Three indicators plus § 5.3's ingest recency, each into its OWN element — D2 § 8.2.4's "no
+    // aggregate rolls three health facts into one" held by the shape of the page.
+    for (const indicator of summary.indicators) {
         el(`lobby-${indicator.key}`).textContent = indicator.detail === null
             ? `${indicator.label}: ${indicator.value}`
             : `${indicator.label}: ${indicator.value} · ${indicator.detail}`;
     }
-
-    statement(model.store_unavailable, model.store_unavailable === null ? null : LAST_KNOWN_GOOD);
-
-    holding = true;
-
-    return model;
 }
 
-/**
- * The route's entry — § 4.4's two fetches, in `lobby-entry.js`'s order — and its render.
- */
-async function load() {
-    await show(await enter(fetch, surface));
-}
-
-/** One snapshot response, rendered — or refused in words. */
-async function show(response) {
-    // § 9 F4, and every other refusal — including a request that never reached a status — in the
-    // words `wire/failure-render.js` owns for every screen. Never an empty lobby.
-    if (response.status === null || !response.ok) {
-        statement(snapshotRefusalStatement(response.status, response.body), keptLabel(holding));
-
-        return;
-    }
-
-    const body = response.body ?? {};
-
-    const model = render(body);
-
-    // § 4.1's discrepancy check: ONE snapshot fetch per distinct (N, M) observation. A
-    // disagreement still standing after that fetch is rendered and not re-fetched. It is a SNAPSHOT
-    // fetch — the layout is not asked for again, and the building held is the one rendered.
-    if (model.discrepancy !== null && budget.admits(model.held, body?.fleet?.seats_total)) {
-        await show(await fetchSnapshot(fetch));
-    }
-}
+const { client, fetch: pageFetch, requestRender } = livePage(() => screen.render(cab));
+const screen = startLobbyScreen(client, pageFetch, paint);
 
 // § 2.3 names "the lobby's refresh control" as one of the three paths to a fresh membership
-// picture, so this is a published element rather than a convenience added here.
+// picture: one full snapshot through the protocol, then the layout.
 el('lobby-refresh').addEventListener('click', () => {
-    load();
+    screen.refresh().then(requestRender);
 });
 
 /**
- * § 4.1's elevator, as § 4.5's camera: it moves the cab and re-renders the building from the body
- * already in hand. No fetch, no route change, no animation — "a camera move animates nothing in
- * § 6.2's sense: it renders no fact, it has no driving D2 field, and it gets no row in that
- * table".
+ * § 4.1's elevator, as § 4.5's camera: it moves the cab and re-draws the building from what is
+ * held. No fetch, no route change, no animation.
  *
- * ⚠ Where the ride is SUPPOSED to arrive — § 4.5's camera at `/floor/{floor}` — is not built
- * (Appendix B step 7, card#7341), so this ride moves between the plates of this screen and the
- * plate's own link is still the only way to that route. `building-model.js` says so in full.
+ * ⚠ The ride moves between the plates of this screen; the plate's own link is the way to the
+ * floor route (`/floor/{floor}`, Appendix B row 8), which § 4.5's camera would arrive at.
  */
 el('lobby-elevator').addEventListener('click', () => {
     // ⛔ THE REFUSAL IS RE-ASKED OF THE MODEL RATHER THAN READ OFF THE BUTTON. Before the first
-    // snapshot lands there is no building to ride and the control has not been disabled yet, so
-    // `disabled` is not the only thing standing between a click and a ride to nowhere — and a
-    // ride to nowhere would put the cab on `null`, which resolves to the first plate and reads as
-    // a successful ride the viewer never took. The model asked is the one this page LAST
-    // RENDERED: the earlier form composed a second building here and dropped `layout` doing it,
-    // so the ride was computed against the default one-floor-per-install building while the
-    // button had been drawn from the composed one.
+    // snapshot lands there is no building to ride, and a ride to nowhere would put the cab on
+    // `null`, which resolves to the first plate and reads as a ride the viewer never took.
     const next = lastBuilding === null ? null : lastBuilding.elevator.next;
 
     if (next === null) {
@@ -335,7 +250,10 @@ el('lobby-elevator').addEventListener('click', () => {
     }
 
     cab = next;
-    render(lastSnapshot);
+    screen.draw(cab);
 });
 
-load();
+// § 4.4: the stream first, then the snapshot (§ 2.2) — and the layout after it, on the first render
+// that finds the snapshot applied.
+client.start();
+requestRender();

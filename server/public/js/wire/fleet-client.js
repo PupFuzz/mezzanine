@@ -30,7 +30,7 @@
  * holds data: the seat map, each held member's delivery stamp (§ 2.4's stamp rule, `stampOf`), the
  * record's lines, the clock offset, the read status, and the stream recovery's own state (`feed`).
  * Every render is another module's (Appendix B rows 4–10 — the status strip is
- * `wire/status-strip.js` and the failure renders `wire/failure-render.js`, both pure over what this
+ * `floor/status-strip.js` and the failure renders `wire/failure-render.js`, both pure over what this
  * client exposes). No `setTimeout`, no `Date.now`, no `Math.random`: the clock AND the scheduler are
  * injected, which is what lets the harness replay a scenario and get the same records every time —
  * `Tests\Feature\Floor`'s determinism check scans this file's own source for those identifiers.
@@ -48,9 +48,10 @@
  * is no browser on the build host, so every decision here is driven under `node` against a
  * scripted pair (`tests/Feature/Floor/fleet-client-probe.mjs`).
  *
- * ⚠ WHO CONSTRUCTS THIS: the floor page (`floor/main.js`, Appendix B row 8) and the harness. The
- * lobby keeps its own one-shot fetch and its own § 4.1 trigger until step 9 replaces that trigger
- * with this one.
+ * ⚠ WHO CONSTRUCTS THIS: both pages — through `wire/live-page.js`, which the floor page
+ * (`floor/main.js`, Appendix B row 8) and the lobby (`lobby/main.js`, row 9) share — and the harness.
+ * § 4.1's discrepancy trigger is this module's alone since step 9: the lobby renders the words over
+ * `discrepancyState()` and issues no fetch of its own, so one disagreement costs one request.
  */
 
 import { request } from './building.js';
@@ -168,6 +169,14 @@ export class FleetClient {
     /** The held `fleet{}`'s `seats_total` — § 4.1's M. */
     #fleetTotal = null;
 
+    /**
+     * The `server_time` of the last FULL snapshot this client applied — the connect read, a
+     * discovery, a recovery poll or a refresh — or `null` before any: § 5.5's *membership as of
+     * HH:MM:SS*, "the age of the *membership* picture, rendered separately from the age of the
+     * *state* picture" (§ 2.3).
+     */
+    #membershipAt = null;
+
     #budget = new DiscrepancyBudget();
 
     /** The `(held, total)` pair the discovery fetch in flight was issued for, or `null`. */
@@ -275,7 +284,10 @@ export class FleetClient {
     #applied = false;
 
     /** A poll's snapshot read in flight — one at a time, so a stalled REST plane is asked no faster (F20). */
-    #polling = false;
+    #polling = null;
+
+    /** The cold read in flight or last run — the connect read or a cold retry (`#initialSnapshot`). */
+    #cold = null;
 
     /** § 5.5's *resyncs: N* — the F2 resyncs this client has ISSUED since it loaded. */
     #resyncs = 0;
@@ -348,6 +360,11 @@ export class FleetClient {
     /** § 5.7's *N+*: the threads `COORD_CAP` cut, whose bead count is a lower bound. */
     get coordTruncated() {
         return [...this.#coordTruncated];
+    }
+
+    /** § 5.5's *membership as of*: the last full snapshot's `server_time`, or `null` before one. */
+    get membershipAsOf() {
+        return this.#membershipAt;
     }
 
     /**
@@ -490,8 +507,17 @@ export class FleetClient {
     }
 
     /**
-     * § 4.1's disagreement, for the lobby's notice: `{held, total, refreshing}`, or `null` while
-     * the counts agree.
+     * § 4.1's disagreement, which the lobby renders (`lobby/lobby-screen.js`): `{held, total,
+     * refreshing}`, or `null` while the counts agree. The lobby's sentence is worded over `held` and
+     * `total` — the very pair `#check()` spends — so the words and the fetch can never name two
+     * different disagreements.
+     *
+     * ⚠ `refreshing` IS NO LONGER WHAT THE LOBBY'S WORDS TURN ON. Neither sentence the operator
+     * ratified claims a refresh (§ 4.1, card#7341 2026-09-15), so the checked-once-unresolved case
+     * needs no second string; what stays conditional is the SILENCE once no check can ever run,
+     * which the lobby reads off `feed.applied` (a client that has applied no full snapshot has no
+     * population to compare).
+     * The field is kept as the protocol's own statement of whether its one check can still run.
      *
      * ⛔ `refreshing` ANSWERS "CAN A CHECK FOR THIS PAIR STILL RUN", NOT "HAS ONE RUN YET". Once
      * the budget has spent the pair and no discovery is in flight for it, the one check this pair
@@ -535,6 +561,26 @@ export class FleetClient {
         this.#phase = 'connecting';
         this.#open();
         this.#initialSnapshot();
+    }
+
+    /**
+     * § 2.3's third path to a fresh membership picture — "a reconnect and the lobby's refresh
+     * control … both reach ADMIT the same way": one full snapshot, applied under § 2.2's version
+     * rule. It is the recovery's own read (`#poll`), so a Refresh pressed while one is in flight joins
+     * it rather than issuing a second, and it spends none of § 4.1's per-`(N, M)` budget — a person
+     * asking is not the disagreement the budget bounds.
+     *
+     * ⛔ NOTHING IS ASKED FOR ONCE THE SESSION HAS ENDED OR A RELOAD IS REQUIRED — F6's "a request the
+     * server has just said it will refuse", and F8's stopped client.
+     *
+     * @returns {Promise<void>} settled once that read has answered, applied or not
+     */
+    refresh() {
+        if (this.#terminal()) {
+            return Promise.resolve();
+        }
+
+        return this.#poll();
     }
 
     /**
@@ -762,17 +808,16 @@ export class FleetClient {
                 this.#initialSnapshot();
             }
 
-            return;
+            return this.#cold;
         }
 
-        if (this.#polling) {
-            return;
+        if (this.#polling === null) {
+            this.#polling = this.#resnapshot().finally(() => {
+                this.#polling = null;
+            });
         }
 
-        this.#polling = true;
-        this.#resnapshot().finally(() => {
-            this.#polling = false;
-        });
+        return this.#polling;
     }
 
     /** A warm re-run's snapshot, applied under the version rule like any full snapshot. */
@@ -939,9 +984,12 @@ export class FleetClient {
         if (!failed(res)) {
             this.#refusal = null;
 
-            if (res.body.fleet?.db !== 'down') {
-                this.#store = null;
-            }
+            // § 5.3 / § 9 F5: a `fleet{}` saying `db: "down"` is the store statement wherever it
+            // arrives — D2 § 8.2.4 declares the value reachable on the snapshot's own object — and
+            // not only on the stream's `fleet.health`. Until card#7341 step 9 only the lobby's own
+            // model rendered it off a snapshot body; the lobby now renders `failureRender()` over
+            // this client like the floor, so the protocol is where the fact has to be held.
+            this.#store = res.body.fleet?.db === 'down' ? { server_time: res.body.server_time ?? null } : null;
 
             return;
         }
@@ -1017,7 +1065,14 @@ export class FleetClient {
      * on the backed-off cadence F4 names) re-enters this method. Patching held-nothing from deltas
      * would be § 2.2's forbidden "partial object" built out of patches.
      */
-    async #initialSnapshot() {
+    #initialSnapshot() {
+        this.#cold = this.#coldRead();
+
+        return this.#cold;
+    }
+
+    /** `#initialSnapshot`'s read, held as a promise there so a Refresh can wait on it (`refresh`). */
+    async #coldRead() {
         const res = await this.#get(SNAPSHOT_PATH);
 
         if (failed(res)) {
@@ -1047,6 +1102,7 @@ export class FleetClient {
     /** A full snapshot — the connect one and a discovery's — through the one version rule. */
     #applySnapshot(body) {
         this.#acceptFleet(body.server_time, body.fleet);
+        this.#membershipAt = body.server_time ?? null;
 
         for (const install of body.installs) {
             for (const row of install.seats) {
@@ -1402,15 +1458,10 @@ export class FleetClient {
         }
 
         const { api_version, server_time, detail, ...row } = res.body;
-        const inserted = !this.#seats.has(k);
 
         this.#replaceIfHigher(row, 'seat.fetch', res.body.server_time);
         this.#stampIfHeld(row, res.body.server_time);
         this.#confirm(k);
-
-        if (inserted) {
-            this.#line(`seat added to the floor: ${k}`);
-        }
 
         this.#release(k);
     }
@@ -1422,20 +1473,54 @@ export class FleetClient {
      * stale row into a newer one produces an object that existed at no instant on the server —
      * newer members from the delta chain beside older ones from the snapshot — and nothing
      * downstream could tell it from a real seat.
+     *
+     * ⛔ THE MEMBERSHIP CHANGES ARE NARRATED HERE, BECAUSE THIS IS THE ONE INSERT (§ 5.5's record,
+     * Appendix B row 9). A seat or a room arrives through a seat fetch (§ 2.3 rows 1–2) or through a
+     * full snapshot after the first — a discovery (row 3), a recovery poll, a Refresh — and every one
+     * of them inserts through this method. The line was written in `#fetchSeat` alone until
+     * card#7341 step 9, so a seat or a whole install a DISCOVERY added reached the floor with no
+     * written cause, which is what § 4.1's event-log row exists to prevent. The connect snapshot's
+     * rows narrate nothing: they are the population, not a change to it (`#applied` is false until
+     * the first full snapshot has applied).
+     *
+     * ⚠ THE WORDING IS NOT RATIFIED — § 5.5 names what the record carries and publishes no string —
+     * so these name the facts in the office's nouns (§ 4.6: a room is an install) and nothing else.
      */
     #replaceIfHigher(row, source, serverTime) {
         const k = key(row.install_id, row.seat_id);
         const held = this.#seats.get(k);
 
         if (held === undefined || row.state_version > held.state_version) {
+            const arrived = held === undefined && this.#applied;
+            const newRoom = arrived && !this.#holdsRoom(row.install_id);
+
             this.#seats.set(k, row);
             this.#confirm(k);
             this.#noteRow(source, row, serverTime, 'applied');
+
+            if (newRoom) {
+                this.#line(`room added to the building: ${row.install_id}`);
+            }
+
+            if (arrived) {
+                this.#line(`seat added to the floor: ${k}`);
+            }
 
             return;
         }
 
         this.#noteRow(source, row, serverTime, 'discarded');
+    }
+
+    /** Whether the client holds any seat of this install — § 4.6's room. */
+    #holdsRoom(installId) {
+        for (const seat of this.#seats.values()) {
+            if (seat.install_id === installId) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
