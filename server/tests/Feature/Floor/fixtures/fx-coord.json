@@ -833,6 +833,12 @@
             }
           }
         ],
+        "/art/floor/tiles/furniture-kit.tsx": [
+          {
+            "status": 200,
+            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+          }
+        ],
         "/api/building/rooms/aimla/map": [
           {
             "status": 200,
@@ -1665,7 +1671,17 @@
       "floor": {
         "key": "aimla",
         "local_hours": 9,
-        "local_minutes": 45
+        "local_minutes": 45,
+        "scene": {
+          "measurer": {
+            "glyph_w": 6,
+            "line_h": 12
+          },
+          "character": {
+            "w": 18,
+            "h": 32
+          }
+        }
       }
     },
     "coord_no_declarations": {

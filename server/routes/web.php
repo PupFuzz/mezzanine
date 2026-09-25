@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ArtController;
 use App\Http\Controllers\Auth\TwoFactorMoveController;
 use App\Http\Controllers\Auth\TwoFactorRecoveryCodeController;
 use App\Http\Controllers\Auth\TwoFactorResetController;
@@ -142,6 +143,19 @@ Route::middleware(['auth', 'mfa'])->group(function () {
     // and the client resolves it against the floor's own desks once it holds them.
     Route::get('/floor/{floor}/{seat}', fn (string $floor, string $seat) => view('floor', ['floor' => $floor, 'seat' => $seat]))
         ->name('floor.seat');
+
+    // THE ASSET ROUTE — `docs/design/FLOOR.md` Appendix B row 14: the one HTTP surface for the art,
+    // inside the floor's own gate because the art is the floor's. A prefix no other route claims,
+    // and deliberately not under `/floor/`, where `/floor/{floor}` would read `art` as a floor key.
+    // ⛔ `{path}` ADMITS `/` — Laravel's parameter matches none without a `where()`, and the
+    // tileset's images sit in subdirectories — and nothing wider than this character class:
+    // containment is `App\Floor\FloorAssets::served()`'s, never the pattern's.
+    Route::get('/art/floor/{path}', [ArtController::class, 'floor'])
+        ->where('path', '[A-Za-z0-9._/-]+')
+        ->name('art.floor');
+    Route::get('/art/characters/{path}', [ArtController::class, 'characters'])
+        ->where('path', '[A-Za-z0-9._/-]+')
+        ->name('art.characters');
 });
 
 /*

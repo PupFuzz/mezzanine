@@ -183,7 +183,8 @@ export const SEPARATION_GAP_PX = 6;
  *                 anchor is the character's own point, in the floor's coordinates, and the box
  *                 is raised from it. Input ORDER is not read: the pass runs in § 3.1's identity
  *                 order, `(install_id, seat_id)`, which is the only fixed order this page has.
- * @param measure  the page's own text measurement, `(text) => ({ w, h })`.
+ * @param measure  the page's own text measurement, `(text, bubble) => ({ w, h })` — the bubble is
+ *                 passed too, so a measurer may size a box of more than one line.
  *
  * ⛔ THE MEASURER IS REQUIRED AND IS NEVER DEFAULTED. Rule 4: "the box is never sized from a
  * guess at the text's width", because "a box of fixed width would meet [the bound] by SILENTLY
@@ -205,7 +206,10 @@ export function bubbleLayout(bubbles, measure) {
     const ordered = [...bubbles].sort((a, b) => (identity(a) < identity(b) ? -1 : 1));
 
     const base = ordered.map((bubble) => {
-        const { w, h } = measure(bubble.text);
+        // The measurer is handed the bubble as well as its text, so a caller whose bubble carries
+        // more than one line (the scene's, Appendix B row 14: the text, then the tier that answered)
+        // measures the box it will draw rather than the first line of it.
+        const { w, h } = measure(bubble.text, bubble);
 
         return {
             install_id: bubble.install_id,

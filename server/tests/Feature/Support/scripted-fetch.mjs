@@ -76,6 +76,9 @@ export function scriptedFetch(responses, { schedule, clock } = {}) {
             json: async () => (next.text !== undefined
                 ? JSON.parse(next.text)
                 : JSON.parse(JSON.stringify(body))),
+            // An asset's response — a tileset is read as text (`floor/tileset.js`), and a scripted
+            // `text` is returned as written.
+            text: async () => (next.text !== undefined ? next.text : JSON.stringify(body)),
         };
     };
 
