@@ -12,15 +12,16 @@ use Tests\TestCase;
  * for, read from the scene's emitted rects.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ THE RUNS ARE `fixtures/fx-scene.json`'s. `fx-snapshot-4` and `fx-interns`' cap leg and bound
- * seat are replayed on `scene_boxed`'s map — twelve slots each exactly the furniture box, the box
- * read from `resources/floor/furniture-box.js` by the probe — which stands where § 11 names "the
- * shipped default map … re-authored to the furniture box". ⚠ THAT RE-AUTHORING IS APPENDIX B ROW 14's
- * SLICE B AND HAS NOT LANDED: `resources/floor/default.tmj` still ships sprite-sized objects, so the
- * GREEN clauses run on the stand-in and the shipped map is held to what § 11's control says of it
- * TODAY — *(f)*'s undersized line names every slot of the room — which is "the measurement that says
- * the re-authoring is owed rather than optional". When slice B lands, that test reds by design and
- * is replaced by the control § 11 states: the shipped map passing every clause.
+ * ⛔ THE RUNS ARE `fixtures/fx-scene.json`'s, AND THE GREEN CLAUSES RUN ON THE SHIPPED DEFAULT.
+ * `fx-snapshot-4` and `fx-interns`' cap leg and bound seat are replayed on `resources/floor/default.tmj`
+ * itself (`@json:`, the file and never a copy), which Appendix B row 14's slice B re-authored to the
+ * furniture box: each `desks` object at least the box, the box read from `resources/floor/furniture-box.js`.
+ * Until slice B the suite replayed them on a stub of that shape and held the shipped map to what § 11's
+ * control could say of it then — *(f)*'s undersized line naming every slot — and that control reded by
+ * design when slice B landed. What stands in its place is § 11's POSITIVE control: the shipped map passes
+ * every clause with no F21 line, and the slot every desk stands in is the file's own object, so a stand-in
+ * cannot pass for the shipped map. The runs that PLANT a map defect — two slots, a crowded pair, an
+ * undersized slot — still build their stub from `@box.*`, because the defect is theirs to plant.
  *
  * ⛔ EVERY RED IS PLANTED IN THE SHIPPED MODULE THE DEFECT WOULD LIVE IN — a mutated copy of the tree
  * — and watched failing on the clause it names.
@@ -29,9 +30,9 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
 {
     use DrivesTheScene;
 
-    private const BOXED = 'scene_boxed';
+    private const SHIPPED = 'scene_default';
 
-    private const REORDERED = 'scene_boxed_reordered';
+    private const REORDERED = 'scene_default_reordered';
 
     private const OVERFLOW = 'scene_overflow';
 
@@ -45,10 +46,8 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
 
     private const BOUND = 'interns_bound';
 
-    private const SHIPPED = 'scene_default';
-
     /** Every run but the two whose defect is (f)'s subject. */
-    private const CLEAN = [self::BOXED, self::REORDERED, self::OVERFLOW, self::CAP, self::BOUND];
+    private const CLEAN = [self::SHIPPED, self::REORDERED, self::OVERFLOW, self::CAP, self::BOUND];
 
     // ── GREEN ──────────────────────────────────────────────────────────────────────────────────
 
@@ -65,7 +64,7 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
             $this->assertSame([], $this->bubbleDefects($this->sceneOf($run)), "[{$run}] (b)");
         }
 
-        $this->assertSame([], $this->readingDefects($this->sceneOf(self::BOXED), $this->sceneOf(self::REORDERED)),
+        $this->assertSame([], $this->readingDefects($this->sceneOf(self::SHIPPED), $this->sceneOf(self::REORDERED)),
             '(b): the second reading, the seats delivered in another order, placed a bubble elsewhere');
         $this->assertSame([], $this->readingDefects($this->sceneOf(self::CROWDED), $this->sceneOf(self::CROWDED_REORDERED)),
             '(b): on the crowded map, where two bubbles are parted, the second reading placed one elsewhere');
@@ -106,21 +105,40 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
     }
 
     /**
-     * ⛔ THE CONTROL § 11 CAN STATE OF THE SHIPPED MAP TODAY: "on the sprite-sized objects it ships
-     * today … *(f)*'s undersized line names every slot of the room". Slice B's re-authoring turns this
-     * red, and this method becomes § 11's positive control — the shipped map passing every clause.
+     * ⛔ § 11's POSITIVE CONTROL: the shipped default — re-authored to the furniture box by Appendix B
+     * row 14's slice B — with `fx-snapshot-4`'s four seats passes every clause and emits no F21 line, and
+     * the cap leg on the same map passes (a) and (e), which on the sprite-sized objects the default
+     * shipped before could not. So the gate is known to be able to say *nothing overlaps* and *no line*
+     * of the map every unauthored room renders, and not only of a stub the suite built to that shape.
+     *
+     * ⛔ THE FILE, NEVER A COPY: every drawn desk's slot rect is held equal to the object the shipped
+     * file declares at that slot, and the objects are re-read from the file here rather than trusted
+     * to the fixture's `@json:`, so a run replaying a stand-in — or a fixture that quietly stopped
+     * reading the file — cannot satisfy this control.
      */
-    public function test_control_the_shipped_default_is_still_sprite_sized_so_every_slot_is_named_undersized(): void
+    public function test_control_the_shipped_default_re_authored_to_the_box_passes_every_clause_with_no_f21_line(): void
     {
-        $frame = $this->lastFloor($this->floorRun(self::SHIPPED));
-        $lines = $this->f21Lines($frame);
-        $undersized = array_values(array_filter($lines, fn ($l) => str_contains($l, 'is smaller than the furniture box')));
+        $objects = $this->shippedDefaultObjects();
+        $this->assertCount($this->shippedDefaultSlots(), $objects);
 
-        $this->assertCount($this->shippedDefaultSlots(), $undersized,
-            'the shipped default no longer has every slot smaller than the box — slice B has landed, and this '
-            .'control is owed its replacement: the shipped map passing every clause of AT-D3-20');
-        $this->assertCount(count($undersized), $lines,
-            'the shipped default emitted an F21 line other than the undersized one — G8 holds its objects disjoint');
+        foreach ([self::SHIPPED, self::CAP] as $run) {
+            $result = $this->floorRun($run);
+            $frame = $this->lastFloor($result);
+            $scene = $this->lastScene($result, $run);
+
+            foreach ($scene['desks'] as $desk) {
+                $this->assertNotNull($desk['slot_rect'], "[{$run}] {$desk['key']} has no slot on the shipped default, whose slots outnumber this run's seats");
+                $this->assertSame($objects[$desk['slot']], $desk['slot_rect'],
+                    "[{$run}] {$desk['key']}'s slot is not the shipped file's object at slot {$desk['slot']} — the run did not read the shipped default");
+            }
+
+            $this->assertSame([], $this->f21Lines($frame), "[{$run}] the shipped default emitted an F21 line");
+            $this->assertSame([], $this->containmentDefects($scene), "[{$run}] (a) on the shipped default");
+            $this->assertSame([], $this->bubbleDefects($scene), "[{$run}] (b) on the shipped default");
+            $this->assertSame([], $this->measuredDefects($scene, $run), "[{$run}] (d) on the shipped default");
+        }
+
+        $this->assertSame([], $this->boundDefects($this->sceneOf(self::CAP), self::CAP), '(e) on the cap leg, on the shipped default');
     }
 
     // ── RED — each defect planted in the shipped module it would live in ──────────────────────
@@ -130,7 +148,7 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
             'const colC = colB + widthB + GUTTER;', 'const colC = W + GUTTER;']);
 
-        $this->assertNotSame([], $this->containmentDefects($this->sceneOf(self::BOXED, $dir)),
+        $this->assertNotSame([], $this->containmentDefects($this->sceneOf(self::SHIPPED, $dir)),
             'RED (the tray outside the slot) did not fail (a) on fx-snapshot-4');
         $this->assertNotSame([], $this->containmentDefects($this->sceneOf(self::CAP, $dir)),
             'RED (the tray outside the slot) did not fail (a) on the cap leg');
@@ -202,7 +220,7 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
         $dir = $this->mutatedModules(['../floor/scene.js',
             'const w = Math.max(line1.w, line2?.w ?? 0) + 2 * BUBBLE_PAD;', 'const w = 120;']);
 
-        $this->assertNotSame([], $this->measuredDefects($this->sceneOf(self::BOXED, $dir), self::BOXED),
+        $this->assertNotSame([], $this->measuredDefects($this->sceneOf(self::SHIPPED, $dir), self::SHIPPED),
             'RED (the fixed-width bubble) did not fail (d)');
     }
 

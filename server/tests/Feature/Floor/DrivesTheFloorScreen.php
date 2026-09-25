@@ -239,6 +239,17 @@ trait DrivesTheFloorScreen
     /** The shipped default map's own `desks` objects — § 10.3's `S`, measured from the file. */
     protected function shippedDefaultSlots(): int
     {
+        return count($this->shippedDefaultObjects());
+    }
+
+    /**
+     * The shipped default's `desks` objects in `id` order — § 3.2's slot order — each as the rect the
+     * scene emits for a slot (`slot_rect`), read from the file and never from a fixture.
+     *
+     * @return list<array{x: int, y: int, w: int, h: int}>
+     */
+    protected function shippedDefaultObjects(): array
+    {
         $path = realpath(__DIR__.'/../../../../resources/floor/default.tmj')
             ?: $this->fail('resources/floor/default.tmj is not in the tree — § 10.3 declares it and the layout reads its `desks`');
 
@@ -248,7 +259,10 @@ trait DrivesTheFloorScreen
 
         foreach ($document['layers'] as $layer) {
             if (($layer['type'] ?? null) === 'objectgroup' && ($layer['name'] ?? null) === 'desks') {
-                return count($layer['objects']);
+                $objects = $layer['objects'];
+                usort($objects, fn ($a, $b) => $a['id'] <=> $b['id']);
+
+                return array_map(fn ($o) => ['x' => $o['x'], 'y' => $o['y'], 'w' => $o['width'], 'h' => $o['height']], $objects);
             }
         }
 
