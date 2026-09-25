@@ -27,6 +27,16 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **The console's desk-slot refusals and notices are ratified, and name no design document
+  on screen (operator ruling 2026-09-25, card#7341 comment 6585).** A refused save or restore of two
+  overlapping slots now reads, for example, *Desk slots id 3 and id 7 overlap: id 3 spans 64–504 × 96–324
+  and id 7 spans 480–920 × 96–324. Every desk is drawn inside its own slot, so two slots that share a
+  pixel draw one desk over another; two desks may share an edge but never a pixel. Move one of them and
+  save again.* The
+  undersized-slot refusal, the `/admin/floors` paragraph over the rooms whose map fails the furniture box,
+  and the revisions page's *no preview* notice keep their wording with the `docs/design/FLOOR.md`
+  references removed; those references now live in the code's comments.
+
 - **card#7341** — **The console refuses desk slots that overlap or are smaller than the furniture box,
   and lists the rooms whose stored map fails it (Appendix B row 14, slice C).** Saving a room map, and
   restoring a revision of one, is now refused when two of its `desks` objects share a pixel (sharing an
