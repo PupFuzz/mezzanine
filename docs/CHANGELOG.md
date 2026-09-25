@@ -67,6 +67,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   half-open rects; each leg carries a plant in `verify-design-docs.selftest.py`, G8's moving the second object
   onto the first's span so that it reds whatever gutter the default carries. § 11's fixture count in words is
   replaced by the derivation the gate already runs.
+- **card#7341** — **The lobby's wording is ratified.** The discrepancy line spells its count in words up to nine and in digits past it, every *desk* agrees with its number, and the event log's membership lines read *room added to the building: X* and *seat added to the floor: k*; `docs/design/FLOOR.md` § 4.1 and § 5.5 state them as the operator's wording.
 - **card#7341** — **The lobby runs the client protocol (Appendix B step 9).** The lobby page now opens the
   live stream through the same construction the floor page uses (`public/js/wire/live-page.js`, hoisted
   out of `public/js/floor/main.js`), and draws the population the protocol holds

@@ -315,10 +315,8 @@ function desks(n, spelled = String(n)) {
  * the claim (AT-D3-15). Neither says *client*, *fleet* or *seats* — the protocol's nouns, which the
  * operator could not parse — and neither claims a refresh.
  *
- * ⚠ "WHERE THE SHORTFALL IS LARGER THAN ONE DESK, THE ENDING'S OWN COUNT AGREES WITH IT (*two
- * desks could not be read*)" (§ 4.1). The document shows the agreement at two and says no more, so
- * two things here are this module's reading and not a ratified string: the ending spells its count
- * in words to NINE and in digits past it (*12 desks could not be read*), and every *desks* agrees
+ * The count agreement is ratified too (§ 4.1; card#7341, 2026-09-25): the ending spells its count
+ * in words to NINE and in digits past it (*11 desks could not be read*), and every *desks* agrees
  * with the number it follows (*showing 0 of 1 desk*, *showing 1 desk — the building lists 0*).
  *
  * `null` when they agree — the intact fixture's discriminating control: no notice. The condition is
