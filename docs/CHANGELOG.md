@@ -32,30 +32,41 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   step-8 floor page draws each desk as a line of text, § 9 F14 was unreachable, and the card's own title had
   no row delivering it. **Row 14, the room drawing**: the scene — a headless model emitting what is drawn
   where, from step 7's frame and the held map, every desk laid out INSIDE its slot rect, which § 10.3 now
-  defines as the desk's furniture box so that the operator's no-overlap ruling holds by construction at the
-  slot function (the shipped default's objects are re-authored to that box as this row's build obligation) —
-  the tileset reader (`.tsx` and `.tsj`, both spellings § 10.1 admits), the painter (the DOM half, one scaled
-  space for tiles, desks, nameplates, bubbles and the thread line), the asset route (the one HTTP surface for
-  `resources/floor/` and `resources/characters/`, through `FloorAssets`, § 10.1 clause 1's extensions only,
-  behind the floor route's own gate, without root), and F14's placeholder, with the strip's *some art failed
-  to load* line. **Row 15, the camera**: wheel-zoom to the cursor, drag-pan, fit-floor including the overflow
-  strip, whole-building; navigation that writes no animation-log row and survives every re-render; and the
-  capability floor, below which step 8's text render — widened to every fact the desk model emits, so a
-  degraded seat never reads healthy below the floor — is served as § 4.5's list view. **Row 16, the ride's
-  arrival**: the cross-section and the cab are PR #96's (card#7343 part 1), so this row builds only what that
-  PR named as unbuilt — the ride ending at `/floor/{key}`, row 15's camera at building scale and the
-  reduced-motion cut — and the document settles the split: row 16 is card#7343's destination half. New
-  acceptance tests gate them — AT-D3-19 (F14), AT-D3-20 (the no-overlap check the card asks the build to keep,
-  with a cap-width seat beside an occupied slot) and AT-D3-21 (the camera: a floor half with an `fx-degraded`
-  leg, and a building half). Rows 0 and 2 now carry the landed markers they lacked (PR #15, 2026-08-25;
-  PR #157, 2026-09-14). § 4.1, § 4.4, § 4.5, § 9 F14, § 10.3's `desks` row and § 12's viewport row point at
-  the rows; § 14 item 28 records what stays open (the console's refusal of intersecting or undersized
-  `desks` objects — sufficient now that a desk is drawn inside its slot; the unscheduled vector art; the
-  viewport measurement row 15 owes). `tools/design/verify-floor.py` G5 now reds on an Appendix B Order cell
-  that is not an integer instead of skipping the row, which is why the rows are numbered rather than
-  suffixed, and G8 holds the shipped default's `desks` objects pairwise disjoint on half-open rects; each leg
-  carries a plant in `verify-design-docs.selftest.py`. § 11's fixture count in words is replaced by the
-  derivation the gate already runs.
+  defines as the desk's furniture box — everything drawn for a desk except the bubble: stools at § 8's cap and
+  never hidden, the badge cluster at D2's bound, and every string truncated to the box with a visible mark, its
+  full value on the list view and in the drill-down — so that the operator's no-overlap ruling holds by
+  construction at the slot function however long a seat's strings run (the shipped default's objects are
+  re-authored to that box as this row's build obligation) — the tileset reader (`.tsx` and `.tsj`, both
+  spellings § 10.1 admits), the painter (the DOM half, one scaled space for tiles, desks, nameplates, bubbles
+  and the thread line, importing the character tree by the asset route's absolute URL), the asset route (the
+  one HTTP surface for `resources/floor/` and `resources/characters/`, mounted at `/art/floor/` and
+  `/art/characters/`, through `FloorAssets`, § 10.1 clause 1's extensions only, behind the floor route's own
+  gate including its second factor, without root), § 9 F21 with its § 5.5 line (the scene names a room's
+  intersecting or undersized desk slots on the floor, for any map the client holds — stored and restored
+  revisions included — while still drawing every desk, which is what stands until § 14 item 28(1)'s console
+  refusal is ruled), and F14's placeholder, with the strip's *some art failed to load* line. **Row 15, the
+  camera**: wheel-zoom to the cursor, drag-pan, fit-floor including the overflow strip, whole-building;
+  navigation that writes no animation-log row and survives every re-render; and the capability floor, below
+  which § 4.5's list view is served — a headless model over every fact the desk model emits, guarded so that
+  every model member is rendered or excluded by name, which `floor/main.js` only paints — so a degraded seat
+  below the floor carries § 7's marks and not its raw badge id alone. **Row 16, the ride's arrival**: the
+  cross-section and the cab are PR #96's (card#7343 part 1), so this row builds only what that PR named as
+  unbuilt — the ride ending at `/floor/{key}`, row 15's camera at building scale and the reduced-motion cut —
+  and the document settles the split: row 16 is card#7343's destination half. New acceptance tests gate them
+  — AT-D3-19 (F14), AT-D3-20 (the no-overlap check the card asks the build to keep: two cap-width seats
+  carrying every desk string at its bound, truncated with a mark and inside the box, and F21's notice on a
+  stubbed crowded map and a stubbed undersized one) and AT-D3-21 (the camera: a floor half with an
+  `fx-degraded` leg read from the list view's model, and a building half). Rows 0 and 2 now carry the landed
+  markers they lacked (PR #15, 2026-08-25; PR #157, 2026-09-14). § 4.1, § 4.4, § 4.5, § 9 F14, § 10.3's
+  `desks` row and § 12's viewport row point at the rows; § 14 item 28 records what stays open (the console's
+  refusal of intersecting or undersized `desks` objects at a save and at a restore, and the re-validation of
+  revisions stored under the sprite-sized meaning — with F21's notice as what stands meanwhile; the
+  unscheduled vector art; the viewport measurement row 15 owes). `tools/design/verify-floor.py` G5 now reds
+  on an Appendix B Order cell that is not an integer instead of skipping the row, which is why the rows are
+  numbered rather than suffixed, and G8 holds the shipped default's `desks` objects pairwise disjoint on
+  half-open rects; each leg carries a plant in `verify-design-docs.selftest.py`, G8's moving the second object
+  onto the first's span so that it reds whatever gutter the default carries. § 11's fixture count in words is
+  replaced by the derivation the gate already runs.
 - **card#10423** — **the deploy selftest names a fixture object git packed as NOT VERIFIED HERE and
   carries on.** `bin/deploy.selftest.sh`'s `blind_object` makes one loose object of a fixture's store
   unreadable for the cases that need a failed git read; when git's own housekeeping has stored that
