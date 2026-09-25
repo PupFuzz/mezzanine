@@ -27,6 +27,17 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **The floor page draws the room (Appendix B row 14, slice A).** The floor page now paints
+  one SVG drawing of the room from its tilesets: each desk inside its furniture box with up to eight stools
+  and a `+N more` count, badges, placeholders for art that failed to load, the overflow strip below the floor,
+  speech bubbles, and the communication band, lines and rings drawn only from what the page's log recorded.
+  Art that fails to load leaves every fact on the desk in place and adds "some art failed to load" to the
+  status strip. The floor and character art is served from `/art/floor/…` and `/art/characters/…`, behind
+  the floor's own login and second factor, limited to FLOOR.md § 10.1's file types and to files inside those
+  two trees. `resources/floor/furniture-box.js` is the one source of the furniture box, and the server reads
+  the same file. The text desk list stays until row 15; the default map's re-authoring to the box (slice B)
+  and the console's refusals (slice C) follow.
+
 - **card#7342** — **The drill-down opens from the floor, and a retired seat's desk goes (Appendix B step
   10).** Selecting a desk on the floor page opens its panel in place and puts `/floor/{floor}/{seat_id}` in
   the address bar; that URL is served (the same floor page, behind the same login and second factor) and
