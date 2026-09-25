@@ -735,6 +735,41 @@ PLANTS = [
         "states a fit zoom of",
     ),
     (
+        # PR #234 round 1, F4 — G8g, the worked floors laid at the furniture box.  § 4.6's office row
+        # restates section 12's box; bumping its height is the class "the box moved and a worked
+        # example's copy of it did not".  The anchor pins the words around the figure, never its value.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\)'s furniture box, [\d,]+ × )([\d,]+)( px \(a room holds)",
+        "bump",
+        "the furniture box's height as § 4.6's office row restates it, which G8g holds to the box G8e "
+        "reads out of its file (PR #234 round 1, F4)",
+        "G8g: section 4.6's office floor states the office's box",
+    ),
+    (
+        # PR #234 round 1, F2 — the same leg over D2 § 8.7's worked room map: its `desks` object one
+        # pixel shorter than the box, the boundary the check states, which is the class the 116 × 64
+        # object sat in until round 1 re-derived it.
+        "verify-floor.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\"objects\": \[ \{ \"id\": 1, [^}]*?\"height\": )(\d+)( \})",
+        "shrink",
+        "D2 § 8.7's worked room map's `desks` object one pixel shorter than the furniture box, which G8g "
+        "must refuse as a document the console would refuse (PR #234 round 1, F2)",
+        "G8g: D2 § 8.7's worked room map has",
+    ),
+    (
+        # The same leg's spacing claim: § 8.7 says why its planned rooms may sit D px apart, and the
+        # worked layout places them; the prose drifting from the JSON is the class.
+        "verify-floor.py",
+        "docs/design/FLEET-STATE.md",
+        r"(which is why they may sit )([\d,]+)( px apart)",
+        "bump",
+        "the spacing D2 § 8.7 states for its worked floor's authored rooms, which G8g holds to the "
+        "origins its worked `GET /api/building` document places them at (PR #234 round 1, F4)",
+        "G8g: D2 § 8.7 says its planned rooms sit",
+    ),
+    (
         # card#7341 step 3, G13.  § 2.3 row 5 makes a HELD seat the client cannot confirm render the
         # empty chair, and `idle`'s Never cell forbade exactly that in absolute terms.  The drop
         # takes the QUALIFICATION and leaves the explanation that follows it — which is the shape a

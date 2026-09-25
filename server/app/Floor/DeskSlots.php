@@ -13,9 +13,11 @@ use App\Building\Footprint;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ A WRITE-TIME RULE, AND DELIBERATELY NOT `FloorMap::parse()`'s. The parser is also every
  * READER's — the room map endpoint, the console's inventory, `S` for the revisions list, and the
- * deploy's refusal of a current document the readers refuse. Put there, a box that grew would make
- * every room saved against the old one unreadable at once, blanking it: the refusal *after the
- * fact* item 28(1)(iii) rules out, because it would blank a room for a document the console
+ * deploy's refusal of a current document the readers refuse (card#9322's migration,
+ * `server/database/migrations/2026_09_14_000000_refuse_a_current_authored_document_the_readers_refuse.php`,
+ * run by `bin/deploy.sh`'s `migrate --force` until it is recorded). Put there, a box that grew
+ * would make every room saved against the old one unreadable at once, blanking it: the refusal
+ * *after the fact* item 28(1)(iii) rules out, because it would blank a room for a document the console
  * accepted (§ 9 F16's *Never*). So the SAME judgement is applied two ways:
  *
  *   - at a save AND at a restore (`App\Floor\Floors`), `refuse()` — the document does not become
