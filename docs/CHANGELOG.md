@@ -38,6 +38,23 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   time. Watched both ways with the fixture repacked before blinding: the previous script FAILs, this one
   reports each affected case as not verified and exits 0, and a planted real failure alongside still
   exits 1.
+- **card#7341** — **The floor page and its stream recovery (Appendix B step 8).** `/floor/{floor}` is served
+  behind login and the second factor (`resources/views/floor.blade.php`, `public/js/floor/main.js`), and it
+  constructs the client protocol with its **stream recovery** (`public/js/wire/fleet-client.js`, § 2.2 steps
+  7–9): after 45 s with no message the floor says **feed down — polling** and polls and re-opens every 10 s;
+  a store outage retries on 10, 20, 40, 80 s; a deploy that keeps the `feed_version` reconnects silently
+  inside a 60 s grace, and one that changes it raises **a new version was deployed — reload to continue**
+  and stops applying deltas; any read answered `401` closes the stream and draws the sign-in prompt over the
+  dimmed floor labelled *not live since HH:MM:SS*; an errored stream is closed by the client, never left to
+  the browser's own reconnect. The **failure renders** (`public/js/wire/failure-render.js`, the lobby's
+  refusal words moved in rather than copied), the **status strip** (`public/js/floor/status-strip.js`) and
+  § 5.4's membership tests for all six published sets (`public/js/wire/member-sets.js`) land with it, and
+  the wall clock is set by a live feed and never by a poll. The page applies the two bounds the rulings
+  above set: 1,000 held coordination envelopes, evicted by whole threads with an *N+* bead count on the one
+  oversize thread, and 2,000 animation-log rows. Gated by AT-D3-6 (floor half), AT-D3-8, AT-D3-11, AT-D3-7
+  (strip half) and `FloorPageWiringTest`, each RED watched to fail; A11 (badge-raise) is exercised for the
+  first time. The lobby's refusal statement now reads the same words, and on a cold start whose request never
+  reached the server it now also says it has no earlier floor to keep.
 - **card#7341** — **`docs/design/FLOOR.md` records the maintainer's rulings for Appendix B step 8, ahead
   of that step's build.** (1) **The floor page is step 8's artifact**: row 8 bolds it — the `/floor/{floor}`
   web route inside the `auth`+`mfa` middleware group, its Blade view, and a DOM entry that constructs

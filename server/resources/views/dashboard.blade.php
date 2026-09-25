@@ -16,10 +16,9 @@
         "a floor that fails quietly is indistinguishable from a fleet that has gone home."
 
         ⚠ WHAT IS NOT HERE, AND WHY — none of it is an oversight:
-          · the tiled MAP, the camera and the desks — the floor screen is `docs/design/FLOOR.md`
-            Appendix B step 7 (card#7341) and is not built, so there is no floor screen for a
-            camera to arrive at and `/floor/{floor}` is still an unbuilt route. The maps it will
-            draw are served (`GET /api/building/rooms/{install_id}/map`, D2 § 8.7) and held by
+          · the tiled MAP, the camera and the desks — those are the floor page's
+            (`/floor/{floor}`, `docs/design/FLOOR.md` Appendix B step 8, card#7341), which a plate
+            links to; the camera § 4.5 describes is not built. The maps are served (`GET /api/building/rooms/{install_id}/map`, D2 § 8.7) and held by
             version in `public/js/wire/building.js`; nothing on this page draws one, because a
             plate names its rooms and never draws a room interior (§ 4.1).
           · the elevator's DESTINATION, for the same reason — card#7343 builds the elevator as
@@ -70,8 +69,9 @@
             `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest` reds if a layout comes back here.
 
             ⚠ The lobby opens no stream yet: the protocol that opens one is built (Appendix B
-            step 3) and no page constructs it before step 8, so a building rearranged after the
-            fetch is drawn when the viewer presses Refresh or reloads.
+            step 3) and the floor page constructs it (step 8), but this page does not until step 9,
+            so a building rearranged after the fetch is drawn when the viewer presses Refresh or
+            reloads.
         --}}
 
         {{--

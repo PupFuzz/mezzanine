@@ -28,12 +28,11 @@ class DeskDrawsTheThoughtBubbleTest extends TestCase
      * The module's wiring — that it is there, that every relative import in it resolves, and
      * that it reaches for the SHARED copy of each thing it shares rather than growing its own.
      *
-     * ⚠ NO PAGE SERVES THIS MODULE YET, and this says so rather than asserting one does. § 4.4's
-     * floor route is card#9208-blocked on a D2 read surface for an authored map, so the element
-     * contract is the floor page's to declare and the floor page's test to hold — the same
-     * position `public/js/drilldown` and `public/js/coord` are in, for the same reason. What is
-     * checkable today is that the module is internally coherent and will not fail to LOAD when
-     * that route lands.
+     * ⚠ THE FLOOR PAGE LOADS THIS MODULE AND DRAWS NO BUBBLE ELEMENT. `floor/main.js` (Appendix B
+     * step 8) imports it through the desk render and draws each desk as a line of text, so there is
+     * no bubble element contract to check yet — the drawing layer that places a bubble is not built.
+     * What is checkable today is that the module is internally coherent, which this asserts, and
+     * that it loads, which `FloorPageWiringTest`'s import resolution covers.
      */
     public function test_the_module_is_wired_to_the_shared_copies_it_shares(): void
     {

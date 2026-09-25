@@ -26,23 +26,31 @@
  * discovery's own release, because the discovery may still insert the key that buffer drains
  * against.
  *
- * ⛔ NOTHING HERE DRAWS ANYTHING, AND NOTHING HERE SETS A TIMER. The protocol holds data: the seat
- * map, each held member's delivery stamp (§ 2.4's stamp rule, `stampOf`), the record's lines, the
- * clock offset, the read status. Every render is another module's (Appendix B rows 4, 5, 6, 9, 10
- * — row 4's ages are `wire/age-readout.js`, which reads this client's seats and offset and ticks
- * on a timer it is handed; row 5's desks are `desk/desk-floor.js`, which reads the same), and the
- * one renderer owns every hook. No `setTimeout`, no `Date.now`, no `Math.random`: the clock is injected, which is what lets the harness replay a
- * scenario and get the same records every time — `Tests\Feature\Floor`'s determinism check scans
- * this file's own source for those identifiers.
+ * ⛔ NOTHING HERE DRAWS ANYTHING, AND NOTHING HERE READS AN AMBIENT TIMER OR CLOCK. The protocol
+ * holds data: the seat map, each held member's delivery stamp (§ 2.4's stamp rule, `stampOf`), the
+ * record's lines, the clock offset, the read status, and the stream recovery's own state (`feed`).
+ * Every render is another module's (Appendix B rows 4–10 — the status strip is
+ * `wire/status-strip.js` and the failure renders `wire/failure-render.js`, both pure over what this
+ * client exposes). No `setTimeout`, no `Date.now`, no `Math.random`: the clock AND the scheduler are
+ * injected, which is what lets the harness replay a scenario and get the same records every time —
+ * `Tests\Feature\Floor`'s determinism check scans this file's own source for those identifiers.
+ *
+ * ⛔ THE STREAM RECOVERY IS HERE (§ 2.2 steps 7–9, § 9 F1/F3/F4–F8/F19/F20, Appendix B row 8),
+ * BECAUSE ONLY THE PROTOCOL SEES THE STREAM. The scheduler (`{after(ms, fn), cancel(handle)}`) is the
+ * fourth constructor argument; a client constructed WITHOUT one has no recovery at all — it never
+ * notices a dead feed and never re-opens — and that is the harness's replay of the pre-recovery
+ * protocol, never a page's configuration: `floor/main.js` always passes one, and
+ * `Tests\Feature\Floor\FloorPageWiringTest` reds if it stops. The client OWNS THE RECONNECT: an
+ * errored `EventSource` is closed at once, so the browser's own reconnect — which re-runs none of
+ * steps 1–5 — is never inherited.
  *
  * ⛔ THE `fetch` AND THE `EventSource` ARE INJECTED, for the reason `wire/building.js` gives: there
  * is no browser on the build host, so every decision here is driven under `node` against a
  * scripted pair (`tests/Feature/Floor/fleet-client-probe.mjs`).
  *
- * ⚠ WHO CONSTRUCTS THIS, TODAY: nothing but the harness. No page builds a `FleetClient` before
- * Appendix B step 8, which is where stream recovery — dead-feed detection, the re-opens, the
- * reload grace and the re-run from step 1 — is built. Until then the lobby keeps its own
- * one-shot fetch and its own § 4.1 trigger; step 9 replaces that trigger with this one.
+ * ⚠ WHO CONSTRUCTS THIS: the floor page (`floor/main.js`, Appendix B row 8) and the harness. The
+ * lobby keeps its own one-shot fetch and its own § 4.1 trigger until step 9 replaces that trigger
+ * with this one.
  */
 
 import { request } from './building.js';
@@ -81,6 +89,42 @@ const LOG_CAP = 200;
  * constant the code reads. Nothing derives a second constant from this one.
  */
 const MISSING_AFTER = 2;
+
+/**
+ * D2 § 8.1's `feed_version` this client was built for. "The client JavaScript is served by the same
+ * deploy that serves the feed", so it is the release's own constant — `App\Feed\FeedEnvelope::
+ * FEED_VERSION` — and `Tests\Feature\Floor\TheStreamRecoveryIsTheDocumentsTest` reds if the two
+ * disagree. An envelope carrying any other value is § 9 F8.
+ */
+export const FEED_VERSION = 1;
+
+/** § 9 F1: "no message of any kind for 45 s" — D2 § 8.3's three heartbeat intervals. */
+export const SILENCE_MS = 45000;
+
+/** § 2.2 / § 9 F1: the one cadence the client polls and re-opens at. */
+export const CADENCE_MS = 10000;
+
+/** § 2.2: `unavailable`'s backed-off cadence doubles from `CADENCE_MS` to this ceiling. */
+export const BACKOFF_CEILING_MS = 80000;
+
+/** § 2.2's reload grace, derived at § 12's row of that name. */
+export const RELOAD_GRACE_MS = 60000;
+
+/** § 5.7 / § 12's *Held coordination envelopes*: the most this client holds (§ 14 item 25). */
+export const COORD_CAP = 1000;
+
+/** Every `t` D2 § 8.3 publishes. Anything else is D2's forward-compatibility case: ignore and count. */
+const KNOWN_TYPES = new Set([
+    'seat.delta', 'seat.retired', 'fleet.health', 'feed.heartbeat', 'fleet.reload', 'feed.close',
+    'room.map', 'building.layout', 'coord.thread', 'coord.round',
+]);
+
+/** The thread an envelope belongs to — § 5.7's grouping key, and the eviction unit. */
+function threadOf(envelope) {
+    const body = envelope.t === 'coord.round' ? envelope.coord_round : envelope.coord_thread;
+
+    return body !== null && typeof body === 'object' ? (body.thread_ref ?? null) : null;
+}
 
 /**
  * § 2.2's failure rule, in one place: a response failed when `request()` reports `ok: false` — a
@@ -153,10 +197,7 @@ export class FleetClient {
      * a list — a second implementation here would be two homes for one rule (the defect card#7341
      * step 6 removed one class up).
      *
-     * ⚠ NO CAP YET, AND ONE IS NOW PUBLISHED. § 5.7 bounds this population, evicting whole threads
-     * least recently received first (§ 12's *Held coordination envelopes* row, § 14 item 25), and
-     * Appendix B row 8 — the step that first leaves a page open — is where it is built. Until then
-     * a client left open on a busy thread holds every post it was sent.
+     * ⛔ HELD TO `COORD_CAP`, EVICTED BY WHOLE THREADS (§ 5.7, § 14 item 25) — `#holdCoord()`.
      */
     #coord = [];
 
@@ -187,6 +228,64 @@ export class FleetClient {
     /** key → the browser clock's reading of when this client last trusted an apply for the key. */
     #confirmedAt = new Map();
 
+    /** The `thread_ref`s whose oldest rounds `COORD_CAP` dropped — § 5.7's *N+* bead count. */
+    #coordTruncated = new Set();
+
+    /** The injected scheduler, or `null` for the harness's pre-recovery replay (see the header). */
+    #timers = null;
+
+    /**
+     * The CURRENT stream attempt: `{ id, at, opened, spoke, refused, ended, reconnect, snapshotOnOpen }`.
+     * `at` is the browser clock when it was constructed; `reconnect` is false for the connect's own.
+     */
+    #stream = null;
+
+    #streamSeq = 0;
+
+    /**
+     * The recovery's mode — `normal`, `down` (§ 9 F1: polling and re-opening on the 10 s cadence),
+     * `reconnecting` (F3 `stalled`), `backoff` (F3 `unavailable` / F4 / F5: the backed-off cadence),
+     * `grace` (F3 `reload`: § 2.2's reload grace), and the two TERMINAL ones, `signed-out` (F6/F7)
+     * and `reload-required` (F8), from which nothing is re-opened.
+     */
+    #mode = 'normal';
+
+    #silenceTimer = null;
+
+    #retryTimer = null;
+
+    #graceTimer = null;
+
+    /** The next backed-off interval. */
+    #backoff = CADENCE_MS;
+
+    /** The last message of any kind: `{ at: browser ms, server_time }`, or `null`. */
+    #lastMessage = null;
+
+    /** § 9 F4/F5: the store could not be read — `{ server_time }` of the refusal that said so. */
+    #store = null;
+
+    /** § 9 F4's other refusals: the last failed snapshot read, `{ status, error }`. */
+    #refusal = null;
+
+    /** § 9 F6: `{ since }` — the wire instant this client was last live — once any read returned 401. */
+    #signedOut = null;
+
+    /** Whether a full snapshot has ever been applied — § 9 F4's *on a cold start there is no floor to keep*. */
+    #applied = false;
+
+    /** A poll's snapshot read in flight — one at a time, so a stalled REST plane is asked no faster (F20). */
+    #polling = false;
+
+    /** § 5.5's *resyncs: N* — the F2 resyncs this client has ISSUED since it loaded. */
+    #resyncs = 0;
+
+    /** D2 § 8.3: an unrecognised `t` is ignored AND COUNTED. */
+    #unknownTypes = 0;
+
+    /** The held `fleet{}` itself, for the status strip's indicators (§ 4.2: the lobby's, on the floor). */
+    #fleet = null;
+
     /**
      * key → `{ member: server_time }`: for each top-level member of the held object, the
      * `server_time` of whatever DELIVERED the value now held — § 2.4's stamp rule.
@@ -199,12 +298,66 @@ export class FleetClient {
      * @param {Function} EventSourceImpl constructed as `new EventSourceImpl('/api/fleet/stream')`;
      *   a browser's `EventSource` satisfies it
      * @param {{now: function(): number}} clockImpl read when a record line is written and when an
-     *   offset is refreshed. No timer is set anywhere in this file.
+     *   offset is refreshed
+     * @param {{after: function(number, Function): *, cancel: function(*): void}|null} [timersImpl]
+     *   the stream recovery's scheduler. Absent, this client recovers nothing (see the header).
      */
-    constructor(fetchImpl, EventSourceImpl, clockImpl) {
+    constructor(fetchImpl, EventSourceImpl, clockImpl, timersImpl = null) {
         this.#fetch = fetchImpl;
         this.#EventSourceImpl = EventSourceImpl;
         this.#clock = clockImpl;
+        this.#timers = timersImpl;
+    }
+
+    /**
+     * The stream recovery's state, for the status strip and the failure renders — every field a fact
+     * about THIS CLIENT (§ 2.1 row 7), never about a seat. A frozen copy.
+     *
+     * `silent` is § 9 F1's test, read now: no message of any kind for `SILENCE_MS`, measured from the
+     * last message — or from the first stream's construction when none has arrived yet.
+     */
+    get feed() {
+        const now = this.#clock.now();
+        const since = this.#lastMessage?.at ?? this.#stream?.at ?? now;
+        const stream = this.#stream;
+
+        return Object.freeze({
+            mode: this.#mode,
+            down_cause: this.#mode === 'down' ? this.#downCause : null,
+            silent: now - since >= SILENCE_MS,
+            connected: stream !== null && stream.opened && !stream.ended,
+            stream_opened: stream?.opened ?? false,
+            stream_spoke: stream?.spoke ?? false,
+            stream_refused: stream?.refused ?? false,
+            last_message: this.#lastMessage === null ? null : Object.freeze({ ...this.#lastMessage }),
+            store: this.#store === null ? null : Object.freeze({ ...this.#store }),
+            refusal: this.#refusal === null ? null : Object.freeze({ ...this.#refusal }),
+            signed_out: this.#signedOut === null ? null : Object.freeze({ ...this.#signedOut }),
+            reload_required: this.#mode === 'reload-required',
+            applied: this.#applied,
+            resyncs: this.#resyncs,
+            unknown_messages: this.#unknownTypes,
+        });
+    }
+
+    /** The `fleet{}` this client holds (T40's filter decides which), or `null` — a copy. */
+    get fleet() {
+        return this.#fleet === null ? null : JSON.parse(JSON.stringify(this.#fleet));
+    }
+
+    /** § 5.7's *N+*: the threads `COORD_CAP` cut, whose bead count is a lower bound. */
+    get coordTruncated() {
+        return [...this.#coordTruncated];
+    }
+
+    /**
+     * § 9 F6's trigger from a read this module does not issue itself — the building surface's layout
+     * and map requests go through `wire/building.js`, and *any read returns 401* covers them too.
+     */
+    readRefused(status) {
+        if (status === 401) {
+            this.#endSession();
+        }
     }
 
     /** The held seat map — a COPY, so a caller cannot mutate what the protocol holds. */
@@ -345,13 +498,14 @@ export class FleetClient {
      * gets has already run and has not resolved the disagreement — saying *refreshing* past that
      * point claims a refresh that is not happening. And once `phase` has left `'live'` for good no
      * check can EVER run again, because the discrepancy check is only reached from a live
-     * dispatch: `snapshot-failed` is permanent until step 8's re-run exists, so a client in it
-     * claiming a pending refresh is claiming one nothing can start.
+     * dispatch: a client in `snapshot-failed` has no population to compare until the recovery's
+     * next cold read succeeds, so claiming a pending refresh there is claiming one nothing can start.
      *
      * ⚠ ONE REACHABLE STATE IS NOT CLOSED BY THAT, AND IS NAMED RATHER THAN DESIGNED AROUND: a
      * `live` page whose feed has quietly died has an unspent pair and no heartbeat coming, and
-     * this still reports `refreshing: true`. Telling "a heartbeat is due" from "the feed is dead"
-     * IS dead-feed detection, which is step 8's and is not decidable from data step 3 holds.
+     * this still reports `refreshing: true` until § 9 F1's 45 s pass. From then the status strip
+     * says *feed down — polling* (`feed.silent`, `wire/status-strip.js`), and every poll is itself
+     * a full snapshot, so the disagreement is re-read on the 10 s cadence either way.
      */
     discrepancyState() {
         const held = this.#seats.size;
@@ -390,8 +544,425 @@ export class FleetClient {
      * healthy doing it.
      */
     #open() {
+        if (this.#es !== null) {
+            this.#closeStream();
+        }
+
+        const id = ++this.#streamSeq;
+
+        this.#stream = {
+            id,
+            at: this.#clock.now(),
+            opened: false,
+            spoke: false,
+            refused: false,
+            ended: false,
+            reconnect: id > 1,
+            snapshotOnOpen: false,
+        };
         this.#es = new this.#EventSourceImpl('/api/fleet/stream');
-        this.#es.addEventListener('mezzanine', (ev) => this.#dispatch(JSON.parse(ev.data)));
+        this.#es.addEventListener('mezzanine', (ev) => this.#receive(id, JSON.parse(ev.data)));
+
+        // ⛔ `open` AND `error` ARE LISTENED FOR ONLY WHERE THERE IS A RECOVERY TO RUN. Neither is a
+        // message listener — § 2.2's ONE named listener above is still the only one — and without a
+        // scheduler there is nothing either could start.
+        if (this.#timers !== null) {
+            this.#es.addEventListener('open', () => this.#opened(id));
+            this.#es.addEventListener('error', () => this.#errored(id));
+
+            if (id === 1) {
+                this.#armSilence();
+            }
+        }
+    }
+
+    /** Close the current `EventSource` — ours to close, so the browser's own reconnect never runs. */
+    #closeStream() {
+        this.#es?.close();
+        this.#es = null;
+
+        if (this.#stream !== null) {
+            this.#stream.ended = true;
+        }
+    }
+
+    /** One message from stream `id`. A message from any stream but the current one is dropped. */
+    #receive(id, envelope) {
+        const stream = this.#stream;
+
+        if (stream === null || stream.id !== id || stream.ended) {
+            return;
+        }
+
+        // A message is proof of an open stream, whether or not an `open` event was seen.
+        stream.opened = true;
+
+        if (this.#mode === 'reload-required' || this.#mode === 'signed-out') {
+            this.#note(envelope.t, 'ignored', { server_time: envelope.server_time });
+
+            return;
+        }
+
+        // § 9 F8: "an envelope carrying a `feed_version` the client does not know" — on
+        // `fleet.reload` first, and on any later envelope. Never the message alone.
+        if (envelope.feed_version !== FEED_VERSION) {
+            this.#reloadRequired(envelope);
+
+            return;
+        }
+
+        const first = !stream.spoke;
+
+        stream.spoke = true;
+        this.#lastMessage = { at: this.#clock.now(), server_time: envelope.server_time ?? null };
+        this.#armSilence();
+
+        // ⛔ A STREAM THAT SAYS THE STORE CANNOT BE READ IS NOT A RECOVERY. F5's stream opens to say
+        // why and ends in the same breath — that is an attempt that "fails the same way" (§ 2.2), so
+        // it neither resets the backoff nor establishes a live feed.
+        const storeDown = envelope.t === 'fleet.health' && envelope.fleet?.db === 'down';
+
+        if (first && stream.reconnect && !storeDown) {
+            this.#recovered(envelope);
+        }
+
+        this.#dispatch(envelope);
+    }
+
+    /** `open` on stream `id` — the snapshot a grace or backed-off attempt waited for follows it. */
+    #opened(id) {
+        if (this.#stream === null || this.#stream.id !== id || this.#stream.ended) {
+            return;
+        }
+
+        this.#stream.opened = true;
+
+        if (this.#stream.snapshotOnOpen) {
+            this.#poll();
+        }
+    }
+
+    /**
+     * `error` on stream `id` — § 2.2 step 8. The stream is closed at once: an errored `EventSource`
+     * left open is one the browser re-opens on its own schedule, re-running none of steps 1–5.
+     */
+    #errored(id) {
+        const stream = this.#stream;
+
+        if (stream === null || stream.id !== id || stream.ended) {
+            return;
+        }
+
+        if (!stream.opened) {
+            stream.refused = true;
+        }
+
+        this.#closeStream();
+
+        // Inside a retry loop an attempt that failed is already followed by the next one.
+        if (this.#mode !== 'normal') {
+            if (this.#mode === 'down') {
+                this.#downCause = stream.refused ? 'refused' : (stream.spoke ? 'silent' : 'never-spoke');
+            }
+
+            return;
+        }
+
+        // The stream ended with NO `feed.close` (a `feed.close` closes the stream itself, below, so
+        // it never reaches here): "a reason the server did not choose, and is F1's silence arriving
+        // early" — the deploy's drain included, with no grace (§ 9 F3).
+        this.#line(stream.opened ? 'the stream ended without a reason — feed presumed dead' : 'the stream could not be opened');
+        this.#presumeDead();
+    }
+
+    /**
+     * Why the feed was presumed dead, for the strip's words: `never-spoke` — the stream opened and
+     * delivered nothing (§ 9 F19: something is buffering it); `refused` — it errored before `open`
+     * (F20); `silent` otherwise. Re-read on every attempt that fails, so F20's *on each attempt* is
+     * the latest attempt's answer.
+     */
+    #downCause = null;
+
+    /** § 9 F1: arm the dead-feed timer `SILENCE_MS` after the last message. */
+    #armSilence() {
+        this.#cancel(this.#silenceTimer);
+
+        const since = this.#lastMessage?.at ?? this.#stream?.at ?? this.#clock.now();
+
+        this.#silenceTimer = this.#after(since + SILENCE_MS - this.#clock.now(), () => this.#silenceElapsed());
+    }
+
+    /**
+     * 45 s of silence. Inside the reload grace, clause (2) applies instead and the mode is left alone
+     * — the *reconnecting* the strip then reads is `wire/status-strip.js`'s, from `feed.silent`.
+     */
+    #silenceElapsed() {
+        this.#silenceTimer = null;
+
+        if (this.#mode === 'normal' || this.#mode === 'reconnecting') {
+            this.#line('no message for 45 s — feed presumed dead, polling');
+            this.#presumeDead();
+        }
+    }
+
+    /** § 2.2 step 7: poll and re-open on the 10 s cadence, starting now. */
+    #presumeDead() {
+        const stream = this.#stream;
+
+        if (stream !== null) {
+            this.#downCause = stream.refused ? 'refused' : (stream.opened && !stream.spoke ? 'never-spoke' : 'silent');
+        }
+
+        this.#mode = 'down';
+        this.#rerun();
+    }
+
+    /**
+     * § 2.2 step 9, "re-run from step 1": a new stream, and the snapshot — at once, or once the stream
+     * has opened where the grace or the backed-off cadence says so ("the first stream that opens
+     * carries `fleet.health` as its first message and the snapshot follows", F5; AT-D3-8's *no
+     * snapshot poll before the stream re-opened*). The next attempt is scheduled here too, and a
+     * recovery cancels it.
+     */
+    #rerun() {
+        this.#retryTimer = null;
+
+        if (this.#terminal()) {
+            return;
+        }
+
+        const waitForOpen = this.#mode === 'grace' || this.#mode === 'backoff';
+
+        this.#open();
+        this.#stream.snapshotOnOpen = waitForOpen;
+
+        if (!waitForOpen) {
+            this.#poll();
+        }
+
+        this.#schedule(this.#mode === 'backoff' ? this.#nextBackoff() : CADENCE_MS);
+    }
+
+    /**
+     * One snapshot read for the recovery — the cold connect's own read while nothing has been applied,
+     * a warm re-read after. One at a time: a poll still in flight is not joined by a second (F20: "one
+     * more request against a pool that has none to give").
+     *
+     * ⛔ A WARM RE-RUN BUFFERS NOTHING, FOR ADMIT's OWN REASON (§ 2.2). Every row and every delta
+     * carries its seat's `state_version`, so the re-read's rows and the new stream's deltas order
+     * themselves under the version rule whichever lands first — exactly the argument that retired
+     * the second discovery read — and a held seat is never blanked while the read is out ("blanking
+     * the floor while reconnecting" is F3's Never).
+     */
+    #poll() {
+        if (!this.#applied) {
+            // The cold read's own phase says whether it is in flight.
+            if (this.#phase !== 'connecting') {
+                this.#phase = 'connecting';
+                this.#initialSnapshot();
+            }
+
+            return;
+        }
+
+        if (this.#polling) {
+            return;
+        }
+
+        this.#polling = true;
+        this.#resnapshot().finally(() => {
+            this.#polling = false;
+        });
+    }
+
+    /** A warm re-run's snapshot, applied under the version rule like any full snapshot. */
+    async #resnapshot() {
+        const res = await this.#get(SNAPSHOT_PATH);
+
+        if (failed(res) || this.#terminal()) {
+            return;
+        }
+
+        this.#applySnapshot(res.body);
+
+        for (const k of [...this.#buffers.keys()]) {
+            this.#release(k);
+        }
+    }
+
+    /**
+     * The first message on a re-opened stream: the feed is back. The backoff resets (§ 2.2), the
+     * pending attempt and the grace are cancelled, and the journal carries the ESTABLISHMENT that
+     * § 6.5 lets set the room — a render that re-establishes a live feed, and nothing else.
+     */
+    #recovered(envelope) {
+        this.#cancel(this.#retryTimer);
+        this.#cancel(this.#graceTimer);
+        this.#retryTimer = null;
+        this.#graceTimer = null;
+        this.#backoff = CADENCE_MS;
+        this.#mode = 'normal';
+        this.#line('stream re-opened — feed live');
+        this.#note('feed.established', 'applied', { server_time: envelope.server_time ?? null });
+
+        // A cold client whose snapshot read never succeeded has nothing to drain against yet.
+        if (!this.#applied) {
+            this.#poll();
+        }
+    }
+
+    /**
+     * § 9 F3: the server ended the stream on its own decision, and said why. The stream is closed
+     * here rather than on the `error` that follows, because the reason is the last envelope and the
+     * end adds nothing to it.
+     */
+    #serverClosed(reason, serverTime) {
+        this.#closeStream();
+        this.#line(`the server ended the stream: ${reason}`);
+
+        switch (reason) {
+            case 'session':
+                // F6's render, immediately — and NO reconnect: "a request the server has just said it
+                // will refuse".
+                this.#endSession();
+
+                return;
+            case 'unavailable':
+                // F5: the store cannot be read. F4's statement, immediately, and the BACKED-OFF cadence.
+                this.#store = { server_time: this.#store?.server_time ?? serverTime ?? null };
+                this.#mode = 'backoff';
+                this.#schedule(this.#nextBackoff());
+
+                return;
+            case 'reload':
+                // A `feed_version` this client knows (an unknown one was F8 already, on the message):
+                // § 2.2's reload grace. Re-open 10 s after the `feed.close`, render nothing.
+                this.#mode = 'grace';
+                this.#cancel(this.#graceTimer);
+                this.#graceTimer = this.#after(RELOAD_GRACE_MS, () => this.#graceEnded());
+                this.#schedule(CADENCE_MS);
+
+                return;
+            case 'stalled':
+                this.#mode = 'reconnecting';
+                this.#schedule(CADENCE_MS);
+
+                return;
+            default:
+                // D2 § 8.3 publishes exactly four; a fifth is a reason this client cannot act on, and
+                // a stream ended for a reason it cannot act on is step 7's.
+                this.#presumeDead();
+        }
+    }
+
+    /** § 2.2 clause (1): the grace does not outlast itself. Past it, step 7's path. */
+    #graceEnded() {
+        this.#graceTimer = null;
+
+        if (this.#mode === 'grace') {
+            this.#line('the reload grace ended with no stream open — feed presumed dead, polling');
+            this.#mode = 'down';
+
+            // The attempt on the cadence is what polls; start one now if none is pending.
+            if (this.#retryTimer === null) {
+                this.#rerun();
+            }
+        }
+    }
+
+    /** § 9 F6: any read returned 401, or the server said the session is gone. Nothing re-opens. */
+    #endSession() {
+        if (this.#signedOut !== null) {
+            return;
+        }
+
+        this.#signedOut = { since: this.#lastMessage?.server_time ?? this.#fleetTime ?? null };
+        this.#mode = 'signed-out';
+        this.#stopRecovery();
+        this.#closeStream();
+        this.#line('the session is no longer valid — sign in to continue');
+    }
+
+    /** § 9 F8: a `feed_version` this client does not know. Delta application stops; nothing re-opens. */
+    #reloadRequired(envelope) {
+        this.#mode = 'reload-required';
+        this.#stopRecovery();
+        this.#note(envelope.t, 'ignored', { server_time: envelope.server_time, feed_version: envelope.feed_version ?? null });
+        this.#line(`a new version was deployed (feed_version ${envelope.feed_version}) — reload required`);
+    }
+
+    #terminal() {
+        return this.#mode === 'signed-out' || this.#mode === 'reload-required';
+    }
+
+    #stopRecovery() {
+        this.#cancel(this.#silenceTimer);
+        this.#cancel(this.#retryTimer);
+        this.#cancel(this.#graceTimer);
+        this.#silenceTimer = null;
+        this.#retryTimer = null;
+        this.#graceTimer = null;
+    }
+
+    /** The next attempt, replacing any pending one. */
+    #schedule(ms) {
+        this.#cancel(this.#retryTimer);
+        this.#retryTimer = this.#after(ms, () => this.#rerun());
+    }
+
+    /** § 2.2's backed-off cadence: 10, 20, 40, 80, and 80 thereafter. */
+    #nextBackoff() {
+        const delay = this.#backoff;
+
+        this.#backoff = Math.min(this.#backoff * 2, BACKOFF_CEILING_MS);
+
+        return delay;
+    }
+
+    /** The injected scheduler, or nothing at all without one. */
+    #after(ms, fn) {
+        return this.#timers === null ? null : this.#timers.after(Math.max(0, ms), fn);
+    }
+
+    #cancel(handle) {
+        if (handle !== null && handle !== undefined && this.#timers !== null) {
+            this.#timers.cancel(handle);
+        }
+    }
+
+    /**
+     * What every snapshot read's answer says about the recovery (§ 9 F4, F6). A discovery's read is a
+     * snapshot read too — its refusal is as true — but it schedules nothing: the discovery budget is
+     * its retry.
+     */
+    #snapshotAnswered(res, discovery) {
+        if (!failed(res)) {
+            this.#refusal = null;
+
+            if (res.body.fleet?.db !== 'down') {
+                this.#store = null;
+            }
+
+            return;
+        }
+
+        if (res.status === 401) {
+            return;
+        }
+
+        // D2 § 2.2: a snapshot `503` is `fleet_unavailable` — the store could not be read.
+        if (res.status === 503) {
+            this.#store = { server_time: res.body.server_time ?? null };
+        } else {
+            this.#refusal = { status: res.status, error: typeof res.body?.error === 'string' ? res.body.error : null };
+        }
+
+        // F4: "retry the snapshot with backoff". A read failing inside a retry loop is that loop's
+        // attempt failing, and the loop's next attempt is already scheduled.
+        if (!discovery && this.#mode === 'normal') {
+            this.#mode = 'backoff';
+            this.#schedule(this.#nextBackoff());
+        }
     }
 
     /**
@@ -410,12 +981,24 @@ export class FleetClient {
         }
     }
 
-    /** One GET, with § 2.4's offset refreshed from any body that carries `server_time`. */
-    async #get(path) {
+    /**
+     * One GET, with § 2.4's offset refreshed from any body that carries `server_time` — and the ONE
+     * place every read this module issues is seen, so § 9 F6's *any read returns 401* is one check
+     * rather than one per caller.
+     */
+    async #get(path, { discovery = false } = {}) {
         const res = await request(this.#fetch, path);
 
         if (res.body !== null) {
             this.#observeTime(res.body.server_time);
+        }
+
+        if (res.status === 401) {
+            this.#endSession();
+        }
+
+        if (path === SNAPSHOT_PATH) {
+            this.#snapshotAnswered(res, discovery);
         }
 
         return res;
@@ -429,9 +1012,10 @@ export class FleetClient {
      * live path against a half-populated map and start a fetch for a seat the snapshot is about to
      * insert.
      *
-     * ⚠ A FAILED FIRST SNAPSHOT STOPS THE CLIENT: the buffers are discarded, every later delta is
-     * ignored, and `phase` stays `snapshot-failed`. Patching held-nothing from deltas would be
-     * § 2.2's forbidden "partial object" built out of patches. The re-run from step 1 is step 8's.
+     * ⚠ A FAILED COLD READ STOPS THE APPLY: the buffers are discarded, every later delta is
+     * ignored, and `phase` stays `snapshot-failed` until the recovery's next cold read (`#poll`,
+     * on the backed-off cadence F4 names) re-enters this method. Patching held-nothing from deltas
+     * would be § 2.2's forbidden "partial object" built out of patches.
      */
     async #initialSnapshot() {
         const res = await this.#get(SNAPSHOT_PATH);
@@ -445,6 +1029,15 @@ export class FleetClient {
 
         this.#applySnapshot(res.body);
         this.#phase = 'live';
+
+        // § 6.5: the connect sequence's snapshot is the render that ESTABLISHES a live feed — the
+        // first one only. A cold RETRY's read is the same method and is not a live feed coming back;
+        // that is the re-opened stream's first message (`#recovered`).
+        if (!this.#applied && this.#streamSeq === 1) {
+            this.#note('feed.established', 'applied', { server_time: res.body.server_time ?? null });
+        }
+
+        this.#applied = true;
 
         for (const k of [...this.#buffers.keys()]) {
             this.#release(k);
@@ -466,12 +1059,12 @@ export class FleetClient {
     /**
      * `t` is the sole discriminator (D2 § 8.4).
      *
-     * ⚠ EVERY OTHER `t` IS IGNORED AT THIS STEP, BY DESIGN AND NOT BY OVERSIGHT: `room.map` and
+     * ⚠ EVERY OTHER `t` IS IGNORED, BY DESIGN AND NOT BY OVERSIGHT: `room.map` and
      * `building.layout` are journalled and applied by the floor screen (step 7) through
      * `wire/building.js`, because an authored document is FETCHED by version and no message carries
-     * one; `seat.retired` and `fleet.reload`/`feed.close` are steps 10 and 8's; and an unrecognised
-     * `t` is D2's own forward compatibility rule — ignore it. Counting the unknown ones is step 8's
-     * strip.
+     * one; `seat.retired` is step 10's; and an unrecognised `t` is D2's own forward compatibility
+     * rule — ignore it and count it (`feed.unknown_messages`). § 5.5 publishes no narration line for
+     * that count, so the strip draws none.
      */
     #dispatch(envelope) {
         this.#observeTime(envelope.server_time);
@@ -487,6 +1080,13 @@ export class FleetClient {
                 // and T40's filter below decides only whose `fleet{}` this client holds — a
                 // heartbeat overtaken by a newer one still arrived, and a room render stopped on
                 // it would claim § 9 F1's feed-down condition on a live feed.
+                // § 9 F5: `db: "down"` is the store-unavailable render, whatever else follows it.
+                if (envelope.fleet?.db === 'down') {
+                    this.#store = { server_time: envelope.server_time ?? null };
+                } else if (typeof envelope.fleet?.db === 'string') {
+                    this.#store = null;
+                }
+
                 if (this.#acceptFleet(envelope.server_time, envelope.fleet)) {
                     this.#note(envelope.t, 'applied', { server_time: envelope.server_time });
                     this.#check();
@@ -511,6 +1111,19 @@ export class FleetClient {
                     layout_version: envelope.layout_version ?? null,
                 });
                 break;
+            case 'feed.close':
+                this.#note(envelope.t, 'applied', { server_time: envelope.server_time, reason: envelope.reason ?? null });
+
+                if (this.#timers !== null) {
+                    this.#serverClosed(envelope.reason ?? null, envelope.server_time ?? null);
+                }
+                break;
+            case 'fleet.reload':
+                // A `feed_version` this client knows — F8 was decided in `#receive` — so the deploy
+                // moved nothing this client reads, and the `feed.close{reload}` that follows is what
+                // is acted on (operator ruling A4).
+                this.#note(envelope.t, 'applied', { server_time: envelope.server_time, feed_version: envelope.feed_version });
+                break;
             case 'coord.thread':
             case 'coord.round':
                 // ⛔ THESE ARE HELD, NOT MERELY SEEN (D2 § 8.3.3). No REST surface carries them, so
@@ -518,7 +1131,7 @@ export class FleetClient {
                 // could draw a thread only for as long as one message was in flight. § 5.7 clause 3
                 // scopes each to the room its own `install_id` names, which is the RENDERER's
                 // filter and not a reason to drop one here: a floor draws several rooms.
-                this.#coord.push(envelope);
+                this.#holdCoord(envelope);
                 this.#note(envelope.t, 'applied', {
                     server_time: envelope.server_time,
                     install_id: this.#coordBody(envelope)?.install_id ?? null,
@@ -531,8 +1144,55 @@ export class FleetClient {
                 });
                 break;
             default:
+                // D2 § 8.3: an unrecognised `t` is ignored AND COUNTED. A known one this protocol
+                // applies nothing for (`seat.retired` until Appendix B step 10) is only ignored.
+                if (!KNOWN_TYPES.has(envelope.t)) {
+                    this.#unknownTypes++;
+                }
+
                 this.#note(envelope.t, 'ignored', { server_time: envelope.server_time });
                 break;
+        }
+    }
+
+    /**
+     * § 5.7's bound on the coordination envelopes this client holds (§ 14 item 25): at most
+     * `COORD_CAP`, evicting WHOLE THREADS, least recently received first.
+     *
+     * ⛔ A THREAD LEAVES WHOLE — its `coord.thread` and every round together — so an evicted thread
+     * renders exactly as one a just-connected client has not seen, and every surviving thread keeps
+     * a complete bead count. The one case that unit cannot satisfy is a single thread that alone
+     * exceeds the cap: it keeps its newest `coord.thread` and drops its OLDEST rounds, and its bead
+     * count becomes a lower bound (`coordTruncated`, rendered *N+*).
+     */
+    #holdCoord(envelope) {
+        this.#coord.push(envelope);
+
+        while (this.#coord.length > COORD_CAP) {
+            // Recency is the index of a thread's newest envelope: the list is in arrival order.
+            const newest = new Map();
+
+            this.#coord.forEach((e, i) => newest.set(threadOf(e), i));
+
+            if (newest.size > 1) {
+                const victim = [...newest.entries()].sort((a, b) => a[1] - b[1])[0][0];
+
+                this.#coord = this.#coord.filter((e) => threadOf(e) !== victim);
+                this.#coordTruncated.delete(victim);
+
+                continue;
+            }
+
+            // One thread alone over the cap: drop its oldest envelope that is not its newest
+            // `coord.thread` — the object the line's lifecycle is rendered from.
+            const lastThread = this.#coord.findLastIndex((e) => e.t === 'coord.thread');
+            const drop = this.#coord.findIndex((e, i) => i !== lastThread);
+
+            if (this.#coord[drop].t === 'coord.round') {
+                this.#coordTruncated.add(threadOf(this.#coord[drop]));
+            }
+
+            this.#coord.splice(drop, 1);
         }
     }
 
@@ -592,7 +1252,7 @@ export class FleetClient {
      * More than one above → a gap: buffer it and start a RESYNC fetch.
      */
     #applyDelta(d) {
-        if (this.#phase === 'snapshot-failed' || this.#phase === 'idle') {
+        if (this.#phase === 'snapshot-failed' || this.#phase === 'idle' || this.#terminal()) {
             this.#noteDelta(d, 'ignored');
 
             return;
@@ -682,6 +1342,7 @@ export class FleetClient {
             : `${seatPath(installId, seatId)}?resync_from=${resyncFrom}`;
 
         if (resyncFrom !== null) {
+            this.#resyncs++;
             this.#line(`resync ${k} from ${resyncFrom}`);
         }
 
@@ -855,6 +1516,7 @@ export class FleetClient {
 
         this.#fleetTime = serverTime;
         this.#fleetTotal = fleet?.seats_total;
+        this.#fleet = fleet ?? null;
 
         return true;
     }
@@ -905,7 +1567,7 @@ export class FleetClient {
     async #discover(held, total) {
         this.#discovery = [held, total];
 
-        const res = await this.#get(SNAPSHOT_PATH);
+        const res = await this.#get(SNAPSHOT_PATH, { discovery: true });
 
         if (failed(res)) {
             this.#budget.refund(held, total);

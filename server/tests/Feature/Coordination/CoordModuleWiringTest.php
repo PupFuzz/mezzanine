@@ -9,13 +9,13 @@ use Tests\TestCase;
  * resolves, and that it holds no second copy of a function the shared `wire/` owns.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⚠ NO PAGE SERVES THESE MODULES YET, and this file says so rather than asserting one does.
- * `docs/design/FLOOR.md § 4.4`'s `/floor/{install_id}` route is not built — the floor is
- * card#9208-blocked on a D2 read surface for an authored map — so unlike `public/js/lobby`,
- * whose `dashboard.blade.php` loads it, this client has no host page to check against. What is
- * checkable today is that the modules are internally coherent and that nothing about them will
- * fail to LOAD when that route lands; the element contract is the floor page's to declare and
- * the floor page's test to hold.
+ * ⚠ NO PAGE SERVES THIS DIRECTORY's DOM HALF, and this file says so rather than asserting one does.
+ * The floor page (`floor/main.js`, Appendix B step 8) draws the coordination line from
+ * `coord-model.js` through `floor/floor-screen.js` and writes its own elements, so this directory's
+ * DOM half, `main.js`, is loaded by no page — unlike `public/js/lobby`, whose `dashboard.blade.php`
+ * loads it, it has no host page to check against. What is checkable is that the modules are
+ * internally coherent and that nothing about them will fail to LOAD; the floor page's own element
+ * contract is `Tests\Feature\Floor\FloorPageWiringTest`'s to hold.
  */
 class CoordModuleWiringTest extends TestCase
 {

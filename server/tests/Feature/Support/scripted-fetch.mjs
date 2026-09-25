@@ -30,16 +30,28 @@
  *   request on the lobby's or the building's side carries a query string, so this changes nothing
  *   for them — re-derive with
  *   `grep -rn "'/api/[^']*?" server/tests/Feature/Lobby server/tests/Feature/Building`.)
- * @param {{schedule?: function(number, string, function(): void): void}} options `schedule` is
- *   absent for a probe with no clock — the response settles on the next microtask turn — and
- *   present for one that drives a scenario clock, where the response settles when that clock
- *   fires `schedule(delay_ms, label, fire)`.
+ *
+ *   Two optional members on an entry, both for a scenario that polls (FLOOR § 9 F1):
+ *   · `times: N` — the entry answers N requests before the queue moves on, so ten polls of one
+ *     snapshot are one entry in the fixture rather than ten copies of it;
+ *   · `clocked: true` — the body's `server_time` is advanced by the SCENARIO clock at the moment the
+ *     response settles (`clock()` below), which is what a live server's clock does between polls. A
+ *     poll answered with the snapshot's original `server_time` would move the client's clock offset
+ *     backwards by the elapsed time and every age on the page with it — a server that stopped its
+ *     own clock, which no fixture means to describe.
+ * @param {{schedule?: function(number, string, function(): void): void, clock?: function(): number}} options
+ *   `schedule` is absent for a probe with no clock — the response settles on the next microtask
+ *   turn — and present for one that drives a scenario clock, where the response settles when that
+ *   clock fires `schedule(delay_ms, label, fire)`. `clock` reads the scenario clock, in ms since the
+ *   scenario started, for `clocked` entries.
  */
-export function scriptedFetch(responses, { schedule } = {}) {
+export function scriptedFetch(responses, { schedule, clock } = {}) {
     const queues = Object.create(null);
 
     for (const [path, list] of Object.entries(responses ?? {})) {
-        queues[path] = [...list];
+        // Each entry with a count of the requests it has left to answer, held HERE rather than on
+        // the fixture's own object, which a repeated run in the same process reads again.
+        queues[path] = list.map((entry) => ({ entry, left: entry.times ?? 1 }));
     }
 
     const requests = [];
@@ -50,19 +62,33 @@ export function scriptedFetch(responses, { schedule } = {}) {
             throw new TypeError('Failed to fetch');
         }
 
+        let body = next.body;
+
+        if (next.clocked === true && body !== null && typeof body === 'object' && typeof body.server_time === 'string') {
+            const at = new Date(Date.parse(body.server_time) + (clock?.() ?? 0)).toISOString();
+
+            body = { ...body, server_time: at };
+        }
+
         return {
             status: next.status,
             ok: next.status >= 200 && next.status < 300,
             json: async () => (next.text !== undefined
                 ? JSON.parse(next.text)
-                : JSON.parse(JSON.stringify(next.body))),
+                : JSON.parse(JSON.stringify(body))),
         };
     };
 
     const fetch = (path) => {
         requests.push(path);
 
-        const next = (queues[path.split('?')[0]] ?? []).shift();
+        const queue = queues[path.split('?')[0]] ?? [];
+        const head = queue[0];
+        const next = head?.entry;
+
+        if (head !== undefined && --head.left <= 0) {
+            queue.shift();
+        }
 
         if (next === undefined) {
             unscripted.push(path);

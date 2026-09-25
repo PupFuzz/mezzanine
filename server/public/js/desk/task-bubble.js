@@ -6,11 +6,10 @@
  * ⛔ EVERY DECISION THE BUBBLE MAKES IS IN THIS FILE. Whether one is drawn at all, what text it
  * holds, where the text is cut, and where a bubble sits when two of them would collide are all
  * decided here and are exercised under `node` by `tests/Feature/Desk`. What is NOT here is a DOM
- * half, and that is deliberate rather than unfinished: THERE IS NO FLOOR PAGE YET — § 4.4's
- * `/floor/{install_id}` route is card#9208-blocked on a D2 read surface for an authored map, and
- * `drilldown/main.js` records the same gap for the same reason ("the element contract is the
- * floor page's to declare and the floor page's test to hold"). A `main.js` written now would
- * invent element ids nobody will serve. What the floor page needs from this module is a model it
+ * half, and that is deliberate rather than unfinished: the floor page (`floor/main.js`, Appendix B
+ * step 8) loads this module through the desk render and draws each desk as a line of text — the
+ * drawing layer that places a bubble beside a character, and supplies the measurer below, is not
+ * built. A DOM half written here would invent element ids nobody serves. What the floor page needs from this module is a model it
  * can draw and a MEASURER it must supply — see `bubbleLayout` below.
  *
  * ⛔ THE BUBBLE REPLACES THE TEXT CHIP; IT DOES NOT JOIN IT (§ 5.1, rule 1). "A chip surviving

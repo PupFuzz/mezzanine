@@ -45,6 +45,7 @@ import { RENDER_STATES, isRenderState } from './render-state.js';
 import { clockTime } from '../wire/clock.js';
 import { disagrees, DiscrepancyBudget } from '../wire/discrepancy-budget.js';
 import { NOT_REPORTED } from '../wire/null-render.js';
+import { storeUnavailableStatement } from '../wire/failure-render.js';
 
 /**
  * ⚠ `clockTime` MOVED to `../wire/clock.js` at its second caller (card#8300's coordination
@@ -349,16 +350,11 @@ export function indicators(fleet) {
 }
 
 /**
- * § 9 F4's observable, verbatim: "a full-width statement: **fleet state is unavailable — the
- * store could not be read at 14:23:14**".
- *
- * The instant is the refusal's OWN `server_time` — `App\Read\ReadRefusal::response()` puts one on
- * every refusal body, so this is a server-clock fact and not the client guessing when the store
- * broke. `not reported` if it is missing, never the client's own clock silently substituted.
+ * § 9 F4's store statement. ⚠ MOVED to `../wire/failure-render.js` at its second caller — the floor
+ * page (FLOOR Appendix B step 8) renders the same statement — and re-exported here so every lobby
+ * import is unchanged. The lobby's other refusal words moved with it, out of `main.js`.
  */
-export function storeUnavailableStatement(serverTime) {
-    return `fleet state is unavailable — the store could not be read at ${clockTime(serverTime) ?? NOT_REPORTED}`;
-}
+export { storeUnavailableStatement };
 
 /**
  * ⚠ `DiscrepancyBudget` MOVED to `../wire/discrepancy-budget.js` at its second caller — the client

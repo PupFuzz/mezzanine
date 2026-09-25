@@ -28,8 +28,8 @@
  *     `fetch-fresh` value, this slice renders none of the ten, and a stamp over values that do
  *     not need one would be a marker with nothing behind it.
  *   · LIVE PATCHING while the panel is open (§ 4.3). The delta-feed client exists
- *     (`wire/fleet-client.js`, Appendix B step 3), but no page constructs it before step 8's
- *     stream recovery, so nothing hands this panel a patched object yet. The model is pure over
+ *     (`wire/fleet-client.js`, Appendix B step 3) and the floor page constructs it (step 8), but
+ *     no page opens this panel before step 10, so nothing hands it a patched object yet. The model is pure over
  *     one fetch pair and takes the corrected clock as an argument, which is what a patching
  *     caller will need anyway.
  *   · the SIDE TABLE's stools and its *+N more* tag (§ 8). That artifact is the DESK's, from the

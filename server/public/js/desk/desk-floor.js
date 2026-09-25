@@ -9,7 +9,7 @@
  *   · `render()` is the APPLY path — a snapshot, a delta, a fetch the protocol has just applied.
  *     It re-reads the held seats, re-derives every desk, and is the ONLY caller of the animation
  *     set's own entries. Its caller is whoever applied something: today the harness after each
- *     settled event, and from step 8 the page that owns the client (below).
+ *     settled event, and the floor page (`floor/main.js`, step 8), through the floor screen.
  *   · the 1 s TICK is `wire/age-readout.js`'s `startAgeTicker` — its first shipped caller, rather
  *     than a second ticker — and it re-renders "every age readout, and nothing else". It reads
  *     the seats as the last `render()` left them, never the protocol's live map: a delta applied
@@ -29,16 +29,16 @@
  * this file, and swallowing it would hide from the one instrument that can see it the very row
  * the honesty tests exist to read. It throws, and the render that asked for it does not complete.
  *
- * ⚠ WHO CALLS `render()` ON A PAGE: NOBODY YET. The client protocol exposes no apply hook, and
- * Appendix B row 8 is where a page first constructs it ("No page constructs the client protocol
- * before this step"). That page owns choosing how it learns an apply happened; this module owns
+ * ⚠ WHO CALLS IT ON A PAGE: the floor page (`floor/main.js`, Appendix B row 8), through
+ * `floor/floor-screen.js`'s `renderWith()`. The client protocol exposes no apply hook, so that page
+ * asks for a render after each event that can change what the protocol holds; this module owns
  * what a desk looks like once it has.
  */
 
 import { floorAgeReadouts, startAgeTicker } from '../wire/age-readout.js';
 import { AnimationSet } from '../wire/animation-set.js';
 import { correctedNowMs } from '../wire/duration.js';
-import { deskModel } from './desk-render.js';
+import { deskModel, unrecognisedValues } from './desk-render.js';
 
 export class DeskFloor {
     #source;
@@ -54,6 +54,13 @@ export class DeskFloor {
 
     /** key → what only the protocol knows about the seat, read at the last `render()`. */
     #facts = new Map();
+
+    /**
+     * § 9 F9's dedup, `field value` pairs already written into the record — "the client's event log
+     * records it once per distinct value" (§ 2.1 row 7: client narration). Bounded by the values the
+     * server can send, not by time.
+     */
+    #unrecognisedSeen = new Set();
 
     /**
      * @param {object} source  a `FleetClient` — its `seats`, `clockOffsetMs`, `readStatus(key)`,
@@ -119,10 +126,17 @@ export class DeskFloor {
      */
     renderWith(journal) {
         this.#held = this.#source.seats;
+
+        // § 9 F6: once any read returned 401 the floor beneath the prompt is still, and dimmed.
+        const stilled = (this.#source.feed?.signed_out ?? null) !== null;
+
         this.#facts = new Map([...this.#held.keys()].map((k) => [k, {
             missing: this.#source.readStatus(k).missing,
             derivation_stamp: this.#source.stampOf(k, 'derivation'),
+            stilled,
         }]));
+
+        this.#recordUnrecognised();
 
         const offset = this.#source.clockOffsetMs;
         const browserNow = this.#clock.now();
@@ -135,6 +149,24 @@ export class DeskFloor {
         this.#set.held(frame.desks, this.#held, at);
 
         return frame;
+    }
+
+    /**
+     * § 9 F9: one line in § 5.5's record per DISTINCT unrecognised value, written through the
+     * protocol's own door (`record()`), which is the one capped, stamped, newest-first path every
+     * line takes.
+     */
+    #recordUnrecognised() {
+        for (const [k, seat] of this.#held) {
+            for (const { field, value } of unrecognisedValues(seat)) {
+                const id = `${field} ${value}`;
+
+                if (!this.#unrecognisedSeen.has(id)) {
+                    this.#unrecognisedSeen.add(id);
+                    this.#source.record(`unrecognised ${field} value "${value}" (first seen on ${k})`);
+                }
+            }
+        }
     }
 
     /**

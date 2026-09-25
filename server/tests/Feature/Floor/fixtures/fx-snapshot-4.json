@@ -7858,6 +7858,3474 @@
           "local_hours": 9,
           "local_minutes": 45
         }
+      },
+      "badge_raise": {
+        "note": "FLOOR § 6.2 A11 (badge-raise), which no other run exercises (card#7341 step 6 review, carried to step 8): `fx-snapshot-4`, then three deltas for `aimla-impl-2` that each carry `badges` in `changed[]`. The first GAINS `lossy` (A11 fires, once, caused by 20545); the second RE-SENDS the same array (`changed[]` carries `badges` and nothing is gained, so a predicate that fired on the member alone would fire here); the third DROPS it (a loss, which A11's condition names as no animation). Exactly one A11 row is correct, and both a never-firing and an always-firing row are distinguishable from it.",
+        "http": {
+          "/api/fleet/snapshot": [
+            {
+              "status": 200,
+              "body": {
+                "api_version": 1,
+                "server_time": "2026-08-23T14:23:14.400Z",
+                "fleet": {
+                  "db": "ok",
+                  "fold": "ok",
+                  "sweep": "ok",
+                  "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                  "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                  "max_fold_lag_ms": 117,
+                  "seats_total": 4,
+                  "seats_live": 4
+                },
+                "installs": [
+                  {
+                    "install_id": "aimla",
+                    "seats": [
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-pm",
+                        "state_version": 48219,
+                        "render_state": "working",
+                        "link_state": "live",
+                        "activity_state": "working",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": null,
+                        "action": {
+                          "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                          "tool_name": "Bash",
+                          "descriptor": "Bash: composer test",
+                          "started_at": "2026-08-23T14:23:09.882Z",
+                          "started_received_at": "2026-08-23T14:23:14.201Z",
+                          "agent_scope": "main",
+                          "parent_call_id": null
+                        },
+                        "open_calls": 1,
+                        "open_turn": true,
+                        "subagents": [
+                          {
+                            "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                            "title": "draft the D1 event schema",
+                            "subagent_type": "coder",
+                            "started_at": "2026-08-23T14:23:31.004Z"
+                          }
+                        ],
+                        "subagents_open": 1,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:23:09.882Z",
+                          "last_received_at": "2026-08-23T14:23:14.201Z",
+                          "last_kind": "tool.start"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [
+                          "lossy"
+                        ],
+                        "badges_since": "2026-08-23T09:14:02.118Z",
+                        "enabled": true,
+                        "protocol_agent_name": "pm",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      },
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-impl-1",
+                        "state_version": 31107,
+                        "render_state": "working",
+                        "link_state": "live",
+                        "activity_state": "working",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": null,
+                        "action": {
+                          "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                          "tool_name": "Edit",
+                          "descriptor": "Edit: server/app/Feed/SeatDelta.php",
+                          "started_at": "2026-08-23T14:22:58.120Z",
+                          "started_received_at": "2026-08-23T14:23:02.530Z",
+                          "agent_scope": "main",
+                          "parent_call_id": null
+                        },
+                        "open_calls": 1,
+                        "open_turn": true,
+                        "subagents": [],
+                        "subagents_open": 0,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:22:58.120Z",
+                          "last_received_at": "2026-08-23T14:23:02.530Z",
+                          "last_kind": "tool.start"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [],
+                        "badges_since": null,
+                        "enabled": true,
+                        "protocol_agent_name": "impl-1",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      },
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-impl-2",
+                        "state_version": 20544,
+                        "render_state": "idle",
+                        "link_state": "live",
+                        "activity_state": "idle",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": null,
+                        "action": null,
+                        "open_calls": 0,
+                        "open_turn": false,
+                        "subagents": [],
+                        "subagents_open": 0,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:21:47.300Z",
+                          "last_received_at": "2026-08-23T14:21:51.010Z",
+                          "last_kind": "turn.end"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [],
+                        "badges_since": null,
+                        "enabled": true,
+                        "protocol_agent_name": "impl-2",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      },
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-review",
+                        "state_version": 15032,
+                        "render_state": "blocked",
+                        "link_state": "live",
+                        "activity_state": "blocked",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": "2026-08-23T14:19:40.006Z",
+                        "action": null,
+                        "open_calls": 0,
+                        "open_turn": false,
+                        "subagents": [],
+                        "subagents_open": 0,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:19:40.006Z",
+                          "last_received_at": "2026-08-23T14:19:44.120Z",
+                          "last_kind": "attention.request"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [],
+                        "badges_since": null,
+                        "enabled": true,
+                        "protocol_agent_name": "review",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "messages": [
+          {
+            "at_ms": 100,
+            "envelope": {
+              "feed_version": 1,
+              "t": "seat.delta",
+              "server_time": "2026-08-23T14:23:15.100Z",
+              "install_id": "aimla",
+              "seat_id": "aimla-impl-2",
+              "state_version": 20545,
+              "at": "2026-08-23T14:23:15.100Z",
+              "changed": [
+                "badges",
+                "badges_since"
+              ],
+              "patch": {
+                "badges": [
+                  "lossy"
+                ],
+                "badges_since": "2026-08-23T14:23:15.100Z"
+              }
+            }
+          },
+          {
+            "at_ms": 200,
+            "envelope": {
+              "feed_version": 1,
+              "t": "seat.delta",
+              "server_time": "2026-08-23T14:23:15.200Z",
+              "install_id": "aimla",
+              "seat_id": "aimla-impl-2",
+              "state_version": 20546,
+              "at": "2026-08-23T14:23:15.200Z",
+              "changed": [
+                "badges",
+                "badges_since"
+              ],
+              "patch": {
+                "badges": [
+                  "lossy"
+                ],
+                "badges_since": "2026-08-23T14:23:15.100Z"
+              }
+            }
+          },
+          {
+            "at_ms": 300,
+            "envelope": {
+              "feed_version": 1,
+              "t": "seat.delta",
+              "server_time": "2026-08-23T14:23:15.300Z",
+              "install_id": "aimla",
+              "seat_id": "aimla-impl-2",
+              "state_version": 20547,
+              "at": "2026-08-23T14:23:15.300Z",
+              "changed": [
+                "badges",
+                "badges_since"
+              ],
+              "patch": {
+                "badges": [],
+                "badges_since": null
+              }
+            }
+          }
+        ],
+        "until_ms": 1000,
+        "final": {
+          "aimla/aimla-pm": {
+            "install_id": "aimla",
+            "seat_id": "aimla-pm",
+            "state_version": 48219,
+            "render_state": "working",
+            "link_state": "live",
+            "activity_state": "working",
+            "unknown_reason": null,
+            "api_error_type": null,
+            "blocked_since": null,
+            "action": {
+              "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+              "tool_name": "Bash",
+              "descriptor": "Bash: composer test",
+              "started_at": "2026-08-23T14:23:09.882Z",
+              "started_received_at": "2026-08-23T14:23:14.201Z",
+              "agent_scope": "main",
+              "parent_call_id": null
+            },
+            "open_calls": 1,
+            "open_turn": true,
+            "subagents": [
+              {
+                "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                "title": "draft the D1 event schema",
+                "subagent_type": "coder",
+                "started_at": "2026-08-23T14:23:31.004Z"
+              }
+            ],
+            "subagents_open": 1,
+            "task": {
+              "title": "ingest endpoint",
+              "source": "board_card",
+              "ref": "card#7338",
+              "as_of": "2026-08-23T14:05:00.000Z",
+              "degraded": false
+            },
+            "context": {
+              "used_pct": 73.2,
+              "used_tokens": 146401,
+              "total_tokens": 200000,
+              "source": "harness",
+              "sampled_at": "2026-08-23T14:41:00.310Z",
+              "sampled_received_at": "2026-08-23T14:41:04.880Z"
+            },
+            "model_label": "claude-opus-5",
+            "session": {
+              "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+              "started_at": "2026-08-23T14:22:40.201Z",
+              "source": "clear",
+              "project_label": "mezzanine",
+              "harness_label": "claude-code/2.1.240"
+            },
+            "activity": {
+              "last_event_time": "2026-08-23T14:23:09.882Z",
+              "last_received_at": "2026-08-23T14:23:14.201Z",
+              "last_kind": "tool.start"
+            },
+            "delivery": {
+              "last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+              "no_data_since": null,
+              "clock_skew_ms": 412,
+              "spool_lag_events": 0,
+              "oldest_unsent_age_s": null,
+              "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+              "last_seq": 48211
+            },
+            "badges": [
+              "lossy"
+            ],
+            "badges_since": "2026-08-23T09:14:02.118Z",
+            "enabled": true,
+            "protocol_agent_name": "pm",
+            "protocol_agent_name_check": "checked",
+            "reporter": {
+              "version": "0.1.0",
+              "platform": "linux",
+              "uptime_s": 401150,
+              "selftest_failed": []
+            },
+            "retired": null,
+            "derivation": {
+              "computed_at": "2026-08-23T14:23:14.318Z",
+              "fold_lag_ms": 117,
+              "cursor_event_id": 9912837
+            }
+          },
+          "aimla/aimla-impl-1": {
+            "install_id": "aimla",
+            "seat_id": "aimla-impl-1",
+            "state_version": 31107,
+            "render_state": "working",
+            "link_state": "live",
+            "activity_state": "working",
+            "unknown_reason": null,
+            "api_error_type": null,
+            "blocked_since": null,
+            "action": {
+              "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+              "tool_name": "Edit",
+              "descriptor": "Edit: server/app/Feed/SeatDelta.php",
+              "started_at": "2026-08-23T14:22:58.120Z",
+              "started_received_at": "2026-08-23T14:23:02.530Z",
+              "agent_scope": "main",
+              "parent_call_id": null
+            },
+            "open_calls": 1,
+            "open_turn": true,
+            "subagents": [],
+            "subagents_open": 0,
+            "task": {
+              "title": "ingest endpoint",
+              "source": "board_card",
+              "ref": "card#7338",
+              "as_of": "2026-08-23T14:05:00.000Z",
+              "degraded": false
+            },
+            "context": {
+              "used_pct": 73.2,
+              "used_tokens": 146401,
+              "total_tokens": 200000,
+              "source": "harness",
+              "sampled_at": "2026-08-23T14:41:00.310Z",
+              "sampled_received_at": "2026-08-23T14:41:04.880Z"
+            },
+            "model_label": "claude-opus-5",
+            "session": {
+              "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+              "started_at": "2026-08-23T14:22:40.201Z",
+              "source": "clear",
+              "project_label": "mezzanine",
+              "harness_label": "claude-code/2.1.240"
+            },
+            "activity": {
+              "last_event_time": "2026-08-23T14:22:58.120Z",
+              "last_received_at": "2026-08-23T14:23:02.530Z",
+              "last_kind": "tool.start"
+            },
+            "delivery": {
+              "last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+              "no_data_since": null,
+              "clock_skew_ms": 412,
+              "spool_lag_events": 0,
+              "oldest_unsent_age_s": null,
+              "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+              "last_seq": 48211
+            },
+            "badges": [],
+            "badges_since": null,
+            "enabled": true,
+            "protocol_agent_name": "impl-1",
+            "protocol_agent_name_check": "checked",
+            "reporter": {
+              "version": "0.1.0",
+              "platform": "linux",
+              "uptime_s": 401150,
+              "selftest_failed": []
+            },
+            "retired": null,
+            "derivation": {
+              "computed_at": "2026-08-23T14:23:14.318Z",
+              "fold_lag_ms": 117,
+              "cursor_event_id": 9912837
+            }
+          },
+          "aimla/aimla-impl-2": {
+            "install_id": "aimla",
+            "seat_id": "aimla-impl-2",
+            "state_version": 20547,
+            "render_state": "idle",
+            "link_state": "live",
+            "activity_state": "idle",
+            "unknown_reason": null,
+            "api_error_type": null,
+            "blocked_since": null,
+            "action": null,
+            "open_calls": 0,
+            "open_turn": false,
+            "subagents": [],
+            "subagents_open": 0,
+            "task": {
+              "title": "ingest endpoint",
+              "source": "board_card",
+              "ref": "card#7338",
+              "as_of": "2026-08-23T14:05:00.000Z",
+              "degraded": false
+            },
+            "context": {
+              "used_pct": 73.2,
+              "used_tokens": 146401,
+              "total_tokens": 200000,
+              "source": "harness",
+              "sampled_at": "2026-08-23T14:41:00.310Z",
+              "sampled_received_at": "2026-08-23T14:41:04.880Z"
+            },
+            "model_label": "claude-opus-5",
+            "session": {
+              "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+              "started_at": "2026-08-23T14:22:40.201Z",
+              "source": "clear",
+              "project_label": "mezzanine",
+              "harness_label": "claude-code/2.1.240"
+            },
+            "activity": {
+              "last_event_time": "2026-08-23T14:21:47.300Z",
+              "last_received_at": "2026-08-23T14:21:51.010Z",
+              "last_kind": "turn.end"
+            },
+            "delivery": {
+              "last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+              "no_data_since": null,
+              "clock_skew_ms": 412,
+              "spool_lag_events": 0,
+              "oldest_unsent_age_s": null,
+              "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+              "last_seq": 48211
+            },
+            "badges": [],
+            "badges_since": null,
+            "enabled": true,
+            "protocol_agent_name": "impl-2",
+            "protocol_agent_name_check": "checked",
+            "reporter": {
+              "version": "0.1.0",
+              "platform": "linux",
+              "uptime_s": 401150,
+              "selftest_failed": []
+            },
+            "retired": null,
+            "derivation": {
+              "computed_at": "2026-08-23T14:23:14.318Z",
+              "fold_lag_ms": 117,
+              "cursor_event_id": 9912837
+            }
+          },
+          "aimla/aimla-review": {
+            "install_id": "aimla",
+            "seat_id": "aimla-review",
+            "state_version": 15032,
+            "render_state": "blocked",
+            "link_state": "live",
+            "activity_state": "blocked",
+            "unknown_reason": null,
+            "api_error_type": null,
+            "blocked_since": "2026-08-23T14:19:40.006Z",
+            "action": null,
+            "open_calls": 0,
+            "open_turn": false,
+            "subagents": [],
+            "subagents_open": 0,
+            "task": {
+              "title": "ingest endpoint",
+              "source": "board_card",
+              "ref": "card#7338",
+              "as_of": "2026-08-23T14:05:00.000Z",
+              "degraded": false
+            },
+            "context": {
+              "used_pct": 73.2,
+              "used_tokens": 146401,
+              "total_tokens": 200000,
+              "source": "harness",
+              "sampled_at": "2026-08-23T14:41:00.310Z",
+              "sampled_received_at": "2026-08-23T14:41:04.880Z"
+            },
+            "model_label": "claude-opus-5",
+            "session": {
+              "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+              "started_at": "2026-08-23T14:22:40.201Z",
+              "source": "clear",
+              "project_label": "mezzanine",
+              "harness_label": "claude-code/2.1.240"
+            },
+            "activity": {
+              "last_event_time": "2026-08-23T14:19:40.006Z",
+              "last_received_at": "2026-08-23T14:19:44.120Z",
+              "last_kind": "attention.request"
+            },
+            "delivery": {
+              "last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+              "no_data_since": null,
+              "clock_skew_ms": 412,
+              "spool_lag_events": 0,
+              "oldest_unsent_age_s": null,
+              "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+              "last_seq": 48211
+            },
+            "badges": [],
+            "badges_since": null,
+            "enabled": true,
+            "protocol_agent_name": "review",
+            "protocol_agent_name_check": "checked",
+            "reporter": {
+              "version": "0.1.0",
+              "platform": "linux",
+              "uptime_s": 401150,
+              "selftest_failed": []
+            },
+            "retired": null,
+            "derivation": {
+              "computed_at": "2026-08-23T14:23:14.318Z",
+              "fold_lag_ms": 117,
+              "cursor_event_id": 9912837
+            }
+          }
+        }
+      },
+      "feed_dies": {
+        "note": "AT-D3-6's floor half: `fx-snapshot-4`, the on-connect `fleet.health`, heartbeats at D2's 15 s cadence for 60 s, then nothing for 60 s more. The viewer clock starts at 14:23:30 (`browser_clock_ms`), so the four heartbeats land at 14:23:45, 14:24:00, 14:24:15 and 14:24:30 and cross exactly one minute boundary, and the silence spans 14:25:00. Every poll the client issues during the silence is ANSWERED with a current snapshot (`clocked`), which is what exercises § 6.5's *a poll sets nothing*.",
+        "recovery": true,
+        "browser_clock_ms": 1787495010000,
+        "floor": {
+          "key": "aimla"
+        },
+        "http": {
+          "/api/fleet/snapshot": [
+            {
+              "status": 200,
+              "body": {
+                "api_version": 1,
+                "server_time": "2026-08-23T14:23:14.400Z",
+                "fleet": {
+                  "db": "ok",
+                  "fold": "ok",
+                  "sweep": "ok",
+                  "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                  "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                  "max_fold_lag_ms": 117,
+                  "seats_total": 4,
+                  "seats_live": 4
+                },
+                "installs": [
+                  {
+                    "install_id": "aimla",
+                    "seats": [
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-pm",
+                        "state_version": 48219,
+                        "render_state": "working",
+                        "link_state": "live",
+                        "activity_state": "working",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": null,
+                        "action": {
+                          "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                          "tool_name": "Bash",
+                          "descriptor": "Bash: composer test",
+                          "started_at": "2026-08-23T14:23:09.882Z",
+                          "started_received_at": "2026-08-23T14:23:14.201Z",
+                          "agent_scope": "main",
+                          "parent_call_id": null
+                        },
+                        "open_calls": 1,
+                        "open_turn": true,
+                        "subagents": [
+                          {
+                            "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                            "title": "draft the D1 event schema",
+                            "subagent_type": "coder",
+                            "started_at": "2026-08-23T14:23:31.004Z"
+                          }
+                        ],
+                        "subagents_open": 1,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:23:09.882Z",
+                          "last_received_at": "2026-08-23T14:23:14.201Z",
+                          "last_kind": "tool.start"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [
+                          "lossy"
+                        ],
+                        "badges_since": "2026-08-23T09:14:02.118Z",
+                        "enabled": true,
+                        "protocol_agent_name": "pm",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      },
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-impl-1",
+                        "state_version": 31107,
+                        "render_state": "working",
+                        "link_state": "live",
+                        "activity_state": "working",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": null,
+                        "action": {
+                          "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                          "tool_name": "Edit",
+                          "descriptor": "Edit: server/app/Feed/SeatDelta.php",
+                          "started_at": "2026-08-23T14:22:58.120Z",
+                          "started_received_at": "2026-08-23T14:23:02.530Z",
+                          "agent_scope": "main",
+                          "parent_call_id": null
+                        },
+                        "open_calls": 1,
+                        "open_turn": true,
+                        "subagents": [],
+                        "subagents_open": 0,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:22:58.120Z",
+                          "last_received_at": "2026-08-23T14:23:02.530Z",
+                          "last_kind": "tool.start"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [],
+                        "badges_since": null,
+                        "enabled": true,
+                        "protocol_agent_name": "impl-1",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      },
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-impl-2",
+                        "state_version": 20544,
+                        "render_state": "idle",
+                        "link_state": "live",
+                        "activity_state": "idle",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": null,
+                        "action": null,
+                        "open_calls": 0,
+                        "open_turn": false,
+                        "subagents": [],
+                        "subagents_open": 0,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:21:47.300Z",
+                          "last_received_at": "2026-08-23T14:21:51.010Z",
+                          "last_kind": "turn.end"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [],
+                        "badges_since": null,
+                        "enabled": true,
+                        "protocol_agent_name": "impl-2",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      },
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-review",
+                        "state_version": 15032,
+                        "render_state": "blocked",
+                        "link_state": "live",
+                        "activity_state": "blocked",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": "2026-08-23T14:19:40.006Z",
+                        "action": null,
+                        "open_calls": 0,
+                        "open_turn": false,
+                        "subagents": [],
+                        "subagents_open": 0,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:19:40.006Z",
+                          "last_received_at": "2026-08-23T14:19:44.120Z",
+                          "last_kind": "attention.request"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [],
+                        "badges_since": null,
+                        "enabled": true,
+                        "protocol_agent_name": "review",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "clocked": true,
+              "times": 30
+            }
+          ],
+          "/api/building": [
+            {
+              "status": 200,
+              "body": {
+                "layout": {
+                  "layout_version": 0,
+                  "floors": []
+                },
+                "rooms": []
+              }
+            }
+          ],
+          "/api/building/rooms/aimla/map": [
+            {
+              "status": 200,
+              "body": {
+                "install_id": "aimla",
+                "source": "default",
+                "map_version": null,
+                "map": {
+                  "compressionlevel": -1,
+                  "height": 12,
+                  "infinite": false,
+                  "nextlayerid": 3,
+                  "nextobjectid": 13,
+                  "orientation": "orthogonal",
+                  "renderorder": "right-down",
+                  "tiledversion": "1.10.2",
+                  "tileheight": 32,
+                  "tilewidth": 32,
+                  "type": "map",
+                  "version": "1.10",
+                  "width": 40,
+                  "tilesets": [
+                    {
+                      "firstgid": 1,
+                      "source": "tiles/furniture-kit.tsx"
+                    }
+                  ],
+                  "layers": [
+                    {
+                      "id": 1,
+                      "name": "floor",
+                      "type": "tilelayer",
+                      "visible": true,
+                      "opacity": 1,
+                      "width": 40,
+                      "height": 12,
+                      "x": 0,
+                      "y": 0,
+                      "encoding": "csv",
+                      "data": [
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    {
+                      "id": 2,
+                      "name": "desks",
+                      "type": "objectgroup",
+                      "visible": true,
+                      "opacity": 1,
+                      "x": 0,
+                      "y": 0,
+                      "draworder": "index",
+                      "objects": [
+                        {
+                          "id": 1,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 10,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 2,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 110,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 3,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 210,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 4,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 310,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 5,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 410,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 6,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 510,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 7,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 610,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 8,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 710,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 9,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 810,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 10,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 910,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 11,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 1010,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 12,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 1110,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "messages": [
+          {
+            "at_ms": 100,
+            "envelope": {
+              "feed_version": 1,
+              "t": "fleet.health",
+              "server_time": "2026-08-23T14:23:14.500Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          },
+          {
+            "at_ms": 15000,
+            "envelope": {
+              "feed_version": 1,
+              "t": "feed.heartbeat",
+              "server_time": "2026-08-23T14:23:29.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          },
+          {
+            "at_ms": 30000,
+            "envelope": {
+              "feed_version": 1,
+              "t": "feed.heartbeat",
+              "server_time": "2026-08-23T14:23:44.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          },
+          {
+            "at_ms": 45000,
+            "envelope": {
+              "feed_version": 1,
+              "t": "feed.heartbeat",
+              "server_time": "2026-08-23T14:23:59.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          },
+          {
+            "at_ms": 60000,
+            "envelope": {
+              "feed_version": 1,
+              "t": "feed.heartbeat",
+              "server_time": "2026-08-23T14:24:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          }
+        ],
+        "until_ms": 120000
+      },
+      "feed_lives": {
+        "note": "AT-D3-6's discriminating control: the same run with a heartbeat every 15 s for the whole 120 s, so the feed never dies, no poll is issued, and the wall clock advances on the heartbeats that cross 14:24:00 and 14:25:00 and on no other.",
+        "recovery": true,
+        "browser_clock_ms": 1787495010000,
+        "floor": {
+          "key": "aimla"
+        },
+        "http": {
+          "/api/fleet/snapshot": [
+            {
+              "status": 200,
+              "body": {
+                "api_version": 1,
+                "server_time": "2026-08-23T14:23:14.400Z",
+                "fleet": {
+                  "db": "ok",
+                  "fold": "ok",
+                  "sweep": "ok",
+                  "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                  "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                  "max_fold_lag_ms": 117,
+                  "seats_total": 4,
+                  "seats_live": 4
+                },
+                "installs": [
+                  {
+                    "install_id": "aimla",
+                    "seats": [
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-pm",
+                        "state_version": 48219,
+                        "render_state": "working",
+                        "link_state": "live",
+                        "activity_state": "working",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": null,
+                        "action": {
+                          "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                          "tool_name": "Bash",
+                          "descriptor": "Bash: composer test",
+                          "started_at": "2026-08-23T14:23:09.882Z",
+                          "started_received_at": "2026-08-23T14:23:14.201Z",
+                          "agent_scope": "main",
+                          "parent_call_id": null
+                        },
+                        "open_calls": 1,
+                        "open_turn": true,
+                        "subagents": [
+                          {
+                            "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                            "title": "draft the D1 event schema",
+                            "subagent_type": "coder",
+                            "started_at": "2026-08-23T14:23:31.004Z"
+                          }
+                        ],
+                        "subagents_open": 1,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:23:09.882Z",
+                          "last_received_at": "2026-08-23T14:23:14.201Z",
+                          "last_kind": "tool.start"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [
+                          "lossy"
+                        ],
+                        "badges_since": "2026-08-23T09:14:02.118Z",
+                        "enabled": true,
+                        "protocol_agent_name": "pm",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      },
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-impl-1",
+                        "state_version": 31107,
+                        "render_state": "working",
+                        "link_state": "live",
+                        "activity_state": "working",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": null,
+                        "action": {
+                          "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                          "tool_name": "Edit",
+                          "descriptor": "Edit: server/app/Feed/SeatDelta.php",
+                          "started_at": "2026-08-23T14:22:58.120Z",
+                          "started_received_at": "2026-08-23T14:23:02.530Z",
+                          "agent_scope": "main",
+                          "parent_call_id": null
+                        },
+                        "open_calls": 1,
+                        "open_turn": true,
+                        "subagents": [],
+                        "subagents_open": 0,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:22:58.120Z",
+                          "last_received_at": "2026-08-23T14:23:02.530Z",
+                          "last_kind": "tool.start"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [],
+                        "badges_since": null,
+                        "enabled": true,
+                        "protocol_agent_name": "impl-1",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      },
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-impl-2",
+                        "state_version": 20544,
+                        "render_state": "idle",
+                        "link_state": "live",
+                        "activity_state": "idle",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": null,
+                        "action": null,
+                        "open_calls": 0,
+                        "open_turn": false,
+                        "subagents": [],
+                        "subagents_open": 0,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:21:47.300Z",
+                          "last_received_at": "2026-08-23T14:21:51.010Z",
+                          "last_kind": "turn.end"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [],
+                        "badges_since": null,
+                        "enabled": true,
+                        "protocol_agent_name": "impl-2",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      },
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-review",
+                        "state_version": 15032,
+                        "render_state": "blocked",
+                        "link_state": "live",
+                        "activity_state": "blocked",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": "2026-08-23T14:19:40.006Z",
+                        "action": null,
+                        "open_calls": 0,
+                        "open_turn": false,
+                        "subagents": [],
+                        "subagents_open": 0,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:19:40.006Z",
+                          "last_received_at": "2026-08-23T14:19:44.120Z",
+                          "last_kind": "attention.request"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [],
+                        "badges_since": null,
+                        "enabled": true,
+                        "protocol_agent_name": "review",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "clocked": true,
+              "times": 30
+            }
+          ],
+          "/api/building": [
+            {
+              "status": 200,
+              "body": {
+                "layout": {
+                  "layout_version": 0,
+                  "floors": []
+                },
+                "rooms": []
+              }
+            }
+          ],
+          "/api/building/rooms/aimla/map": [
+            {
+              "status": 200,
+              "body": {
+                "install_id": "aimla",
+                "source": "default",
+                "map_version": null,
+                "map": {
+                  "compressionlevel": -1,
+                  "height": 12,
+                  "infinite": false,
+                  "nextlayerid": 3,
+                  "nextobjectid": 13,
+                  "orientation": "orthogonal",
+                  "renderorder": "right-down",
+                  "tiledversion": "1.10.2",
+                  "tileheight": 32,
+                  "tilewidth": 32,
+                  "type": "map",
+                  "version": "1.10",
+                  "width": 40,
+                  "tilesets": [
+                    {
+                      "firstgid": 1,
+                      "source": "tiles/furniture-kit.tsx"
+                    }
+                  ],
+                  "layers": [
+                    {
+                      "id": 1,
+                      "name": "floor",
+                      "type": "tilelayer",
+                      "visible": true,
+                      "opacity": 1,
+                      "width": 40,
+                      "height": 12,
+                      "x": 0,
+                      "y": 0,
+                      "encoding": "csv",
+                      "data": [
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                      ]
+                    },
+                    {
+                      "id": 2,
+                      "name": "desks",
+                      "type": "objectgroup",
+                      "visible": true,
+                      "opacity": 1,
+                      "x": 0,
+                      "y": 0,
+                      "draworder": "index",
+                      "objects": [
+                        {
+                          "id": 1,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 10,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 2,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 110,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 3,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 210,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 4,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 310,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 5,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 410,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 6,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 510,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 7,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 610,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 8,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 710,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 9,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 810,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 10,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 910,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 11,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 1010,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        },
+                        {
+                          "id": 12,
+                          "name": "",
+                          "type": "",
+                          "rotation": 0,
+                          "visible": true,
+                          "x": 1110,
+                          "y": 200,
+                          "width": 80,
+                          "height": 48
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "messages": [
+          {
+            "at_ms": 100,
+            "envelope": {
+              "feed_version": 1,
+              "t": "fleet.health",
+              "server_time": "2026-08-23T14:23:14.500Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          },
+          {
+            "at_ms": 15000,
+            "envelope": {
+              "feed_version": 1,
+              "t": "feed.heartbeat",
+              "server_time": "2026-08-23T14:23:29.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          },
+          {
+            "at_ms": 30000,
+            "envelope": {
+              "feed_version": 1,
+              "t": "feed.heartbeat",
+              "server_time": "2026-08-23T14:23:44.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          },
+          {
+            "at_ms": 45000,
+            "envelope": {
+              "feed_version": 1,
+              "t": "feed.heartbeat",
+              "server_time": "2026-08-23T14:23:59.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          },
+          {
+            "at_ms": 60000,
+            "envelope": {
+              "feed_version": 1,
+              "t": "feed.heartbeat",
+              "server_time": "2026-08-23T14:24:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          },
+          {
+            "at_ms": 75000,
+            "envelope": {
+              "feed_version": 1,
+              "t": "feed.heartbeat",
+              "server_time": "2026-08-23T14:24:29.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          },
+          {
+            "at_ms": 90000,
+            "envelope": {
+              "feed_version": 1,
+              "t": "feed.heartbeat",
+              "server_time": "2026-08-23T14:24:44.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          },
+          {
+            "at_ms": 105000,
+            "envelope": {
+              "feed_version": 1,
+              "t": "feed.heartbeat",
+              "server_time": "2026-08-23T14:24:59.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          },
+          {
+            "at_ms": 120000,
+            "envelope": {
+              "feed_version": 1,
+              "t": "feed.heartbeat",
+              "server_time": "2026-08-23T14:25:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              }
+            }
+          }
+        ],
+        "until_ms": 120000
+      },
+      "unrecognised": {
+        "note": "AT-D3-11: `fx-snapshot-4`, then a `render_state` of \"pondering\" on `aimla-impl-2` (twice — the second delivery re-sends the same value, so *once per distinct value* can fail), a badge \"quantum_flux\" on `aimla-impl-1`, and an `unknown_reason` of \"reasons\" on `aimla-pm`. `aimla-review` is untouched: it is the desk *no other desk is affected* is asserted on.",
+        "http": {
+          "/api/fleet/snapshot": [
+            {
+              "status": 200,
+              "body": {
+                "api_version": 1,
+                "server_time": "2026-08-23T14:23:14.400Z",
+                "fleet": {
+                  "db": "ok",
+                  "fold": "ok",
+                  "sweep": "ok",
+                  "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                  "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                  "max_fold_lag_ms": 117,
+                  "seats_total": 4,
+                  "seats_live": 4
+                },
+                "installs": [
+                  {
+                    "install_id": "aimla",
+                    "seats": [
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-pm",
+                        "state_version": 48219,
+                        "render_state": "working",
+                        "link_state": "live",
+                        "activity_state": "working",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": null,
+                        "action": {
+                          "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                          "tool_name": "Bash",
+                          "descriptor": "Bash: composer test",
+                          "started_at": "2026-08-23T14:23:09.882Z",
+                          "started_received_at": "2026-08-23T14:23:14.201Z",
+                          "agent_scope": "main",
+                          "parent_call_id": null
+                        },
+                        "open_calls": 1,
+                        "open_turn": true,
+                        "subagents": [
+                          {
+                            "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                            "title": "draft the D1 event schema",
+                            "subagent_type": "coder",
+                            "started_at": "2026-08-23T14:23:31.004Z"
+                          }
+                        ],
+                        "subagents_open": 1,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:23:09.882Z",
+                          "last_received_at": "2026-08-23T14:23:14.201Z",
+                          "last_kind": "tool.start"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [
+                          "lossy"
+                        ],
+                        "badges_since": "2026-08-23T09:14:02.118Z",
+                        "enabled": true,
+                        "protocol_agent_name": "pm",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      },
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-impl-1",
+                        "state_version": 31107,
+                        "render_state": "working",
+                        "link_state": "live",
+                        "activity_state": "working",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": null,
+                        "action": {
+                          "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                          "tool_name": "Edit",
+                          "descriptor": "Edit: server/app/Feed/SeatDelta.php",
+                          "started_at": "2026-08-23T14:22:58.120Z",
+                          "started_received_at": "2026-08-23T14:23:02.530Z",
+                          "agent_scope": "main",
+                          "parent_call_id": null
+                        },
+                        "open_calls": 1,
+                        "open_turn": true,
+                        "subagents": [],
+                        "subagents_open": 0,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:22:58.120Z",
+                          "last_received_at": "2026-08-23T14:23:02.530Z",
+                          "last_kind": "tool.start"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [],
+                        "badges_since": null,
+                        "enabled": true,
+                        "protocol_agent_name": "impl-1",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      },
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-impl-2",
+                        "state_version": 20544,
+                        "render_state": "idle",
+                        "link_state": "live",
+                        "activity_state": "idle",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": null,
+                        "action": null,
+                        "open_calls": 0,
+                        "open_turn": false,
+                        "subagents": [],
+                        "subagents_open": 0,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:21:47.300Z",
+                          "last_received_at": "2026-08-23T14:21:51.010Z",
+                          "last_kind": "turn.end"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [],
+                        "badges_since": null,
+                        "enabled": true,
+                        "protocol_agent_name": "impl-2",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      },
+                      {
+                        "install_id": "aimla",
+                        "seat_id": "aimla-review",
+                        "state_version": 15032,
+                        "render_state": "blocked",
+                        "link_state": "live",
+                        "activity_state": "blocked",
+                        "unknown_reason": null,
+                        "api_error_type": null,
+                        "blocked_since": "2026-08-23T14:19:40.006Z",
+                        "action": null,
+                        "open_calls": 0,
+                        "open_turn": false,
+                        "subagents": [],
+                        "subagents_open": 0,
+                        "task": {
+                          "title": "ingest endpoint",
+                          "source": "board_card",
+                          "ref": "card#7338",
+                          "as_of": "2026-08-23T14:05:00.000Z",
+                          "degraded": false
+                        },
+                        "context": {
+                          "used_pct": 73.2,
+                          "used_tokens": 146401,
+                          "total_tokens": 200000,
+                          "source": "harness",
+                          "sampled_at": "2026-08-23T14:41:00.310Z",
+                          "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                        },
+                        "model_label": "claude-opus-5",
+                        "session": {
+                          "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                          "started_at": "2026-08-23T14:22:40.201Z",
+                          "source": "clear",
+                          "project_label": "mezzanine",
+                          "harness_label": "claude-code/2.1.240"
+                        },
+                        "activity": {
+                          "last_event_time": "2026-08-23T14:19:40.006Z",
+                          "last_received_at": "2026-08-23T14:19:44.120Z",
+                          "last_kind": "attention.request"
+                        },
+                        "delivery": {
+                          "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                          "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                          "no_data_since": null,
+                          "clock_skew_ms": 412,
+                          "spool_lag_events": 0,
+                          "oldest_unsent_age_s": null,
+                          "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                          "last_seq": 48211
+                        },
+                        "badges": [],
+                        "badges_since": null,
+                        "enabled": true,
+                        "protocol_agent_name": "review",
+                        "protocol_agent_name_check": "checked",
+                        "reporter": {
+                          "version": "0.1.0",
+                          "platform": "linux",
+                          "uptime_s": 401150,
+                          "selftest_failed": []
+                        },
+                        "retired": null,
+                        "derivation": {
+                          "computed_at": "2026-08-23T14:23:14.318Z",
+                          "fold_lag_ms": 117,
+                          "cursor_event_id": 9912837
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "delay_ms": 0
+            }
+          ]
+        },
+        "messages": [
+          {
+            "at_ms": 100,
+            "envelope": {
+              "feed_version": 1,
+              "t": "seat.delta",
+              "server_time": "2026-08-23T14:23:14.500Z",
+              "install_id": "aimla",
+              "seat_id": "aimla-impl-2",
+              "state_version": 20545,
+              "at": "2026-08-23T14:23:14.500Z",
+              "changed": [
+                "render_state"
+              ],
+              "patch": {
+                "render_state": "pondering"
+              }
+            }
+          },
+          {
+            "at_ms": 200,
+            "envelope": {
+              "feed_version": 1,
+              "t": "seat.delta",
+              "server_time": "2026-08-23T14:23:14.600Z",
+              "install_id": "aimla",
+              "seat_id": "aimla-impl-2",
+              "state_version": 20546,
+              "at": "2026-08-23T14:23:14.600Z",
+              "changed": [
+                "render_state",
+                "activity_state"
+              ],
+              "patch": {
+                "render_state": "pondering",
+                "activity_state": "idle"
+              }
+            }
+          },
+          {
+            "at_ms": 300,
+            "envelope": {
+              "feed_version": 1,
+              "t": "seat.delta",
+              "server_time": "2026-08-23T14:23:14.700Z",
+              "install_id": "aimla",
+              "seat_id": "aimla-impl-1",
+              "state_version": 31108,
+              "at": "2026-08-23T14:23:14.700Z",
+              "changed": [
+                "badges",
+                "badges_since"
+              ],
+              "patch": {
+                "badges": [
+                  "quantum_flux"
+                ],
+                "badges_since": "2026-08-23T14:23:14.700Z"
+              }
+            }
+          },
+          {
+            "at_ms": 400,
+            "envelope": {
+              "feed_version": 1,
+              "t": "seat.delta",
+              "server_time": "2026-08-23T14:23:14.800Z",
+              "install_id": "aimla",
+              "seat_id": "aimla-pm",
+              "state_version": 48220,
+              "at": "2026-08-23T14:23:14.800Z",
+              "changed": [
+                "render_state",
+                "activity_state",
+                "unknown_reason",
+                "action",
+                "open_calls",
+                "open_turn"
+              ],
+              "patch": {
+                "render_state": "unknown",
+                "activity_state": "unknown",
+                "unknown_reason": "reasons",
+                "action": null,
+                "open_calls": 0,
+                "open_turn": false
+              }
+            }
+          }
+        ],
+        "until_ms": 2000
       }
   }
 }

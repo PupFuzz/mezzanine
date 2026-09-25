@@ -127,6 +127,14 @@ Route::middleware(['auth', 'mfa'])->group(function () {
     // request, when the stored document no longer passes the reader — is that surface.
     Route::get('/dashboard', fn () => view('dashboard'))
         ->name('dashboard');
+
+    // THE FLOOR PAGE — `docs/design/FLOOR.md` Appendix B row 8, § 4.4's `/floor/{floor}`. The
+    // segment is a floor's KEY (card#9273), handed to the page as data and resolved by the client
+    // against the composed floors it fetches; a segment naming a room that is not its floor's key
+    // is redirected BY THE CLIENT (§ 4.4 row 3), because only the fetched layout knows which floor
+    // holds the room. Like the lobby it carries no layout and no fleet data — both are fetched.
+    Route::get('/floor/{floor}', fn (string $floor) => view('floor', ['floor' => $floor]))
+        ->name('floor');
 });
 
 /*

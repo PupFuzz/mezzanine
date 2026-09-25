@@ -14,11 +14,10 @@ use Tests\TestCase;
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⚠ NO PAGE SERVES THESE MODULES YET, and this file says so rather than asserting one does.
- * `docs/design/FLOOR.md § 4.4`'s `/floor/{install_id}/{seat_id}` route is not built — the floor
- * is card#9208-blocked on a D2 read surface for an authored map, and a panel opens by selecting
- * a desk that does not exist. So unlike `public/js/lobby`, whose `dashboard.blade.php` loads it,
- * this client has no host page to check against; `public/js/coord` is in the same position for
- * the same reason. What is checkable today is that the modules are internally coherent and that
+ * `docs/design/FLOOR.md § 4.4`'s `/floor/{floor}/{seat_id}` route is not served — the floor page
+ * serves `/floor/{floor}` alone (Appendix B step 8) and the drill-down is step 10. So unlike
+ * `public/js/lobby`, whose `dashboard.blade.php` loads it, this client has no host page to check
+ * against; `public/js/coord/main.js` has no host page either. What is checkable today is that the modules are internally coherent and that
  * nothing about them will fail to LOAD when that route lands; the element contract is the floor
  * page's to declare and the floor page's test to hold.
  */

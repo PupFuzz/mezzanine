@@ -11,8 +11,8 @@
  * `main.js` passes the browser's.
  *
  * ⚠ § 2.2 STEP 1 IS NOT HERE: the stream is opened before the snapshot in § 2.2, and the lobby opens
- * no stream — that is Appendix B step 3's protocol, `wire/fleet-client.js`, which is built and which
- * no page constructs before step 8. So a `building.layout` saved between this fetch and the next
+ * no stream — that is Appendix B step 3's protocol, `wire/fleet-client.js`, which the floor page
+ * constructs (step 8) and the lobby does not until step 9. So a `building.layout` saved between this fetch and the next
  * reaches this page only when it is refreshed or reloaded.
  */
 

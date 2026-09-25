@@ -357,6 +357,10 @@ export function roomTick(localMs, readLocal = civilTime) {
         // no sunrise arithmetic, because that needs a latitude the viewer's browser is not asked
         // for and this document publishes no figure for.
         sky: skyPhase(hours),
+        // § 6.2 A17 constraint 5: the clock's ACCESSIBLE TEXT, the one machine-readable rendering of
+        // where the hands are — set in the same render that sets them, from the same two numbers,
+        // so text and hands cannot disagree. Minute resolution: constraint 1, no second hand.
+        text: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
         label: 'your local time',
     });
 }

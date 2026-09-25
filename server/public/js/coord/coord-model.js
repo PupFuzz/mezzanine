@@ -312,6 +312,9 @@ export function coordModel(messages, options) {
         checks: opts.checks === null || typeof opts.checks !== 'object' ? EMPTY_META.checks : opts.checks,
     });
     const inbox = Array.isArray(messages) ? messages : [];
+    // § 5.7 / § 14 item 25: the threads whose oldest rounds the protocol's cap dropped. Their bead
+    // count is a LOWER BOUND, rendered *N+* — "a count that silently shrank would be a false number".
+    const cut = new Set(Array.isArray(opts.truncated) ? opts.truncated : []);
 
     const threads = new Map();
     const rounds = [];
@@ -367,6 +370,7 @@ export function coordModel(messages, options) {
         return Object.freeze({
             ...thread,
             beads,
+            beads_label: cut.has(thread.thread_ref) ? `${beads}+` : String(beads),
             animations,
             // The endpoints, and there is no line without two of them.
             endpoints: animations.includes('A18')
