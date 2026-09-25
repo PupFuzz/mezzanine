@@ -42,7 +42,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   applies `seat.retired`: the desk is removed on the first of the two announcements, once, with one event
   log line naming the seat, the reason and the time and no operator, and a desk that had been displaced
   by it moves back. A full snapshot that no longer lists a held seat removes it too, with a line, unless
-  the seat arrived after that snapshot was requested. Gated by AT-D3-4
+  the seat arrived after that snapshot was requested. The seat-detail response's `detail.counters` is a
+  JSON object for every seat, including one with no counter rows, which it had served as `[]`
+  (`Tests\Feature\Feed\FeedSurfaceTest`). Gated by AT-D3-4
   (`Tests\Feature\Floor\TheInternListIsUncappedWhereTheSideTableIsCappedTest`), AT-D3-16
   (`RetirementRemovesTheDeskAndExplainsTheRemovalTest`) and the panel halves of AT-D3-6
   (`TheDrillDownIsRestampedByEachPollTest`), AT-D3-10 (`TheDrillDownReadsItsAgesFromTheServerClockTest`)
