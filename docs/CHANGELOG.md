@@ -27,23 +27,32 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
-- **card#7341** — **The shipped default map is re-authored to the furniture box (Appendix B row 14, slice
-  B).** `resources/floor/default.tmj`, the room every unauthored install renders, now declares twelve desk
-  slots each exactly the furniture box (440 × 228 px) in one row on the floor line, in two banks with an
-  aisle as before, on a grid of 5,724 × 240 px (it was 1,836 × 200 px with sprite-sized slots). Every desk
-  of an unauthored room is therefore drawn inside its own slot — the side table at § 8's cap of stools, the
-  badge cluster, and every string cut to fit — and the floor no longer carries FLOOR.md § 9 F21's *desk
-  object is smaller than the furniture box* line for the default. `docs/design/FLOOR.md` § 12 gains two
-  Measured rows, the furniture box at the cap and the shipped default's grid, each read out of its file by
-  `tools/design/verify-floor.py` on every run and held against § 10.3's sentence, with every slot of the
-  default held at least the box; the viewport row's one-row-of-desks arithmetic is restated on the box.
+- **card#7341** — **The shipped default map is re-authored to the furniture box, in two rows on a drawn
+  floor plane (Appendix B row 14, slice B).** `resources/floor/default.tmj`, the room every unauthored
+  install renders, now lays its desk slots in two rows of six, each slot the furniture box (440 × 228 px),
+  on a grid of 3,024 × 496 px (it was 1,836 × 200 px with sprite-sized slots in one row). The floor plane
+  the Kenney bridge kit lacks is first-party vector art — `resources/floor/tiles/floor-plane.tsx` with a
+  seamless plank tile and a rug, drawn to FLOOR.md § 10.4's direction and under § 10.1's two asset gates —
+  by the operator's ruling of 2026-09-25 (card#7341 comment 6517). Every desk of an unauthored room is drawn
+  inside its own slot — the side table at § 8's cap of stools, the badge cluster, and every string cut to
+  fit — and the floor no longer carries § 9 F21's *desk object is smaller than the furniture box* line for
+  the default. `docs/design/FLOOR.md` § 12 gains two Measured rows, the furniture box at the cap and the
+  shipped default's grid, each read out of its file by `tools/design/verify-floor.py` on every run and held
+  against § 10.3's sentence, with every slot held at least the box; the viewport row's arithmetic — rows,
+  boxes per row, desk across, grid width and fit zoom 1,280 ÷ 3,024 ≈ 0.42 — is recomputed by the same gate.
   AT-D3-20 (`Tests\Feature\Floor\SeatFurnitureNeverOverlapsTest`) runs its GREEN clauses on the shipped map
   and carries § 11's positive control — the shipped map passes every clause with no F21 line, each drawn
   desk's slot held equal to the file's own object — in place of the sprite-sized control that was designed
-  to red here. A planned floor whose layout placed unauthored rooms against the old footprint is not
-  re-checked: rooms closer together than 5,724 × 240 px now draw overlapping under F18's notice until the
-  layout is saved again. The console's refusals of intersecting or undersized slots and its re-validation
-  listing (slice C) follow.
+  to red here. **Upgrade effect on a building planned against the old footprint:** the layout's overlap
+  check reads the shipped default's grid for every unauthored room, so a layout that placed two such rooms
+  closer than 3,024 × 496 px now overlaps; while it does, the console refuses every room map save, restore
+  and removal across the whole building (`App\Floor\Floors` → `App\Building\Layouts::refuseOverlaps`),
+  refuses re-saving the layout byte for byte as a no-op, and the floor draws the rooms overlapping under
+  F18's notice. To recover, move the rooms apart in the layout editor and save the changed layout; room maps
+  can be written again once it is saved. **Release gate:** the room drawing stays as built until Appendix B
+  row 15's camera lands, and `dev` is not promoted to `main` before row 15 lands (operator ruling
+  2026-09-25). The console's refusals of intersecting or undersized slots and its re-validation listing
+  (slice C) follow.
 
 - **card#7341** — **The floor page draws the room (Appendix B row 14, slice A).** The floor page now paints
   one SVG drawing of the room from its tilesets: each desk inside its furniture box with up to eight stools

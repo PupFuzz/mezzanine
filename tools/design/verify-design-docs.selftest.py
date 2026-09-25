@@ -643,6 +643,48 @@ PLANTS = [
         "smaller than the furniture box at the cap",
     ),
     (
+        # The same check's OTHER axis (PR #232 round 1, MINOR-7): a `≥ box` test is two comparisons,
+        # and a plant on the width alone would pass a check that had dropped the height.  The first
+        # `height` after the layer's name is the first object's, in Tiled's own key order.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"desks\"[\s\S]*?\"height\":)(\d+)(,)",
+        "shrink",
+        "the shipped default's first `desks` object one pixel shorter than the furniture box, which "
+        "G8 must refuse as an object smaller than the box on its height (PR #232 round 1, MINOR-7)",
+        "smaller than the furniture box at the cap",
+    ),
+    (
+        # PR #232 round 1, MAJOR-2 — G8f, section 12's viewport arithmetic.  Three figures the cell
+        # states are each recomputed from the map, the box and the viewport floor; each plant bumps
+        # one so the other two cannot cover for it.  The row count first.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| Floor viewport floor \|[^\n]*?\*\*)(\d+)( rows? of \d+ furniture boxes:)",
+        "bump",
+        "the row count the viewport cell states, which G8 re-derives from the shipped default's `desks` "
+        "objects grouped by `y` (PR #232 round 1, MAJOR-2)",
+        "viewport cell states rows =",
+    ),
+    (
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| Floor viewport floor \|[^\n]*?furniture boxes: \d+ × [\d,]+ px = )([\d,]+)( px)",
+        "bump",
+        "the desk-across product the viewport cell states, which G8 re-derives as boxes per row × the "
+        "furniture box's width (PR #232 round 1, MAJOR-2)",
+        "viewport cell states desk across =",
+    ),
+    (
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| Floor viewport floor \|[^\n]*?fit zoom is \*\*[\d,]+ ÷ [\d,]+ ≈ 0\.)(\d+)(\*\*)",
+        "bump",
+        "the fit zoom the viewport cell states, which G8 re-derives as the viewport floor over the shipped "
+        "default's grid width (PR #232 round 1, MAJOR-2)",
+        "states a fit zoom of",
+    ),
+    (
         # card#7341 step 3, G13.  § 2.3 row 5 makes a HELD seat the client cannot confirm render the
         # empty chair, and `idle`'s Never cell forbade exactly that in absolute terms.  The drop
         # takes the QUALIFICATION and leaves the explanation that follows it — which is the shape a

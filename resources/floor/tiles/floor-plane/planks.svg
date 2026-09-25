@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The floor plane's plank tile — FIRST-PARTY vector art, drawn for this repository under
+     docs/design/FLOOR.md § 10.4 (resolution-independent, warm, modern, whimsical) at Appendix B row 14
+     slice B (operator ruling 2026-09-25, card#7341): the bridge tileset has no floor plane, and the
+     ruled two-row room stands on one. Tiles seamlessly at 216 × 48: the lower course is staggered by
+     half a plank and the plank at x = -53 continues the one at x = 163. Low contrast on purpose — a
+     desk's text is drawn over it. No raster, no embedded data (§ 10.1 Gate 2). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="216" height="48" viewBox="0 0 216 48">
+  <rect width="216" height="48" fill="#b07a44"/>
+  <g fill="#d6a46c">
+    <rect x="1" y="1" width="106" height="22" rx="4"/>
+    <rect x="109" y="1" width="106" height="22" rx="4"/>
+  </g>
+  <g fill="#cf9c63">
+    <rect x="-53" y="25" width="106" height="22" rx="4"/>
+    <rect x="55" y="25" width="106" height="22" rx="4"/>
+    <rect x="163" y="25" width="106" height="22" rx="4"/>
+  </g>
+  <g fill="none" stroke="#8f5f30" stroke-opacity="0.16" stroke-width="1.2" stroke-linecap="round">
+    <path d="M8 8c22-3 40 3 62 0s28 4 30 2"/>
+    <path d="M12 17c30-2 48 2 88 0"/>
+    <path d="M116 7c26-2 44 4 92 1"/>
+    <path d="M120 16c30 2 60-3 88 0"/>
+    <path d="M-40 32c22-3 40 3 62 0s28 4 30 2"/>
+    <path d="M62 31c22-3 40 3 62 0s28 4 30 2"/>
+    <path d="M66 41c30-2 48 2 88 0"/>
+    <path d="M170 32c22-3 40 3 40 1"/>
+    <path d="M172 41c16 2 30-2 40 0"/>
+  </g>
+  <g fill="#b98252" fill-opacity="0.55">
+    <ellipse cx="70" cy="13" rx="4.5" ry="2.6"/>
+    <ellipse cx="184" cy="10" rx="3.8" ry="2.2"/>
+    <ellipse cx="24" cy="37" rx="4" ry="2.4"/>
+    <ellipse cx="128" cy="38" rx="4.6" ry="2.5"/>
+  </g>
+  <g fill="none" stroke="#e8c290" stroke-opacity="0.5" stroke-width="1">
+    <ellipse cx="70" cy="13" rx="7" ry="4"/>
+    <ellipse cx="128" cy="38" rx="7.4" ry="4.2"/>
+  </g>
+  <g fill="#ffffff" fill-opacity="0.10">
+    <rect x="1" y="1" width="106" height="6" rx="3"/>
+    <rect x="109" y="1" width="106" height="6" rx="3"/>
+    <rect x="-53" y="25" width="106" height="6" rx="3"/>
+    <rect x="55" y="25" width="106" height="6" rx="3"/>
+    <rect x="163" y="25" width="106" height="6" rx="3"/>
+  </g>
+</svg>

@@ -368,6 +368,12 @@
             "status": 200,
             "text": "@text:resources/floor/tiles/furniture-kit.tsx"
           }
+        ],
+        "/art/floor/tiles/floor-plane.tsx": [
+          {
+            "status": 200,
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
+          }
         ]
       },
       "messages": [],
@@ -755,6 +761,12 @@
             "status": 200,
             "text": "@text:resources/floor/tiles/furniture-kit.tsx"
           }
+        ],
+        "/art/floor/tiles/floor-plane.tsx": [
+          {
+            "status": 200,
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
+          }
         ]
       },
       "messages": [],
@@ -776,7 +788,7 @@
       }
     },
     "scene_default_tileset_fails": {
-      "note": "AT-D3-19: at t=50 the painter reports every image of the room's tileset failed to load.",
+      "note": "AT-D3-19: at t=50 the painter reports every image of both of the room's tilesets failed to load — the bridge kit's and the first-party floor plane's.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -1142,6 +1154,12 @@
             "status": 200,
             "text": "@text:resources/floor/tiles/furniture-kit.tsx"
           }
+        ],
+        "/art/floor/tiles/floor-plane.tsx": [
+          {
+            "status": 200,
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
+          }
         ]
       },
       "messages": [],
@@ -1164,6 +1182,10 @@
           {
             "at_ms": 50,
             "tileset_images": "/art/floor/tiles/furniture-kit.tsx"
+          },
+          {
+            "at_ms": 50,
+            "tileset_images": "/art/floor/tiles/floor-plane.tsx"
           }
         ]
       }
@@ -1534,6 +1556,12 @@
           {
             "status": 200,
             "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+          }
+        ],
+        "/art/floor/tiles/floor-plane.tsx": [
+          {
+            "status": 200,
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ]
       },
@@ -4126,6 +4154,12 @@
             "status": 200,
             "text": "@text:resources/floor/tiles/furniture-kit.tsx"
           }
+        ],
+        "/art/floor/tiles/floor-plane.tsx": [
+          {
+            "status": 200,
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
+          }
         ]
       },
       "messages": [],
@@ -4331,6 +4365,12 @@
           {
             "status": 200,
             "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+          }
+        ],
+        "/art/floor/tiles/floor-plane.tsx": [
+          {
+            "status": 200,
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ]
       },
