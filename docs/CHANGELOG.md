@@ -32,10 +32,11 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   step-8 floor page draws each desk as a line of text, § 9 F14 was unreachable, and the card's own title had
   no row delivering it. **Row 14, the room drawing**: the scene — a headless model emitting what is drawn
   where, from step 7's frame and the held map, every desk laid out INSIDE its slot rect, which § 10.3 now
-  defines as the desk's furniture box — everything drawn for a desk except the bubble: stools at § 8's cap and
-  never hidden, the badge cluster at D2's bound, and every string truncated to the box with a visible mark, its
-  full value on the list view and in the drill-down — so that the operator's no-overlap ruling holds by
-  construction at the slot function however long a seat's strings run (the shipped default's objects are
+  defines as the desk's furniture box — everything drawn for a desk at rest except the bubble: stools at § 8's
+  cap and never hidden, the badge cluster at D2's bound with a *+N more* mark, and every string truncated to
+  the box with a visible mark through one truncation primitive, its full value on the list view and in the
+  drill-down — so that the operator's no-overlap ruling holds by construction at the slot function however
+  long a seat's strings run (the shipped default's objects are
   re-authored to that box as this row's build obligation) — the tileset reader (`.tsx` and `.tsj`, both
   spellings § 10.1 admits), the painter (the DOM half, one scaled space for tiles, desks, nameplates, bubbles
   and the thread line, importing the character tree by the asset route's absolute URL), the asset route (the
@@ -53,10 +54,12 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   cross-section and the cab are PR #96's (card#7343 part 1), so this row builds only what that PR named as
   unbuilt — the ride ending at `/floor/{key}`, row 15's camera at building scale and the reduced-motion cut —
   and the document settles the split: row 16 is card#7343's destination half. New acceptance tests gate them
-  — AT-D3-19 (F14), AT-D3-20 (the no-overlap check the card asks the build to keep: two cap-width seats
-  carrying every desk string at its bound, truncated with a mark and inside the box, and F21's notice on a
-  stubbed crowded map and a stubbed undersized one) and AT-D3-21 (the camera: a floor half with an
-  `fx-degraded` leg read from the list view's model, and a building half). Rows 0 and 2 now carry the landed
+  — AT-D3-19 (F14), AT-D3-20 (the no-overlap check the card asks the build to keep: cap-width seats carrying
+  the fixture's bounded strings, truncated with a mark and inside the box, a RED planted at the one
+  truncation primitive, and F21's notice on a stubbed crowded map and a stubbed undersized one) and AT-D3-21
+  (the camera: a floor half with an `fx-degraded` leg read from the list view's model, and a building half;
+  the list view's guard recurses into every member and reds on a rendered member null on every run, which is
+  why `fx-degraded` gains a `config_invalid` seat and a refused-read leg). Rows 0 and 2 now carry the landed
   markers they lacked (PR #15, 2026-08-25; PR #157, 2026-09-14). § 4.1, § 4.4, § 4.5, § 9 F14, § 10.3's
   `desks` row and § 12's viewport row point at the rows; § 14 item 28 records what stays open (the console's
   refusal of intersecting or undersized `desks` objects at a save and at a restore, and the re-validation of
