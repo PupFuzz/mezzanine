@@ -26,10 +26,12 @@ use Tests\Feature\Feed\FeedTestCase;
  * this host. `LobbyPageWiringTest` holds the element ids both ways, and the first test below holds that
  * the page carries no layout for the client to read instead of the fetch.
  *
- * ⚠ AND THE LOBBY OPENS NO STREAM. § 2.2's steps 1–2 are Appendix B step 3's protocol, which IS
- * built (`public/js/wire/fleet-client.js`) and which the floor page constructs (step 8) and this
- * page does not until step 9, so no `building.layout` reaches this page yet; the message is applied here by calling the client's own
- * apply, which is the half this slice owns.
+ * ⚠ THE ENTRY IS THE CLIENT PROTOCOL'S SINCE card#7341 STEP 9. The lobby constructs
+ * `public/js/wire/fleet-client.js` (Appendix B row 9) and `lobby-screen.js` asks for the layout on
+ * the first render that finds the protocol's snapshot applied; the probe drives exactly that, over a
+ * stream that opens and never speaks. A `building.layout` the stream would deliver is applied here by
+ * calling the building client's own apply, which is the half row 13 owns — the stream's delivery of
+ * it is the harness's to drive.
  */
 class TheLobbyFetchesTheBuildingTest extends FeedTestCase
 {
@@ -38,6 +40,17 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
     private const SNAPSHOT = '/api/fleet/snapshot';
 
     private const BUILDING = '/api/building';
+
+    /**
+     * The plant CONTROLS 21 and 28 share: the entry's layout request made on a render whether or not a
+     * snapshot has applied. Two controls, because the defect has two faces — a layout asked for before
+     * the snapshot answered, and a layout asked for after a snapshot that was refused.
+     */
+    private const LAYOUT_BEFORE_THE_SNAPSHOT = [
+        'lobby-screen.js',
+        'if (!this.#layoutAsked && this.#client.feed.applied) {',
+        'if (!this.#layoutAsked) {',
+    ];
 
     /** @return array{status: int, body: mixed} */
     private function served(string $path): array
@@ -88,8 +101,8 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
             'the lobby page still declares the retired #lobby-layout island');
         $this->assertStringNotContainsString("'lobby-layout'", $js,
             'main.js still reads the layout out of the page');
-        $this->assertStringContainsString("from './lobby-entry.js'", $js,
-            'main.js no longer enters the lobby through lobby-entry.js — nothing on the page fetches the layout');
+        $this->assertStringContainsString("from './lobby-screen.js'", $js,
+            'main.js no longer runs the lobby screen — nothing on the page fetches the layout');
     }
 
     public function test_the_lobby_fetches_the_snapshot_then_the_building_and_stacks_the_fetched_layout(): void
@@ -103,8 +116,12 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
 
         [$entered] = $this->scenario($responses, [['do' => 'enter']]);
 
-        // § 4.4's `/` row: "`GET /api/fleet/snapshot`, then `GET /api/building`".
+        // § 4.4's `/` row: "`GET /api/fleet/snapshot`, then `GET /api/building`" — and "then" is
+        // measured, not read off the list: the page's first render runs before the snapshot answers,
+        // and it must not ask for the layout.
         $this->assertSame([self::SNAPSHOT, self::BUILDING], $entered['requests']);
+        $this->assertSame([self::SNAPSHOT], $entered['before_snapshot'],
+            'the layout was requested before the snapshot had answered');
         $this->assertSame(['aimla', 'sola'], $this->stacked($entered),
             'the lobby did not stack the floors GET /api/building answered');
         $this->assertSame('the solos', $entered['lobby']['floors'][1]['name']);
@@ -126,15 +143,12 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
         $this->assertNotSame(['aimla', 'sola'], $this->stacked($ignored),
             'CONTROL 20 did not bite: the fetched layout was discarded and the lobby still stacked it');
 
-        // ⛔ CONTROL 21 — the order reversed: the layout fetched before the snapshot.
-        $reversed = $this->mutatedModules([
-            'lobby-entry.js',
-            "    const snapshot = await fetchSnapshot(fetchImpl);\n\n    if (snapshot.ok) {\n        await building.fetchLayout();\n    }\n",
-            "    await building.fetchLayout();\n    const snapshot = await fetchSnapshot(fetchImpl);\n",
-        ]);
+        // ⛔ CONTROL 21 — the order reversed: the layout asked for on the first render, whether or not
+        // the snapshot has answered.
+        $reversed = $this->mutatedModules(self::LAYOUT_BEFORE_THE_SNAPSHOT);
 
-        $this->assertNotSame([self::SNAPSHOT, self::BUILDING], $this->scenario($responses, [['do' => 'enter']], $reversed)[0]['requests'],
-            'CONTROL 21 did not bite: the building was requested before the snapshot and the order check stayed clean');
+        $this->assertSame([self::SNAPSHOT, self::BUILDING], $this->scenario($responses, [['do' => 'enter']], $reversed)[0]['before_snapshot'],
+            'CONTROL 21 did not bite: the building was requested before the snapshot answered and the order check stayed clean');
     }
 
     public function test_a_layout_request_that_fails_on_a_cold_start_composes_no_building(): void
@@ -173,8 +187,9 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
             $this->assertSame([], $record['building']['elevator']['notices'], $arm);
             $this->assertNull($record['building']['elevator']['next'], $arm);
             // Every seat the client holds is still counted, so § 4.1's discrepancy check does not read
-            // an uncomposed lobby as one holding no seats and fetch the snapshot for it.
-            $this->assertNull($record['lobby']['discrepancy'], $arm);
+            // an uncomposed lobby as one holding no seats — and since card#7341 step 9 the count is the
+            // protocol's, which no layout composes.
+            $this->assertNull($record['discrepancy'], $arm);
         }
 
         // ⛔ CONTROL 22 — F17's "Never", planted: a failed request taken as the empty layout.
@@ -208,11 +223,13 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
         [$record] = $this->scenario($responses, [['do' => 'enter']]);
 
         $this->assertSame([self::SNAPSHOT], $record['requests'], 'a refused snapshot still asked for the layout');
-        $this->assertSame(503, $record['snapshot_status']);
+        $this->assertSame('snapshot-failed', $record['phase']);
+        $this->assertStringStartsWith('fleet state is unavailable — the store could not be read at ', (string) $record['failure']['statement'],
+            'the refused snapshot is not the store statement § 9 F4 words');
         $this->assertNull($record['layout_failure']);
 
         // ⛔ CONTROL 28 — the snapshot's outcome ignored: the layout is fetched whatever the snapshot said.
-        $blind = $this->mutatedModules(['lobby-entry.js', 'if (snapshot.ok) {', 'if (true) {']);
+        $blind = $this->mutatedModules(self::LAYOUT_BEFORE_THE_SNAPSHOT);
 
         $this->assertNotSame([self::SNAPSHOT], $this->scenario($responses, [['do' => 'enter']], $blind)[0]['requests'],
             'CONTROL 28 did not bite: the layout was fetched after a refused snapshot and the check stayed clean');
@@ -313,8 +330,9 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
         ];
         $steps = [
             ['do' => 'enter'],
-            // Refresh: `main.js` enters again, and this time the layout request fails.
-            ['do' => 'enter'],
+            // Refresh — the lobby's control: one snapshot through the protocol, then the layout, and
+            // this time the layout request fails.
+            ['do' => 'refresh'],
             ['do' => 'building.layout', 'message' => ['t' => 'building.layout', 'layout_version' => $building['body']['layout']['layout_version']]],
         ];
 

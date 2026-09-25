@@ -21,8 +21,10 @@
  *                                has no per-install count)
  *   unrecognised remainder ..... the same, § 5.4, carrying the raw string
  *   fleet totals ............... `fleet.seats_total`, `fleet.seats_live` — NEVER RECOUNTED
- *   discrepancy ................ the two above (§ 4.1, AT-D3-15)
- *   membership stamp ........... the response's `server_time` (§ 2.3)
+ *   discrepancy ................ the two above, as the client protocol compares them (§ 4.1,
+ *                                AT-D3-15) — worded here, decided and rendered by
+ *                                `lobby-screen.js` over `FleetClient#discrepancyState()`
+ *   membership stamp ........... the last full snapshot's `server_time` (§ 2.3, § 5.5)
  *   store / derivation / sweep . `fleet.db`, `fleet.fold`, `fleet.sweep`,
  *                                `fleet.sweep_last_run_at`, `fleet.ingest_last_receipt_at`
  *
@@ -43,9 +45,8 @@
 
 import { RENDER_STATES, isRenderState } from './render-state.js';
 import { clockTime } from '../wire/clock.js';
-import { disagrees, DiscrepancyBudget } from '../wire/discrepancy-budget.js';
+import { disagrees } from '../wire/discrepancy-budget.js';
 import { NOT_REPORTED } from '../wire/null-render.js';
-import { storeUnavailableStatement } from '../wire/failure-render.js';
 
 /**
  * ⚠ `clockTime` MOVED to `../wire/clock.js` at its second caller (card#8300's coordination
@@ -129,11 +130,8 @@ export function floorSummary(seats) {
  * callers here read `null` as *no building*, and a caller added later (Appendix B step 7's floor
  * route) that forgets a check of its own gets `null` from this function, never a building.
  *
- * `href` is § 4.4's `/floor/{floor}` route. ⚠ THAT ROUTE IS NOT BUILT: the floor screen is
- * Appendix B step 7 (card#7341). The row is still the link, because
- * § 4.1 says the row IS the link and a lobby whose rows are inert is a different design; what it
- * must not be is a link to an invented endpoint, and this is D3's own published route, not one
- * minted here.
+ * `href` is § 4.4's `/floor/{floor}` route — D3's own published route, served since Appendix B
+ * row 8 (card#7341 step 8), and never one minted here. § 4.1 says the row IS the link.
  */
 export function floors(snapshot, layout) {
     if (!Array.isArray(layout)) {
@@ -232,6 +230,53 @@ function plate(floor, label, rooms, held, hallway) {
 }
 
 /**
+ * The seats the client protocol HOLDS, grouped by the install that is their room (§ 4.6) — in the
+ * order the protocol holds them.
+ *
+ * ⚠ HOISTED HERE AT ITS SECOND CALLER (card#7341 step 9). The floor screen grouped the held map by
+ * room for its geometry and projected it into a snapshot's shape for `floors()`; the lobby, which
+ * since step 9 renders the protocol's population rather than a one-shot snapshot body of its own,
+ * needs exactly the same two things. One projection, so the two screens cannot disagree about which
+ * seats are in which room.
+ *
+ * @param {Iterable<object>} seats the held seat objects (`FleetClient#seats`' values)
+ * @returns {Map<string, list<object>>}
+ */
+export function roomsOf(seats) {
+    const byRoom = new Map();
+
+    for (const seat of seats) {
+        const id = String(seat.install_id);
+
+        if (!byRoom.has(id)) {
+            byRoom.set(id, []);
+        }
+
+        byRoom.get(id).push(seat);
+    }
+
+    return byRoom;
+}
+
+/**
+ * The held population in the shape every function here reads — a snapshot BODY's `installs`,
+ * `fleet` and `server_time` — so the lobby's model runs over what the protocol holds and never over
+ * a body it fetched for itself. It is a projection and not a second membership rule: the population
+ * is the seats the client holds, which is § 2.1 row 5's.
+ *
+ * @param {Iterable<object>} seats the held seat objects
+ * @param {object|null} [fleet] the `fleet{}` the protocol holds (`FleetClient#fleet`)
+ * @param {string|null} [serverTime] the last full snapshot's `server_time` (`FleetClient#membershipAsOf`)
+ */
+export function heldBody(seats, fleet = null, serverTime = null) {
+    return {
+        installs: [...roomsOf(seats)].map(([install_id, held]) => ({ install_id, seats: held })),
+        fleet,
+        server_time: serverTime,
+    };
+}
+
+/**
  * § 4.1 row 3: "*4 seats · 4 live*, read from the wire and **never recounted**" —
  * `fleet.seats_total` and `fleet.seats_live`, verbatim.
  *
@@ -250,30 +295,47 @@ export function fleetTotals(fleet) {
     return `${total} seats · ${live} live`;
 }
 
+/** § 4.1's count agreement for the ending, in words to nine and in digits past it. */
+const COUNT_WORDS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+
+/** `n desk`/`n desks`, agreeing with its count. */
+function desks(n, spelled = String(n)) {
+    return `${spelled} ${n === 1 ? 'desk' : 'desks'}`;
+}
+
 /**
- * § 4.1's discrepancy check: "when `Σ floors ≠ fleet.seats_total` the lobby renders the
- * disagreement … It never silently picks a winner (AT-D3-15)."
+ * § 4.1's discrepancy check, in words: "when `Σ floors ≠ fleet.seats_total` the lobby renders the
+ * disagreement in the floor's own nouns … It never silently picks a winner (AT-D3-15)."
  *
- * Both directions, in § 4.1's own words. N > M is reachable and is not a paranoia case: a client
- * that "missed the `seat.retired` announcement" still holds a desk that `seats_total` has stopped
- * counting — and a test built only on N < M leaves the wording *N of M*, which reads as a subset,
- * unexercised on the direction where it is false (AT-D3-15).
+ * ⭐ THE OPERATOR'S RATIFIED SENTENCES (card#7341, 2026-09-15), quoted by § 4.1 at the counts they
+ * were ratified at: *"showing 4 of 5 desks — one desk could not be read"* when the client holds
+ * fewer desks than the building lists, and *"showing 5 desks — the building lists 4"* when it holds
+ * more. They are TWO sentences, not one template with its numbers swapped: *showing 4 of 3 desks*
+ * is not a count this floor can render, so the N > M direction names the building's own count as
+ * the claim (AT-D3-15). Neither says *client*, *fleet* or *seats* — the protocol's nouns, which the
+ * operator could not parse — and neither claims a refresh.
  *
- * `null` when they agree, which is the intact fixture's discriminating control: no notice.
+ * ⚠ "WHERE THE SHORTFALL IS LARGER THAN ONE DESK, THE ENDING'S OWN COUNT AGREES WITH IT (*two
+ * desks could not be read*)" (§ 4.1). The document shows the agreement at two and says no more, so
+ * two things here are this module's reading and not a ratified string: the ending spells its count
+ * in words to NINE and in digits past it (*12 desks could not be read*), and every *desks* agrees
+ * with the number it follows (*showing 0 of 1 desk*, *showing 1 desk — the building lists 0*).
  *
- * ⚠ THE CONDITION IS `../wire/discrepancy-budget.js`'s `disagrees`, NOT A SECOND COPY OF IT. The
- * budget asks the same question, and it used to ask it by calling THIS function and testing for
- * `null` — which made "do these two counts differ" a fact only the lobby's WORDING function could
- * answer, and a `wire/` module cannot import a `lobby/` one.
+ * `null` when they agree — the intact fixture's discriminating control: no notice. The condition is
+ * `../wire/discrepancy-budget.js`'s `disagrees`, the one predicate the protocol's trigger asks too.
  */
 export function discrepancyNotice(held, total) {
     if (!disagrees(held, total)) {
         return null;
     }
 
-    return held < total
-        ? `the client holds ${held} of ${total} seats — refreshing`
-        : `the client holds ${held} seats; the fleet reports ${total} — refreshing`;
+    if (held > total) {
+        return `showing ${desks(held)} — the building lists ${total}`;
+    }
+
+    const short = total - held;
+
+    return `showing ${held} of ${desks(total)} — ${desks(short, COUNT_WORDS[short - 1] ?? String(short))} could not be read`;
 }
 
 /**
@@ -300,10 +362,11 @@ export function membershipStamp(serverTime) {
  * D2 adds tomorrow legible today, and — the property that matters — makes it IMPOSSIBLE for an
  * unknown value to be shown as `ok`.
  *
- * `store_unavailable` is the § 5.3 rule that `db: "down"` gets § 9's store-unavailable render,
- * "which is a full statement, not a red dot". The caller reads the flag; the statement is
- * `storeUnavailableStatement()` below, so the two surfaces that can reach it (a `db: "down"` body
- * and an F4 `503`) render ONE string.
+ * § 5.3's rule that `db: "down"` gets § 9's store-unavailable render, "which is a full statement,
+ * not a red dot", is NOT this function's: the client protocol holds the fact wherever it arrives —
+ * a `fleet.health`, or a snapshot's own `fleet{}` — and `../wire/failure-render.js` words it, for
+ * the lobby exactly as for the floor, so the two surfaces that can reach it (a `db: "down"` body and
+ * an F4 `503`) render ONE string.
  */
 export function indicators(fleet) {
     const health = fleet === null || typeof fleet !== 'object' ? {} : fleet;
@@ -350,22 +413,6 @@ export function indicators(fleet) {
 }
 
 /**
- * § 9 F4's store statement. ⚠ MOVED to `../wire/failure-render.js` at its second caller — the floor
- * page (FLOOR Appendix B step 8) renders the same statement — and re-exported here so every lobby
- * import is unchanged. The lobby's other refusal words moved with it, out of `main.js`.
- */
-export { storeUnavailableStatement };
-
-/**
- * ⚠ `DiscrepancyBudget` MOVED to `../wire/discrepancy-budget.js` at its second caller — the client
- * protocol (`../wire/fleet-client.js`, FLOOR Appendix B step 3) spends the same § 4.1 budget for
- * the same disagreement — and is re-exported here so every lobby caller's import is unchanged,
- * exactly as `clockTime` is above. Its reasoning, and the `refund` a failed fetch needs, moved
- * with it rather than being copied.
- */
-export { DiscrepancyBudget };
-
-/**
  * § 9 F17's statement, from the failed layout request's `{ status }` (`../wire/building.js`):
  * "**the building layout could not be loaded — HTTP N**".
  *
@@ -409,9 +456,16 @@ function unclaimedRooms(snapshot) {
 }
 
 /**
- * The whole lobby, from one snapshot body and the building layout `GET /api/building` answered:
- * what § 4.1's table says the screen carries, and nothing else. `main.js` renders these strings and
- * decides none of them.
+ * The lobby's building summary, from the held population in a snapshot body's shape (`heldBody()`)
+ * and the building layout `GET /api/building` answered: the floors, the totals, the stamp and the
+ * indicators § 4.1's table names. `lobby-screen.js` adds what the client protocol decides — the
+ * discrepancy, the feed status, the failure renders and the event log — and `main.js` renders the
+ * strings and decides none of them.
+ *
+ * ⛔ NO DISCREPANCY AND NO STORE STATEMENT HERE, since card#7341 step 9. Both were computed from the
+ * lobby's own one-shot snapshot body while the lobby fetched one; the disagreement is now the
+ * protocol's pair (`FleetClient#discrepancyState()`) and the store statement the protocol's `feed`
+ * (`failureRender()`), so a second derivation here would be a second answer free to disagree.
  *
  * `layout` is the floors the client holds — `null` when no layout request has ever succeeded — and
  * `layoutFailure` is the last layout request's failure, or `null`.
@@ -437,15 +491,7 @@ export function lobbyModel(snapshot, layout, layoutFailure = null) {
         layout_kept: layoutFailure !== null && composed !== null ? 'last known layout' : null,
         held,
         totals: fleetTotals(snapshot?.fleet),
-        // A non-integer `seats_total` is `discrepancyNotice`'s own `null` case: there is no
-        // disagreement to render when there is no number to disagree with, and inventing one
-        // from the held count is § 2.1's forbidden recount wearing a different hat.
-        discrepancy: discrepancyNotice(held, snapshot?.fleet?.seats_total),
         stamp: membershipStamp(snapshot?.server_time),
         indicators: indicators(snapshot?.fleet),
-        // § 5.3 / § 9 F5: `db: "down"` gets the store-unavailable statement, not a red dot.
-        store_unavailable: snapshot?.fleet?.db === 'down'
-            ? storeUnavailableStatement(snapshot?.server_time)
-            : null,
     };
 }

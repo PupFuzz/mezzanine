@@ -39,10 +39,10 @@
  * ONE floor is the one stop reached with the fleet fully placed (card#9267).
  *
  * ⚠ WHERE THE RIDE ARRIVES IS NOT BUILT. § 4.1: an elevator ride and a zoom-to-floor are § 4.5's
- * camera arriving at the floor route — and that route does not exist (it is `docs/design/FLOOR.md`
- * Appendix B step 7, card#7341, and is not built). So a ride moves the
- * cab between the plates of this screen and nothing else, and the plate keeps the published link
- * `floors()` already gives it — D3's own route, never one minted here.
+ * camera arriving at the floor route. The route is served (`docs/design/FLOOR.md` Appendix B row 8,
+ * card#7341 step 8) and § 4.5's camera is not built, so a ride moves the cab between the plates of
+ * this screen and nothing else, and the plate keeps the published link `floors()` already gives it —
+ * D3's own route, never one minted here.
  */
 
 import { floors } from './lobby-model.js';

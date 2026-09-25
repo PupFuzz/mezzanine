@@ -27,6 +27,22 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **The lobby runs the client protocol (Appendix B step 9).** The lobby page now opens the
+  live stream through the same construction the floor page uses (`public/js/wire/live-page.js`, hoisted
+  out of `public/js/floor/main.js`), and draws the population the protocol holds
+  (`public/js/lobby/lobby-screen.js`). § 4.1's discrepancy check has one trigger, the protocol's: the lobby
+  no longer fetches a snapshot of its own for a disagreement between the desks it holds and the building's
+  `seats_total`, so that disagreement costs the one request the protocol makes. The disagreement is worded in the operator's ratified sentences — *showing 4 of 5
+  desks — one desk could not be read*, the ending's count agreeing with the shortfall (*two desks could not
+  be read*), and *showing 5 desks — the building lists 4* — and says nothing while the page has no snapshot
+  to compare. The lobby also shows the feed status with its resync count, the page's own event log, and
+  the failure renders the floor carries (the store statement, the sign-in prompt, the reload banner). The
+  protocol now writes *room added to the building* and *seat added to the floor* for every seat or room a
+  discovery, a recovery poll or the Refresh control adds, where only a seat fetch wrote one before, and it
+  holds a snapshot whose `fleet{}` says `db: "down"` as the store statement on both pages. Refresh reads one
+  snapshot through the protocol and then the layout; a `building.layout` on the lobby's stream re-fetches
+  the layout. `public/js/lobby/lobby-entry.js` is removed. Gated by AT-D3-15
+  (`Tests\Feature\Floor\TheLobbyNeverInventsACountTest`), each RED watched to fail.
 - **card#10423** — **the deploy selftest names a fixture object git packed as NOT VERIFIED HERE and
   carries on.** `bin/deploy.selftest.sh`'s `blind_object` makes one loose object of a fixture's store
   unreadable for the cases that need a failed git read; when git's own housekeeping has stored that

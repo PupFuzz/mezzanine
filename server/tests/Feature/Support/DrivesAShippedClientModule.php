@@ -201,6 +201,37 @@ trait DrivesAShippedClientModule
     }
 
     /**
+     * Whether a page's DOM entry constructs the client protocol WITH its stream recovery — Appendix B
+     * row 8's ⛔: "a page holding a real `EventSource` without the stream recovery inherits the
+     * browser's own reconnect, which re-runs none of steps 1–5".
+     *
+     * ⚠ HOISTED HERE AT ITS SECOND CALLER (card#7341 step 9), with the construction it checks: both
+     * pages construct the protocol through `wire/live-page.js`, so each page's wiring test asks the
+     * same two questions — does the entry get its client from `livePage()`, and does `livePage()`
+     * construct `FleetClient` with its scheduler — of the two files handed in, so a control can plant
+     * the defect in either.
+     *
+     * @return array<string, string> `['recovery' => why]`, or empty
+     */
+    protected function livePageDefects(string $entryJs, ?string $livePageJs = null): array
+    {
+        $livePageJs ??= (string) file_get_contents($this->jsRoot().'/wire/live-page.js');
+
+        if (! str_contains($entryJs, "import { livePage } from '../wire/live-page.js';")
+            || preg_match('/=\s*livePage\(/', $entryJs) !== 1
+            || preg_match('/new FleetClient\(/', $entryJs) === 1) {
+            return ['recovery' => 'the page does not take its client protocol from wire/live-page.js'];
+        }
+
+        if (preg_match('/new FleetClient\(\s*\w+,\s*\w+,\s*\w+,\s*timers\s*\)/', $livePageJs) !== 1
+            || preg_match('/const timers = \{\s*after:/', $livePageJs) !== 1) {
+            return ['recovery' => 'the client protocol is not constructed with its scheduler'];
+        }
+
+        return [];
+    }
+
+    /**
      * One module's source with its comments removed — what a SOURCE-LEVEL bound is checked over,
      * so a comment that NAMES a forbidden identifier is not mistaken for code that reads it.
      *

@@ -521,12 +521,12 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
      * ⛔ THE GUARD THAT DOES NOT TRAVEL WITH WHAT IT GUARDS. Every other check in this file drives
      * `building-model.js`, so deleting the module deletes its own witness. This one asserts that
      * the SHIPPED PAGE-FACING CLIENT still reaches the elevator — so removing the cross-section
-     * from `main.js` and the control from the page in one tidy commit reds here instead of
+     * from `main.js` / `lobby-screen.js` and the control from the page in one tidy commit reds here instead of
      * leaving a lobby that quietly went back to being a list.
      */
     public function test_the_shipped_client_and_the_page_still_carry_the_elevator(): void
     {
-        $js = (string) file_get_contents($this->moduleDir().'/main.js');
+        $js = $this->pageFacingClient();
         $html = $this->lobbyPage();
 
         $this->assertSame([], $this->elevatorMissingFrom($js, $html));
@@ -541,7 +541,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
         $this->assertNotSame($withoutPage, $html, "CONTROL 14's page anchor is gone — it mutated nothing");
 
         $this->assertNotSame([], $this->elevatorMissingFrom($withoutClient, $html),
-            'CONTROL 14 did not bite: the cross-section import was stripped out of main.js and '
+            'CONTROL 14 did not bite: the cross-section import was stripped out of the lobby screen and '
             .'this check stayed clean');
         $this->assertNotSame([], $this->elevatorMissingFrom($js, $withoutPage),
             'CONTROL 14 did not bite: the notice element was renamed off the page and this check '
@@ -555,7 +555,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
      */
     public function test_the_shipped_client_still_draws_the_floors_name_and_the_rides_destination(): void
     {
-        $js = (string) file_get_contents($this->moduleDir().'/main.js');
+        $js = $this->pageFacingClient();
 
         $this->assertSame([], $this->labelMissingFrom($js));
 
@@ -600,7 +600,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
         $missing = [];
 
         if (! str_contains($js, "from './building-model.js'")) {
-            $missing[] = 'main.js no longer renders § 4.1’s cross-section — the lobby is a flat list again';
+            $missing[] = 'the lobby screen no longer composes § 4.1’s cross-section — the lobby is a flat list again';
         }
 
         foreach (['lobby-elevator', 'lobby-elevator-notices'] as $id) {
@@ -646,12 +646,25 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
         // without `layout`, rode the default one-floor-per-install building while the button
         // had been drawn from the composed one (card#9273).
         if (substr_count($js, 'buildingModel(') !== 1) {
-            $missing[] = 'main.js composes the building more than once (or not at all) — a second '
+            $missing[] = 'the lobby composes the building more than once (or not at all) — a second '
                 .'derivation is how the elevator\'s click came to drop the layout, so the ride '
                 .'and the destination it named could disagree';
         }
 
         return $missing;
+    }
+
+    /**
+     * The lobby's page-facing client: `main.js`, which writes the DOM, and `lobby-screen.js`, the one
+     * place that composes the frame it writes (card#7341 step 9 moved the composition there when the
+     * lobby started rendering the client protocol's population). Read as one text, because the
+     * guards below are about the PAIR — the building composed once, and every half of it written —
+     * and neither file alone is the lobby a viewer gets.
+     */
+    private function pageFacingClient(): string
+    {
+        return (string) file_get_contents($this->moduleDir().'/main.js')
+            ."\n".(string) file_get_contents($this->moduleDir().'/lobby-screen.js');
     }
 
     /** The rendered page, as an MFA-satisfied session actually receives it. */

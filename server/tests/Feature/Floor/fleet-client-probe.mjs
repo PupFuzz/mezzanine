@@ -22,6 +22,9 @@
  *                      "local_minutes": N }     //  settled event. `local_*` is the VIEWER's civil
  *                                               //  time for § 4.2's clock and sky; absent, the
  *                                               //  scenario clock read as UTC
+ *      "lobby":      true                       // start `lobby/lobby-screen.js` after start(),
+ *                                               //  `render()` after every settled event — the
+ *                                               //  LOBBY (Appendix B row 9) over this same client
  *      "reduce":     true                       // § 6.4's `prefers-reduced-motion: reduce`, as a
  *                                               //  page reads it — every § 6.2 row draws its
  *                                               //  reduced-motion form and logs `motion: false`
@@ -42,6 +45,7 @@
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
  *      "streams": [ {opened_at, open_fired, refused, ended_at, closed_at} ],
  *      "desk_renders": [ {at, trigger, frame} ], "floor_renders": [ {at, frame} ],
+ *      "lobby_renders": [ {at, frame} ],
  *      "animation_log": [ <§ 11 rows> ] }`
  *   and each record
  *   `{ "at", "label", "outcome", "seats", "event_log", "requests", "phase", "clock_offset_ms",
@@ -103,6 +107,11 @@
  * the floor screen already runs the desk floor inside itself. A scenario naming both is refused
  * rather than resolved in favour of one.
  *
+ * ⛔ THE LOBBY IS THE SHIPPED ONE TOO, AND IT IS EXCLUSIVE WITH BOTH OTHER RENDERERS FOR THEIR REASON:
+ * it drains the journal (it applies `building.layout` from it), so a run naming it beside `floor` or
+ * `desk_floor` would be two renderers racing for one drain. Its building requests go through the
+ * microtask transport the floor's do, for the floor's reason: the lobby awaits them inside its render.
+ *
  * ⛔ THE VIEWER'S CIVIL TIME IS THE SCENARIO'S, NEVER THE BUILD HOST'S. § 4.2's sky has four phases
  * by the viewer's own hour, and a host in another zone would read a different one out of the same
  * fixture — a test whose answer depends on where it ran. So the probe supplies § 4.2's civil-time
@@ -135,6 +144,7 @@ const { startDeskFloor } = await import(pathToFileURL(join(dir, '..', 'desk', 'd
 const { startFloorScreen } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
 const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'status-strip.js')).href);
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
+const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
 
 const fx = JSON.parse(readFileSync(0, 'utf8') || '{}');
 
@@ -309,12 +319,14 @@ async function replay(scenario) {
     const ageRenders = [];
     const deskRenders = [];
     const floorRenders = [];
+    const lobbyRenders = [];
     const log = createAnimationLog();
     let floor = null;
     let screen = null;
+    let lobby = null;
 
-    if (scenario.desk_floor === true && scenario.floor !== undefined) {
-        throw new Error('a scenario names both `desk_floor` and `floor`: two renderers, one journal');
+    if ([scenario.desk_floor === true, scenario.floor !== undefined, scenario.lobby === true].filter(Boolean).length > 1) {
+        throw new Error('a scenario names more than one of `desk_floor`, `floor` and `lobby`: two renderers, one journal');
     }
 
     // The shipped ticker's timer, on the scenario queue: one repeating event per interval.
@@ -396,8 +408,19 @@ async function replay(scenario) {
         });
     }
 
+    if (scenario.lobby === true) {
+        lobby = startLobbyScreen(client, buildingHttp.fetch, (frame) => {
+            lobbyRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)) });
+        });
+    }
+
     await turn();
     floor?.render();
+
+    if (lobby !== null) {
+        await lobby.render();
+        await turn();
+    }
 
     if (screen !== null) {
         // § 4.4's floor entry: the layout, then each room's map. It runs after `start()` because
@@ -432,6 +455,11 @@ async function replay(scenario) {
                 await screen.render();
                 await turn();
             }
+
+            if (lobby !== null) {
+                await lobby.render();
+                await turn();
+            }
         }
 
         snap(timer.label, outcome ?? null);
@@ -458,6 +486,7 @@ async function replay(scenario) {
         age_renders: ageRenders,
         desk_renders: deskRenders,
         floor_renders: floorRenders,
+        lobby_renders: lobbyRenders,
         animation_log: log.rows,
     };
 }

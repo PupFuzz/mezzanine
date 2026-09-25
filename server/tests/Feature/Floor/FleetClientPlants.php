@@ -217,20 +217,20 @@ final class FleetClientPlants
         ],
     ];
 
-    /** P13 — AT-D3-9 GREEN: the key’s buffer is DELETED instead of released, so the drain never happens. */
+    /**
+     * P13 — AT-D3-9 GREEN: the key’s buffer is DELETED instead of released, so the drain never happens.
+     * ⚠ Re-anchored at card#7341 step 9, when the arrival line moved out of `#fetchSeat` into
+     * `#replaceIfHigher` (the one insert); the edit is the same one line.
+     */
     public const NODRAIN = [
         [
             <<<'JS'
-                    if (inserted) {
-                        this.#line(`seat added to the floor: ${k}`);
-                    }
+                    this.#confirm(k);
             
                     this.#release(k);
             JS,
             <<<'JS'
-                    if (inserted) {
-                        this.#line(`seat added to the floor: ${k}`);
-                    }
+                    this.#confirm(k);
             
                     this.#buffers.delete(k);
             JS,
@@ -260,24 +260,38 @@ final class FleetClientPlants
         ],
     ];
 
-    /** P10 / P26b — a snapshot row replaces the held object unconditionally, lowering a version the stream already advanced. */
+    /**
+     * P10 / P26b — a snapshot row replaces the held object unconditionally, lowering a version the stream already advanced.
+     * ⚠ Re-anchored at card#7341 step 9 on the version guard ALONE, when the membership narration
+     * joined the replacing branch: the plant removes the guard and nothing else, as it always did.
+     */
     public const STALE = [
         [
             <<<'JS'
                     if (held === undefined || row.state_version > held.state_version) {
-                        this.#seats.set(k, row);
-                        this.#confirm(k);
-                        this.#noteRow(source, row, serverTime, 'applied');
-            
-                        return;
-                    }
-            
-                    this.#noteRow(source, row, serverTime, 'discarded');
+                        const arrived
             JS,
             <<<'JS'
-                    this.#seats.set(k, row);
-                    this.#confirm(k);
-                    this.#noteRow(source, row, serverTime, 'applied');
+                    if (true) {
+                        const arrived
+            JS,
+        ],
+    ];
+
+    /** card#7341 step 9 — AT-D3-15 / Appendix B row 9: the membership lines a snapshot's inserts write are never written. */
+    public const NOMEMBERSHIPLINE = [
+        [
+            <<<'JS'
+                        if (newRoom) {
+                            this.#line(`room added to the building: ${row.install_id}`);
+                        }
+            
+                        if (arrived) {
+                            this.#line(`seat added to the floor: ${k}`);
+                        }
+            JS,
+            <<<'JS'
+                        // control: the membership narration removed
             JS,
         ],
     ];
