@@ -7,9 +7,11 @@
  * holds, where the text is cut, and where a bubble sits when two of them would collide are all
  * decided here and are exercised under `node` by `tests/Feature/Desk`. What is NOT here is a DOM
  * half, and that is deliberate rather than unfinished: THERE IS NO FLOOR PAGE YET — § 4.4's
- * `/floor/{install_id}` route is card#9208-blocked on a D2 read surface for an authored map, and
- * `drilldown/main.js` records the same gap for the same reason ("the element contract is the
- * floor page's to declare and the floor page's test to hold"). A `main.js` written now would
+ * `/floor/{floor}` route is not served. Its renderer is `floor/floor-screen.js` (Appendix B
+ * step 7) and the D2 surfaces it reads are built (step 12); what is missing is the page that
+ * mounts it (§ 4.6: "built except for the page that mounts it"), and `drilldown/main.js` records
+ * the same gap for the same reason ("the element contract is the floor page's to declare and the
+ * floor page's test to hold"). A `main.js` written now would
  * invent element ids nobody will serve. What the floor page needs from this module is a model it
  * can draw and a MEASURER it must supply — see `bubbleLayout` below.
  *

@@ -29,11 +29,11 @@ class DeskDrawsTheThoughtBubbleTest extends TestCase
      * that it reaches for the SHARED copy of each thing it shares rather than growing its own.
      *
      * ⚠ NO PAGE SERVES THIS MODULE YET, and this says so rather than asserting one does. § 4.4's
-     * floor route is card#9208-blocked on a D2 read surface for an authored map, so the element
-     * contract is the floor page's to declare and the floor page's test to hold — the same
-     * position `public/js/drilldown` and `public/js/coord` are in, for the same reason. What is
-     * checkable today is that the module is internally coherent and will not fail to LOAD when
-     * that route lands.
+     * floor route is not served — its renderer is built (Appendix B step 7) and no page mounts it
+     * yet — so the element contract is the floor page's to declare and the floor page's test to
+     * hold — the same position `public/js/drilldown` and `public/js/coord` are in, for the same
+     * reason. What is checkable today is that the module is internally coherent and will not fail
+     * to LOAD when that route lands.
      */
     public function test_the_module_is_wired_to_the_shared_copies_it_shares(): void
     {

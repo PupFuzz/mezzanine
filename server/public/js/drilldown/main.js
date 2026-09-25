@@ -8,15 +8,17 @@
  * driven directly. If a rule appears below that is not in that module, it is in the wrong file.
  *
  * ⛔ NO FETCH LIVES HERE, AND THAT IS DELIBERATE. § 4.3 puts two requests on the panel's open and
- * § 4.4 names the route that makes them — `/floor/{install_id}/{seat_id}`, which is not built:
- * the floor screen is card#9208-blocked on a D2 read surface for an authored map, so nothing in
- * this deployment can open a panel. A `fetch` written here today would be code no page can
+ * § 4.4 names the route that makes them — `/floor/{floor}/{seat_id}`, which is not served: the
+ * floor screen's renderer is built (`floor/floor-screen.js`, Appendix B step 7) and no page mounts
+ * it yet (§ 4.6: "built except for the page that mounts it"), so nothing in this deployment can
+ * open a panel. A `fetch` written here today would be code no page can
  * reach, wired to a route that does not exist, exercised by nothing. What this file owes that
  * route is a render function it can call with the two response bodies, and that is what it is.
  *
  * ⛔ NO ANIMATION. § 6.2 A12 eases the context bar over 250 ms on a delta whose `changed[]`
- * carries `context`; there is no delta-feed client in this repository, so there is no delta to
- * animate from, and § 6.5's "a snapshot never animates" covers the one input this file has.
+ * carries `context`; the delta-feed client exists (`wire/fleet-client.js`, Appendix B step 3),
+ * but no page constructs it yet, so nothing hands this panel a delta to animate from, and § 6.5's
+ * "a snapshot never animates" covers the one input this file has.
  * The bar is written at its value, which is A12's own reduced-motion form.
  */
 
