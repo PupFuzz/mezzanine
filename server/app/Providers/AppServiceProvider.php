@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Auth\ActiveUserProvider;
 use App\Feed\MonotonicStreamClock;
 use App\Feed\StreamClock;
+use App\Floor\FurnitureBox;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\ServiceProvider;
 
@@ -18,6 +19,13 @@ class AppServiceProvider extends ServiceProvider
         // The stream handler's clock (docs/design/FLEET-STATE.md § 8.3, card#9300). An interface so
         // the suite can step the handler's loop; see `App\Feed\StreamClock`.
         $this->app->bind(StreamClock::class, MonotonicStreamClock::class);
+
+        // The furniture box the console validates room maps against (docs/design/FLOOR.md § 14
+        // item 28(1)), read from its one source on every resolve — the file, not a cached copy.
+        // Resolved through the container so the suite can stand a CHANGED box in, which is the
+        // event item 28(1)(iii) is about and one no test can otherwise produce without editing
+        // the shipped file.
+        $this->app->bind(FurnitureBox::class, fn () => FurnitureBox::current());
     }
 
     /**

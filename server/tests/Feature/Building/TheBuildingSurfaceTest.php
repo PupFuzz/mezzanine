@@ -85,18 +85,18 @@ class TheBuildingSurfaceTest extends FeedTestCase
     public function test_the_building_answers_section_87s_worked_response(): void
     {
         // The worked example's building: `aimla` alone and open; `sola` and `zeta` planned side by
-        // side, 256 px wide each and so 288 px apart, over a hallway; all three authored.
+        // side, 448 px wide each and so 480 px apart, over a hallway; all three authored.
         $this->author('aimla', FloorMapFixture::valid(12));
-        $this->author('sola', FloorMapFixture::sized(8, 5));
-        $this->author('sola', FloorMapFixture::sized(8, 6));
-        $this->author('zeta', FloorMapFixture::sized(8, 5));
+        $this->author('sola', FloorMapFixture::sized(14, 8));
+        $this->author('sola', FloorMapFixture::sized(14, 9));
+        $this->author('zeta', FloorMapFixture::sized(14, 8));
 
         $hallway = FloorMapFixture::hallway();
 
         Layouts::save((string) json_encode(['floors' => [
             ['rooms' => ['aimla' => ['form' => 'open']]],
             ['label' => 'the solos', 'hallway' => $hallway, 'rooms' => [
-                'zeta' => ['form' => 'office', 'origin' => ['x' => 288, 'y' => 160]],
+                'zeta' => ['form' => 'office', 'origin' => ['x' => 480, 'y' => 160]],
                 'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 160]],
             ]],
         ]]), self::OPERATOR);
@@ -104,7 +104,7 @@ class TheBuildingSurfaceTest extends FeedTestCase
             ['rooms' => ['aimla' => ['form' => 'open']]],
             ['label' => 'the solos', 'hallway' => $hallway, 'rooms' => [
                 'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 160]],
-                'zeta' => ['form' => 'office', 'origin' => ['x' => 288, 'y' => 160]],
+                'zeta' => ['form' => 'office', 'origin' => ['x' => 480, 'y' => 160]],
             ]],
         ]]), self::OPERATOR);
 
@@ -123,7 +123,7 @@ class TheBuildingSurfaceTest extends FeedTestCase
             ['floor' => 'aimla', 'label' => null, 'rooms' => [['install' => 'aimla', 'form' => 'open']]],
             ['floor' => 'sola', 'label' => 'the solos', 'rooms' => [
                 ['install' => 'sola', 'form' => 'office', 'origin' => ['x' => 0, 'y' => 160]],
-                ['install' => 'zeta', 'form' => 'office', 'origin' => ['x' => 288, 'y' => 160]],
+                ['install' => 'zeta', 'form' => 'office', 'origin' => ['x' => 480, 'y' => 160]],
             ], 'hallway' => $hallway],
         ], $response->json('layout.floors'));
 
@@ -169,15 +169,15 @@ class TheBuildingSurfaceTest extends FeedTestCase
         // ⛔ PINNED against the output of `dev` before card#9322: § 8.7's worked building — a label,
         // origins, and a hallway carried whole — whose every object is non-empty, so nothing in it
         // is a spelling the associative decode lost.
-        $this->author('sola', FloorMapFixture::sized(8, 5));
-        $this->author('zeta', FloorMapFixture::sized(8, 5));
+        $this->author('sola', FloorMapFixture::sized(14, 8));
+        $this->author('zeta', FloorMapFixture::sized(14, 8));
 
         $hallway = FloorMapFixture::hallway();
 
         Layouts::save((string) json_encode(['floors' => [
             ['rooms' => ['aimla' => ['form' => 'open']]],
             ['label' => 'the solos', 'hallway' => $hallway, 'rooms' => [
-                'zeta' => ['form' => 'office', 'origin' => ['x' => 288, 'y' => 160]],
+                'zeta' => ['form' => 'office', 'origin' => ['x' => 480, 'y' => 160]],
                 'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 160]],
             ]],
         ]]), self::OPERATOR);
@@ -187,7 +187,7 @@ class TheBuildingSurfaceTest extends FeedTestCase
             .'{"floor":"aimla","label":null,"rooms":[{"install":"aimla","form":"open"}]},'
             .'{"floor":"sola","label":"the solos","rooms":['
             .'{"install":"sola","form":"office","origin":{"x":0,"y":160}},'
-            .'{"install":"zeta","form":"office","origin":{"x":288,"y":160}}'
+            .'{"install":"zeta","form":"office","origin":{"x":480,"y":160}}'
             .'],"hallway":'.json_encode($hallway).'}'
             .']}',
             $this->layoutBytes($this->browse('/api/building')->assertOk()),
@@ -199,7 +199,7 @@ class TheBuildingSurfaceTest extends FeedTestCase
         // card#9322 comment 5265: the hallway is served whole, and an associative decode turned an
         // authored `{}` in it into `[]` — a document the operator did not write, which is the room
         // map endpoint's own rule below (§ 8.7, "byte for byte what was authored").
-        $this->author('sola', FloorMapFixture::sized(8, 5));
+        $this->author('sola', FloorMapFixture::sized(14, 8));
 
         $hallway = FloorMapFixture::hallway();
         $hallway['editorsettings'] = new \stdClass;
