@@ -58,13 +58,18 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   the fixture's bounded strings, truncated with a mark and inside the box, a RED planted at the one
   truncation primitive, and F21's notice on a stubbed crowded map and a stubbed undersized one) and AT-D3-21
   (the camera: a floor half with an `fx-degraded` leg read from the list view's model, and a building half;
-  the list view's guard recurses into every member and reds on a rendered member null on every run, which is
-  why `fx-degraded` gains a `config_invalid` seat and a refused-read leg). Rows 0 and 2 now carry the landed
+  the list view's guard holds one property — every leaf of the desk model's output rendered or excluded by
+  path, every rendered leaf seen off its default on some run — which is why `fx-degraded` gains a
+  `config_invalid` seat and the fixture table declares step 3's `fx-confirm`, whose unconfirmed run AT-D3-1
+  does not replay). Rows 0 and 2 now carry the landed
   markers they lacked (PR #15, 2026-08-25; PR #157, 2026-09-14). § 4.1, § 4.4, § 4.5, § 9 F14, § 10.3's
-  `desks` row and § 12's viewport row point at the rows; § 14 item 28 records what stays open (the console's
-  refusal of intersecting or undersized `desks` objects at a save and at a restore, and the re-validation of
-  revisions stored under the sprite-sized meaning — with F21's notice as what stands meanwhile; the
-  unscheduled vector art; the viewport measurement row 15 owes). `tools/design/verify-floor.py` G5 now reds
+  `desks` row and § 12's viewport row point at the rows; § 14 item 28 records what stays open (the
+  unscheduled vector art; the viewport measurement row 15 owes) and what the operator ruled on 2026-09-25
+  (card#7341 comment 6488): the console refuses intersecting or undersized `desks` objects at a save and at a
+  restore, and re-validates every stored map at each change of § 12's box, listing the failing rooms — all
+  three now row 14's build obligations, with F21's notice as what stands for every revision the refusals
+  never saw. § 14 item 29 records the gap the round found and does not answer: an exit caused by a failed
+  read has no object that ended the hold, so § 6.2 and § 11 owe what its `cause` records (row 15's build). `tools/design/verify-floor.py` G5 now reds
   on an Appendix B Order cell that is not an integer instead of skipping the row, which is why the rows are
   numbered rather than suffixed, and G8 holds the shipped default's `desks` objects pairwise disjoint on
   half-open rects; each leg carries a plant in `verify-design-docs.selftest.py`, G8's moving the second object
