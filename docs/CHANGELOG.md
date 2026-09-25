@@ -27,6 +27,17 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#10423** — **the deploy selftest names a fixture object git packed as NOT VERIFIED HERE and
+  carries on.** `bin/deploy.selftest.sh`'s `blind_object` makes one loose object of a fixture's store
+  unreadable for the cases that need a failed git read; when git's own housekeeping has stored that
+  object in a pack, or a root runner still reads it at mode 000, it now prints `⚠ NOT VERIFIED HERE`
+  naming the object, the cause and the cases that did not run, and each caller skips exactly those
+  cases while every other assertion runs. The object it blinds comes from a checked
+  `rev-parse --verify`, so a rev that does not resolve is a FAIL of its own rather than a missing loose
+  file, and F1's control reads the blinded path from `blind_object` instead of computing it a second
+  time. Watched both ways with the fixture repacked before blinding: the previous script FAILs, this one
+  reports each affected case as not verified and exits 0, and a planted real failure alongside still
+  exits 1.
 - **card#7341** — **The floor page and its stream recovery (Appendix B step 8).** `/floor/{floor}` is served
   behind login and the second factor (`resources/views/floor.blade.php`, `public/js/floor/main.js`), and it
   constructs the client protocol with its **stream recovery** (`public/js/wire/fleet-client.js`, § 2.2 steps
@@ -44,7 +55,6 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   (strip half) and `FloorPageWiringTest`, each RED watched to fail; A11 (badge-raise) is exercised for the
   first time. The lobby's refusal statement now reads the same words, and on a cold start whose request never
   reached the server it now also says it has no earlier floor to keep.
-
 - **card#7341** — **`docs/design/FLOOR.md` records the maintainer's rulings for Appendix B step 8, ahead
   of that step's build.** (1) **The floor page is step 8's artifact**: row 8 bolds it — the `/floor/{floor}`
   web route inside the `auth`+`mfa` middleware group, its Blade view, and a DOM entry that constructs
