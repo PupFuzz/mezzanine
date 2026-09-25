@@ -21,8 +21,8 @@ use Tests\TestCase;
  *     going `stale`, then `offline`, and a resync that answers ONE seat.
  *
  * ⛔ THE LOG LINE IS ASSERTED ON ITS FACTS, NOT ON A SENTENCE. § 5.5 names what a record line carries
- * and publishes no string, so the line must NAME the seat, the reason and the time the wire carried,
- * and must name no operator — the delta's `retired.by` is in the fixture precisely so that a line that
+ * (its wording, ratified on card#7342, is `fleet-client.js`'s), and what AT-D3-16 holds is that the
+ * line NAMES the seat, the reason and the time the wire carried, and names no operator — the delta's `retired.by` is in the fixture precisely so that a line that
  * reached for it is caught.
  */
 class RetirementRemovesTheDeskAndExplainsTheRemovalTest extends TestCase

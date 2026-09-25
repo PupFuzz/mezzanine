@@ -27,6 +27,19 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7342** — **The drill-down's intern list is the seat's dispatch calls, and the floor's on-screen
+  wordings are ratified (operator rulings 2026-09-25).** `docs/design/FLOOR.md` § 5.2's selection sentence
+  and § 8's *the full list* row now select the intern list on D2 § 6.4's `calls.is_dispatch` — the rule the
+  panel already rendered; `agent_scope` / `parent_call_id` attribute an intern's own calls back to it (§ 5.1,
+  § 5.6, § 14 item 1 and Appendix A T35 follow). D3 publishes each wording the operator ratified at the
+  section that required it: the overflow row's label (§ 3.2), the seat segment's two notices (§ 4.4), *N open
+  calls* (§ 5.1), the clock-skew note (§ 5.2), the retirement and room-map record lines (§ 5.5, § 2.5), the
+  drill-down's *waiting for the seat detail* lines (§ 5.5), the `epoch_reset` observer lines (§ 7.2) and F11's
+  intern-list fallback (§ 9). **One visible change:** when the seat detail cannot be read, the intern list now
+  reads *unavailable — seat detail could not be read; showing the first 8 interns only*, the 8 taken from the
+  seat object's cap. `DrillDownRendersTheInternsTest` reads that line out of F11's row and no longer carries
+  the superseded selection.
+
 - **card#7341** — **The shipped default map is re-authored to the furniture box, in two rows on a drawn
   floor plane (Appendix B row 14, slice B).** `resources/floor/default.tmj`, the room every unauthored
   install renders, now lays its desk slots in two rows of six, each slot at least the furniture box (440 ×

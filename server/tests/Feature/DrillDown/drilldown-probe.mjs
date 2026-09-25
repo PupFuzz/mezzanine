@@ -11,7 +11,7 @@
  *                   "now_ms": <the corrected clock>, "options": {…} — the model's other options
  *                   (`stamps`, `detail_failure`, `timeline_failure`, `detail_pending`, `floor`),
  *                   "durations": [<seconds>, …], "drive_main": true }`
- * stdout — JSON: `{ "model", "durations", "selections", "main" }`
+ * stdout — JSON: `{ "model", "durations", "main" }`
  *
  * ⚠ `main` DRIVES `main.js` OVER A STUB, AND THE STUB IS NOT A BROWSER. It is the smallest
  * object that satisfies the DOM calls that file makes, and it exists for one property: that the
@@ -42,7 +42,6 @@ const duration = await import(url('../wire/duration.js'));
 
 const payload = JSON.parse(readFileSync(0, 'utf8') || '{}');
 const seat = payload.seat ?? null;
-const openCalls = seat?.detail?.open_calls ?? [];
 
 /** The DOM calls `main.js` makes, and not one more. */
 function stubRoot() {
@@ -92,10 +91,4 @@ console.log(JSON.stringify({
     // § 2.4's function, sampled on the inputs the caller names — the boundary table's own
     // column, handed in from the document rather than written here.
     durations: (payload.durations ?? []).map((s) => duration.formatDuration(s)),
-    // The two selections D3 states for one list, so a test can hold the contradiction visible
-    // rather than assert only the one this client renders (`drilldown-model.js`).
-    selections: {
-        interns: model.internCalls(openCalls).map((c) => c.call_id),
-        subagent_scoped: model.subagentScopedCalls(openCalls).map((c) => c.call_id),
-    },
 }, null, 2));

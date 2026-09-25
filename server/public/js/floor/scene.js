@@ -49,7 +49,7 @@ export const STRIP_GAP = 24;
  * The strip's header — the heading the floor page already carries for the same row
  * (`resources/views/floor.blade.php`), now drawn on the floor where the row is.
  *
- * ⚠ THE WORDING IS NOT RATIFIED. § 3.2 requires the row be LABELLED and publishes no words.
+ * § 3.2's label for the row, in the wording the operator ratified (card#7342, 2026-09-25).
  */
 export const STRIP_HEADER = "Overflow — seats past the map's desks";
 
