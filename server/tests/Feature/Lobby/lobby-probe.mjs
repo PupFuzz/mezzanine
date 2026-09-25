@@ -10,20 +10,25 @@
  * stdin  — JSON: `{ "snapshot": <a GET /api/fleet/snapshot body>,
  *                   "layout": <the floors GET /api/building answered (§ 4.6, D2 § 8.7), or absent =
  *                              the empty layout's floors, `[]`>,
- *                   "observations": [[held, total], …],
+ *                   "notices": [[held, total], …],           // § 4.1's words for each pair
  *                   "cab": <the stop the viewer last rode to, or absent>,
  *                   "primitives": <absent, or a list of argument lists for `floors()` / `plates()`>,
  *                   "scenario": <absent, or a scripted run of the building surface — below> }`
  * stdout — JSON: `{ "render_states": [...], "model": {...}, "building": {...},
- *                   "primitives": { "floors": [...], "plates": [...] } | null, "budget": {...},
+ *                   "primitives": { "floors": [...], "plates": [...] } | null, "notices": [...],
  *                   "scenario": [<one record per step>] | null }`
  *
- * THE SCENARIO drives the shipped `lobby-entry.js` and `../wire/building.js` against a scripted
- * `fetch` — `{ "responses": { "<path>": [{ "status", "body" } | { "status", "text" } |
- * { "unreachable": true }, …] }, "rendered": [install_id, …], "steps": [{ "do": "enter" |
- * "snapshot" | "rooms" | "room.map" | "building.layout", … }] }` — and records, after every step,
- * every request issued so far IN ORDER, what the step returned, the rooms the client holds, and the
- * lobby it would render. ⛔ A REQUEST THE SCENARIO SCRIPTED NO RESPONSE FOR EXITS NON-ZERO: the
+ * THE SCENARIO drives the shipped lobby entry — `lobby-screen.js` over the client protocol
+ * (`../wire/fleet-client.js`) and `../wire/building.js` — against a scripted `fetch` and a stream
+ * that opens and never speaks: `{ "responses": { "<path>": [{ "status", "body" } | { "status",
+ * "text" } | { "unreachable": true }, …] }, "rendered": [install_id, …], "steps": [{ "do": "enter" |
+ * "refresh" | "rooms" | "room.map" | "building.layout", … }] }`. `enter` is the page's own start —
+ * the protocol's connect, then the render that asks for the layout once the snapshot has applied;
+ * `refresh` is the lobby's Refresh control. It records, after every step, every request issued so
+ * far IN ORDER, what the step returned, the protocol's phase, the rooms the client holds, and the
+ * lobby it would render. ⛔ The stream here never delivers a message — what the stream drives is the
+ * HARNESS's (`tests/Feature/Floor/fleet-client-probe.mjs`, AT-D3-15); this probe asks what the
+ * lobby's entry fetches and composes, which is Appendix B row 13's gate. ⛔ A REQUEST THE SCENARIO SCRIPTED NO RESPONSE FOR EXITS NON-ZERO: the
  * client reads a `fetch` that throws as *the browser could not reach the server*, so an unscripted
  * request answered by a throw would turn a request the test never expected into a green failure
  * render.
@@ -53,8 +58,6 @@ const building = await import(url('building-model.js'));
 
 const payload = JSON.parse(readFileSync(0, 'utf8') || '{}');
 
-const budget = new model.DiscrepancyBudget();
-const admitted = (payload.observations ?? []).map(([held, total]) => budget.admits(held, total));
 
 console.log(JSON.stringify({
     render_states: RENDER_STATES,
@@ -74,36 +77,56 @@ console.log(JSON.stringify({
         floors: payload.primitives.map((args) => model.floors(payload.snapshot, ...args)),
         plates: payload.primitives.map((args) => building.plates(payload.snapshot, ...args)),
     },
-    budget: { admitted, spent: budget.spent },
+    // § 4.1's two ratified sentences, worded for each `(held, total)` pair named here.
+    notices: (payload.notices ?? []).map(([held, total]) => model.discrepancyNotice(held, total)),
     scenario: payload.scenario === undefined ? null : await runScenario(payload.scenario),
 }, null, 2));
 
 /** The scripted run — see this file's header. Imported only when asked for. */
 async function runScenario(scenario) {
-    const entry = await import(url('lobby-entry.js'));
+    const { LobbyScreen } = await import(url('lobby-screen.js'));
     const { Building } = await import(url('../wire/building.js'));
+    const { FleetClient } = await import(url('../wire/fleet-client.js'));
 
     // ⚠ THE SCRIPTED FETCH IS `../Support/scripted-fetch.mjs`, HOISTED AT ITS SECOND CALLER
-    // (card#7341 step 3: `tests/Feature/Floor/fleet-client-probe.mjs` drives the client protocol
-    // through the identical fake transport). It was written inline here; what moved is the whole
-    // of it, unchanged in behaviour for this probe — this file scripts no response with a
-    // `delay_ms` and passes no `schedule`, so every response still settles on the next microtask.
+    // (card#7341 step 3). This probe scripts no response with a `delay_ms` and passes no `schedule`,
+    // so every response settles on the next microtask.
     const { fetch: fetchImpl, requests, unscripted } = scriptedFetch(scenario.responses);
 
+    /** A stream that opens and never speaks — this probe asks what the ENTRY fetches, not what a feed drives. */
+    class SilentEventSource {
+        addEventListener() {}
+
+        close() {}
+    }
+
+    // No scheduler: this client recovers nothing, so a refused cold read stays refused and the
+    // run is exactly the steps it scripts.
+    const client = new FleetClient(fetchImpl, SilentEventSource, { now: () => 0 });
     const surface = new Building(fetchImpl);
+    const screen = new LobbyScreen(client, surface);
     const rendered = scenario.rendered ?? [];
     const records = [];
-    let snapshot = null;
+    const settle = () => new Promise((resolve) => setImmediate(resolve));
 
     for (const step of scenario.steps ?? []) {
         let result = null;
+        let beforeSnapshot = null;
 
         switch (step.do) {
-            case 'enter':
-                snapshot = await entry.enter(fetchImpl, surface);
+            case 'enter': {
+                client.start();
+                // The page's first render, which runs before the snapshot has answered — and what
+                // had been asked for by then, which is § 4.4's "then" made observable.
+                const first = screen.render(payload.cab ?? null);
+
+                beforeSnapshot = [...requests];
+                await first;
+                await settle();
                 break;
-            case 'snapshot':
-                snapshot = await entry.fetchSnapshot(fetchImpl);
+            }
+            case 'refresh':
+                await screen.refresh();
                 break;
             case 'rooms':
                 await surface.enterRooms(step.rooms);
@@ -118,16 +141,21 @@ async function runScenario(scenario) {
                 throw new Error(`unknown scenario step: ${step.do}`);
         }
 
-        const body = snapshot !== null && snapshot.ok ? snapshot.body : null;
+        // The page renders after every settled event; the render is what makes the entry's layout
+        // request once a snapshot has applied.
+        const frame = await screen.render(payload.cab ?? null);
 
         records.push({
             requests: [...requests],
+            before_snapshot: beforeSnapshot,
             result,
-            snapshot_status: snapshot === null ? null : snapshot.status,
+            phase: client.phase,
             layout_failure: surface.layoutFailure,
             rooms: Object.fromEntries(rendered.map((id) => [id, surface.room(id)])),
-            lobby: body === null ? null : model.lobbyModel(body, surface.floors, surface.layoutFailure),
-            building: body === null ? null : building.buildingModel(body, payload.cab ?? null, surface.floors),
+            lobby: frame.summary,
+            building: frame.building,
+            discrepancy: frame.discrepancy,
+            failure: frame.failure,
         });
     }
 

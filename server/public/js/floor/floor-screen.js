@@ -45,7 +45,7 @@ import { Building } from '../wire/building.js';
 import { DeskFloor } from '../desk/desk-floor.js';
 import { coordModel } from '../coord/coord-model.js';
 import { correctedNowMs } from '../wire/duration.js';
-import { floors } from '../lobby/lobby-model.js';
+import { floors, heldBody, roomsOf } from '../lobby/lobby-model.js';
 import { buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
@@ -314,7 +314,7 @@ export class FloorScreen {
      * membership rule: the population is the seats the client holds, which is § 2.1 row 5's.
      */
     #snapshotShape() {
-        return { installs: [...this.#seatsByRoom()].map(([install_id, seats]) => ({ install_id, seats })) };
+        return heldBody(this.#client.seats.values());
     }
 
     /** The composed floor this screen draws, or `null` when there is none to draw. */
@@ -596,19 +596,7 @@ export class FloorScreen {
 
     /** The held seats grouped by their install — each room's own rendered seat set (§ 3.2). */
     #seatsByRoom() {
-        const byRoom = new Map();
-
-        for (const seat of this.#client.seats.values()) {
-            const id = String(seat.install_id);
-
-            if (!byRoom.has(id)) {
-                byRoom.set(id, []);
-            }
-
-            byRoom.get(id).push(seat);
-        }
-
-        return byRoom;
+        return roomsOf(this.#client.seats.values());
     }
 
     /**

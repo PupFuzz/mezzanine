@@ -86,8 +86,11 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
         $this->assertStringNotContainsString('3 live', $model['totals'],
             'the live count was recounted from the desks — `seats_live` is 1 on this fixture');
 
-        // § 4.1 row 4 — no discrepancy on an intact snapshot. AT-D3-15's discriminating control.
-        $this->assertNull($model['discrepancy']);
+        // § 4.1 row 4 — the discrepancy is NOT this model's since card#7341 step 9: the lobby words the
+        // client protocol's own `(held, total)` pair (`lobby-screen.js`), and AT-D3-15's discriminating
+        // control — the intact fixture, no notice and no fetch — is `TheLobbyNeverInventsACountTest`'s.
+        $this->assertArrayNotHasKey('discrepancy', $model,
+            'the snapshot model words a disagreement of its own beside the protocol\'s pair');
 
         // § 4.1 row 5 / § 2.3 — the membership stamp, from this response's own `server_time`.
         $this->assertSame('membership as of '.substr((string) $body['server_time'], 11, 8), $model['stamp']);
@@ -131,41 +134,51 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
     }
 
     /**
-     * AT-D3-15 — the lobby never invents a count, in BOTH directions, with § 4.1's
-     * one-fetch-per-distinct-`(N, M)` budget.
+     * AT-D3-15's two SENTENCES — § 4.1's ratified wording, worded by the pure function the lobby
+     * screen calls over the protocol's pair. The trigger, the fetch and the render are the gate's
+     * (`Tests\Feature\Floor\TheLobbyNeverInventsACountTest`); what is pinned here is the words at
+     * every count shape § 4.1 states a rule for, and that the totals stay the wire's while they
+     * disagree.
      */
-    public function test_the_lobby_renders_the_disagreement_and_never_picks_a_winner(): void
+    public function test_the_disagreement_is_worded_in_the_ratified_sentences_and_the_totals_stay_the_wires(): void
     {
         $body = $this->fleet();
 
-        // N < M — a seat dropped from the client's map with no snapshot, which is AT-D3-15's own
-        // BUILD ("simulating a missed insert").
+        // The ratified sentences at the counts they were ratified at (§ 4.1, card#7341 2026-09-15),
+        // then § 4.1's count agreement — "where the shortfall is larger than one desk, the ending's
+        // own count agrees with it (*two desks could not be read*)" — and the intact pair's silence.
+        $this->assertSame([
+            'showing 4 of 5 desks — one desk could not be read',
+            'showing 5 desks — the building lists 4',
+            'showing 3 of 5 desks — two desks could not be read',
+            'showing 3 of 12 desks — nine desks could not be read',
+            'showing 1 of 12 desks — 11 desks could not be read',
+            'showing 0 of 1 desk — one desk could not be read',
+            'showing 1 desk — the building lists 0',
+            null,
+        ], $this->probe(['notices' => [[4, 5], [5, 4], [3, 5], [3, 12], [1, 12], [0, 1], [1, 0], [4, 4]]])['notices']);
+
+        // Neither sentence speaks the protocol's nouns, which the operator could not parse, and
+        // neither claims a refresh (§ 4.1).
+        foreach ($this->probe(['notices' => [[2, 3], [3, 2]]])['notices'] as $notice) {
+            $this->assertDoesNotMatchRegularExpression('/client|fleet|seats|refresh/', $notice);
+        }
+
+        // The totals are the wire's whichever way the counts disagree — a held count one short, and a
+        // `seats_total` one lower than the seats held.
         $short = $body;
         array_shift($short['installs'][0]['seats']);
         $model = $this->probe(['snapshot' => $short])['model'];
 
         $this->assertSame(2, $model['held']);
-        $this->assertSame('the client holds 2 of 3 seats — refreshing', $model['discrepancy']);
         $this->assertSame('3 seats · 1 live', $model['totals'],
             'the totals moved with the held count — they are the wire’s and must not');
 
-        // N > M — reachable whenever a client missed a `seat.retired` announcement. A test built
-        // only on N < M leaves the wording *N of M*, which reads as a subset, unexercised on the
-        // direction where it is false.
         $lowered = $body;
         $lowered['fleet']['seats_total'] = 2;
-        $model = $this->probe(['snapshot' => $lowered])['model'];
 
-        $this->assertSame('the client holds 3 seats; the fleet reports 2 — refreshing', $model['discrepancy']);
-        $this->assertSame('2 seats · 1 live', $model['totals'],
+        $this->assertSame('2 seats · 1 live', $this->probe(['snapshot' => $lowered])['model']['totals'],
             'the lobby stopped rendering the wire’s number once it disagreed — which is picking a winner');
-
-        // § 4.1's budget: one fetch per DISTINCT (N, M), never a poll. The repeated pair is
-        // AT-D3-15's "second, identical heartbeat".
-        $budget = $this->probe(['observations' => [[2, 3], [2, 3], [3, 2], [3, 3]]])['budget'];
-
-        $this->assertSame([true, false, true, false], $budget['admitted']);
-        $this->assertSame(2, $budget['spent']);
     }
 
     /**
@@ -230,15 +243,37 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
 
         $model = $this->probe(['snapshot' => $body])['model'];
 
-        $this->assertSame(
-            'fleet state is unavailable — the store could not be read at 12:00:03',
-            $model['store_unavailable'],
-        );
         $this->assertSame('down', array_column($model['indicators'], null, 'key')['store']['value']);
         $this->assertSame('not reported seats · not reported live', $model['totals'],
             'an absent count was rendered as a zero, which says "nothing has happened"');
-        $this->assertNull($model['discrepancy'],
-            'a disagreement was rendered against a total the wire did not send');
+        $this->assertNull($this->probe(['notices' => [[3, null]]])['notices'][0],
+            'a disagreement was worded against a total the wire did not send');
+
+        // § 9 F4's statement, over the lobby's own entry. Since card#7341 step 9 the lobby renders the
+        // client protocol's population, so the statement is the protocol's fact — held off a
+        // snapshot's `fleet{}` as off a `fleet.health` — worded by `wire/failure-render.js` for both
+        // pages. This body is the one the server served, with `db` moved as above.
+        $responses = [
+            '/api/fleet/snapshot' => [['status' => 200, 'body' => $body]],
+            '/api/building' => [['status' => 200, 'body' => ['layout' => ['layout_version' => 0, 'floors' => []], 'rooms' => []]]],
+        ];
+        $entered = fn (?string $dir = null): array => $this->probe(
+            ['scenario' => ['responses' => $responses, 'steps' => [['do' => 'enter']]]], $dir)['scenario'][0];
+
+        $this->assertSame('fleet state is unavailable — the store could not be read at 12:00:03',
+            $entered()['failure']['statement'],
+            'a snapshot whose fleet{} says the store is down rendered a calm lobby');
+
+        // ⛔ CONTROL 29 — the protocol's pre-step-9 reading, planted back: a `db: "down"` snapshot left
+        // the store fact untouched, which was invisible while the lobby worded it from its own body.
+        $blind = $this->mutatedModules([
+            '../wire/fleet-client.js',
+            "            this.#store = res.body.fleet?.db === 'down' ? { server_time: res.body.server_time ?? null } : null;",
+            "            if (res.body.fleet?.db !== 'down') {\n                this.#store = null;\n            }",
+        ]);
+
+        $this->assertNull($entered($blind)['failure']['statement'],
+            'CONTROL 29 did not bite: the snapshot\'s store fact was ignored and the statement still rendered');
     }
 
     /**
@@ -264,25 +299,9 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
             'CONTROL 5 did not bite: the recount was planted and the totals did not move, so the '
             .'never-recounted assertion is not measuring where the number comes from');
 
-        // CONTROL 6 — the budget as a poll. The second identical observation must stop being
-        // refused, which is the "one fetch per distinct (N, M), and not a poll" property.
-        //
-        // ⚠ THE FILE IS `../wire/discrepancy-budget.js`, NOT `lobby-model.js` (card#7341 step 3).
-        // The budget was hoisted to `wire/` at its second caller — the client protocol spends the
-        // same § 4.1 budget — and `lobby-model.js` now re-exports it. The ANCHOR is unchanged,
-        // because the hoist moved it verbatim; had this control kept pointing at `lobby-model.js`
-        // it would have found the anchor zero times and failed on the rig's own anchor assertion
-        // instead of on the budget, which is a control reporting on nothing.
-        // Re-derive: `grep -c 'this.#spent.has(key)' server/public/js/wire/discrepancy-budget.js`.
-        $polling = $this->mutatedModules([
-            '../wire/discrepancy-budget.js',
-            "        if (this.#spent.has(key)) {\n            return false;\n        }",
-            '        // control: the memory removed',
-        ]);
-
-        $this->assertSame([true, true], $this->probe(['observations' => [[2, 3], [2, 3]]], $polling)['budget']['admitted'],
-            'CONTROL 6 did not bite: the budget’s memory was removed and it still refused the '
-            .'repeat, so the distinct-pair assertion is not measuring the memory');
+        // CONTROL 6 — the budget as a poll — MOVED with the trigger it guards (card#7341 step 9): the
+        // budget is the client protocol's alone, so its control replays the protocol's own second
+        // identical heartbeat in `Tests\Feature\Floor\TheLobbyNeverInventsACountTest`.
 
         // CONTROL 7 — the lobby summary's SILENT filter, which is the defect that has no throw
         // and no glyph: a seat in no member set simply falls out of its own floor's count.

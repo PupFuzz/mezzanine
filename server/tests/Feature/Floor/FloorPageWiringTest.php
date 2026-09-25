@@ -95,10 +95,18 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('undeclared', $this->wiringDefects($html, $js, $widened),
             'CONTROL (a fifth indicator with no element) did not bite — the computed ids are not derived from the model');
 
-        $unscheduled = str_replace('new FleetClient(pageFetch, PageEventSource, clock, timers)', 'new FleetClient(pageFetch, PageEventSource, clock)', $js);
-        $this->assertNotSame($unscheduled, $js);
-        $this->assertArrayHasKey('recovery', $this->bindingDefects($unscheduled),
+        // The construction moved to `wire/live-page.js` at the lobby's step (card#7341 step 9), so the
+        // scheduler plant is planted THERE, and a second plant is the page walking around it.
+        $livePage = (string) file_get_contents($this->jsRoot().'/wire/live-page.js');
+        $unscheduled = str_replace('new FleetClient(pageFetch, PageEventSource, clock, timers)', 'new FleetClient(pageFetch, PageEventSource, clock)', $livePage);
+        $this->assertNotSame($unscheduled, $livePage);
+        $this->assertArrayHasKey('recovery', $this->livePageDefects($js, $unscheduled),
             'CONTROL (the protocol constructed without its scheduler) did not bite');
+
+        $bypassed = str_replace('livePage(() => screen.render())', 'new FleetClient(fetch, EventSource, { now: Date.now }) && livePage(() => screen.render())', $js);
+        $this->assertNotSame($bypassed, $js);
+        $this->assertArrayHasKey('recovery', $this->bindingDefects($bypassed),
+            'CONTROL (the page constructing a protocol of its own beside wire/live-page.js) did not bite');
 
         $unbounded = str_replace('createAnimationLog(ANIMATION_LOG_RETENTION)', 'createAnimationLog()', $js);
         $this->assertNotSame($unbounded, $js);
@@ -138,12 +146,7 @@ class FloorPageWiringTest extends TestCase
     /** @return array<string, string> */
     private function bindingDefects(string $js): array
     {
-        $defects = [];
-
-        if (preg_match('/new FleetClient\(\s*\w+,\s*\w+,\s*\w+,\s*timers\s*\)/', $js) !== 1
-            || preg_match('/const timers = \{\s*after:/', $js) !== 1) {
-            $defects['recovery'] = 'the client protocol is not constructed with its scheduler';
-        }
+        $defects = $this->livePageDefects($js);
 
         $this->assertSame(1, preg_match('/^\| The floor page\'s animation-log retention \| \*\*([\d,]+) rows\*\*/m', $this->floorMd(), $m),
             '§ 12\'s retention row did not parse');

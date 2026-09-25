@@ -10,23 +10,21 @@
  * exists on `resources/views/floor.blade.php` and the reverse (`FloorPageWiringTest`). If a rule
  * appears below that is not in one of those modules, it is in the wrong file.
  *
- * ⛔ THE CLIENT PROTOCOL IS CONSTRUCTED HERE WITH ITS SCHEDULER, AND ONLY WITH IT (Appendix B row
- * 8's ⛔). A real `EventSource` held without the stream recovery inherits the browser's own
- * reconnect, which re-runs none of § 2.2's steps 1–5; `wire/fleet-client.js` recovers nothing
- * without the fourth argument, so this page passes it and the wiring test reds if it stops.
+ * ⛔ THE CLIENT PROTOCOL IS CONSTRUCTED WITH ITS SCHEDULER, AND ONLY WITH IT (Appendix B row 8's
+ * ⛔) — by `wire/live-page.js`, which the lobby shares since card#7341 step 9. A real `EventSource`
+ * held without the stream recovery inherits the browser's own reconnect, which re-runs none of
+ * § 2.2's steps 1–5; the wiring test reds if this page stops constructing it there.
  *
  * ⛔ THE TWO BOUNDS A PAGE NEEDS AND THE HARNESS MUST NOT HAVE ARE APPLIED HERE: the animation log is
  * constructed with § 12's retention (`ANIMATION_LOG_RETENTION`, § 14 item 26), and the protocol
  * holds its coordination envelopes to § 5.7's cap on its own (§ 14 item 25).
  *
- * ⛔ A RENDER FOLLOWS EVERY THING THAT CAN CHANGE WHAT THE PROTOCOL HOLDS — a message, a stream's
- * `open`/`error`, a response, a recovery timer — coalesced into one `screen.render()` at a time.
- * The protocol exposes a drained journal rather than a callback (`FleetClient#takeWire`), so the
- * page is what knows an apply happened; each hook below only asks for a render, and the render
- * drains. The 1 s age tick re-draws the desks' ages from the last frame and drains nothing (§ 2.5).
+ * ⛔ A RENDER FOLLOWS EVERY THING THAT CAN CHANGE WHAT THE PROTOCOL HOLDS, coalesced into one
+ * `screen.render()` at a time (`wire/live-page.js` says why). The 1 s age tick re-draws the desks'
+ * ages from the last frame and drains nothing (§ 2.5).
  */
 
-import { FleetClient } from '../wire/fleet-client.js';
+import { livePage } from '../wire/live-page.js';
 import { createAnimationLog } from '../wire/animation-log.js';
 import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
@@ -80,72 +78,10 @@ function deskLine(desk) {
 }
 
 const root = el('floor');
-const clock = { now: () => Date.now() };
 
-let rendering = false;
-let dirty = false;
 let lastFrame = null;
 
-/** One coalesced render — never two at once, never one dropped. */
-function requestRender() {
-    if (rendering) {
-        dirty = true;
-
-        return;
-    }
-
-    rendering = true;
-    window.setTimeout(async () => {
-        try {
-            await screen.render();
-        } finally {
-            rendering = false;
-
-            if (dirty) {
-                dirty = false;
-                requestRender();
-            }
-        }
-    }, 0);
-}
-
-/** The browser's `EventSource`, with a render asked for after each of the protocol's own events. */
-class PageEventSource extends EventSource {
-    constructor(url) {
-        super(url);
-
-        // Registered BEFORE the protocol's own listeners, and the render they ask for runs on a
-        // later task — so it always sees what the protocol did with the event.
-        for (const type of ['mezzanine', 'open', 'error']) {
-            this.addEventListener(type, requestRender);
-        }
-    }
-}
-
-/** The browser's `fetch`, with a render asked for once each response body has been read. */
-function pageFetch(path, init) {
-    return fetch(path, init).then(
-        (response) => ({
-            status: response.status,
-            ok: response.ok,
-            json: () => response.json().finally(requestRender),
-        }),
-        (error) => {
-            requestRender();
-
-            throw error;
-        },
-    );
-}
-
-/** § 2.2's scheduler: every recovery timer is followed by a render of what it changed. */
-const timers = {
-    after: (ms, fire) => window.setTimeout(() => {
-        fire();
-        requestRender();
-    }, ms),
-    cancel: (handle) => window.clearTimeout(handle),
-};
+const { client, clock, fetch: pageFetch, requestRender } = livePage(() => screen.render());
 
 function paintDesks(frame, desks) {
     list('floor-desks', Object.values(desks).map(deskLine));
@@ -210,7 +146,6 @@ function paint(frame) {
     list('floor-log', client.eventLog);
 }
 
-const client = new FleetClient(pageFetch, PageEventSource, clock, timers);
 const screen = startFloorScreen(client, pageFetch, clock, createAnimationLog(ANIMATION_LOG_RETENTION), paint, {
     floor: root.dataset.floor,
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,

@@ -3,7 +3,7 @@
 
 @section('content')
     {{--
-        THE LOBBY — `docs/design/FLOOR.md § 4.1`, card#7341's first slice.
+        THE LOBBY — `docs/design/FLOOR.md § 4.1`, Appendix B row 9 (card#7341 step 9).
 
         ⛔ THE ELEMENTS ARE THE CONTRACT WITH `public/js/lobby/main.js`, AND THE IDS ARE CHECKED
         BOTH WAYS. A `getElementById` answering `null` is a silent no-op: the page still renders
@@ -27,15 +27,37 @@
           · every duration / age label — card#9209 published the duration FORMAT (D3 § 2.4, § 12's
             own row) and left the WORDING for § 5.3's two fleet ages open (§ 14 item 17), so a
             string picked here would still be the one nobody ratified; none is drawn.
-          · the delta feed, the feed-status readout, the event log, the desk, the drill-down and
-            interns — later slices of this card.
+          · the desk, the drill-down and interns — the floor page's and Appendix B step 10's.
+
+        ⭐ THIS PAGE RUNS THE CLIENT PROTOCOL (card#7341 step 9): `public/js/lobby/main.js` opens the
+        stream through `public/js/wire/live-page.js`, the floor page's own construction, so the
+        feed status, the resync count and the client's event record below are live, and § 4.1's
+        discrepancy check is the protocol's — this page fetches no snapshot of its own.
     --}}
     <section aria-labelledby="lobby-heading">
         <h2 id="lobby-heading">The building</h2>
 
+        {{-- § 9 F8: "a full-width banner", above everything else on the page. --}}
+        <p id="lobby-banner" role="alert" hidden></p>
+
         {{-- § 9's statement region: F4's store-unavailable sentence and every other refusal. --}}
         <p id="lobby-statement" role="status" hidden></p>
         <p id="lobby-kept" hidden></p>
+
+        {{--
+            § 9 F6/F7: the blocking sign-in prompt, labelled *not live since HH:MM:SS* — the same
+            render the floor page carries, because any read this page's protocol makes can be the
+            `401` that ends the session.
+        --}}
+        <section id="lobby-signin" role="alertdialog" aria-labelledby="lobby-signin-prompt" hidden>
+            <p id="lobby-signin-prompt"></p>
+            <p id="lobby-not-live"></p>
+            <p><a href="{{ route('login') }}">Sign in</a></p>
+        </section>
+
+        {{-- § 4.1 / § 5.5: the feed status with the resync count beside it — this page's own connection. --}}
+        <p id="lobby-feed">feed: waiting for the stream</p>
+        <p id="lobby-resyncs">resyncs: waiting for the stream</p>
 
         {{--
             § 9 F17's statement region: "the building layout could not be loaded — HTTP N", over
@@ -68,10 +90,8 @@
             paths is the *which of the two am I looking at* question D2 § 13 row 41 refuses.
             `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest` reds if a layout comes back here.
 
-            ⚠ The lobby opens no stream yet: the protocol that opens one is built (Appendix B
-            step 3) and the floor page constructs it (step 8), but this page does not until step 9,
-            so a building rearranged after the fetch is drawn when the viewer presses Refresh or
-            reloads.
+            A building rearranged after the fetch reaches this page on the stream: a
+            `building.layout` re-fetches the layout (§ 2.5).
         --}}
 
         {{--
@@ -118,6 +138,14 @@
 
         {{-- § 2.3 names "the lobby's refresh control" as a path to a fresh membership picture. --}}
         <button type="button" id="lobby-refresh">Refresh</button>
+
+        {{--
+            § 4.1's last row / § 5.5: the client's own event record, newest first, 200 lines —
+            membership changes, resyncs, reconnects. "The lobby is a renderer of that record and not
+            its home": the record is the client protocol's.
+        --}}
+        <h3 id="lobby-log-heading">This page's event log</h3>
+        <ol id="lobby-log" aria-labelledby="lobby-log-heading" hidden></ol>
     </section>
 
     {{--
