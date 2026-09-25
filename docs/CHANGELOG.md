@@ -38,6 +38,30 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   time. Watched both ways with the fixture repacked before blinding: the previous script FAILs, this one
   reports each affected case as not verified and exits 0, and a planted real failure alongside still
   exits 1.
+- **card#7341** — **`docs/design/FLOOR.md` records the maintainer's rulings for Appendix B step 8, ahead
+  of that step's build.** (1) **The floor page is step 8's artifact**: row 8 bolds it — the `/floor/{floor}`
+  web route inside the `auth`+`mfa` middleware group, its Blade view, and a DOM entry that constructs
+  `FleetClient` with a real `EventSource`, `startFloorScreen` and the status strip — and gates it with
+  `Tests\Feature\Floor\FloorPageWiringTest`, shaped like `LobbyPageWiringTest`; § 4.4, § 4.6 and § 12's
+  viewport row now say the route is row 8's artifact. (2) **The held coordination envelopes are bounded**
+  (§ 14 item 25): at most 1,000 `coord.thread` + `coord.round` envelopes, evicted by whole threads, least
+  recently received first, so an evicted thread renders as one a just-connected client has not seen; a
+  single thread that alone exceeds the cap keeps its `coord.thread`, drops its oldest rounds and renders
+  its bead count as *N+*; the floor screen's set of animated `post_ref`s is trimmed to those still held.
+  (3) **The page's animation log is bounded and the harness's is not** (§ 14 item 26): the module takes
+  an optional retention bound from the caller that constructs it, the floor page passes § 12's 2,000
+  rows, and the harness and every acceptance test pass none, so AT-D3-1 and AT-D3-2 still read a
+  complete log. `DiscrepancyBudget#spent` is recorded as the audited sibling, accepted unbounded because
+  it grows with membership churn rather than with time. (4) **A16's animation-log cause now names the seat
+  that actually displaced the moved desk** (§ 14 item 27): the arriving seat that holds the displaced
+  seat's former slot. In a cascade, where that slot's new holder did not arrive, the cause is the
+  render's lowest-order arrival in § 3.2's `order`, a stated approximation. `floor/floor-screen.js`
+  implements this and replaces step 7's rule, which named the lowest-order arrival for every displaced
+  desk and so could name a seat that displaced nobody. § 11 states the rule. AT-D3-3 gains a GREEN for
+  each clause and a Third and Fourth RED in `IdentityIsStableAcrossARestartTest`, over two new
+  `fx-collision` runs, `two_arrivals` and `cascade`. The comment in `wire/fleet-client.js` that said
+  the document published no cap for (2) now points at the ruling. `tools/design/verify-floor.py` and its selftest are green.
+
 - **card#10368** — **the deploy-gate-inputs selftest no longer fails a pull request because git packed
   a fixture object.** Its failed-read case makes the loose object behind the fixture's
   `server/composer.json` unreadable, and git's own housekeeping (`gc --auto`, a clone arriving as a

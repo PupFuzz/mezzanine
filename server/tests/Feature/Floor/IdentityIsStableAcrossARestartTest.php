@@ -147,6 +147,89 @@ class IdentityIsStableAcrossARestartTest extends TestCase
     }
 
     /**
+     * GREEN — TWO ARRIVALS IN ONE RENDER (§ 14 item 27). `fx-collision`'s `two_arrivals` run inserts
+     * § 3.3's colliding `aimla-impl-4` and the free-slotted `aimla-win-1` in one turn, both released
+     * by one discovery snapshot. `aimla-pm` is displaced once, so the log carries exactly one A16
+     * row, and § 11 names its cause: the arrival that now holds `aimla-pm`'s former slot.
+     *
+     * ⛔ THE RUN IS FIRST CHECKED TO BE THE CASE THE RULING IS ABOUT. A run whose two seats landed
+     * in two renders would hold two single-arrival turns, where any rule gives the same answer.
+     *
+     * ⚠ THE PAIR ALSO SEPARATES THE RULE FROM THE ONE IT REPLACED, and that is asserted rather than
+     * assumed. The slot's taker, `aimla-impl-4`, is NOT the arrival that sorts lowest in § 3.2's
+     * `order` (`aimla-win-1` hashes lower). So the old rule, which always named the lowest-order
+     * arrival, names a seat that displaced nobody, and fails here.
+     */
+    public function test_green_two_arrivals_in_one_render_record_the_arrival_that_took_the_slot(): void
+    {
+        $result = $this->floorRun('two_arrivals');
+        $render = $this->displacingRender($result);
+
+        $this->assertCount(2, $render['arrivals'],
+            'the displacing render did not carry both arrivals, so the case § 14 item 27 rules on never occurred');
+
+        $displaced = self::ROOM.'/'.$this->documentCollision()['displaced'];
+        $taker = $this->takerOf($render, $displaced);
+
+        $this->assertContains($taker, $render['arrivals'],
+            'the displaced seat\'s former slot is not held by an arrival, so this run exercises the cascade clause instead');
+        $this->assertNotSame($render['arrivals'][0], $taker,
+            'the slot\'s taker is also the lowest-order arrival, so this GREEN would not tell the rule from the one it replaced');
+
+        $rows = $this->rowsFor($result, 'A16');
+
+        $this->assertCount(1, $rows, 'the log does not carry exactly one A16 row for one displacement');
+        $this->assertSame($this->documentCollision()['displaced'], $rows[0]['seat_id'],
+            'the A16 row names a seat other than the one § 3.3 says the colliding arrival displaces');
+        $this->assertSame($taker, $rows[0]['cause'],
+            "A16's cause is not the arrival that took the displaced seat's former slot (§ 11, § 14 item 27)");
+    }
+
+    /**
+     * GREEN — A CASCADE (§ 14 item 27's second clause). `fx-collision`'s `cascade` run places
+     * `aimla-impl-5` in a free slot in one render, then delivers `aimla-win-3`, which hashes to the
+     * same slot and sorts lower. `aimla-win-3` takes it, `aimla-impl-5` probes on into `aimla-pm`'s
+     * slot, and `aimla-pm` moves again. So two desks move, and `aimla-pm`'s former slot is held by
+     * `aimla-impl-5`, which is NOT one of this render's arrivals.
+     *
+     * The first displacement names its taker, as in the GREEN above. The cascaded one takes the
+     * stated approximation: the arrival that sorts lowest in § 3.2's `order` among this render's
+     * arrivals. It must never name the non-arrival that took the slot.
+     */
+    public function test_green_a_cascade_names_the_lowest_order_arrival_and_never_a_seat_that_did_not_arrive(): void
+    {
+        $result = $this->floorRun('cascade');
+        $render = $this->displacingRender($result);
+        $rows = $this->rowsFor($result, 'A16');
+
+        $this->assertCount(2, $rows, 'the cascade did not move exactly two desks');
+
+        $cascaded = 0;
+
+        foreach ($rows as $row) {
+            $key = self::ROOM.'/'.$row['seat_id'];
+            $taker = $this->takerOf($render, $key);
+
+            if (in_array($taker, $render['arrivals'], true)) {
+                $this->assertSame($taker, $row['cause'],
+                    "[{$key}] A16's cause is not the arrival that took the seat's former slot");
+
+                continue;
+            }
+
+            $cascaded++;
+
+            $this->assertSame($render['arrivals'][0], $row['cause'],
+                "[{$key}] a cascaded displacement's cause is not the lowest-order arrival of its render");
+            $this->assertNotSame($taker, $row['cause'],
+                "[{$key}] a cascaded displacement names the seat that took the slot, which did not arrive");
+        }
+
+        $this->assertSame(1, $cascaded,
+            'no displaced seat\'s former slot is held by a non-arrival, so the cascade clause never ran');
+    }
+
+    /**
      * ⛔ RED — THE DESK KEYED ON `session.session_id`. § 3.2's key is `(install_id, seat_id)`; a
      * client that hashes the session instead moves a desk, character and all, every time a seat
      * restarts its session. Watch it once: it is the identity defect D1 § 3.4's 30-day incident is
@@ -223,6 +306,109 @@ class IdentityIsStableAcrossARestartTest extends TestCase
             array_intersect_key($this->slotsOf($this->lastFloor($shipped), self::ROOM), $this->documentSlots()['slots']),
             'the shipped assignment shifted a desk when one seat was provisioned',
         );
+    }
+
+    /**
+     * ⛔ THIRD RED — THE OLD RULE: ALWAYS THE LOWEST-ORDER ARRIVAL. In the two-arrival run that names
+     * `aimla-win-1`, which displaced nobody.
+     */
+    public function test_red_the_lowest_order_arrival_as_every_cause_names_a_seat_that_displaced_nobody(): void
+    {
+        $oldRule = $this->mutatedModules([self::FLOOR_SCREEN,
+            'displacementCause(before.get(key), holder, arrivals)',
+            'arrivals[0]',
+        ]);
+
+        $result = $this->floorRun('two_arrivals', $oldRule);
+        $render = $this->displacingRender($result);
+        $taker = $this->takerOf($render, self::ROOM.'/'.$this->documentCollision()['displaced']);
+        $rows = $this->rowsFor($result, 'A16');
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($render['arrivals'][0], $rows[0]['cause'],
+            'the plant did not take: the lowest-order arrival was planted and is not the recorded cause');
+        $this->assertNotSame($taker, $rows[0]['cause'],
+            'the RED did not bite: the old rule names the same seat as the one that took the slot');
+    }
+
+    /**
+     * ⛔ FOURTH RED — THE CASCADE ANSWERED WITH THE SLOT'S TAKER, WHATEVER IT IS. In the cascade run
+     * that names `aimla-impl-5` as `aimla-pm`'s cause, a seat that arrived in an earlier render.
+     */
+    public function test_red_a_cascade_answered_by_the_slots_taker_names_a_seat_that_did_not_arrive(): void
+    {
+        $takerAlways = $this->mutatedModules([self::FLOOR_SCREEN,
+            'return arrivals.includes(taker) ? taker : arrivals[0];',
+            'return taker;',
+        ]);
+
+        $result = $this->floorRun('cascade', $takerAlways);
+        $render = $this->displacingRender($result);
+
+        $named = array_map(static fn (array $row): string => $row['cause'], $this->rowsFor($result, 'A16'));
+
+        $this->assertCount(2, $named);
+        $this->assertNotSame([], array_diff($named, $render['arrivals']),
+            'the RED did not bite: with the taker planted as every cause, every cause is still an arrival');
+    }
+
+    /**
+     * The render that moved a desk already on the floor: the room's slots before it and after it,
+     * and its arrivals in § 3.2's `order`.
+     *
+     * @param  array<string, mixed>  $result
+     * @return array{before: array<string, int|null>, after: array<string, int|null>, arrivals: list<string>}
+     */
+    private function displacingRender(array $result): array
+    {
+        $previous = null;
+
+        foreach ($result['floor_renders'] as $render) {
+            $composed = array_filter(
+                $render['frame']['rooms'] ?? [],
+                static fn (array $room): bool => ($room['install_id'] ?? null) === self::ROOM && array_key_exists('desks', $room),
+            );
+
+            if ($composed === []) {
+                continue;
+            }
+
+            $slots = $this->slotsOf($render['frame'], self::ROOM);
+
+            if ($previous !== null) {
+                foreach ($previous as $key => $slot) {
+                    if (array_key_exists($key, $slots) && $slots[$key] !== $slot) {
+                        $arrivals = array_values(array_diff(array_keys($slots), array_keys($previous)));
+
+                        // § 3.2: `order` = the room's seats ascending by (h, seat_id).
+                        usort($arrivals, fn (string $a, string $b): int => [$this->fnv1a32($a), explode('/', $a)[1]]
+                            <=> [$this->fnv1a32($b), explode('/', $b)[1]]);
+
+                        return ['before' => $previous, 'after' => $slots, 'arrivals' => $arrivals];
+                    }
+                }
+            }
+
+            $previous = $slots;
+        }
+
+        $this->fail('no frame of this run moved a desk already on the floor');
+    }
+
+    /**
+     * The key that holds a displaced seat's former slot after the displacing render.
+     *
+     * @param  array{before: array<string, int|null>, after: array<string, int|null>, arrivals: list<string>}  $render
+     */
+    private function takerOf(array $render, string $displaced): string
+    {
+        $this->assertArrayHasKey($displaced, $render['before'], "{$displaced} was not on the floor before the render");
+
+        $taker = array_search($render['before'][$displaced], $render['after'], true);
+
+        $this->assertIsString($taker, "nobody holds {$displaced}'s former slot after the render");
+
+        return $taker;
     }
 
     /** § 3.2's published hash, for the one expectation this file computes rather than reads. */
