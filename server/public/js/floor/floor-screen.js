@@ -43,6 +43,7 @@
 
 import { Building } from '../wire/building.js';
 import { DeskFloor } from '../desk/desk-floor.js';
+import { DrillDownPanel } from '../drilldown/drilldown-panel.js';
 import { coordModel } from '../coord/coord-model.js';
 import { correctedNowMs } from '../wire/duration.js';
 import { floors, heldBody, roomsOf } from '../lobby/lobby-model.js';
@@ -161,6 +162,19 @@ export class FloorScreen {
     /** § 4.4's `{floor}` segment this screen was entered on — a key, never a label. */
     #segment;
 
+    /**
+     * § 4.4's `{seat_id}` segment — the drill-down the route asks for — or `null` on the floor alone.
+     * Kept by the screen because the URL is the screen's to decide and the page's to perform, as the
+     * floor segment's redirect is.
+     */
+    #seatSegment;
+
+    /** The drill-down (Appendix B row 10), over this screen's own client protocol. */
+    #panel;
+
+    /** Whether `#seatSegment`'s desk has been opened — so a panel a removal closed clears the segment. */
+    #seatOpened = false;
+
     /** install_id → the slot assignment the last render drew, for § 3.3's displacement. */
     #placed = new Map();
 
@@ -178,7 +192,7 @@ export class FloorScreen {
      * @param {object} building a `wire/building.js` `Building` — the layout and each room's map
      * @param {{now: function(): number}} clock the browser's own clock
      * @param {object} log `wire/animation-log.js`'s `createAnimationLog()`
-     * @param {object} [options] `{ reduce, ref_bases, local_time }` — `local_time` reads the
+     * @param {object} [options] `{ floor, seat, reduce, local_time }` — `local_time` reads the
      *        VIEWER's civil time and exists because a build host has one time zone and § 4.2's sky
      *        has four phases; the viewer's own `Date` is the default.
      */
@@ -190,6 +204,57 @@ export class FloorScreen {
         this.#set = this.#desks.set;
         this.#options = options;
         this.#segment = options.floor ?? null;
+        this.#seatSegment = options.seat ?? null;
+        this.#panel = new DrillDownPanel(client);
+    }
+
+    /**
+     * Open the drill-down on one desk — § 4.3's "opened by selecting a desk". The segment the route
+     * carries is the desk's `seat_id` (§ 4.4); the pair is the desk's identity (§ 3.1).
+     *
+     * @returns {Promise<void>} settled once the panel's two requests have answered
+     */
+    openPanel(installId, seatId) {
+        this.#seatSegment = seatId;
+        this.#seatOpened = true;
+
+        return this.#panel.open(installId, seatId);
+    }
+
+    /**
+     * The route's seat segment changed under the page — the browser's back and forward (§ 4.4's
+     * `/floor/{floor}/{seat_id}` is a URL, so history moves it). The desk it names is resolved on the
+     * next render exactly as a deep link's is; `null` is the floor alone.
+     */
+    routeSeat(seatId) {
+        this.#panel.close();
+        this.#seatSegment = seatId;
+        this.#seatOpened = false;
+    }
+
+    /** "Closes to the floor" (§ 4.3) — no stream touched, nothing re-fetched. */
+    closePanel() {
+        this.#seatSegment = null;
+        this.#seatOpened = false;
+        this.#panel.close();
+    }
+
+    /** § 9 F10/F11's "retry on the user's action". */
+    retryPanel() {
+        return this.#panel.retry();
+    }
+
+    /** § 4.3's timeline page: "paginated with `before` on scroll". */
+    morePanel() {
+        return this.#panel.more();
+    }
+
+    /**
+     * The open drill-down at the browser's instant — the 1 s tick's panel half (§ 2.5: "every age
+     * readout, and nothing else"), read from what the last render left and draining nothing.
+     */
+    panelView(floorName = null) {
+        return this.#panel.view(this.#clock.now(), { floor: floorName });
     }
 
     /** The desk floor this screen runs — the age ticker's population, and the frame's source. */
@@ -333,6 +398,61 @@ export class FloorScreen {
      * and this screen's own displacement bookkeeping keep.
      */
     draw(journal) {
+        // § 4.3's live patching and the close a removal forces, over the same journal the desks read.
+        this.#panel.observe(journal);
+
+        const frame = this.#drawFrame(journal);
+
+        return Object.freeze({ ...frame, ...this.#drillDown(frame) });
+    }
+
+    /**
+     * The drill-down half of a frame: the route's `{seat_id}` resolved to a desk on this floor and
+     * opened, a panel a removal closed taken off the route, and the panel's model.
+     *
+     * ⚠ A `seat_id` IS RESOLVED ACROSS EVERY ROOM ON THE FLOOR, AND ONE THAT NAMES DESKS IN TWO ROOMS
+     * OPENS NEITHER. § 4.4 reads the seat segment "against the room's `install_id`", and the floor key
+     * is the least room's; but the redirect from `/floor/{room}/{seat_id}` keeps the seat and drops the
+     * room, so on a floor of several rooms the segment alone can name a desk in a room that is not the
+     * key's. Opening the key's room's desk of that name — or the first match — would open a desk the
+     * link did not mean; the notice says the segment is ambiguous instead. The resolution is stated at
+     * FLOOR § 4.4 (Appendix B step 10).
+     */
+    #drillDown(frame) {
+        const notices = [...frame.notices];
+
+        if (this.#seatSegment !== null && this.#panel.target === null) {
+            if (this.#seatOpened) {
+                // It was open and it closed without the user: the desk went (§ 3.5, AT-D3-16). The
+                // route follows the panel back to the floor.
+                this.#seatSegment = null;
+                this.#seatOpened = false;
+            } else if (frame.floor !== null && this.#client.feed.applied) {
+                const rooms = new Set(frame.rooms.map((room) => room.install_id));
+                const matches = [...this.#client.seats.values()]
+                    .filter((seat) => rooms.has(seat.install_id) && seat.seat_id === this.#seatSegment);
+
+                if (matches.length === 1) {
+                    this.#seatOpened = true;
+                    this.#panel.open(matches[0].install_id, matches[0].seat_id);
+                } else if (matches.length === 0) {
+                    notices.push(`no desk ${this.#seatSegment} on this floor`);
+                } else {
+                    notices.push(`the seat ${this.#seatSegment} names a desk in more than one room on this floor — `
+                        + `${matches.map((seat) => seat.install_id).sort().join(', ')}`);
+                }
+            }
+        }
+
+        return {
+            seat: this.#seatSegment,
+            panel: this.#panel.view(this.#clock.now(), { floor: frame.floor?.name ?? null }),
+            notices: Object.freeze(notices),
+        };
+    }
+
+    /** The floor, drawn over one drained journal — everything but the drill-down (`draw`). */
+    #drawFrame(journal) {
         const offset = this.#client.clockOffsetMs;
         const at = correctedNowMs(offset, this.#clock.now());
         const composed = this.#composed();
@@ -615,15 +735,24 @@ export class FloorScreen {
      * not hold is the causing message; the insert fetch is only how the object was obtained
      * (§ 2.3), which is why the fetch's own journal row is not what is read here.
      *
-     * ⚠ THE DEPARTURE SIDE IS NOT BUILT AND IS NOT GUARDED AGAINST. § 3.5 states its cost — "a
-     * retirement can move one other desk" — and a removal is Appendix B step 10's announcement, so
-     * no input at this step can shrink a room's seat set. The step that builds the removal owes
-     * A16's other cause: the seat-set change is then a DEPARTURE, and § 11's *the arriving seat's
-     * key* has no referent for it.
+     * ⛔ AND A RETIREMENT IS THE DEPARTURE SIDE OF THE SAME ROW (§ 3.5, AT-D3-16's collision-chain
+     * GREEN; Appendix B step 10). "The desks that shared its collision chain re-probe, because § 3.2's
+     * assignment is a pure function of the rendered seat set and that set just changed. The move is
+     * A16." The causing message is the ANNOUNCEMENT — the `seat.retired` message or the retiring delta,
+     * each journalled as `seat.removed` with a `state_version` behind it — and the backstop's removal
+     * (§ 2.3 row 4, journalled with the cause `snapshot`) moves desks WITHOUT a row, because a snapshot
+     * animates nothing (§ 6.5). The row's `cause` is the seat-set change recorded as the DEPARTED
+     * seat's key — whose freed slot the mover now holds, and in a cascade (the mover took a slot
+     * some OTHER mover left) the departure that held the lowest slot: the stated approximation § 11
+     * makes for an arrival's cascade, read from the other side. ⚠ The departure half of `cause` is
+     * this step's reading — § 11's cell names the ARRIVING seat's key, and a departure has none.
      */
     #displacements(assignments, journal, at) {
         const arrived = new Set(journal
             .filter((entry) => entry.t === 'seat.delta' && entry.outcome === 'applied')
+            .map((entry) => `${entry.install_id}/${entry.seat_id}`));
+        const announced = new Set(journal
+            .filter((entry) => entry.t === 'seat.removed' && entry.cause !== 'snapshot')
             .map((entry) => `${entry.install_id}/${entry.seat_id}`));
 
         for (const [installId, assignment] of assignments) {
@@ -635,22 +764,31 @@ export class FloorScreen {
                 continue;
             }
 
-            // The seats that arrived with a delta this journal carries, in § 3.2's order.
+            // The seats that arrived with a delta this journal carries, in § 3.2's order, and the
+            // seats an announcement took off the floor, in the order they were placed.
             const arrivals = assignment.order.filter((key) => !before.has(key) && arrived.has(key));
+            const departures = [...before.keys()]
+                .filter((key) => !assignment.slots.has(key) && announced.has(key))
+                .sort((a, b) => before.get(a) - before.get(b));
 
-            if (arrivals.length === 0) {
+            if (arrivals.length === 0 && departures.length === 0) {
                 continue;
             }
 
             // Who holds each slot NOW, so a displaced incumbent's cause can be the seat that took
-            // its former slot.
+            // its former slot; and who held each slot BEFORE, so a mover's cause can be the departed
+            // seat whose slot it took.
             const holder = new Map([...assignment.slots].map(([key, slot]) => [slot, key]));
+            const formerHolder = new Map([...before].map(([key, slot]) => [slot, key]));
 
             for (const [key, slot] of assignment.slots) {
                 if (before.has(key) && before.get(key) !== slot) {
                     const [install_id, seat_id] = splitKey(key);
+                    const cause = arrivals.length > 0
+                        ? displacementCause(before.get(key), holder, arrivals)
+                        : departureCause(slot, formerHolder, departures);
 
-                    this.#set.displaced(install_id, seat_id, displacementCause(before.get(key), holder, arrivals), at);
+                    this.#set.displaced(install_id, seat_id, cause, at);
                 }
             }
         }
@@ -758,6 +896,21 @@ export class FloorScreen {
     }
 }
 
+/**
+ * A16's `cause` for a desk that moved because a seat LEFT (§ 3.5): the departed seat that held the
+ * slot the mover now holds, or — when the mover took a slot another mover vacated — the departure
+ * that held the lowest slot, which is deterministic because the slots are.
+ *
+ * @param {number} slot the slot the mover holds now
+ * @param {Map<number, string>} formerHolder slot → the key that held it before this render
+ * @param {list<string>} departures this render's announced departures, by former slot; never empty
+ */
+function departureCause(slot, formerHolder, departures) {
+    const vacated = formerHolder.get(slot);
+
+    return departures.includes(vacated) ? vacated : departures[0];
+}
+
 /** A held seat's key, split back into the pair § 3.1 makes a desk's identity. */
 function splitKey(key) {
     const cut = key.indexOf('/');
@@ -773,7 +926,7 @@ function splitKey(key) {
  * @param {{now: function(): number}} clock
  * @param {object} log the animation log every § 6.2 row is recorded in
  * @param {function(object): void} draw receives each floor frame
- * @param {object} [options] `{ floor, reduce, ref_bases, local_time }`
+ * @param {object} [options] `{ floor, seat, reduce, local_time }`
  */
 export function startFloorScreen(client, fetchImpl, clock, log, draw, options = {}) {
     const screen = new FloorScreen(client, new Building(fetchImpl), clock, log, options);
@@ -787,5 +940,13 @@ export function startFloorScreen(client, fetchImpl, clock, log, draw, options = 
         render: async () => {
             draw(await screen.render());
         },
+        // The drill-down's user actions (§ 4.3, § 9 F10/F11). Each returns once its requests have
+        // answered; the page asks for a render after each, as after any other response.
+        openPanel: (installId, seatId) => screen.openPanel(installId, seatId),
+        closePanel: () => screen.closePanel(),
+        routeSeat: (seatId) => screen.routeSeat(seatId),
+        retryPanel: () => screen.retryPanel(),
+        morePanel: () => screen.morePanel(),
+        panelView: (floorName) => screen.panelView(floorName),
     };
 }

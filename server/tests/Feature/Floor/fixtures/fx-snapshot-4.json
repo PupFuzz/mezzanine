@@ -12377,7 +12377,7 @@
       "lobby": true
     },
     "lobby_over": {
-      "note": "AT-D3-15, N > M (card#7341 step 9): the client missed aimla-review's seat.retired, so it holds four desks while the heartbeat's seats_total is three. The protocol issues one discovery fetch. Its rows cannot remove the desk, because removal on a full snapshot's absence is Appendix B step 10's backstop, so the pair stands and the SECOND IDENTICAL heartbeat issues no fetch.",
+      "note": "AT-D3-15, N > M (card#7341 step 9): the client missed aimla-review's seat.retired, so it holds four desks while the heartbeat's seats_total is three. The protocol issues one discovery fetch, and since card#7342 step 10 its rows REMOVE the desk they omit (FLOOR § 2.3 row 4's full-snapshot backstop), so the counts agree once it lands and the SECOND IDENTICAL heartbeat issues no fetch.",
       "http": {
         "/api/fleet/snapshot": [
           {

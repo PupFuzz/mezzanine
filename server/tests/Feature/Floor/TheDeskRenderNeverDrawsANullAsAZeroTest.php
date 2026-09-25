@@ -9,7 +9,8 @@ use Tests\TestCase;
  * `docs/design/FLOOR.md` AT-D3-14 — a null is never drawn as a zero — its **desk half**, gating
  * Appendix B row 5: the **desk render** and its **side table**, observed through **the harness**
  * over `fx-nulls`. The panel half (the drill-down, the uncapped intern list, the health view's
- * `counters`) is step 10's and is not asserted here; each member this file hands to it is named.
+ * `counters`) is Appendix B step 10's, asserted by `TheDrillDownNeverDrawsANullAsAZeroTest`; each
+ * member this file hands to it is named.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE `nulls-b` WALK IS DRIVEN BY THE FIXTURE'S NULL POPULATION, NOT BY A LIST OF MEMBERS. The
@@ -180,7 +181,7 @@ class TheDeskRenderNeverDrawsANullAsAZeroTest extends TestCase
      */
     private function walk(): array
     {
-        $panel = 'panel half (step 10): § 5.6 renders it in the drill-down\'s block, never on the desk';
+        $panel = 'panel half (TheDrillDownNeverDrawsANullAsAZeroTest): § 5.6 renders it in the drill-down\'s block, never on the desk';
 
         return [
             // desk half — § 5.6's cells that render on the desk.

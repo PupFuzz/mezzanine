@@ -66,6 +66,19 @@ function seatPath(installId, seatId) {
     return `/api/fleet/seats/${encodeURIComponent(installId)}/${encodeURIComponent(seatId)}`;
 }
 
+/**
+ * D2 § 8.2's recent-activity window for one seat — the drill-down's second request (FLOOR § 4.3):
+ * `limit` 50 on open, and the SERVER's own `next_before` cursor for the page after it.
+ */
+function timelinePath(installId, seatId, before) {
+    const base = `${seatPath(installId, seatId)}/timeline?limit=${TIMELINE_LIMIT}`;
+
+    return before === null ? base : `${base}&before=${encodeURIComponent(before)}`;
+}
+
+/** § 4.3: "`limit=50`", and "`limit` never above 200" — 50 is the only figure this client sends. */
+export const TIMELINE_LIMIT = 50;
+
 /** The one key shape for the held map, the buffers, the streaks and the record's lines. */
 function key(installId, seatId) {
     return `${installId}/${seatId}`;
@@ -120,6 +133,22 @@ const KNOWN_TYPES = new Set([
     'room.map', 'building.layout', 'coord.thread', 'coord.round',
 ]);
 
+/**
+ * § 3.5's removal line: "naming the seat, the **reason** and the **time** — the two its payload
+ * carries". The reason and the instant are the wire's, verbatim; a member the wire left empty is said
+ * to be unreported rather than filled in. ⛔ NO OPERATOR: `by` is not on the announcement (D2 § 8.3),
+ * so a name here would be a name the wire never sent (AT-D3-16's fourth RED).
+ *
+ * ⚠ THE WORDING IS NOT RATIFIED — § 5.5 names what a record line carries and publishes no string —
+ * so it is the facts in order and nothing else, like every other line this record holds.
+ */
+function retiredLine(k, reason, at) {
+    const why = typeof reason === 'string' && reason !== '' ? reason : 'not reported';
+    const when = typeof at === 'string' && at !== '' ? at : 'not reported';
+
+    return `seat retired: ${k} — reason: ${why} — at ${when}`;
+}
+
 /** The thread an envelope belongs to — § 5.7's grouping key, and the eviction unit. */
 function threadOf(envelope) {
     const body = envelope.t === 'coord.round' ? envelope.coord_round : envelope.coord_thread;
@@ -137,8 +166,12 @@ function threadOf(envelope) {
  * inside the fetch's own continuation, and a discovery that throws never clears its in-flight
  * pair: no discovery would ever run again on that connection, and the failure would be an
  * unhandled rejection nobody rendered.
+ *
+ * ⚠ EXPORTED AT ITS SECOND CALLER (card#7342 step 10): the drill-down judges its two responses by this
+ * same rule (`drilldown/drilldown-panel.js`), and a second copy of what a failed read IS would be free to
+ * read a proxy's `200` as a timeline.
  */
-function failed(response) {
+export function failed(response) {
     return !response.ok || response.body === null;
 }
 
@@ -305,6 +338,34 @@ export class FleetClient {
     #stamps = new Map();
 
     /**
+     * The keys a retirement has been ANNOUNCED for (FLOOR § 3.5) — by the `seat.retired` message or
+     * by the delta that carried `render_state: "retired"`, whichever arrived first.
+     *
+     * ⛔ IT IS WHAT MAKES THE TWO ANNOUNCEMENTS ONE REMOVAL (§ 2.5: "both are idempotent — the
+     * second arrives about a desk that is already gone and changes nothing"). Without it the second
+     * announcement would be a delta for a seat the client does not hold, which § 2.3 row 1 answers
+     * with an INSERT FETCH — re-admitting, one round trip later, the desk the operator removed. A
+     * retirement is permanent (D2 § 4.10: "a seat leaves the floor by one act and one act only", and
+     * no act reverses it), so the set only grows, by one key per retirement this page witnessed.
+     */
+    #retired = new Set();
+
+    /**
+     * key → how many full-snapshot reads this client had ISSUED when it first inserted the seat
+     * (`#snapshotReads` at that moment). § 2.3 row 4's backstop reads it.
+     *
+     * ⛔ AN ABSENCE CARRIES NO VERSION, SO THE BACKSTOP ASKS A QUESTION A VERSION CANNOT: was the seat
+     * already held when this snapshot was READ? A seat the client inserted after the request went out
+     * — provisioned, delta'd and fetched inside the discovery's own round trip — cannot be in rows the
+     * server read before it existed, and its absence from them says nothing (card#7341 comment 5400,
+     * m4, owned by Appendix B row 10).
+     */
+    #insertedAt = new Map();
+
+    /** How many full-snapshot reads this client has issued — the connect, discoveries, polls, refreshes. */
+    #snapshotReads = 0;
+
+    /**
      * @param {Function} fetchImpl the browser's own `fetch`, unbound — called as a plain function
      *   through `wire/building.js`'s `request()`
      * @param {Function} EventSourceImpl constructed as `new EventSourceImpl('/api/fleet/stream')`;
@@ -375,6 +436,53 @@ export class FleetClient {
         if (status === 401) {
             this.#endSession();
         }
+    }
+
+    /**
+     * § 4.3's first request, which the USER causes by opening a desk: `GET /api/fleet/seats/{install}/
+     * {seat}` — `api_version` and `server_time`, the seat object, then `detail`. Answers `request()`'s
+     * `{status, ok, body}`, or `null` when nothing was asked because the session has ended or a reload
+     * is required (F6's "a request the server has just said it will refuse", F8's stopped client).
+     *
+     * ⛔ IT GOES THROUGH THIS MODULE's ONE READ PATH, AND THAT IS THE WHOLE REASON IT IS HERE. § 2.2
+     * clause (4): "a read the USER causes is suppressed by nothing … one of them returning `401` fires
+     * F6 by F6's own trigger", and the offset is "refreshed on every … response that carries
+     * `server_time`" — both are `#get`'s, so a panel issuing its own `fetch` would be a second read path
+     * that did neither.
+     *
+     * ⛔ THE ROW IS OFFERED TO THE HELD MAP UNDER THE ONE VERSION RULE, AND ONLY FOR A SEAT ALREADY
+     * HELD. D2 § 8.2.3's object is the same object an insert fetch returns, so a higher one replaces
+     * the held seat exactly as § 2.2 says every seat object does — one map, one rule. It admits
+     * nothing: a panel is opened on a desk the floor draws, and membership is § 2.3's to change.
+     */
+    async readSeatDetail(installId, seatId) {
+        if (this.#terminal()) {
+            return null;
+        }
+
+        const k = key(installId, seatId);
+        const res = await this.#get(seatPath(installId, seatId));
+
+        if (!failed(res) && this.#seats.has(k)) {
+            this.#offerSeatBody(res.body);
+            // § 2.3 row 5: "until a read succeeds" — this one did, whatever its version.
+            this.#confirm(k);
+        }
+
+        return res;
+    }
+
+    /**
+     * § 4.3's second request — the recent-activity window, `?limit=50`, and with `before` the page after
+     * it (D2 § 8.2's `next_before`, the server's own cursor). Through `#get` for `readSeatDetail`'s
+     * reasons; it touches no held seat.
+     */
+    async readTimeline(installId, seatId, before = null) {
+        if (this.#terminal()) {
+            return null;
+        }
+
+        return this.#get(timelinePath(installId, seatId, before));
     }
 
     /** The held seat map — a COPY, so a caller cannot mutate what the protocol holds. */
@@ -481,13 +589,10 @@ export class FleetClient {
      * ⛔ `missing` IS NEVER TRUE FOR A KEY WITH NO HELD OBJECT, and that is asserted here at the
      * READ as well as kept true at the write (the streak only ever advances for a held key). The
      * client cannot draw a specific desk for a seat it has never held — a disagreement it cannot
-     * attribute to a seat is the LOBBY's shape, `discrepancyState()` below. Step 3 removes no
-     * seat, so today the read-side guard is redundant with the write-side one; the removal
-     * backstop (§ 2.3 row 4, Appendix B step 10) is what will make it load-bearing.
-     *
-     * ⚠ FOR STEP 10, WHEN THAT BACKSTOP LANDS: removing a held key must also delete it from the
-     * streak and confirmation maps, which nothing prunes today, so a seat re-inserted under the
-     * same key starts from a clean read status rather than a streak left over from before.
+     * attribute to a seat is the LOBBY's shape, `discrepancyState()` below. Since Appendix B step
+     * 10 a held key can LEAVE — the announcement (§ 3.5) and the full-snapshot backstop (§ 2.3 row 4)
+     * both remove it — and the one removal (`#remove`) prunes the streak and confirmation maps with
+     * the seat, so a seat re-inserted under the same key starts from a clean read status.
      *
      * `confirmedAt` is the BROWSER clock's reading of when this client last trusted an apply for
      * the key — a client-local quantity, and deliberately NOT a substitute for § 2.4's *no data
@@ -822,13 +927,14 @@ export class FleetClient {
 
     /** A warm re-run's snapshot, applied under the version rule like any full snapshot. */
     async #resnapshot() {
+        const issued = ++this.#snapshotReads;
         const res = await this.#get(SNAPSHOT_PATH);
 
         if (failed(res) || this.#terminal()) {
             return;
         }
 
-        this.#applySnapshot(res.body);
+        this.#applySnapshot(res.body, issued);
 
         for (const k of [...this.#buffers.keys()]) {
             this.#release(k);
@@ -1073,6 +1179,7 @@ export class FleetClient {
 
     /** `#initialSnapshot`'s read, held as a promise there so a Refresh can wait on it (`refresh`). */
     async #coldRead() {
+        const issued = ++this.#snapshotReads;
         const res = await this.#get(SNAPSHOT_PATH);
 
         if (failed(res)) {
@@ -1082,7 +1189,7 @@ export class FleetClient {
             return;
         }
 
-        this.#applySnapshot(res.body);
+        this.#applySnapshot(res.body, issued);
         this.#phase = 'live';
 
         // § 6.5: the connect sequence's snapshot is the render that ESTABLISHES a live feed — the
@@ -1099,17 +1206,117 @@ export class FleetClient {
         }
     }
 
-    /** A full snapshot — the connect one and a discovery's — through the one version rule. */
-    #applySnapshot(body) {
+    /**
+     * A full snapshot — the connect one, a discovery's, a poll's or a refresh's — through the one
+     * version rule, then § 2.3 row 4's removal backstop.
+     *
+     * @param {object} body    D2 § 8.2's snapshot body
+     * @param {number} issued  `#snapshotReads` as it stood once this read was issued
+     */
+    #applySnapshot(body, issued) {
         this.#acceptFleet(body.server_time, body.fleet);
         this.#membershipAt = body.server_time ?? null;
 
+        const listed = new Set();
+
         for (const install of body.installs) {
             for (const row of install.seats) {
+                listed.add(key(row.install_id, row.seat_id));
                 this.#replaceIfHigher(row, 'snapshot', body.server_time);
                 this.#stampIfHeld(row, body.server_time);
             }
         }
+
+        this.#backstop(listed, issued, body.server_time ?? null);
+    }
+
+    /**
+     * § 2.3 row 4 — "A seat the client holds is ABSENT from a fresh snapshot: remove it — but only on a
+     * FULL snapshot apply, never on a delta, a poll, or a seat fetch's one object".
+     *
+     * ⛔ THIS IS THE BACKSTOP AND NOT THE REMOVAL PATH (§ 3.5, card#9078). A retired seat's desk goes on
+     * the ANNOUNCEMENT (`#retire`); the only client this still serves is one that was not connected
+     * when the announcement went out, "and for that client nothing else would ever say the seat had
+     * gone". Its caller is `#applySnapshot` and nothing else, which is the whole of the *full snapshot
+     * only* half: a seat fetch, a resync and a delta never reach it.
+     *
+     * ⛔ A SEAT INSERTED AFTER THIS READ WAS ISSUED IS NOT ABSENT FROM IT, IT IS NEWER THAN IT.
+     * `#insertedAt` dates each held key against the reads issued so far, so a seat provisioned,
+     * delta'd and fetched inside the snapshot's own round trip — the hazard § 2.3 row 4 names — is
+     * kept, and every seat the client held before the read went out is judged by the population the
+     * read returned.
+     */
+    #backstop(listed, issued, serverTime) {
+        for (const k of [...this.#seats.keys()]) {
+            if (listed.has(k) || (this.#insertedAt.get(k) ?? 0) >= issued) {
+                continue;
+            }
+
+            this.#remove(k, `seat removed from the floor: ${k} — absent from a full snapshot (retired)`, 'snapshot', serverTime);
+        }
+    }
+
+    /**
+     * § 3.5's retirement, from the `seat.retired` message — "a REMOVAL instruction" (D2 § 8.3). Its
+     * payload is `install_id`, `seat_id`, `reason`, `at` and the retired object's `state_version`, and
+     * NO `by`: the record line names the seat, the reason and the time, and never an operator the
+     * wire did not name (AT-D3-16's fourth RED).
+     *
+     * ⛔ ONE REMOVAL, ONE LINE, HOWEVER MANY ANNOUNCEMENTS. A seat the client no longer holds — the
+     * delta got here first, or the page never held it — changes nothing and writes nothing; the key is
+     * still recorded as retired, so the delta that follows this message is discarded rather than
+     * answered with an insert fetch.
+     */
+    #retire(envelope) {
+        const k = key(envelope.install_id, envelope.seat_id);
+        const fields = {
+            install_id: envelope.install_id,
+            seat_id: envelope.seat_id,
+            state_version: envelope.state_version ?? null,
+            server_time: envelope.server_time ?? null,
+        };
+
+        this.#retired.add(k);
+
+        if (!this.#seats.has(k)) {
+            this.#buffers.delete(k);
+            this.#note('seat.retired', 'discarded', fields);
+
+            return;
+        }
+
+        this.#note('seat.retired', 'applied', fields);
+        this.#remove(k, retiredLine(k, envelope.reason, envelope.at), envelope.state_version ?? null, envelope.server_time ?? null);
+    }
+
+    /**
+     * Take one key out of everything the protocol holds for it, and say so — the ONE removal, which
+     * the announcement, the retiring delta and the backstop all reach.
+     *
+     * ⛔ EVERY PER-KEY MAP GOES WITH THE SEAT. The read status (§ 2.3 row 5) and the stamps (§ 2.4) are
+     * the seat's, and a seat re-inserted under the same key — the backstop's absent seat whose next
+     * delta re-admits it — starts from a clean read status rather than a streak left from before.
+     *
+     * The journal line carries `cause`: § 11's `state_version` of the object that ENDED any held render
+     * the desk was in — the retired object's own version for an announcement, and `snapshot` for the
+     * backstop, which ends the hold on a population rather than on an object.
+     */
+    #remove(k, line, cause, serverTime) {
+        const held = this.#seats.get(k);
+
+        this.#seats.delete(k);
+        this.#stamps.delete(k);
+        this.#failStreak.delete(k);
+        this.#confirmedAt.delete(k);
+        this.#insertedAt.delete(k);
+        this.#buffers.delete(k);
+        this.#line(line);
+        this.#note('seat.removed', 'applied', {
+            install_id: held.install_id,
+            seat_id: held.seat_id,
+            cause,
+            server_time: serverTime,
+        });
     }
 
     /**
@@ -1118,9 +1325,9 @@ export class FleetClient {
      * ⚠ EVERY OTHER `t` IS IGNORED, BY DESIGN AND NOT BY OVERSIGHT: `room.map` and
      * `building.layout` are journalled and applied by the floor screen (step 7) through
      * `wire/building.js`, because an authored document is FETCHED by version and no message carries
-     * one; `seat.retired` is step 10's; and an unrecognised `t` is D2's own forward compatibility
-     * rule — ignore it and count it (`feed.unknown_messages`). § 5.5 publishes no narration line for
-     * that count, so the strip draws none.
+     * one; and an unrecognised `t` is D2's own forward compatibility rule — ignore it and count it
+     * (`feed.unknown_messages`). § 5.5 publishes no narration line for that count, so the strip draws
+     * none. `seat.retired` is applied — it is the removal (§ 3.5, Appendix B step 10, `#retire`).
      */
     #dispatch(envelope) {
         this.#observeTime(envelope.server_time);
@@ -1128,6 +1335,9 @@ export class FleetClient {
         switch (envelope.t) {
             case 'seat.delta':
                 this.#applyDelta(envelope);
+                break;
+            case 'seat.retired':
+                this.#retire(envelope);
                 break;
             case 'feed.heartbeat':
             case 'fleet.health':
@@ -1200,8 +1410,8 @@ export class FleetClient {
                 });
                 break;
             default:
-                // D2 § 8.3: an unrecognised `t` is ignored AND COUNTED. A known one this protocol
-                // applies nothing for (`seat.retired` until Appendix B step 10) is only ignored.
+                // D2 § 8.3: an unrecognised `t` is ignored AND COUNTED. Every known `t` has its own
+                // case above, so what reaches here is unrecognised.
                 if (!KNOWN_TYPES.has(envelope.t)) {
                     this.#unknownTypes++;
                 }
@@ -1316,6 +1526,15 @@ export class FleetClient {
 
         const k = key(d.install_id, d.seat_id);
 
+        // § 3.5: a retired seat's desk is gone for good, and a delta about it — the other of the two
+        // announcements, or a straggler — changes nothing. Answering it as a seat the client does not
+        // hold (§ 2.3 row 1) would FETCH the removed seat back onto the floor.
+        if (this.#retired.has(k)) {
+            this.#noteDelta(d, 'discarded');
+
+            return;
+        }
+
         if (this.#buffering(k)) {
             this.#push(k, d);
 
@@ -1365,6 +1584,14 @@ export class FleetClient {
         // D2 § 8.3.1: `changed` is the patch's own keys, which is what § 6.2's `edge` conditions
         // are gated on — never a diff, which cannot tell a re-sent value from one never sent.
         this.#noteDelta(d, 'applied', { changed: Object.keys(d.patch), before: held, after });
+
+        // § 3.5's other announcement: the delta carrying `render_state: "retired"`, "from the other of
+        // the two announcements D2 publishes in one transaction". It is journalled as applied first —
+        // it IS the delta A13 fires on (§ 6.2) — and then the desk goes, through the one removal.
+        if (after.render_state === 'retired') {
+            this.#retired.add(k);
+            this.#remove(k, retiredLine(k, after.retired?.reason, after.retired?.at), d.state_version, d.server_time ?? null);
+        }
     }
 
     #push(k, d) {
@@ -1457,13 +1684,33 @@ export class FleetClient {
             return;
         }
 
-        const { api_version, server_time, detail, ...row } = res.body;
+        this.#offerSeatBody(res.body);
 
-        this.#replaceIfHigher(row, 'seat.fetch', res.body.server_time);
-        this.#stampIfHeld(row, res.body.server_time);
-        this.#confirm(k);
+        // A seat retired while this read was in flight is not held, and a read status for a key the
+        // client does not hold is the one thing `readStatus` refuses to report.
+        if (this.#seats.has(k)) {
+            this.#confirm(k);
+        }
 
         this.#release(k);
+    }
+
+    /**
+     * D2 § 8.2.3's seat response — the insert fetch's, the resync's and the drill-down's, which are one
+     * endpoint — offered to the held map under § 2.2's version rule, with § 2.4's stamps.
+     *
+     * ⛔ THE REST ENVELOPE NEVER ENTERS THE HELD MAP (see `#fetchSeat`), and neither does `detail`, which
+     * is the drill-down's alone (§ 8.2.3: "deliberately not in the fleet snapshot").
+     *
+     * ⚠ HOISTED AT ITS SECOND CALLER (card#7342 step 10): the drill-down's detail read (`readSeatDetail`)
+     * takes the same object the insert and resync fetches take, and two copies of how a seat body
+     * becomes a held row is two places for the envelope to leak back in.
+     */
+    #offerSeatBody(body) {
+        const { api_version, server_time, detail, ...row } = body;
+
+        this.#replaceIfHigher(row, 'seat.fetch', body.server_time);
+        this.#stampIfHeld(row, body.server_time);
     }
 
     /**
@@ -1490,9 +1737,16 @@ export class FleetClient {
         const k = key(row.install_id, row.seat_id);
         const held = this.#seats.get(k);
 
-        if (held === undefined || row.state_version > held.state_version) {
+        // § 3.5: a retired seat is never re-admitted — not by a seat fetch that was in flight when
+        // the announcement landed, and not by a snapshot read before the act ran. Its row is
+        // discarded like any row the version rule drops.
+        if (!this.#retired.has(k) && (held === undefined || row.state_version > held.state_version)) {
             const arrived = held === undefined && this.#applied;
             const newRoom = arrived && !this.#holdsRoom(row.install_id);
+
+            if (held === undefined) {
+                this.#insertedAt.set(k, this.#snapshotReads);
+            }
 
             this.#seats.set(k, row);
             this.#confirm(k);
@@ -1535,6 +1789,12 @@ export class FleetClient {
             seat_id: row.seat_id,
             state_version: row.state_version,
             server_time: serverTime,
+            // The row itself, DISCARDED ones included: § 2.4's stamp rule dates a `fetch-fresh` block
+            // by the response that delivered it, and a full snapshot whose row is NOT higher than what
+            // is held still delivered fresh readings of the ten members at the SAME version — which
+            // is how the drill-down's blocks are re-stamped by each poll (AT-D3-6's panel half,
+            // `drilldown/drilldown-panel.js`). The protocol's own map keeps the version rule whole.
+            row,
         });
     }
 
@@ -1652,12 +1912,13 @@ export class FleetClient {
     async #discover(held, total) {
         this.#discovery = [held, total];
 
+        const issued = ++this.#snapshotReads;
         const res = await this.#get(SNAPSHOT_PATH, { discovery: true });
 
         if (failed(res)) {
             this.#budget.refund(held, total);
         } else {
-            this.#applySnapshot(res.body);
+            this.#applySnapshot(res.body, issued);
         }
 
         this.#discovery = null;

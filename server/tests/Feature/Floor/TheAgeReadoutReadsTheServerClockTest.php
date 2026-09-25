@@ -7,7 +7,7 @@ use Tests\TestCase;
 /**
  * `docs/design/FLOOR.md` AT-D3-10's FLOOR HALF — ages come from the server clock — gating Appendix B
  * row 4, the **age readout** (`public/js/wire/age-readout.js`), observed through **the harness**.
- * The panel half is step 10's and is not asserted here.
+ * The panel half is Appendix B step 10's, asserted by `TheDrillDownReadsItsAgesFromTheServerClockTest`.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ WHAT A "RENDERED AGE" IS, HEADLESSLY. The probe starts the SHIPPED 1 s ticker on the

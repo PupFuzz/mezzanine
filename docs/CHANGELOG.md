@@ -27,6 +27,26 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7342** — **The drill-down opens from the floor, and a retired seat's desk goes (Appendix B step
+  10).** Selecting a desk on the floor page opens its panel in place and puts `/floor/{floor}/{seat_id}` in
+  the address bar; that URL is served (the same floor page, behind the same login and second factor) and
+  opens the panel on arrival, and closing it returns to the floor without re-opening the stream. The panel
+  fetches the seat detail and its recent activity through the page's one live client, patches the seat's
+  state live from the stream, and shows every section of FLOOR.md § 4.3: the header with the desk's own
+  state line, the task with its reference as plain text (the link resolver for a configured base is gone,
+  per the operator's 2026-09-13 ruling), the action, the context gauge, the uncapped intern list, the
+  activity window with an *Older activity* control, and the transport, derivation, reporter, badge,
+  session, counter and raw blocks, each `fetch-fresh` block under its own *as of* stamp that each poll
+  renews. A failed detail request shows the seat's capped intern array and says it is capped; a failed
+  activity request says *could not load recent activity — HTTP N*; both offer a retry. The client now
+  applies `seat.retired`: the desk is removed on the first of the two announcements, once, with one event
+  log line naming the seat, the reason and the time and no operator, and a desk that had been displaced
+  by it moves back. A full snapshot that no longer lists a held seat removes it too, with a line, unless
+  the seat arrived after that snapshot was requested. Gated by AT-D3-4
+  (`Tests\Feature\Floor\TheInternListIsUncappedWhereTheSideTableIsCappedTest`), AT-D3-16
+  (`RetirementRemovesTheDeskAndExplainsTheRemovalTest`) and the panel halves of AT-D3-6
+  (`TheDrillDownIsRestampedByEachPollTest`), AT-D3-10 (`TheDrillDownReadsItsAgesFromTheServerClockTest`)
+  and AT-D3-14 (`TheDrillDownNeverDrawsANullAsAZeroTest`), each RED watched to fail.
 - **card#7341** — **The lobby's wording is ratified.** The discrepancy line spells its count in words up to nine and in digits past it, every *desk* agrees with its number, and the event log's membership lines read *room added to the building: X* and *seat added to the floor: k*; `docs/design/FLOOR.md` § 4.1 and § 5.5 state them as the operator's wording.
 - **card#7341** — **The lobby runs the client protocol (Appendix B step 9).** The lobby page now opens the
   live stream through the same construction the floor page uses (`public/js/wire/live-page.js`, hoisted

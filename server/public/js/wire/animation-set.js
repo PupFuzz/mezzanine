@@ -73,7 +73,9 @@ export const ANIMATION_SET = Object.freeze({
  * Every § 6.2 row and WHAT starts it in the shipped client — the partition that makes the set's
  * coverage legible rather than a thing a reader counts by hand.
  *
- *   · `delta`     — an `edge` row fired by a `seat.delta` this client APPLIED (`DELTA_ROWS`).
+ *   · `delta`     — an `edge` row fired by a `seat.delta` this client APPLIED (`DELTA_ROWS`). A13
+ *                   is fired by the `seat.retired` message too, which § 6.2 names beside the delta
+ *                   as its Driving fact (`edges()`, Appendix B step 10).
  *   · `heartbeat` — an `edge` row fired by each `feed.heartbeat` RECEIVED.
  *   · `desk`      — a `held` render `desk/desk-render.js` selects for the state it draws, entered
  *                   and left by `held()` against the object that holds it.
@@ -129,6 +131,9 @@ export const LOOP_FPS = 4;
 
 /** § 11's `cause` for the two rows the heartbeat fires: the message itself, which carries no id. */
 export const HEARTBEAT = 'feed.heartbeat';
+
+/** § 11's `cause` for A13 fired by the retirement MESSAGE (§ 6.2: "or the `seat.retired` message"). */
+export const RETIRED = 'seat.retired';
 
 /** The two rows § 11 says belong to no seat — `seat_id` and `install_id` are both `null` on them. */
 export const HEARTBEAT_ROWS = Object.freeze(Object.keys(FIRED_BY).filter((id) => FIRED_BY[id] === 'heartbeat'));
@@ -320,6 +325,19 @@ export class AnimationSet {
                 continue;
             }
 
+            // § 6.2 A13's Driving fact names TWO messages — "`render_state == "retired"`, or the
+            // `seat.retired` message" — and the client may receive either first (§ 2.5). The delta is
+            // `DELTA_ROWS`' below; this is the message, and § 11's `cause` for it is the message type,
+            // as it is for the heartbeat's two rows. The protocol journals the SECOND announcement of
+            // one retirement as `discarded`, so one removal fires A13 once, in either arrival order.
+            if (entry.t === RETIRED) {
+                if (entry.outcome === 'applied') {
+                    this.#edge('A13', RETIRED, entry.install_id, entry.seat_id, at);
+                }
+
+                continue;
+            }
+
             // § 6.5, and the whole of it: a row the client took from a snapshot, a resync or a
             // per-seat fetch animates NOTHING, and neither does a delta it buffered or discarded
             // — nor any message it did not apply, which is where a `room.map` falls (§ 2.5: "a
@@ -465,15 +483,23 @@ export class AnimationSet {
      * @param {Record<string, object>} desks the frame's desks, keyed as the client keys its seats
      * @param {Map<string, object>} seats the held seat objects the frame was derived from
      * @param {number} at § 2.4's corrected server-clock instant
+     * @param {Map<string, *>} [removed] key → the `cause` the protocol journalled when it REMOVED the
+     *        seat (`seat.removed`, Appendix B step 10): a removed seat has no held object left to read
+     *        a version off, so the version that ended its hold travels with the removal instead
      */
-    held(desks, seats, at) {
+    held(desks, seats, at, removed = new Map()) {
         for (const [k, open] of this.#episodes) {
             const want = desks[k]?.held ?? null;
 
             if (want === null || want.animation_id !== open.animation_id || want.motion !== open.motion) {
                 // § 11: a `left` row's cause is the `state_version` of the object that ENDED the
-                // hold — the first object the client applied in which the condition is false.
-                this.#log.leaveHeld(open.episode_id, { cause: seats.get(k)?.state_version ?? null, at });
+                // hold — the first object the client applied in which the condition is false. For a
+                // retired seat that object is the retired one, whose version the announcement carries
+                // (§ 3.5), and for the § 2.3 row 4 backstop it is the population that no longer lists
+                // the seat, journalled as `snapshot`.
+                const cause = seats.has(k) ? seats.get(k).state_version : (removed.get(k) ?? null);
+
+                this.#log.leaveHeld(open.episode_id, { cause, at });
                 this.#episodes.delete(k);
             }
         }

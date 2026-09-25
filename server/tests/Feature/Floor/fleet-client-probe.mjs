@@ -19,9 +19,13 @@
  *                                               //  event that is not a tick
  *      "floor":      { "key": "<floor>",        // start `floor/floor-screen.js` after start():
  *                      "local_hours": N,        //  `enter()` once, then `render()` after every
- *                      "local_minutes": N }     //  settled event. `local_*` is the VIEWER's civil
+ *                      "local_minutes": N,      //  settled event. `local_*` is the VIEWER's civil
  *                                               //  time for § 4.2's clock and sky; absent, the
  *                                               //  scenario clock read as UTC
+ *                      "seat": "<seat_id>",     //  § 4.4's `/floor/{floor}/{seat_id}` deep link
+ *                      "panel": [ { "at_ms": N, //  the drill-down's USER actions, on the scenario
+ *                        "action": "open" | "close" | "retry" | "more",   // clock: `open` names
+ *                        "install_id": "…", "seat_id": "…" } ] }          // the desk (§ 4.3)
  *      "lobby":      true                       // start `lobby/lobby-screen.js` after start(),
  *                                               //  `render()` after every settled event — the
  *                                               //  LOBBY (Appendix B row 9) over this same client
@@ -30,6 +34,7 @@
  *                                               //  reduced-motion form and logs `motion: false`
  *      "durations":  [ <seconds>, … ]           // `formatDuration` sampled on these, for a test's
  *                                               //  expected string — the shipped format, not a copy
+ *      "health_counters": [ {…}|null, … ]       // § 5.3's fleet-counters render sampled on these
  *      "recovery":   true                       // FLOOR § 2.2 steps 7–9: construct the client WITH
  *                                               //  its scheduler, on the scenario's queue, so it
  *                                               //  detects a dead feed and re-opens; and the fake
@@ -40,7 +45,7 @@
  *    }`
  *   A message entry `{ "at_ms": N, "end": true }` ends the current stream at N — the server closing
  *   it, which a browser reports as `error` — rather than delivering an envelope.
- * stdout — JSON: `{ "runs": [ <one run per repeat> ], "durations": [ … ] }`, each run
+ * stdout — JSON: `{ "runs": [ <one run per repeat> ], "durations": [ … ], "health_counters": [ … ] }`, each run
  *   `{ "records": [ … ], "final": <the last record>, "unscripted": [], "listeners": [ {type: n} ],
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
  *      "streams": [ {opened_at, open_fired, refused, ended_at, closed_at} ],
@@ -145,6 +150,7 @@ const { startFloorScreen } = await import(pathToFileURL(join(dir, '..', 'floor',
 const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'status-strip.js')).href);
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
+const { healthCounters } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-model.js')).href);
 
 const fx = JSON.parse(readFileSync(0, 'utf8') || '{}');
 
@@ -164,6 +170,9 @@ for (let i = 0; i < (fx.repeat ?? 1); i++) {
 console.log(JSON.stringify({
     runs,
     durations: (fx.durations ?? []).map((seconds) => formatDuration(seconds)),
+    // § 5.3's fleet-counters render, sampled on the `counters` objects the caller names — the shipped
+    // function, for AT-D3-14's panel half (`health_counters: [<counters>|null, …]`).
+    health_counters: (fx.health_counters ?? []).map((counters) => healthCounters(counters)),
 }, null, 2));
 
 async function replay(scenario) {
@@ -401,10 +410,41 @@ async function replay(scenario) {
             floorRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)) });
         }, {
             floor: scenario.floor.key,
+            seat: scenario.floor.seat ?? null,
             reduce: scenario.reduce === true,
             local_time: (ms) => (scenario.floor.local_hours === undefined
                 ? { hours: new Date(ms).getUTCHours(), minutes: new Date(ms).getUTCMinutes() }
                 : { hours: scenario.floor.local_hours, minutes: scenario.floor.local_minutes ?? 0 }),
+        });
+    }
+
+    // The drill-down's user actions (Appendix B row 10), each an event on the scenario queue like a
+    // message. None is awaited inside its event: the panel's requests settle on the scenario clock,
+    // which only this loop advances, so awaiting one here would wait for itself.
+    for (const act of scenario.floor?.panel ?? []) {
+        schedule(act.at_ms, `panel ${act.action}`, () => {
+            if (screen === null) {
+                return 'no floor';
+            }
+
+            switch (act.action) {
+                case 'open':
+                    screen.openPanel(act.install_id, act.seat_id);
+                    break;
+                case 'close':
+                    screen.closePanel();
+                    break;
+                case 'retry':
+                    screen.retryPanel();
+                    break;
+                case 'more':
+                    screen.morePanel();
+                    break;
+                default:
+                    throw new Error(`unknown panel action ${act.action}`);
+            }
+
+            return act.action;
         });
     }
 

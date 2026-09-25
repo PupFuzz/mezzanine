@@ -21,12 +21,13 @@ use Tests\TestCase;
  * ⛔ ONE TRIGGER, AND IT IS THE PROTOCOL'S (Appendix B row 9). The lobby used to fetch a snapshot of
  * its own for § 4.1's disagreement beside the protocol's; the double fetch that made is a RED here.
  *
- * ⚠ `lobby_over`'s pair STANDS after its one fetch at this step, because removing a desk on a full
- * snapshot's absence is Appendix B step 10's backstop (§ 2.3 row 4) and is not built. § 4.1 says
- * what the lobby owes that case — "a disagreement still standing after that fetch is rendered and
- * not re-fetched" — and that is what the N > M GREEN asserts. When step 10 lands, the discovery will
- * resolve that pair, and the re-fetch RED below will stop biting on this run: the control's own
- * assertion is what will say so.
+ * ⭐ `lobby_over`'s pair RESOLVES since Appendix B step 10 (card#7342): the one discovery fetch it
+ * triggers reads a snapshot that omits `aimla-review`, and § 2.3 row 4's full-snapshot backstop removes
+ * the desk the client should have lost on the announcement it missed — one record line, and the counts
+ * agree. Until step 10 the pair STOOD after its fetch, and the budget-as-a-poll RED read that standing
+ * pair; it now reads `lobby_persistent_unheld`, whose N < M disagreement stands because the snapshot it
+ * fetches carries only the seat the client already holds (§ 4.1: "a disagreement still standing after
+ * that fetch is rendered and not re-fetched").
  */
 class TheLobbyNeverInventsACountTest extends TestCase
 {
@@ -144,13 +145,37 @@ class TheLobbyNeverInventsACountTest extends TestCase
         $this->assertArrayHasKey('notice', $over, 'the winner RED did not bite on N > M: '.json_encode($over));
     }
 
+    /**
+     * A standing pair — the snapshot a disagreement fetched did not resolve it — is fetched ONCE: the
+     * connect read and the one discovery, however many identical heartbeats follow.
+     */
+    public function test_green_a_standing_pair_is_fetched_once(): void
+    {
+        $this->assertSame([], $this->standingDefects($this->replay('lobby_persistent_unheld')));
+    }
+
     public function test_red_a_refetch_on_the_same_pair_is_caught(): void
     {
-        $defects = $this->overDefects($this->replay('lobby_over', $this->mutatedModules(self::POLL), [], true));
+        $defects = $this->standingDefects($this->replay('lobby_persistent_unheld', $this->mutatedModules(self::POLL), [], true));
 
-        $this->assertArrayHasKey('fetches', $defects,
-            'the budget-as-a-poll RED did not bite — if Appendix B step 10 has landed, the discovery now '
-            .'resolves this pair and this run no longer holds a standing one: '.json_encode($defects));
+        $this->assertArrayHasKey('fetches', $defects, 'the budget-as-a-poll RED did not bite: '.json_encode($defects));
+    }
+
+    /** @return array<string, string> */
+    private function standingDefects(array $result): array
+    {
+        $fetches = count($this->snapshotRequests($result));
+        $defects = [];
+
+        if ($result['final']['discrepancy_state'] === null) {
+            $defects['standing'] = 'the run ends with the counts agreeing — it holds no standing pair to re-fetch';
+        }
+
+        if ($fetches !== 2) {
+            $defects['fetches'] = "{$fetches} snapshot requests over one standing pair — the connect read and ONE discovery";
+        }
+
+        return $defects;
     }
 
     public function test_red_a_failed_fetch_that_spends_the_pair_is_caught(): void
@@ -250,9 +275,16 @@ class TheLobbyNeverInventsACountTest extends TestCase
             $defects['fetches'] = "{$fetches} snapshot requests — the second identical heartbeat must issue none";
         }
 
-        // "a disagreement still standing after that fetch is rendered and NOT re-fetched" (§ 4.1).
-        if ($this->frameAt($result, 16000)['discrepancy'] !== self::OVER) {
-            $defects['standing'] = 'the standing disagreement stopped being rendered at the second heartbeat';
+        // § 2.3 row 4 (Appendix B step 10): the discovery's rows omit the desk the client missed the
+        // retirement of, so it is removed — once, with a line naming it — and the counts then agree.
+        if ($this->frameAt($result, 16000)['discrepancy'] !== null) {
+            $defects['resolved'] = 'the discovery did not resolve the disagreement: '.json_encode($this->frameAt($result, 16000)['discrepancy']);
+        }
+
+        $removals = array_filter($result['final']['event_log'], static fn (string $l): bool => str_contains($l, 'aimla/aimla-review'));
+
+        if (count($removals) !== 1) {
+            $defects['resolved'] ??= count($removals).' record lines name the removed desk — the backstop writes exactly one';
         }
 
         return $defects;

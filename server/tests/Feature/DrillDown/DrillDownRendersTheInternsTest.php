@@ -11,10 +11,10 @@ use Tests\TestCase;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⚠ AT-D3-4 HAS TWO SURFACES AND THIS FILE COVERS ONE. Its GREEN reads "the side table, the
  * drill-down, the uncapped intern list": the side table's stools and its *+N more* tag are the
- * DESK's, from the seat object's capped `subagents[]` — `desk/desk-render.js`, Appendix B step 5
- * — and AT-D3-4 as a whole is gated at step 10. So the two side-table clauses of that test are
- * UNASSERTED here and are named rather than quietly folded in; what is asserted is every clause
- * that reads the panel.
+ * DESK's, from the seat object's capped `subagents[]` — `desk/desk-render.js`, Appendix B step 5.
+ * AT-D3-4 as a whole — both surfaces, over the harness, with the drill-down opened from the floor —
+ * is `Tests\Feature\Floor\TheInternListIsUncappedWhereTheSideTableIsCappedTest` (Appendix B step
+ * 10); this file holds the panel model's own clauses over one response.
  *
  * ⛔ AND THIS FILE PINS A CONTRADICTION IN D3 RATHER THAN RESOLVING IT SILENTLY. § 5.2's rule
  * cell and § 8's *the full list* row select this list on `agent_scope == "subagent"` / a
@@ -54,7 +54,7 @@ class DrillDownRendersTheInternsTest extends TestCase
         // for a subagent exists on any read surface.
         $this->assertSame('draft the D1 event schema', $interns['rows'][0]['label']);
         $this->assertSame('coder', $interns['rows'][0]['type']);
-        $this->assertSame('14:23:31 (seat clock)', $interns['rows'][0]['started_at']);
+        $this->assertSame('14:23:31 (seat clock) — seat clock is +412 ms from the server\'s', $interns['rows'][0]['started_at']);
 
         // ⛔ THE HONEST ORPHAN: a null title renders **untitled**, with the `call_id` in the
         // drill-down (§ 8, § 5.6, AT-D3-4's GREEN). Never the type, the tool name, or the word
@@ -98,19 +98,38 @@ class DrillDownRendersTheInternsTest extends TestCase
         $this->assertNotEmpty($detail['open_calls']);
     }
 
-    /** A response with no `detail` has no source for this list, and says so (§ 5.5). */
-    public function test_a_response_without_detail_says_the_list_is_unsourced(): void
+    /**
+     * § 9 F11: with no `detail` the list "falls back to `subagents[]` **and says it is capped**" — never
+     * the capped array shown as if it were complete, and never an empty list either. While the request
+     * is still OUT, nothing is claimed yet: F11 names a failed request, not a pending one.
+     */
+    public function test_a_response_without_detail_falls_back_to_the_capped_array_and_says_so(): void
     {
         $seat = $this->seatBody();
         unset($seat['detail']);
 
-        $model = $this->probe(['seat' => $seat, 'now_ms' => $this->nowMs()])['model'];
+        $probe = $this->probe(['seat' => $seat, 'now_ms' => $this->nowMs(), 'drive_main' => true,
+            'options' => ['detail_failure' => ['status' => 503]]]);
+        $model = $probe['model'];
 
         $this->assertFalse($model['interns']['sourced']);
-        $this->assertSame([], $model['interns']['rows']);
-        $this->assertNotNull($model['interns']['statement']);
+        $this->assertTrue($model['interns']['capped']);
+        $this->assertSame(array_column($seat['subagents'], 'call_id'), array_column($model['interns']['rows'], 'call_id'));
+        $this->assertStringContainsString('capped', (string) $model['interns']['statement']);
+        $this->assertStringContainsString('unavailable', (string) $model['interns']['statement']);
         // The count still comes from the seat object, which DOES carry it.
         $this->assertSame(1, $model['interns']['open']);
+        // …and every other section that needs `detail` reads F11's own word.
+        $this->assertSame('unavailable', $model['counters']['statement']);
+        $this->assertSame('unavailable', $model['badges']['rows'][0]['counters']);
+        $this->assertStringContainsString('capped', $probe['main']['dom']['[data-panel-interns-statement]']['text']);
+
+        $pending = $this->probe(['seat' => $seat, 'now_ms' => $this->nowMs(), 'options' => ['detail_pending' => true]])['model'];
+
+        $this->assertSame([], $pending['interns']['rows']);
+        $this->assertFalse($pending['interns']['listed']);
+        $this->assertStringNotContainsString('unavailable', (string) $pending['interns']['statement']);
+        $this->assertStringNotContainsString('unavailable', (string) $pending['counters']['statement']);
     }
 
     /**

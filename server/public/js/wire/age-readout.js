@@ -30,12 +30,14 @@
  * age are fleet readouts with no published wording (§ 14 item 17), which the lobby draws as
  * labelled timestamps, and the floor's status strip (`floor/status-strip.js`, step 8) draws them the
  * same way, through the lobby's own `indicators()`. The derivation lag is
- * `fetch-fresh` and never ticked (§ 7.4), so it is no 1 s readout. The panel's own ages — the
- * receipt age under the transport block's stamp, the timeline row's age — are step 10's.
+ * `fetch-fresh` and never ticked (§ 7.4), so it is no 1 s readout — its WORDING is here
+ * (`derivationLagLine`), and so is the receipt age's for both its surfaces (`receiptAgeAt`): the
+ * drill-down reads each at its block's *as of* stamp rather than at the ticking clock (Appendix B
+ * step 10), and one fact keeps one string.
  */
 
 import { clockTime } from './clock.js';
-import { ageFrom, correctedNowMs } from './duration.js';
+import { ageFrom, correctedNowMs, formatDuration } from './duration.js';
 
 /**
  * § 2.4: "Ages re-render every 1 s, which is the unit the smallest age is rendered in" — § 12's
@@ -120,9 +122,33 @@ export function actionElapsedLine(action, nowMs) {
  */
 export function receiptAgeLine(seat, nowMs) {
     const dark = seat.link_state === 'stale' || seat.link_state === 'offline';
-    const age = !dark || nowMs === null ? null : ageFrom(seat.delivery?.last_receipt_at ?? null, nowMs);
+
+    return !dark ? null : receiptAgeAt(seat.delivery?.last_receipt_at ?? null, nowMs);
+}
+
+/**
+ * § 2.4's **receipt age** wording — *no data for 11m* — measured at the instant `atMs`: the ONE
+ * spelling of it, which the desk's `dark-only` readout above ticks at the corrected clock and the
+ * drill-down's transport block reads at its own *as of* stamp, never ticked (`fetch-fresh`,
+ * Appendix B step 10). `null` on a null basis or a null instant; the caller draws that member's
+ * absence (§ 5.6).
+ */
+export function receiptAgeAt(lastReceiptAt, atMs) {
+    const age = atMs === null ? null : ageFrom(lastReceiptAt, atMs);
 
     return age === null ? null : `no data for ${age}`;
+}
+
+/**
+ * § 2.4's **derivation lag** wording — *this state is 1m 57s behind* — over `derivation.fold_lag_ms`,
+ * a duration D2 computes and sends, so this only formats it. The ONE spelling: § 7.4's lag line on the
+ * desk puts its inline stamp after it, and the drill-down's derivation block draws it under that
+ * block's stamp. `null` for a value that is not a number.
+ */
+export function derivationLagLine(foldLagMs) {
+    return typeof foldLagMs === 'number' && Number.isFinite(foldLagMs)
+        ? `this state is ${formatDuration(foldLagMs / 1000)} behind`
+        : null;
 }
 
 /**

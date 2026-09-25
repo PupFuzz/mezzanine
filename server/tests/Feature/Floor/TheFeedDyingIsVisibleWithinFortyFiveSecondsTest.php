@@ -8,7 +8,8 @@ use Tests\TestCase;
 
 /**
  * **AT-D3-6 — the feed dying is visible within 45 s, the FLOOR half.** `docs/design/FLOOR.md § 11`,
- * gated at Appendix B **step 8** (the panel half is step 10's). card#7341 step 8.
+ * gated at Appendix B **step 8** (the panel half is step 10's, `TheDrillDownIsRestampedByEachPollTest`).
+ * card#7341 step 8.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ WHAT IS READ IS WHAT IS RENDERED. Every assertion is over the floor screen's frames — the

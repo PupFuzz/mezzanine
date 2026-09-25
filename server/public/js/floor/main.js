@@ -22,12 +22,20 @@
  * ⛔ A RENDER FOLLOWS EVERY THING THAT CAN CHANGE WHAT THE PROTOCOL HOLDS, coalesced into one
  * `screen.render()` at a time (`wire/live-page.js` says why). The 1 s age tick re-draws the desks'
  * ages from the last frame and drains nothing (§ 2.5).
+ *
+ * ⛔ THE DRILL-DOWN IS OPENED FROM A DESK AND CLOSED TO THE FLOOR WITHOUT LEAVING THE PAGE (§ 4, § 4.3;
+ * Appendix B row 10). Selecting a desk pushes `/floor/{floor}/{seat_id}` (§ 4.4) into the browser's
+ * history and asks the screen to open the panel; the URL is the screen's to decide (`frame.seat`) and
+ * this file's to perform, as the floor segment's redirect already is — a panel a retirement closed
+ * takes the seat segment off the URL with it. The panel's strings are `drilldown/main.js`'s slots over
+ * the model the frame carries; nothing is fetched here, and no second stream is opened.
  */
 
 import { livePage } from '../wire/live-page.js';
 import { createAnimationLog } from '../wire/animation-log.js';
 import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
+import { renderDrillDown } from '../drilldown/main.js';
 
 /** § 12's *The floor page's animation-log retention* — the page's bound, and no one else's. */
 const ANIMATION_LOG_RETENTION = 2000;
@@ -83,20 +91,83 @@ let lastFrame = null;
 
 const { client, clock, fetch: pageFetch, requestRender } = livePage(() => screen.render());
 
+/** § 4.4's two URL shapes for this page, the floor segment first. */
+function routeOf(floor, seat) {
+    return seat === null
+        ? `/floor/${encodeURIComponent(floor)}`
+        : `/floor/${encodeURIComponent(floor)}/${encodeURIComponent(seat)}`;
+}
+
+/** The floor segment the URL carries now — the route's own, until a redirect replaces the page. */
+function floorSegment() {
+    return root.dataset.floor;
+}
+
+/** The seat segment the URL carries now, or `null` on the floor alone. */
+function seatSegment() {
+    const parts = window.location.pathname.split('/').filter((part) => part !== '');
+
+    return parts.length >= 3 ? decodeURIComponent(parts[2]) : null;
+}
+
+/**
+ * The desks, each a link to its own drill-down (§ 4.3: "opened by selecting a desk"). The link is a
+ * real URL (`/floor/{floor}/{seat_id}`, § 4.4) so it can be opened, copied or bookmarked; a plain
+ * click opens the panel in place.
+ */
 function paintDesks(frame, desks) {
-    list('floor-desks', Object.values(desks).map(deskLine));
-    el('floor-desks').dataset.dimmed = String(frame.failure.sign_in !== null);
+    const node = el('floor-desks');
+
+    node.replaceChildren(...Object.values(desks).map((desk) => {
+        const item = document.createElement('li');
+        const link = document.createElement('a');
+
+        link.href = routeOf(floorSegment(), desk.seat_id);
+        link.textContent = deskLine(desk);
+        link.addEventListener('click', (event) => {
+            event.preventDefault();
+            window.history.pushState(null, '', link.href);
+            screen.openPanel(desk.install_id, desk.seat_id).then(requestRender);
+            requestRender();
+        });
+        item.append(link);
+
+        return item;
+    }));
+    node.hidden = Object.keys(desks).length === 0;
+    node.dataset.dimmed = String(frame.failure.sign_in !== null);
+}
+
+/** The open drill-down, or none — `drilldown/main.js` fills the slots from the frame's model. */
+function paintPanel(panel) {
+    const node = el('floor-panel');
+
+    node.hidden = panel === null;
+
+    if (panel !== null) {
+        renderDrillDown(node, panel);
+        el('floor-panel-retry').hidden = !panel.can_retry;
+        el('floor-panel-more').hidden = panel.activity.next_before === null;
+    }
 }
 
 function paint(frame) {
     lastFrame = frame;
 
-    // § 4.4 row 3: the redirect is decided by the screen and performed here, preserving nothing
-    // else — the floor segment is the whole of this route.
+    // § 4.4 row 3: the redirect is decided by the screen and performed here — on the FLOOR segment,
+    // with the seat segment untouched ("a published drill-down link resolves for the same reason a
+    // published floor link does").
     if (frame.redirect !== null) {
-        window.location.replace(`/floor/${encodeURIComponent(frame.redirect)}`);
+        window.location.replace(routeOf(frame.redirect, frame.seat));
 
         return;
+    }
+
+    // The seat segment follows the screen's: a panel a retirement closed takes it off the URL.
+    const route = routeOf(floorSegment(), frame.seat);
+
+    if (window.location.pathname !== route) {
+        window.history.replaceState(null, '', route);
     }
 
     const strip = frame.strip;
@@ -143,19 +214,42 @@ function paint(frame) {
     ))));
 
     paintDesks(frame, frame.desks.desks);
+    paintPanel(frame.panel);
     list('floor-log', client.eventLog);
 }
 
 const screen = startFloorScreen(client, pageFetch, clock, createAnimationLog(ANIMATION_LOG_RETENTION), paint, {
     floor: root.dataset.floor,
+    seat: root.dataset.seat === '' ? null : root.dataset.seat,
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
 });
 
-// § 2.5's 1 s tick: the ages over the desks the last render read, and nothing drained.
+// § 2.5's 1 s tick: the ages over the desks the last render read — and the open panel's — with
+// nothing drained.
 startAgeTicker(screen.desks, clock, window, (readouts) => {
     if (lastFrame !== null) {
         paintDesks(lastFrame, screen.desks.view(readouts).desks);
+        paintPanel(screen.panelView(lastFrame.floor?.name ?? null));
     }
+});
+
+// § 4.3: the panel's user actions. Each asks for a render once its requests have answered.
+el('floor-panel-close').addEventListener('click', () => {
+    window.history.pushState(null, '', routeOf(floorSegment(), null));
+    screen.closePanel();
+    requestRender();
+});
+el('floor-panel-retry').addEventListener('click', () => {
+    screen.retryPanel().then(requestRender);
+});
+el('floor-panel-more').addEventListener('click', () => {
+    screen.morePanel().then(requestRender);
+});
+
+// Back and forward move the seat segment; the screen resolves it on the next render (§ 4.4).
+window.addEventListener('popstate', () => {
+    screen.routeSeat(seatSegment());
+    requestRender();
 });
 
 // § 4.4: "deep-linking to a floor on a cold start runs the whole of § 2.2 first".
