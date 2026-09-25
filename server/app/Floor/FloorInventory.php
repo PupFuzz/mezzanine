@@ -7,8 +7,10 @@ use App\Building\Layouts;
 use App\Read\Snapshot;
 
 /**
- * What the floors module SHOWS: every floor this deploy has, the map it was given, and the two
- * disagreements between the two that an operator can only fix here.
+ * What the floors module SHOWS: every floor this deploy has, the map it was given, the two
+ * disagreements between the two that an operator can only fix here — and, since Appendix B row 14's
+ * slice C, every current map that fails a furniture box it was not validated against
+ * (`docs/design/FLOOR.md § 14` item 28(1)(iii)), listed and never refused.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE SEAT SIDE IS `App\Read\Snapshot::seats()` — THE READ THE FLOOR ITSELF USES — AND NOT A
@@ -39,13 +41,20 @@ final class FloorInventory
      * @return list<array{
      *     install_id: string, floor: string|null, form: string|null, seats: int, renders: bool,
      *     authored: bool, map_version: int|null, slots: int|null, unreadable: string|null,
-     *     short_by: int, updated_at: string|null, updated_by: string|null
+     *     fails_the_box: list<string>, short_by: int, updated_at: string|null, updated_by: string|null
      * }>
      */
     public static function rows(): array
     {
         $seats = Snapshot::seats()->groupBy('install_id');
         $floors = Floors::all();
+        $validatedAgainst = Floors::validatedAgainst();
+
+        // ⭐ § 14 item 28(1)(iii) — THE RE-VALIDATION LISTING. Read once per page, from the one
+        // file that declares the box; a room whose current revision was validated against a box
+        // with a different signature (or against none: every revision stored before the console
+        // recorded one) is re-validated here against THIS box.
+        $box = app(FurnitureBox::class);
 
         // ⛔ ONE DERIVATION OF WHERE A ROOM SITS, AND IT IS THE COMPOSER'S. Reading the layout
         // directly here — "its floor if it is placed, else its own id" — would be a second copy of
@@ -79,10 +88,21 @@ final class FloorInventory
 
             $slots = null;
             $unreadable = null;
+            $failsTheBox = [];
 
             if ($floor !== null) {
                 try {
-                    $slots = FloorMap::parse($floor->map)->slots;
+                    $map = FloorMap::parse($floor->map);
+                    $slots = $map->slots;
+
+                    // ⛔ LISTED, NEVER REFUSED. The map stays current and on the floor, where the
+                    // scene draws F21's notice over it, until its author saves one that passes;
+                    // refusing it after the fact would blank a room for a document the console
+                    // accepted (F16's *Never*). A room validated against THIS box passed it at
+                    // the write, so it is not judged twice.
+                    if (($validatedAgainst[$installId] ?? null) !== $box->signature()) {
+                        $failsTheBox = DeskSlots::refusals($map, $box);
+                    }
                 } catch (InvalidFloorMap $e) {
                     // Reachable, and named rather than swallowed: the write validates with the
                     // rules of the day, so a later TIGHTENING of them leaves a stored map this
@@ -107,6 +127,9 @@ final class FloorInventory
                 'map_version' => $floor === null ? null : (int) $floor->map_version,
                 'slots' => $slots,
                 'unreadable' => $unreadable,
+                // Each item-28(1) refusal the current map earns against today's box, when it was
+                // not validated against this box at its write; empty for a map that passes.
+                'fails_the_box' => $failsTheBox,
                 // § 3.2's overflow: "If the floor's seat count exceeds `S`… the floor shows a
                 // persistent notice reading *floor map is short N desks*". Shown here too,
                 // because here is where the map can actually be made longer.

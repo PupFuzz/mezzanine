@@ -17,7 +17,8 @@ namespace App\Building;
  * `[x, x + w) × [y, y + h)`, so two rooms may share an edge and may never share a pixel —
  * "because *a floor subdivided into two rooms* is naturally drawn with one wall between them".
  * A closed-interval comparison would refuse exactly the building the operator asked for, which is
- * why the half-open form is the rule rather than an implementation detail of it.
+ * why the half-open form is the rule rather than an implementation detail of it — and why the test
+ * itself is `App\Building\Footprint`'s, shared with the console's `desks` refusal (§ 14 item 28(1)).
  *
  * ⚠ EXTENT LIVES IN THE ROOM AND POSITION ON THE FLOOR (§ 4.6 rule 1). Nothing here reads a size
  * off the layout, because the layout carries none: a room's footprint is its map's grid
@@ -101,7 +102,7 @@ final class FloorPlan
 
             for ($i = 0; $i < $count; $i++) {
                 for ($j = $i + 1; $j < $count; $j++) {
-                    if (! self::intersect($placed[$i], $placed[$j])) {
+                    if (! Footprint::intersect($placed[$i], $placed[$j])) {
                         continue;
                     }
 
@@ -124,19 +125,5 @@ final class FloorPlan
                 }
             }
         }
-    }
-
-    /**
-     * § 4.6's half-open rectangles: they intersect when each axis' open intervals overlap.
-     *
-     * @param  array{x: int, y: int, w: int, h: int}  $a
-     * @param  array{x: int, y: int, w: int, h: int}  $b
-     */
-    private static function intersect(array $a, array $b): bool
-    {
-        return $a['x'] < $b['x'] + $b['w']
-            && $b['x'] < $a['x'] + $a['w']
-            && $a['y'] < $b['y'] + $b['h']
-            && $b['y'] < $a['y'] + $a['h'];
     }
 }

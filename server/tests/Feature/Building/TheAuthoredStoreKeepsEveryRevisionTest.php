@@ -232,21 +232,24 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
 
     // ── ⭐ card#9292's OVERLAP, at BOTH of § 6.11's write sites ──────────────────────────────
 
-    /** Two rooms side by side on a planned floor, each 10 × 8 tiles of 32 px — 320 × 256. */
+    /**
+     * Two rooms side by side on a planned floor, each 15 × 8 tiles of 32 px — 480 × 256, which
+     * holds one desk at the furniture box (§ 14 item 28(1): no smaller room can be saved).
+     */
     private function twoRoomsSideBySide(): void
     {
-        $this->save('sola', FloorMapFixture::sized(10, 8));
-        $this->save('zeta', FloorMapFixture::sized(10, 8));
+        $this->save('sola', FloorMapFixture::sized(15, 8));
+        $this->save('zeta', FloorMapFixture::sized(15, 8));
 
         $this->compose([['rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
-            'zeta' => ['form' => 'office', 'origin' => ['x' => 320, 'y' => 0]],
+            'zeta' => ['form' => 'office', 'origin' => ['x' => 480, 'y' => 0]],
         ]]]);
     }
 
     public function test_the_layouts_own_save_refuses_a_plan_whose_rooms_would_share_pixels(): void
     {
-        // THE CONTROL first: the two rooms share an EDGE at x = 320 and the save is accepted —
+        // THE CONTROL first: the two rooms share an EDGE at x = 480 and the save is accepted —
         // § 4.6's "one wall between them", which a closed-interval check would refuse.
         $this->twoRoomsSideBySide();
 
@@ -257,7 +260,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
 
         $this->compose([['rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
-            'zeta' => ['form' => 'office', 'origin' => ['x' => 319, 'y' => 0]],
+            'zeta' => ['form' => 'office', 'origin' => ['x' => 479, 'y' => 0]],
         ]]]);
     }
 
@@ -269,7 +272,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         $this->twoRoomsSideBySide();
 
         try {
-            $this->save('sola', FloorMapFixture::sized(11, 8));
+            $this->save('sola', FloorMapFixture::sized(16, 8));
             $this->fail('a map that grew into its neighbour was stored');
         } catch (InvalidBuildingLayout $e) {
             $this->assertStringContainsString('would share pixels', $e->getMessage());
@@ -281,7 +284,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
 
         // THE CONTROL: the same save on the same room, one tile SMALLER, is accepted — so the
         // refusal above is about the geometry and not about the write path being broken.
-        $this->assertSame(2, $this->save('sola', FloorMapFixture::sized(9, 8)));
+        $this->assertSame(2, $this->save('sola', FloorMapFixture::sized(14, 8)));
     }
 
     public function test_a_room_maps_RESTORE_is_refused_when_the_restored_extent_would_overlap(): void
@@ -291,10 +294,10 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         // Shrink `sola`, then move `zeta` into the space that freed up. Restoring `sola`'s
         // revision 1 would now put it back on top of `zeta` — a document that was valid when it
         // was written and is not valid now, which is exactly what a restore has to re-check.
-        $this->save('sola', FloorMapFixture::sized(5, 8));
+        $this->save('sola', FloorMapFixture::sized(14, 8));
         $this->compose([['rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
-            'zeta' => ['form' => 'office', 'origin' => ['x' => 160, 'y' => 0]],
+            'zeta' => ['form' => 'office', 'origin' => ['x' => 448, 'y' => 0]],
         ]]]);
 
         $this->expectException(InvalidBuildingLayout::class);
@@ -321,7 +324,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         $default = ShippedDefaultMap::map();
         $this->assertNotNull($default, 'the repository ships no default map, and § 10.3 says it does');
         $this->assertGreaterThan(
-            FloorMap::parse(FloorMapFixture::sized(10, 8))->pixelWidth(),
+            FloorMap::parse(FloorMapFixture::sized(15, 8))->pixelWidth(),
             $default->pixelWidth(),
             'the shipped default fits in the gap `twoRoomsSideBySide` leaves, so this arm asserts nothing',
         );
@@ -344,7 +347,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         // § 4.6's default arrangement claims no position, so there is nothing to collide with and
         // no extent to resolve. Without this arm the refusal above would pass against a store that
         // refused every removal.
-        $this->save('sola', FloorMapFixture::sized(10, 8));
+        $this->save('sola', FloorMapFixture::sized(15, 8));
         $this->compose([['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]);
 
         $this->assertTrue(Floors::remove('sola', self::OPERATOR));
@@ -364,12 +367,12 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         $default = ShippedDefaultMap::map();
         $this->assertNotNull($default, 'the repository ships no default map, and § 10.3 says it does');
 
-        $this->save('sola', FloorMapFixture::sized(10, 8));
-        $this->save('nova', FloorMapFixture::sized(10, 8));
+        $this->save('sola', FloorMapFixture::sized(15, 8));
+        $this->save('nova', FloorMapFixture::sized(15, 8));
 
         // `zeta` starts where `sola` ends, so the two authored rooms share an edge and only the
         // unauthored room's own span can produce an overlap — read off the fixture, not typed.
-        $zetaAt = FloorMap::parse(FloorMapFixture::sized(10, 8))->pixelWidth();
+        $zetaAt = FloorMap::parse(FloorMapFixture::sized(15, 8))->pixelWidth();
         $rooms = fn (int $novaAt): array => [['rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
             'zeta' => ['form' => 'office', 'origin' => ['x' => $zetaAt, 'y' => 0]],

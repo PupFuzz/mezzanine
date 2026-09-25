@@ -6,6 +6,7 @@ use App\Building\BuildingLayout;
 use App\Building\InvalidBuildingLayout;
 use App\Floor\FloorAssets;
 use App\Floor\FloorMap;
+use App\Floor\FurnitureBox;
 use App\Floor\InvalidFloorMap;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\Admin\FloorMapFixture;
@@ -49,12 +50,26 @@ class FloorMapTest extends TestCase
         $map = FloorMap::parse(FloorMapFixture::valid());
 
         $this->assertSame(12, $map->slots);
-        $this->assertSame(['width' => 20, 'height' => 8, 'tilewidth' => 32, 'tileheight' => 32], $map->grid);
+
+        // The fixture lays its twelve slots side by side at the furniture box (§ 14 item 28(1)),
+        // so its grid is as many 32 px tiles as twelve boxes need — derived here from the box's
+        // one source, as the fixture derives it, rather than typed.
+        $box = FurnitureBox::current();
+        $tiles = (int) ceil(12 * $box->width / 32);
+
+        $this->assertSame(['width' => $tiles, 'height' => 8, 'tilewidth' => 32, 'tileheight' => 32], $map->grid);
 
         // § 4.6 rule 1: the room's FOOTPRINT on a planned floor is exactly this, and it is the
         // only home of a room's extent — the plan carries no size.
-        $this->assertSame(640, $map->pixelWidth());
+        $this->assertSame($tiles * 32, $map->pixelWidth());
         $this->assertSame(256, $map->pixelHeight());
+
+        // The slots the walk admitted, as `App\Floor\DeskSlots` reads them: named as every
+        // refusal names them, in the layer's order, each exactly the box.
+        $this->assertCount(12, $map->desks);
+        $this->assertSame(['name' => 'id 1', 'x' => 0.0, 'y' => 0.0, 'w' => (float) $box->width, 'h' => (float) $box->height], $map->desks[0]);
+        $this->assertSame('id 12', $map->desks[11]['name']);
+        $this->assertSame((float) (11 * $box->width), $map->desks[11]['x']);
     }
 
     // ── card#9295's defect shape, HERE (card#9208 comment 4794) ─────────────────────────────

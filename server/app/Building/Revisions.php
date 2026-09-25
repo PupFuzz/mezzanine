@@ -55,6 +55,11 @@ final class Revisions
      * row `FOR UPDATE` first, so a layout write and a room-map write serialise". The UNIQUE key
      * `(kind, subject, revision)` is the backstop that turns a mistake here into a failed write
      * rather than two revisions numbered alike.
+     *
+     * `$furnitureBox` is `App\Floor\FurnitureBox::signature()` of the box a ROOM MAP's document was
+     * validated against at this write (`docs/design/FLOOR.md § 14` item 28(1), Appendix B row 14's
+     * slice C) — and `null` for every revision that holds no desks to validate: a layout, and a
+     * map's removal.
      */
     public static function insert(
         string $kind,
@@ -63,6 +68,7 @@ final class Revisions
         ?int $restoredFrom,
         string $by,
         string $at,
+        ?string $furnitureBox = null,
     ): int {
         $revision = (int) DB::table('authored_revisions')
             ->where('kind', $kind)
@@ -77,6 +83,7 @@ final class Revisions
             'restored_from' => $restoredFrom,
             'authored_by' => $by,
             'authored_at' => $at,
+            'furniture_box' => $furnitureBox,
         ]);
 
         return $revision;

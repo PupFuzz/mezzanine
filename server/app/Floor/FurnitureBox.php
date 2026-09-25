@@ -22,10 +22,15 @@ namespace App\Floor;
  * would otherwise validate maps against by guessing, which is the silent number § 12 exists to
  * prevent.
  *
- * ⭐ WHAT RECORDS THE BOX A MAP WAS VALIDATED AGAINST (defined here, acted on by slice C): the box
- * is identified by its value, `signature()` below — `"<width>x<height>"` — and slice C stores that
- * signature beside the revision it validates. A change of the box (§ 14 item 28(1)(iii)) is this
- * file's signature differing from the one a room's current revision was validated against.
+ * ⭐ WHAT RECORDS THE BOX A MAP WAS VALIDATED AGAINST: the box is identified by its value,
+ * `signature()` below — `"<width>x<height>"` — and `App\Floor\Floors` stores that signature beside
+ * the revision it validates (`authored_revisions.furniture_box`, slice C). A change of the box
+ * (§ 14 item 28(1)(iii)) is this file's signature differing from the one a room's current revision
+ * was validated against — or a revision stored before the column, which records none —
+ * and `App\Floor\FloorInventory` re-validates exactly those rooms and lists the ones that fail.
+ *
+ * ⚠ THE CONSOLE RESOLVES THE BOX THROUGH THE CONTAINER (`app(FurnitureBox::class)`, bound to
+ * `current()` in `App\Providers\AppServiceProvider`), so the suite can stand a changed box in.
  */
 final class FurnitureBox
 {
@@ -79,7 +84,7 @@ final class FurnitureBox
         return new self((int) $m[1][0], (int) $m[2][0]);
     }
 
-    /** The box's identity, as slice C records it beside the revision it validated. */
+    /** The box's identity, as `authored_revisions.furniture_box` records it beside the revision it validated. */
     public function signature(): string
     {
         return $this->width.'x'.$this->height;

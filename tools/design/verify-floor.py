@@ -37,7 +37,10 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                section 10.3 must SAY so and no map may exist in the tree;
                                                the desk sprite's size against its PNG; and the
                                                READ PATHS section 10.3 says a room's map is fetched
-                                               from must be exactly the ones D2 section 8.7 declares
+                                               from must be exactly the ones D2 section 8.7 declares;
+                                               and the worked floors laid at the furniture box --
+                                               section 4.6's two rows and D2 section 8.7's authored
+                                               rooms and worked room map -- re-derived from the box
   G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
                                                bearing members without `fetch-fresh` / `dark-only`;
                                                a section 5 table this gate has no column for; a table
@@ -2055,6 +2058,145 @@ for _p in sorted(d2_87_paths - d3_paths):
                 f"it — the document has stopped saying where that document comes from, which is the "
                 f"silence this leg exists to refuse")
 
+# ---- G8g. the WORKED FLOORS laid at the furniture box: section 4.6's two rows and D2 § 8.7 ----------
+# Appendix B row 14's slice C re-derived three worked examples to section 12's Measured box -- section
+# 4.6's *both of the operator's floors* table, D2 § 8.7's sentence on the worked floor's authored rooms,
+# and D2 § 8.7's worked `GET /api/building/rooms/aimla/map` document -- and each carries the box, or a
+# figure computed from it, in prose.  G8e binds the box to its file; this leg binds those copies to
+# G8e's box (PR #234 round 1, F2 and F4), so a moved box reds here instead of leaving a worked floor
+# that the console would refuse.  EVERY FIGURE IS READ OUT OF THE DOCUMENTS and re-derived: each grid's
+# pixel size from its tile count, the office pitch from the office width and the stated gap, the
+# floor's extent from the rooms and the hallway, each room's desks against the box, each floor's
+# placed rooms pairwise disjoint on half-open rects (§ 4.6's own rule), and § 8.7's worked JSON parsed
+# as JSON.  A figure stated in another form is a CONTROL red, never a skip.
+def _n(s):
+    return int(s.replace(",", ""))
+
+
+sec46 = section_text("46-the-building-layout") or ""
+g8g = []
+_OFFICE = (r"each map a (\d+) × (\d+) grid of (\d+) px tiles — ([\d,]+) × ([\d,]+) px — with one `desks` "
+           r"object at \[§ 12\]\([^)]*\)'s furniture box, ([\d,]+) × ([\d,]+) px")
+_PITCH = r"the \*i\*-th office at `\{x: ([\d,]+)·i, y: ([\d,]+)\}` — ([\d,]+) px between neighbours"
+_HALL = r"`hallway`: a (\d+) × (\d+) grid of corridor tiles, ([\d,]+) × ([\d,]+) px"
+_EXTENT = r"The floor's extent is their union, ([\d,]+) × ([\d,]+) px"
+_COUNT = r"^\| \*a hallway with (\d+) office rooms"
+_ROOM = (r"`(\w+)`, (\w+) seats?, a (\d+) × (\d+) grid of (?:(\d+) px|the same) tiles — ([\d,]+) × ([\d,]+) "
+         r"px — with `S = (\d+)`, (\w+) rows? of (\w+)")
+_AT = r"`(\w+)` at `\{x: ([\d,]+), y: ([\d,]+)\}`"
+_forms = {k: re.findall(v, sec46, re.M) for k, v in
+          (("office", _OFFICE), ("pitch", _PITCH), ("hallway", _HALL), ("extent", _EXTENT), ("count", _COUNT))}
+_rooms = re.findall(_ROOM, sec46)
+_bad = [k for k, v in _forms.items() if len(v) != 1]
+if _box is None:
+    fail.append("G8g: section 4.6's and D2 § 8.7's worked floors could not be held to the furniture box — "
+                "G8e read no box on this run (see the G8 lines above), so their figures stand unbound")
+elif _bad or len(_rooms) != 2:
+    fail.append(f"G8g CONTROL: section 4.6's worked floors no longer state {_bad or ['the two rooms of the second floor']} "
+                f"in the form this leg reads (each form exactly once; the second floor's rooms as "
+                f"``name`, N seats, a C × R grid of T px tiles — W × H px — with `S = N`, R rows of N`), "
+                f"so the figures they do state are bound to nothing")
+else:
+    _c, _r, _t, _w, _h, _bw, _bh = map(_n, _forms["office"][0])
+    _pitch, _oy, _gap = map(_n, _forms["pitch"][0])
+    _hc, _hr, _hw, _hh = map(_n, _forms["hallway"][0])
+    _ew, _eh = map(_n, _forms["extent"][0])
+    _k = _n(_forms["count"][0])
+    _want = {
+        "the office's box": ((_bw, _bh), _box),
+        "the office's pixel size": ((_w, _h), (_c * _t, _r * _t)),
+        "the hallway's pixel size": ((_hw, _hh), (_hc * _t, _hr * _t)),
+        "the office pitch": (_pitch, _w + _gap),
+        "the offices' y": (_oy, _hh),
+        "the floor's extent": ((_ew, _eh), (max(_hw, _pitch * (_k - 1) + _w), _oy + _h)),
+    }
+    for _name, (_stated, _real) in _want.items():
+        if _stated != _real:
+            fail.append(f"G8g: section 4.6's office floor states {_name} = {_stated} and it re-derives "
+                        f"{_real} from the row's own figures and the furniture box {_box[0]}x{_box[1]}")
+    if _w < _box[0] or _h < _box[1] or _gap <= 0:
+        fail.append(f"G8g: section 4.6's office map is {_w}x{_h} px at a {_gap} px gap, and a room must hold "
+                    f"one desk at the furniture box {_box[0]}x{_box[1]} (§ 14 item 28(1)) with its neighbours "
+                    f"disjoint")
+    _ext = {}
+    _tile = None
+    for _nm, _seats, _cc, _rr, _tt, _pw, _ph, _s, _rows, _per in _rooms:
+        _tile = int(_tt) if _tt else _tile
+        _rows_n, _per_n = NUM.get(_rows, -1), NUM.get(_per, -1)
+        _ext[_nm] = (_n(_pw), _n(_ph))
+        if _tile is None or (_n(_pw), _n(_ph)) != (int(_cc) * _tile, int(_rr) * _tile):
+            fail.append(f"G8g: section 4.6 states `{_nm}`'s map is {_pw} × {_ph} px and its grid "
+                        f"{_cc} × {_rr} of {_tile} px tiles re-derives otherwise")
+        if int(_s) != _rows_n * _per_n:
+            fail.append(f"G8g: section 4.6 states `{_nm}` has `S = {_s}` laid as {_rows} row(s) of {_per}")
+        if _per_n * _box[0] > _n(_pw) or _rows_n * _box[1] > _n(_ph):
+            fail.append(f"G8g: section 4.6 lays `{_nm}`'s desks {_rows} row(s) of {_per} at the furniture box "
+                        f"{_box[0]}x{_box[1]}, which needs {_per_n * _box[0]}x{_rows_n * _box[1]} px, on a "
+                        f"{_pw} × {_ph} px map")
+    _row2 = next((l for l in sec46.split("\n") if all(f"`{nm}`, " in l for nm in _ext)), "")
+    _at = {nm: (_n(x), _n(y)) for nm, x, y in re.findall(_AT, _row2)}
+    if set(_at) != set(_ext):
+        fail.append(f"G8g CONTROL: section 4.6's second floor places {sorted(_at)} and sizes {sorted(_ext)} — "
+                    f"a room this leg cannot both place and size is one whose overlap it cannot judge")
+    else:
+        _ns = sorted(_at)
+        for _i, _a in enumerate(_ns):
+            for _b in _ns[_i + 1:]:
+                (_ax, _ay), (_aw, _ah) = _at[_a], _ext[_a]
+                (_bx, _by), (_bw2, _bh2) = _at[_b], _ext[_b]
+                if _ax < _bx + _bw2 and _bx < _ax + _aw and _ay < _by + _bh2 and _by < _ay + _ah:
+                    fail.append(f"G8g: section 4.6 places `{_a}` and `{_b}` so that their maps intersect — "
+                                f"a worked floor that § 9 F18 would name")
+    g8g.append(f"section 4.6: the office floor ({_k} × {_w}x{_h} at pitch {_pitch}, extent {_ew}x{_eh}) and "
+               f"{len(_rooms)} room(s) of the second floor re-derived")
+
+    # D2 § 8.7: the sentence on the worked floor's authored rooms, and both worked JSON documents.
+    _m87 = re.search(r"are authored, ([\d,]+) px wide \(one desk\s+at \[FLOOR\.md § 12\]\([^)]*\)'s furniture "
+                     r"box[^)]*\)\), which is why they may sit ([\d,]+) px apart", _sec87)
+    _jsons = {}
+    for _lead in (r"\*\*`GET /api/building`, worked:\*\*", r"\*\*`GET /api/building/rooms/(\w+)/map`, worked\*\*"):
+        _mj = re.search(_lead + r".*?```json\n(.*?)\n```", _sec87, re.S)
+        if _mj:
+            try:
+                _jsons[_lead] = json.loads(_mj.group(_mj.lastindex))
+            except ValueError:
+                pass
+    if not _m87 or len(_jsons) != 2:
+        fail.append("G8g CONTROL: D2 § 8.7 no longer states its worked floor's authored rooms as `are authored, "
+                    "W px wide (one desk at [FLOOR.md § 12](…)'s furniture box …), which is why they may sit "
+                    "D px apart`, or its two worked JSON documents did not parse — so the figures it does "
+                    "state are bound to nothing")
+    else:
+        _w87, _apart = _n(_m87.group(1)), _n(_m87.group(2))
+        if _w87 < _box[0]:
+            fail.append(f"G8g: D2 § 8.7 states its authored rooms are {_w87} px wide, one desk at the furniture "
+                        f"box, and the box is {_box[0]} px wide")
+        if _apart < _w87:
+            fail.append(f"G8g: D2 § 8.7 says its rooms may sit {_apart} px apart because they are {_w87} px "
+                        f"wide — rooms that far apart intersect")
+        _xs = sorted(r["origin"]["x"] for f in _jsons[r"\*\*`GET /api/building`, worked:\*\*"]["layout"]["floors"]
+                     for r in f["rooms"] if "origin" in r)
+        if len(_xs) < 2 or any(b - a != _apart for a, b in zip(_xs, _xs[1:])):
+            fail.append(f"G8g: D2 § 8.7 says its planned rooms sit {_apart} px apart and the worked layout "
+                        f"places them at x = {_xs}")
+        _map = _jsons[r"\*\*`GET /api/building/rooms/(\w+)/map`, worked\*\*"]["map"]
+        _gw, _gh = _map["width"] * _map["tilewidth"], _map["height"] * _map["tileheight"]
+        _objs = [o for l in _map["layers"] if l.get("name") == "desks" for o in l.get("objects", [])]
+        if not _objs:
+            fail.append("G8g CONTROL: D2 § 8.7's worked room map carries no `desks` object, and a room map "
+                        "holds at least one since § 14 item 28(1)")
+        for _o in _objs:
+            if _o["width"] < _box[0] or _o["height"] < _box[1]:
+                fail.append(f"G8g: D2 § 8.7's worked room map has `desks` object id {_o['id']} at "
+                            f"{_o['width']}x{_o['height']} px, smaller than the furniture box "
+                            f"{_box[0]}x{_box[1]} — the document the console would refuse")
+            if _o["x"] < 0 or _o["y"] < 0 or _o["x"] + _o["width"] > _gw or _o["y"] + _o["height"] > _gh:
+                fail.append(f"G8g: D2 § 8.7's worked room map has `desks` object id {_o['id']} outside its "
+                            f"{_gw}x{_gh} px grid")
+        g8g.append(f"D2 § 8.7: rooms {_w87} px wide at {_apart} px apart (layout x = {_xs}), and "
+                   f"{len(_objs)} `desks` object(s) of the worked room map on its {_gw}x{_gh} px grid")
+g8g = "; ".join(g8g) or "NOT MEASURED"
+
 # --------------------- G9. D2 § 6.5's delivery contract, re-derived from D2 ----
 # G2 asks whether a rendered field EXISTS in D2 § 8.2.1.  All ten of the members below do, which is
 # why G2 was clean over a receipt age that freezes on every live desk: a field-existence check cannot
@@ -3055,6 +3197,8 @@ print(f"    G8 the shipped default's grid: {g8e_grid}. MEASURED means `width × 
 print(f"    G8 section 12's viewport arithmetic: {g8f}. MEASURED means the rows, the boxes per row, the desk "
       f"across, the grid width and the fit zoom the viewport cell states were each recomputed from the map, "
       f"the box and the row's own viewport floor and held equal.")
+print(f"    G8 the worked floors laid at the furniture box: {g8g}. Each figure section 4.6's two rows and D2 "
+      f"§ 8.7 state was re-derived from the box above, the rows' own tile counts and the worked JSON, and held.")
 print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase pairs re-derived from "
       f"section 7.6, section 7.1's worked instance held against them, section 5.1's verbatim "
       f"illustration held against the MEMBERS; both predicates fed their own defect on this run and "

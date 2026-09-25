@@ -17,8 +17,9 @@ use Tests\TestCase;
  * say the same thing in different words — "**no thought bubble at all**, never an empty bubble
  * and never a placeholder title" — and AT-D3-14's desk half asserts it as a GREEN: "there is
  * **no thought bubble**, and `nulls-a`'s desk **draws a character** … so that absence is
- * `task`'s and not the empty chair's". That test needs a floor to run on and there is no floor;
- * what runs today is the MODEL's half of it, which is the half that decides.
+ * `task`'s and not the empty chair's". What runs here is the MODEL's half of it, which is the half
+ * that decides; the drawn half is Appendix B row 14's scene and painter, gated by AT-D3-20
+ * (`Tests\Feature\Floor\SeatFurnitureNeverOverlapsTest`).
  */
 class DeskDrawsTheThoughtBubbleTest extends TestCase
 {
@@ -28,11 +29,11 @@ class DeskDrawsTheThoughtBubbleTest extends TestCase
      * The module's wiring — that it is there, that every relative import in it resolves, and
      * that it reaches for the SHARED copy of each thing it shares rather than growing its own.
      *
-     * ⚠ THE FLOOR PAGE LOADS THIS MODULE AND DRAWS NO BUBBLE ELEMENT. `floor/main.js` (Appendix B
-     * step 8) imports it through the desk render and draws each desk as a line of text, so there is
-     * no bubble element contract to check yet — the drawing layer that places a bubble is not built.
-     * What is checkable today is that the module is internally coherent, which this asserts, and
-     * that it loads, which `FloorPageWiringTest`'s import resolution covers.
+     * ⚠ THE BUBBLE IS DRAWN BY ROW 14's LAYER, NOT BY THIS MODULE. `floor/scene.js` lays it out
+     * through `bubbleLayout()` and `floor/painter.js` draws it, so the bubble's drawn contract is
+     * AT-D3-20's (`SeatFurnitureNeverOverlapsTest`) and the painter's elements are
+     * `FloorPageWiringTest`'s. What this asserts is that the module is internally coherent, and
+     * `FloorPageWiringTest`'s import resolution that it loads.
      */
     public function test_the_module_is_wired_to_the_shared_copies_it_shares(): void
     {

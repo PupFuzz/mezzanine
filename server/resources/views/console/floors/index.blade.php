@@ -18,6 +18,35 @@
         place gets a floor of its own.
     </p>
 
+    {{-- ⭐ docs/design/FLOOR.md § 14 item 28(1)(iii): every room whose current map fails the
+         furniture box it was not validated against — LISTED, never refused. --}}
+    @php($failing = array_values(array_filter($rows, fn (array $row) => $row['fails_the_box'] !== [])))
+    @if ($failing !== [])
+        <section id="rooms-failing-the-box">
+            <h2>Rooms whose map fails the furniture box</h2>
+            <p>
+                Each map below was stored before the furniture box it is now held to — the box every
+                desk is drawn inside (<code>docs/design/FLOOR.md § 12</code>, Appendix B row 14) —
+                and does not fit it. <strong>Nothing was refused:</strong> each room stays on the
+                floor as it is, drawn with the floor's notice naming the desk slots, until its
+                author saves a map that passes.
+            </p>
+            <ul>
+                @foreach ($failing as $row)
+                    <li>
+                        <strong>{{ $row['install_id'] }}</strong>, revision {{ $row['map_version'] }}
+                        — <a href="{{ route('admin.floors.edit', $row['install_id']) }}">Edit map</a>
+                        <ul>
+                            @foreach ($row['fails_the_box'] as $refusal)
+                                <li>{{ $refusal }}</li>
+                            @endforeach
+                        </ul>
+                    </li>
+                @endforeach
+            </ul>
+        </section>
+    @endif
+
     <table>
         <thead>
             <tr>
@@ -57,6 +86,10 @@
                         @else
                             {{ $row['slots'] }} desk slots
                             <br>revision {{ $row['map_version'] }}
+                            @if ($row['fails_the_box'] !== [])
+                                <br><strong>fails the furniture box</strong> — listed above; the
+                                room stays on the floor until a passing map is saved.
+                            @endif
                             @if ($row['short_by'] > 0)
                                 <br><strong>floor map is short {{ $row['short_by'] }} desks</strong>
                                 — every seat past the {{ $row['slots'] }}th is drawn in § 3.2's
