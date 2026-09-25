@@ -581,10 +581,9 @@ export class FloorScreen {
                     this.#seatOpened = true;
                     this.#panel.open(matches[0].install_id, matches[0].seat_id);
                 } else if (matches.length === 0) {
-                    // ⚠ THE WORDING IS NOT RATIFIED — neither this notice nor the one below. § 4.4
-                    // says an ambiguous seat segment opens neither desk "and says so, naming the
-                    // rooms", and publishes no string for it or for a segment naming no desk; each is
-                    // the facts in order and nothing else.
+                    // § 4.4's two seat-segment notices — this one and the one below — in the
+                    // wording the operator ratified (card#7342, 2026-09-25): an ambiguous segment
+                    // opens neither desk "and says so, naming the rooms".
                     notices.push(`no desk ${this.#seatSegment} on this floor`);
                 } else {
                     notices.push(`the seat ${this.#seatSegment} names a desk in more than one room on this floor — `

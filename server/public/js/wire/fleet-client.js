@@ -139,8 +139,8 @@ const KNOWN_TYPES = new Set([
  * to be unreported rather than filled in. ⛔ NO OPERATOR: `by` is not on the announcement (D2 § 8.3),
  * so a name here would be a name the wire never sent (AT-D3-16's fourth RED).
  *
- * ⚠ THE WORDING IS NOT RATIFIED — § 5.5 names what a record line carries and publishes no string —
- * so it is the facts in order and nothing else, like every other line this record holds.
+ * The wording is § 5.5's, ratified by the operator (card#7342, 2026-09-25): the facts in order and
+ * nothing else, like every other line this record holds.
  */
 function retiredLine(k, reason, at) {
     const why = typeof reason === 'string' && reason !== '' ? reason : 'not reported';

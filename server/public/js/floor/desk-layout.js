@@ -77,8 +77,8 @@ const TREATMENT_BADGES = Object.freeze(['config_invalid', 'fold_lag']);
 /**
  * § 5.1's open-call count, which the model carries as a number.
  *
- * ⚠ THE WORDING IS NOT RATIFIED. § 5.1 says the count renders "when it exceeds 1" and publishes no
- * words for it; this is the number and the member it counts, nothing else.
+ * § 5.1: the count renders "when it exceeds 1", in the wording the operator ratified (card#7342,
+ * 2026-09-25) — the number and the member it counts, nothing else.
  */
 export const OPEN_CALLS = (n) => `${n} open calls`;
 

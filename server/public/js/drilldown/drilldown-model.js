@@ -1,6 +1,6 @@
 /**
  * The desk drill-down panel's model — `docs/design/FLOOR.md § 4.3`'s table, § 5.2's rules, § 8's
- * intern join, § 7.2's badge lines, § 9 F10/F11, and § 5.6's null render for every nullable member
+ * intern list, § 7.2's badge lines, § 9 F10/F11, and § 5.6's null render for every nullable member
  * it touches. Appendix B row 10, card#7342.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -46,6 +46,7 @@ import { BADGES } from '../wire/member-sets.js';
 import { isRenderState } from '../lobby/render-state.js';
 import { taskFacts } from '../wire/task.js';
 import { LABEL, deskModel, wasLabel } from '../desk/desk-render.js';
+import { STOOL_CAP } from '../floor/desk-layout.js';
 
 /**
  * § 4.3's `task` members are decided by the ONE implementation of that member's rules —
@@ -70,11 +71,11 @@ export const UNRECOGNISED = 'unrecognised';
 export const WINDOW_NOT_FETCHED = 'the recent-activity window has not been fetched';
 
 /**
- * § 9 F11's render for the intern list, verbatim in its two halves: the list "falls back to
- * `subagents[]` **and says it is capped**". ⚠ The sentence around those facts is not ratified — F11
- * publishes the facts and no string — so it names them and nothing else.
+ * § 9 F11's render for the intern list, which "falls back to `subagents[]` **and says it is
+ * capped**" — in the wording F11 publishes (ratified by the operator, card#7342, 2026-09-25). The
+ * number is the seat object's own cap, `STOOL_CAP` (§ 8.1), never a second literal.
  */
-export const LIST_NOT_SOURCED = 'unavailable — the seat detail could not be read, so this is the seat object’s subagents[], capped at 8';
+export const LIST_NOT_SOURCED = `unavailable — seat detail could not be read; showing the first ${STOOL_CAP} interns only`;
 
 /** § 9 F11: "the sections that need `detail` read **unavailable**" — the cell's own word. */
 export const UNAVAILABLE = 'unavailable';
@@ -82,11 +83,12 @@ export const UNAVAILABLE = 'unavailable';
 /**
  * § 5.5: the detail request is still out. F11 names a FAILED request, and a panel that said
  * *unavailable* before its request had answered would be reporting a failure nobody observed.
- * ⚠ Not ratified — the client narrating its own request, in the facts and nothing else.
+ * § 5.5 publishes the wording, with `LIST_WAITING`'s below (ratified by the operator, card#7342,
+ * 2026-09-25).
  */
 export const WAITING = 'waiting for the seat detail';
 
-/** F11's intern-list sentence while the detail request is still out: nothing is claimed yet. */
+/** § 5.5's intern-list sentence while the detail request is still out: nothing is claimed yet. */
 export const LIST_WAITING = `${WAITING} — the uncapped list comes with it`;
 
 /** § 2.4: with no corrected clock there is no honest age, and the panel says so rather than tick. */
@@ -157,40 +159,20 @@ export const RAISED_BY = Object.freeze({
 
 /**
  * The panel's UNCAPPED INTERN LIST, out of § 8.2.3's open-call list: the calls that DISPATCHED
- * an intern — `is_dispatch`, D2 § 6.4's own column on `calls`.
+ * an intern — `is_dispatch`, D2 § 6.4's own column on `calls`. D3 § 5.2's selection sentence and
+ * § 8's *the full list* row state it (operator ruling 2026-09-25, card#7342).
  *
- * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ D3 STATES TWO SELECTIONS FOR THIS ONE LIST AND THEY SELECT DISJOINT SETS. This function
- * implements the second, and the argument is written here rather than left in a PR body because
- * the next reader will otherwise "fix" it back to the first.
- *
- *   (a) § 5.2's rule cell and § 8's *the full list* row say: "selected on `agent_scope ==
- *       "subagent"` / a non-null `parent_call_id`".
- *   (b) § 8's own rendered rows — the intern's LABEL is `title`, its TYPE is `subagent_type`, a
- *       null title renders **untitled** — and AT-D3-4's GREEN — "the drill-down, opened against
- *       a stubbed detail response carrying nine open DISPATCH calls, lists 9" — say: the open
- *       dispatch calls.
- *
- * They are disjoint on this deployment's real data, not merely differently worded. A dispatch is
- * a call the MAIN agent makes (D2 § 10's worked trace, E1: the `Agent` call is `is_dispatch`,
- * and "`subagents` gains a title-less entry"), so it carries `agent_scope: "main"` and a null
- * `parent_call_id` — (a) excludes every one of them. What (a) DOES select is the calls the
- * intern itself runs, which carry no `title` and no `subagent_type` at all, so under (a) every
- * row of this list is **untitled** forever, AT-D3-4's GREEN cannot pass, and § 8's own two label
- * rows have nothing to draw from.
- *
- * ⛔ § 8.1 IS WHAT DECIDES IT, because the cap argument rests on this list's population: "the
- * panel that would benefit from a longer array ALREADY HAS EVERY INTERN". Under (a) the panel
- * has none, and the reason § 8.1 gives for keeping the cap at 8 is not merely weakened but
- * false. Under (b) it is exactly true — the same population as the seat object's `subagents[]`
- * (`SeatFacts::openSubagents()` is `is_dispatch` too), without the cap, which is precisely what
- * § 8 says the two artifacts are: "two artifacts, two sources".
- *
- * ⚠ THE DOCUMENT IS NOT AMENDED BY THIS FILE. A design-doc change is a ratified act; card#7342's
- * PR body carries the proposed text for § 5.2's cell and § 8's row under its own heading, and
- * `DrillDownRendersTheInternsTest` pins BOTH readings — this one as the rendered list, and (a)
- * as the set that is empty of titles — so the day the amendment is ruled on, the evidence is a
- * test rather than a memory.
+ * ⛔ IT IS NOT THE CALLS CARRYING `agent_scope == "subagent"` OR A `parent_call_id`, which is the
+ * selection D3 stated before that ruling and the one the next reader is likeliest to "fix" this
+ * back to. A dispatch is a call the MAIN agent makes (D2 § 10's worked trace, E1: the `Agent` call
+ * is `is_dispatch`, and "`subagents` gains a title-less entry"), so it carries `agent_scope:
+ * "main"` and a null `parent_call_id`; the calls those two labels select are the ones the interns
+ * themselves run, which carry no `title` and no `subagent_type`, so § 8's label rows would have
+ * nothing to draw and AT-D3-4's GREEN ("nine open dispatch calls … lists 9") could not pass. The
+ * labels attribute an intern's OWN calls back to it — the intern join D2 § 4.8 stores them for.
+ * This selection is the same population as the seat object's `subagents[]`
+ * (`SeatFacts::openSubagents()` is `is_dispatch` too) without the cap — § 8's "two artifacts, two
+ * sources", and the reason § 8.1 gives for keeping the cap at 8.
  *
  * ⛔ IT IS NOT EVERY OPEN CALL either, which is the reading § 5.2 refuses in terms: "the panel
  * that listed every one would call a seat's own `Bash` call an intern".
@@ -202,20 +184,6 @@ export const RAISED_BY = Object.freeze({
  */
 export function internCalls(openCalls) {
     return (openCalls ?? []).filter((call) => call?.is_dispatch === true || call?.is_dispatch === 1);
-}
-
-/**
- * § 5.2's OTHER selection — the calls carrying a subagent scope or a parent — exported for the
- * one test that holds the contradiction above visible, and rendered by nothing.
- *
- * ⛔ A NULL `agent_scope` IS NOT DEFAULTED TO `main` OR TO `subagent` (§ 5.6): a call is admitted
- * on a non-null `parent_call_id` and on nothing else, so a field the wire left empty never moves
- * a call between two lists.
- */
-export function subagentScopedCalls(openCalls) {
-    return (openCalls ?? []).filter(
-        (call) => call?.agent_scope === 'subagent' || (call?.parent_call_id ?? null) !== null,
-    );
 }
 
 /**
@@ -347,8 +315,8 @@ function header(seat, nowMs, stamps, options, skew) {
 /**
  * § 5.2's skew note: `delivery.clock_skew_ms` "rendered whenever non-null, beside every seat-clock
  * timestamp in the panel, so a narrative time is never read as an absolute one". Signed, in the unit
- * the wire carries. ⚠ The words are not ratified; they are § 7.2's `clock_skew` line in the wire's
- * own unit. A null skew is no note at all — never *0 ms*, which would claim the two clocks were
+ * the wire carries, in the wording § 5.2 publishes (ratified by the operator, card#7342,
+ * 2026-09-25). A null skew is no note at all — never *0 ms*, which would claim the two clocks were
  * measured to agree (§ 5.6).
  */
 function skewNote(ms) {
@@ -405,7 +373,7 @@ function actionBlock(action, nowMs, sc) {
         descriptor: action.descriptor ?? null,
         started_at: sc(action.started_at),
         elapsed: actionElapsedLine(action, nowMs),
-        // § 5.1: labels, stored for the intern join, and nothing on this page gates on them.
+        // § 5.1: labels, stored for the intern join, and nothing on this page gates or selects on them.
         agent_scope: action.agent_scope ?? null,
         parent_call_id: action.parent_call_id ?? null,
     };
@@ -744,7 +712,8 @@ function badgeBlock(seat, detailFailed, missingDetail) {
 /**
  * § 7.2's `epoch_reset` row: "the drill-down says which side observed it, because D1's reporter and
  * D2's server raise it independently" — the reporter by its `state_reset` counter (D1 § 9.3), the
- * server by its `seq_epoch_change` counter (D2 § 7.1). ⚠ The words are not ratified.
+ * server by its `seq_epoch_change` counter (D2 § 7.1). The lines are § 7.2's (ratified by the
+ * operator, card#7342, 2026-09-25).
  */
 function epochObservers(seat, missingDetail) {
     const reporter = Number(seat?.detail?.heartbeat_counters?.state_reset ?? 0) > 0;

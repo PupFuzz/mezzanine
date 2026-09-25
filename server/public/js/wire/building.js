@@ -92,8 +92,8 @@ function isMapAnswer(body, installId) {
  * `map_version: null` — "the room is back on the shipped default" (D2 § 8.3's row) — and is named as
  * that rather than as a revision numbered `null`.
  *
- * ⚠ THE WORDING IS NOT RATIFIED. § 2.5 states what the line names and publishes no string for it; this
- * is written from those two members and nothing else. The line is RETURNED, not written: the client's
+ * The wording is § 2.5's, ratified by the operator (card#7342, 2026-09-25): the two members and
+ * nothing else. The line is RETURNED, not written: the client's
  * event record is § 5.5's, built at Appendix B step 3 in `wire/fleet-client.js`; step 7 is what
  * delivers a `room.map` to this apply and writes the line it returns into that record.
  */

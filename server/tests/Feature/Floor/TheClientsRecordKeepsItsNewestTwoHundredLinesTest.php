@@ -10,9 +10,9 @@ use Tests\TestCase;
  * what the lines SAY, and who draws them, is the lobby's and the strip's, later.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ NO WORDING IS ASSERTED HERE. § 5.5 states what a line names and ratifies no string, so this
- * test asserts the record's SHAPE — how many lines survive, and which ones — and identifies a line
- * by the seat and the act it names, never by a pinned sentence.
+ * ⛔ NO WORDING IS ASSERTED HERE. This test is about the record's SHAPE — how many lines survive,
+ * and which ones — so it identifies a line by the seat and the act it names, never by a pinned
+ * sentence; the wordings § 5.5 publishes are other tests' to hold.
  *
  * ⛔ THE RUN WRITES 201 LINES TO ASSERT A 200-LINE CAP, and one more than the bound is the whole
  * point: a fixture that wrote 200 would pass against a client with no cap at all.
