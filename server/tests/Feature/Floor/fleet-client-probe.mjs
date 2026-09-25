@@ -23,6 +23,14 @@
  *                                               //  time for § 4.2's clock and sky; absent, the
  *                                               //  scenario clock read as UTC
  *                      "seat": "<seat_id>",     //  § 4.4's `/floor/{floor}/{seat_id}` deep link
+ *                      "scene": {               //  Appendix B row 14's scene inputs, as the painter
+ *                        "measurer": {glyph_w, line_h},  //  supplies them on a page: a measurer that
+ *                        "character": {w, h},   //  answers a stated width per glyph, the tree's
+ *                        "box": {width, height} //  SCENE_W/SCENE_H, and — only in a planted control —
+ *                      },                       //  a box other than resources/floor/furniture-box.js's
+ *                      "asset_failures": [ { "at_ms": N,  //  § 9 F14 as the painter reports it:
+ *                        "tileset_images": "<url>" | "assets": [ "<id>", … ] } ],  // every image of
+ *                                               //  a held tileset, or the ids named
  *                      "panel": [ { "at_ms": N, //  the drill-down's USER actions, on the scenario
  *                        "action": "open" | "close" | "retry" | "more",   // clock: `open` names
  *                        "install_id": "…", "seat_id": "…" } ] }          // the desk (§ 4.3)
@@ -123,14 +131,22 @@
  * reader: the scenario's own `local_hours`/`local_minutes` where it states them, else the scenario
  * clock read as UTC, and the shipped `Date`-based reader is left for a browser.
  *
+ * ⛔ A FIXTURE NAMES A SHIPPED FILE RATHER THAN COPYING IT (Appendix B row 14). Anywhere in the
+ * payload, the string `@json:<repo path>` is replaced by that file parsed and `@text:<repo path>` by
+ * its text — so a run "on the shipped default map" replays `resources/floor/default.tmj` itself and
+ * a tileset response is the vendored `.tsx`, never a copy that drifts from them — and
+ * `@box.width` / `@box.height`, optionally `*N` and then `+N` or `-N`, by the furniture box
+ * `resources/floor/furniture-box.js` declares, so a stubbed map sized against the box moves with it.
+ * The scene's box and desk sprite are that same module, imported from disk.
+ *
  * ⛔ AN UNSCRIPTED REQUEST IS REPORTED IN THE RECORD, NOT AS AN EXIT CODE. A planted control must
  * red on the FIELD its plant diverges on; a plant that also happens to issue an extra request
  * would otherwise kill the probe and "pass" for the wrong reason.
  */
 
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { scriptedFetch } from '../Support/scripted-fetch.mjs';
 
@@ -152,7 +168,44 @@ const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.j
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
 const { healthCounters } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-model.js')).href);
 
-const fx = JSON.parse(readFileSync(0, 'utf8') || '{}');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+const furniture = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'furniture-box.js')).href);
+
+/** The payload with every `@json:` / `@text:` / `@box.` reference replaced (see the header). */
+function substitute(node) {
+    if (typeof node === 'string') {
+        if (node.startsWith('@json:')) {
+            return JSON.parse(readFileSync(join(repoRoot, node.slice(6)), 'utf8'));
+        }
+
+        if (node.startsWith('@text:')) {
+            return readFileSync(join(repoRoot, node.slice(6)), 'utf8');
+        }
+
+        const box = /^@box\.(width|height)(?:\*(\d+))?(?:([+-])(\d+))?$/.exec(node);
+
+        if (box !== null) {
+            const n = furniture.FURNITURE_BOX[box[1]] * Number(box[2] ?? 1);
+            const k = Number(box[4] ?? 0);
+
+            return box[3] === '-' ? n - k : n + k;
+        }
+
+        return node;
+    }
+
+    if (Array.isArray(node)) {
+        return node.map(substitute);
+    }
+
+    if (node !== null && typeof node === 'object') {
+        return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, substitute(v)]));
+    }
+
+    return node;
+}
+
+const fx = substitute(JSON.parse(readFileSync(0, 'utf8') || '{}'));
 
 let rejections = [];
 process.on('unhandledRejection', (error) => {
@@ -201,10 +254,13 @@ async function replay(scenario) {
     // the loop is itself awaiting. § 4.4 states no timing rule for either building request, so
     // nothing is lost: what a test asserts about them is WHICH path was asked for and WHAT the
     // screen did with the answer.
+    // The asset route's requests (Appendix B row 14's tilesets) are awaited inside the render too,
+    // so they take the building's transport for the building's reason.
+    const microtask = (path) => path.startsWith('/api/building') || path.startsWith('/art/');
     const buildingPaths = Object.fromEntries(Object.entries(scenario.http ?? {})
-        .filter(([path]) => path.startsWith('/api/building')));
+        .filter(([path]) => microtask(path)));
     const fleetPaths = Object.fromEntries(Object.entries(scenario.http ?? {})
-        .filter(([path]) => !path.startsWith('/api/building')));
+        .filter(([path]) => !microtask(path)));
 
     const http = scriptedFetch(fleetPaths, {
         schedule: (delay, label, fire) => schedule(now + delay, label, fire),
@@ -415,6 +471,40 @@ async function replay(scenario) {
             local_time: (ms) => (scenario.floor.local_hours === undefined
                 ? { hours: new Date(ms).getUTCHours(), minutes: new Date(ms).getUTCMinutes() }
                 : { hours: scenario.floor.local_hours, minutes: scenario.floor.local_minutes ?? 0 }),
+        });
+    }
+
+    // Appendix B row 14's scene inputs, as the painter supplies them on a page: the furniture box and
+    // the desk sprite from `resources/floor/furniture-box.js`, a measurer that answers a stated width
+    // per glyph, and the character's size as the fixture states it.
+    if (screen !== null && scenario.floor.scene !== undefined) {
+        const { measurer, character, box } = scenario.floor.scene;
+
+        screen.sceneInputs({
+            box: box ?? furniture.FURNITURE_BOX,
+            desk_sprite: furniture.DESK_SPRITE,
+            measure: (text) => ({ w: [...String(text)].length * measurer.glyph_w, h: measurer.line_h }),
+            character,
+        });
+    }
+
+    // § 9 F14, as the painter reports it — each an event on the scenario queue, followed by a render
+    // like any other event. `tileset_images` names a HELD tileset and fails every image it declares.
+    for (const failure of scenario.floor?.asset_failures ?? []) {
+        schedule(failure.at_ms, 'asset failure', () => {
+            if (screen === null) {
+                return 'no floor';
+            }
+
+            const held = failure.tileset_images === undefined ? null : screen.tilesets().get(failure.tileset_images);
+
+            if (failure.tileset_images !== undefined && held?.tileset === undefined) {
+                throw new Error(`asset_failures names the tileset ${failure.tileset_images}, which the page does not hold`);
+            }
+
+            screen.assetsFailed(held === null ? failure.assets : held.tileset.images);
+
+            return 'reported';
         });
     }
 

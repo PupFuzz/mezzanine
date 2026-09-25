@@ -25,6 +25,11 @@ use Tests\TestCase;
  * inherits the browser's own reconnect (row 8's ⛔) — and that the animation log is constructed with
  * § 12's retention figure (§ 14 item 26), re-derived from § 12 rather than copied here.
  *
+ * ⛔ WIDENED TO THE PAINTER's ELEMENTS (Appendix B row 14, card#7341 step 11): the page's drawing is
+ * `public/js/floor/painter.js`'s, which addresses the view's drawing element itself, so the ids it
+ * addresses join the entry's in the both-directions check, and the entry must construct the painter
+ * from that module — a painter nobody constructs addresses nothing and would pass vacuously.
+ *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that anything renders, lays out or is legible.
  */
 class FloorPageWiringTest extends TestCase
@@ -46,6 +51,12 @@ class FloorPageWiringTest extends TestCase
     public function test_every_element_the_entry_addresses_exists_on_the_page_and_the_reverse(): void
     {
         $this->assertSame([], $this->wiringDefects($this->floorPage(), $this->mainJs()));
+    }
+
+    /** Appendix B row 14: the entry constructs the painter from `floor/painter.js`, whose ids are checked above. */
+    public function test_the_entry_paints_the_room_with_the_painter_module(): void
+    {
+        $this->assertSame([], $this->painterDefects($this->mainJs()));
     }
 
     public function test_the_page_serves_the_entry_as_a_module_and_every_import_resolves(): void
@@ -113,6 +124,21 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('retention', $this->bindingDefects($unbounded),
             'CONTROL (the log constructed with no bound) did not bite');
 
+        $misaddressed = str_replace("getElementById('floor-drawing')", "getElementById('floor-drawinq')", $this->painterJs());
+        $this->assertNotSame($misaddressed, $this->painterJs());
+        $this->assertArrayHasKey('undeclared', $this->wiringDefects($html, $js, null, $misaddressed),
+            'CONTROL (the painter addressing an element the page does not declare) did not bite');
+
+        $undrawn = str_replace('<div id="floor-drawing" aria-label="the room drawing"></div>', '', $html);
+        $this->assertNotSame($undrawn, $html);
+        $this->assertArrayHasKey('undeclared', $this->wiringDefects($undrawn, $js),
+            'CONTROL (the view without the painter\'s drawing element) did not bite');
+
+        $unpainted = str_replace("import { createPainter, loadArt, measurer } from './painter.js';", '', $js);
+        $this->assertNotSame($unpainted, $js);
+        $this->assertArrayHasKey('painter', $this->painterDefects($unpainted),
+            'CONTROL (an entry that never constructs the painter) did not bite');
+
         $drifted = str_replace('const ANIMATION_LOG_RETENTION = 2000;', 'const ANIMATION_LOG_RETENTION = 5000;', $js);
         $this->assertNotSame($drifted, $js);
         $this->assertArrayHasKey('retention', $this->bindingDefects($drifted),
@@ -120,10 +146,14 @@ class FloorPageWiringTest extends TestCase
     }
 
     /** @return array<string, string> */
-    private function wiringDefects(string $html, string $js, ?string $jsRoot = null): array
+    private function wiringDefects(string $html, string $js, ?string $jsRoot = null, ?string $painter = null): array
     {
         $declared = $this->declaredIds($html);
-        $addressed = $this->addressedIds($js, $jsRoot);
+        $addressed = array_values(array_unique(array_merge(
+            $this->addressedIds($js, $jsRoot),
+            $this->painterIds($painter ?? $this->painterJs()),
+        )));
+        sort($addressed);
 
         $this->assertGreaterThan(10, count($declared), 'the page declares almost no floor elements — the parse has stopped reading it');
         $this->assertGreaterThan(10, count($addressed), 'the entry addresses almost no elements — the parse has stopped reading main.js');
@@ -171,6 +201,34 @@ class FloorPageWiringTest extends TestCase
     private function mainJs(): string
     {
         return (string) file_get_contents($this->moduleDir().'/main.js');
+    }
+
+    private function painterJs(): string
+    {
+        return (string) file_get_contents($this->moduleDir().'/painter.js');
+    }
+
+    /**
+     * Every `floor-*` id the painter addresses — it finds its own drawing element.
+     *
+     * @return list<string>
+     */
+    private function painterIds(string $painter): array
+    {
+        preg_match_all("/getElementById\(\s*'(floor-[a-z-]+)'/", $painter, $m);
+
+        $this->assertNotSame([], $m[1], 'the painter addresses no element — the parse has stopped reading painter.js');
+
+        return $m[1];
+    }
+
+    /** @return array<string, string> */
+    private function painterDefects(string $js): array
+    {
+        return str_contains($js, "import { createPainter, loadArt, measurer } from './painter.js';")
+            && preg_match('/=\s*createPainter\(/', $js) === 1
+            ? []
+            : ['painter' => 'the entry does not construct the room drawing\'s painter from floor/painter.js'];
     }
 
     /** @return list<string> */

@@ -39,6 +39,14 @@
  * and the snapshot's installs as rooms with NO FLOOR CLAIMED. It does not compose the route's
  * segment into a one-room floor, "because deciding whether a segment is a floor's key or a room on
  * someone else's floor needs the very document that failed".
+ *
+ * ⛔ THE ROOM DRAWING IS THIS FRAME's `scene` (Appendix B row 14, card#7341 step 11). Once the page
+ * has handed this screen the scene's inputs (`sceneInputs()` — the furniture box, the desk sprite,
+ * its measurer and the character's size) every frame carries `floor/scene.js`'s model of what is
+ * drawn where, built from this frame, the maps and tilesets the client holds, the assets the painter
+ * reported failed (`assetsFailed()`) and the § 6.2 rows this very render wrote. The scene's F21
+ * notices join the frame's, and its F14 verdict is the status strip's `art` line — one strip, the
+ * step-8 module's, told one more thing.
  */
 
 import { Building } from '../wire/building.js';
@@ -50,6 +58,8 @@ import { floors, heldBody, roomsOf } from '../lobby/lobby-model.js';
 import { buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
+import { buildScene } from './scene.js';
+import { TilesetLoader, tilesetUrl } from './tileset.js';
 import {
     assignSlots,
     backWallBand,
@@ -187,6 +197,28 @@ export class FloorScreen {
      */
     #drawn = new Set();
 
+    /** The tapped log — the one AT-D3-1 reads, with this render's rows kept for the scene. */
+    #tap;
+
+    /** The tilesets the held maps name, and the desk sprite's (`floor/tileset.js`). */
+    #tilesets;
+
+    /**
+     * The scene's inputs no module may import (Appendix B row 14) — `{ box, desk_sprite, measure,
+     * character }` — or `null` until the page (or the harness) supplies them. With none, a frame
+     * carries no scene.
+     */
+    #sceneInput = null;
+
+    /** The asset ids the painter reported failed to load (§ 9 F14). Never cleared: *retry on reload*. */
+    #failed = new Set();
+
+    /** key → where the last scene drew each desk — where the next render's walks start. */
+    #anchors = new Map();
+
+    /** The last frame a scene was built over — what the 1 s tick re-reads (`sceneView`). */
+    #lastFrame = null;
+
     /**
      * @param {object} client a `FleetClient` — the seats, the journal, the record and the offset
      * @param {object} building a `wire/building.js` `Building` — the layout and each room's map
@@ -195,12 +227,15 @@ export class FloorScreen {
      * @param {object} [options] `{ floor, seat, reduce, local_time }` — `local_time` reads the
      *        VIEWER's civil time and exists because a build host has one time zone and § 4.2's sky
      *        has four phases; the viewer's own `Date` is the default.
+     * @param {TilesetLoader} [tilesets] the tilesets' loader, over the page's own `fetch`
      */
-    constructor(client, building, clock, log, options = {}) {
+    constructor(client, building, clock, log, options = {}, tilesets = null) {
         this.#client = client;
         this.#building = building;
         this.#clock = clock;
-        this.#desks = new DeskFloor(client, clock, log, options);
+        this.#tap = tapped(log);
+        this.#tilesets = tilesets;
+        this.#desks = new DeskFloor(client, clock, this.#tap.log, options);
         this.#set = this.#desks.set;
         this.#options = options;
         this.#segment = options.floor ?? null;
@@ -260,6 +295,32 @@ export class FloorScreen {
     /** The desk floor this screen runs — the age ticker's population, and the frame's source. */
     get desks() {
         return this.#desks;
+    }
+
+    /**
+     * The scene's inputs (Appendix B row 14): `{ box, desk_sprite, measure, character }`. The page
+     * supplies them once its imports of the asset route's modules have answered; the harness from
+     * its fixture. The next render draws the scene.
+     */
+    sceneInputs(inputs) {
+        this.#sceneInput = inputs;
+    }
+
+    /**
+     * § 9 F14: the painter reports each asset it could not draw — a tile's image, the desk sprite,
+     * a seat's character (`character:<install>/<seat>`), a tileset. Held for the page's life, because
+     * F14's recovery is *retry on reload*. An asset failure is not a state change: it moves no desk's
+     * `render_state` and writes no animation row (AT-D3-19).
+     */
+    assetsFailed(ids) {
+        for (const id of ids) {
+            this.#failed.add(id);
+        }
+    }
+
+    /** The tilesets held — `url → {tileset}|{failure}|{pending}`. */
+    get tilesets() {
+        return this.#tilesets?.held ?? new Map();
     }
 
     /**
@@ -331,8 +392,31 @@ export class FloorScreen {
 
         await this.#layoutActs(journal);
         await this.#enterNewRooms();
+        await this.#loadTilesets();
 
         return this.draw(journal);
+    }
+
+    /**
+     * Appendix B row 14's tileset reader, fed: every tileset a held map or the floor's hallway names
+     * by `source`, and the desk sprite's — each fetched once (`floor/tileset.js`'s loader).
+     */
+    async #loadTilesets() {
+        const target = this.#target();
+
+        if (this.#sceneInput === null || this.#tilesets === null || target === null) {
+            return;
+        }
+
+        const docs = [
+            target.hallway ?? null,
+            ...target.rooms.map((room) => this.#building.room(room.install_id)?.held?.map ?? null),
+        ].filter((doc) => doc !== null);
+        const urls = docs.flatMap((doc) => (Array.isArray(doc.tilesets) ? doc.tilesets : [])
+            .filter((entry) => typeof entry?.source === 'string')
+            .map((entry) => tilesetUrl(entry.source)));
+
+        await this.#tilesets.load([tilesetUrl(this.#sceneInput.desk_sprite.tileset), ...urls]);
     }
 
     /**
@@ -401,9 +485,70 @@ export class FloorScreen {
         // § 4.3's live patching and the close a removal forces, over the same journal the desks read.
         this.#panel.observe(journal);
 
-        const frame = this.#drawFrame(journal);
+        this.#tap.take();
 
-        return Object.freeze({ ...frame, ...this.#drillDown(frame) });
+        const frame = this.#drawFrame(journal);
+        const scene = this.#scene(frame, this.#tap.take());
+        const drawn = {
+            ...frame,
+            // The status strip, on every frame shape — with § 9 F14's line when the scene says art
+            // failed (Appendix B row 14: "an edit to step 8's strip module rather than a second strip").
+            strip: statusStrip(this.#client.feed, this.#client.fleet, {
+                reduce: this.#options.reduce === true,
+                // With no scene inputs at all — the page could not import the furniture box — every
+                // failure the painter reported is art that could not be drawn.
+                art_failed: scene?.art_failed === true || (this.#sceneInput === null && this.#failed.size > 0),
+            }),
+            scene,
+            // § 9 F21's notices — the scene's, from the maps it drew — beside the floor's own.
+            notices: Object.freeze([...frame.notices, ...(scene?.notices ?? [])]),
+        };
+
+        return Object.freeze({ ...drawn, ...this.#drillDown(drawn) });
+    }
+
+    /** Appendix B row 14's scene over one frame, or `null` with no inputs or no floor to draw. */
+    #scene(frame, rows) {
+        if (this.#sceneInput === null || frame.floor === null) {
+            return null;
+        }
+
+        const scene = buildScene(frame, this.#sceneDocs(frame, rows));
+
+        if (scene !== null) {
+            this.#anchors = new Map(Object.entries(scene.anchors));
+        }
+
+        this.#lastFrame = frame;
+
+        return scene;
+    }
+
+    /**
+     * The scene at the browser's instant — the 1 s tick's half (§ 2.5: "every age readout, and
+     * nothing else"): the last frame's floor with the desks re-read over fresh ages, draining
+     * nothing and drawing no § 6.2 row, since a tick is not an apply.
+     */
+    sceneView(desks) {
+        if (this.#sceneInput === null || this.#lastFrame === null || this.#lastFrame.floor === null) {
+            return null;
+        }
+
+        return buildScene({ ...this.#lastFrame, desks }, this.#sceneDocs(this.#lastFrame, []));
+    }
+
+    /** What the scene reads beside a frame: the inputs, the documents held, and what failed. */
+    #sceneDocs(frame, effects) {
+        return {
+            ...this.#sceneInput,
+            maps: new Map(frame.rooms.map((room) => [room.install_id, this.#building.room(room.install_id)?.held?.map ?? null])),
+            hallway: this.#target()?.hallway ?? null,
+            tilesets: this.#tilesets?.held ?? new Map(),
+            failed: this.#failed,
+            reduce: this.#options.reduce === true,
+            effects,
+            previous: this.#anchors,
+        };
     }
 
     /**
@@ -470,8 +615,8 @@ export class FloorScreen {
 
         // Appendix B row 8: the status strip and the failure renders, on every frame this screen
         // draws — a failure is never allowed to be the one thing a frame shape leaves out.
+        // The status strip is `draw()`'s, once the scene has said whether art failed (§ 9 F14).
         const narration = {
-            strip: statusStrip(this.#client.feed, this.#client.fleet, { reduce: this.#options.reduce === true }),
             failure: failureRender(this.#client.feed),
         };
 
@@ -915,6 +1060,45 @@ function departureCause(slot, formerHolder, departures) {
     return departures.includes(vacated) ? vacated : departures[0];
 }
 
+/**
+ * The animation log, TAPPED: every call goes to the one log AT-D3-1 reads, unchanged, and the row it
+ * wrote is also kept for the scene, which draws what this render logged (Appendix B row 14: "what
+ * this row adds is the drawing of what the set already logged"). It is not a second way into the
+ * log — it forwards each call and holds a copy of the row the log itself wrote.
+ */
+function tapped(log) {
+    const taken = [];
+    const last = () => {
+        const rows = log.rows;
+
+        return rows[rows.length - 1];
+    };
+
+    return {
+        log: {
+            edge(args) {
+                log.edge(args);
+                taken.push(last());
+            },
+            enterHeld(args) {
+                const id = log.enterHeld(args);
+
+                taken.push(last());
+
+                return id;
+            },
+            leaveHeld(episodeId, options) {
+                log.leaveHeld(episodeId, options);
+                taken.push(last());
+            },
+            get rows() {
+                return log.rows;
+            },
+        },
+        take: () => taken.splice(0),
+    };
+}
+
 /** A held seat's key, split back into the pair § 3.1 makes a desk's identity. */
 function splitKey(key) {
     const cut = key.indexOf('/');
@@ -933,7 +1117,7 @@ function splitKey(key) {
  * @param {object} [options] `{ floor, seat, reduce, local_time }`
  */
 export function startFloorScreen(client, fetchImpl, clock, log, draw, options = {}) {
-    const screen = new FloorScreen(client, new Building(fetchImpl), clock, log, options);
+    const screen = new FloorScreen(client, new Building(fetchImpl), clock, log, options, new TilesetLoader(fetchImpl));
 
     return {
         // The desk floor the screen runs — the 1 s age tick's population (§ 2.5), for a page.
@@ -952,5 +1136,10 @@ export function startFloorScreen(client, fetchImpl, clock, log, draw, options = 
         retryPanel: () => screen.retryPanel(),
         morePanel: () => screen.morePanel(),
         panelView: (floorName) => screen.panelView(floorName),
+        // Appendix B row 14: the scene's inputs, and the painter's report of what failed to load.
+        sceneInputs: (inputs) => screen.sceneInputs(inputs),
+        assetsFailed: (ids) => screen.assetsFailed(ids),
+        tilesets: () => screen.tilesets,
+        sceneView: (desks) => screen.sceneView(desks),
     };
 }

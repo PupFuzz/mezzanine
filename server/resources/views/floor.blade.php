@@ -20,11 +20,12 @@
         segment kept. `{seat_id}` — present on `/floor/{floor}/{seat_id}` — is resolved by the client
         against the floor's desks and opens the drill-down (Appendix B row 10).
 
-        ⚠ WHAT IS NOT HERE, AND WHY: the tiled room interior, the characters and the camera. The
-        floor screen decides where each desk is (`floor/floor-screen.js`), and this page draws each
-        desk as a line of text — every fact the desk model carries, and no art. The drawing layer
-        that paints a room is not built; § 9 F14 (an asset that fails to load) has no asset to fail
-        until it is.
+        ⭐ THE ROOM IS DRAWN (Appendix B row 14, card#7341 step 11): `#floor-drawing` holds the SVG
+        `public/js/floor/painter.js` paints from the floor screen's scene (`floor/scene.js`) — tiles,
+        desks, the band, the thread line — and `#floor-art` is § 9 F14's strip line. The desk list
+        below it stays as row 8 built it, every fact as a line of text, until row 15 replaces it with
+        § 4.5's list view. ⚠ WHAT IS STILL NOT HERE: the camera (row 15) — the drawing is shown at the
+        page's width, not panned or zoomed.
     --}}
     <section id="floor" aria-labelledby="floor-name" data-floor="{{ $floor }}" data-seat="{{ $seat ?? '' }}">
         <h2 id="floor-name">The floor {{ $floor }} — waiting for the building layout</h2>
@@ -56,6 +57,8 @@
             <p id="floor-connection">stream: waiting for the stream</p>
             <p id="floor-resyncs">resyncs: waiting for the stream</p>
             <p id="floor-last-message" hidden></p>
+            {{-- § 9 F14: *some art failed to load*, only while it is true. --}}
+            <p id="floor-art" hidden></p>
             <p id="floor-store">store: waiting for the fleet snapshot</p>
             <p id="floor-derivation">derivation: waiting for the fleet snapshot</p>
             <p id="floor-sweep">sweep: waiting for the fleet snapshot</p>
@@ -70,6 +73,9 @@
 
         {{-- § 9 F17's cold start: the snapshot's installs as rooms with no floor claimed. --}}
         <ul id="floor-rooms" hidden></ul>
+
+        {{-- Appendix B row 14's room drawing — the painter's SVG, empty until the art modules answer. --}}
+        <div id="floor-drawing" aria-label="the room drawing"></div>
 
         <h3 id="floor-desks-heading">Desks</h3>
         <ul id="floor-desks" aria-labelledby="floor-desks-heading" data-dimmed="false">

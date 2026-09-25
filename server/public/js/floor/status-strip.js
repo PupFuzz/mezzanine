@@ -39,6 +39,14 @@ export const NEVER_SPOKE = 'feed down — polling; the stream opened and never s
 export const FEED_UNAVAILABLE = 'feed unavailable — polling';
 
 /**
+ * § 9 F14, verbatim: the strip's line when any asset the room drawing asked for failed to load
+ * (Appendix B row 14). It is the CLIENT's narration about its own page — a statement about which art
+ * it could draw, never about a seat — and without it a viewer "cannot tell a placeholder from the
+ * ratified look" (AT-D3-19's second RED).
+ */
+export const ART_FAILED = 'some art failed to load';
+
+/**
  * The feed status, in § 9's words.
  *
  * ⛔ *LIVE* IS THE CONSERVATIVE CLAIM (decision 18): a message newer than 45 s, and no `401` since —
@@ -90,9 +98,10 @@ export function feedStatus(feed) {
  *
  * @param {object} feed   `FleetClient#feed`
  * @param {object|null} fleet  `FleetClient#fleet`
- * @param {{reduce?: boolean}} [options]  § 6.4's condition: under `reduce`, § 6.2 A14's pulse is
- *        replaced by its reduced form, *last message HH:MM:SS*, which is carried here — the pulse
- *        itself is the animation set's
+ * @param {{reduce?: boolean, art_failed?: boolean}} [options]  § 6.4's condition: under `reduce`,
+ *        § 6.2 A14's pulse is replaced by its reduced form, *last message HH:MM:SS*, which is carried
+ *        here — the pulse itself is the animation set's; and `art_failed`, the scene's own verdict
+ *        that some asset it drew with failed to load (§ 9 F14, `floor/scene.js`)
  */
 export function statusStrip(feed, fleet, options = {}) {
     const status = feedStatus(feed);
@@ -110,5 +119,7 @@ export function statusStrip(feed, fleet, options = {}) {
             ? `last message ${clockTime(feed.last_message?.server_time ?? null) ?? NOT_REPORTED}`
             : null,
         indicators: Object.freeze(indicators(fleet).map((row) => Object.freeze(row))),
+        // § 9 F14 — `null` while every asset drawn has loaded, never an empty string.
+        art: options.art_failed === true ? ART_FAILED : null,
     });
 }

@@ -23,6 +23,13 @@
  * `screen.render()` at a time (`wire/live-page.js` says why). The 1 s age tick re-draws the desks'
  * ages from the last frame and drains nothing (§ 2.5).
  *
+ * ⛔ THE ROOM IS DRAWN BY `floor/painter.js` FROM THE FRAME's `scene` (Appendix B row 14). This file
+ * imports the two art modules through the painter (the asset route's URLs), hands the screen the
+ * scene's inputs once they answer, and paints each frame's scene; the painter reports every asset it
+ * could not draw back to the screen, which is § 9 F14's placeholder and the strip's `art` line on the
+ * next render. The desk list below the drawing stays: it is row 8's text render, every fact as text,
+ * until row 15 replaces it with the list view.
+ *
  * ⛔ THE DRILL-DOWN IS OPENED FROM A DESK AND CLOSED TO THE FLOOR WITHOUT LEAVING THE PAGE (§ 4, § 4.3;
  * Appendix B row 10). Selecting a desk pushes `/floor/{floor}/{seat_id}` (§ 4.4) into the browser's
  * history and asks the screen to open the panel; the URL is the screen's to decide (`frame.seat`) and
@@ -36,6 +43,7 @@ import { createAnimationLog } from '../wire/animation-log.js';
 import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
 import { renderDrillDown } from '../drilldown/main.js';
+import { createPainter, loadArt, measurer } from './painter.js';
 
 /** § 12's *The floor page's animation-log retention* — the page's bound, and no one else's. */
 const ANIMATION_LOG_RETENTION = 2000;
@@ -89,6 +97,9 @@ const root = el('floor');
 
 let lastFrame = null;
 
+/** `floor/painter.js`'s painter, once the art modules have answered (Appendix B row 14). */
+let painter = null;
+
 const { client, clock, fetch: pageFetch, requestRender } = livePage(() => screen.render());
 
 /** § 4.4's two URL shapes for this page, the floor segment first. */
@@ -110,6 +121,13 @@ function seatSegment() {
     return parts.length >= 3 ? decodeURIComponent(parts[2]) : null;
 }
 
+/** § 4.3's "opened by selecting a desk" — from the drawing or the list, one path. */
+function openDesk(installId, seatId) {
+    window.history.pushState(null, '', routeOf(floorSegment(), seatId));
+    screen.openPanel(installId, seatId).then(requestRender);
+    requestRender();
+}
+
 /**
  * The desks, each a link to its own drill-down (§ 4.3: "opened by selecting a desk"). The link is a
  * real URL (`/floor/{floor}/{seat_id}`, § 4.4) so it can be opened, copied or bookmarked; a plain
@@ -126,9 +144,7 @@ function paintDesks(frame, desks) {
         link.textContent = deskLine(desk);
         link.addEventListener('click', (event) => {
             event.preventDefault();
-            window.history.pushState(null, '', link.href);
-            screen.openPanel(desk.install_id, desk.seat_id).then(requestRender);
-            requestRender();
+            openDesk(desk.install_id, desk.seat_id);
         });
         item.append(link);
 
@@ -176,6 +192,8 @@ function paint(frame) {
     say('floor-connection', `stream: ${strip.connection}`);
     say('floor-resyncs', strip.resyncs);
     say('floor-last-message', strip.last_message);
+    // § 9 F14: the strip's own line when art the room drawing asked for did not load.
+    say('floor-art', strip.art);
 
     for (const indicator of strip.indicators) {
         say(`floor-${indicator.key}`, indicator.detail === null
@@ -213,6 +231,7 @@ function paint(frame) {
         + (thread.unresolved.length > 0 ? ` — unresolved: ${thread.unresolved.join(', ')}` : '')
     ))));
 
+    painter?.paint(frame.scene ?? null);
     paintDesks(frame, frame.desks.desks);
     paintPanel(frame.panel);
     list('floor-log', client.eventLog);
@@ -228,9 +247,37 @@ const screen = startFloorScreen(client, pageFetch, clock, createAnimationLog(ANI
 // nothing drained.
 startAgeTicker(screen.desks, clock, window, (readouts) => {
     if (lastFrame !== null) {
-        paintDesks(lastFrame, screen.desks.view(readouts).desks);
+        const desks = screen.desks.view(readouts);
+
+        paintDesks(lastFrame, desks.desks);
+        painter?.refresh(screen.sceneView(desks));
         paintPanel(screen.panelView(lastFrame.floor?.name ?? null));
     }
+});
+
+// Appendix B row 14: the art modules, by the asset route. The screen draws no scene until they have
+// answered; a module that failed is reported as the failed asset it is (§ 9 F14).
+loadArt().then(({ furniture, characters, failed }) => {
+    painter = createPainter({
+        characters,
+        failed: (ids) => {
+            screen.assetsFailed(ids);
+            requestRender();
+        },
+        select: openDesk,
+    });
+
+    if (furniture !== null) {
+        screen.sceneInputs({
+            box: furniture.FURNITURE_BOX,
+            desk_sprite: furniture.DESK_SPRITE,
+            measure: measurer(),
+            character: { w: characters?.SCENE_W ?? 0, h: characters?.SCENE_H ?? 0 },
+        });
+    }
+
+    screen.assetsFailed(failed);
+    requestRender();
 });
 
 // § 4.3: the panel's user actions. Each asks for a render once its requests have answered.
