@@ -1855,8 +1855,11 @@ if m_sprite:
 # The box is parsed with the ONE shape `App\Floor\FurnitureBox` admits -- and the shape is READ OUT
 # OF THAT CLASS (its `DECLARATION` constant, a PCRE this leg translates), never copied here (PR #232
 # round 1, MINOR-4): a copy would be a second home for the one contract that keeps PHP's reading and
-# `import`'s equal, free to drift from it while this gate reported clean.  So this gate cannot read a
-# box PHP would refuse, and the reverse.  And the shipped default's every `desks`
+# `import`'s equal, free to drift from it while this gate reported clean.  The translation is held to
+# what the two engines share: Python's `\d` is bound to ASCII with `re.ASCII`, as PCRE's is without
+# `/u` (round 2, MINOR-B: `4٤0` matched here and int()'d to 440 while PHP refused it), and the two
+# escapes a PHP single-quoted literal can carry whose bytes are NOT the pattern's (`\\`, `\'`) are refused
+# by the control below rather than mistranslated.  And the shipped default's every `desks`
 # object is held AT LEAST the box: section 10.3 makes the object the box its desk is drawn inside, so an
 # object smaller than it is section 9 F21's undersized line on every viewer's floor -- the state the
 # default shipped in until slice B, and the one this leg exists to keep it out of.
@@ -1869,14 +1872,17 @@ if _decl is None:
     fail.append(f"G8 CONTROL: `{BOX_READER.relative_to(ROOT)}` no longer declares the furniture box's one admitted "
                 f"shape as `private const DECLARATION = '/…/m';`, so this leg has no shape to read the box with "
                 f"and will not guess one")
-elif _decl.group(2) != "m" or len(re.findall(r"(?<!\\)\((?!\?)", _decl.group(1))) != 2:
+elif (_decl.group(2) != "m" or len(re.findall(r"(?<!\\)\((?!\?)", _decl.group(1))) != 2
+      or "\\\\" in _decl.group(1) or "\\'" in _decl.group(1)):
     fail.append(f"G8 CONTROL: `FurnitureBox::DECLARATION` is `/{_decl.group(1)}/{_decl.group(2)}` — this leg "
-                f"translates a multiline PCRE with exactly two capture groups (width, height) and nothing else")
+                f"translates a multiline PCRE with exactly two capture groups (width, height), no other flag, and "
+                f"neither of the two PHP single-quote escapes (`\\\\`, `\\'`) whose bytes are not the pattern's")
 else:
-    # A PHP single-quoted string keeps every backslash, so the pattern's bytes are the PCRE's own;
-    # its one flag, `m`, is Python's `re.M`.  The two groups are counted as UNESCAPED `(` -- the
-    # pattern's own `\(` is a literal paren, not a group.
-    BOX_LINE = re.compile(_decl.group(1), re.M)
+    # A PHP single-quoted string keeps every backslash EXCEPT in the two escapes the control above
+    # refuses, so past it the pattern's bytes are the PCRE's own; its one flag, `m`, is Python's
+    # `re.M`, and `re.ASCII` binds `\d` to the digits PCRE matches without `/u`.  The two groups are
+    # counted as UNESCAPED `(` -- the pattern's own `\(` is a literal paren, not a group.
+    BOX_LINE = re.compile(_decl.group(1), re.M | re.ASCII)
 m_box = re.search(BOX_DECL, sec103)
 g8e_box = "NOT MEASURED"
 g8e_grid = "NOT MEASURED"

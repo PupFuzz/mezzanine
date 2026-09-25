@@ -113,6 +113,12 @@ because a gate can only be proven on a defect of its own class:
                least the furniture box, and a `bump` there would widen an object that is already
                large enough — the defect is the object getting SMALLER, by one pixel, which is the
                boundary the check states.
+  `nonascii-digit`
+            -- replace the anchored figure's first digit with its Arabic-Indic form (U+0660 + d), which
+               is the class "a figure the gate reads with `\\d` is not the ASCII digit its other reader
+               requires".  PR #232 round 2 (MINOR-B) is why this exists: G8 compiled `FurnitureBox`'s
+               PCRE with Python's Unicode `\\d`, so `4٤0` matched, int()'d to 440 and passed the gate
+               while PHP's ASCII `\\d` refused the same file.
   `instrument`
             -- replace the bold artifact name in the anchored span with the first gate Appendix B's
                Artifact cells name (a bold name whose head noun is `gate` / `gates`), which is the
@@ -655,6 +661,18 @@ PLANTS = [
         "smaller than the furniture box at the cap",
     ),
     (
+        # PR #232 round 2, MINOR-B — G8e reads the box with the DECLARATION's `\d` bound to ASCII, as
+        # PHP's is.  A non-ASCII digit in the file must red as a box declared zero times in the one
+        # shape, never be read as 440.
+        "verify-floor.py",
+        "resources/floor/furniture-box.js",
+        r"(export const FURNITURE_BOX = Object\.freeze\(\{ width: )(\d+)(, height:)",
+        "nonascii-digit",
+        "the furniture box's width written with an Arabic-Indic digit, which G8 must refuse as a box "
+        "declared in no admitted shape rather than read as the ASCII figure (PR #232 round 2, MINOR-B)",
+        "times in the one shape",
+    ),
+    (
         # PR #232 round 1, MAJOR-2 — G8f, section 12's viewport arithmetic.  Three figures the cell
         # states are each recomputed from the map, the box and the viewport floor; each plant bumps
         # one so the other two cannot cover for it.  The row count first.
@@ -778,6 +796,7 @@ HOLDS = [
 MUTATIONS = {
     "bump": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) + 1) + m.group(3),
     "shrink": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) - 1) + m.group(3),
+    "nonascii-digit": lambda m: m.group(1) + chr(0x0660 + int(m.group(2)[0])) + m.group(2)[1:] + m.group(3),
     "bold-bump": lambda m: (m.group(1) + "**"
                             + re.sub(r"^\d+", lambda d: str(int(d.group(0)) + 1), m.group(2)) + "**"
                             + m.group(3)),

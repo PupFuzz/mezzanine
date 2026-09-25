@@ -30,6 +30,8 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
 
     private const TILESET_FAILS = 'scene_default_tileset_fails';
 
+    private const KIT_FAILS = 'scene_default_kit_fails';
+
     private const CHARACTER_FAILS = 'scene_default_character_fails';
 
     /** The instant the fixture's painter reports the failure. */
@@ -43,6 +45,27 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
 
         $this->assertSame([], $this->placeholderDefects($scene, array_column($scene['desks'], 'key')));
         $this->assertSame([], $scene['tiles'], 'tiles whose images failed are still drawn');
+        $this->assertSame($this->f14Line(), $frame['strip']['art'], 'the strip does not read F14\'s line');
+        $this->assertSame([], $this->logDefects($result));
+    }
+
+    /**
+     * The room's two tilesets fail independently (PR #232 round 2, MINOR-D): with the bridge kit's images
+     * alone failed, every desk is the placeholder — the desk sprite is the kit's — and the first-party
+     * floor plane's tiles are still drawn under them, none of the kit's among them.
+     */
+    public function test_green_with_the_kit_alone_failed_every_desk_is_the_placeholder_over_the_planes_tiles(): void
+    {
+        $result = $this->floorRun(self::KIT_FAILS);
+        $frame = $this->lastFloor($result);
+        $scene = $this->lastScene($result, self::KIT_FAILS);
+        $failed = array_column($this->fixture(self::KIT_FAILS)['floor']['asset_failures'], 'tileset_images');
+
+        $this->assertCount(1, $failed, 'the run fails exactly one tileset — the kit');
+        $this->assertSame([], $this->placeholderDefects($scene, array_column($scene['desks'], 'key')));
+        $this->assertNotSame([], $scene['tiles'], 'the plane\'s tiles are not drawn');
+        $this->assertSame([], array_values(array_filter($scene['tiles'], fn ($t) => in_array($t['tileset'], $failed, true))),
+            'a tile of the failed kit is still drawn');
         $this->assertSame($this->f14Line(), $frame['strip']['art'], 'the strip does not read F14\'s line');
         $this->assertSame([], $this->logDefects($result));
     }
@@ -80,6 +103,19 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
 
         $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::TILESET_FAILS, $dir), ['aimla/aimla-pm']),
             'RED (the blank desk) did not fail');
+    }
+
+    public function test_red_the_failed_tile_drawn(): void
+    {
+        // A tile whose image the painter reported failed is drawn anyway: with the kit alone failed, the
+        // scene puts a kit tile beside the plane's, and the kit-alone leg reds on it.
+        $dir = $this->mutatedModules(['../floor/scene.js',
+            'if (cell.image === null || failed.has(cell.image)) {', 'if (cell.image === null) {']);
+        $failed = array_column($this->fixture(self::KIT_FAILS)['floor']['asset_failures'], 'tileset_images');
+        $tiles = $this->sceneOf(self::KIT_FAILS, $dir)['tiles'];
+
+        $this->assertNotSame([], array_values(array_filter($tiles, fn ($t) => in_array($t['tileset'], $failed, true))),
+            'RED (the failed tile drawn) did not put a kit tile on the floor');
     }
 
     public function test_red_the_silent_strip(): void

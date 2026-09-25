@@ -15,7 +15,7 @@ use Tests\TestCase;
  * ⛔ THE RUNS ARE `fixtures/fx-scene.json`'s, AND THE GREEN CLAUSES RUN ON THE SHIPPED DEFAULT.
  * `fx-snapshot-4` and `fx-interns`' cap leg and bound seat are replayed on `resources/floor/default.tmj`
  * itself (`@json:`, the file and never a copy), which Appendix B row 14's slice B re-authored to the
- * furniture box: twelve objects each exactly the box, the box read from `resources/floor/furniture-box.js`.
+ * furniture box: each `desks` object at least the box, the box read from `resources/floor/furniture-box.js`.
  * Until slice B the suite replayed them on a stub of that shape and held the shipped map to what § 11's
  * control could say of it then — *(f)*'s undersized line naming every slot — and that control reded by
  * design when slice B landed. What stands in its place is § 11's POSITIVE control: the shipped map passes
@@ -127,7 +127,7 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
             $scene = $this->lastScene($result, $run);
 
             foreach ($scene['desks'] as $desk) {
-                $this->assertNotNull($desk['slot_rect'], "[{$run}] {$desk['key']} has no slot on a twelve-slot map");
+                $this->assertNotNull($desk['slot_rect'], "[{$run}] {$desk['key']} has no slot on the shipped default, whose slots outnumber this run's seats");
                 $this->assertSame($objects[$desk['slot']], $desk['slot_rect'],
                     "[{$run}] {$desk['key']}'s slot is not the shipped file's object at slot {$desk['slot']} — the run did not read the shipped default");
             }
