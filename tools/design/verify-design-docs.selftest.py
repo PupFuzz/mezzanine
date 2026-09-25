@@ -107,6 +107,12 @@ because a gate can only be proven on a defect of its own class:
                carries a gutter between two of its objects -- so a re-authored default with a
                gutter everywhere would have failed this harness on a correct map.  Moving the
                neighbour onto the span reds at any gutter, and the plant still stores no figure.
+  `shrink`  -- -1 to a figure the verifier holds AT LEAST some other figure, which is the class "a
+               stored size fell under the bound the gate reads it against".  card#7341 row 14's
+               slice B is why this exists: G8 holds every `desks` object of the shipped default at
+               least the furniture box, and a `bump` there would widen an object that is already
+               large enough — the defect is the object getting SMALLER, by one pixel, which is the
+               boundary the check states.
   `instrument`
             -- replace the bold artifact name in the anchored span with the first gate Appendix B's
                Artifact cells name (a bold name whose head noun is `gate` / `gates`), which is the
@@ -598,6 +604,45 @@ PLANTS = [
         "share a pixel",
     ),
     (
+        # card#7341 row 14, slice B — G8's furniture-box leg (G8e).  Section 10.3 states the box at
+        # the cap as a sentence and `resources/floor/furniture-box.js` declares it as data; G4 binds
+        # section 12's row to the sentence, and this leg binds the sentence to the file.  Bumping the
+        # sentence's width is the class "the document's copy drifted from the one source".
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(The furniture box at the cap is )(\d+)( px wide)",
+        "bump",
+        "§ 10.3's stated furniture-box width, which G8 holds against the one declaration line of "
+        "`resources/floor/furniture-box.js` (card#7341 row 14, slice B)",
+        "states the furniture box at the cap is",
+    ),
+    (
+        # The same leg's second sentence: the shipped default's pixel size, which section 12's
+        # viewport arithmetic is restated on.  Bumping it is the class "the map was re-authored and
+        # the prose was not" — the class the 1,608 px figure sat in for a revision.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(The shipped default's grid is )([\d,]+)( px wide)",
+        "bump",
+        "§ 10.3's stated pixel width of the shipped default, which G8 holds against `width × "
+        "tilewidth` read out of `resources/floor/default.tmj` (card#7341 row 14, slice B)",
+        "states the shipped default's grid is",
+    ),
+    (
+        # The same leg over the FILE: every `desks` object of the shipped default at least the box.
+        # The first object's width is shrunk by one pixel — the boundary the check states — which is
+        # the state the default shipped in until slice B, one object instead of twelve.  The anchor
+        # pins the first `width` after the layer's name and not its value, so a re-authored default
+        # moves the plant.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"desks\"[\s\S]*?\"width\":)(\d+)(,)",
+        "shrink",
+        "the shipped default's first `desks` object one pixel narrower than the furniture box, which "
+        "G8 must refuse as an object smaller than the box (card#7341 row 14, slice B)",
+        "smaller than the furniture box at the cap",
+    ),
+    (
         # card#7341 step 3, G13.  § 2.3 row 5 makes a HELD seat the client cannot confirm render the
         # empty chair, and `idle`'s Never cell forbade exactly that in absolute terms.  The drop
         # takes the QUALIFICATION and leaves the explanation that follows it — which is the shape a
@@ -690,6 +735,7 @@ HOLDS = [
 # Each reads group(2) out of the document and transforms it; none carries a value of its own.
 MUTATIONS = {
     "bump": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) + 1) + m.group(3),
+    "shrink": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) - 1) + m.group(3),
     "bold-bump": lambda m: (m.group(1) + "**"
                             + re.sub(r"^\d+", lambda d: str(int(d.group(0)) + 1), m.group(2)) + "**"
                             + m.group(3)),

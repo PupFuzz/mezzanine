@@ -27,6 +27,24 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **The shipped default map is re-authored to the furniture box (Appendix B row 14, slice
+  B).** `resources/floor/default.tmj`, the room every unauthored install renders, now declares twelve desk
+  slots each exactly the furniture box (440 × 228 px) in one row on the floor line, in two banks with an
+  aisle as before, on a grid of 5,724 × 240 px (it was 1,836 × 200 px with sprite-sized slots). Every desk
+  of an unauthored room is therefore drawn inside its own slot — the side table at § 8's cap of stools, the
+  badge cluster, and every string cut to fit — and the floor no longer carries FLOOR.md § 9 F21's *desk
+  object is smaller than the furniture box* line for the default. `docs/design/FLOOR.md` § 12 gains two
+  Measured rows, the furniture box at the cap and the shipped default's grid, each read out of its file by
+  `tools/design/verify-floor.py` on every run and held against § 10.3's sentence, with every slot of the
+  default held at least the box; the viewport row's one-row-of-desks arithmetic is restated on the box.
+  AT-D3-20 (`Tests\Feature\Floor\SeatFurnitureNeverOverlapsTest`) runs its GREEN clauses on the shipped map
+  and carries § 11's positive control — the shipped map passes every clause with no F21 line, each drawn
+  desk's slot held equal to the file's own object — in place of the sprite-sized control that was designed
+  to red here. A planned floor whose layout placed unauthored rooms against the old footprint is not
+  re-checked: rooms closer together than 5,724 × 240 px now draw overlapping under F18's notice until the
+  layout is saved again. The console's refusals of intersecting or undersized slots and its re-validation
+  listing (slice C) follow.
+
 - **card#7341** — **The floor page draws the room (Appendix B row 14, slice A).** The floor page now paints
   one SVG drawing of the room from its tilesets: each desk inside its furniture box with up to eight stools
   and a `+N more` count, badges, placeholders for art that failed to load, the overflow strip below the floor,

@@ -230,6 +230,7 @@ about to adopt is a clause nobody had evidence about.
   is what re-establishes that, and it is written down so a later reader can.
 - **The map beside this tileset is FIRST-PARTY and nothing here vouches for it.** A tileset is not
   a map: `resources/floor/default.tmj` — the shipped default, drawn with these tiles by card#9269
-  — was authored in this repository, so it carries a `first-party` manifest row and none of the
-  provenance above. `FLOOR.md` § 10.3 owns what that file is and `tools/design/verify-floor.py`
-  holds its `desks` count against the figure the document declares.
+  and re-authored to the furniture box by card#7341's Appendix B row 14 (slice B) — was authored
+  in this repository, so it carries a `first-party` manifest row and none of the provenance above.
+  `FLOOR.md` § 10.3 owns what that file is and `tools/design/verify-floor.py` holds its `desks`
+  count, its grid and each object's size against the figures the document declares.

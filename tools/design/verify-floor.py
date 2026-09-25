@@ -1648,6 +1648,9 @@ ABSENCE = prose(r"No floor map is vendored in this repository today")
 # and each member is a tree this repository does not author: the object store, an installed
 # dependency tree, and runtime scratch.  A map placed in one of them is outside the claim.
 SWEEP_SKIP = {".git", "node_modules", "vendor", "storage"}
+# What this leg reads out of each present map, by path, for G8e below: its `desks` objects and its
+# grid.  Filled in the COUNTED branch; empty means no map was read, which G8e reports by name.
+g8_maps = {}
 
 m_sp = re.search(prose(r"\*\*`(\.tm[a-z])`, `(\.tm[a-z])`\*\* — Tiled's map"), sec101)
 m_layer = re.search(prose(r"object layer named `([a-z_]+)`"), sec103)
@@ -1703,6 +1706,15 @@ else:
                  float(o.get("width")), float(o.get("height")))
                 for o in hit[0].findall("object")]
 
+    def map_grid(q):
+        """Section 10.3's grid row — `width`, `height`, `tilewidth`, `tileheight` — read from the
+        file in its own spelling.  A missing member raises, which the caller reports."""
+        if q.suffix == ".tmj":
+            doc = json.loads(q.read_text())
+            return {k: int(doc[k]) for k in ("width", "height", "tilewidth", "tileheight")}
+        root = ET.parse(q).getroot()
+        return {k: int(root.get(k)) for k in ("width", "height", "tilewidth", "tileheight")}
+
     if in_tree and absence_declared:
         g8_branch = "CONTRADICTED"
         fail.append(f"G8: section 10.3 declares that no floor map is vendored in this repository, and "
@@ -1739,6 +1751,7 @@ else:
         for q in present:
             try:
                 objs = desk_objects(q)
+                g8_maps[str(q.relative_to(ROOT))] = (objs or [], map_grid(q))
             except Exception as exc:                      # a map this gate cannot read is a RED
                 fail.append(f"G8: `{q.relative_to(ROOT)}` could not be parsed as a Tiled map "
                             f"({type(exc).__name__}: {exc}) — `S` cannot be checked against a file "
@@ -1829,6 +1842,84 @@ if m_sprite:
                 fail.append(f"G8: section 10.3 states the desk sprite is {_dw}x{_dh} px and "
                             f"`{_rel}` is {_aw}x{_ah} px — the document and the file disagree, and "
                             f"section 12's viewport row rests on the document's copy")
+
+# ---- G8e. the FURNITURE BOX at the cap and the shipped default's GRID, against their FILES ---------
+# Appendix B row 14's slice B (card#7341 step 11) gave section 12 two more Measured rows -- the
+# furniture box at the cap, and the shipped default's pixel size -- and each is a number with two
+# homes: a sentence in section 10.3 and a file.  G4 binds section 12's row to section 10.3's sentence;
+# this leg binds the sentence to the bytes, exactly as G8c does for the sprite, so a moved box or a
+# re-authored map reds here rather than surviving in prose.  BOTH POPULATIONS ARE READ OUT OF THE
+# DOCUMENT: the figures come from section 10.3's own sentences, the box's path from the box sentence,
+# and the map from the path G8b resolved.
+#
+# The box is parsed with the ONE shape `App\Floor\FurnitureBox` admits -- one `export const
+# FURNITURE_BOX = Object.freeze({ width: N, height: N });` line, integers, nothing computed -- so this
+# gate cannot read a box PHP would refuse, and the reverse.  And the shipped default's every `desks`
+# object is held AT LEAST the box: section 10.3 makes the object the box its desk is drawn inside, so an
+# object smaller than it is section 9 F21's undersized line on every viewer's floor -- the state the
+# default shipped in until slice B, and the one this leg exists to keep it out of.
+BOX_DECL = prose(r"The furniture box at the cap is (\d+) px wide and (\d+) px tall\*\* \(`([^`]+)`\)")
+GRID_DECL = prose(r"The shipped default's grid is ([\d,]+) px wide and ([\d,]+) px tall\*\*")
+BOX_LINE = re.compile(r"^export const FURNITURE_BOX = Object\.freeze\(\{ width: ([1-9]\d*), height: ([1-9]\d*) \}\);$", re.M)
+m_box = re.search(BOX_DECL, sec103)
+g8e_box = "NOT MEASURED"
+g8e_grid = "NOT MEASURED"
+_box = None
+if not m_box:
+    fail.append("G8 CONTROL: section 10.3 no longer states the furniture box at the cap in the form this "
+                "leg reads (`The furniture box at the cap is N px wide and N px tall** (`path`)`), so "
+                "section 12's Measured row for it is bound to prose nothing re-derives")
+else:
+    _bw, _bh, _brel = int(m_box.group(1)), int(m_box.group(2)), m_box.group(3)
+    _bsrc = ROOT / _brel
+    if not _bsrc.is_file():
+        g8e_box = f"MISSING — `{_brel}`"
+        fail.append(f"G8: section 10.3 states the furniture box at the cap is {_bw}x{_bh} px and names "
+                    f"`{_brel}` as its one source, and no such file exists — a measurement of a file "
+                    f"that is not there, in a third number")
+    else:
+        _found = BOX_LINE.findall(_bsrc.read_text())
+        if len(_found) != 1:
+            g8e_box = f"UNREADABLE — `{_brel}` declares the box {len(_found)} times in the one admitted shape"
+            fail.append(f"G8: `{_brel}` declares the furniture box {len(_found)} times in the one shape "
+                        f"`App\\Floor\\FurnitureBox` admits — `export const FURNITURE_BOX = "
+                        f"Object.freeze({{ width: N, height: N }});`, integers, nothing computed — and "
+                        f"it must declare it exactly once; a box this gate cannot read is one the console "
+                        f"would validate maps against by guessing")
+        else:
+            _box = (int(_found[0][0]), int(_found[0][1]))
+            g8e_box = f"MEASURED from {_brel}: {_box[0]}x{_box[1]} px"
+            if _box != (_bw, _bh):
+                fail.append(f"G8: section 10.3 states the furniture box at the cap is {_bw}x{_bh} px and "
+                            f"`{_brel}` declares {_box[0]}x{_box[1]} px — the document and the file "
+                            f"disagree, and section 12's box row rests on the document's copy")
+m_grid = re.search(GRID_DECL, sec103)
+if not m_grid:
+    fail.append("G8 CONTROL: section 10.3 no longer states the shipped default's grid in pixels in the form "
+                "this leg reads (`The shipped default's grid is N px wide and N px tall**`), so section "
+                "12's Measured row for it is bound to prose nothing re-derives")
+elif not g8_maps:
+    fail.append("G8: section 10.3 states the shipped default's grid in pixels and no map file was read to "
+                "hold it against — the figure is a measurement of a file this run never opened")
+else:
+    _gw, _gh = int(m_grid.group(1).replace(",", "")), int(m_grid.group(2).replace(",", ""))
+    for _mrel, (_mobjs, _mgrid) in g8_maps.items():
+        _pw, _ph = _mgrid["width"] * _mgrid["tilewidth"], _mgrid["height"] * _mgrid["tileheight"]
+        g8e_grid = f"MEASURED from {_mrel}: {_pw}x{_ph} px ({_mgrid['width']}x{_mgrid['height']} tiles of {_mgrid['tilewidth']}x{_mgrid['tileheight']})"
+        if (_pw, _ph) != (_gw, _gh):
+            fail.append(f"G8: section 10.3 states the shipped default's grid is {_gw:,}x{_gh:,} px and "
+                        f"`{_mrel}` is {_pw:,}x{_ph:,} px (`width × tilewidth` by `height × tileheight`) "
+                        f"— the document and the file disagree, and section 12's grid row and its "
+                        f"viewport arithmetic rest on the document's copy")
+        if _box is not None:
+            for _o in _mobjs:
+                if _o[3] < _box[0] or _o[4] < _box[1]:
+                    fail.append(f"G8: `{_mrel}` `desks` object id {_o[0]} is {_o[3]:g}x{_o[4]:g} px, "
+                                f"smaller than the furniture box at the cap ({_box[0]}x{_box[1]}) — "
+                                f"section 10.3 makes each object the box its desk is drawn inside, so an "
+                                f"object smaller than it is F21's undersized line on every viewer's floor, "
+                                f"and the shipped default is the map every unauthored room renders")
+            g8e_grid += f"; {len(_mobjs)} `desks` objects held at least the box"
 
 # ---- G8d. THE READ PATHS section 10.3 names must be EXACTLY the ones D2 § 8.7 declares -------------
 # Under the 2026-09-09 ruling this document was required to say the map had NO read path, and D2 was
@@ -2859,6 +2950,12 @@ print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's
 print(f"    G8 the desk sprite section 12's viewport row waited on: {g8c_branch}. MEASURED means "
       f"the size was read out of the PNG's own IHDR header and held against section 10.3's "
       f"sentence, both the dimensions and the path re-derived from that sentence.")
+print(f"    G8 the furniture box at the cap (Appendix B row 14, slice B): {g8e_box}. MEASURED means the box "
+      f"was read out of its one declaration line — the shape `App\\Floor\\FurnitureBox` admits — and held "
+      f"against section 10.3's sentence, the path re-derived from that sentence.")
+print(f"    G8 the shipped default's grid: {g8e_grid}. MEASURED means `width × tilewidth` by `height × "
+      f"tileheight` was read out of the map and held against section 10.3's sentence, and every `desks` "
+      f"object was held at least the box above.")
 print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase pairs re-derived from "
       f"section 7.6, section 7.1's worked instance held against them, section 5.1's verbatim "
       f"illustration held against the MEMBERS; both predicates fed their own defect on this run and "
