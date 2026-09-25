@@ -99,6 +99,14 @@ because a gate can only be proven on a defect of its own class:
                replayed a fixture and left the harness out of its `Reads:` clause stood below the
                step that builds the harness, and G5 could not see it.  The span is read out of the
                document, so this kind carries nothing it deletes.
+  `overlap` -- move the anchored rect's `x` onto the span of the rect before it (`x + width - 1`
+               of that rect, both read out of the file), which is the class "two map objects the
+               gate holds pairwise disjoint share a pixel".  PR #227 round 2 (card#7341 rows
+               14-16) is why this exists: G8's plant was a `bump` of the first object's width,
+               which reds only while the two objects touch, and the shipped default already
+               carries a gutter between two of its objects -- so a re-authored default with a
+               gutter everywhere would have failed this harness on a correct map.  Moving the
+               neighbour onto the span reds at any gutter, and the plant still stores no figure.
   `instrument`
             -- replace the bold artifact name in the anchored span with the first gate Appendix B's
                Artifact cells name (a bold name whose head noun is `gate` / `gates`), which is the
@@ -553,6 +561,43 @@ PLANTS = [
         "carries a BOLD status marker",
     ),
     (
+        # card#7341's rows 14-16 round (PR #227 round 1, F11), G5's Order-cell leg.  A suffixed row
+        # (`8a`) is one the ordering rule cannot compare, and before this leg the parse skipped it
+        # silently -- its artifacts unregistered, its gates unenforced, the run reporting clean.
+        # The plant suffixes row 14's step.  The substring is the leg's own message: the mutant
+        # also reds the ordinary "gated by no Appendix B row" path for the tests row 14 gates, and
+        # a red from that path alone would not satisfy it.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\n\| )(14)( \| the \*\*room drawing\*\*)",
+        "rename",
+        "Appendix B row 14's Order cell suffixed to a non-integer, which G5 must refuse as a row the "
+        "ordering rule cannot see rather than skip (card#7341 rows 14-16, PR #227 round 1 F11)",
+        "has an Order cell that is not an integer step",
+    ),
+    (
+        # card#7341's rows 14-16 round (PR #227 round 1, F1), G8's disjoint-slots leg.  Section 10.3
+        # makes each `desks` object the furniture box and row 14 draws every desk inside it, so the
+        # operator's no-overlap ruling rests on the map's objects being pairwise disjoint; this leg
+        # holds the shipped default to that.  The plant moves the SECOND object's `x` onto the
+        # first's span -- to `x + width - 1` of the first, both read out of the file -- so the two
+        # share exactly one pixel column, which is the half-open boundary the check states.
+        # ⚠ It is an `overlap` plant and not a `bump` of the first object's width (PR #227 round 2,
+        # N5): a one-pixel widening reds only while the two objects TOUCH, and the shipped default
+        # already carries a gutter between its sixth and seventh objects, so a re-authoring that
+        # parted the first two would have turned that plant into a harness failure on a correct
+        # map.  Moving the neighbour onto the span reds at any gutter.  The anchor pins the second
+        # `x` after the layer's name and not its value, so a re-authored default moves the plant.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"desks\"[\s\S]*?\"x\":\d+[\s\S]*?\"x\":)(\d+)(,)",
+        "overlap",
+        "the shipped default's second `desks` object moved onto the first's span so that the two "
+        "share a pixel column, which G8 must refuse as two slots sharing a pixel (card#7341 rows "
+        "14-16, PR #227 round 1 F1, round 2 N5)",
+        "share a pixel",
+    ),
+    (
         # card#7341 step 3, G13.  § 2.3 row 5 makes a HELD seat the client cannot confirm render the
         # empty chair, and `idle`'s Never cell forbade exactly that in absolute terms.  The drop
         # takes the QUALIFICATION and leaves the explanation that follows it — which is the shape a
@@ -659,6 +704,12 @@ MUTATIONS = {
     "noun": lambda m: (m.group(1) + m.group(2) + ", and keeps a count of "
                        + re.search(r"`[a-z_]+`", m.group(2)).group(0) + m.group(3)),
     "drop": lambda m: m.group(1) + m.group(3),
+    # The previous object's `x` and `width` are the first of each after the layer's name in
+    # group(1); `x + width - 1` is the last pixel column of its half-open span.
+    "overlap": lambda m: (m.group(1)
+                          + str(int(re.search(r'"x":(\d+)', m.group(1)).group(1))
+                                + int(re.search(r'"width":(\d+)', m.group(1)).group(1)) - 1)
+                          + m.group(3)),
     "instrument": lambda m: (m.group(1)
                              + re.sub(r"\*\*[^*]+\*\*", lambda _: "the **" + re.search(
                                  r"^\| \d+ \|[^|\n]*?\*\*([^*\n]*\bgates?)\*\*",

@@ -27,6 +27,54 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **`docs/design/FLOOR.md` Appendix B gains the rows that paint a room and move the camera
+  (rows 14–16), ahead of their build.** Rows 0–13 built every model and no row drew a room or a camera, so the
+  step-8 floor page draws each desk as a line of text, § 9 F14 was unreachable, and the card's own title had
+  no row delivering it. **Row 14, the room drawing**: the scene — a headless model emitting what is drawn
+  where, from step 7's frame and the held map, every desk laid out INSIDE its slot rect, which § 10.3 now
+  defines as the desk's furniture box — everything drawn for a desk at rest except the bubble: stools at § 8's
+  cap and never hidden, the badge cluster at D2's bound with a *+N more* mark, and every string truncated to
+  the box with a visible mark through one truncation primitive, its full value on the list view and in the
+  drill-down — so that the operator's no-overlap ruling holds by construction at the slot function however
+  long a seat's strings run (the shipped default's objects are
+  re-authored to that box as this row's build obligation) — the tileset reader (`.tsx` and `.tsj`, both
+  spellings § 10.1 admits), the painter (the DOM half, one scaled space for tiles, desks, nameplates, bubbles
+  and the thread line, importing the character tree by the asset route's absolute URL), the asset route (the
+  one HTTP surface for `resources/floor/` and `resources/characters/`, mounted at `/art/floor/` and
+  `/art/characters/`, through `FloorAssets`, § 10.1 clause 1's extensions only, behind the floor route's own
+  gate including its second factor, without root), § 9 F21 with its § 5.5 line (the scene names a room's
+  intersecting or undersized desk slots on the floor, for any map the client holds — stored and restored
+  revisions included — while still drawing every desk, which is what stands until § 14 item 28(1)'s console
+  refusal is ruled), and F14's placeholder, with the strip's *some art failed to load* line. **Row 15, the
+  camera**: wheel-zoom to the cursor, drag-pan, fit-floor including the overflow strip, whole-building;
+  navigation that writes no animation-log row and survives every re-render; and the capability floor, below
+  which § 4.5's list view is served — a headless model over every fact the desk model emits, guarded so that
+  every model member is rendered or excluded by name, which `floor/main.js` only paints — so a degraded seat
+  below the floor carries § 7's marks and not its raw badge id alone. **Row 16, the ride's arrival**: the
+  cross-section and the cab are PR #96's (card#7343 part 1), so this row builds only what that PR named as
+  unbuilt — the ride ending at `/floor/{key}`, row 15's camera at building scale and the reduced-motion cut —
+  and the document settles the split: row 16 is card#7343's destination half. New acceptance tests gate them
+  — AT-D3-19 (F14), AT-D3-20 (the no-overlap check the card asks the build to keep: cap-width seats carrying
+  the fixture's bounded strings, truncated with a mark and inside the box, a RED planted at the one
+  truncation primitive, and F21's notice on a stubbed crowded map and a stubbed undersized one) and AT-D3-21
+  (the camera: a floor half with an `fx-degraded` leg read from the list view's model, and a building half;
+  the list view's guard holds one property — every leaf of the desk model's output rendered or excluded by
+  path, every rendered leaf seen off its default on some run — which is why `fx-degraded` gains a
+  `config_invalid` seat and the fixture table declares step 3's `fx-confirm`, whose unconfirmed run AT-D3-1
+  does not replay). Rows 0 and 2 now carry the landed
+  markers they lacked (PR #15, 2026-08-25; PR #157, 2026-09-14). § 4.1, § 4.4, § 4.5, § 9 F14, § 10.3's
+  `desks` row and § 12's viewport row point at the rows; § 14 item 28 records what stays open (the
+  unscheduled vector art; the viewport measurement row 15 owes) and what the operator ruled on 2026-09-25
+  (card#7341 comment 6488): the console refuses intersecting or undersized `desks` objects at a save and at a
+  restore, and re-validates every stored map at each change of § 12's box, listing the failing rooms — all
+  three now row 14's build obligations, with F21's notice as what stands for every revision the refusals
+  never saw. § 14 item 29 records the gap the round found and does not answer: an exit caused by a failed
+  read has no object that ended the hold, so § 6.2 and § 11 owe what its `cause` records (row 15's build). `tools/design/verify-floor.py` G5 now reds
+  on an Appendix B Order cell that is not an integer instead of skipping the row, which is why the rows are
+  numbered rather than suffixed, and G8 holds the shipped default's `desks` objects pairwise disjoint on
+  half-open rects; each leg carries a plant in `verify-design-docs.selftest.py`, G8's moving the second object
+  onto the first's span so that it reds whatever gutter the default carries. § 11's fixture count in words is
+  replaced by the derivation the gate already runs.
 - **card#7341** — **The lobby's wording is ratified.** The discrepancy line spells its count in words up to nine and in digits past it, every *desk* agrees with its number, and the event log's membership lines read *room added to the building: X* and *seat added to the floor: k*; `docs/design/FLOOR.md` § 4.1 and § 5.5 state them as the operator's wording.
 - **card#7341** — **The lobby runs the client protocol (Appendix B step 9).** The lobby page now opens the
   live stream through the same construction the floor page uses (`public/js/wire/live-page.js`, hoisted
