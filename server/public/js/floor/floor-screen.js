@@ -118,6 +118,30 @@ export function resolveRoute(segment, composed) {
         : { floor: null, redirect: holder.floor };
 }
 
+/**
+ * § 11's `cause` for one A16 row (§ 14 item 27).
+ *
+ * ⛔ THE CAUSE IS THE ARRIVAL THAT NOW HOLDS THE DISPLACED SEAT'S FORMER SLOT. A16 is a
+ * displacement, so the seat it names must be the one that did the displacing. Naming some other
+ * arrival would be a wrong attribution, not an approximate one.
+ *
+ * ⚠ A CASCADE IS THE ONE CASE THAT RULE CANNOT ANSWER, AND THE FALLBACK IS A STATED APPROXIMATION.
+ * When the new holder of the former slot is not an arrival (an arrival moved B, and B took C's
+ * slot), C was displaced by a seat-set change with no single arriving key behind it. The cause is
+ * then the arrival that sorts lowest in § 3.2's `order` among this render's arrivals. That is
+ * deterministic, because `order` is a total order over keys that every client computes identically.
+ *
+ * @param {number} formerSlot the slot the displaced incumbent held before this render
+ * @param {Map<number, string>} holder slot → the key that holds it now
+ * @param {list<string>} arrivals this render's arrivals, in § 3.2's `order`; never empty
+ * @returns {string} the arriving key the A16 row names
+ */
+function displacementCause(formerSlot, holder, arrivals) {
+    const taker = holder.get(formerSlot);
+
+    return arrivals.includes(taker) ? taker : arrivals[0];
+}
+
 export class FloorScreen {
     #client;
 
@@ -604,22 +628,22 @@ export class FloorScreen {
                 continue;
             }
 
-            // § 3.2's order over the seats that arrived with a delta this journal carries. § 11
-            // names A16's cause as *the arriving seat's key*; with more than one arrival settling
-            // in one turn it is the one that sorts lowest in that order, so that two browsers
-            // replaying one journal agree — § 14 item 27's ruling, which adopted the rule this
-            // line was first written with, and AT-D3-3's two-arrival GREEN pins it.
+            // The seats that arrived with a delta this journal carries, in § 3.2's order.
             const arrivals = assignment.order.filter((key) => !before.has(key) && arrived.has(key));
 
             if (arrivals.length === 0) {
                 continue;
             }
 
+            // Who holds each slot NOW, so a displaced incumbent's cause can be the seat that took
+            // its former slot.
+            const holder = new Map([...assignment.slots].map(([key, slot]) => [slot, key]));
+
             for (const [key, slot] of assignment.slots) {
                 if (before.has(key) && before.get(key) !== slot) {
                     const [install_id, seat_id] = splitKey(key);
 
-                    this.#set.displaced(install_id, seat_id, arrivals[0], at);
+                    this.#set.displaced(install_id, seat_id, displacementCause(before.get(key), holder, arrivals), at);
                 }
             }
         }

@@ -150,35 +150,83 @@ class IdentityIsStableAcrossARestartTest extends TestCase
      * GREEN — TWO ARRIVALS IN ONE RENDER (§ 14 item 27). `fx-collision`'s `two_arrivals` run inserts
      * § 3.3's colliding `aimla-impl-4` and the free-slotted `aimla-win-1` in one turn, both released
      * by one discovery snapshot. `aimla-pm` is displaced once, so the log carries exactly one A16
-     * row, and § 11 now states its cause for this case: the key of the arrival that sorts LOWEST in
-     * § 3.2's `order`, ascending by `(h, seat_id)`.
+     * row, and § 11 names its cause: the arrival that now holds `aimla-pm`'s former slot.
      *
-     * ⛔ THE EXPECTED CAUSE IS RE-DERIVED FROM § 3.2's PUBLISHED FUNCTION, never transcribed, and the
-     * run is first checked to BE the case the ruling is about: a run whose two seats landed in two
-     * renders would hold two single-arrival turns, where any rule answers the same, and this GREEN
-     * would pass over the case it exists to pin.
+     * ⛔ THE RUN IS FIRST CHECKED TO BE THE CASE THE RULING IS ABOUT. A run whose two seats landed
+     * in two renders would hold two single-arrival turns, where any rule gives the same answer.
      *
-     * ⚠ THE PAIR ALSO SEPARATES § 3.2's ORDER FROM PLAIN KEY ORDER, and that is asserted rather than
-     * assumed: `aimla-win-1` hashes lower and `aimla/aimla-impl-4` is the lower string, so a client
-     * that sorted keys as text would name the other seat and red here.
+     * ⚠ THE PAIR ALSO SEPARATES THE RULE FROM THE ONE IT REPLACED, and that is asserted rather than
+     * assumed. The slot's taker, `aimla-impl-4`, is NOT the arrival that sorts lowest in § 3.2's
+     * `order` (`aimla-win-1` hashes lower). So the old rule, which always named the lowest-order
+     * arrival, names a seat that displaced nobody, and fails here.
      */
-    public function test_green_two_arrivals_in_one_render_record_the_lowest_sorting_arrival_as_a16s_cause(): void
+    public function test_green_two_arrivals_in_one_render_record_the_arrival_that_took_the_slot(): void
     {
         $result = $this->floorRun('two_arrivals');
-        [$lowest, $highest] = $this->twoArrivalsInOneRender($result);
+        $render = $this->displacingRender($result);
 
-        $this->assertNotSame(min($lowest, $highest), $lowest,
-            'the fixture no longer separates § 3.2\'s order from plain key order, so this GREEN would '
-            .'not tell the published rule from a text sort');
+        $this->assertCount(2, $render['arrivals'],
+            'the displacing render did not carry both arrivals, so the case § 14 item 27 rules on never occurred');
+
+        $displaced = self::ROOM.'/'.$this->documentCollision()['displaced'];
+        $taker = $this->takerOf($render, $displaced);
+
+        $this->assertContains($taker, $render['arrivals'],
+            'the displaced seat\'s former slot is not held by an arrival, so this run exercises the cascade clause instead');
+        $this->assertNotSame($render['arrivals'][0], $taker,
+            'the slot\'s taker is also the lowest-order arrival, so this GREEN would not tell the rule from the one it replaced');
 
         $rows = $this->rowsFor($result, 'A16');
 
         $this->assertCount(1, $rows, 'the log does not carry exactly one A16 row for one displacement');
         $this->assertSame($this->documentCollision()['displaced'], $rows[0]['seat_id'],
             'the A16 row names a seat other than the one § 3.3 says the colliding arrival displaces');
-        $this->assertSame($lowest, $rows[0]['cause'],
-            "A16's cause is not the arrival that sorts lowest in § 3.2's order, which is § 11's "
-            .'answer for several arrivals in one render (§ 14 item 27)');
+        $this->assertSame($taker, $rows[0]['cause'],
+            "A16's cause is not the arrival that took the displaced seat's former slot (§ 11, § 14 item 27)");
+    }
+
+    /**
+     * GREEN — A CASCADE (§ 14 item 27's second clause). `fx-collision`'s `cascade` run places
+     * `aimla-impl-5` in a free slot in one render, then delivers `aimla-win-3`, which hashes to the
+     * same slot and sorts lower. `aimla-win-3` takes it, `aimla-impl-5` probes on into `aimla-pm`'s
+     * slot, and `aimla-pm` moves again. So two desks move, and `aimla-pm`'s former slot is held by
+     * `aimla-impl-5`, which is NOT one of this render's arrivals.
+     *
+     * The first displacement names its taker, as in the GREEN above. The cascaded one takes the
+     * stated approximation: the arrival that sorts lowest in § 3.2's `order` among this render's
+     * arrivals. It must never name the non-arrival that took the slot.
+     */
+    public function test_green_a_cascade_names_the_lowest_order_arrival_and_never_a_seat_that_did_not_arrive(): void
+    {
+        $result = $this->floorRun('cascade');
+        $render = $this->displacingRender($result);
+        $rows = $this->rowsFor($result, 'A16');
+
+        $this->assertCount(2, $rows, 'the cascade did not move exactly two desks');
+
+        $cascaded = 0;
+
+        foreach ($rows as $row) {
+            $key = self::ROOM.'/'.$row['seat_id'];
+            $taker = $this->takerOf($render, $key);
+
+            if (in_array($taker, $render['arrivals'], true)) {
+                $this->assertSame($taker, $row['cause'],
+                    "[{$key}] A16's cause is not the arrival that took the seat's former slot");
+
+                continue;
+            }
+
+            $cascaded++;
+
+            $this->assertSame($render['arrivals'][0], $row['cause'],
+                "[{$key}] a cascaded displacement's cause is not the lowest-order arrival of its render");
+            $this->assertNotSame($taker, $row['cause'],
+                "[{$key}] a cascaded displacement names the seat that took the slot, which did not arrive");
+        }
+
+        $this->assertSame(1, $cascaded,
+            'no displaced seat\'s former slot is held by a non-arrival, so the cascade clause never ran');
     }
 
     /**
@@ -261,65 +309,106 @@ class IdentityIsStableAcrossARestartTest extends TestCase
     }
 
     /**
-     * ⛔ THIRD RED — THE HIGHEST-SORTING ARRIVAL RECORDED AS A16's CAUSE. The two-arrival run's A16
-     * row then names the other seat, which is what makes the GREEN above evidence about the rule
-     * rather than about a fixture with one possible answer.
+     * ⛔ THIRD RED — THE OLD RULE: ALWAYS THE LOWEST-ORDER ARRIVAL. In the two-arrival run that names
+     * `aimla-win-1`, which displaced nobody.
      */
-    public function test_red_recording_the_highest_sorting_arrival_names_the_other_seat(): void
+    public function test_red_the_lowest_order_arrival_as_every_cause_names_a_seat_that_displaced_nobody(): void
     {
-        $highestFirst = $this->mutatedModules([self::FLOOR_SCREEN,
-            'this.#set.displaced(install_id, seat_id, arrivals[0], at);',
-            'this.#set.displaced(install_id, seat_id, arrivals[arrivals.length - 1], at);',
+        $oldRule = $this->mutatedModules([self::FLOOR_SCREEN,
+            'displacementCause(before.get(key), holder, arrivals)',
+            'arrivals[0]',
         ]);
 
-        $result = $this->floorRun('two_arrivals', $highestFirst);
-        [$lowest, $highest] = $this->twoArrivalsInOneRender($result);
+        $result = $this->floorRun('two_arrivals', $oldRule);
+        $render = $this->displacingRender($result);
+        $taker = $this->takerOf($render, self::ROOM.'/'.$this->documentCollision()['displaced']);
         $rows = $this->rowsFor($result, 'A16');
 
         $this->assertCount(1, $rows);
-        $this->assertSame($highest, $rows[0]['cause'],
-            'the plant did not take: the highest-sorting arrival was planted and is not the recorded cause');
-        $this->assertNotSame($lowest, $rows[0]['cause'],
-            'the RED did not bite: the plant records the same cause as the published rule');
+        $this->assertSame($render['arrivals'][0], $rows[0]['cause'],
+            'the plant did not take: the lowest-order arrival was planted and is not the recorded cause');
+        $this->assertNotSame($taker, $rows[0]['cause'],
+            'the RED did not bite: the old rule names the same seat as the one that took the slot');
     }
 
     /**
-     * The two keys the `two_arrivals` run adds to the room, in § 3.2's `order` — after asserting
-     * that no frame drew one of them without the other, which is what makes the run two arrivals
-     * in ONE render.
+     * ⛔ FOURTH RED — THE CASCADE ANSWERED WITH THE SLOT'S TAKER, WHATEVER IT IS. In the cascade run
+     * that names `aimla-impl-5` as `aimla-pm`'s cause, a seat that arrived in an earlier render.
+     */
+    public function test_red_a_cascade_answered_by_the_slots_taker_names_a_seat_that_did_not_arrive(): void
+    {
+        $takerAlways = $this->mutatedModules([self::FLOOR_SCREEN,
+            'return arrivals.includes(taker) ? taker : arrivals[0];',
+            'return taker;',
+        ]);
+
+        $result = $this->floorRun('cascade', $takerAlways);
+        $render = $this->displacingRender($result);
+
+        $named = array_map(static fn (array $row): string => $row['cause'], $this->rowsFor($result, 'A16'));
+
+        $this->assertCount(2, $named);
+        $this->assertNotSame([], array_diff($named, $render['arrivals']),
+            'the RED did not bite: with the taker planted as every cause, every cause is still an arrival');
+    }
+
+    /**
+     * The render that moved a desk already on the floor: the room's slots before it and after it,
+     * and its arrivals in § 3.2's `order`.
      *
      * @param  array<string, mixed>  $result
-     * @return array{0: string, 1: string}
+     * @return array{before: array<string, int|null>, after: array<string, int|null>, arrivals: list<string>}
      */
-    private function twoArrivalsInOneRender(array $result): array
+    private function displacingRender(array $result): array
     {
-        $published = $this->documentSlots()['slots'];
-        $arrived = array_values(array_diff(
-            array_keys($this->slotsOf($this->lastFloor($result), self::ROOM)),
-            array_keys($published),
-        ));
-
-        $this->assertCount(2, $arrived, 'the run did not add exactly two seats to the room');
+        $previous = null;
 
         foreach ($result['floor_renders'] as $render) {
-            foreach ($render['frame']['rooms'] ?? [] as $room) {
-                if (($room['install_id'] ?? null) !== self::ROOM) {
-                    continue;
-                }
+            $composed = array_filter(
+                $render['frame']['rooms'] ?? [],
+                static fn (array $room): bool => ($room['install_id'] ?? null) === self::ROOM && array_key_exists('desks', $room),
+            );
 
-                $drawn = array_intersect($arrived, array_column($room['desks'] ?? [], 'key'));
-
-                $this->assertContains(count($drawn), [0, 2],
-                    'a frame drew one of the two arrivals without the other — they landed in two renders, '
-                    .'and the case § 14 item 27 rules on never occurred');
+            if ($composed === []) {
+                continue;
             }
+
+            $slots = $this->slotsOf($render['frame'], self::ROOM);
+
+            if ($previous !== null) {
+                foreach ($previous as $key => $slot) {
+                    if (array_key_exists($key, $slots) && $slots[$key] !== $slot) {
+                        $arrivals = array_values(array_diff(array_keys($slots), array_keys($previous)));
+
+                        // § 3.2: `order` = the room's seats ascending by (h, seat_id).
+                        usort($arrivals, fn (string $a, string $b): int => [$this->fnv1a32($a), explode('/', $a)[1]]
+                            <=> [$this->fnv1a32($b), explode('/', $b)[1]]);
+
+                        return ['before' => $previous, 'after' => $slots, 'arrivals' => $arrivals];
+                    }
+                }
+            }
+
+            $previous = $slots;
         }
 
-        // § 3.2: `order` = the room's seats ascending by (h, seat_id).
-        usort($arrived, fn (string $a, string $b): int => [$this->fnv1a32($a), explode('/', $a)[1]]
-            <=> [$this->fnv1a32($b), explode('/', $b)[1]]);
+        $this->fail('no frame of this run moved a desk already on the floor');
+    }
 
-        return [$arrived[0], $arrived[1]];
+    /**
+     * The key that holds a displaced seat's former slot after the displacing render.
+     *
+     * @param  array{before: array<string, int|null>, after: array<string, int|null>, arrivals: list<string>}  $render
+     */
+    private function takerOf(array $render, string $displaced): string
+    {
+        $this->assertArrayHasKey($displaced, $render['before'], "{$displaced} was not on the floor before the render");
+
+        $taker = array_search($render['before'][$displaced], $render['after'], true);
+
+        $this->assertIsString($taker, "nobody holds {$displaced}'s former slot after the render");
+
+        return $taker;
     }
 
     /** § 3.2's published hash, for the one expectation this file computes rather than reads. */

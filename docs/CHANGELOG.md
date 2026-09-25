@@ -41,12 +41,15 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   an optional retention bound from the caller that constructs it, the floor page passes § 12's 2,000
   rows, and the harness and every acceptance test pass none, so AT-D3-1 and AT-D3-2 still read a
   complete log. `DiscrepancyBudget#spent` is recorded as the audited sibling, accepted unbounded because
-  it grows with membership churn rather than with time. (4) **A16's cause for several arrivals in one
-  render** (§ 14 item 27) is the arrival that sorts lowest in § 3.2's `order`, the rule step 7 built; § 11
-  states it, and AT-D3-3 gains a two-arrival GREEN and a Third RED over a new `fx-collision` run,
-  `two_arrivals`, in `IdentityIsStableAcrossARestartTest`. The code comments in `wire/fleet-client.js`
-  and `floor/floor-screen.js` that said the document published no answer for (2) and (4) now point at
-  the rulings. `tools/design/verify-floor.py` and its selftest are green.
+  it grows with membership churn rather than with time. (4) **A16's animation-log cause now names the seat
+  that actually displaced the moved desk** (§ 14 item 27): the arriving seat that holds the displaced
+  seat's former slot. In a cascade, where that slot's new holder did not arrive, the cause is the
+  render's lowest-order arrival in § 3.2's `order`, a stated approximation. `floor/floor-screen.js`
+  implements this and replaces step 7's rule, which named the lowest-order arrival for every displaced
+  desk and so could name a seat that displaced nobody. § 11 states the rule. AT-D3-3 gains a GREEN for
+  each clause and a Third and Fourth RED in `IdentityIsStableAcrossARestartTest`, over two new
+  `fx-collision` runs, `two_arrivals` and `cascade`. The comment in `wire/fleet-client.js` that said
+  the document published no cap for (2) now points at the ruling. `tools/design/verify-floor.py` and its selftest are green.
 
 - **card#10368** — **the deploy-gate-inputs selftest no longer fails a pull request because git packed
   a fixture object.** Its failed-read case makes the loose object behind the fixture's

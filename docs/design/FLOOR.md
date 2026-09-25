@@ -4079,7 +4079,7 @@ one** `entered` row and **at most one** `left` row, and a `left` row's `episode_
 | `episode_id` | a fresh id, unique to this firing — an edge animation is an instant, so its episode is one row long and no `left` row ever carries this id | a fresh id, minted on entry | **the entering row's id**, repeated — this is the only field the two rows of one episode share by construction, and it is what makes *for how long* recoverable |
 | `class` | `edge` | `held` | `held` |
 | `phase` | **`fired`**, always — an edge animation is an instant, so it has exactly one row and no exit | `entered` | `left` |
-| `cause` | the id of the **wire message that caused it** — a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of [A16](#62-the-animation-table--the-closed-set), recorded as the arriving seat's key — and where **more than one** seat arrives in one render, as the key of the arrival that sorts **lowest in [§ 3.2](#32-the-desk-slot-function)'s `order`**, ascending by `(h, seat_id)` ([§ 14](#14-open-questions-for-the-review-loop) item 27). That key names the seat-set change, and in such a render it need not be the arrival that took the displaced incumbent's slot. **An edge animation started with no causing message writes `null`**, which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail | the **`state_version` of the seat object the render is held by** — the object the client holds, whether it arrived by delta, snapshot, resync or per-seat fetch. **A held render entered against no held object writes `null`**, which is the same defect one class over: a render with nothing delivered behind it | the **`state_version` of the object that ENDED the hold** — the first object the client applied in which that row's hold condition is false. Never the entering version: two rows identical in every field are two rows from which *which states, and for how long* cannot be recovered, which is the whole reason the exit row is written |
+| `cause` | the id of the **wire message that caused it** — a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of [A16](#62-the-animation-table--the-closed-set), recorded as the key of **the arriving seat that now holds the displaced incumbent's former slot** — the seat that did the displacing, whichever of several arrivals in one render it is. ⚠ **In a cascade that seat did not arrive** (an arrival moved B, and B took C's slot), and C's row then records the arrival that sorts **lowest in [§ 3.2](#32-the-desk-slot-function)'s `order`**, ascending by `(h, seat_id)`, among that render's arrivals. That second clause is a **stated approximation**, not an attribution: no single arriving key displaced C. It is deterministic because `order` is a total order every client computes identically ([§ 14](#14-open-questions-for-the-review-loop) item 27). **An edge animation started with no causing message writes `null`**, which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail | the **`state_version` of the seat object the render is held by** — the object the client holds, whether it arrived by delta, snapshot, resync or per-seat fetch. **A held render entered against no held object writes `null`**, which is the same defect one class over: a render with nothing delivered behind it | the **`state_version` of the object that ENDED the hold** — the first object the client applied in which that row's hold condition is false. Never the entering version: two rows identical in every field are two rows from which *which states, and for how long* cannot be recovered, which is the whole reason the exit row is written |
 | `motion` | `true`, or `false` when [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s reduced-motion form is what was drawn | `true` while the loop runs; `false` when the held render is drawn static — the **two** states with no motion by design (`stalled` and `unknown` — `idle` was the third until [A6](#62-the-animation-table--the-closed-set) gained its sleeping loop), a loop stopped by a currency treatment ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)), or reduced motion | **`false`**, always — nothing is drawn by a render that has been left, so an exit row is never evidence that motion ran |
 | `at` | the **corrected server-clock instant** the row was written ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset, applied) — the client's own record of when it drew this, labelled as the client's own and rendered on no screen | as `edge` | as `edge` |
 
@@ -4171,7 +4171,7 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 | `fx-clear-trace` | `fx-snapshot-4`, then the **ten** deltas of [D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end)'s trace applied to `aimla-pm`, in order, in **one** hook order ([§ 14](#14-open-questions-for-the-review-loop) item 21 part 4: D2 § 10 states the wire is identical either way, so this document does not ship a second, byte-identical replay). `state_version` continues from `fx-snapshot-4`'s own **48219**, running **48220**…**48229** across the ten deltas (E0…E9); `at` advances **1 s** per delta from `fx-snapshot-4`'s own `server_time`, `E0` at `…:15.400Z` through `E9` at `…:24.400Z` ([item 21](#14-open-questions-for-the-review-loop) parts 1 and 3). **`E0` is authored to carry three facts at once, named so the fixture is buildable without guessing** ([item 21](#14-open-questions-for-the-review-loop) part 2): `aimla-pm`'s still-open `Bash: composer test` call closes (`completed`), its `coder` subagent stops (`completed`), and the trace's own `turn.start` fires (`T := true`) — `open_calls: 0`, `open_turn: true`, `action: null`, `subagents: []`, `subagents_open: 0` immediately after. E1…E9 are otherwise D2 § 10's own nine remaining rows, unamended, continuing from that state |
 | `fx-degraded` | one seat per non-`live` render a snapshot can carry: `catching_up` (with `oldest_unsent_age_s` = 4,000), `stale`, `offline`, `disabled`, plus a `live` `working` seat badged `fold_lag` with `derivation.fold_lag_ms` = 117,000 — which [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s duration format renders *1m 57s*, the lag line [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) asserts — and a `live` `idle` seat, the sleeper AT-D3-5's sleeper assertion compares the dark desks against in the same run. ⛔ **`retired` is deliberately not among them (card#9078)** — a retired seat leaves D2's read surfaces at `retired_at` ([§ 3.5](#35-retirement-and-the-only-removal)), so a snapshot fixture carrying one would be a fixture of a response the server cannot produce; the state is exercised by [AT-D3-16](#at-d3-16-retirement-removes-the-desk-and-the-removal-is-explained), which delivers the announcement instead. The `stale` and `offline` seats carry `delivery.no_data_since` **equal to** their `delivery.last_receipt_at`, which is what [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) declares on those two states and what makes the desk's timestamp and its ticking age one instant ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s `dark-only`, [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded)), and an `activity_state` of `idle` underneath, which is what AT-D3-5's RED switches the desk onto. A fixture sets values; it renders none, so this row is **`named-not-rendered`** |
 | `fx-interns` | one seat whose `subagents` goes 0 → 8 → 8-with-`subagents_open`-9, including one element with `title: null` |
-| `fx-collision` | `fx-snapshot-4`, then a delta for `aimla-impl-4` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)); and a run in which deltas for `aimla-impl-4` and `aimla-win-1` arrive while a discovery snapshot is in flight, their insert fetches fail, and the discovery's release applies both in one render ([§ 14](#14-open-questions-for-the-review-loop) item 27) |
+| `fx-collision` | `fx-snapshot-4`, then a delta for `aimla-impl-4` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)); a run in which deltas for `aimla-impl-4` and `aimla-win-1` arrive while a discovery snapshot is in flight, their insert fetches fail, and the discovery's release applies both in one render; and a cascade run, `aimla-impl-5` then `aimla-win-3`, each inserted in its own render ([§ 14](#14-open-questions-for-the-review-loop) item 27) |
 | `fx-membership` | **three legs.** (a) deltas for a seat absent from `fx-snapshot-4`, **each patching only `context`** — a patch that carried `render_state` would hand the patch-into-an-empty-object client the member [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched)'s RED reads as missing, and that RED could not fail; (b) a later snapshot missing a seat that was present; (c) **the mid-session install leg** — a `feed.heartbeat` whose `fleet.seats_total` is 6 against the four seats the client holds, then a snapshot carrying a **second install** `aimla-win` with two `live` seats (`aimla-win/win-1`, `aimla-win/win-2`), and a `seat.delta` for `aimla-win/win-1` emitted on the stream **during** that snapshot's round trip, while the client holds no `aimla-win` seat, at `state_version` one above the version both that snapshot and the seat's own fetch return |
 | `fx-gap` | `fx-snapshot-4`, then three deltas for one seat with the middle one dropped. **The dropped delta patches only a member neither delivered delta patches** (`context`, where the two delivered ones patch the call members): a dropped patch that a later delivered one overwrites leaves the apply-unconditionally client holding the served object, and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat)'s RED could not fail |
 | `fx-refusals` | the responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, **a stream whose FIRST message is a `fleet.health` with `db: "down"` and whose LAST is `feed.close{reason:"unavailable"}`, the stream then ENDING** ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)'s stream-connect posture: the connection is accepted to say why, and ends in the same breath), and **a `fleet.reload`, after which the stream also ends** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) declares that message terminal and pairs it with its own `feed.close` — in **two forms**, by operator ruling A4: carrying a `feed_version` the client does not know, and carrying its own, the second followed by re-opens the stub refuses `503` for the spans [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office) names before it accepts one; and **a stream that ends with no `feed.close` at all**, which is the deploy's drain ending a stream that missed the message ([D2 § 2.1](FLEET-STATE.md#21-processes)'s feed-reload row). ⛔ A fixture that held the `db: "down"` stream or the `fleet.reload` stream OPEN would be the posture card#9287's ruling withdrew, and [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office)'s GREEN would certify it — the fixture is where that certification starts, so the end is written here rather than left to the test |
@@ -4338,17 +4338,26 @@ observable before both exist, so the test is **re-gated** rather than split furt
   slot 9 and **no desk moves at all**; the log carries no A16 row.
 - **GREEN — two arrivals in one render:** replay `fx-collision`'s run that inserts `aimla-impl-4` and
   `aimla-win-1` together, both released by one discovery snapshot → `aimla-pm` moves to slot 1 and the
-  log carries exactly one A16 row, whose cause is the key of whichever of the two sorts lower in
-  [§ 3.2](#32-the-desk-slot-function)'s `order` — re-derived from the published function, never
-  transcribed ([§ 14](#14-open-questions-for-the-review-loop) item 27).
+  log carries exactly one A16 row. Its cause is `aimla-impl-4`, the arrival that now holds `aimla-pm`'s
+  former slot, and never `aimla-win-1`, which sorts lower in [§ 3.2](#32-the-desk-slot-function)'s
+  `order` and displaced nobody. The test re-derives both facts from the frames and the published
+  function rather than transcribing them ([§ 14](#14-open-questions-for-the-review-loop) item 27).
+- **GREEN — a cascade:** replay `fx-collision`'s run that places `aimla-impl-5` (h mod 12 = 11) in one
+  render and then delivers `aimla-win-3`, which hashes to the same slot and sorts lower →
+  `aimla-win-3` takes slot 11, `aimla-impl-5` probes on into `aimla-pm`'s slot, and `aimla-pm` moves
+  again. The log carries two A16 rows. `aimla-impl-5`'s cause is `aimla-win-3`, the arrival holding its
+  former slot. `aimla-pm`'s former slot is held by `aimla-impl-5`, which did not arrive in that render,
+  so its cause is the render's lowest-order arrival and never `aimla-impl-5`.
 - **RED:** key the desk on `session.session_id` → replay a `/clear` on any seat (`fx-clear-trace`'s E9
   mints a new session id) and the desk moves, taking its character with it, because the seat restarted
   its session. Watch it once: it is the identity defect D1 § 3.4's 30-day incident is the general form
   of.
 - **Second RED:** assign slots by sorted `seat_id` position → deliver `aimla-alpha` and every desk on
   the floor shifts by one.
-- **Third RED:** record the arrival that sorts **highest** as A16's cause → the two-arrival run's A16
-  row names the other seat.
+- **Third RED:** record the lowest-order arrival as every A16 cause — the rule this one replaced →
+  the two-arrival run's A16 row names `aimla-win-1`, a seat that displaced nobody.
+- **Fourth RED:** record the holder of the former slot as the cause whether or not it arrived → the
+  cascade's `aimla-pm` row names `aimla-impl-5`, a seat that arrived in an earlier render.
 
 ### AT-D3-4 the subagent cap boundary
 
@@ -5997,21 +6006,37 @@ reason to leave two readings live.
     **Reopens:** a reader of a bounded log that needs rows older than its window — the drill-down at
     [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 10 is the first — which
     re-derives § 12's figure; or a second message that writes a row on a fixed cadence.
-27. **✅ CLOSED — when more than one seat arrives in one render,
-    [A16](#62-the-animation-table--the-closed-set)'s cause is the key of the arrival that sorts lowest
-    in [§ 3.2](#32-the-desk-slot-function)'s `order`.** Doc-owner ruling, card#7341 step 8, adopting
-    the rule step 7 built and labelled as chosen rather than read off this document
-    (`server/public/js/floor/floor-screen.js`'s displacement pass). [§ 11](#11-acceptance-tests)
-    named A16's cause as *the arriving seat's key*, singular, and stated nothing for several arrivals
-    settling in one render. **Why this rule:** it is deterministic across browsers and replays, because
-    [§ 3.2](#32-the-desk-slot-function)'s `order` — ascending by `(h, seat_id)` — is a total order over
-    keys that every client computes identically; and it affects only the log's `cause` attribution,
-    never a desk position, which is [§ 3.2](#32-the-desk-slot-function)'s alone. ⚠ **Stated so it is
-    not read as more:** the key names the seat-set change, and in a render with several arrivals it
-    need not be the arrival that took the displaced incumbent's slot.
-    [§ 11](#11-acceptance-tests)'s `cause` cell states the rule, and
-    [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) pins it with a two-arrival GREEN over
-    `fx-collision` and a Third RED that records the highest-sorting arrival instead.
+27. **✅ CLOSED — [A16](#62-the-animation-table--the-closed-set)'s cause is the arriving seat that now
+    holds the displaced incumbent's former slot; in a cascade, where that seat did not arrive, it is the
+    arrival that sorts lowest in [§ 3.2](#32-the-desk-slot-function)'s `order`.** Doc-owner ruling,
+    card#7341 step 8. [§ 11](#11-acceptance-tests) named A16's cause as *the arriving seat's key*,
+    singular, and stated nothing for several arrivals settling in one render. Step 7 recorded the
+    lowest-order arrival for every displaced incumbent (`server/public/js/floor/floor-screen.js`), and
+    this item first adopted that. **It was amended in the same change, and the reason is the rule's
+    own column:** A16 is a displacement, so a `cause` naming an arrival that did not take the slot is a
+    wrong attribution, and the log's `cause` column exists to attribute. In `fx-collision`'s two-arrival
+    run the old rule named `aimla-win-1`, a seat that displaced nobody. A wrong-but-specific answer is
+    worse than an honest general one, and "it only affects attribution" does not excuse it.
+
+    **The rule.** The cause is the key of the arriving seat that now holds the displaced incumbent's
+    former slot. That seat did the displacing, whichever of several arrivals it is.
+
+    ⚠ **The cascade clause is a stated approximation.** When an arrival moves B and B takes C's slot, the
+    holder of C's former slot is B, which did not arrive, so no single arriving key displaced C. C's row
+    then records the arrival that sorts lowest in [§ 3.2](#32-the-desk-slot-function)'s `order` —
+    ascending by `(h, seat_id)` — among that render's arrivals. It names *an* arrival of the seat-set
+    change that caused the move, and it never names B. It is deterministic across browsers and replays
+    because `order` is a total order over keys that every client computes identically. Either way it
+    changes the log's `cause` only, never a desk position, which is [§ 3.2](#32-the-desk-slot-function)'s
+    alone.
+
+    **Gated both ways.** [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) has a GREEN for each
+    clause over two `fx-collision` runs: `two_arrivals`, where the taker is not the lowest-order arrival,
+    and `cascade`, where `aimla-pm`'s former slot is held by a seat that arrived a render earlier. Each
+    has its own RED: the Third plants the old rule, the Fourth names the slot's holder even when it did
+    not arrive. ⚠ **What the cascade run does not separate:** it has one arrival, so the approximation's
+    *lowest-order* choice among several arrivals is exercised only as "the one arrival". A cascade with
+    two arrivals is buildable the same way and was not built.
     **Reopens:** A16's departure cause, which [§ 3.5](#35-retirement-and-the-only-removal) says a
     retirement can have and which has no arriving key at all — owed by the step that builds the removal.
 
