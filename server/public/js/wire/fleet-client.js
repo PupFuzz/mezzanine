@@ -148,14 +148,15 @@ export class FleetClient {
      * until the next post on that thread" (§ 5.7). An empty coordination layer is therefore never
      * evidence that the fleet is not talking, and nothing may render it as *quiet*.
      *
-     * ⛔ NO DEDUPLICATION AND NO CAP HERE, both deliberate. Identity is `post_ref` / `thread_ref`
-     * and what a consumer may do with a repeat is D2's own rule, which `coordModel()` already
-     * implements over a list — a second implementation here would be two homes for one rule (the
-     * defect card#7341 step 6 removed one class up). And § 5.7 publishes no cap for this
-     * population as § 5.5 publishes 200 for the record, so a number invented here would be a bound
-     * with no derivation behind it; what bounds it in practice is that these messages are a
-     * human's posts. ⚠ Named rather than left to be found: a page left open for a very long time
-     * on a very busy thread holds every post it was sent.
+     * ⛔ NO DEDUPLICATION HERE, deliberately. Identity is `post_ref` / `thread_ref` and what a
+     * consumer may do with a repeat is D2's own rule, which `coordModel()` already implements over
+     * a list — a second implementation here would be two homes for one rule (the defect card#7341
+     * step 6 removed one class up).
+     *
+     * ⚠ NO CAP YET, AND ONE IS NOW PUBLISHED. § 5.7 bounds this population, evicting whole threads
+     * least recently received first (§ 12's *Held coordination envelopes* row, § 14 item 25), and
+     * Appendix B row 8 — the step that first leaves a page open — is where it is built. Until then
+     * a client left open on a busy thread holds every post it was sent.
      */
     #coord = [];
 
