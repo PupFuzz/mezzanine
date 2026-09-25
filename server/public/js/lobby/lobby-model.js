@@ -316,7 +316,7 @@ function desks(n, spelled = String(n)) {
  * operator could not parse — and neither claims a refresh.
  *
  * The count agreement is ratified too (§ 4.1; card#7341, 2026-09-25): the ending spells its count
- * in words to NINE and in digits past it (*12 desks could not be read*), and every *desks* agrees
+ * in words to NINE and in digits past it (*11 desks could not be read*), and every *desks* agrees
  * with the number it follows (*showing 0 of 1 desk*, *showing 1 desk — the building lists 0*).
  *
  * `null` when they agree — the intact fixture's discriminating control: no notice. The condition is

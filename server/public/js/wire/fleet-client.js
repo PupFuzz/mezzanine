@@ -1675,9 +1675,9 @@ export class FleetClient {
     /**
      * § 5.5's record: newest first, capped, text only.
      *
-     * ⚠ NO WORDING IS RATIFIED. § 5.5 states what a line NAMES and publishes no string, so these
-     * are written from the facts the section names and nothing else; the tests assert content and
-     * identity, never a pinned sentence.
+     * ⚠ Two wordings are ratified — the membership lines `#replaceIfHigher` writes (§ 5.5; card#7341,
+     * 2026-09-25) — and their tests pin them. Every other line is written from the facts § 5.5 names
+     * and nothing else, and its tests assert content and identity, never a pinned sentence.
      */
     #line(text) {
         this.#log.unshift(`${this.#clock.now()} ${text}`);
