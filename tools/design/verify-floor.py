@@ -31,8 +31,10 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                member D2 does not declare
   G8  the desk-slot worked example              FNV-1a-32 re-computed for every published key;
                                                `S` against the SHIPPED DEFAULT map file -- present,
-                                               its `desks` objects are counted; absent, section
-                                               10.3 must SAY so and no map may exist in the tree;
+                                               its `desks` objects are counted and held pairwise
+                                               disjoint on half-open rects (each is the furniture
+                                               box its desk is drawn inside, section 10.3); absent,
+                                               section 10.3 must SAY so and no map may exist in the tree;
                                                the desk sprite's size against its PNG; and the
                                                READ PATHS section 10.3 says a room's map is fetched
                                                from must be exactly the ones D2 section 8.7 declares
@@ -1681,20 +1683,25 @@ else:
     )
     present = [q for q in candidates if q.is_file()]
 
-    def desks_in(q):
-        """Objects on the named object layer, read from the file in its own spelling."""
+    def desk_objects(q):
+        """The named object layer's objects as (id, x, y, w, h), read from the file in its own
+        spelling; None when the layer is not exactly one.  An object missing a rect member raises,
+        which the caller reports as a map this gate cannot read."""
         if q.suffix == ".tmj":
             doc = json.loads(q.read_text())
             hit = [l for l in doc.get("layers", [])
                    if l.get("name") == layer_name and l.get("type") == "objectgroup"]
             if len(hit) != 1:
                 return None
-            return len(hit[0].get("objects", []))
+            return [(o.get("id"), float(o["x"]), float(o["y"]), float(o["width"]), float(o["height"]))
+                    for o in hit[0].get("objects", [])]
         root = ET.parse(q).getroot()
         hit = [g for g in root.iter("objectgroup") if g.get("name") == layer_name]
         if len(hit) != 1:
             return None
-        return len(hit[0].findall("object"))
+        return [(o.get("id"), float(o.get("x")), float(o.get("y")),
+                 float(o.get("width")), float(o.get("height")))
+                for o in hit[0].findall("object")]
 
     if in_tree and absence_declared:
         g8_branch = "CONTRADICTED"
@@ -1731,12 +1738,32 @@ else:
                         f"one-default rule (D2 § 13 row 44) exists to refuse")
         for q in present:
             try:
-                n_desks = desks_in(q)
+                objs = desk_objects(q)
             except Exception as exc:                      # a map this gate cannot read is a RED
                 fail.append(f"G8: `{q.relative_to(ROOT)}` could not be parsed as a Tiled map "
                             f"({type(exc).__name__}: {exc}) — `S` cannot be checked against a file "
                             f"nothing can read, and a skip here is how the count went unchecked before")
                 continue
+            n_desks = None if objs is None else len(objs)
+            # G8, THE SLOTS ARE PAIRWISE DISJOINT (card#7341's rows 14-16 round, PR #227 F1).  Section
+            # 10.3 makes each `desks` object the furniture box its desk is drawn INSIDE, so the
+            # operator's no-overlap ruling holds by construction only while the map's objects are
+            # pairwise disjoint on HALF-OPEN rects -- `[x, x+w) × [y, y+h)`, section 4.6's footprint
+            # rule, so a shared edge is not a shared pixel.  The console refuses nothing for an
+            # authored map yet (section 14 item 28); the shipped default is held here.
+            for i, a in enumerate(objs or []):
+                for b in (objs or [])[i + 1:]:
+                    if (a[1] < b[1] + b[3] and b[1] < a[1] + a[3]
+                            and a[2] < b[2] + b[4] and b[2] < a[2] + a[4]):
+                        fail.append(f"G8: `{q.relative_to(ROOT)}` `{layer_name}` objects id {a[0]} and "
+                                    f"id {b[0]} share a pixel — section 10.3 makes each object the "
+                                    f"furniture box its desk is drawn inside, so two objects that "
+                                    f"intersect on half-open rects are two desks drawn over each "
+                                    f"other, and the no-overlap ruling AT-D3-20 holds rests on the "
+                                    f"shipped default being pairwise disjoint")
+            if objs:
+                g8_branch += (f"; {len(objs)} `{layer_name}` objects held pairwise disjoint on "
+                              f"half-open rects")
             if n_desks is None:
                 fail.append(f"G8: `{q.relative_to(ROOT)}` declares no single object layer named "
                             f"`{layer_name}`, which section 10.3 requires and section 3.2's slot "

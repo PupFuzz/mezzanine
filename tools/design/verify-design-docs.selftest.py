@@ -553,6 +553,37 @@ PLANTS = [
         "carries a BOLD status marker",
     ),
     (
+        # card#7341's rows 14-16 round (PR #227 round 1, F11), G5's Order-cell leg.  A suffixed row
+        # (`8a`) is one the ordering rule cannot compare, and before this leg the parse skipped it
+        # silently -- its artifacts unregistered, its gates unenforced, the run reporting clean.
+        # The plant suffixes row 14's step.  The substring is the leg's own message: the mutant
+        # also reds the ordinary "gated by no Appendix B row" path for the tests row 14 gates, and
+        # a red from that path alone would not satisfy it.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\n\| )(14)( \| the \*\*room drawing\*\*)",
+        "rename",
+        "Appendix B row 14's Order cell suffixed to a non-integer, which G5 must refuse as a row the "
+        "ordering rule cannot see rather than skip (card#7341 rows 14-16, PR #227 round 1 F11)",
+        "has an Order cell that is not an integer step",
+    ),
+    (
+        # card#7341's rows 14-16 round (PR #227 round 1, F1), G8's disjoint-slots leg.  Section 10.3
+        # makes each `desks` object the furniture box and row 14 draws every desk inside it, so the
+        # operator's no-overlap ruling rests on the map's objects being pairwise disjoint; this leg
+        # holds the shipped default to that.  The plant widens the first object by one pixel into
+        # its neighbour: a shared edge becomes a shared pixel, which is exactly the half-open
+        # boundary the check states.  The anchor pins the first `width` after the layer's name and
+        # not its value, so a re-authored default moves the plant with it.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"desks\"[\s\S]*?\"width\":)(\d+)(,)",
+        "bump",
+        "the shipped default's first `desks` object widened by one pixel into its neighbour, which "
+        "G8 must refuse as two slots sharing a pixel (card#7341 rows 14-16, PR #227 round 1 F1)",
+        "share a pixel",
+    ),
+    (
         # card#7341 step 3, G13.  § 2.3 row 5 makes a HELD seat the client cannot confirm render the
         # empty chair, and `idle`'s Never cell forbade exactly that in absolute terms.  The drop
         # takes the QUALIFICATION and leaves the explanation that follows it — which is the shape a
