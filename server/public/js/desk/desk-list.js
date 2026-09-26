@@ -4,23 +4,26 @@
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THIS IS A HEADLESS MODEL AND NOT A PAGE FUNCTION. Row 8's text render was `floor/main.js`'s
- * `deskLine()`, which carried six members and dropped the rest — a `fold_lag` seat on it was marked
- * only by its raw badge id, § 7.4's lag line and § 7.3's note missing — and it lived in a DOM entry
- * no harness can load. It is deleted; the page paints the lines this returns and composes none.
+ * `deskLine()`, which carried the nameplate, the glyph, the label line, the quiet age and the badge and
+ * unrecognised lists and dropped the rest — a `fold_lag` seat on it was marked only by its raw badge id,
+ * § 7.4's lag line and § 7.3's note missing — and it lived in a DOM entry no harness can load. It is
+ * deleted; the page paints the lines this returns and composes none.
  *
  * ⛔ EVERY STRING IS THE MODEL's, AS THE MODEL DECIDED IT. What this file decides is the text form of
  * the members that are NOT already a string — the gauge, the side table and its *+N more*, the
  * bubble, the open-call count, the unconfirmed flag and the subagent's-call marker — and it reads out
  * the strings the model carries inside an object (the lag line, the monitor's text, the action's start
- * and elapsed). The two worded numbers are the scene's own wordings (`floor/desk-layout.js`'s
- * `OPEN_CALLS` and `MORE`), imported rather than re-worded: one fact, one wording on both renders.
+ * and elapsed). The worded numbers — the open-call count and *+N more* — are the scene's own wordings
+ * (`floor/desk-layout.js`'s `OPEN_CALLS` and `MORE`), imported rather than re-worded: one fact, one
+ * wording on both renders.
  *
  * ⛔ THE POPULATION IS THE MODEL's OUTPUT, NOT A LIST WRITTEN HERE. `NOT_LISTED` names, BY PATH, the
  * leaves of `deskModel()`'s output this row does not print, each with its reason; every other leaf is
  * on the row. `Tests\Feature\Floor\TheListViewRendersEveryDeskMemberTest` derives the leaves from the
- * model's real output over § 11's fixtures and holds each one printed — by perturbing it and watching
- * the row change — or named here, and seen at a non-default value on at least one run. So a member
- * added to the desk model lands on this row or reds the build.
+ * model's real output over every run of every checked-in fixture file that draws a desk, and holds
+ * each one printed — by perturbing it and watching the row change — or named here, and seen at a
+ * non-default value on at least one run. So a member added to the desk model lands on this row or reds
+ * the build.
  *
  * Path notation: members joined by `.`, and an array's elements as `[]` (`side_table.stools[].label`).
  */

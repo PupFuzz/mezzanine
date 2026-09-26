@@ -324,11 +324,11 @@
             "subagents": [],
             "subagents_open": 0,
             "task": {
-              "title": "ingest endpoint",
-              "source": "board_card",
-              "ref": "card#7338",
-              "as_of": "2026-08-23T14:05:00.000Z",
-              "degraded": false
+              "title": "Edit: server/app/Feed/SeatDelta.php",
+              "source": "telemetry",
+              "ref": null,
+              "as_of": "2026-08-23T14:23:02.530Z",
+              "degraded": true
             },
             "context": {
               "used_pct": 73.2,
@@ -397,11 +397,11 @@
             "subagents": [],
             "subagents_open": 0,
             "task": {
-              "title": "run the ingest suite",
-              "source": "telemetry",
-              "ref": null,
+              "title": "ingest endpoint",
+              "source": "board_card",
+              "ref": "card#7338",
               "as_of": "2026-08-23T14:05:00.000Z",
-              "degraded": true
+              "degraded": false
             },
             "context": {
               "used_pct": 73.2,
@@ -458,7 +458,7 @@
   },
   "runs": {
     "degraded": {
-      "note": "FLOOR \u00a7 11's fx-degraded: one seat per non-live render a snapshot can carry \u2014 catching_up (oldest_unsent_age_s 4,000), stale (silent 11m), offline (silent 2h 06m), disabled \u2014 plus a live working seat badged fold_lag with derivation.fold_lag_ms 117,000 (1m 57s), and the live idle seat AT-D3-5's sleeper assertion compares the dark desks against in the same run. That idle seat's task is the tier-3 answer after a tier-1 title was dropped past its bound (task.source telemetry, task.degraded true), so its bubble carries T19's degraded note \u2014 the desk model's bubble.degraded_note, which Appendix B row 15's list-view guard must see at a non-default value on some run. The stale and offline seats carry delivery.no_data_since equal to delivery.last_receipt_at, and an idle activity_state underneath, which is what AT-D3-5's RED switches on. The run lasts 60 s so every dark age visibly advances and the lag number visibly does not; the feed.heartbeat at 30 s carries a newer server_time than the snapshot that delivered the derivation block, so a lag line stamped with the newest server_time the client saw, rather than the one that delivered the number, moves.",
+      "note": "FLOOR \u00a7 11's fx-degraded: one seat per non-live render a snapshot can carry \u2014 catching_up (oldest_unsent_age_s 4,000), stale (silent 11m), offline (silent 2h 06m), disabled \u2014 plus a live working seat badged fold_lag with derivation.fold_lag_ms 117,000 (1m 57s), whose task is the tier-3 answer after a tier-1 title was dropped past its bound (task.source telemetry, task.degraded true; the title is its open call's descriptor and as_of that call's server-clock receipt, action.started_received_at, as StateRecompute::taskTier3() stamps it), so its bubble carries T19's degraded note \u2014 the desk model's bubble.degraded_note, which Appendix B row 15's list-view guard must see at a non-default value on some run \u2014 and the live idle seat AT-D3-5's sleeper assertion compares the dark desks against in the same run. The stale and offline seats carry delivery.no_data_since equal to delivery.last_receipt_at, and an idle activity_state underneath, which is what AT-D3-5's RED switches on. The run lasts 60 s so every dark age visibly advances and the lag number visibly does not; the feed.heartbeat at 30 s carries a newer server_time than the snapshot that delivered the derivation block, so a lag line stamped with the newest server_time the client saw, rather than the one that delivered the number, moves.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -788,11 +788,11 @@
                       "subagents": [],
                       "subagents_open": 0,
                       "task": {
-                        "title": "ingest endpoint",
-                        "source": "board_card",
-                        "ref": "card#7338",
-                        "as_of": "2026-08-23T14:05:00.000Z",
-                        "degraded": false
+                        "title": "Edit: server/app/Feed/SeatDelta.php",
+                        "source": "telemetry",
+                        "ref": null,
+                        "as_of": "2026-08-23T14:23:02.530Z",
+                        "degraded": true
                       },
                       "context": {
                         "used_pct": 73.2,
@@ -861,11 +861,11 @@
                       "subagents": [],
                       "subagents_open": 0,
                       "task": {
-                        "title": "run the ingest suite",
-                        "source": "telemetry",
-                        "ref": null,
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
                         "as_of": "2026-08-23T14:05:00.000Z",
-                        "degraded": true
+                        "degraded": false
                       },
                       "context": {
                         "used_pct": 73.2,
@@ -1277,11 +1277,11 @@
                       "subagents": [],
                       "subagents_open": 0,
                       "task": {
-                        "title": "ingest endpoint",
-                        "source": "board_card",
-                        "ref": "card#7338",
-                        "as_of": "2026-08-23T14:05:00.000Z",
-                        "degraded": false
+                        "title": "Edit: server/app/Feed/SeatDelta.php",
+                        "source": "telemetry",
+                        "ref": null,
+                        "as_of": "2026-08-23T14:23:02.530Z",
+                        "degraded": true
                       },
                       "context": {
                         "used_pct": 73.2,
@@ -1350,11 +1350,11 @@
                       "subagents": [],
                       "subagents_open": 0,
                       "task": {
-                        "title": "run the ingest suite",
-                        "source": "telemetry",
-                        "ref": null,
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
                         "as_of": "2026-08-23T14:05:00.000Z",
-                        "degraded": true
+                        "degraded": false
                       },
                       "context": {
                         "used_pct": 73.2,
@@ -1723,11 +1723,11 @@
           "subagents": [],
           "subagents_open": 0,
           "task": {
-            "title": "ingest endpoint",
-            "source": "board_card",
-            "ref": "card#7338",
-            "as_of": "2026-08-23T14:05:00.000Z",
-            "degraded": false
+            "title": "Edit: server/app/Feed/SeatDelta.php",
+            "source": "telemetry",
+            "ref": null,
+            "as_of": "2026-08-23T14:23:02.530Z",
+            "degraded": true
           },
           "context": {
             "used_pct": 73.2,
@@ -1796,11 +1796,11 @@
           "subagents": [],
           "subagents_open": 0,
           "task": {
-            "title": "run the ingest suite",
-            "source": "telemetry",
-            "ref": null,
+            "title": "ingest endpoint",
+            "source": "board_card",
+            "ref": "card#7338",
             "as_of": "2026-08-23T14:05:00.000Z",
-            "degraded": true
+            "degraded": false
           },
           "context": {
             "used_pct": 73.2,

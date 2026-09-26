@@ -46,7 +46,11 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
         $this->assertGreaterThan(20, count($runs), 'the guard replayed almost no runs — the fixture walk has stopped reading');
     }
 
-    /** `floor/main.js` paints the module's lines and composes none: `deskLine()` is gone, not kept beside it. */
+    /**
+     * `floor/main.js`'s `paintDesks()` writes text only from `deskListRow()`'s output: the nameplate's
+     * line into the link, the rest through `items()`, no other text sink, and no `desk.<member>` read
+     * beside the two ids it routes by. `deskLine()` is gone, not kept beside it.
+     */
     public function test_the_floor_page_paints_the_list_views_lines(): void
     {
         $this->assertSame([], $this->pageDefects((string) file_get_contents($this->jsRoot().'/floor/main.js')));
@@ -55,8 +59,14 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
     /**
      * ⛔ THE CONTROLS (canon #9) — each check seen red, naming what it caught:
      *   · a boolean member added to the desk model and held `false` throughout — never non-default;
+     *   · a member that is an object on one desk and a non-default string on the others — a primitive on
+     *     a path the walk treats as interior;
      *   · a printed member dropped from the row — on the model, and on no line;
-     *   · the page composing a desk line of its own again.
+     *   · `labelLine()` dropping `dark.age` — an exclusion whose carrier no longer carries it;
+     *   · a ghost path in `NOT_LISTED` — an exclusion of a leaf no desk has;
+     *   · the *unconfirmed* word dropped — a `true` whose flip leaves the row unchanged;
+     *   · the open-call line dropped — a number whose sentinel is on no line;
+     *   · the page composing a desk line of its own again, or appending a model member to the list view's.
      */
     public function test_each_check_goes_red_against_the_defect_it_exists_to_catch(): void
     {
@@ -64,16 +74,35 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
             "        nameplate: seat.seat_id,\n", "        nameplate: seat.seat_id,\n        planted_flag: false,\n"]);
         // Over ONE fixture file's runs, to hold the suite's time: a leaf held false on every run is
         // held false on any subset of them, so the red it must name does not depend on the population.
-        $defects = $this->defects($this->verdict($planted, $planted, 'fx-degraded'));
-        $this->assertNotEmpty(array_filter($defects, fn (string $d): bool => str_contains($d, '`planted_flag`')
-            && str_contains($d, 'never seen at a non-default value')),
-            'CONTROL (a boolean leaf held false on every run) did not red naming it: '.json_encode($defects));
+        $this->assertRedNaming($this->defects($this->verdict($planted, $planted, 'fx-degraded')), '`planted_flag`',
+            'never seen at a non-default value', 'a boolean leaf held false on every run');
 
-        $dropped = $this->mutatedModules(['../desk/desk-list.js', "        desk.config_note,\n", '']);
-        $defects = $this->defects($this->verdict(null, $dropped));
-        $this->assertNotEmpty(array_filter($defects, fn (string $d): bool => str_contains($d, '`config_note`')
-            && str_contains($d, 'neither on the row nor named')),
-            'CONTROL (a printed member dropped from the row) did not red naming it: '.json_encode($defects));
+        $mixed = $this->mutatedModules(['../desk/desk-render.js', "        nameplate: seat.seat_id,\n",
+            "        nameplate: seat.seat_id,\n        planted_mixed: seat.seat_id === 'aimla-lagged' ? { inner: 'x' } : seat.seat_id,\n"]);
+        $this->assertRedNaming($this->defects($this->verdict($mixed, $mixed, 'fx-degraded')), '`planted_mixed`',
+            'is a non-default primitive on a path', 'a string on a path another desk carries an object at');
+
+        foreach ([
+            'a printed member dropped from the row' => [['../desk/desk-list.js', "        desk.config_note,\n", ''],
+                '`config_note`', 'neither on the row nor named'],
+            'the unconfirmed word dropped (a true whose flip leaves the row unchanged)' => [['../desk/desk-list.js',
+                'desk.unconfirmed ? UNCONFIRMED : null', 'null'], '`unconfirmed` = true', 'neither on the row nor named'],
+            'the open-call line dropped (a number whose sentinel is on no line)' => [['../desk/desk-list.js',
+                "        desk.open_calls === null ? null : OPEN_CALLS(desk.open_calls),\n", ''],
+                '`open_calls` =', 'neither on the row nor named'],
+            'a ghost path in NOT_LISTED' => [['../desk/desk-list.js', "export const NOT_LISTED = Object.freeze({\n",
+                "export const NOT_LISTED = Object.freeze({\n    'ghost.leaf': { reason: 'planted' },\n"],
+                '`ghost.leaf`', 'is not a leaf of any desk model the runs drew'],
+        ] as $control => [$edit, $names, $says]) {
+            $this->assertRedNaming($this->defects($this->verdict(null, $this->mutatedModules($edit))), $names, $says, $control);
+        }
+
+        // The carrier check reads the MODEL's label line, so the mutation is to the model and the
+        // collection is re-run over it; `fx-degraded`'s stale and offline desks carry the dark pair.
+        $darkAge = $this->mutatedModules(['../desk/desk-render.js',
+            'return dark.age === null ? dark.since : dark.since + DASH + dark.age;', 'return dark.since;']);
+        $this->assertRedNaming($this->defects($this->verdict($darkAge, $darkAge, 'fx-degraded')), '`dark.age`',
+            'is excluded as carried by `label_line`', '`labelLine()` dropping `dark.age`');
 
         $main = (string) file_get_contents($this->jsRoot().'/floor/main.js');
         $composed = str_replace('const [first, ...rest] = deskListRow(desk);',
@@ -82,6 +111,22 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
         $this->assertNotSame([], $this->pageDefects($composed.
             "\nfunction deskLine(desk) { return [desk.nameplate, desk.glyph].join(' — '); }\n"),
             'CONTROL (the page composing its own desk line) did not bite');
+
+        $appended = str_replace('link.textContent = first;', "link.textContent = first + ' — ' + desk.glyph;", $main);
+        $this->assertNotSame($appended, $main, 'the page control\'s anchor is gone from floor/main.js');
+        $this->assertRedNaming($this->pageDefects($appended), 'writes text that is not the list view\'s own line',
+            '`first + \' — \' + desk.glyph`', 'the page appending a model member to the nameplate\'s line');
+        $this->assertRedNaming($this->pageDefects($appended), 'reads `desk.glyph` itself', '',
+            'the page reading a desk-model member beside the list view');
+    }
+
+    /**
+     * @param  list<string>  $defects
+     */
+    private function assertRedNaming(array $defects, string $names, string $says, string $control): void
+    {
+        $this->assertNotEmpty(array_filter($defects, fn (string $d): bool => str_contains($d, $names) && str_contains($d, $says)),
+            "CONTROL ({$control}) did not red naming it: ".json_encode($defects));
     }
 
     /**
@@ -183,7 +228,11 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
     }
 
     /**
-     * The page half: `floor/main.js` imports the list view, calls it, and composes no desk line itself.
+     * The page half, read off `floor/main.js`'s source: it imports the list view, and its `paintDesks()`
+     * writes text only from `deskListRow()`'s output — every text-property assignment is the nameplate's
+     * line (`first`), every `items()` call is the other lines (`rest`), no other text sink appears, no
+     * DOM insertion is handed a string built in place, and no `desk.<member>` is read beside the two ids
+     * the link routes by. A source read, not a DOM run: the page is a DOM entry no harness loads.
      *
      * @return list<string>
      */
@@ -195,12 +244,52 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
             $defects[] = 'floor/main.js does not import the list view';
         }
 
-        if (! str_contains($main, 'deskListRow(desk)')) {
-            $defects[] = 'floor/main.js does not paint the list view\'s lines';
-        }
-
         if (preg_match('/function\s+deskLine\b/', $main) === 1) {
             $defects[] = 'floor/main.js composes a desk line of its own (`deskLine()`), beside the list view';
+        }
+
+        if (preg_match('/^function paintDesks\(.*?\n\}\n/ms', $main, $match) !== 1) {
+            return [...$defects, 'floor/main.js has no `paintDesks()` — the page check reads nothing'];
+        }
+
+        $body = $match[0];
+
+        if (! str_contains($body, 'const [first, ...rest] = deskListRow(desk);')) {
+            $defects[] = 'paintDesks() does not take its lines from `deskListRow(desk)`';
+        }
+
+        preg_match_all('/\.(?:textContent|innerText|innerHTML|outerHTML|nodeValue)\s*=\s*([^;]+);/', $body, $sinks);
+
+        foreach ($sinks[1] as $value) {
+            if (trim($value) !== 'first') {
+                $defects[] = "paintDesks() writes text that is not the list view's own line: `".trim($value).'`';
+            }
+        }
+
+        preg_match_all('/\bitems\(([^)]*)\)/', $body, $calls);
+
+        foreach ($calls[1] as $argument) {
+            if (trim($argument) !== 'rest') {
+                $defects[] = "paintDesks() paints lines that are not the list view's own: `items({$argument})`";
+            }
+        }
+
+        if (preg_match('/insertAdjacent(?:Text|HTML)|createTextNode|document\.write/', $body, $raw) === 1) {
+            $defects[] = "paintDesks() writes text through `{$raw[0]}`, outside the list view's lines";
+        }
+
+        preg_match_all('/\.(?:append|prepend|before|after|replaceWith)\(([^()]*)\)/', $body, $inserts);
+
+        foreach ($inserts[1] as $argument) {
+            if (preg_match('/[\'"`+]/', $argument) === 1) {
+                $defects[] = "paintDesks() inserts a string built in place: `{$argument}`";
+            }
+        }
+
+        preg_match_all('/\bdesk\.(\w+)/', $body, $reads);
+
+        foreach (array_diff(array_unique($reads[1]), ['seat_id', 'install_id']) as $member) {
+            $defects[] = "paintDesks() reads `desk.{$member}` itself, beside the list view's lines";
         }
 
         return $defects;

@@ -14,6 +14,9 @@
  * object or a non-empty array there; a path some desk carries an object at is interior, and its
  * children are the leaves (so `lag`, null on a live desk and an object on a lagged one, contributes
  * `lag.line` and `lag.overlay`, and a member null on every desk stays a leaf that is never non-default).
+ * ⛔ A path treated as interior is not skipped where a desk holds a non-default PRIMITIVE there: a member
+ * that is a string on one desk and an object on another would have its string measured by nothing, so
+ * that is a defect by name, not a value the walk passes over.
  *
  * ⛔ "PRINTED" IS MEASURED ON THE ROW, NOT TAKEN FROM THE MODULE's SAY-SO. For every leaf a desk carries
  * at a non-default value, the leaf is replaced in a copy of that desk — a string or a number by a
@@ -100,6 +103,11 @@ for (const d of walked) {
 
     for (const [concrete, normal, value] of d.nodes) {
         if (interior.has(normal)) {
+            if (!isBranch(value) && !isDefault(value)) {
+                defects.push(`${where}: \`${normal}\` = ${JSON.stringify(value)} is a non-default primitive on a path `
+                    + 'another desk carries an object or a non-empty array at, so no check measures it');
+            }
+
             continue;
         }
 

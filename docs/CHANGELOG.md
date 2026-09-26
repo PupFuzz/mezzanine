@@ -35,8 +35,8 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   time, the open-call count, the last event, the context gauge, the model, the badges, *oldest badge since*,
   each intern's stool and *+N more*, and the thought bubble with its tier and degraded note. A seat the page
   can no longer confirm reads *unconfirmed*. The nameplate line still opens the drill-down. The camera and
-  the small-viewport switch that shows only this list follow in slice B. ⚠ Three words on these rows are
-  not yet ratified: *unconfirmed*, *monitor*, and *a subagent's call*.
+  the small-viewport switch that shows only this list follow in slice B. ⚠ These words on the rows are not
+  yet ratified: *unconfirmed*, *monitor*, and *a subagent's call*.
 
 - **card#7341** — **The revisions page's *no preview* notice says a revision whose desk slots *overlap* is
   refused (operator ruling 2026-09-26),** matching the word the refusal itself uses; it said *intersect*.
