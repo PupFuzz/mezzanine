@@ -32,7 +32,7 @@ the test that tells the two apart, and the bound on the warmth.
 |---|---|---|
 | **Telemetry** | `fleet-reporter`, a Claude Code hook bundle, POSTs turn/tool/session events | every agent machine (Linux + Windows) |
 | **Aggregation** | fleet-state store + live feed, merged with coordination and board events | this repo (D-10) |
-| **Presentation** | Laravel app serving a Pixi.js office floor over websockets, behind MFA | this repo |
+| **Presentation** | Laravel app serving an SVG office floor fed by Server-Sent Events, behind MFA | this repo |
 
 Telemetry is **programmatic end to end** — the harness fires the hooks and the reporter
 posts the JSON. No model is asked to describe itself.
@@ -41,7 +41,7 @@ posts the JSON. No model is asked to describe itself.
 
 ```
 server/                     the Laravel host + MFA-gated shell   ← exists
-server/resources/js/floor/  Pixi.js office floor (scene, characters, camera)
+server/public/js/            the pages' ES modules — floor/, lobby/, desk/, wire/ (the camera: wire/camera.js)
 resources/characters/       the procedural character generator + LINEAGE.md ← exists
 resources/floor/            the CC0 tileset (interim) + LINEAGE.md ← exists; Tiled map: card #7341
 fleet-reporter/             cross-platform hook bundle + by-hand Linux install runbook

@@ -38,7 +38,7 @@ const dir = process.argv[2];
 
 const { FleetClient } = await import(pathToFileURL(join(dir, 'fleet-client.js')).href);
 const { createAnimationLog } = await import(pathToFileURL(join(dir, 'animation-log.js')).href);
-const { startFloorScreen } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
+const { startFloorScreen, VIEWPORT_FLOOR } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
 
 const payload = JSON.parse(readFileSync(0, 'utf8') || '{}');
 const turn = () => new Promise((resolve) => setImmediate(resolve));
@@ -61,7 +61,12 @@ const client = new FleetClient(http.fetch, FakeEventSource, clock);
 const log = createAnimationLog();
 const screen = payload.floor === null || payload.floor === undefined
     ? null
-    : startFloorScreen(client, http.fetch, clock, log, () => {}, { floor: payload.floor, local_time: () => ({ hours: 9, minutes: 45 }) });
+    : startFloorScreen(client, http.fetch, clock, log, () => {}, {
+        floor: payload.floor,
+        local_time: () => ({ hours: 9, minutes: 45 }),
+        // Appendix B row 15: the viewer's viewport, required — § 12's viewport floor, the drawn floor.
+        viewport: VIEWPORT_FLOOR,
+    });
 
 client.start();
 await turn();

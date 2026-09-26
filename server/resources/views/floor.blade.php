@@ -22,10 +22,15 @@
 
         ⭐ THE ROOM IS DRAWN (Appendix B row 14, card#7341 step 11): `#floor-drawing` holds the SVG
         `public/js/floor/painter.js` paints from the floor screen's scene (`floor/scene.js`) — tiles,
-        desks, the band, the thread line — and `#floor-art` is § 9 F14's strip line. The desk list
-        below it stays as row 8 built it, every fact as a line of text, until row 15 replaces it with
-        § 4.5's list view. ⚠ WHAT IS STILL NOT HERE: the camera (row 15) — the drawing is shown at the
-        page's width, not panned or zoomed.
+        desks, the band, the thread line — and `#floor-art` is § 9 F14's strip line.
+
+        ⭐ UNDER THE CAMERA (Appendix B row 15): at or above § 12's viewport floor the drawing fills the
+        section's width and the viewport's height and the camera frames it — wheel to zoom, drag to
+        pan, `#floor-fit` to frame the whole floor, and the whole-building link to `/`, § 4.4's lobby
+        route. Below the floor the drawing and its controls are hidden and `#floor-desks` is the list
+        view: row 8's text render, until row 15's list module replaces its one call in `main.js`. The
+        status strip, the failure statements and the sign-in prompt are page chrome outside the
+        camera.
     --}}
     <section id="floor" aria-labelledby="floor-name" data-floor="{{ $floor }}" data-seat="{{ $seat ?? '' }}">
         <h2 id="floor-name">The floor {{ $floor }} — waiting for the building layout</h2>
@@ -42,7 +47,7 @@
 
         {{--
             § 9 F6/F7: the blocking sign-in prompt. The floor beneath is DIMMED — `data-dimmed` on the
-            desk list — and labelled *not live since HH:MM:SS*; it is never blanked.
+            desk list and on the drawing — and labelled *not live since HH:MM:SS*; it is never blanked.
         --}}
         <section id="floor-signin" role="alertdialog" aria-labelledby="floor-signin-prompt" hidden>
             <p id="floor-signin-prompt"></p>
@@ -74,8 +79,21 @@
         {{-- § 9 F17's cold start: the snapshot's installs as rooms with no floor claimed. --}}
         <ul id="floor-rooms" hidden></ul>
 
-        {{-- Appendix B row 14's room drawing — the painter's SVG, empty until the art modules answer. --}}
-        <div id="floor-drawing" aria-label="the room drawing"></div>
+        {{--
+            Appendix B row 15's camera controls — the fit-floor control and the whole-building link,
+            shown only while the drawn floor is.
+        --}}
+        <nav id="floor-camera" aria-label="the camera" hidden>
+            <button type="button" id="floor-fit">Fit the floor</button>
+            <a href="{{ url('/') }}">Whole building</a>
+        </nav>
+
+        {{--
+            Appendix B row 14's room drawing — the painter's SVG, empty until the art modules answer —
+            under row 15's camera: the section's width by the viewport's height, which is the surface
+            `main.js` hands the camera.
+        --}}
+        <div id="floor-drawing" aria-label="the room drawing" data-dimmed="false" style="width: 100%; height: 100vh; overflow: hidden; touch-action: none; cursor: grab"></div>
 
         <h3 id="floor-desks-heading">Desks</h3>
         <ul id="floor-desks" aria-labelledby="floor-desks-heading" data-dimmed="false">

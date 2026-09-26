@@ -30,6 +30,10 @@ use Tests\TestCase;
  * addresses join the entry's in the both-directions check, and the entry must construct the painter
  * from that module — a painter nobody constructs addresses nothing and would pass vacuously.
  *
+ * ⛔ AND TO THE CAMERA's (Appendix B row 15): the entry hands the screen the viewer's viewport and
+ * wires the wheel, the drag, the fit-floor control and a resize to the screen's camera acts — a camera
+ * no event reaches is a floor that never moves and would pass AT-D3-21, which drives the acts directly.
+ *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that anything renders, lays out or is legible.
  */
 class FloorPageWiringTest extends TestCase
@@ -57,6 +61,12 @@ class FloorPageWiringTest extends TestCase
     public function test_the_entry_paints_the_room_with_the_painter_module(): void
     {
         $this->assertSame([], $this->painterDefects($this->mainJs()));
+    }
+
+    /** Appendix B row 15: the viewport reaches the screen and every viewer act reaches the camera. */
+    public function test_the_entry_wires_the_viewport_and_the_viewers_acts_to_the_screens_camera(): void
+    {
+        $this->assertSame([], $this->cameraDefects($this->mainJs()));
     }
 
     public function test_the_page_serves_the_entry_as_a_module_and_every_import_resolves(): void
@@ -129,7 +139,7 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('undeclared', $this->wiringDefects($html, $js, null, $misaddressed),
             'CONTROL (the painter addressing an element the page does not declare) did not bite');
 
-        $undrawn = str_replace('<div id="floor-drawing" aria-label="the room drawing"></div>', '', $html);
+        $undrawn = preg_replace('/<div id="floor-drawing"[^>]*><\/div>/', '', $html);
         $this->assertNotSame($undrawn, $html);
         $this->assertArrayHasKey('undeclared', $this->wiringDefects($undrawn, $js),
             'CONTROL (the view without the painter\'s drawing element) did not bite');
@@ -138,6 +148,16 @@ class FloorPageWiringTest extends TestCase
         $this->assertNotSame($unpainted, $js);
         $this->assertArrayHasKey('painter', $this->painterDefects($unpainted),
             'CONTROL (an entry that never constructs the painter) did not bite');
+
+        $unwheeled = str_replace('show(screen.wheel(', 'show(screen.camera(', $js);
+        $this->assertNotSame($unwheeled, $js);
+        $this->assertArrayHasKey('wheel', $this->cameraDefects($unwheeled),
+            'CONTROL (a wheel that never reaches the camera) did not bite');
+
+        $blind = str_replace('    viewport: viewport(),', '', $js);
+        $this->assertNotSame($blind, $js);
+        $this->assertArrayHasKey('viewport', $this->cameraDefects($blind),
+            'CONTROL (a screen handed no viewport) did not bite');
 
         $drifted = str_replace('const ANIMATION_LOG_RETENTION = 2000;', 'const ANIMATION_LOG_RETENTION = 5000;', $js);
         $this->assertNotSame($drifted, $js);
@@ -185,6 +205,28 @@ class FloorPageWiringTest extends TestCase
             || (int) $c[1] !== (int) str_replace(',', '', $m[1])
             || ! str_contains($js, 'createAnimationLog(ANIMATION_LOG_RETENTION)')) {
             $defects['retention'] = 'the animation log is not constructed with § 12\'s retention figure';
+        }
+
+        return $defects;
+    }
+
+    /** @return array<string, string> */
+    private function cameraDefects(string $js): array
+    {
+        $defects = [];
+        $wired = [
+            'viewport' => ['viewport: viewport(),', 'screen.resize(viewport(), surface())'],
+            'wheel' => ["drawing.addEventListener('wheel'", 'show(screen.wheel('],
+            'drag' => ["drawing.addEventListener('pointermove'", 'show(screen.drag('],
+            'fit' => ["el('floor-fit').addEventListener('click'", 'screen.fitFloor()'],
+        ];
+
+        foreach ($wired as $act => $needles) {
+            foreach ($needles as $needle) {
+                if (! str_contains($js, $needle)) {
+                    $defects[$act] = "the entry does not wire the {$act} to the screen's camera (`{$needle}` is missing)";
+                }
+            }
         }
 
         return $defects;

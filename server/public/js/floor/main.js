@@ -27,8 +27,16 @@
  * imports the two art modules through the painter (the asset route's URLs), hands the screen the
  * scene's inputs once they answer, and paints each frame's scene; the painter reports every asset it
  * could not draw back to the screen, which is § 9 F14's placeholder and the strip's `art` line on the
- * next render. The desk list below the drawing stays: it is row 8's text render, every fact as text,
- * until row 15 replaces it with the list view.
+ * next render.
+ *
+ * ⛔ THE CAPABILITY FLOOR AND THE CAMERA ARE THE SCREEN's (Appendix B row 15, § 4.5); this file supplies
+ * the viewport and the drawing surface's size, wires the wheel, the drag and the fit-floor control to
+ * the screen's camera acts, and sets the drawing's view from the camera each returns — a camera act
+ * renders nothing. Below § 12's viewport floor the frame is the list view and this file paints the desk
+ * list and hides the drawing; at or above it, the drawing under the camera and no list. The
+ * whole-building control is a link to `/` (§ 4.4's lobby route), never a second scale drawn here.
+ * A glide is the page's alone — the camera's state is already its destination — and under
+ * `prefers-reduced-motion` the screen hands back no glide at all, so the view cuts.
  *
  * ⛔ THE DRILL-DOWN IS OPENED FROM A DESK AND CLOSED TO THE FLOOR WITHOUT LEAVING THE PAGE (§ 4, § 4.3;
  * Appendix B row 10). Selecting a desk pushes `/floor/{floor}/{seat_id}` (§ 4.4) into the browser's
@@ -44,6 +52,7 @@ import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
 import { renderDrillDown } from '../drilldown/main.js';
 import { createPainter, loadArt, measurer } from './painter.js';
+import { between } from '../wire/camera.js';
 
 /** § 12's *The floor page's animation-log retention* — the page's bound, and no one else's. */
 const ANIMATION_LOG_RETENTION = 2000;
@@ -81,7 +90,11 @@ function list(id, lines) {
     node.hidden = lines.length === 0;
 }
 
-/** One desk's line, from the desk model's own strings — nothing composed here but the joins. */
+/**
+ * One desk's line, from the desk model's own strings — nothing composed here but the joins. Row 8's
+ * text render, and the list view's until Appendix B row 15's list module replaces it at its ONE call
+ * in `paintDesks()`.
+ */
 function deskLine(desk) {
     return [
         desk.nameplate,
@@ -99,6 +112,56 @@ let lastFrame = null;
 
 /** `floor/painter.js`'s painter, once the art modules have answered (Appendix B row 14). */
 let painter = null;
+
+/**
+ * The camera the drawing shows right now — the screen's, or a glide's step towards it — and the
+ * glide's frame request, if one is running (Appendix B row 15).
+ */
+let shown = null;
+let glide = null;
+
+/** The viewer's viewport in CSS px — what § 4.5's capability floor reads. */
+function viewport() {
+    return { width: window.innerWidth, height: window.innerHeight };
+}
+
+/** The drawing surface: the floor section's width, the viewport's height (the view's stylesheet). */
+function surface() {
+    return { width: root.clientWidth, height: window.innerHeight };
+}
+
+/** Show a camera on the drawing, stopping any glide in flight. */
+function show(camera) {
+    if (glide !== null) {
+        cancelAnimationFrame(glide);
+        glide = null;
+    }
+
+    shown = camera;
+    painter?.view(camera);
+}
+
+/** The fit-floor control's move: a glide of the given length to `to`, or a cut when it is none. */
+function glideTo(from, to, ms) {
+    show(from);
+
+    if (ms === 0) {
+        show(to);
+
+        return;
+    }
+
+    const start = performance.now();
+    const step = (now) => {
+        const t = Math.min(1, (now - start) / ms);
+
+        shown = between(from, to, t);
+        painter?.view(shown);
+        glide = t < 1 ? requestAnimationFrame(step) : null;
+    };
+
+    glide = requestAnimationFrame(step);
+}
 
 const { client, clock, fetch: pageFetch, requestRender } = livePage(() => screen.render());
 
@@ -141,6 +204,9 @@ function paintDesks(frame, desks) {
         const link = document.createElement('a');
 
         link.href = routeOf(floorSegment(), desk.seat_id);
+        // ⛔ THE LIST VIEW's ONE CALL (Appendix B row 15): the text of a desk's row comes from here and
+        // nowhere else, so the list module row 15 builds beside `desk/desk-render.js` replaces it on
+        // this line.
         link.textContent = deskLine(desk);
         link.addEventListener('click', (event) => {
             event.preventDefault();
@@ -231,8 +297,26 @@ function paint(frame) {
         + (thread.unresolved.length > 0 ? ` — unresolved: ${thread.unresolved.join(', ')}` : '')
     ))));
 
-    painter?.paint(frame.scene ?? null);
-    paintDesks(frame, frame.desks.desks);
+    // § 4.5's capability floor, decided by the screen: the drawing under the camera, or the list view.
+    const drawn = frame.capability === 'floor';
+
+    el('floor-drawing').hidden = !drawn;
+    // § 9 F6/F7: the floor beneath the sign-in prompt is dimmed, never blanked — the drawing as the list.
+    el('floor-drawing').dataset.dimmed = String(frame.failure.sign_in !== null);
+    el('floor-camera').hidden = !drawn || frame.scene === null;
+    el('floor-desks-heading').hidden = drawn;
+
+    if (drawn) {
+        // A render never moves the viewer: a glide in flight keeps its step, and otherwise the drawing
+        // shows the screen's camera, which the render left where the viewer put it.
+        shown = glide === null ? frame.camera : shown;
+        painter?.paint(frame.scene ?? null, shown);
+    } else {
+        show(frame.camera);
+        painter?.paint(null, frame.camera);
+    }
+
+    paintDesks(frame, drawn ? {} : frame.desks.desks);
     paintPanel(frame.panel);
     list('floor-log', client.eventLog);
 }
@@ -241,6 +325,8 @@ const screen = startFloorScreen(client, pageFetch, clock, createAnimationLog(ANI
     floor: root.dataset.floor,
     seat: root.dataset.seat === '' ? null : root.dataset.seat,
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    viewport: viewport(),
+    surface: surface(),
 });
 
 // § 2.5's 1 s tick: the ages over the desks the last render read — and the open panel's — with
@@ -249,8 +335,12 @@ startAgeTicker(screen.desks, clock, window, (readouts) => {
     if (lastFrame !== null) {
         const desks = screen.desks.view(readouts);
 
-        paintDesks(lastFrame, desks.desks);
-        painter?.refresh(screen.sceneView(desks));
+        if (lastFrame.capability === 'floor') {
+            painter?.refresh(screen.sceneView(desks));
+        } else {
+            paintDesks(lastFrame, desks.desks);
+        }
+
         paintPanel(screen.panelView(lastFrame.floor?.name ?? null));
     }
 });
@@ -291,6 +381,65 @@ el('floor-panel-retry').addEventListener('click', () => {
 });
 el('floor-panel-more').addEventListener('click', () => {
     screen.morePanel().then(requestRender);
+});
+
+// Appendix B row 15: the viewer's camera. The wheel zooms about the cursor and a drag pans; neither
+// renders — each sets the drawing's view from the camera the screen hands back.
+const drawing = el('floor-drawing');
+let drag = null;
+let dragged = false;
+
+drawing.addEventListener('wheel', (event) => {
+    event.preventDefault();
+
+    const r = drawing.getBoundingClientRect();
+
+    show(screen.wheel({ x: event.clientX - r.left, y: event.clientY - r.top }, event.deltaY));
+}, { passive: false });
+drawing.addEventListener('pointerdown', (event) => {
+    dragged = false;
+    drag = { x: event.clientX, y: event.clientY, moved: false };
+});
+drawing.addEventListener('pointermove', (event) => {
+    if (drag === null) {
+        return;
+    }
+
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+
+    if (!drag.moved && Math.hypot(dx, dy) < 4) {
+        return;
+    }
+
+    if (!drag.moved) {
+        drag.moved = true;
+        drawing.setPointerCapture(event.pointerId);
+    }
+
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+    show(screen.drag(dx, dy));
+});
+drawing.addEventListener('pointerup', () => {
+    dragged = drag?.moved === true;
+    drag = null;
+});
+// A drag that moved is not a click on the desk it ended over.
+drawing.addEventListener('click', (event) => {
+    if (dragged) {
+        event.stopPropagation();
+        dragged = false;
+    }
+}, { capture: true });
+el('floor-fit').addEventListener('click', () => {
+    const { from, to, glide_ms: ms } = screen.fitFloor();
+
+    glideTo(from, to, ms);
+});
+window.addEventListener('resize', () => {
+    screen.resize(viewport(), surface());
+    requestRender();
 });
 
 // Back and forward move the seat segment; the screen resolves it on the next render (§ 4.4).

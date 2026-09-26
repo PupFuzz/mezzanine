@@ -33,7 +33,19 @@
  *                                               //  a held tileset, or the ids named
  *                      "panel": [ { "at_ms": N, //  the drill-down's USER actions, on the scenario
  *                        "action": "open" | "close" | "retry" | "more",   // clock: `open` names
- *                        "install_id": "…", "seat_id": "…" } ] }          // the desk (§ 4.3)
+ *                        "install_id": "…", "seat_id": "…" } ],           // the desk (§ 4.3)
+ *                      "viewport": {width, height},  //  the viewer's viewport in CSS px (Appendix B
+ *                                               //  row 15's capability floor) — absent, § 12's viewport
+ *                                               //  floor itself (`VIEWPORT_FLOOR`), so every run written
+ *                                               //  before row 15 draws the floor it always drew
+ *                      "surface": {width, height},   //  the drawing's size, when not the viewport's
+ *                      "camera": [ { "at_ms": N,  //  the viewer's camera acts (row 15): `wheel` at a
+ *                        "act": "wheel", "x", "y", "delta_y" } | { "act": "drag", "dx", "dy" }
+ *                        | { "act": "fit" } | { "act": "resize", "width", "height" } ] }
+ *                                               //  surface point, a drag, the fit-floor control, and a
+ *                                               //  viewport resize. A resize is followed by a render, as
+ *                                               //  a page renders on one; the other three are NOT — a
+ *                                               //  page repaints the drawing's view and renders nothing
  *      "lobby":      true                       // start `lobby/lobby-screen.js` after start(),
  *                                               //  `render()` after every settled event — the
  *                                               //  LOBBY (Appendix B row 9) over this same client
@@ -58,7 +70,7 @@
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
  *      "streams": [ {opened_at, open_fired, refused, ended_at, closed_at} ],
  *      "desk_renders": [ {at, trigger, frame} ], "floor_renders": [ {at, frame} ],
- *      "lobby_renders": [ {at, frame} ],
+ *      "lobby_renders": [ {at, frame} ], "camera_acts": [ {at, act, before, after, glide_ms} ],
  *      "animation_log": [ <§ 11 rows> ] }`
  *   and each record
  *   `{ "at", "label", "outcome", "seats", "event_log", "requests", "phase", "clock_offset_ms",
@@ -162,7 +174,7 @@ const { startAgeTicker } = await import(pathToFileURL(join(dir, 'age-readout.js'
 const { formatDuration } = await import(pathToFileURL(join(dir, 'duration.js')).href);
 const { createAnimationLog } = await import(pathToFileURL(join(dir, 'animation-log.js')).href);
 const { startDeskFloor } = await import(pathToFileURL(join(dir, '..', 'desk', 'desk-floor.js')).href);
-const { startFloorScreen } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
+const { startFloorScreen, VIEWPORT_FLOOR } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
 const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'status-strip.js')).href);
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
@@ -385,6 +397,7 @@ async function replay(scenario) {
     const deskRenders = [];
     const floorRenders = [];
     const lobbyRenders = [];
+    const cameraActs = [];
     const log = createAnimationLog();
     let floor = null;
     let screen = null;
@@ -471,6 +484,8 @@ async function replay(scenario) {
             local_time: (ms) => (scenario.floor.local_hours === undefined
                 ? { hours: new Date(ms).getUTCHours(), minutes: new Date(ms).getUTCMinutes() }
                 : { hours: scenario.floor.local_hours, minutes: scenario.floor.local_minutes ?? 0 }),
+            viewport: scenario.floor.viewport ?? VIEWPORT_FLOOR,
+            surface: scenario.floor.surface,
         });
     }
 
@@ -538,6 +553,40 @@ async function replay(scenario) {
         });
     }
 
+    // Appendix B row 15's camera acts, each an event on the scenario queue, recorded with the camera
+    // before and after it. Only a resize is followed by a render (see the header).
+    for (const act of scenario.floor?.camera ?? []) {
+        schedule(act.at_ms, act.act === 'resize' ? 'viewport resize' : `camera ${act.act}`, () => {
+            if (screen === null) {
+                return 'no floor';
+            }
+
+            const before = screen.camera();
+            let glide = null;
+
+            switch (act.act) {
+                case 'wheel':
+                    screen.wheel({ x: act.x, y: act.y }, act.delta_y);
+                    break;
+                case 'drag':
+                    screen.drag(act.dx, act.dy);
+                    break;
+                case 'fit':
+                    glide = screen.fitFloor().glide_ms;
+                    break;
+                case 'resize':
+                    screen.resize({ width: act.width, height: act.height });
+                    break;
+                default:
+                    throw new Error(`unknown camera act ${act.act}`);
+            }
+
+            cameraActs.push({ at: now, act, before, after: screen.camera(), glide_ms: glide });
+
+            return act.act;
+        });
+    }
+
     if (scenario.lobby === true) {
         lobby = startLobbyScreen(client, buildingHttp.fetch, (frame) => {
             lobbyRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)) });
@@ -578,7 +627,9 @@ async function replay(scenario) {
 
         await turn();
 
-        if (timer.label !== 'age tick') {
+        // A tick re-reads ages and a camera act moves the viewer's head: neither is an apply, and a
+        // page renders after neither.
+        if (timer.label !== 'age tick' && !timer.label.startsWith('camera ')) {
             floor?.render();
 
             if (screen !== null) {
@@ -617,6 +668,7 @@ async function replay(scenario) {
         desk_renders: deskRenders,
         floor_renders: floorRenders,
         lobby_renders: lobbyRenders,
+        camera_acts: cameraActs,
         animation_log: log.rows,
     };
 }

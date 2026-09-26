@@ -47,6 +47,17 @@
  * reported failed (`assetsFailed()`) and the § 6.2 rows this very render wrote. The scene's F21
  * notices join the frame's, and its F14 verdict is the status strip's `art` line — one strip, the
  * step-8 module's, told one more thing.
+ *
+ * ⛔ THE CAPABILITY FLOOR AND THE CAMERA ARE THIS SCREEN's TOO (Appendix B row 15, § 4.5). Below § 12's
+ * viewport floor — the size read from the viewport the page supplies (`resize()`), and in the harness
+ * from the fixture — a frame is the LIST VIEW (`capability: 'list'`): no scene, no camera, every desk
+ * as text. At or above it the frame carries the scene and the camera (`wire/camera.js`) framed on the
+ * scene's whole extent, which is the floor AND the overflow strip (card#7965). The camera is held
+ * HERE, beside the episode state, because the render that must leave it alone is this module's: every
+ * `draw()` hands the camera the scene's extent and the camera keeps the viewer's zoom and pan (the
+ * first framing alone fits), and the viewer's acts — `wheel()`, `drag()`, `fitFloor()` — move the
+ * camera and nothing else: they drain nothing, draw nothing and write no animation-log row. A
+ * navigation act is never state (§ 4.5), and AT-D3-21 reds the day one of them reaches the log.
  */
 
 import { Building } from '../wire/building.js';
@@ -59,6 +70,7 @@ import { buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
 import { buildScene } from './scene.js';
+import { createCamera, fit, frameOn, glideMs, panBy, resize, unframe, wheel } from '../wire/camera.js';
 import { TilesetLoader, tilesetUrl } from './tileset.js';
 import {
     assignSlots,
@@ -101,6 +113,19 @@ export function layoutFailureStatement(status) {
     return status === null
         ? 'the building layout could not be loaded — no response'
         : `the building layout could not be loaded — HTTP ${status}`;
+}
+
+/**
+ * § 12's *Floor viewport floor*: below it in either dimension the route renders the list view, at or
+ * above it the drawn floor under the camera (§ 4.5's first rule). `TheCameraMovesTheViewerAndNeverTheFleetTest`
+ * enters the route at the figure § 12 states and one pixel under it in each dimension, so this copy
+ * reds there the day it and the document part.
+ */
+export const VIEWPORT_FLOOR = Object.freeze({ width: 1280, height: 800 });
+
+/** § 4.5's capability floor over a viewport in CSS px: `'floor'` at or above it, else `'list'`. */
+export function capabilityOf(viewport) {
+    return viewport.width >= VIEWPORT_FLOOR.width && viewport.height >= VIEWPORT_FLOOR.height ? 'floor' : 'list';
 }
 
 /** § 9 F17: what the floors a screen still holds are labelled while the last request failed. */
@@ -219,14 +244,22 @@ export class FloorScreen {
     /** The last frame a scene was built over — what the 1 s tick re-reads (`sceneView`). */
     #lastFrame = null;
 
+    /** The viewer's viewport in CSS px — what § 4.5's capability floor reads (Appendix B row 15). */
+    #viewport;
+
+    /** The camera (`wire/camera.js`) — the viewer's head, never the fleet's; framed while the floor is drawn. */
+    #camera;
+
     /**
      * @param {object} client a `FleetClient` — the seats, the journal, the record and the offset
      * @param {object} building a `wire/building.js` `Building` — the layout and each room's map
      * @param {{now: function(): number}} clock the browser's own clock
      * @param {object} log `wire/animation-log.js`'s `createAnimationLog()`
-     * @param {object} [options] `{ floor, seat, reduce, local_time }` — `local_time` reads the
-     *        VIEWER's civil time and exists because a build host has one time zone and § 4.2's sky
-     *        has four phases; the viewer's own `Date` is the default.
+     * @param {object} [options] `{ floor, seat, reduce, local_time, viewport, surface }` —
+     *        `local_time` reads the VIEWER's civil time and exists because a build host has one time
+     *        zone and § 4.2's sky has four phases; the viewer's own `Date` is the default. `viewport`
+     *        (required) is the viewer's viewport in CSS px, `surface` the drawing's (the viewport's
+     *        own size when not stated).
      * @param {TilesetLoader} [tilesets] the tilesets' loader, over the page's own `fetch`
      */
     constructor(client, building, clock, log, options = {}, tilesets = null) {
@@ -241,6 +274,51 @@ export class FloorScreen {
         this.#segment = options.floor ?? null;
         this.#seatSegment = options.seat ?? null;
         this.#panel = new DrillDownPanel(client);
+        this.#viewport = sizeOf(options.viewport);
+        this.#camera = createCamera(options.surface ?? this.#viewport);
+    }
+
+    /**
+     * The viewer's viewport, and the drawing surface inside it, changed size (Appendix B row 15). The
+     * next render decides the capability floor again; a camera still at fit stays at fit.
+     */
+    resize(viewport, surface = viewport) {
+        this.#viewport = sizeOf(viewport);
+        this.#camera = resize(this.#camera, surface);
+    }
+
+    /** The camera as it stands — the viewer's head, as data. */
+    get camera() {
+        return this.#camera;
+    }
+
+    /** A wheel event at a point on the drawing surface: a zoom about that point (§ 4.5). */
+    wheel(point, deltaY) {
+        this.#camera = wheel(this.#camera, point, deltaY);
+
+        return this.#camera;
+    }
+
+    /** A drag by `dx`, `dy` CSS px: a pan, clamped to keep the floor in view (§ 4.5). */
+    drag(dx, dy) {
+        this.#camera = panBy(this.#camera, dx, dy);
+
+        return this.#camera;
+    }
+
+    /**
+     * The fit-floor control: the camera framed on the floor's whole extent, overflow strip included.
+     * `glide_ms` is how long the page may take to get there — none under `prefers-reduced-motion`,
+     * where the camera cuts; the camera's state is the destination from this call on.
+     *
+     * @returns {{from: object, to: object, glide_ms: number}}
+     */
+    fitFloor() {
+        const from = this.#camera;
+
+        this.#camera = fit(from);
+
+        return { from, to: this.#camera, glide_ms: glideMs(this.#options.reduce === true) };
     }
 
     /**
@@ -488,7 +566,20 @@ export class FloorScreen {
         this.#tap.take();
 
         const frame = this.#drawFrame(journal);
-        const scene = this.#scene(frame, this.#tap.take());
+        const capability = capabilityOf(this.#viewport);
+        const rows = this.#tap.take();
+        // § 4.5: below the viewport floor the route renders the list view — no map, so no scene and
+        // nothing framed, and the floor that comes back comes back at fit.
+        const scene = capability === 'floor' ? this.#scene(frame, rows) : null;
+
+        // A frame with nothing to draw — no floor composed yet, the art not yet answered — leaves the
+        // camera as it stands: only the list view unframes it.
+        if (capability === 'list') {
+            this.#camera = unframe(this.#camera);
+        } else if (scene !== null) {
+            this.#camera = frameOn(this.#camera, scene.extent);
+        }
+
         const drawn = {
             ...frame,
             // The status strip, on every frame shape — with § 9 F14's line when the scene says art
@@ -500,6 +591,8 @@ export class FloorScreen {
                 art_failed: scene?.art_failed === true || (this.#sceneInput === null && this.#failed.size > 0),
             }),
             scene,
+            capability,
+            camera: this.#camera,
             // § 9 F21's notices — the scene's, from the maps it drew — beside the floor's own.
             notices: Object.freeze([...frame.notices, ...(scene?.notices ?? [])]),
         };
@@ -1113,7 +1206,7 @@ function splitKey(key) {
  * @param {{now: function(): number}} clock
  * @param {object} log the animation log every § 6.2 row is recorded in
  * @param {function(object): void} draw receives each floor frame
- * @param {object} [options] `{ floor, seat, reduce, local_time }`
+ * @param {object} [options] `{ floor, seat, reduce, local_time, viewport, surface }`
  */
 export function startFloorScreen(client, fetchImpl, clock, log, draw, options = {}) {
     const screen = new FloorScreen(client, new Building(fetchImpl), clock, log, options, new TilesetLoader(fetchImpl));
@@ -1140,5 +1233,21 @@ export function startFloorScreen(client, fetchImpl, clock, log, draw, options = 
         assetsFailed: (ids) => screen.assetsFailed(ids),
         tilesets: () => screen.tilesets,
         sceneView: (desks) => screen.sceneView(desks),
+        // Appendix B row 15: the viewport, and the viewer's camera acts. None renders; the page
+        // repaints the drawing's view from the camera each returns.
+        resize: (viewport, surface) => screen.resize(viewport, surface),
+        camera: () => screen.camera,
+        wheel: (point, deltaY) => screen.wheel(point, deltaY),
+        drag: (dx, dy) => screen.drag(dx, dy),
+        fitFloor: () => screen.fitFloor(),
     };
+}
+
+/** A viewport or surface in CSS px, refused rather than guessed when the page supplied none. */
+function sizeOf(size) {
+    if (!(size?.width > 0) || !(size?.height > 0)) {
+        throw new Error('the floor screen needs the viewer\'s viewport — { width, height } in CSS px');
+    }
+
+    return Object.freeze({ width: size.width, height: size.height });
 }
