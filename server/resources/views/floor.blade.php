@@ -22,10 +22,11 @@
 
         ⭐ THE ROOM IS DRAWN (Appendix B row 14, card#7341 step 11): `#floor-drawing` holds the SVG
         `public/js/floor/painter.js` paints from the floor screen's scene (`floor/scene.js`) — tiles,
-        desks, the band, the thread line — and `#floor-art` is § 9 F14's strip line. The desk list
-        below it stays as row 8 built it, every fact as a line of text, until row 15 replaces it with
-        § 4.5's list view. ⚠ WHAT IS STILL NOT HERE: the camera (row 15) — the drawing is shown at the
-        page's width, not panned or zoomed.
+        desks, the band, the thread line — and `#floor-art` is § 9 F14's strip line. Below it,
+        `#floor-desks` holds each desk's row of § 4.5's list view (Appendix B row 15, slice A:
+        `public/js/desk/desk-list.js`), every fact the desk model emits as lines of text. ⚠ WHAT IS
+        STILL NOT HERE: the camera and the viewport floor (row 15, slice B) — the drawing is shown at
+        the page's width, not panned or zoomed, and the list is shown under it at every viewport.
     --}}
     <section id="floor" aria-labelledby="floor-name" data-floor="{{ $floor }}" data-seat="{{ $seat ?? '' }}">
         <h2 id="floor-name">The floor {{ $floor }} — waiting for the building layout</h2>
