@@ -221,6 +221,11 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('refocus', $this->exposureDefects($html, $unrestored),
             'CONTROL (a rebuild that drops the focused desk\'s focus) did not bite');
 
+        $unfocused = str_replace(' ?? host).focus({ preventScroll: true });', ' ?? host);', $painter);
+        $this->assertNotSame($unfocused, $painter);
+        $this->assertArrayHasKey('refocus', $this->exposureDefects($html, $unfocused),
+            'CONTROL (a rebuild that finds the focused desk but never calls .focus() on it) did not bite');
+
         $unfocusable = str_replace(' tabindex="0" aria-keyshortcuts', ' aria-keyshortcuts', $html);
         $this->assertNotSame($unfocusable, $html);
         $this->assertArrayHasKey('focus', $this->exposureDefects($unfocusable, $painter),
@@ -339,10 +344,10 @@ class FloorPageWiringTest extends TestCase
         // drops to the page's body at the next render.
         $noted = strpos($painter, 'const focusedKey = host.contains(document.activeElement)');
         $rebuilt = strpos($painter, 'host.replaceChildren(svg);');
-        $restored = strpos($painter, 'svg.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`)');
+        $restored = strpos($painter, 'svg.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`) ?? host).focus(');
 
         if ($noted === false || $rebuilt === false || $restored === false || ! ($noted < $rebuilt && $rebuilt < $restored)) {
-            $defects['refocus'] = 'the painter does not put focus back on the desk it rebuilt — noted before `host.replaceChildren(svg)`, restored after it';
+            $defects['refocus'] = 'the painter does not put focus back on the desk it rebuilt — noted before `host.replaceChildren(svg)`, and `.focus(` called on the rebuilt desk (or the drawing) after it';
         }
 
         return $defects;

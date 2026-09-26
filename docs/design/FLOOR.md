@@ -1234,6 +1234,8 @@ route rather than by zooming past a plate ([§ 4.1](#41-the-lobby--the-building-
 ⛔ **Release gate — operator ruling 2026-09-25 (card#7341 comment 6517): the room drawing stays as row 14
 built it until row 15's camera lands, and `dev` is not promoted to `main` before row 15 lands** — a drawn room
 with no camera is not a floor an operator can use at this viewport floor, and it ships to nobody meanwhile.
+Row 15 carries no landing marker while [§ 14](#14-open-questions-for-the-review-loop) item 29 is open
+([Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15), so this gate still holds.
 
 ### 4.6 The building layout
 
