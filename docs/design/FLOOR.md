@@ -472,7 +472,7 @@ connected client has never seen. **This document adds no message. It fetches.**
 | A `seat.delta` arrives for an **install** the client does not hold | **Received — the stream is fleet-wide ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)) — and treated as row 1**: buffered under its `(install_id, seat_id)`, the seat fetched whole, the buffer drained against it. The install enters the rendered set one seat at a time, on its own traffic, and the lobby's discrepancy check ([§ 4.1](#41-the-lobby--the-building-summary)) is what later dates its *membership*. ⚠ Until card#9287 this row read *emitted on a channel the client is not subscribed to — never received, a loss, not a non-event*, and it was reachable in exactly the window between an install entering the rendered set and ADMIT (a) subscribing for it; that window is closed by construction ([§ 2.2](#22-connect-snapshot-deltas)), and the row is kept under its new condition because the *what does the client do* half still needs an answer | A delta for an unknown install is a delta for an unknown seat, and one rule for both is what keeps a second insert path from being minted with its own holes. Dropping it because the install is unknown would re-mint the earlier revision's loss by choice rather than by transport |
 | An install exists that has sent nothing since the client connected | It appears at the **next full snapshot**, and the client fetches one **as soon as the counts disagree**: `fleet.seats_total` rides every `feed.heartbeat` ([D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object)), so a newly-provisioned install raises it within 15 s on the stream, [§ 4.1](#41-the-lobby--the-building-summary)'s discrepancy check renders the disagreement, and the one snapshot fetch it triggers **discovers** the install. **Discovery is admission, and that is the whole of this row:** the one fetch the disagreement triggers is applied under [§ 2.2](#22-connect-snapshot-deltas)'s version rule, as the connect snapshot is — each row replaces the held object only when the client holds none for that seat or the row's `state_version` is higher — and that apply **is** [§ 2.2](#22-connect-snapshot-deltas)'s `ADMIT` for every install it carries. A delta delivered for one of the install's seats while the fetch is in flight takes row 1's path, and the version rule orders the two answers whichever lands first, WHEN BOTH ARRIVE. Row 1's own fetch can instead fail: while this fetch is still in flight, its deltas wait for this one to drain them when it lands or fails; once this fetch has landed, a later failure of row 1's is drained on the spot against what this one left held, and never re-fetched (card#7341 step 3). ⚠ Until card#7341 step 3 this row read *discovery is not admission* and ran a second, scoped `ADMIT` fetch after the discovery before draining. The version rule is what makes one fetch safe, so the second bought a copy of rows that ordered nothing new, a buffer held across two round trips, and a failure branch that could lose a delta. A discrepancy fetch that fails spends none of the per-`(N, M)` budget, so the next heartbeat retries it ([§ 4.1](#41-the-lobby--the-building-summary)). A reconnect and the lobby's refresh control are the other two paths, and both reach ADMIT the same way. The lobby carries a **`membership as of HH:MM:SS`** readout beside the fleet counts either way, so the age of the *membership* picture is visible separately from the age of the *state* picture | Polling the snapshot on a timer would invent a cadence D2 does not state and would fetch ~95 KB ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) at 50 seats) on a schedule to answer a question that changes when an operator provisions an install. **The discrepancy fetch is not that poll**: it is one fetch per *distinct* disagreement, driven by a number the wire already sends every 15 s, and it fires only when the client can already prove it is wrong — which is the same evidence it renders. [§ 14](#14-open-questions-for-the-review-loop) item 2 still asks D2 for the membership message that would close it properly |
 | A seat the client holds is **absent** from a fresh snapshot | Remove it — but **only on a *full* snapshot apply, never on a delta, a poll, or a seat fetch's one object ([§ 2.2](#22-connect-snapshot-deltas))**, and write one line into the client's event log ([§ 5.5](#55-the-clients-own-narration)) naming the seat and the reason (*retired*, [D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)) | A removal driven by a delta would be a removal driven by an absence, which is the inference this whole design refuses. The only honest removal from an ABSENCE is a fresh, complete population telling the client the seat is no longer in it. ⚠ **Since card#9078 this row is the BACKSTOP and no longer the removal path** ([§ 3.5](#35-retirement-and-the-only-removal)): a retired seat's desk goes on the ANNOUNCEMENT, so the only client this row still serves is one that was not connected when the announcement went out — and for that client nothing else would ever say the seat had gone. It is deliberately kept rather than retired with the fourteen-day window it used to serve, because the two are different mechanisms: one reads a message, the other reads a population. ⚠ **An absence carries no version, so the backstop asks the one question a version cannot: was the seat already held when the snapshot was REQUESTED?** A seat provisioned, delta'd and fetched inside a discovery's own round trip is absent from that discovery's rows because the server read them before the client held it — newer than the population, not gone from it — and removing it would drop a live desk until its next delta, and a quiet one for good. So a full snapshot removes a held seat it omits **only when the client held that seat before the request went out**. Owned against step 10 (card#7341 comment 5400) and closed there (card#7342 step 10) |
-| A seat the client holds gets no confirming read — its resync or insert fetch ([§ 2.2](#22-connect-snapshot-deltas)) keeps failing | No change to the held object or the retry: the existing per-delta primitive keeps trying, unchanged. Two events re-issue it, both already in the protocol — the next delta that names a fresh gap, and the release of the buffer a failed read left standing when a discovery was in flight, which re-presents that delta when the discovery ends ([§ 2.2](#22-connect-snapshot-deltas)). Neither is a cadence of this row's own. After the **second** consecutive failed read for the seat — **every** failed read of a held seat counts, whether or not a discovery fetch is in flight — the desk renders [§ 7.1](#71-the-render-per-state)'s empty chair — never a character drawn from a state the client can no longer confirm — until the count clears. **What clears it** is any apply that trusts the seat again: a read of the seat that succeeds, whatever version it returns, and any apply that advances the held object's `state_version` under [§ 2.2](#22-connect-snapshot-deltas)'s version rule — a delta merged at `+1`, live or drained from a buffer (a failed read's own drain included), and a higher row from a seat fetch or a full snapshot. A delta that names a gap clears nothing: it is what starts the read whose failure the count records. **A discovery in flight excuses nothing.** The floor may say a seat is missing while a discovery that could still repair it is running, and a good discovery ends that by repairing the seat: when it lands it re-issues the seat's read, and a read that succeeds clears the count. An exemption instead leaves the desk silently and permanently wrong, which is what this row exists to close — a standing disagreement with every read failing chains one discovery into the next (each failure refunds the pair and immediately re-admits), so under a per-discovery grace the seat's one read per discovery is excused every time and the count never advances at all | *"If an agent is missing, then the office analogy is that it did not show up at work. Hence that agent's desk will be unstaff (no person at the desk)."* — operator ruling, card#7341, 2026-09-14. A single failure the very next retry repairs must never flip the render, so the threshold sits above 1; **2**, the smallest count the no-flicker constraint allows, is also the operator's ratified answer (card#7341, 2026-09-15: "1. use 2") — not merely the floor of an open question. That it may go to the empty chair while a discovery is in flight is the operator's own answer (card#7341, 2026-09-15), and no exemption is needed to keep the render steady: the count above carries that by itself — one failure leaves the streak at 1, below the threshold, and any successful read clears it |
+| A seat the client holds gets no confirming read — its resync or insert fetch ([§ 2.2](#22-connect-snapshot-deltas)) keeps failing | No change to the held object or the retry: the existing per-delta primitive keeps trying, unchanged. Two events re-issue it, both already in the protocol — the next delta that names a fresh gap, and the release of the buffer a failed read left standing when a discovery was in flight, which re-presents that delta when the discovery ends ([§ 2.2](#22-connect-snapshot-deltas)). Neither is a cadence of this row's own. After the **second** consecutive failed read for the seat — **every** failed resync or insert fetch of a held seat counts, whether or not a discovery fetch is in flight, and a failed drill-down read ([§ 4.3](#43-the-desk-drill-down-panel)) does not count — the desk renders [§ 7.1](#71-the-render-per-state)'s empty chair — never a character drawn from a state the client can no longer confirm — until the count clears. **What clears it** is any apply that trusts the seat again: a read of the seat that succeeds, whatever version it returns — a drill-down read included, though its failure does not count — and any apply that advances the held object's `state_version` under [§ 2.2](#22-connect-snapshot-deltas)'s version rule — a delta merged at `+1`, live or drained from a buffer, and a higher row from a seat fetch or a full snapshot. A snapshot row at or below the version the client already holds advances nothing and clears nothing, and a delta that names a gap clears nothing: it is what starts the read whose failure the count records. **A discovery in flight excuses nothing.** The floor may say a seat is missing while a discovery that could still repair it is running, and a good discovery ends that by repairing the seat: when it lands it re-issues the seat's read, and a read that succeeds clears the count. An exemption instead leaves the desk silently and permanently wrong, which is what this row exists to close — a standing disagreement with every read failing chains one discovery into the next (each failure refunds the pair and immediately re-admits), so under a per-discovery grace the seat's one read per discovery is excused every time and the count never advances at all | *"If an agent is missing, then the office analogy is that it did not show up at work. Hence that agent's desk will be unstaff (no person at the desk)."* — operator ruling, card#7341, 2026-09-14. A single failure the very next retry repairs must never flip the render, so the threshold sits above 1; **2**, the smallest count the no-flicker constraint allows, is also the operator's ratified answer (card#7341, 2026-09-15: "1. use 2") — not merely the floor of an open question. That it may go to the empty chair while a discovery is in flight is the operator's own answer (card#7341, 2026-09-15), and no exemption is needed to keep the render steady: the count above carries that by itself — one failure leaves the streak at 1, below the threshold, and any successful read clears it |
 
 ### 2.4 The clock, and every age on the page
 
@@ -2277,8 +2277,8 @@ this document's own headline test unsatisfiable:
   [§ 11](#11-acceptance-tests)'s to state. An edge animation with no causing message is the defect the
   honesty principle exists to refuse.
 - **`held`** — a render **held** for exactly as long as a delivered field has a value: the working,
-  thinking, attention and replay loops, and the three states whose held render carries no motion at all
-  (`idle`, `stalled`, `unknown`). A held render has **no causing message** — it is entered whenever the
+  thinking, attention, sleeping and replay loops, and the states whose held render carries no motion at
+  all (`stalled`, `unknown`). A held render has **no causing message** — it is entered whenever the
   object the client holds says so, and that object may have arrived by delta, by snapshot, by resync or
   by fetch. What makes the class is those two facts plus a third: **one render may be entered and left
   more than once on one seat**, so a held render has a beginning and an end where an edge animation has
@@ -2910,6 +2910,12 @@ The rendering rule:
 | badged `fold_lag` | its activity render, plus the fold-lag render [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns in full | as the pose, explicitly labelled *N behind* | motion **stops**: a loop implies *now*, and *now* is what the lag denies |
 | badged `config_invalid` | its activity render, with the badge and *sending nothing* | as the pose | motion stops, for the same reason |
 | `disabled` | the *reporting disabled* render ([§ 7.1](#71-the-render-per-state)) — character present, monitor off | under the label, as *was: working (last event 12:47, seat clock)* | dimmed, motion **stops**; the seat is still heartbeating, which is how the flag is known at all, but it is sending no activity events, so everything under the label is older than the flag |
+
+**A desk carrying a value [§ 9](#9-failure-paths-and-their-observables) F9 does not recognise stops
+its motion too**, though it draws no currency label: F9 treats that desk
+as not-current, and a loop would claim the currency that treatment denies. It is the one motion
+stopper an object carries that this table does not list, and [§ 11](#11-acceptance-tests)'s
+definition of when an object satisfies an episode's `motion` half names both.
 
 **`config_invalid` and `disabled` are this document's own additions to D2's four, and both are named
 as ones.** [D2 § 3.4](FLEET-STATE.md#34-what-this-rule-forbids-concretely) lists `catching_up`,
@@ -4151,19 +4157,26 @@ one** `entered` row and **at most one** `left` row, and a `left` row's `episode_
 | `episode_id` | a fresh id, unique to this firing — an edge animation is an instant, so its episode is one row long and no `left` row ever carries this id | a fresh id, minted on entry | **the entering row's id**, repeated — this is the only field the two rows of one episode share by construction, and it is what makes *for how long* recoverable |
 | `class` | `edge` | `held` | `held` |
 | `phase` | **`fired`**, always — an edge animation is an instant, so it has exactly one row and no exit | `entered` | `left` |
-| `cause` | the id of the **wire message that caused it** — a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of [A16](#62-the-animation-table--the-closed-set), recorded as the key of **the arriving seat that now holds the displaced incumbent's former slot** — the seat that did the displacing, whichever of several arrivals in one render it is. ⚠ **In a cascade that seat did not arrive** (an arrival moved B, and B took C's slot), and C's row then records the arrival that sorts **lowest in [§ 3.2](#32-the-desk-slot-function)'s `order`**, ascending by `(h, seat_id)`, among that render's arrivals. That second clause is a **stated approximation**, not an attribution: no single arriving key displaced C. It is deterministic because `order` is a total order every client computes identically ([§ 14](#14-open-questions-for-the-review-loop) item 27). **A retirement's move ([§ 3.5](#35-retirement-and-the-only-removal)) is the departure side of the same row, and its `cause` is the DEPARTED seat's key** — the seat whose freed slot the mover now holds, or, where the mover took a slot another mover vacated, the departure that held the lowest slot; a move [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 4's backstop causes writes no row, because a snapshot animates nothing ([§ 6.5](#65-a-snapshot-never-animates); card#7342 step 10). A13 fired by the `seat.retired` message carries the message type, `seat.retired`, as the heartbeat's rows carry theirs. **An edge animation started with no causing message writes `null`**, which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail | the **`state_version` of the seat object the render is held by** — the object the client holds, whether it arrived by delta, snapshot, resync or per-seat fetch. **A held render entered against no held object writes `null`**, which is the same defect one class over: a render with nothing delivered behind it | the **`state_version` of the object that ENDED the hold** — the first object the client applied in which that row's hold condition is false. For a desk a retirement removed, that is the retired object's version, which both announcements carry; for one [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 4's backstop removed it is the literal `snapshot`, because a population ended the hold and no object did (card#7342 step 10); where a condition the client holds itself ended it, it is the literal the paragraph under this table names for that condition. Never the entering version: two rows identical in every field are two rows from which *which states, and for how long* cannot be recovered, which is the whole reason the exit row is written |
-| `motion` | `true`, or `false` when [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s reduced-motion form is what was drawn | `true` while the loop runs; `false` when the held render is drawn static — the **two** states with no motion by design (`stalled` and `unknown` — `idle` was the third until [A6](#62-the-animation-table--the-closed-set) gained its sleeping loop), a loop stopped by a currency treatment ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)), or reduced motion | **`false`**, always — nothing is drawn by a render that has been left, so an exit row is never evidence that motion ran |
+| `cause` | the id of the **wire message that caused it** — a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of [A16](#62-the-animation-table--the-closed-set), recorded as the key of **the arriving seat that now holds the displaced incumbent's former slot** — the seat that did the displacing, whichever of several arrivals in one render it is. ⚠ **In a cascade that seat did not arrive** (an arrival moved B, and B took C's slot), and C's row then records the arrival that sorts **lowest in [§ 3.2](#32-the-desk-slot-function)'s `order`**, ascending by `(h, seat_id)`, among that render's arrivals. That second clause is a **stated approximation**, not an attribution: no single arriving key displaced C. It is deterministic because `order` is a total order every client computes identically ([§ 14](#14-open-questions-for-the-review-loop) item 27). **A retirement's move ([§ 3.5](#35-retirement-and-the-only-removal)) is the departure side of the same row, and its `cause` is the DEPARTED seat's key** — the seat whose freed slot the mover now holds, or, where the mover took a slot another mover vacated, the departure that held the lowest slot; a move [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 4's backstop causes writes no row, because a snapshot animates nothing ([§ 6.5](#65-a-snapshot-never-animates); card#7342 step 10). A13 fired by the `seat.retired` message carries the message type, `seat.retired`, as the heartbeat's rows carry theirs. **An edge animation started with no causing message writes `null`**, which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail | the **`state_version` of the seat object the render is held by** — the object the client holds, whether it arrived by delta, snapshot, resync or per-seat fetch. **A held render entered against no held object writes `null`**, which is the same defect one class over: a render with nothing delivered behind it | the **`state_version` of the object that ENDED the hold** — the first object the client applied that does not satisfy the episode's hold condition, as the paragraph under this table defines it for the `motion` half. For a desk a retirement removed, that is the retired object's version, which both announcements carry; for one [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 4's backstop removed it is the literal `snapshot`, because a population ended the hold and no object did (card#7342 step 10); where a condition the client holds itself ended it, it is the literal the paragraph under this table names for that condition. Never the entering version: two rows identical in every field are two rows from which *which states, and for how long* cannot be recovered, which is the whole reason the exit row is written |
+| `motion` | `true`, or `false` when [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s reduced-motion form is what was drawn | `true` while the loop runs; `false` when the held render is drawn static — the **two** states with no motion by design (`stalled` and `unknown` — `idle` was the third until [A6](#62-the-animation-table--the-closed-set) gained its sleeping loop), a loop stopped by a currency treatment ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) or by a value [§ 9](#9-failure-paths-and-their-observables) F9 does not recognise, a desk re-entered on a floor [§ 9](#9-failure-paths-and-their-observables) F6 stilled (the paragraph under this table), or reduced motion | **`false`**, always — nothing is drawn by a render that has been left, so an exit row is never evidence that motion ran |
 | `at` | the **corrected server-clock instant** the row was written ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset, applied) — the client's own record of when it drew this, labelled as the client's own and rendered on no screen | as `edge` | as `edge` |
 
 **A hold that a condition the client holds itself ended, and no object did. This paragraph owns the
 rule, and [§ 6.2](#62-the-animation-table--the-closed-set)'s `held` class points here** (card#7341,
 [§ 14](#14-open-questions-for-the-review-loop) item 29). An episode is one render at one `motion`
-(above), so what holds it is two things: the fact its [§ 6.2](#62-the-animation-table--the-closed-set)
+(above), so its **hold condition** is two things: the fact its [§ 6.2](#62-the-animation-table--the-closed-set)
 row names at the value that row states, and the `motion` it was entered with. A change of either leaves
-the episode, and a change of `motion` alone enters the same row again as a new episode. Where an applied
-object made the change — a new value of the fact, or a currency treatment the object carries starting
-or stopping the loop ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim), as the `motion`
-column above names it) — the `left` row carries that object's `state_version`, as the `cause` column
+the episode, and a change of `motion` alone enters the same row again as a new episode.
+⭐ **An object satisfies the motion half** when the render that object alone would draw — under the
+page's standing conditions, which are [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s
+reduced motion, fixed for the page's life, and with every condition in the table below excluded —
+carries the `motion` the episode was entered with; the stoppers that render can reflect are therefore
+the object's own, a [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) currency treatment
+and a value [§ 9](#9-failure-paths-and-their-observables) F9 does not recognise. Every test in this
+section of an object against an episode's hold condition means both halves, the motion half in that
+sentence's sense, and none restates it. Where an applied object made the change — a new value
+of the fact, or one of those object-borne stoppers starting or stopping the loop (as the `motion`
+column above names them) — the `left` row carries that object's `state_version`, as the `cause` column
 says. Two conditions end a hold with no object behind it, because the client holds each itself and the
 wire delivered neither. Each writes an ordinary `left` row of the episode it ends — `animation_id`,
 `install_id` and `seat_id` copied from its `entered` row as every exit's are, `motion: false`, `at` the
@@ -4198,11 +4211,11 @@ The rest of the rule follows from that:
   lands while it runs is drained by the next (`wire/live-page.js`) — so the render that draws the chair
   or stills the floor can also carry an object applied since the last one: a delta merged at `+1`, which
   confirms the seat, and then two refused reads of that seat, all in one render's journal. If the object
-  the client then holds already makes the episode's hold condition false, that object ended the hold
-  and the row carries its `state_version`, as every other exit does. A literal is written only when the
-  held object still satisfies the condition the episode was entered under.
-- **Never the held object's version, and never `null`.** That object still says to draw the render, so
-  a row naming it would attribute the exit to a wire that is still holding it — the exit
+  the client then holds no longer satisfies the episode's hold condition (both halves, above), that
+  object ended the hold and the row carries its `state_version`, as every other exit does. A literal is
+  written only when the held object still satisfies it.
+- **Never the held object's version, and never `null`.** That object still satisfies the hold
+  condition, so a row naming it would attribute the exit to a wire that is still holding it — the exit
   [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s opposite-direction predicate exists to catch; on
   a stilled desk it is also the entering row's own version, which the `cause` column rules out.
   `null` is this log's mark of a render with nothing behind it, and a correct exit written with the
@@ -4210,16 +4223,18 @@ The rest of the rule follows from that:
 - **Re-entry.** An unconfirmed desk's is ordinary: when row 5's count clears (that row states what
   clears it), the desk draws its character again, and the render it then holds is entered as a new
   episode against the held object's `state_version`. The unconfirmed stretch is the gap between two
-  episodes, so *for how long* stays answerable on both sides of it. A stilled desk is not re-entered
+  runs of episodes (the paragraph on *for how long*, below), so that question stays answerable on both
+  sides of it. A stilled desk is not re-entered
   with motion on that page: a client whose session has ended re-opens nothing, and F6's recovery re-runs
   [§ 2.2](#22-connect-snapshot-deltas) from step 1.
 
 **What [AT-D3-1](#at-d3-1-no-animation-without-its-event) holds such a row to**, in place of the object
 predicate it cannot have: each literal appears only as a `left` row's `cause`; the render that wrote
-the row drew the condition the literal names — that seat's desk unconfirmed, or the floor stilled, with
-the same `animation_id` entered again on that seat in that render at `motion: false`; and the object
-the client held for the seat at that render still satisfies the hold condition of the episode the row
-closes — so the exit is attributable to the client's own condition, and to nothing the wire said.
+the row drew the condition the literal names — for `unconfirmed`, that seat's desk drawn as the empty
+chair; for `stilled`, the floor stilled and the same `animation_id` entered again on that seat in that
+render at `motion: false`; and the object the client held for the seat at that render still satisfies
+the hold condition of the episode the row closes, the motion half in the sense this rule's opening
+paragraph defines — so the exit is attributable to the client's own condition, and to nothing the wire said.
 
 **Two rows in [§ 6.2](#62-the-animation-table--the-closed-set) belong to no seat, and the tuple says
 what they carry rather than leaving an implementer to guess it twice.**
@@ -4287,14 +4302,19 @@ desk* clause in the amendment [§ 14](#14-open-questions-for-the-review-loop) it
 running as shipped code because the row had no caller to exercise it.**
 
 A **held** row is written when the render is **entered** and again when it is **left**, so the log
-records which states a desk held and for how long — and *for how long* is
-`left.at − entered.at` **for the two rows sharing an `episode_id`**, which is why `at` is on the row
-at all. A version pair cannot answer it: `state_version` counts changes, not seconds. Neither can the
-`(animation_id, install_id, seat_id)` triple an earlier revision paired on: a desk that enters,
-leaves and re-enters one render — which `fx-clear-trace` does to A4 twice over — writes two entries
-and two exits under one triple, and *for how long* over that set is a question with two answers and no
-way to choose. The episode is the unit the question is asked about, so the episode is what the log
-identifies.
+records which states a desk held and for how long. An episode is one render at one `motion` (the
+paragraph under the schema table), so one stretch in a state can span several episodes — a loop an
+object-borne stopper halts, or a floor F6 stills, leaves its episode and enters the same row again in
+the same render — and *for how long* is therefore asked of the **run**: the consecutive episodes of one
+`animation_id` on one seat, each entered in the render that left the one before it. It is the last
+episode's `left.at` − the first episode's `entered.at`, each episode's two rows found by the
+`episode_id` they share, which is why `at` is on the row at all. A version pair cannot answer it:
+`state_version` counts changes, not seconds. Neither can the `(animation_id, install_id, seat_id)`
+triple an earlier revision paired on: a desk that enters, leaves and re-enters one render with another
+render between — which `fx-clear-trace` does to A4 — writes two entries and two exits — two runs —
+under one triple, and *for how long* over that set is a question with two answers and no way to choose. The
+episode is what pairs an exit with its entry, so the episode is what the log identifies, and a run is
+read off consecutive episodes.
 **Why `motion: false` rather than no row at all:** a loop that was
 stopped by a currency treatment and a render that was never entered are the same absence in a log that
 records only starts, and they are opposite facts — the first is [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)
@@ -4364,7 +4384,8 @@ observable before both exist, so the test is **re-gated** rather than split furt
   satisfiable on a correct client: in a `phase: entered` row's object the fact its
   [§ 6.2](#62-the-animation-table--the-closed-set) row names **has** the value its hold condition
   states, and in a `phase: left` row's object the hold condition of the episode it closes **does
-  not** hold — an exit row whose object still satisfies the hold condition is a render the client
+  not** hold, the fact and the `motion` half alike, the latter as [§ 11](#11-acceptance-tests)'s
+  paragraph on a hold a client-side condition ended defines an object satisfying it — an exit row whose object still satisfies the hold condition is a render the client
   stopped drawing while the wire still said to draw it. That second predicate covers every `left` row
   save one whose `cause` is a literal [§ 11](#11-acceptance-tests)'s paragraph on a hold a client-side
   condition ended names; that paragraph states what such a row is held to instead. **The pairing is over `episode_id`, not over `(animation_id, install_id, seat_id)`:** every
@@ -6459,7 +6480,9 @@ reason to leave two readings live.
     **The rule is [§ 11](#11-acceptance-tests)'s**, in the paragraph under the animation-log schema
     table, and [§ 6.2](#62-the-animation-table--the-closed-set)'s `held` class points there rather than
     restating it. That paragraph owns the list of conditions and their literals, states that an
-    episode's hold condition includes the `motion` it was entered with, and writes a literal only when
+    episode's hold condition includes the `motion` it was entered with, defines in one sentence when an
+    object satisfies that `motion` half — the sentence every test of an object against a hold condition
+    points at — and writes a literal only when
     no object applied in the same render already ended the hold. It also states what AT-D3-1 holds such
     a row to in place of the object predicate, and AT-D3-1's GREEN points there for its one exception.
 
@@ -6476,15 +6499,15 @@ reason to leave two readings live.
     `entered` row of the same `animation_id` at `motion: false`. The rule needed no second shape to
     take it. A literal per client-side condition covers it once `motion` is stated as part of what
     holds an episode, and the shipped animation set already keys an episode that way. Stating it also
-    corrects AT-D3-1's opposite-direction predicate for a loop that an applied object's currency
-    treatment stops. So the ruling is the class, and F6 takes its own literal in § 11's table rather
+    corrects AT-D3-1's opposite-direction predicate for a loop that an applied object's own stopper — a
+    currency treatment or an unrecognised value — halts. So the ruling is the class, and F6 takes its own literal in § 11's table rather
     than staying open behind row 5's.
 
-    ⚠ **The document is answered, and the client and the fixture are not yet.** Where each stands is
-    stated in [§ 11](#11-acceptance-tests)'s fixture table, in its `fx-confirm` row. The client fix for
-    both conditions, the `fx-confirm` correction, and AT-D3-1's replay of the two runs belong to
+    ⚠ **The document is answered, and the client and the fixture are not yet.** The client fix for
+    both conditions, the `fx-confirm` correction, and AT-D3-1's replay of `fx-confirm`'s
+    `missing_persistent` run and `fx-refusals`' `refusal_401_warm` run belong to
     [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15, the owner this item always
-    named. **Reopens:** a hold that ends on something that is neither an applied object nor a condition
+    named, and that row states where each stands. **Reopens:** a hold that ends on something that is neither an applied object nor a condition
     the client holds itself. A new client-side condition is a row of § 11's table and does not reopen
     this item.
 
