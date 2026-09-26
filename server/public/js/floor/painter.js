@@ -428,6 +428,10 @@ export function createPainter({ characters, failed, select }) {
 
         // The desk the keyboard was on, rebuilt; a desk the render removed leaves focus on the drawing
         // itself, where the camera's keys still reach, rather than dropping it to the page's body.
+        // Known limit: focus lands on a freshly drawn desk at every repaint, so a screen reader may
+        // announce the focused desk again after each update (untested with a screen reader). The
+        // upstream fix is keyed reuse of desk nodes here — reconcile desks by `data-key` instead of
+        // rebuilding the <svg> — which keeps the focused node itself and makes this restore unneeded.
         if (focusedKey !== null) {
             (svg.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`) ?? host).focus({ preventScroll: true });
         }

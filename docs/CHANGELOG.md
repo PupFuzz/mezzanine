@@ -37,11 +37,13 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   *Fit the floor* frames it again — gliding there, or cutting straight to it when the system asks for
   reduced motion — and *Whole building* goes to the lobby. The desks inside the drawing are exposed to
   screen readers as buttons, open with Enter or Space, and keep the keyboard's focus when the drawing
-  updates. A floor with nothing on it yet to measure (no room map and no seat) still draws, status line
-  included. Zooming and panning are the viewer's own and survive every update, resync and reconnect. The desk list below the drawing is no longer
-  shown at that size; below it, in either dimension, the drawing and its controls are hidden and the page
-  shows the desks as that text list instead — the list view described in the slice A entry below. No
-  configuration, migration or deploy step is needed.
+  updates. Known limit: the keyboard's focus is put back onto a freshly drawn desk at every repaint, so a
+  screen reader may announce the focused desk again after each update; this is untested with a screen
+  reader. A floor with nothing on it yet to measure (no room map and no seat) still draws, status line
+  included. Zooming and panning are the viewer's own and survive every update, resync and reconnect. The
+  desk list below the drawing is no longer shown at that size; below it, in either dimension, the drawing
+  and its controls are hidden and the page shows the desks as that text list instead — the list view
+  described in the slice A entry below. No configuration, migration or deploy step is needed.
 
 - **card#7341** — **Every desk in the floor page's list below the drawing now shows every fact the desk
   model carries (Appendix B row 15, slice A).** Before, each desk was one line with the nameplate, the state
