@@ -27,6 +27,20 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **FLOOR.md § 14 item 29 is answered: a held render that the client itself stops
+  drawing, while the seat's own data still says to draw it, closes with a named reason.** Two cases do
+  this. A seat the client can no longer confirm (§ 2.3 row 5) is drawn as an empty chair, and a floor
+  signed out by § 9 F6 stops every loop. In both, the animation log's exit row carries a fixed literal
+  naming the case in place of a version number. § 11 owns the rule and the list of literals, and
+  § 6.2's `held` class and AT-D3-1 point there. § 11 also states that an episode is one render at one
+  `motion`, so a loop that stops is logged as stopped, defines in one sentence when a seat's data still
+  calls for the motion an episode was entered with, and measures *for how long* over a run of such
+  episodes. § 2.3 row 5 states which refused reads count toward the empty chair and what clears the
+  count. The design only is done here. The client still writes these exits with the held
+  object's version, and `fx-confirm`'s `missing_persistent` run gives every refused read the same
+  `server_time`. The client fix, that fixture correction and AT-D3-1's replay of that run and of
+  `fx-refusals`' `refusal_401_warm` run are Appendix B row 15's.
+
 - **card#7341** — **The floor page has a camera, and a viewport floor (Appendix B row 15, slice B).** At a
   browser viewport of at least 1,280 × 800 CSS px the room drawing fills the page's width and the viewport's
   height and opens framed on the whole floor, the overflow row below it included: the mouse wheel, a
