@@ -27,8 +27,10 @@
  * imports the two art modules through the painter (the asset route's URLs), hands the screen the
  * scene's inputs once they answer, and paints each frame's scene; the painter reports every asset it
  * could not draw back to the screen, which is § 9 F14's placeholder and the strip's `art` line on the
- * next render. The desk list below the drawing stays: it is row 8's text render, every fact as text,
- * until row 15 replaces it with the list view.
+ * next render. Below the drawing each desk is its row of the LIST VIEW (Appendix B row 15, slice A):
+ * `desk/desk-list.js`'s `deskListRow()` decides every line from the desk model and this file paints
+ * them; row 8's page-side `deskLine()` is gone. Until row 15's camera and viewport floor land (slice B)
+ * the list is painted at every viewport, under the drawing.
  *
  * ⛔ THE DRILL-DOWN IS OPENED FROM A DESK AND CLOSED TO THE FLOOR WITHOUT LEAVING THE PAGE (§ 4, § 4.3;
  * Appendix B row 10). Selecting a desk pushes `/floor/{floor}/{seat_id}` (§ 4.4) into the browser's
@@ -44,6 +46,7 @@ import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
 import { renderDrillDown } from '../drilldown/main.js';
 import { createPainter, loadArt, measurer } from './painter.js';
+import { deskListRow } from '../desk/desk-list.js';
 
 /** § 12's *The floor page's animation-log retention* — the page's bound, and no one else's. */
 const ANIMATION_LOG_RETENTION = 2000;
@@ -67,30 +70,23 @@ function say(id, text) {
     node.hidden = text === null || text === undefined || text === '';
 }
 
-/** A list element rebuilt from lines the model has already decided the text of. */
-function list(id, lines) {
-    const node = el(id);
-
-    node.replaceChildren(...lines.map((line) => {
+/** One `<li>` per line, each line text a model has already decided. */
+function items(lines) {
+    return lines.map((line) => {
         const item = document.createElement('li');
 
         item.textContent = line;
 
         return item;
-    }));
-    node.hidden = lines.length === 0;
+    });
 }
 
-/** One desk's line, from the desk model's own strings — nothing composed here but the joins. */
-function deskLine(desk) {
-    return [
-        desk.nameplate,
-        desk.glyph,
-        desk.label_line,
-        desk.quiet_age,
-        desk.badges.length > 0 ? `badges: ${desk.badges.join(', ')}` : null,
-        desk.unrecognised.length > 0 ? `unrecognised: ${desk.unrecognised.join(', ')}` : null,
-    ].filter((part) => part !== null && part !== '').join(' — ');
+/** A list element rebuilt from lines the model has already decided the text of. */
+function list(id, lines) {
+    const node = el(id);
+
+    node.replaceChildren(...items(lines));
+    node.hidden = lines.length === 0;
 }
 
 const root = el('floor');
@@ -129,24 +125,33 @@ function openDesk(installId, seatId) {
 }
 
 /**
- * The desks, each a link to its own drill-down (§ 4.3: "opened by selecting a desk"). The link is a
- * real URL (`/floor/{floor}/{seat_id}`, § 4.4) so it can be opened, copied or bookmarked; a plain
- * click opens the panel in place.
+ * The desks, each its list-view row (Appendix B row 15): the row's first line — the nameplate's — is a
+ * link to the desk's own drill-down (§ 4.3: "opened by selecting a desk"), and the rest of its lines
+ * follow it. The link is a real URL (`/floor/{floor}/{seat_id}`, § 4.4) so it can be opened, copied or
+ * bookmarked; a plain click opens the panel in place.
  */
 function paintDesks(frame, desks) {
     const node = el('floor-desks');
 
     node.replaceChildren(...Object.values(desks).map((desk) => {
+        const [first, ...rest] = deskListRow(desk);
         const item = document.createElement('li');
         const link = document.createElement('a');
 
         link.href = routeOf(floorSegment(), desk.seat_id);
-        link.textContent = deskLine(desk);
+        link.textContent = first;
         link.addEventListener('click', (event) => {
             event.preventDefault();
             openDesk(desk.install_id, desk.seat_id);
         });
         item.append(link);
+
+        if (rest.length > 0) {
+            const lines = document.createElement('ul');
+
+            lines.replaceChildren(...items(rest));
+            item.append(lines);
+        }
 
         return item;
     }));
