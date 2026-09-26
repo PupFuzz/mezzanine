@@ -113,7 +113,7 @@
         ⚠ There is <strong>no preview</strong> yet: the floor's own renderer is built and this
         console does not draw with it yet. Until it does, a restore from this page is the only
         thing between a bad save and every viewer — which is why it is here. A restore is held to
-        the same desk-slot rules as a save: a revision whose slots intersect, or are smaller than
+        the same desk-slot rules as a save: a revision whose slots overlap, or are smaller than
         the furniture box, is refused by name.
     </p>
 
