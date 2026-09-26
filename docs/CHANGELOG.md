@@ -27,6 +27,22 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **The floor page has a camera, and a viewport floor (Appendix B row 15, slice B).** At a
+  browser viewport of at least 1,280 × 800 CSS px the room drawing fills the page's width and the viewport's
+  height and opens framed on the whole floor, the overflow row below it included: the mouse wheel, a
+  trackpad scroll or a pinch zooms about the cursor in proportion to how far it scrolls (a pinch's much
+  smaller movements scaled up to match, as d3-zoom does), dragging with the primary button pans (the floor
+  always stays in view, and a drag ends when the button is released, even outside the drawing), *Zoom in*
+  and *Zoom out* — or `+` and `-` with the drawing focused — zoom about its centre, the arrow keys pan,
+  *Fit the floor* frames it again — gliding there, or cutting straight to it when the system asks for
+  reduced motion — and *Whole building* goes to the lobby. The desks inside the drawing are exposed to
+  screen readers as buttons, open with Enter or Space, and keep the keyboard's focus when the drawing
+  updates. A floor with nothing on it yet to measure (no room map and no seat) still draws, status line
+  included. Zooming and panning are the viewer's own and survive every update, resync and reconnect. The desk list below the drawing is no longer
+  shown at that size; below it, in either dimension, the drawing and its controls are hidden and the page
+  shows the desks as that text list instead — the list view described in the slice A entry below. No
+  configuration, migration or deploy step is needed.
+
 - **card#7341** — **Every desk in the floor page's list below the drawing now shows every fact the desk
   model carries (Appendix B row 15, slice A).** Before, each desk was one line with the nameplate, the state
   glyph, the label, the quiet age and the badge ids. Each desk is now a short block of lines: the room it is
@@ -34,9 +50,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   *sending nothing* on a seat whose reporter config is invalid, the monitor, the action's start and running
   time, the open-call count, the last event, the context gauge, the model, the badges, *oldest badge since*,
   each intern's stool and *+N more*, and the thought bubble with its tier and degraded note. A seat the page
-  can no longer confirm reads *unconfirmed*. The nameplate line still opens the drill-down. The camera and
-  the small-viewport switch that shows only this list follow in slice B. ⚠ These words on the rows are not
-  yet ratified: *unconfirmed*, *monitor*, and *a subagent's call*.
+  can no longer confirm reads *unconfirmed*. The nameplate line still opens the drill-down. With slice B's
+  camera (the entry above) this list is shown only below the viewport floor. ⚠ These words on the rows are
+  not yet ratified: *unconfirmed*, *monitor*, and *a subagent's call*.
 
 - **card#7341** — **The revisions page's *no preview* notice says a revision whose desk slots *overlap* is
   refused (operator ruling 2026-09-26),** matching the word the refusal itself uses; it said *intersect*.

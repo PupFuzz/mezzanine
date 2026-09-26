@@ -11,8 +11,8 @@
  * below out of this file). A rule found here that is not in the scene is in the wrong file.
  *
  * ⛔ ONE SPACE: SVG (§ 13 row 15 leaves the surface to the builder). Tiles, desks, nameplates,
- * bubbles and the thread line are drawn into one `<svg>` whose `viewBox` is the scene's extent, so
- * the camera (row 15) scales them together — the lesson `docs/design/floor-preview/README.md`
+ * bubbles and the thread line are drawn into one `<svg>` whose `viewBox` is the camera's view
+ * (`wire/camera.js`, Appendix B row 15) over the scene's space, so the camera scales them together — the lesson `docs/design/floor-preview/README.md`
  * records of a bubble no gate measured. SVG is resolution-independent, which is § 4.5's property;
  * the bridge tileset's raster tiles and the interim pixel characters resample, and that is their
  * residue (§ 10.3), not the layer's.
@@ -197,8 +197,10 @@ export function createPainter({ characters, failed, select }) {
         }, layer);
 
         g.addEventListener('click', () => select(desk.install_id, desk.seat_id));
+        // A `role="button"` activates on Enter and on Space; Space's default would scroll the page.
         g.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
                 select(desk.install_id, desk.seat_id);
             }
         });
@@ -302,7 +304,19 @@ export function createPainter({ characters, failed, select }) {
         }
     }
 
-    function paint(scene) {
+    /**
+     * The camera's view onto the drawing — a navigation act re-sets the `viewBox` and re-draws
+     * nothing, because a camera move is the viewer's head and never a fact (§ 4.5).
+     */
+    function view(camera) {
+        if (svg !== null && camera.bounds !== null) {
+            const v = camera.view;
+
+            svg.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`);
+        }
+    }
+
+    function paint(scene, camera) {
         if (loop !== null) {
             clearInterval(loop);
             loop = null;
@@ -315,9 +329,16 @@ export function createPainter({ characters, failed, select }) {
             return;
         }
 
-        const e = scene.extent;
+        // Every paint rebuilds the drawing, so the desk the keyboard was on is replaced under it: note
+        // its key while focus is inside the drawing, and put focus back on the rebuilt desk below.
+        const focusedKey = host.contains(document.activeElement)
+            ? document.activeElement.closest('[data-key]')?.getAttribute('data-key') ?? null
+            : null;
 
-        svg = node('svg', { viewBox: `${e.x} ${e.y} ${e.w} ${e.h}`, class: 'floor-scene', role: 'img', 'aria-label': 'the floor' });
+        // A group and never an image: an image's children are presentational, and the desks inside are
+        // buttons a screen reader and the keyboard must reach (§ 4.3's drill-down opens from one).
+        svg = node('svg', { width: '100%', height: '100%', class: 'floor-scene', role: 'group', 'aria-label': 'the floor' });
+        view(camera);
         node('style', {}, svg).textContent = STYLE;
 
         const pattern = node('pattern', { id: 'hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, node('defs', {}, svg));
@@ -405,6 +426,12 @@ export function createPainter({ characters, failed, select }) {
 
         host.replaceChildren(svg);
 
+        // The desk the keyboard was on, rebuilt; a desk the render removed leaves focus on the drawing
+        // itself, where the camera's keys still reach, rather than dropping it to the page's body.
+        if (focusedKey !== null) {
+            (svg.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`) ?? host).focus({ preventScroll: true });
+        }
+
         // § 6.2's held loops, at the interval the scene carries — one interval for the whole floor,
         // stepping every character whose render the set drew with motion.
         const moving = [...svg.querySelectorAll('image[data-frames]')];
@@ -444,5 +471,5 @@ export function createPainter({ characters, failed, select }) {
         }
     }
 
-    return { paint, refresh };
+    return { paint, refresh, view };
 }

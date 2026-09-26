@@ -8,8 +8,9 @@ use Tests\TestCase;
  * **The list view's own guard** — `docs/design/FLOOR.md` Appendix B row 15's gate column: "every leaf
  * of `deskModel()`'s output is either rendered — the module's own text form of that value is on the
  * row — or excluded by path with a reason; and every rendered leaf is seen at a value other than the
- * model's default — not null, not false, not 0, not empty — on at least one run over § 11's fixtures,
- * `fx-confirm`'s `missing_persistent` run among them". card#7341 row 15, slice A.
+ * model's default — not null, not false, not 0, not empty — on at least one run over every checked-in
+ * fixture file that draws a desk, `fx-confirm`'s `missing_persistent` run among them". card#7341 row 15,
+ * slice A.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ BOTH POPULATIONS ARE DERIVED, NEITHER IS LISTED. The RUNS are every run of every checked-in
@@ -49,7 +50,9 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
     /**
      * `floor/main.js`'s `paintDesks()` writes text only from `deskListRow()`'s output: the nameplate's
      * line into the link, the rest through `items()`, no other text sink, and no `desk.<member>` read
-     * beside the two ids it routes by. `deskLine()` is gone, not kept beside it.
+     * beside the ids it routes by (`seat_id`, `install_id`). `deskLine()` is gone, not kept beside it.
+     * ⚠ "Only" is as wide as the source read in `pageDefects()`: a desk member reached without `desk.`
+     * — destructured, bracketed, or through `Object.values(desk)` — is outside that read and passes it.
      */
     public function test_the_floor_page_paints_the_list_views_lines(): void
     {
@@ -231,8 +234,11 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
      * The page half, read off `floor/main.js`'s source: it imports the list view, and its `paintDesks()`
      * writes text only from `deskListRow()`'s output — every text-property assignment is the nameplate's
      * line (`first`), every `items()` call is the other lines (`rest`), no other text sink appears, no
-     * DOM insertion is handed a string built in place, and no `desk.<member>` is read beside the two ids
-     * the link routes by. A source read, not a DOM run: the page is a DOM entry no harness loads.
+     * DOM insertion is handed a string built in place, and no `desk.<member>` is read beside the ids the
+     * link routes by (`seat_id`, `install_id`). A source read, not a DOM run: the page is a DOM entry no
+     * harness loads. ⚠ The read sees `desk.<member>` only: a desk member reached without `desk.` —
+     * destructured (`const { glyph } = desk`), bracketed (`desk['glyph']`), or through
+     * `Object.values(desk)` — is outside this source read, and `paintDesks()` could print it unseen.
      *
      * @return list<string>
      */
