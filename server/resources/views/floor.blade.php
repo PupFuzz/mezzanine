@@ -28,10 +28,10 @@
         section's width and the viewport's height and the camera frames it — wheel to zoom, drag to
         pan, `+`/`-` or `#floor-zoom-in`/`#floor-zoom-out` to zoom about the centre, the arrow keys to
         pan, `#floor-fit` to frame the whole floor, and the whole-building link to `/`, § 4.4's lobby
-        route. Below the floor the drawing and its controls are hidden and `#floor-desks` is the list
-        view: row 8's text render, until row 15's list module replaces its one call in `main.js`. The
-        status strip, the failure statements and the sign-in prompt are page chrome outside the
-        camera.
+        route. Below the floor the drawing and its controls are hidden and `#floor-desks` is § 4.5's
+        list view: each desk's row (Appendix B row 15, slice A: `public/js/desk/desk-list.js`), every
+        fact the desk model emits as lines of text. The status strip, the failure statements and the
+        sign-in prompt are page chrome outside the camera.
     --}}
     <section id="floor" aria-labelledby="floor-name" data-floor="{{ $floor }}" data-seat="{{ $seat ?? '' }}">
         <h2 id="floor-name">The floor {{ $floor }} — waiting for the building layout</h2>

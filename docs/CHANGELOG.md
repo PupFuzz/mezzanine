@@ -38,8 +38,20 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   it yet to measure (no room map and no seat) still draws, status line included. Zooming and panning are the
   viewer's own and survive every update, resync and reconnect. The desk list below the drawing is no longer
   shown at that size; below it, in either dimension, the drawing and its controls are hidden and the page
-  shows the desks as that text list instead. The list's own rework is a later slice. No configuration,
-  migration or deploy step is needed.
+  shows the desks as that text list instead — the list view described in the slice A entry below. No
+  configuration, migration or deploy step is needed.
+
+- **card#7341** — **Every desk in the floor page's list below the drawing now shows every fact the desk
+  model carries (Appendix B row 15, slice A).** Before, each desk was one line with the nameplate, the state
+  glyph, the label, the quiet age and the badge ids. Each desk is now a short block of lines: the room it is
+  in, its pose and light, the currency label, the *this state is N behind — as of …* line on a lagged seat,
+  *sending nothing* on a seat whose reporter config is invalid, the monitor, the action's start and running
+  time, the open-call count, the last event, the context gauge, the model, the badges, *oldest badge since*,
+  each intern's stool and *+N more*, and the thought bubble with its tier and degraded note. A seat the page
+  can no longer confirm reads *unconfirmed*. The nameplate line still opens the drill-down. With slice B's
+  camera (the entry above) this list is shown only below the viewport floor. ⚠ These words on the rows are
+  not yet ratified: *unconfirmed*, *monitor*, and *a subagent's call*.
+
 - **card#7341** — **The revisions page's *no preview* notice says a revision whose desk slots *overlap* is
   refused (operator ruling 2026-09-26),** matching the word the refusal itself uses; it said *intersect*.
 - **card#7341** — **The console's desk-slot refusals and notices are ratified, and name no design document
