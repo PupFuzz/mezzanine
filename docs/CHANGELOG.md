@@ -28,14 +28,18 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 ## [Unreleased]
 
 - **card#7341** — **The floor page has a camera, and a viewport floor (Appendix B row 15, slice B).** At a
-  browser viewport of at least 1,280 × 800 CSS px the room drawing fills the page's width and the
-  viewport's height and opens framed on the whole floor, the overflow row below it included: the mouse
-  wheel zooms about the cursor, dragging pans (the floor always stays in view), *Fit the floor* frames it
-  again — gliding there, or cutting straight to it when the system asks for reduced motion — and *Whole
-  building* goes to the lobby. Zooming and panning are the viewer's own and survive every update, resync
-  and reconnect. The desk list below the drawing is no longer shown at that size; below it, in either
-  dimension, the drawing and its controls are hidden and the page shows the desks as that text list
-  instead. The list's own rework is a later slice. No configuration, migration or deploy step is needed.
+  browser viewport of at least 1,280 × 800 CSS px the room drawing fills the page's width and the viewport's
+  height and opens framed on the whole floor, the overflow row below it included: the mouse wheel, a
+  trackpad scroll or a pinch zooms about the cursor in proportion to how far it scrolls, dragging with the
+  primary button pans (the floor always stays in view), *Zoom in* and *Zoom out* — or `+` and `-` with the
+  drawing focused — zoom about its centre, the arrow keys pan, *Fit the floor* frames it again — gliding
+  there, or cutting straight to it when the system asks for reduced motion — and *Whole building* goes to
+  the lobby. The desks inside the drawing are exposed to screen readers as buttons. A floor with nothing on
+  it yet to measure (no room map and no seat) still draws, status line included. Zooming and panning are the
+  viewer's own and survive every update, resync and reconnect. The desk list below the drawing is no longer
+  shown at that size; below it, in either dimension, the drawing and its controls are hidden and the page
+  shows the desks as that text list instead. The list's own rework is a later slice. No configuration,
+  migration or deploy step is needed.
 - **card#7341** — **The revisions page's *no preview* notice says a revision whose desk slots *overlap* is
   refused (operator ruling 2026-09-26),** matching the word the refusal itself uses; it said *intersect*.
 - **card#7341** — **The console's desk-slot refusals and notices are ratified, and name no design document

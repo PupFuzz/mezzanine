@@ -31,8 +31,12 @@ use Tests\TestCase;
  * from that module — a painter nobody constructs addresses nothing and would pass vacuously.
  *
  * ⛔ AND TO THE CAMERA's (Appendix B row 15): the entry hands the screen the viewer's viewport and
- * wires the wheel, the drag, the fit-floor control and a resize to the screen's camera acts — a camera
- * no event reaches is a floor that never moves and would pass AT-D3-21, which drives the acts directly.
+ * wires the wheel (the event's `deltaMode` with its `deltaY`), the drag (the primary button only, and
+ * ended by a `pointercancel`), the keyboard, the zoom buttons, the fit-floor control and a resize (which
+ * re-shows the camera at once, stopping a glide) to the screen's camera acts — a camera no event
+ * reaches is a floor that never moves and would pass AT-D3-21, which drives the acts directly. And the
+ * drawing is reachable: it takes focus, and neither it nor the painter's `<svg>` is an image, whose
+ * children — the desks — would be presentational.
  *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that anything renders, lays out or is legible.
  */
@@ -67,6 +71,12 @@ class FloorPageWiringTest extends TestCase
     public function test_the_entry_wires_the_viewport_and_the_viewers_acts_to_the_screens_camera(): void
     {
         $this->assertSame([], $this->cameraDefects($this->mainJs()));
+    }
+
+    /** Appendix B row 15: the drawing takes the keyboard's focus and exposes the desks inside it. */
+    public function test_the_drawing_is_focusable_and_never_an_image_so_its_desks_are_exposed(): void
+    {
+        $this->assertSame([], $this->exposureDefects($this->floorPage(), $this->painterJs()));
     }
 
     public function test_the_page_serves_the_entry_as_a_module_and_every_import_resolves(): void
@@ -154,6 +164,47 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('wheel', $this->cameraDefects($unwheeled),
             'CONTROL (a wheel that never reaches the camera) did not bite');
 
+        $modeless = str_replace('{ deltaY: event.deltaY, deltaMode: event.deltaMode }', '{ deltaY: event.deltaY }', $js);
+        $this->assertNotSame($modeless, $js);
+        $this->assertArrayHasKey('wheel', $this->cameraDefects($modeless),
+            'CONTROL (a wheel whose deltaMode never reaches the camera) did not bite');
+
+        $uncancelled = str_replace("drawing.addEventListener('pointercancel'", "drawing.addEventListener('pointerleave'", $js);
+        $this->assertNotSame($uncancelled, $js);
+        $this->assertArrayHasKey('drag', $this->cameraDefects($uncancelled),
+            'CONTROL (a drag no pointercancel ends) did not bite');
+
+        $anyButton = str_replace('if (!event.isPrimary || event.button !== 0) {', 'if (false) {', $js);
+        $this->assertNotSame($anyButton, $js);
+        $this->assertArrayHasKey('drag', $this->cameraDefects($anyButton),
+            'CONTROL (a drag any button starts) did not bite');
+
+        $stale = str_replace("    screen.resize(viewport(), surface());\n    show(screen.camera());\n", "    screen.resize(viewport(), surface());\n", $js);
+        $this->assertNotSame($stale, $js);
+        $this->assertArrayHasKey('resize', $this->cameraDefects($stale),
+            'CONTROL (a resize that leaves a glide running over the old surface) did not bite');
+
+        $keyless = str_replace("drawing.addEventListener('keydown'", "drawing.addEventListener('keyup-never'", $js);
+        $this->assertNotSame($keyless, $js);
+        $this->assertArrayHasKey('keyboard', $this->cameraDefects($keyless),
+            'CONTROL (a keyboard that never reaches the camera) did not bite');
+
+        $buttonless = str_replace("el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));", "el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.camera());", $js);
+        $this->assertNotSame($buttonless, $js);
+        $this->assertArrayHasKey('buttons', $this->cameraDefects($buttonless),
+            'CONTROL (a zoom button that never reaches the camera) did not bite');
+
+        $painter = $this->painterJs();
+        $imaged = str_replace("class: 'floor-scene', role: 'group'", "class: 'floor-scene', role: 'img'", $painter);
+        $this->assertNotSame($imaged, $painter);
+        $this->assertArrayHasKey('painter', $this->exposureDefects($html, $imaged),
+            'CONTROL (the drawing painted as an image, its desks presentational) did not bite');
+
+        $unfocusable = str_replace(' tabindex="0" aria-keyshortcuts', ' aria-keyshortcuts', $html);
+        $this->assertNotSame($unfocusable, $html);
+        $this->assertArrayHasKey('focus', $this->exposureDefects($unfocusable, $painter),
+            'CONTROL (a drawing the keyboard cannot reach) did not bite');
+
         $blind = str_replace('    viewport: viewport(),', '', $js);
         $this->assertNotSame($blind, $js);
         $this->assertArrayHasKey('viewport', $this->cameraDefects($blind),
@@ -216,8 +267,13 @@ class FloorPageWiringTest extends TestCase
         $defects = [];
         $wired = [
             'viewport' => ['viewport: viewport(),', 'screen.resize(viewport(), surface())'],
-            'wheel' => ["drawing.addEventListener('wheel'", 'show(screen.wheel('],
-            'drag' => ["drawing.addEventListener('pointermove'", 'show(screen.drag('],
+            'wheel' => ["drawing.addEventListener('wheel'", 'show(screen.wheel(', '{ deltaY: event.deltaY, deltaMode: event.deltaMode }'],
+            'drag' => ["drawing.addEventListener('pointermove'", 'show(screen.drag(', 'if (!event.isPrimary || event.button !== 0) {',
+                "drawing.addEventListener('pointercancel'"],
+            'resize' => ["    screen.resize(viewport(), surface());\n    show(screen.camera());\n"],
+            'keyboard' => ["drawing.addEventListener('keydown'", 'show(screen.zoomStep(KEY_ZOOM[event.key]))', 'show(screen.drag(...KEY_PAN[event.key]))'],
+            'buttons' => ["el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));",
+                "el('floor-zoom-out').addEventListener('click', () => {\n    show(screen.zoomStep(-1));"],
             'fit' => ["el('floor-fit').addEventListener('click'", 'screen.fitFloor()'],
         ];
 
@@ -227,6 +283,30 @@ class FloorPageWiringTest extends TestCase
                     $defects[$act] = "the entry does not wire the {$act} to the screen's camera (`{$needle}` is missing)";
                 }
             }
+        }
+
+        return $defects;
+    }
+
+    /** @return array<string, string> */
+    private function exposureDefects(string $html, string $painter): array
+    {
+        $defects = [];
+
+        if (preg_match('/<div id="floor-drawing"([^>]*)>/', $html, $m) !== 1) {
+            return ['focus' => 'the page declares no #floor-drawing'];
+        }
+
+        if (! str_contains($m[1], 'tabindex="0"')) {
+            $defects['focus'] = 'the drawing takes no keyboard focus, so its keys reach nothing';
+        }
+
+        if (str_contains($m[1], 'role="img"')) {
+            $defects['drawing'] = 'the drawing is an image — its desks are presentational';
+        }
+
+        if (preg_match("/svg = node\\('svg', \\{[^}]*role: '(\\w+)'/", $painter, $r) !== 1 || $r[1] === 'img') {
+            $defects['painter'] = 'the painter\'s <svg> is an image (or states no role) — its desks are presentational';
         }
 
         return $defects;

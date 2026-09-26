@@ -327,7 +327,9 @@ export function createPainter({ characters, failed, select }) {
             return;
         }
 
-        svg = node('svg', { width: '100%', height: '100%', class: 'floor-scene', role: 'img', 'aria-label': 'the floor' });
+        // A group and never an image: an image's children are presentational, and the desks inside are
+        // buttons a screen reader and the keyboard must reach (§ 4.3's drill-down opens from one).
+        svg = node('svg', { width: '100%', height: '100%', class: 'floor-scene', role: 'group', 'aria-label': 'the floor' });
         view(camera);
         node('style', {}, svg).textContent = STYLE;
 

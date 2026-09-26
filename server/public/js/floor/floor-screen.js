@@ -55,9 +55,9 @@
  * scene's whole extent, which is the floor AND the overflow strip (card#7965). The camera is held
  * HERE, beside the episode state, because the render that must leave it alone is this module's: every
  * `draw()` hands the camera the scene's extent and the camera keeps the viewer's zoom and pan (the
- * first framing alone fits), and the viewer's acts — `wheel()`, `drag()`, `fitFloor()` — move the
- * camera and nothing else: they drain nothing, draw nothing and write no animation-log row. A
- * navigation act is never state (§ 4.5), and AT-D3-21 reds the day one of them reaches the log.
+ * first framing alone fits), and the viewer's acts — `wheel()`, `zoomStep()`, `drag()`, `fitFloor()`
+ * — move the camera and nothing else: they drain nothing, draw nothing and write no animation-log
+ * row. A navigation act is never state (§ 4.5), and AT-D3-21 reds the day one of them reaches the log.
  */
 
 import { Building } from '../wire/building.js';
@@ -70,7 +70,7 @@ import { buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
 import { buildScene } from './scene.js';
-import { createCamera, fit, frameOn, glideMs, panBy, resize, unframe, wheel } from '../wire/camera.js';
+import { createCamera, fit, frameOn, glideMs, panBy, resize, sizeOf, unframe, wheel, zoomStep } from '../wire/camera.js';
 import { TilesetLoader, tilesetUrl } from './tileset.js';
 import {
     assignSlots,
@@ -292,9 +292,25 @@ export class FloorScreen {
         return this.#camera;
     }
 
-    /** A wheel event at a point on the drawing surface: a zoom about that point (§ 4.5). */
-    wheel(point, deltaY) {
-        this.#camera = wheel(this.#camera, point, deltaY);
+    /**
+     * A wheel event — a notch, a trackpad's scroll or a pinch — at a point on the drawing surface: a
+     * zoom about that point in proportion to the scroll (§ 4.5; `wire/camera.js`'s `wheel()`).
+     *
+     * @param {{x: number, y: number}} point
+     * @param {{deltaY: number, deltaMode?: number}} delta
+     */
+    wheel(point, delta) {
+        this.#camera = wheel(this.#camera, point, delta);
+
+        return this.#camera;
+    }
+
+    /**
+     * `notches` zoom steps about the drawing's centre — the keyboard's `+`/`-` and the zoom buttons,
+     * which have no cursor (§ 4.5): positive in, negative out.
+     */
+    zoomStep(notches) {
+        this.#camera = zoomStep(this.#camera, notches);
 
         return this.#camera;
     }
@@ -572,11 +588,13 @@ export class FloorScreen {
         // nothing framed, and the floor that comes back comes back at fit.
         const scene = capability === 'floor' ? this.#scene(frame, rows) : null;
 
-        // A frame with nothing to draw — no floor composed yet, the art not yet answered — leaves the
-        // camera as it stands: only the list view unframes it.
+        // A frame with nothing to draw — no floor composed yet, the art not yet answered, or a floor
+        // with nothing measurable on it (no map held and no desk, where the scene's extent is `null`,
+        // as `floor-layout.js`'s own extent is: § 4.6 mints no zero-sized box) — leaves the camera as
+        // it stands: only the list view unframes it.
         if (capability === 'list') {
             this.#camera = unframe(this.#camera);
-        } else if (scene !== null) {
+        } else if (scene !== null && scene.extent !== null) {
             this.#camera = frameOn(this.#camera, scene.extent);
         }
 
@@ -1237,17 +1255,9 @@ export function startFloorScreen(client, fetchImpl, clock, log, draw, options = 
         // repaints the drawing's view from the camera each returns.
         resize: (viewport, surface) => screen.resize(viewport, surface),
         camera: () => screen.camera,
-        wheel: (point, deltaY) => screen.wheel(point, deltaY),
+        wheel: (point, delta) => screen.wheel(point, delta),
+        zoomStep: (notches) => screen.zoomStep(notches),
         drag: (dx, dy) => screen.drag(dx, dy),
         fitFloor: () => screen.fitFloor(),
     };
-}
-
-/** A viewport or surface in CSS px, refused rather than guessed when the page supplied none. */
-function sizeOf(size) {
-    if (!(size?.width > 0) || !(size?.height > 0)) {
-        throw new Error('the floor screen needs the viewer\'s viewport — { width, height } in CSS px');
-    }
-
-    return Object.freeze({ width: size.width, height: size.height });
 }

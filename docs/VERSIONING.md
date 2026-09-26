@@ -508,7 +508,7 @@ different acts:
 
 | Target | What it is | Where it runs | Who upgrades it |
 |---|---|---|---|
-| **The Laravel app** | dashboard, ingest endpoint, websocket feed | one server | whoever deploys, in one act |
+| **The Laravel app** | dashboard, ingest endpoint, the fleet feed (Server-Sent Events, `GET /api/fleet/stream` — [FLEET-STATE § 8.3](design/FLEET-STATE.md#83-the-websocket-delta-feed)) | one server | whoever deploys, in one act |
 | **`fleet-reporter`** | the Claude Code hook bundle that POSTs the events | every agent machine, Linux **and** Windows | each seat's owner, on their own schedule |
 
 The server's "one act" is **`bin/deploy.sh`** and nothing else (D-13): it refuses to start unless

@@ -30,11 +30,12 @@
  * next render.
  *
  * ⛔ THE CAPABILITY FLOOR AND THE CAMERA ARE THE SCREEN's (Appendix B row 15, § 4.5); this file supplies
- * the viewport and the drawing surface's size, wires the wheel, the drag and the fit-floor control to
- * the screen's camera acts, and sets the drawing's view from the camera each returns — a camera act
- * renders nothing. Below § 12's viewport floor the frame is the list view and this file paints the desk
- * list and hides the drawing; at or above it, the drawing under the camera and no list. The
- * whole-building control is a link to `/` (§ 4.4's lobby route), never a second scale drawn here.
+ * the viewport and the drawing surface's size, wires the wheel, the drag, the keyboard, the zoom buttons
+ * and the fit-floor control to the screen's camera acts, and sets the drawing's view from the camera
+ * each returns — a camera act renders nothing. Below § 12's viewport floor the frame is the list view
+ * and this file paints the desk list and hides the drawing; at or above it, the drawing under the
+ * camera and no list. The whole-building control is a link to `/` (§ 4.4's lobby route), never a
+ * second scale drawn here.
  * A glide is the page's alone — the camera's state is already its destination — and under
  * `prefers-reduced-motion` the screen hands back no glide at all, so the view cuts.
  *
@@ -52,7 +53,7 @@ import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
 import { renderDrillDown } from '../drilldown/main.js';
 import { createPainter, loadArt, measurer } from './painter.js';
-import { between } from '../wire/camera.js';
+import { PAN_STEP_PX, between } from '../wire/camera.js';
 
 /** § 12's *The floor page's animation-log retention* — the page's bound, and no one else's. */
 const ANIMATION_LOG_RETENTION = 2000;
@@ -383,8 +384,11 @@ el('floor-panel-more').addEventListener('click', () => {
     screen.morePanel().then(requestRender);
 });
 
-// Appendix B row 15: the viewer's camera. The wheel zooms about the cursor and a drag pans; neither
-// renders — each sets the drawing's view from the camera the screen hands back.
+// Appendix B row 15: the viewer's camera. The wheel zooms about the cursor in proportion to its scroll
+// (a trackpad's small deltas and a pinch — a wheel event with `ctrlKey` — through the same path), a
+// drag with the primary button pans, and the keyboard and the zoom buttons zoom about the drawing's
+// centre and pan by a step; none renders — each sets the drawing's view from the camera the screen
+// hands back.
 const drawing = el('floor-drawing');
 let drag = null;
 let dragged = false;
@@ -394,9 +398,15 @@ drawing.addEventListener('wheel', (event) => {
 
     const r = drawing.getBoundingClientRect();
 
-    show(screen.wheel({ x: event.clientX - r.left, y: event.clientY - r.top }, event.deltaY));
+    show(screen.wheel({ x: event.clientX - r.left, y: event.clientY - r.top }, { deltaY: event.deltaY, deltaMode: event.deltaMode }));
 }, { passive: false });
 drawing.addEventListener('pointerdown', (event) => {
+    // Only the primary pointer's primary button drags: a right-click's menu or a second finger never
+    // starts a pan that no `pointerup` of its own would end.
+    if (!event.isPrimary || event.button !== 0) {
+        return;
+    }
+
     dragged = false;
     drag = { x: event.clientX, y: event.clientY, moved: false };
 });
@@ -425,6 +435,12 @@ drawing.addEventListener('pointerup', () => {
     dragged = drag?.moved === true;
     drag = null;
 });
+// A pointer the browser took back — a touch turned into a scroll, a lost window — ends the drag and
+// is no click either.
+drawing.addEventListener('pointercancel', () => {
+    dragged = false;
+    drag = null;
+});
 // A drag that moved is not a click on the desk it ended over.
 drawing.addEventListener('click', (event) => {
     if (dragged) {
@@ -432,13 +448,41 @@ drawing.addEventListener('click', (event) => {
         dragged = false;
     }
 }, { capture: true });
+// The keyboard's camera, on the focusable drawing: `+`/`=` in and `-` out about its centre, the arrow
+// keys a pan by `PAN_STEP_PX` — the view moves the way the arrow points. A key with a modifier is the
+// browser's (Ctrl + is the page zoom) and passes through.
+const KEY_ZOOM = { '+': 1, '=': 1, '-': -1, '_': -1 };
+const KEY_PAN = { ArrowLeft: [PAN_STEP_PX, 0], ArrowRight: [-PAN_STEP_PX, 0], ArrowUp: [0, PAN_STEP_PX], ArrowDown: [0, -PAN_STEP_PX] };
+
+drawing.addEventListener('keydown', (event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+    }
+
+    if (event.key in KEY_ZOOM) {
+        event.preventDefault();
+        show(screen.zoomStep(KEY_ZOOM[event.key]));
+    } else if (event.key in KEY_PAN) {
+        event.preventDefault();
+        show(screen.drag(...KEY_PAN[event.key]));
+    }
+});
+el('floor-zoom-in').addEventListener('click', () => {
+    show(screen.zoomStep(1));
+});
+el('floor-zoom-out').addEventListener('click', () => {
+    show(screen.zoomStep(-1));
+});
 el('floor-fit').addEventListener('click', () => {
     const { from, to, glide_ms: ms } = screen.fitFloor();
 
     glideTo(from, to, ms);
 });
+// A resize re-shows the screen's camera at once — stopping a glide in flight, whose every later step
+// would otherwise be computed over the surface it started on — before the render it asks for.
 window.addEventListener('resize', () => {
     screen.resize(viewport(), surface());
+    show(screen.camera());
     requestRender();
 });
 

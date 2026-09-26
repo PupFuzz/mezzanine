@@ -45,6 +45,10 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     private const REDUCED = 'camera_reduced';
 
+    private const PROPORTIONAL = 'camera_proportional';
+
+    private const NOTHING_MEASURABLE = 'camera_nothing_measurable';
+
     private const ENTRY_SHORT = ['camera_entry_short_width', 'camera_entry_short_height'];
 
     private const DEGRADED_SHORT = ['camera_degraded_short_width', 'camera_degraded_short_height'];
@@ -59,7 +63,7 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     {
         [$w, $h] = $this->viewportFloor();
 
-        foreach ([self::FLOOR, self::OVERFLOW, self::SHORT, self::REDUCED] as $run) {
+        foreach ([self::FLOOR, self::OVERFLOW, self::SHORT, self::REDUCED, self::PROPORTIONAL, self::NOTHING_MEASURABLE] as $run) {
             $this->assertSame(['width' => $w, 'height' => $h], $this->fixture($run)['floor']['viewport'], "[{$run}] is not entered at F");
         }
 
@@ -84,6 +88,27 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $this->assertSame([], $this->wheelDefects($this->floorRun(self::FLOOR)));
     }
 
+    /**
+     * The wheel zooms in proportion to its scroll — a trackpad's burst of small deltas by the distance
+     * it covers, `deltaMode` normalised, one event at most one notch — and never a step per event.
+     */
+    public function test_green_a_wheel_zooms_in_proportion_to_its_scroll_and_a_trackpad_burst_stays_bounded(): void
+    {
+        $this->assertSame([], $this->wheelScaleDefects($this->floorRun(self::PROPORTIONAL)));
+    }
+
+    /** The keyboard's and the zoom buttons' zoom: a step per notch about the surface's centre. */
+    public function test_green_a_zoom_step_zooms_a_notch_about_the_surface_centre(): void
+    {
+        $this->assertSame([], $this->zoomStepDefects($this->floorRun(self::PROPORTIONAL)));
+    }
+
+    /** A floor with nothing measurable on it draws, strip and all, and leaves the camera unframed. */
+    public function test_green_a_scene_with_no_extent_paints_and_frames_nothing(): void
+    {
+        $this->assertSame([], $this->nullExtentDefects());
+    }
+
     public function test_green_a_drag_pans_by_the_offset_and_the_clamp_keeps_the_floor_in_view(): void
     {
         $this->assertSame([], $this->dragDefects($this->floorRun(self::FLOOR)));
@@ -101,7 +126,7 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     public function test_green_the_log_gains_no_row_from_any_camera_act_and_the_rows_it_gains_are_the_messages_own(): void
     {
-        foreach ([self::FLOOR, self::SHORT] as $run) {
+        foreach ([self::FLOOR, self::SHORT, self::PROPORTIONAL] as $run) {
             $this->assertSame([], $this->logDefects($run), "[{$run}]");
         }
     }
@@ -133,8 +158,8 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     public function test_red_the_logged_zoom(): void
     {
         $dir = $this->mutatedModules([self::FLOOR_SCREEN,
-            "        this.#camera = wheel(this.#camera, point, deltaY);\n",
-            "        this.#camera = wheel(this.#camera, point, deltaY);\n        this.#tap.log.edge({ animation_id: 'A14', cause: null, install_id: null, seat_id: null, motion: true, at: this.#clock.now() });\n"]);
+            "        this.#camera = wheel(this.#camera, point, delta);\n",
+            "        this.#camera = wheel(this.#camera, point, delta);\n        this.#tap.log.edge({ animation_id: 'A14', cause: null, install_id: null, seat_id: null, motion: true, at: this.#clock.now() });\n"]);
 
         $this->assertNotSame([], $this->logDefects(self::FLOOR, $dir), 'the RED (a logged zoom) did not bite');
     }
@@ -175,6 +200,56 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             'x: camera.x, y: camera.y, fitted: false']);
 
         $this->assertNotSame([], $this->wheelDefects($this->floorRun(self::FLOOR, $dir)), 'CONTROL (a zoom about the corner) did not bite');
+    }
+
+    /** Round-1 F1's defect: a notch per wheel event, whatever its scroll — the scale clause's control. */
+    public function test_red_a_wheel_that_steps_a_notch_per_event(): void
+    {
+        $dir = $this->mutatedModules([self::CAMERA,
+            'return zoomAt(camera, point, ZOOM_STEP ** (-scroll / NOTCH_PX));',
+            'return zoomAt(camera, point, scroll < 0 ? ZOOM_STEP : 1 / ZOOM_STEP);']);
+
+        $this->assertNotSame([], $this->wheelScaleDefects($this->floorRun(self::PROPORTIONAL, $dir)), 'CONTROL (a notch per event) did not bite');
+    }
+
+    /** A wheel that reads `deltaY` as pixels whatever its `deltaMode`. */
+    public function test_red_a_wheel_that_ignores_delta_mode(): void
+    {
+        $dir = $this->mutatedModules([self::CAMERA,
+            'const unit = deltaMode === 2 ? camera.surface.height : deltaMode === 1 ? LINE_PX : 1;',
+            'const unit = 1;']);
+
+        $this->assertNotSame([], $this->wheelScaleDefects($this->floorRun(self::PROPORTIONAL, $dir)), 'CONTROL (deltaMode ignored) did not bite');
+    }
+
+    /** A wheel event with no per-event bound. */
+    public function test_red_a_wheel_event_that_leaps_past_a_notch(): void
+    {
+        $dir = $this->mutatedModules([self::CAMERA,
+            'const scroll = Math.min(NOTCH_PX, Math.max(-NOTCH_PX, deltaY * unit));',
+            'const scroll = deltaY * unit;']);
+
+        $this->assertNotSame([], $this->wheelScaleDefects($this->floorRun(self::PROPORTIONAL, $dir)), 'CONTROL (an unbounded event) did not bite');
+    }
+
+    /** A zoom step about the corner and not the centre. */
+    public function test_red_a_zoom_step_about_the_corner(): void
+    {
+        $dir = $this->mutatedModules([self::CAMERA,
+            'return zoomAt(camera, { x: camera.surface.width / 2, y: camera.surface.height / 2 }, ZOOM_STEP ** notches);',
+            'return zoomAt(camera, { x: 0, y: 0 }, ZOOM_STEP ** notches);']);
+
+        $this->assertNotSame([], $this->zoomStepDefects($this->floorRun(self::PROPORTIONAL, $dir)), 'CONTROL (a zoom step about the corner) did not bite');
+    }
+
+    /** Round-1 F4's defect: frame every scene, a `null` extent among them — the render throws. */
+    public function test_red_a_render_that_frames_a_scene_with_no_extent(): void
+    {
+        $dir = $this->mutatedModules([self::FLOOR_SCREEN,
+            '} else if (scene !== null && scene.extent !== null) {',
+            '} else if (scene !== null) {']);
+
+        $this->assertNotSame([], $this->nullExtentDefects($dir), 'CONTROL (a null extent framed) did not bite');
     }
 
     /** A drag with no clamp — the clamp clause's own control. */
@@ -307,6 +382,166 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             if (abs($before['x'] - $after['x']) > self::EPSILON || abs($before['y'] - $after['y']) > self::EPSILON) {
                 $defects[] = sprintf('the wheel at %d ms moved the scene point under the cursor from (%.3f, %.3f) to (%.3f, %.3f)',
                     $a['at'], $before['x'], $before['y'], $after['x'], $after['y']);
+            }
+        }
+
+        return $defects;
+    }
+
+    /**
+     * The camera module's own constants, read from the shipped file — the zoom step, the notch's
+     * scroll and a line's height — so no figure here is this test's.
+     *
+     * @return array{step: float, notch: float, line: float}
+     */
+    private function wheelConstants(): array
+    {
+        $src = (string) file_get_contents($this->jsRoot().'/wire/camera.js');
+        $read = function (string $name) use ($src): float {
+            $this->assertSame(1, preg_match("/export const {$name} = ([\\d.]+);/", $src, $m), "camera.js's {$name} did not parse");
+
+            return (float) $m[1];
+        };
+
+        return ['step' => $read('ZOOM_STEP'), 'notch' => $read('NOTCH_PX'), 'line' => $read('LINE_PX')];
+    }
+
+    /** @return list<string> */
+    private function wheelScaleDefects(array $result): array
+    {
+        $c = $this->wheelConstants();
+        $wheels = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => $a['act']['act'] === 'wheel'));
+        $defects = [];
+        $modes = [];
+        $bounded = false;
+        $burst = ['n' => 0, 'px' => 0.0, 'factor' => 1.0];
+
+        foreach ($wheels as $a) {
+            $mode = $a['act']['delta_mode'] ?? 0;
+            $unit = match ($mode) {
+                2 => $a['before']['surface']['height'],
+                1 => $c['line'],
+                default => 1,
+            };
+            $px = $a['act']['delta_y'] * $unit;
+            $scroll = max(-$c['notch'], min($c['notch'], $px));
+            $expected = $a['before']['zoom'] * $c['step'] ** (-$scroll / $c['notch']);
+            $modes[$mode] = true;
+            $bounded = $bounded || abs($px) > $c['notch'];
+
+            if (abs($a['after']['zoom'] - $expected) > self::EPSILON) {
+                $defects[] = sprintf('the wheel at %d ms (delta %s, mode %d) zoomed %.6f → %.6f; its scroll makes it %.6f',
+                    $a['at'], $a['act']['delta_y'], $mode, $a['before']['zoom'], $a['after']['zoom'], $expected);
+            }
+
+            // The trackpad's burst: the small pixel-mode deltas, whose sum is the gesture's scroll.
+            if ($mode === 0 && abs($px) < $c['notch'] / 10) {
+                $burst['n']++;
+                $burst['px'] += $px;
+                $burst['factor'] *= $a['after']['zoom'] / $a['before']['zoom'];
+            }
+        }
+
+        if ($burst['n'] < 20) {
+            $defects[] = "the run's trackpad burst is {$burst['n']} events — too few to tell a step per event from a scroll";
+        } elseif (abs($burst['factor'] - $c['step'] ** (-$burst['px'] / $c['notch'])) > self::EPSILON) {
+            $defects[] = sprintf('a trackpad burst of %d events scrolling %.0f px in all zoomed ×%.4f; its scroll is ×%.4f',
+                $burst['n'], $burst['px'], $burst['factor'], $c['step'] ** (-$burst['px'] / $c['notch']));
+        }
+
+        foreach ([0 => 'pixel', 1 => 'line', 2 => 'page'] as $mode => $name) {
+            if (! isset($modes[$mode])) {
+                $defects[] = "the run turns the wheel in no {$name}-mode event";
+            }
+        }
+
+        if (! $bounded) {
+            $defects[] = 'the run turns the wheel in no event past a notch, so the per-event bound was never asked to bite';
+        }
+
+        return $defects;
+    }
+
+    /** @return list<string> */
+    private function zoomStepDefects(array $result): array
+    {
+        $step = $this->wheelConstants()['step'];
+        $zooms = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => $a['act']['act'] === 'zoom'));
+        $defects = [];
+        $signs = [];
+
+        foreach ($zooms as $a) {
+            $n = $a['act']['notches'];
+            $signs[$n <=> 0] = true;
+            $centre = ['x' => $a['before']['surface']['width'] / 2, 'y' => $a['before']['surface']['height'] / 2];
+            $before = $this->toScene($a['before'], $centre);
+            $after = $this->toScene($a['after'], $centre);
+
+            if (abs($a['after']['zoom'] - $a['before']['zoom'] * $step ** $n) > self::EPSILON) {
+                $defects[] = "the zoom step at {$a['at']} ms did not zoom {$n} notch(es)";
+            }
+
+            if (abs($before['x'] - $after['x']) > self::EPSILON || abs($before['y'] - $after['y']) > self::EPSILON) {
+                $defects[] = sprintf('the zoom step at %d ms moved the scene point at the centre from (%.3f, %.3f) to (%.3f, %.3f)',
+                    $a['at'], $before['x'], $before['y'], $after['x'], $after['y']);
+            }
+        }
+
+        if (! isset($signs[1], $signs[-1])) {
+            $defects[] = 'the run steps the zoom not both in and out';
+        }
+
+        return $defects;
+    }
+
+    /**
+     * A floor with nothing measurable: the run must complete (a throw inside `render()` is the
+     * defect), draw the scene with a `null` extent and the strip, leave the camera unframed, and every
+     * act on that camera move nothing.
+     *
+     * @return list<string>
+     */
+    private function nullExtentDefects(?string $dir = null): array
+    {
+        [$status, $stdout, $stderr] = $this->runProbe($this->fixture(self::NOTHING_MEASURABLE), $dir);
+
+        if ($status !== 0) {
+            $lines = array_values(array_filter(explode("\n", $stderr), static fn (string $l): bool => str_starts_with($l, 'Error')));
+
+            return ['the render threw: '.($lines[0] ?? trim($stderr))];
+        }
+
+        $result = json_decode($stdout, true)['runs'][0];
+        $defects = [];
+        $drawn = array_values(array_filter($result['floor_renders'], static fn (array $r): bool => $r['frame']['scene'] !== null));
+
+        if ($drawn === []) {
+            return ['no frame drew a scene — the run does not reach a scene with no extent'];
+        }
+
+        foreach ($drawn as $r) {
+            $f = $r['frame'];
+
+            if ($f['scene']['extent'] !== null) {
+                $defects[] = "the scene at {$r['at']} ms has an extent — the run measures a floor with something on it";
+            }
+
+            if ($f['strip'] === null) {
+                $defects[] = "the frame at {$r['at']} ms carries no status strip";
+            }
+
+            if ($f['camera']['bounds'] !== null) {
+                $defects[] = "the frame at {$r['at']} ms framed a rect on a floor with none";
+            }
+        }
+
+        if ($result['camera_acts'] === []) {
+            $defects[] = 'the run touched no camera';
+        }
+
+        foreach ($result['camera_acts'] as $a) {
+            if ($a['after'] !== $a['before']) {
+                $defects[] = "the {$a['act']['act']} at {$a['at']} ms moved a camera with nothing framed";
             }
         }
 

@@ -22,7 +22,10 @@
  *
  * ⛔ THE NUMBERS BELOW ARE THE DRAWING's (§ 10.4's last bullet): FLOOR.md publishes no zoom step, no
  * zoom ceiling and no glide duration, because they carry no fact. The ratified reference's
- * (`docs/design/floor-preview/floor-preview.html`) are the worked example they were taken from.
+ * (`docs/design/floor-preview/floor-preview.html`) are the worked example the step, the ceiling and
+ * the glide were taken from. The reference zooms a step per wheel event whatever its size — the
+ * defect `wheel()` states and does not copy — so the notch's scroll, the line's height and the arrow
+ * key's pan are this module's own.
  *
  * The value: `{ surface: {width, height}, bounds: {x, y, w, h} | null, zoom, x, y, fitted, view }` —
  * `surface` the drawing's size in CSS px; `bounds` the framed rect in scene px, `null` while nothing
@@ -33,6 +36,19 @@
 
 /** One wheel notch's zoom factor — the reference's `1.18`. */
 export const ZOOM_STEP = 1.18;
+
+/**
+ * How far one notch scrolls, in CSS px: a wheel event zooms by `ZOOM_STEP` raised to its scroll over
+ * this, so a mouse's one notch of 100 px is one step and a trackpad's or a pinch's stream of small
+ * deltas zooms in proportion to the distance it covers rather than by a step per event.
+ */
+export const NOTCH_PX = 100;
+
+/** A `WheelEvent.DOM_DELTA_LINE` line in CSS px — the conventional 16 (one line of body text). */
+export const LINE_PX = 16;
+
+/** How far one arrow key pans, in CSS px on the surface. */
+export const PAN_STEP_PX = 48;
 
 /** The closest the viewer may zoom, in CSS px per scene px — the reference's ceiling of 4. */
 export const ZOOM_CEILING = 4;
@@ -105,13 +121,40 @@ export function zoomAt(camera, point, factor) {
     return clamp({ ...camera, zoom, x: at.x - point.x / zoom, y: at.y - point.y / zoom, fitted: false });
 }
 
-/** One wheel event at a point on the surface: a notch in, for a negative `deltaY`, or a notch out. */
-export function wheel(camera, point, deltaY) {
-    if (deltaY === 0) {
+/**
+ * One wheel event at a point on the surface — a mouse's notch, a trackpad's scroll, or a pinch (which a
+ * browser delivers as a wheel event with `ctrlKey` set, through this same path): a zoom about that point
+ * by `ZOOM_STEP ** (-scroll / NOTCH_PX)`, where `scroll` is `deltaY` in CSS px after `deltaMode` is
+ * normalised (pixels as they are, lines at `LINE_PX`, pages at the surface's height). A negative
+ * `deltaY` zooms in. One event scrolls at most one notch either way, so an accelerated wheel or a
+ * page-mode event cannot leap past a step.
+ *
+ * ⛔ THE ZOOM IS PROPORTIONAL TO THE SCROLL AND NEVER A STEP PER EVENT. A trackpad fires dozens of
+ * events of a few px for one gesture; a step per event took the floor from its fit to the ceiling in
+ * a fraction of one.
+ *
+ * @param {object} camera
+ * @param {{x: number, y: number}} point the cursor, in CSS px from the surface's top-left
+ * @param {{deltaY: number, deltaMode?: number}} delta the `WheelEvent`'s own two members (a
+ *        `WheelEvent` itself will do); `deltaMode` is 0 (pixels), 1 (lines) or 2 (pages), absent 0
+ */
+export function wheel(camera, point, { deltaY, deltaMode = 0 }) {
+    const unit = deltaMode === 2 ? camera.surface.height : deltaMode === 1 ? LINE_PX : 1;
+    const scroll = Math.min(NOTCH_PX, Math.max(-NOTCH_PX, deltaY * unit));
+
+    if (scroll === 0) {
         return camera;
     }
 
-    return zoomAt(camera, point, deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
+    return zoomAt(camera, point, ZOOM_STEP ** (-scroll / NOTCH_PX));
+}
+
+/**
+ * `notches` wheel notches about the surface's centre — the keyboard's zoom and the zoom buttons',
+ * which have no cursor to hold: positive in, negative out.
+ */
+export function zoomStep(camera, notches) {
+    return zoomAt(camera, { x: camera.surface.width / 2, y: camera.surface.height / 2 }, ZOOM_STEP ** notches);
 }
 
 /** A drag by `dx`, `dy` CSS px: the scene moves with the pointer, then the clamp. */
@@ -225,12 +268,16 @@ function settle(camera) {
     });
 }
 
-function sizeOf(surface) {
-    if (!(surface?.width > 0) || !(surface?.height > 0)) {
-        throw new Error('the camera needs a drawing surface with a positive width and height');
+/**
+ * A size in CSS px — a drawing surface, or the viewport a page supplies — refused rather than guessed
+ * when it is missing or not positive, and frozen.
+ */
+export function sizeOf(size) {
+    if (!(size?.width > 0) || !(size?.height > 0)) {
+        throw new Error('a surface or viewport needs a positive width and height in CSS px');
     }
 
-    return Object.freeze({ width: surface.width, height: surface.height });
+    return Object.freeze({ width: size.width, height: size.height });
 }
 
 function rectOf(bounds) {
