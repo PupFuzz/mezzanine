@@ -31,12 +31,13 @@ use Tests\TestCase;
  * from that module — a painter nobody constructs addresses nothing and would pass vacuously.
  *
  * ⛔ AND TO THE CAMERA's (Appendix B row 15): the entry hands the screen the viewer's viewport and
- * wires the wheel (the event's `deltaMode` with its `deltaY`), the drag (the primary button only, and
- * ended by a `pointercancel`), the keyboard, the zoom buttons, the fit-floor control and a resize (which
+ * wires the wheel (the event's `deltaMode` and `ctrlKey` with its `deltaY`), the drag (the primary button only, and
+ * ended by a `pointercancel` or by a move with that button no longer held), the keyboard, the zoom buttons, the fit-floor control and a resize (which
  * re-shows the camera at once, stopping a glide) to the screen's camera acts — a camera no event
  * reaches is a floor that never moves and would pass AT-D3-21, which drives the acts directly. And the
  * drawing is reachable: it takes focus, and neither it nor the painter's `<svg>` is an image, whose
- * children — the desks — would be presentational.
+ * children — the desks — would be presentational; a desk activates on Enter and Space, and the desk the
+ * keyboard was on keeps focus across the painter's rebuild of the `<svg>`.
  *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that anything renders, lays out or is legible.
  */
@@ -164,15 +165,25 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('wheel', $this->cameraDefects($unwheeled),
             'CONTROL (a wheel that never reaches the camera) did not bite');
 
-        $modeless = str_replace('{ deltaY: event.deltaY, deltaMode: event.deltaMode }', '{ deltaY: event.deltaY }', $js);
+        $modeless = str_replace('{ deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }', '{ deltaY: event.deltaY, ctrlKey: event.ctrlKey }', $js);
         $this->assertNotSame($modeless, $js);
         $this->assertArrayHasKey('wheel', $this->cameraDefects($modeless),
             'CONTROL (a wheel whose deltaMode never reaches the camera) did not bite');
+
+        $pinchless = str_replace('{ deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }', '{ deltaY: event.deltaY, deltaMode: event.deltaMode }', $js);
+        $this->assertNotSame($pinchless, $js);
+        $this->assertArrayHasKey('wheel', $this->cameraDefects($pinchless),
+            'CONTROL (a wheel whose ctrlKey — a pinch — never reaches the camera) did not bite');
 
         $uncancelled = str_replace("drawing.addEventListener('pointercancel'", "drawing.addEventListener('pointerleave'", $js);
         $this->assertNotSame($uncancelled, $js);
         $this->assertArrayHasKey('drag', $this->cameraDefects($uncancelled),
             'CONTROL (a drag no pointercancel ends) did not bite');
+
+        $unreleased = str_replace('if (drag === null || (event.buttons & 1) === 0) {', 'if (drag === null) {', $js);
+        $this->assertNotSame($unreleased, $js);
+        $this->assertArrayHasKey('drag', $this->cameraDefects($unreleased),
+            'CONTROL (a drag a buttonless move does not end — its pointerup was released outside) did not bite');
 
         $anyButton = str_replace('if (!event.isPrimary || event.button !== 0) {', 'if (false) {', $js);
         $this->assertNotSame($anyButton, $js);
@@ -199,6 +210,16 @@ class FloorPageWiringTest extends TestCase
         $this->assertNotSame($imaged, $painter);
         $this->assertArrayHasKey('painter', $this->exposureDefects($html, $imaged),
             'CONTROL (the drawing painted as an image, its desks presentational) did not bite');
+
+        $enterOnly = str_replace("if (event.key === 'Enter' || event.key === ' ') {", "if (event.key === 'Enter') {", $painter);
+        $this->assertNotSame($enterOnly, $painter);
+        $this->assertArrayHasKey('activate', $this->exposureDefects($html, $enterOnly),
+            'CONTROL (a desk Space does not activate) did not bite');
+
+        $unrestored = preg_replace('/\n\s*\(svg\.querySelector\(`\[data-key=[^\n]*\n/', "\n", $painter);
+        $this->assertNotSame($unrestored, $painter);
+        $this->assertArrayHasKey('refocus', $this->exposureDefects($html, $unrestored),
+            'CONTROL (a rebuild that drops the focused desk\'s focus) did not bite');
 
         $unfocusable = str_replace(' tabindex="0" aria-keyshortcuts', ' aria-keyshortcuts', $html);
         $this->assertNotSame($unfocusable, $html);
@@ -267,9 +288,9 @@ class FloorPageWiringTest extends TestCase
         $defects = [];
         $wired = [
             'viewport' => ['viewport: viewport(),', 'screen.resize(viewport(), surface())'],
-            'wheel' => ["drawing.addEventListener('wheel'", 'show(screen.wheel(', '{ deltaY: event.deltaY, deltaMode: event.deltaMode }'],
+            'wheel' => ["drawing.addEventListener('wheel'", 'show(screen.wheel(', '{ deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }'],
             'drag' => ["drawing.addEventListener('pointermove'", 'show(screen.drag(', 'if (!event.isPrimary || event.button !== 0) {',
-                "drawing.addEventListener('pointercancel'"],
+                "drawing.addEventListener('pointercancel'", 'if (drag === null || (event.buttons & 1) === 0) {'],
             'resize' => ["    screen.resize(viewport(), surface());\n    show(screen.camera());\n"],
             'keyboard' => ["drawing.addEventListener('keydown'", 'show(screen.zoomStep(KEY_ZOOM[event.key]))', 'show(screen.drag(...KEY_PAN[event.key]))'],
             'buttons' => ["el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));",
@@ -307,6 +328,21 @@ class FloorPageWiringTest extends TestCase
 
         if (preg_match("/svg = node\\('svg', \\{[^}]*role: '(\\w+)'/", $painter, $r) !== 1 || $r[1] === 'img') {
             $defects['painter'] = 'the painter\'s <svg> is an image (or states no role) — its desks are presentational';
+        }
+
+        if (! str_contains($painter, "if (event.key === 'Enter' || event.key === ' ') {")) {
+            $defects['activate'] = 'a desk activates on Enter alone — a role="button" also answers Space';
+        }
+
+        // The painter rebuilds the <svg> on every paint: the focused desk's key is noted before the
+        // rebuild and focus is put back on the rebuilt desk after it, or a keyboard user on a desk
+        // drops to the page's body at the next render.
+        $noted = strpos($painter, 'const focusedKey = host.contains(document.activeElement)');
+        $rebuilt = strpos($painter, 'host.replaceChildren(svg);');
+        $restored = strpos($painter, 'svg.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`)');
+
+        if ($noted === false || $rebuilt === false || $restored === false || ! ($noted < $rebuilt && $rebuilt < $restored)) {
+            $defects['refocus'] = 'the painter does not put focus back on the desk it rebuilt — noted before `host.replaceChildren(svg)`, restored after it';
         }
 
         return $defects;

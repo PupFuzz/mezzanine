@@ -40,10 +40,11 @@
  *                                               //  before row 15 draws the floor it always drew
  *                      "surface": {width, height},   //  the drawing's size, when not the viewport's
  *                      "camera": [ { "at_ms": N,  //  the viewer's camera acts (row 15): `wheel` at a
- *                        "act": "wheel", "x", "y", "delta_y", "delta_mode"? } | { "act": "drag", "dx", "dy" }
+ *                        "act": "wheel", "x", "y", "delta_y", "delta_mode"?, "ctrl_key"? } | { "act": "drag", "dx", "dy" }
  *                        | { "act": "zoom", "notches" } | { "act": "fit" } | { "act": "resize", "width", "height" } ] }
  *                                               //  surface point (`delta_mode` the WheelEvent's, absent
- *                                               //  0), a drag, the keyboard's and the zoom buttons' zoom
+ *                                               //  0; `ctrl_key` its `ctrlKey`, a pinch, absent false),
+ *                                               //  a drag, the keyboard's and the zoom buttons' zoom
  *                                               //  about the centre, the fit-floor control, and a
  *                                               //  viewport resize. A resize is followed by a render, as
  *                                               //  a page renders on one; the other four are NOT — a
@@ -568,7 +569,7 @@ async function replay(scenario) {
 
             switch (act.act) {
                 case 'wheel':
-                    screen.wheel({ x: act.x, y: act.y }, { deltaY: act.delta_y, deltaMode: act.delta_mode ?? 0 });
+                    screen.wheel({ x: act.x, y: act.y }, { deltaY: act.delta_y, deltaMode: act.delta_mode ?? 0, ctrlKey: act.ctrl_key ?? false });
                     break;
                 case 'zoom':
                     screen.zoomStep(act.notches);

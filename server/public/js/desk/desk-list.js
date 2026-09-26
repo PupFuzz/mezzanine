@@ -32,7 +32,7 @@ import { DASH } from './desk-render.js';
 import { MORE, OPEN_CALLS } from '../floor/desk-layout.js';
 
 /**
- * The words this row adds for a member that carries no string of its own. ⚠ NOT RATIFIED — the two
+ * The words this row adds for a member that carries no string of its own. ⚠ NOT RATIFIED — the
  * marks the drawing carries as a picture (the empty chair of a seat the client cannot confirm, the
  * small marker on a monitor showing a subagent's call) have no published wording, so the list view's
  * are these until the operator rules on them.
@@ -44,7 +44,7 @@ export const SUBAGENT_CALL = "a subagent's call";
 /** The prefix the monitor's line is read under — ⚠ NOT RATIFIED, for the same reason. */
 export const MONITOR = 'monitor';
 
-/** Row 8's two cluster prefixes, kept: the words the page already carried for these lists. */
+/** Row 8's cluster prefixes, kept: the words the page already carried for these lists. */
 export const BADGES_PREFIX = 'badges: ';
 
 export const UNRECOGNISED_PREFIX = 'unrecognised: ';

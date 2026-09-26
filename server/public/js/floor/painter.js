@@ -197,8 +197,10 @@ export function createPainter({ characters, failed, select }) {
         }, layer);
 
         g.addEventListener('click', () => select(desk.install_id, desk.seat_id));
+        // A `role="button"` activates on Enter and on Space; Space's default would scroll the page.
         g.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
                 select(desk.install_id, desk.seat_id);
             }
         });
@@ -327,6 +329,12 @@ export function createPainter({ characters, failed, select }) {
             return;
         }
 
+        // Every paint rebuilds the drawing, so the desk the keyboard was on is replaced under it: note
+        // its key while focus is inside the drawing, and put focus back on the rebuilt desk below.
+        const focusedKey = host.contains(document.activeElement)
+            ? document.activeElement.closest('[data-key]')?.getAttribute('data-key') ?? null
+            : null;
+
         // A group and never an image: an image's children are presentational, and the desks inside are
         // buttons a screen reader and the keyboard must reach (§ 4.3's drill-down opens from one).
         svg = node('svg', { width: '100%', height: '100%', class: 'floor-scene', role: 'group', 'aria-label': 'the floor' });
@@ -417,6 +425,12 @@ export function createPainter({ characters, failed, select }) {
         paintEffects(node('g', { class: 'effects' }, svg), scene.effects);
 
         host.replaceChildren(svg);
+
+        // The desk the keyboard was on, rebuilt; a desk the render removed leaves focus on the drawing
+        // itself, where the camera's keys still reach, rather than dropping it to the page's body.
+        if (focusedKey !== null) {
+            (svg.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`) ?? host).focus({ preventScroll: true });
+        }
 
         // § 6.2's held loops, at the interval the scene carries — one interval for the whole floor,
         // stepping every character whose render the set drew with motion.

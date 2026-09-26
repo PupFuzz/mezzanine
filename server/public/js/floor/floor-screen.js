@@ -297,7 +297,7 @@ export class FloorScreen {
      * zoom about that point in proportion to the scroll (§ 4.5; `wire/camera.js`'s `wheel()`).
      *
      * @param {{x: number, y: number}} point
-     * @param {{deltaY: number, deltaMode?: number}} delta
+     * @param {{deltaY: number, deltaMode?: number, ctrlKey?: boolean}} delta `ctrlKey` marks a pinch
      */
     wheel(point, delta) {
         this.#camera = wheel(this.#camera, point, delta);

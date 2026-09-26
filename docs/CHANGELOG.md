@@ -30,13 +30,15 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 - **card#7341** — **The floor page has a camera, and a viewport floor (Appendix B row 15, slice B).** At a
   browser viewport of at least 1,280 × 800 CSS px the room drawing fills the page's width and the viewport's
   height and opens framed on the whole floor, the overflow row below it included: the mouse wheel, a
-  trackpad scroll or a pinch zooms about the cursor in proportion to how far it scrolls, dragging with the
-  primary button pans (the floor always stays in view), *Zoom in* and *Zoom out* — or `+` and `-` with the
-  drawing focused — zoom about its centre, the arrow keys pan, *Fit the floor* frames it again — gliding
-  there, or cutting straight to it when the system asks for reduced motion — and *Whole building* goes to
-  the lobby. The desks inside the drawing are exposed to screen readers as buttons. A floor with nothing on
-  it yet to measure (no room map and no seat) still draws, status line included. Zooming and panning are the
-  viewer's own and survive every update, resync and reconnect. The desk list below the drawing is no longer
+  trackpad scroll or a pinch zooms about the cursor in proportion to how far it scrolls (a pinch's much
+  smaller movements scaled up to match, as d3-zoom does), dragging with the primary button pans (the floor
+  always stays in view, and a drag ends when the button is released, even outside the drawing), *Zoom in*
+  and *Zoom out* — or `+` and `-` with the drawing focused — zoom about its centre, the arrow keys pan,
+  *Fit the floor* frames it again — gliding there, or cutting straight to it when the system asks for
+  reduced motion — and *Whole building* goes to the lobby. The desks inside the drawing are exposed to
+  screen readers as buttons, open with Enter or Space, and keep the keyboard's focus when the drawing
+  updates. A floor with nothing on it yet to measure (no room map and no seat) still draws, status line
+  included. Zooming and panning are the viewer's own and survive every update, resync and reconnect. The desk list below the drawing is no longer
   shown at that size; below it, in either dimension, the drawing and its controls are hidden and the page
   shows the desks as that text list instead — the list view described in the slice A entry below. No
   configuration, migration or deploy step is needed.

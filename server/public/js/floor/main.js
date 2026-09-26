@@ -383,10 +383,10 @@ el('floor-panel-more').addEventListener('click', () => {
 });
 
 // Appendix B row 15: the viewer's camera. The wheel zooms about the cursor in proportion to its scroll
-// (a trackpad's small deltas and a pinch — a wheel event with `ctrlKey` — through the same path), a
-// drag with the primary button pans, and the keyboard and the zoom buttons zoom about the drawing's
-// centre and pan by a step; none renders — each sets the drawing's view from the camera the screen
-// hands back.
+// (a trackpad's small deltas and a pinch — a wheel event with `ctrlKey`, which the camera scales by its
+// `PINCH_GAIN` — through the same path), a drag with the primary button pans, and the keyboard and the
+// zoom buttons zoom about the drawing's centre and pan by a step; none renders — each sets the
+// drawing's view from the camera the screen hands back.
 const drawing = el('floor-drawing');
 let drag = null;
 let dragged = false;
@@ -396,7 +396,7 @@ drawing.addEventListener('wheel', (event) => {
 
     const r = drawing.getBoundingClientRect();
 
-    show(screen.wheel({ x: event.clientX - r.left, y: event.clientY - r.top }, { deltaY: event.deltaY, deltaMode: event.deltaMode }));
+    show(screen.wheel({ x: event.clientX - r.left, y: event.clientY - r.top }, { deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }));
 }, { passive: false });
 drawing.addEventListener('pointerdown', (event) => {
     // Only the primary pointer's primary button drags: a right-click's menu or a second finger never
@@ -409,7 +409,12 @@ drawing.addEventListener('pointerdown', (event) => {
     drag = { x: event.clientX, y: event.clientY, moved: false };
 });
 drawing.addEventListener('pointermove', (event) => {
-    if (drag === null) {
+    // A move with the primary button no longer held ends the drag: a press near the drawing's edge
+    // that left it before capture was taken (at 4 px) is released outside, where this element never
+    // hears the `pointerup`, and the next buttonless move back over the drawing would otherwise pan.
+    if (drag === null || (event.buttons & 1) === 0) {
+        drag = null;
+
         return;
     }
 

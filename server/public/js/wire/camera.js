@@ -44,6 +44,16 @@ export const ZOOM_STEP = 1.18;
  */
 export const NOTCH_PX = 100;
 
+/**
+ * The gain on a pinch's scroll. A browser delivers a trackpad pinch as a wheel event with `ctrlKey`
+ * set, and its deltas are far smaller than a scroll's, so a pinch at the scroll's rate barely zooms.
+ * d3-zoom's `defaultWheelDelta` (d3/d3-zoom `src/zoom.js`, read 2026-09-26) multiplies a `ctrlKey`
+ * wheel delta by 10 for this reason, and this is that figure.
+ * ⚠ NOT BROWSER-VERIFIED: no browser runs on the build host, so how a pinch feels at this gain — on
+ * any browser or OS — has not been seen; the harness holds only the arithmetic.
+ */
+export const PINCH_GAIN = 10;
+
 /** A `WheelEvent.DOM_DELTA_LINE` line in CSS px — the conventional 16 (one line of body text). */
 export const LINE_PX = 16;
 
@@ -125,9 +135,10 @@ export function zoomAt(camera, point, factor) {
  * One wheel event at a point on the surface — a mouse's notch, a trackpad's scroll, or a pinch (which a
  * browser delivers as a wheel event with `ctrlKey` set, through this same path): a zoom about that point
  * by `ZOOM_STEP ** (-scroll / NOTCH_PX)`, where `scroll` is `deltaY` in CSS px after `deltaMode` is
- * normalised (pixels as they are, lines at `LINE_PX`, pages at the surface's height). A negative
- * `deltaY` zooms in. One event scrolls at most one notch either way, so an accelerated wheel or a
- * page-mode event cannot leap past a step.
+ * normalised (pixels as they are, lines at `LINE_PX`, pages at the surface's height) and, on a pinch,
+ * multiplied by `PINCH_GAIN`. A negative `deltaY` zooms in. One event scrolls at most one notch either
+ * way, after the gain, so an accelerated wheel, a page-mode event or a fast pinch cannot leap past a
+ * step.
  *
  * ⛔ THE ZOOM IS PROPORTIONAL TO THE SCROLL AND NEVER A STEP PER EVENT. A trackpad fires dozens of
  * events of a few px for one gesture; a step per event took the floor from its fit to the ceiling in
@@ -135,12 +146,15 @@ export function zoomAt(camera, point, factor) {
  *
  * @param {object} camera
  * @param {{x: number, y: number}} point the cursor, in CSS px from the surface's top-left
- * @param {{deltaY: number, deltaMode?: number}} delta the `WheelEvent`'s own two members (a
- *        `WheelEvent` itself will do); `deltaMode` is 0 (pixels), 1 (lines) or 2 (pages), absent 0
+ * @param {{deltaY: number, deltaMode?: number, ctrlKey?: boolean}} delta the `WheelEvent`'s own
+ *        members (a `WheelEvent` itself will do); `deltaMode` is 0 (pixels), 1 (lines) or 2 (pages),
+ *        absent 0; `ctrlKey` true marks a pinch, absent false — so a caller that passes only `deltaY`
+ *        and `deltaMode` (row 16's, say) zooms exactly as before
  */
-export function wheel(camera, point, { deltaY, deltaMode = 0 }) {
+export function wheel(camera, point, { deltaY, deltaMode = 0, ctrlKey = false }) {
     const unit = deltaMode === 2 ? camera.surface.height : deltaMode === 1 ? LINE_PX : 1;
-    const scroll = Math.min(NOTCH_PX, Math.max(-NOTCH_PX, deltaY * unit));
+    const gain = ctrlKey ? PINCH_GAIN : 1;
+    const scroll = Math.min(NOTCH_PX, Math.max(-NOTCH_PX, deltaY * unit * gain));
 
     if (scroll === 0) {
         return camera;

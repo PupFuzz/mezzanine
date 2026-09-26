@@ -4130,7 +4130,7 @@
       }
     },
     "camera_proportional": {
-      "note": "AT-D3-21's floor half, the wheel's scale (round-1 finding F1 on PupFuzz/mezzanine#237): `scene_default` at F, and the wheel as a trackpad drives it — a burst of 25 pixel-mode events of 4 px each, one notch's scroll in all — then a line-mode event (3 lines), a page-mode event (one page out) and an accelerated pixel event of 250 px, then the keyboard's zoom in and out about the centre. Every wheel event must zoom by `ZOOM_STEP` to the power of its scroll over a notch, `deltaMode` normalised and one event holding at most one notch, and the burst by one notch in all — where a step per event takes it 25 steps, to the ceiling. The run stays between the fit and the ceiling throughout, so no zoom here is the range's clamp.",
+      "note": "AT-D3-21's floor half, the wheel's scale (round-1 finding F1 on PupFuzz/mezzanine#237): `scene_default` at F, and the wheel as a trackpad drives it — a burst of 25 pixel-mode events of 4 px each, one notch's scroll in all — then a line-mode event (3 lines), a page-mode event (one page out) and an accelerated pixel event of 250 px, then a pinch — a burst of small `ctrlKey` pixel events, each scaled by `PINCH_GAIN`, and one fast `ctrlKey` event that the gain takes past a notch — then the keyboard's zoom in and out about the centre. Every wheel event must zoom by `ZOOM_STEP` to the power of its scroll over a notch, `deltaMode` normalised, a pinch's scroll multiplied by `PINCH_GAIN` and one event holding at most one notch after it, and the burst by one notch in all — where a step per event takes it 25 steps, to the ceiling. The run stays between the fit and the ceiling throughout, so no zoom here is the range's clamp.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -4722,6 +4722,94 @@
             "x": 300,
             "y": 200,
             "delta_y": -250
+          },
+          {
+            "at_ms": 130,
+            "act": "wheel",
+            "x": 640,
+            "y": 400,
+            "delta_y": -3,
+            "ctrl_key": true
+          },
+          {
+            "at_ms": 131,
+            "act": "wheel",
+            "x": 640,
+            "y": 400,
+            "delta_y": -3,
+            "ctrl_key": true
+          },
+          {
+            "at_ms": 132,
+            "act": "wheel",
+            "x": 640,
+            "y": 400,
+            "delta_y": -3,
+            "ctrl_key": true
+          },
+          {
+            "at_ms": 133,
+            "act": "wheel",
+            "x": 640,
+            "y": 400,
+            "delta_y": -3,
+            "ctrl_key": true
+          },
+          {
+            "at_ms": 134,
+            "act": "wheel",
+            "x": 640,
+            "y": 400,
+            "delta_y": -3,
+            "ctrl_key": true
+          },
+          {
+            "at_ms": 135,
+            "act": "wheel",
+            "x": 640,
+            "y": 400,
+            "delta_y": -3,
+            "ctrl_key": true
+          },
+          {
+            "at_ms": 136,
+            "act": "wheel",
+            "x": 640,
+            "y": 400,
+            "delta_y": -3,
+            "ctrl_key": true
+          },
+          {
+            "at_ms": 137,
+            "act": "wheel",
+            "x": 640,
+            "y": 400,
+            "delta_y": -3,
+            "ctrl_key": true
+          },
+          {
+            "at_ms": 138,
+            "act": "wheel",
+            "x": 640,
+            "y": 400,
+            "delta_y": -3,
+            "ctrl_key": true
+          },
+          {
+            "at_ms": 139,
+            "act": "wheel",
+            "x": 640,
+            "y": 400,
+            "delta_y": -3,
+            "ctrl_key": true
+          },
+          {
+            "at_ms": 150,
+            "act": "wheel",
+            "x": 640,
+            "y": 400,
+            "delta_y": -20,
+            "ctrl_key": true
           },
           {
             "at_ms": 200,

@@ -90,7 +90,9 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     /**
      * The wheel zooms in proportion to its scroll — a trackpad's burst of small deltas by the distance
-     * it covers, `deltaMode` normalised, one event at most one notch — and never a step per event.
+     * it covers, `deltaMode` normalised, a pinch's (`ctrlKey`) scroll multiplied by the camera's
+     * `PINCH_GAIN`, one event at most one notch — and never a step per event. The gain's figure is
+     * d3-zoom's; how a pinch feels at it in a browser is not something this run can see.
      */
     public function test_green_a_wheel_zooms_in_proportion_to_its_scroll_and_a_trackpad_burst_stays_bounded(): void
     {
@@ -222,12 +224,22 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $this->assertNotSame([], $this->wheelScaleDefects($this->floorRun(self::PROPORTIONAL, $dir)), 'CONTROL (deltaMode ignored) did not bite');
     }
 
+    /** Round-2 M1's defect: a pinch zoomed at a scroll's rate, its small deltas taking many pinches to go anywhere. */
+    public function test_red_a_pinch_at_a_scrolls_rate(): void
+    {
+        $dir = $this->mutatedModules([self::CAMERA,
+            'const gain = ctrlKey ? PINCH_GAIN : 1;',
+            'const gain = 1;']);
+
+        $this->assertNotSame([], $this->wheelScaleDefects($this->floorRun(self::PROPORTIONAL, $dir)), 'CONTROL (a pinch at a scroll\'s rate) did not bite');
+    }
+
     /** A wheel event with no per-event bound. */
     public function test_red_a_wheel_event_that_leaps_past_a_notch(): void
     {
         $dir = $this->mutatedModules([self::CAMERA,
-            'const scroll = Math.min(NOTCH_PX, Math.max(-NOTCH_PX, deltaY * unit));',
-            'const scroll = deltaY * unit;']);
+            'const scroll = Math.min(NOTCH_PX, Math.max(-NOTCH_PX, deltaY * unit * gain));',
+            'const scroll = deltaY * unit * gain;']);
 
         $this->assertNotSame([], $this->wheelScaleDefects($this->floorRun(self::PROPORTIONAL, $dir)), 'CONTROL (an unbounded event) did not bite');
     }
@@ -390,9 +402,9 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     /**
      * The camera module's own constants, read from the shipped file — the zoom step, the notch's
-     * scroll and a line's height — so no figure here is this test's.
+     * scroll, a line's height and a pinch's gain — so no figure here is this test's.
      *
-     * @return array{step: float, notch: float, line: float}
+     * @return array{step: float, notch: float, line: float, pinch: float}
      */
     private function wheelConstants(): array
     {
@@ -403,7 +415,7 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             return (float) $m[1];
         };
 
-        return ['step' => $read('ZOOM_STEP'), 'notch' => $read('NOTCH_PX'), 'line' => $read('LINE_PX')];
+        return ['step' => $read('ZOOM_STEP'), 'notch' => $read('NOTCH_PX'), 'line' => $read('LINE_PX'), 'pinch' => $read('PINCH_GAIN')];
     }
 
     /** @return list<string> */
@@ -414,6 +426,7 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $defects = [];
         $modes = [];
         $bounded = false;
+        $pinched = false;
         $burst = ['n' => 0, 'px' => 0.0, 'factor' => 1.0];
 
         foreach ($wheels as $a) {
@@ -423,19 +436,21 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
                 1 => $c['line'],
                 default => 1,
             };
-            $px = $a['act']['delta_y'] * $unit;
+            $pinch = ($a['act']['ctrl_key'] ?? false) === true;
+            $px = $a['act']['delta_y'] * $unit * ($pinch ? $c['pinch'] : 1);
             $scroll = max(-$c['notch'], min($c['notch'], $px));
+            $pinched = $pinched || $pinch;
             $expected = $a['before']['zoom'] * $c['step'] ** (-$scroll / $c['notch']);
             $modes[$mode] = true;
             $bounded = $bounded || abs($px) > $c['notch'];
 
             if (abs($a['after']['zoom'] - $expected) > self::EPSILON) {
-                $defects[] = sprintf('the wheel at %d ms (delta %s, mode %d) zoomed %.6f → %.6f; its scroll makes it %.6f',
-                    $a['at'], $a['act']['delta_y'], $mode, $a['before']['zoom'], $a['after']['zoom'], $expected);
+                $defects[] = sprintf('the wheel at %d ms (delta %s, mode %d%s) zoomed %.6f → %.6f; its scroll makes it %.6f',
+                    $a['at'], $a['act']['delta_y'], $mode, $pinch ? ', a pinch' : '', $a['before']['zoom'], $a['after']['zoom'], $expected);
             }
 
             // The trackpad's burst: the small pixel-mode deltas, whose sum is the gesture's scroll.
-            if ($mode === 0 && abs($px) < $c['notch'] / 10) {
+            if (! $pinch && $mode === 0 && abs($px) < $c['notch'] / 10) {
                 $burst['n']++;
                 $burst['px'] += $px;
                 $burst['factor'] *= $a['after']['zoom'] / $a['before']['zoom'];
@@ -453,6 +468,10 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             if (! isset($modes[$mode])) {
                 $defects[] = "the run turns the wheel in no {$name}-mode event";
             }
+        }
+
+        if (! $pinched) {
+            $defects[] = 'the run pinches nowhere (no wheel event carries `ctrl_key`), so the pinch gain was never asked to bite';
         }
 
         if (! $bounded) {
