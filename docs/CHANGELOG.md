@@ -27,6 +27,8 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **The revisions page's *no preview* notice says a revision whose desk slots *overlap* is
+  refused (operator ruling 2026-09-26),** matching the word the refusal itself uses; it said *intersect*.
 - **card#7341** — **The console's desk-slot refusals and notices are ratified, and name no design document
   on screen (operator ruling 2026-09-25, card#7341 comment 6585).** A refused save or restore of two
   overlapping slots now reads, for example, *Desk slots id 3 and id 7 overlap: id 3 spans 64–504 × 96–324
