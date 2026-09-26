@@ -62,7 +62,9 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
     {
         $planted = $this->mutatedModules(['../desk/desk-render.js',
             "        nameplate: seat.seat_id,\n", "        nameplate: seat.seat_id,\n        planted_flag: false,\n"]);
-        $defects = $this->defects($this->verdict($planted, $planted));
+        // Over ONE fixture file's runs, to hold the suite's time: a leaf held false on every run is
+        // held false on any subset of them, so the red it must name does not depend on the population.
+        $defects = $this->defects($this->verdict($planted, $planted, 'fx-degraded'));
         $this->assertNotEmpty(array_filter($defects, fn (string $d): bool => str_contains($d, '`planted_flag`')
             && str_contains($d, 'never seen at a non-default value')),
             'CONTROL (a boolean leaf held false on every run) did not red naming it: '.json_encode($defects));
@@ -88,11 +90,11 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
      *
      * @return array{desks: list<array{run: string, key: string, model: array<string, mixed>}>, per_run: array<string, int>}
      */
-    private function collected(?string $dir = null): array
+    private function collected(?string $dir = null, ?string $onlyFile = null): array
     {
         static $cache = [];
 
-        $slot = $dir ?? '';
+        $slot = ($dir ?? '').'|'.($onlyFile ?? '');
 
         if (isset($cache[$slot])) {
             return $cache[$slot];
@@ -102,6 +104,10 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
         $perRun = [];
 
         foreach ($this->fixtureFileNames() as $file) {
+            if ($onlyFile !== null && $file !== $onlyFile) {
+                continue;
+            }
+
             foreach ($this->fixtureFile($file)['runs'] ?? [] as $run => $scenario) {
                 if (($scenario['lobby'] ?? false) === true) {
                     continue;
@@ -138,9 +144,9 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
      *
      * @return array<string, mixed>
      */
-    private function verdict(?string $modelTree = null, ?string $listTree = null): array
+    private function verdict(?string $modelTree = null, ?string $listTree = null, ?string $onlyFile = null): array
     {
-        $collected = $this->collected($modelTree);
+        $collected = $this->collected($modelTree, $onlyFile);
 
         [$status, $stdout, $stderr] = $this->runListProbe(['desks' => $collected['desks']], $listTree ?? $this->moduleDir());
 

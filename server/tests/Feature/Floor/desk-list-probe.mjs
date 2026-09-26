@@ -36,10 +36,14 @@ const { deskListRow, NOT_LISTED } = await import(pathToFileURL(join(dir, '..', '
 const payload = JSON.parse(readFileSync(0, 'utf8'));
 
 /** The guard's own definition of a default: not null, not false, not 0, not empty. */
-const isDefault = (v) => v === null || v === undefined || v === false || v === 0 || v === ''
-    || (Array.isArray(v) && v.length === 0);
+const isEmptyObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0;
 
-const isBranch = (v) => (Array.isArray(v) && v.length > 0) || (v !== null && typeof v === 'object' && !Array.isArray(v));
+const isDefault = (v) => v === null || v === undefined || v === false || v === 0 || v === ''
+    || (Array.isArray(v) && v.length === 0) || isEmptyObject(v);
+
+/** A path with children to walk: a non-empty array or a non-empty object. An empty one is a default leaf. */
+const isBranch = (v) => (Array.isArray(v) && v.length > 0)
+    || (v !== null && typeof v === 'object' && !Array.isArray(v) && !isEmptyObject(v));
 
 /** Every `[concrete path, normalised path, value]` under one model, branches included. */
 function walk(value, concrete = [], normal = '', out = []) {
