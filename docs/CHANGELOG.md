@@ -27,26 +27,23 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
-- **card#7341** — **FLOOR.md § 14 item 29 is answered: every exit of a held desk render records one
-  named cause, chosen by a precedence in § 11.** The animation log's exit row for a desk compares the
-  render that ended the hold with the render before it and names the first cause that applies: the
-  seat's removal (a retirement's version, or `snapshot`); an object whose own data now draws a
-  different state, or the same state with its motion started or stopped (that object's version); a
-  seat the client can no longer confirm (§ 2.3 row 5), drawn as an empty chair (the literal
-  `unconfirmed`); or a floor stilled by a signed-out session (§ 9 F6/F7, the literal `stilled`). An
-  episode's hold condition is its § 6.2 row alone, and *for how long* is read off a run of episodes in
-  the log's write order, which a removal, an empty chair or a change of state ends. § 11 owns the
-  precedence and every other surface points at it: § 6.2's `held` class, the `cause` column, AT-D3-1's
-  GREEN, § 7.3's F9 paragraph and item 29. § 6.4 now states that `prefers-reduced-motion` is read once
-  when the floor page loads and is fixed for its life, and § 2.3 row 5 states which refused reads count
-  toward the empty chair and what clears the count. The coordination thread line (A18) is outside
-  the precedence, and two behaviours of it, a line on a stilled floor logging motion and a line ended
-  by a seat's removal naming its thread, are named and routed to Appendix B row 14. The design only is
-  done here. The client still writes these exits with the held object's version, AT-D3-1's
-  opposite-direction assertion still reads every exit cause as a version, and `fx-confirm`'s
-  `missing_persistent` run gives every refused read the same `server_time`. The client fix, that
-  assertion's scoping and a new one for literal causes, that fixture correction and AT-D3-1's replay of
-  that run and of `fx-refusals`' `refusal_401_warm` run are Appendix B row 15's.
+- **card#7341** — **FLOOR.md § 14 item 29 is answered: every exit of a held desk render in the
+  animation log records one named cause.** The rule is a precedence in § 11, under the animation-log
+  schema table, and the order of its steps is an operator ruling. It also names the two causes the
+  client holds itself, the literals `unconfirmed` (§ 2.3 row 5's empty chair) and `stilled` (§ 9
+  F6/F7's signed-out floor), and says how *for how long* is read from the log. § 6.2's `held` class,
+  the `cause` column, AT-D3-1's GREEN, § 7.3's F9 paragraph and item 29 point at § 11 instead of
+  restating it. § 6.4 now states that `prefers-reduced-motion` is read once when the floor page loads
+  and is fixed for its life, § 9 F6 states that recovery from a signed-out floor is a new page load,
+  and § 2.3 row 5 states which refused reads count toward the empty chair and what clears the count.
+  The coordination thread line (A18) is outside the precedence, and two behaviours of it, a line on a
+  stilled floor logging motion and a line ended by a seat's removal naming its thread, are named and
+  routed to Appendix B row 14. The design only is done here. The client still writes these exits with
+  the held object's version, AT-D3-1's opposite-direction assertion still reads every exit cause as a
+  version, and `fx-confirm`'s `missing_persistent` run gives every refused read the same
+  `server_time`. The client fix, that assertion's scoping and a new one for literal causes, that
+  fixture correction and AT-D3-1's replay of that run and of `fx-refusals`' `refusal_401_warm` run are
+  Appendix B row 15's.
 
 - **card#7341** — **The floor page has a camera, and a viewport floor (Appendix B row 15, slice B).** At a
   browser viewport of at least 1,280 × 800 CSS px the room drawing fills the page's width and the viewport's
