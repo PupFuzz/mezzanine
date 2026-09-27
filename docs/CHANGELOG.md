@@ -38,10 +38,12 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   and § 2.3 row 5 states which refused reads count toward the empty chair and what clears the count.
   The coordination thread line (A18) is outside the precedence, and two behaviours of it, a line on a
   stilled floor logging motion and a line ended by a seat's removal naming its thread, are named and
-  routed to Appendix B row 14. The design only is done here. The client still writes these exits with
-  the held object's version, AT-D3-1's opposite-direction assertion still reads every exit cause as a
-  version, and `fx-confirm`'s `missing_persistent` run gives every refused read the same
-  `server_time`. The client fix, that assertion's scoping and a new one for literal causes, that
+  routed to Appendix B row 14. AT-D3-1's GREEN holds every exit of a desk episode to one predicate:
+  its cause is the one the precedence gives for the render that wrote it. The design only is done
+  here. The client still writes these exits with the held object's version, AT-D3-1's test still reads
+  every exit cause as a version, the probe does not yet write the per-render records the predicate is
+  evaluated from, and `fx-confirm`'s `missing_persistent` run gives every refused read the same
+  `server_time`. The client fix, the test's assertion of that predicate and the records it reads, that
   fixture correction and AT-D3-1's replay of that run and of `fx-refusals`' `refusal_401_warm` run are
   Appendix B row 15's.
 
