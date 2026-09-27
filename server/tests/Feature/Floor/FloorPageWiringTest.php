@@ -31,8 +31,11 @@ use Tests\TestCase;
  * from that module — a painter nobody constructs addresses nothing and would pass vacuously.
  *
  * ⛔ AND TO THE CAMERA's (Appendix B row 15): the entry hands the screen the viewer's viewport and
- * wires the wheel (the event's `deltaMode` and `ctrlKey` with its `deltaY`), the drag (the primary button only, and
- * ended by a `pointercancel` or by a move with that button no longer held), the keyboard, the zoom buttons, the fit-floor control and a resize (which
+ * wires the wheel and the drag through `wire/camera-gestures.js` (the lobby's too since card#7343 r1;
+ * the gesture rules — `deltaMode` and `ctrlKey`, the primary button only, the end on a `pointercancel`
+ * or a buttonless move — are held and planted by `TheCameraWireIsOneForBothPagesTest`, and here only
+ * that the entry hands that module its drawing and the screen's acts, with no copy of its own), the
+ * keyboard, the zoom buttons, the fit-floor control and a resize (which
  * re-shows the camera at once, stopping a glide) to the screen's camera acts — a camera no event
  * reaches is a floor that never moves and would pass AT-D3-21, which drives the acts directly. And the
  * drawing is reachable: it takes focus, and neither it nor the painter's `<svg>` is an image, whose
@@ -161,35 +164,22 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('painter', $this->painterDefects($unpainted),
             'CONTROL (an entry that never constructs the painter) did not bite');
 
-        $unwheeled = str_replace('show(screen.wheel(', 'show(screen.camera(', $js);
+        $unwheeled = str_replace('wheel: screen.wheel', 'wheel: screen.camera', $js);
         $this->assertNotSame($unwheeled, $js);
         $this->assertArrayHasKey('wheel', $this->cameraDefects($unwheeled),
             'CONTROL (a wheel that never reaches the camera) did not bite');
 
-        $modeless = str_replace('{ deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }', '{ deltaY: event.deltaY, ctrlKey: event.ctrlKey }', $js);
-        $this->assertNotSame($modeless, $js);
-        $this->assertArrayHasKey('wheel', $this->cameraDefects($modeless),
-            'CONTROL (a wheel whose deltaMode never reaches the camera) did not bite');
+        $undragged = str_replace('drag: screen.drag }', 'drag: screen.camera }', $js);
+        $this->assertNotSame($undragged, $js);
+        $this->assertArrayHasKey('drag', $this->cameraDefects($undragged),
+            'CONTROL (a drag that never reaches the camera) did not bite');
 
-        $pinchless = str_replace('{ deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }', '{ deltaY: event.deltaY, deltaMode: event.deltaMode }', $js);
-        $this->assertNotSame($pinchless, $js);
-        $this->assertArrayHasKey('wheel', $this->cameraDefects($pinchless),
-            'CONTROL (a wheel whose ctrlKey — a pinch — never reaches the camera) did not bite');
-
-        $uncancelled = str_replace("drawing.addEventListener('pointercancel'", "drawing.addEventListener('pointerleave'", $js);
-        $this->assertNotSame($uncancelled, $js);
-        $this->assertArrayHasKey('drag', $this->cameraDefects($uncancelled),
-            'CONTROL (a drag no pointercancel ends) did not bite');
-
-        $unreleased = str_replace('if (drag === null || (event.buttons & 1) === 0) {', 'if (drag === null) {', $js);
-        $this->assertNotSame($unreleased, $js);
-        $this->assertArrayHasKey('drag', $this->cameraDefects($unreleased),
-            'CONTROL (a drag a buttonless move does not end — its pointerup was released outside) did not bite');
-
-        $anyButton = str_replace('if (!event.isPrimary || event.button !== 0) {', 'if (false) {', $js);
-        $this->assertNotSame($anyButton, $js);
-        $this->assertArrayHasKey('drag', $this->cameraDefects($anyButton),
-            'CONTROL (a drag any button starts) did not bite');
+        // The gestures are wire/camera-gestures.js's, whose own defects TheCameraWireIsOneForBothPagesTest
+        // plants and watches red; what can drift here is a page growing its own copy back beside it.
+        $copied = str_replace("drawing.addEventListener('keydown'", "drawing.addEventListener('pointermove', () => {});\ndrawing.addEventListener('keydown'", $js);
+        $this->assertNotSame($copied, $js);
+        $this->assertArrayHasKey('gestures', $this->cameraDefects($copied),
+            'CONTROL (the page wiring a pointer gesture of its own beside the shared module) did not bite');
 
         $stale = str_replace("    screen.resize(viewport(), surface());\n    show(screen.camera());\n", "    screen.resize(viewport(), surface());\n", $js);
         $this->assertNotSame($stale, $js);
@@ -299,9 +289,8 @@ class FloorPageWiringTest extends TestCase
         $defects = [];
         $wired = [
             'viewport' => ['viewport: viewport(),', 'screen.resize(viewport(), surface())'],
-            'wheel' => ["drawing.addEventListener('wheel'", 'show(screen.wheel(', '{ deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }'],
-            'drag' => ["drawing.addEventListener('pointermove'", 'show(screen.drag(', 'if (!event.isPrimary || event.button !== 0) {',
-                "drawing.addEventListener('pointercancel'", 'if (drag === null || (event.buttons & 1) === 0) {'],
+            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel,'],
+            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag }, show);'],
             'resize' => ["    screen.resize(viewport(), surface());\n    show(screen.camera());\n"],
             'keyboard' => ["drawing.addEventListener('keydown'", 'show(screen.zoomStep(KEY_ZOOM[event.key]))', 'show(screen.drag(...KEY_PAN[event.key]))'],
             'buttons' => ["el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));",
@@ -315,6 +304,11 @@ class FloorPageWiringTest extends TestCase
                     $defects[$act] = "the entry does not wire the {$act} to the screen's camera (`{$needle}` is missing)";
                 }
             }
+        }
+
+        // One gesture wiring for both pages (card#7343 r1): a pointer or wheel listener here is a copy.
+        if (preg_match("/addEventListener\\('(wheel|pointerdown|pointermove|pointerup|pointercancel)'/", $js, $m) === 1) {
+            $defects['gestures'] = "the entry wires a {$m[1]} of its own beside wire/camera-gestures.js";
         }
 
         return $defects;

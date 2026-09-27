@@ -188,9 +188,7 @@ trait DrivesAShippedClientModule
         $found = 0;
 
         foreach ((array) glob($dir.'/*.js') as $file) {
-            preg_match_all("/from '(\.\.?\/[A-Za-z0-9._\/-]+)'/", (string) file_get_contents((string) $file), $m);
-
-            foreach ($m[1] as $import) {
+            foreach ($this->relativeImports((string) file_get_contents((string) $file)) as $import) {
                 $found++;
                 $this->assertFileExists($dir.'/'.$import,
                     basename((string) $file).' imports a module that is not there');
@@ -198,6 +196,26 @@ trait DrivesAShippedClientModule
         }
 
         return $found;
+    }
+
+    /**
+     * Every relative module specifier a module's source loads, in every form a module can load one: a
+     * static `import … from` or `export … from`, a bare `import '…'`, and a dynamic `import('…')` — each
+     * in single or double quotes.
+     *
+     * ⛔ ONE EXTRACTOR FOR EVERY IMPORT WALK (card#7343 r1). It read only `from '…'` in single quotes, in
+     * two copies — the resolve check above and the lobby's import-graph bound — so a module loaded by a
+     * bare import, a dynamic one or a double-quoted specifier was outside both, and the graph bound
+     * could be walked around by spelling the import another way. A specifier that is not a literal
+     * (`import(specifier)`) names no file this can read, and is not matched.
+     *
+     * @return list<string>
+     */
+    protected function relativeImports(string $source): array
+    {
+        preg_match_all('/(?:\bfrom|\bimport)\s*\(?\s*([\'"])(\.\.?\/[A-Za-z0-9._\/-]+)\1/', $source, $m);
+
+        return $m[2];
     }
 
     /**

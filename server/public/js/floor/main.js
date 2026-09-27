@@ -32,8 +32,9 @@
  * them; row 8's page-side `deskLine()` is gone.
  *
  * ⛔ THE CAPABILITY FLOOR AND THE CAMERA ARE THE SCREEN's (Appendix B row 15, § 4.5); this file supplies
- * the viewport and the drawing surface's size, wires the wheel, the drag, the keyboard, the zoom buttons
- * and the fit-floor control to the screen's camera acts, and sets the drawing's view from the camera
+ * the viewport and the drawing surface's size, wires the wheel and the drag (through
+ * `wire/camera-gestures.js`, which the lobby shares), the keyboard, the zoom buttons and the fit-floor
+ * control to the screen's camera acts, and sets the drawing's view from the camera
  * each returns — a camera act renders nothing. Below § 12's viewport floor the frame is the list view
  * and this file paints the desk list — `paintDesks()`, over `deskListRow()` — and hides the drawing;
  * at or above it, the drawing under the camera and no list. The whole-building control is a link to
@@ -58,6 +59,7 @@ import { renderDrillDown } from '../drilldown/main.js';
 import { createPainter, loadArt, measurer } from './painter.js';
 import { PAN_STEP_PX } from '../wire/camera.js';
 import { cameraView } from '../wire/camera-view.js';
+import { cameraGestures } from '../wire/camera-gestures.js';
 import { deskListRow } from '../desk/desk-list.js';
 
 /** § 12's *The floor page's animation-log retention* — the page's bound, and no one else's. */
@@ -351,73 +353,13 @@ el('floor-panel-more').addEventListener('click', () => {
 
 // Appendix B row 15: the viewer's camera. The wheel zooms about the cursor in proportion to its scroll
 // (a trackpad's small deltas and a pinch — a wheel event with `ctrlKey`, which the camera scales by its
-// `PINCH_GAIN` — through the same path), a drag with the primary button pans, and the keyboard and the
-// zoom buttons zoom about the drawing's centre and pan by a step; none renders — each sets the
-// drawing's view from the camera the screen hands back.
+// `PINCH_GAIN` — through the same path) and a drag with the primary button pans, both wired by
+// `wire/camera-gestures.js`, the lobby's too; the keyboard and the zoom buttons zoom about the drawing's
+// centre and pan by a step. None renders — each sets the drawing's view from the camera the screen
+// hands back.
 const drawing = el('floor-drawing');
-let drag = null;
-let dragged = false;
 
-drawing.addEventListener('wheel', (event) => {
-    event.preventDefault();
-
-    const r = drawing.getBoundingClientRect();
-
-    show(screen.wheel({ x: event.clientX - r.left, y: event.clientY - r.top }, { deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }));
-}, { passive: false });
-drawing.addEventListener('pointerdown', (event) => {
-    // Only the primary pointer's primary button drags: a right-click's menu or a second finger never
-    // starts a pan that no `pointerup` of its own would end.
-    if (!event.isPrimary || event.button !== 0) {
-        return;
-    }
-
-    dragged = false;
-    drag = { x: event.clientX, y: event.clientY, moved: false };
-});
-drawing.addEventListener('pointermove', (event) => {
-    // A move with the primary button no longer held ends the drag: a press near the drawing's edge
-    // that left it before capture was taken (at 4 px) is released outside, where this element never
-    // hears the `pointerup`, and the next buttonless move back over the drawing would otherwise pan.
-    if (drag === null || (event.buttons & 1) === 0) {
-        drag = null;
-
-        return;
-    }
-
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-
-    if (!drag.moved && Math.hypot(dx, dy) < 4) {
-        return;
-    }
-
-    if (!drag.moved) {
-        drag.moved = true;
-        drawing.setPointerCapture(event.pointerId);
-    }
-
-    drag.x = event.clientX;
-    drag.y = event.clientY;
-    show(screen.drag(dx, dy));
-});
-drawing.addEventListener('pointerup', () => {
-    dragged = drag?.moved === true;
-    drag = null;
-});
-// A pointer the browser took back — a touch turned into a scroll, a lost window — ends the drag and
-// is no click either.
-drawing.addEventListener('pointercancel', () => {
-    dragged = false;
-    drag = null;
-});
-// A drag that moved is not a click on the desk it ended over.
-drawing.addEventListener('click', (event) => {
-    if (dragged) {
-        event.stopPropagation();
-        dragged = false;
-    }
-}, { capture: true });
+cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag }, show);
 // The keyboard's camera, on the focusable drawing: `+`/`=` in and `-` out about its centre, the arrow
 // keys a pan by `PAN_STEP_PX` — the view moves the way the arrow points. A key with a modifier is the
 // browser's (Ctrl + is the page zoom) and passes through.

@@ -59,12 +59,15 @@
  *                                               //  at building scale, an object: `{ "surface":
  *                                               //  {width, height},` the building's drawing surface
  *                                               //  (absent, § 12's viewport floor), `"camera": [ {
- *                                               //  "at_ms": N, "act": "ride" } | { "act": "building" }
- *                                               //  | { "act": "wheel", "x", "y", "delta_y" } | { "act":
- *                                               //  "drag", "dx", "dy" } | { "act": "resize", "width",
- *                                               //  "height" } ] }` — the ride control (the viewer's cab
- *                                               //  moved to the stop it returns and the lobby DRAWN,
- *                                               //  as the page draws it; nothing drained), the
+ *                                               //  "at_ms": N, "act": "ride" } | { "act": "return" }
+ *                                               //  | { "act": "building" } | { "act": "wheel", "x",
+ *                                               //  "y", "delta_y" } | { "act": "drag", "dx", "dy" } |
+ *                                               //  { "act": "resize", "width", "height" } ] }` — the
+ *                                               //  ride control (the viewer's cab moved to the stop
+ *                                               //  it returns and the lobby DRAWN, as the page draws
+ *                                               //  it; nothing drained), the page coming back from
+ *                                               //  the back-forward cache after a ride arrived (the
+ *                                               //  screen's `returned()`, then drawn), the
  *                                               //  whole-building control, the wheel, the drag and a
  *                                               //  surface resize, none followed by a render
  *      "reduce":     true                       // § 6.4's `prefers-reduced-motion: reduce`, as a
@@ -683,6 +686,10 @@ async function replay(scenario) {
 
                         ride = { cab: ride.cab, route: ride.route, resolves_to: resolved?.floor?.floor ?? null };
                     }
+                    break;
+                case 'return':
+                    lobby.returned();
+                    lobby.draw(cab);
                     break;
                 case 'building':
                     glide = lobby.wholeBuilding().glide_ms;

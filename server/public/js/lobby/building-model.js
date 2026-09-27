@@ -41,9 +41,10 @@
  * ⭐ WHERE THE RIDE ARRIVES IS BUILT, AND NOT HERE (`docs/design/FLOOR.md` Appendix B row 16, slice A,
  * card#7343). § 4.1: an elevator ride and a zoom-to-floor are § 4.5's camera arriving at the floor
  * route. This module still decides only where the cab stands and where it goes next; the arrival is
- * `lobby-screen.js`'s `ride()` — the cab moved to `elevator().next`, row 15's camera zoomed to that
- * plate, and the page handed the plate's own `href`, the published link `floors()` already gives it
- * (D3's own route, never one minted here), which the floor page serves on a cold start (row 8).
+ * `lobby-screen.js`'s `ride()` — which names `elevator().next` as the stop the page moves the cab to,
+ * zooms row 15's camera to that plate, and hands the page the plate's own `href`, the published link
+ * `floors()` already gives it (D3's own route, never one minted here), which the floor page serves on
+ * a cold start (row 8).
  */
 
 import { floors } from './lobby-model.js';

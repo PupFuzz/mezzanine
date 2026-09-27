@@ -118,6 +118,36 @@ class LobbyPageWiringTest extends TestCase
         $this->assertArrayHasKey('ride', $this->cameraDefects($stays),
             'CONTROL (a ride that never arrives at its route) did not bite');
 
+        // CONTROL — a ride whose glide an interruption abandons: the ruling's "the click commits the ride".
+        $uncommitted = str_replace('}, { commit: true });', '});', $js);
+        $this->assertNotSame($uncommitted, $js, "the commit control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('ride in flight', $this->cameraDefects($uncommitted),
+            'CONTROL (a ride an interruption abandons) did not bite');
+
+        // CONTROL — a ride control left enabled while a ride is in flight.
+        $enabled = str_replace('ride.disabled = building.elevator.next === null || riding;', 'ride.disabled = building.elevator.next === null;', $js);
+        $this->assertNotSame($enabled, $js, "the in-flight control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('ride in flight', $this->cameraDefects($enabled),
+            'CONTROL (a ride control enabled in flight) did not bite');
+
+        // CONTROL — a lobby the back-forward cache restores with its ride still in flight, the control dead.
+        $stranded = str_replace("        screen.returned();\n", '', $js);
+        $this->assertNotSame($stranded, $js, "the return control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('ride in flight', $this->cameraDefects($stranded),
+            'CONTROL (a restored lobby whose ride never ends) did not bite');
+
+        // CONTROL — the clipping surface left scrollable out from under the camera.
+        $scrolled = str_replace("function view(camera) {\n    unscroll();", 'function view(camera) {', $js);
+        $this->assertNotSame($scrolled, $js, "the scroll control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('scroll', $this->cameraDefects($scrolled),
+            'CONTROL (a camera shown over a scrolled surface) did not bite');
+
+        // CONTROL — the lobby growing its own gesture copy back beside the shared module.
+        $copied = str_replace("const building = el('lobby-building');\n", "const building = el('lobby-building');\nbuilding.addEventListener('pointerdown', () => {});\n", $js);
+        $this->assertNotSame($copied, $js, "the gesture-copy control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('gestures', $this->cameraDefects($copied),
+            'CONTROL (a gesture copy beside wire/camera-gestures.js) did not bite');
+
         // CONTROL — the whole-building control wired to nothing.
         $unwired = str_replace('screen.wholeBuilding()', 'screen.camera()', $js);
         $this->assertNotSame($unwired, $js, "the whole-building control's anchor is gone — it mutated nothing");
@@ -177,9 +207,17 @@ class LobbyPageWiringTest extends TestCase
         $wired = [
             'ride' => ["el('lobby-elevator').addEventListener('click'", 'const ride = screen.ride();',
                 'glideTo(ride.from, ride.to, ride.glide_ms, () => {', 'window.location.assign(ride.route);'],
+            // The click commits the ride (card#7343 r1 ruling): the glide is committed, the control is
+            // disabled while the frame says a ride is in flight, and the page coming back ends it.
+            'ride in flight' => ['}, { commit: true });', 'ride.disabled = building.elevator.next === null || riding;',
+                'renderBuilding(building, frame.scene, summary.unclaimed, frame.riding);',
+                "window.addEventListener('pageshow', (event) => {\n    if (event.persisted) {\n        screen.returned();"],
             'whole-building' => ["el('lobby-whole-building').addEventListener('click'", 'screen.wholeBuilding()'],
-            'wheel' => ["building.addEventListener('wheel'", 'show(screen.wheel('],
-            'drag' => ["building.addEventListener('pointermove'", 'show(screen.drag('],
+            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { wheel: screen.wheel,'],
+            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { wheel: screen.wheel, drag: screen.drag }, show);'],
+            // The clipping surface is never scrolled out from under the camera (card#7343 r1).
+            'scroll' => ["function view(camera) {\n    unscroll();", "building.addEventListener('scroll', unscroll);",
+                "    node.scrollTop = 0;\n    node.scrollLeft = 0;"],
             'resize' => ['show(screen.resize(surface()))'],
             'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
         ];
@@ -190,6 +228,11 @@ class LobbyPageWiringTest extends TestCase
                     $defects[$act] = "the lobby does not wire the {$act} to the screen (`{$needle}` is missing)";
                 }
             }
+        }
+
+        // One gesture wiring for both pages (card#7343 r1): a pointer or wheel listener here is a copy.
+        if (preg_match("/addEventListener\\('(wheel|pointerdown|pointermove|pointerup|pointercancel)'/", $js, $m) === 1) {
+            $defects['gestures'] = "the lobby wires a {$m[1]} of its own beside wire/camera-gestures.js";
         }
 
         return $defects;

@@ -42,10 +42,17 @@
  * its second caller, framing every plate of the building (`building-scene.js`) where the floor screen
  * frames the floor. The first framing fits — whole-building, § 6.5's setting and not a move — and every
  * later render keeps the viewer's zoom and pan and only re-clamps them. The whole-building control is
- * the fit; zoom-to-a-plate is the ride: `ride()` moves the cab to the elevator's next stop, zooms the
- * camera to that plate and hands back the route the page arrives at, `/floor/{key}` — the plate's own
- * `href`, the KEY and never the label (§ 4.4, card#9273) — which row 8 serves and which deep-links on a
- * cold start like any other visit to it.
+ * the fit; zoom-to-a-plate is the ride: `ride()` names the elevator's next stop — the cab the page then
+ * moves there, since the cab is the viewer's and not the model's — zooms the camera to that plate and
+ * hands back the route the page arrives at, `/floor/{key}` — the plate's own `href`, the KEY and never
+ * the label (§ 4.4, card#9273) — which row 8 serves and which deep-links on a cold start like any other
+ * visit to it.
+ *
+ * ⛔ THE CLICK COMMITS THE RIDE (card#7343 r1 ruling, Appendix B row 16). From `ride()` until the page
+ * is left — or comes back from the back-forward cache, `returned()` — a ride is IN FLIGHT: the frame
+ * says so (`riding`, which disables the ride control), a second `ride()` is refused, and the wheel, the
+ * drag and the whole-building control leave the camera on the plate. The page's glide is committed
+ * (`wire/camera-view.js`), so any of them cuts it to the plate and it arrives.
  *
  * ⛔ NAVIGATION IS NEVER STATE (§ 4.5, § 4.6's elevator row). A ride, a zoom and a pan draw nothing,
  * drain nothing and fetch nothing; this screen holds no animation log and loads nothing that could write
@@ -75,6 +82,9 @@ export class LobbyScreen {
 
     /** `prefers-reduced-motion: reduce`, as the page reads it: a ride and the whole-building control cut. */
     #reduce;
+
+    /** The ride in flight, from its click until the page is left or comes back (`returned()`); `null` when none. */
+    #riding = null;
 
     /**
      * The last frame DRAWN — the building the plates and the ride control were drawn from, and its scene.
@@ -173,6 +183,8 @@ export class LobbyScreen {
             building,
             scene,
             camera: this.#camera,
+            // A ride in flight: the page disables the ride control until it has arrived.
+            riding: this.#riding !== null,
             // § 4.1's words over the protocol's own pair — and silence while no check can run.
             discrepancy: feed.applied && state !== null ? discrepancyNotice(state.held, state.total) : null,
             strip: statusStrip(feed, client.fleet),
@@ -185,9 +197,9 @@ export class LobbyScreen {
 
     /**
      * The elevator's ride to its next stop — the one the last drawn ride control offered — and its
-     * arrival: the cab at that plate, the camera zoomed to it, and the route the page arrives at.
-     * `null` when there is nowhere to ride (`building-model.js`'s `NO_STOPS` / `ONE_STOP`, or no building
-     * drawn yet), and then nothing moves.
+     * arrival: the stop the page moves the cab to, the camera zoomed to that plate, and the route the
+     * page arrives at. `null` when there is nowhere to ride (`building-model.js`'s `NO_STOPS` /
+     * `ONE_STOP`, or no building drawn yet) or while a ride is already in flight, and then nothing moves.
      *
      * ⛔ THE REFUSAL IS RE-ASKED OF THE DRAWN MODEL RATHER THAN READ OFF THE BUTTON. Before the first
      * snapshot lands there is no building to ride, and a ride to nowhere would put the cab on `null`,
@@ -204,7 +216,7 @@ export class LobbyScreen {
         const building = this.#drawn?.building ?? null;
         const next = building === null ? null : building.elevator.next;
 
-        if (next === null) {
+        if (next === null || this.#riding !== null) {
             return null;
         }
 
@@ -212,8 +224,17 @@ export class LobbyScreen {
         const from = this.#camera;
 
         this.#camera = focusOn(from, this.#drawn.scene.plates[plate.level].rect);
+        this.#riding = { cab: plate.floor, route: plate.href, from, to: this.#camera, glide_ms: glideMs(this.#reduce) };
 
-        return { cab: plate.floor, route: plate.href, from, to: this.#camera, glide_ms: glideMs(this.#reduce) };
+        return this.#riding;
+    }
+
+    /**
+     * The page is back from the back-forward cache: the ride that left it has arrived, and the viewer may
+     * ride again. The camera stays where the ride left it.
+     */
+    returned() {
+        this.#riding = null;
     }
 
     /**
@@ -225,21 +246,25 @@ export class LobbyScreen {
     wholeBuilding() {
         const from = this.#camera;
 
-        this.#camera = fit(from);
+        // A ride in flight keeps the camera on its plate; the page's committed glide arrives instead.
+        this.#camera = this.#riding === null ? fit(from) : from;
 
         return { from, to: this.#camera, glide_ms: glideMs(this.#reduce) };
     }
 
-    /** One wheel event at a point on the surface — `wire/camera.js`'s `wheel()`. Renders nothing. */
+    /**
+     * One wheel event at a point on the surface — `wire/camera.js`'s `wheel()`. Renders nothing, and
+     * moves nothing while a ride is in flight.
+     */
     wheel(point, delta) {
-        this.#camera = wheel(this.#camera, point, delta);
+        this.#camera = this.#riding === null ? wheel(this.#camera, point, delta) : this.#camera;
 
         return this.#camera;
     }
 
-    /** A drag by `dx`, `dy` CSS px. Renders nothing. */
+    /** A drag by `dx`, `dy` CSS px. Renders nothing, and moves nothing while a ride is in flight. */
     drag(dx, dy) {
-        this.#camera = panBy(this.#camera, dx, dy);
+        this.#camera = this.#riding === null ? panBy(this.#camera, dx, dy) : this.#camera;
 
         return this.#camera;
     }
@@ -260,8 +285,8 @@ export class LobbyScreen {
  * @param {function(object): void} draw receives each lobby frame
  * @param {{surface: {width: number, height: number}, reduce?: boolean}} options `LobbyScreen`'s
  * @returns {{render: function(string|null): Promise<void>, refresh: function(): Promise<void>, draw: function(string|null): void,
- *            ride: function(): object|null, wholeBuilding: function(): object, wheel: Function, drag: Function,
- *            resize: Function, camera: function(): object}}
+ *            ride: function(): object|null, returned: function(): void, wholeBuilding: function(): object,
+ *            wheel: Function, drag: Function, resize: Function, camera: function(): object}}
  */
 export function startLobbyScreen(client, fetchImpl, draw, options) {
     const screen = new LobbyScreen(client, new Building(fetchImpl), options);
@@ -280,6 +305,7 @@ export function startLobbyScreen(client, fetchImpl, draw, options) {
         // Appendix B row 16: the viewer's camera at building scale, and the ride. None renders; the page
         // shows the camera each returns, and a ride's arrival is the page's route change.
         ride: () => screen.ride(),
+        returned: () => screen.returned(),
         wholeBuilding: () => screen.wholeBuilding(),
         wheel: (point, delta) => screen.wheel(point, delta),
         drag: (dx, dy) => screen.drag(dx, dy),

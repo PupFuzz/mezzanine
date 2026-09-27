@@ -24,14 +24,18 @@
  * card#7343); this file supplies the building's drawing surface, places each plate at the rect the
  * screen's scene gives it, shows the screen's camera on the plates as one transform, and wires the
  * wheel, the drag, the whole-building control and the ride to the screen's camera acts — none of which
- * renders. A ride moves the cab, glides the camera to the plate (or cuts, under
- * `prefers-reduced-motion`) and then ARRIVES: the page goes to the route the screen handed back,
- * `/floor/{key}`, which the floor page serves on a cold start. The glide is the viewer's, and it steps
- * through `wire/camera-view.js`, the floor page's own.
+ * renders. A ride's click moves the cab — the page's `cab`, set to the stop `ride()` names — glides
+ * the camera to the plate (or cuts, under `prefers-reduced-motion`) and then ARRIVES: the page goes to
+ * the route the screen handed back, `/floor/{key}`, which the floor page serves on a cold start. The
+ * click commits the ride: an interrupted glide cuts to the plate and arrives, and the control is
+ * disabled while the ride is in flight. The glide is the viewer's, and it steps through
+ * `wire/camera-view.js`; the wheel and the drag are `wire/camera-gestures.js`'s — both the floor
+ * page's own.
  */
 
 import { livePage } from '../wire/live-page.js';
 import { cameraView } from '../wire/camera-view.js';
+import { cameraGestures } from '../wire/camera-gestures.js';
 import { startLobbyScreen } from './lobby-screen.js';
 
 /**
@@ -76,11 +80,28 @@ function surface() {
 }
 
 /**
+ * ⛔ THE CAMERA IS THE ONLY THING THAT MOVES THE VIEW. `#lobby-building` clips the plates
+ * (`overflow: hidden`), and a clipping element can still be SCROLLED — focus moving to a plate outside
+ * the view scrolls it into view — which slides the plates out from under the camera: the transform
+ * says one place and the pixels show another. So its scroll is held at the origin, on every camera
+ * shown and on every scroll the browser makes. The alternative, bringing the camera to the focused
+ * plate on `focusin`, would be a new camera act on the screen for a behaviour no row states yet;
+ * holding the scroll is one line in the one function every camera already passes through.
+ */
+function unscroll() {
+    const node = el('lobby-building');
+
+    node.scrollTop = 0;
+    node.scrollLeft = 0;
+}
+
+/**
  * One camera on the plates: the scene point at the camera's `x`, `y` at the surface's top-left, at its
  * zoom — `wire/camera.js`'s `view`, as a CSS transform. Nothing framed is no transform at all: the list
  * as it flows, which is how a lobby with no plate reads (§ 9 F17's rooms, or no install).
  */
 function view(camera) {
+    unscroll();
     el('lobby-floors').style.transform = camera.bounds === null
         ? ''
         : `scale(${camera.zoom}) translate(${-camera.x}px, ${-camera.y}px)`;
@@ -115,7 +136,7 @@ function list(id, lines) {
  * ⚠ THE STACK IS DRAWN FIRST-AT-THE-TOP, which is the reference artifact's direction and not a
  * ruling in the document — see `building-model.js`.
  */
-function renderBuilding(building, scene, unclaimed) {
+function renderBuilding(building, scene, unclaimed, riding) {
     const rows = el('lobby-floors');
 
     rows.textContent = '';
@@ -198,8 +219,9 @@ function renderBuilding(building, scene, unclaimed) {
     ride.textContent = building.elevator.next === null
         ? 'Ride the elevator'
         : `Ride the elevator to ${building.elevator.destination}`;
-    // ⛔ THE DARK CASE IS REFUSED AT THE CONTROL, not only explained beside it.
-    ride.disabled = building.elevator.next === null;
+    // ⛔ THE DARK CASE IS REFUSED AT THE CONTROL, not only explained beside it — and so is a second ride
+    // while one is in flight: the click commits the ride (`lobby-screen.js`'s `ride()`).
+    ride.disabled = building.elevator.next === null || riding;
 
     list('lobby-elevator-notices', [...building.elevator.notices]);
 }
@@ -242,7 +264,7 @@ function paint(frame) {
         cab = building.elevator.at;
     }
 
-    renderBuilding(building, frame.scene, summary.unclaimed);
+    renderBuilding(building, frame.scene, summary.unclaimed, frame.riding);
     // A render never moves the viewer: a glide in flight keeps its step, and otherwise the plates show
     // the screen's camera, which the render left where the viewer put it.
     view(current(frame.camera));
@@ -280,7 +302,12 @@ el('lobby-refresh').addEventListener('click', () => {
  * re-drawn there from what is held, the camera glides to that plate — a cut under
  * `prefers-reduced-motion` — and the page ARRIVES at the route the screen handed back, `/floor/{key}`.
  * No fetch and no animation: the ride is navigation. The refusal is the screen's (`ride()` answers
- * `null` where there is nowhere to ride), re-asked of the drawn model rather than read off the button.
+ * `null` where there is nowhere to ride, or while a ride is in flight), re-asked of the drawn model
+ * rather than read off the button.
+ *
+ * ⛔ THE CLICK COMMITS THE RIDE (card#7343 r1 ruling). The glide is `camera-view.js`'s COMMITTED glide:
+ * a wheel, a drag, a resize or the whole-building control during it cuts it to the plate and arrives,
+ * and the ride control is disabled from the click until the page is left.
  */
 el('lobby-elevator').addEventListener('click', () => {
     const ride = screen.ride();
@@ -293,7 +320,16 @@ el('lobby-elevator').addEventListener('click', () => {
     screen.draw(cab);
     glideTo(ride.from, ride.to, ride.glide_ms, () => {
         window.location.assign(ride.route);
-    });
+    }, { commit: true });
+});
+
+// Back to a lobby the browser kept whole (the back-forward cache): the ride that left it has arrived,
+// so the viewer may ride again.
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+        screen.returned();
+        screen.draw(cab);
+    }
 });
 
 // The whole-building control: every plate in view, gliding there — or cutting, under reduced motion.
@@ -304,69 +340,16 @@ el('lobby-whole-building').addEventListener('click', () => {
 });
 
 // The wheel zooms about the cursor in proportion to its scroll, and a drag with the primary button pans
-// — row 15's acts at building scale. Neither renders; each shows the camera the screen hands back.
+// — row 15's acts at building scale, wired by `wire/camera-gestures.js`, the floor's too. Neither
+// renders; each shows the camera the screen hands back. A drag that moved is no click on the plate —
+// the link — it ended over.
 const building = el('lobby-building');
-let drag = null;
-let dragged = false;
 
-building.addEventListener('wheel', (event) => {
-    event.preventDefault();
-
-    const r = building.getBoundingClientRect();
-
-    show(screen.wheel({ x: event.clientX - r.left, y: event.clientY - r.top }, { deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }));
-}, { passive: false });
-building.addEventListener('pointerdown', (event) => {
-    // Only the primary pointer's primary button drags; a press on a plate's link stays a click until
-    // it moves.
-    if (!event.isPrimary || event.button !== 0) {
-        return;
-    }
-
-    dragged = false;
-    drag = { x: event.clientX, y: event.clientY, moved: false };
-});
-building.addEventListener('pointermove', (event) => {
-    // A move with the primary button no longer held ends the drag (its `pointerup` was elsewhere).
-    if (drag === null || (event.buttons & 1) === 0) {
-        drag = null;
-
-        return;
-    }
-
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-
-    if (!drag.moved && Math.hypot(dx, dy) < 4) {
-        return;
-    }
-
-    if (!drag.moved) {
-        drag.moved = true;
-        building.setPointerCapture(event.pointerId);
-    }
-
-    drag.x = event.clientX;
-    drag.y = event.clientY;
-    show(screen.drag(dx, dy));
-});
-building.addEventListener('pointerup', () => {
-    dragged = drag?.moved === true;
-    drag = null;
-});
-building.addEventListener('pointercancel', () => {
-    dragged = false;
-    drag = null;
-});
-// A drag that moved is not a click on the plate — the link — it ended over.
-building.addEventListener('click', (event) => {
-    if (dragged) {
-        event.preventDefault();
-        event.stopPropagation();
-        dragged = false;
-    }
-}, { capture: true });
-// A resize re-shows the screen's camera at once, stopping a glide in flight over the old surface.
+cameraGestures(building, { wheel: screen.wheel, drag: screen.drag }, show);
+// Focus can scroll the clipping surface; the camera alone moves the view (`unscroll()`).
+building.addEventListener('scroll', unscroll);
+// A resize re-shows the screen's camera at once, stopping a glide in flight over the old surface — or
+// finishing a ride's, which then arrives.
 window.addEventListener('resize', () => {
     show(screen.resize(surface()));
 });

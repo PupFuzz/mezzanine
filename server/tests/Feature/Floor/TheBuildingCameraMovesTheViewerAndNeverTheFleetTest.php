@@ -19,14 +19,22 @@ use Tests\TestCase;
  * harness (`fleet-client-probe.mjs` with `lobby.camera`) — ride to the labelled floor, ride to the other,
  * whole-building — and the same under `prefers-reduced-motion`. A ride's arrival is a route change the
  * page performs; the harness stays on the lobby and records the route, and where the floor page's own
- * `resolveRoute()` lands it over the building the lobby drew.
+ * `resolveRoute()` lands it over the building the lobby drew. Because a ride LEAVES the lobby, each is
+ * followed by the page coming back from the back-forward cache (`return`) before the next act.
+ *
+ * ⛔ THE CLICK COMMITS THE RIDE (card#7343 r1 ruling, row 16), held over `building_ride_in_flight`: from
+ * a ride's click until the page comes back, every frame says the ride is in flight (the page disables the
+ * control on it), a second ride is refused, and the wheel, the drag and the whole-building control leave
+ * the camera on the plate. The page's half — an interrupted glide cutting to the plate and arriving — is
+ * `wire/camera-view.js`'s committed glide, held by `TheCameraWireIsOneForBothPagesTest`.
  *
  * ⛔ THE LOG CLAUSE HAS ITS TEETH IN THE IMPORT GRAPH, AND THIS SAYS WHY. The lobby holds no animation
  * log — it animates nothing (§ 6.5; § 4.1's plates carry no § 6.2 row) — so the harness's log is empty
  * with the camera acts and without them, and no plant inside the lobby can reach it. What makes *the
  * animation log gains no row* true is that no module the lobby page loads can write one or start
  * anything through the set; that is asserted over the page's whole import graph from `lobby/main.js`,
- * and its RED plants the import. The replayed log comparison stays as the harness's own reading of the
+ * following every form a module loads another by (`DrivesAShippedClientModule::relativeImports()`), and
+ * its RED plants the import in each of those forms. The replayed log comparison stays as the harness's own reading of the
  * GREEN, beside the discriminating control § 11 names.
  *
  * ⚠ WHAT THIS DOES NOT HOLD: the plate drawn as the reference's section, the cab drawn and glided, the
@@ -45,6 +53,8 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     private const REDUCED = 'building_rides_reduced';
 
+    private const IN_FLIGHT = 'building_ride_in_flight';
+
     private const SCREEN = '../lobby/lobby-screen.js';
 
     private const EPSILON = 1e-6;
@@ -60,7 +70,11 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
             $this->assertCount(2, $floors, "[{$run}] the layout is not two floors");
             $this->assertSame(1, count(array_filter($floors, static fn (array $f): bool => isset($f['label']))), "[{$run}] not exactly one floor is labelled");
-            $this->assertSame(['ride', 'ride', 'building'], array_column($fixture['lobby']['camera'], 'act'), "[{$run}] the acts are not ride, ride, whole-building");
+            $acts = array_column($fixture['lobby']['camera'], 'act');
+
+            $this->assertSame(['ride', 'ride', 'building'], array_values(array_diff($acts, ['return'])), "[{$run}] the acts are not ride, ride, whole-building");
+            // A ride leaves the lobby: the viewer is back on it before anything else is asked of it.
+            $this->assertSame(['ride', 'return', 'ride', 'return', 'building'], $acts, "[{$run}] a ride is not followed by the page coming back");
         }
 
         $this->assertTrue($this->fixture(self::REDUCED)['reduce'] ?? false, 'the reduced run is not under prefers-reduced-motion');
@@ -113,6 +127,20 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $this->assertSame([], $this->graphDefects($this->jsRoot()));
     }
 
+    /** The ruling: the click commits the ride — held in flight, refused twice, and the camera left on the plate. */
+    public function test_green_the_click_commits_the_ride(): void
+    {
+        $this->assertSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT)));
+    }
+
+    /** Every run's frames say a ride is in flight exactly while one is — the moving and reduced runs too. */
+    public function test_green_each_runs_frames_say_when_a_ride_is_in_flight(): void
+    {
+        foreach ([self::RUN, self::REDUCED] as $run) {
+            $this->assertSame([], $this->ridingDefects($this->replay($run)), "[{$run}]");
+        }
+    }
+
     public function test_green_under_reduced_motion_the_cab_and_the_camera_cut_rather_than_glide(): void
     {
         $this->assertSame([], $this->glideDefects($this->replay(self::REDUCED), $this->replay(self::RUN)));
@@ -124,8 +152,8 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     public function test_red_the_label_in_the_link(): void
     {
         $dir = $this->mutatedModules([self::SCREEN,
-            'return { cab: plate.floor, route: plate.href,',
-            'return { cab: plate.floor, route: `/floor/${encodeURIComponent(plate.name)}`,']);
+            '{ cab: plate.floor, route: plate.href,',
+            '{ cab: plate.floor, route: `/floor/${encodeURIComponent(plate.name)}`,']);
 
         $this->assertNotSame([], $this->rideDefects($this->replay(self::RUN, $dir)), 'the sixth RED (the label in the link) did not bite');
     }
@@ -139,14 +167,30 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $this->assertNotSame([], $this->plateDefects($this->replay(self::RUN, $dir)), 'the seventh RED (the desks on the plate) did not bite');
     }
 
-    /** The logged ride: the lobby given the animation log to write a ride into. */
-    public function test_red_a_lobby_that_loads_the_animation_log(): void
+    /**
+     * The logged ride: the lobby given the animation log to write a ride into, or the set to start one
+     * through — in every form a module can load another, each in both quotes, so the bound cannot be
+     * walked around by spelling the import differently.
+     */
+    public function test_red_a_lobby_that_loads_the_animation_log_in_any_import_form(): void
     {
-        $dir = $this->mutatedModules([self::SCREEN,
-            "import { buildingScene } from './building-scene.js';\n",
-            "import { buildingScene } from './building-scene.js';\nimport { createAnimationLog } from '../wire/animation-log.js';\n"]);
+        $forms = [
+            'a static import' => "import { createAnimationLog } from '../wire/animation-log.js';",
+            'a static import, double-quoted' => 'import { createAnimationLog } from "../wire/animation-log.js";',
+            'a re-export' => "export { createAnimationLog } from '../wire/animation-log.js';",
+            'a bare import' => "import '../wire/animation-set.js';",
+            'a bare import, double-quoted' => 'import "../wire/animation-set.js";',
+            'a dynamic import' => "const loadLog = () => import('../wire/animation-log.js');",
+            'a dynamic import, double-quoted' => 'const loadLog = () => import("../wire/animation-log.js");',
+        ];
 
-        $this->assertNotSame([], $this->graphDefects(dirname($dir)), 'CONTROL (the lobby loading the animation log) did not bite');
+        foreach ($forms as $form => $line) {
+            $dir = $this->mutatedModules([self::SCREEN,
+                "import { buildingScene } from './building-scene.js';\n",
+                "import { buildingScene } from './building-scene.js';\n{$line}\n"]);
+
+            $this->assertNotSame([], $this->graphDefects(dirname($dir)), "CONTROL (the lobby loading the log or the set by {$form}) did not bite");
+        }
     }
 
     /** A ride that glides under `prefers-reduced-motion`. */
@@ -158,6 +202,46 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
         $this->assertNotSame([], $this->glideDefects($this->replay(self::REDUCED, $dir), $this->replay(self::RUN, $dir)),
             'CONTROL (a ride gliding under prefers-reduced-motion) did not bite');
+    }
+
+    /** A second click during a ride rides again — the click did not commit it. */
+    public function test_red_a_second_ride_while_one_is_in_flight(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN,
+            'if (next === null || this.#riding !== null) {',
+            'if (next === null) {']);
+
+        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a second ride in flight) did not bite');
+    }
+
+    /** A wheel during a ride moves the camera off the plate it is arriving at. */
+    public function test_red_a_wheel_that_moves_the_camera_during_a_ride(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN,
+            'this.#camera = this.#riding === null ? wheel(this.#camera, point, delta) : this.#camera;',
+            'this.#camera = wheel(this.#camera, point, delta);']);
+
+        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a wheel moving the camera in flight) did not bite');
+    }
+
+    /** A frame that never says a ride is in flight — the ride control stays enabled under it. */
+    public function test_red_a_frame_that_hides_the_ride_in_flight(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN,
+            'riding: this.#riding !== null,',
+            'riding: false,']);
+
+        $this->assertNotSame([], $this->ridingDefects($this->replay(self::RUN, $dir)), 'CONTROL (a frame hiding the ride in flight) did not bite');
+    }
+
+    /** A ride that stays in flight after the page came back — the lobby's ride control dead for good. */
+    public function test_red_a_ride_that_never_ends_when_the_page_comes_back(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN,
+            "    returned() {\n        this.#riding = null;\n    }",
+            "    returned() {\n    }"]);
+
+        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a ride never ended by the page coming back) did not bite');
     }
 
     /** § 11's second RED at building scale: re-fit the building on every render. */
@@ -414,6 +498,112 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         return $defects;
     }
 
+    /**
+     * Whether each frame says a ride is in flight exactly while one is: from a ride's click to the page's
+     * return, taking the acts in order.
+     *
+     * @return list<string>
+     */
+    private function ridingDefects(array $result): array
+    {
+        $defects = [];
+        $built = $this->built($result);
+
+        if ($built === [] || $this->rides($result) === []) {
+            return ['the run draws no building or rides nowhere — the in-flight clause measured nothing'];
+        }
+
+        $seen = [true => false, false => false];
+
+        foreach ($built as $f) {
+            $riding = false;
+
+            foreach ($result['camera_acts'] as $a) {
+                if ($a['at'] > $f['at']) {
+                    break;
+                }
+
+                if ($a['act']['act'] === 'ride' && $a['ride'] !== null) {
+                    $riding = true;
+                } elseif ($a['act']['act'] === 'return') {
+                    $riding = false;
+                }
+            }
+
+            $seen[$riding] = true;
+
+            if (($f['riding'] ?? null) !== $riding) {
+                $defects[] = sprintf('the frame at %d ms says a ride is %sin flight, and one %s', $f['at'],
+                    ($f['riding'] ?? false) ? '' : 'not ', $riding ? 'is' : 'is not');
+            }
+        }
+
+        if (! $seen[true] || ! $seen[false]) {
+            $defects[] = 'the run draws no frame both in and out of a ride — the clause read one side only';
+        }
+
+        return $defects;
+    }
+
+    /**
+     * The ruling over `building_ride_in_flight`: a ride's click commits it — a second ride is refused, and
+     * the wheel, the drag and the whole-building control leave the camera on the plate until the page
+     * comes back; after it, the viewer rides again.
+     *
+     * @return list<string>
+     */
+    private function inFlightDefects(array $result): array
+    {
+        $defects = $this->ridingDefects($result);
+        $inFlight = null;
+        $interrupted = [];
+        $refused = 0;
+        $taken = 0;
+
+        foreach ($result['camera_acts'] as $a) {
+            $act = $a['act']['act'];
+
+            if ($act === 'ride') {
+                if ($inFlight !== null) {
+                    if ($a['ride'] !== null) {
+                        $defects[] = "the ride at {$a['at']} ms was taken while the ride at {$inFlight['at']} ms was in flight";
+                    }
+
+                    $refused++;
+                } elseif ($a['ride'] === null) {
+                    $defects[] = "the ride at {$a['at']} ms was refused with no ride in flight";
+                } else {
+                    $inFlight = $a;
+                    $taken++;
+                }
+            } elseif ($act === 'return') {
+                $inFlight = null;
+            } elseif ($inFlight !== null) {
+                $interrupted[] = $act;
+
+                foreach (['zoom', 'x', 'y'] as $k) {
+                    if (abs($a['after'][$k] - $inFlight['after'][$k]) > self::EPSILON) {
+                        $defects[] = "the {$act} at {$a['at']} ms moved the camera off the plate the ride at {$inFlight['at']} ms is arriving at";
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        foreach (['wheel', 'drag', 'building'] as $act) {
+            if (! in_array($act, $interrupted, true)) {
+                $defects[] = "the run never interrupts a ride with the {$act} — the clause measured nothing for it";
+            }
+        }
+
+        if ($refused === 0 || $taken < 2) {
+            $defects[] = 'the run refuses no second ride, or never rides again after the page came back';
+        }
+
+        return $defects;
+    }
+
     /** @return list<string> */
     private function survivalDefects(array $result): array
     {
@@ -506,9 +696,7 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             $this->assertFileExists($path, "the lobby page imports {$file}, which is not there");
             $seen[$file] = true;
 
-            preg_match_all("/from '(\.\.?\/[A-Za-z0-9._\/-]+)'/", (string) file_get_contents($path), $m);
-
-            foreach ($m[1] as $import) {
+            foreach ($this->relativeImports((string) file_get_contents($path)) as $import) {
                 $queue[] = $this->normalise(dirname($file).'/'.$import);
             }
         }
