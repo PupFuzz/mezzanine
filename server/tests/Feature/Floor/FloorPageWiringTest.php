@@ -37,7 +37,8 @@ use Tests\TestCase;
  * reaches is a floor that never moves and would pass AT-D3-21, which drives the acts directly. And the
  * drawing is reachable: it takes focus, and neither it nor the painter's `<svg>` is an image, whose
  * children — the desks — would be presentational; a desk activates on Enter and Space, and the desk the
- * keyboard was on keeps focus across the painter's rebuild of the `<svg>`.
+ * keyboard was on keeps focus across the painter's rebuild of the `<svg>` — restored only when the
+ * keyboard was inside the drawing.
  *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that anything renders, lays out or is legible.
  */
@@ -226,6 +227,11 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('refocus', $this->exposureDefects($html, $unfocused),
             'CONTROL (a rebuild that finds the focused desk but never calls .focus() on it) did not bite');
 
+        $unguarded = str_replace("        if (focusedKey !== null) {\n            (svg.querySelector", "        {\n            (svg.querySelector", $painter);
+        $this->assertNotSame($unguarded, $painter);
+        $this->assertArrayHasKey('refocus', $this->exposureDefects($html, $unguarded),
+            'CONTROL (a rebuild that moves focus into the drawing whether or not the keyboard was in it) did not bite');
+
         $unfocusable = str_replace(' tabindex="0" aria-keyshortcuts', ' aria-keyshortcuts', $html);
         $this->assertNotSame($unfocusable, $html);
         $this->assertArrayHasKey('focus', $this->exposureDefects($unfocusable, $painter),
@@ -341,13 +347,16 @@ class FloorPageWiringTest extends TestCase
 
         // The painter rebuilds the <svg> on every paint: the focused desk's key is noted before the
         // rebuild and focus is put back on the rebuilt desk after it, or a keyboard user on a desk
-        // drops to the page's body at the next render.
+        // drops to the page's body at the next render — and only when the keyboard WAS inside the
+        // drawing, or every repaint would pull focus off whatever else on the page the viewer is on.
         $noted = strpos($painter, 'const focusedKey = host.contains(document.activeElement)');
         $rebuilt = strpos($painter, 'host.replaceChildren(svg);');
+        $guarded = strpos($painter, 'if (focusedKey !== null) {');
         $restored = strpos($painter, 'svg.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`) ?? host).focus(');
 
-        if ($noted === false || $rebuilt === false || $restored === false || ! ($noted < $rebuilt && $rebuilt < $restored)) {
-            $defects['refocus'] = 'the painter does not put focus back on the desk it rebuilt — noted before `host.replaceChildren(svg)`, and `.focus(` called on the rebuilt desk (or the drawing) after it';
+        if ($noted === false || $rebuilt === false || $guarded === false || $restored === false
+            || ! ($noted < $rebuilt && $rebuilt < $guarded && $guarded < $restored)) {
+            $defects['refocus'] = 'the painter does not put focus back on the desk it rebuilt — noted before `host.replaceChildren(svg)`, and `.focus(` called on the rebuilt desk (or the drawing) after it, under `if (focusedKey !== null)`';
         }
 
         return $defects;

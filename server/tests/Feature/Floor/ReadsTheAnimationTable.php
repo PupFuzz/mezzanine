@@ -194,7 +194,7 @@ trait ReadsTheAnimationTable
 
     /**
      * Whether one seat object satisfies one § 6.2 row's hold condition — the predicate AT-D3-1's
-     * closed-set half asserts in OPPOSITE directions on a held row's two phases.
+     * closed-set half asserts on a held row's `entered` phase (its `left` phase is § 11's precedence).
      *
      * @param  array<string, mixed>  $seat
      * @param  array<string, mixed>  $conditions

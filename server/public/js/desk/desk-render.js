@@ -398,7 +398,8 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
     const label = recognised ? labelLine(state, seat, ages, dark) : `${state} (${UNRECOGNISED})`;
 
     // § 6.2's held render, and § 7.3's TREATMENT of whether its loop may run: a lag, a
-    // `config_invalid` reporter, an unrecognised state and a desk with nobody at it all stop it.
+    // `config_invalid` reporter, an unrecognised value and a stilled floor all stop it; a desk with
+    // nobody at it holds no render at all.
     // Whether the row loops at all, and § 6.4's form, are the animation set's answer.
     const heldId = character ? (desk === THINKING ? 'A4' : (HELD[state] ?? null)) : null;
     // § 9 F9: "treated as not-current" — a desk carrying a value this client does not know draws

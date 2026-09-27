@@ -52,6 +52,10 @@
  *      "lobby":      true                       // start `lobby/lobby-screen.js` after start(),
  *                                               //  `render()` after every settled event — the
  *                                               //  LOBBY (Appendix B row 9) over this same client
+ *                                               //  (`"floor": null` and `"lobby": false` start
+ *                                               //  neither: how a test replays a run written for one
+ *                                               //  of them under `desk_floor` — the same bytes, on
+ *                                               //  another page)
  *      "reduce":     true                       // § 6.4's `prefers-reduced-motion: reduce`, as a
  *                                               //  page reads it — every § 6.2 row draws its
  *                                               //  reduced-motion form and logs `motion: false`
@@ -72,7 +76,7 @@
  *   `{ "records": [ … ], "final": <the last record>, "unscripted": [], "listeners": [ {type: n} ],
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
  *      "streams": [ {opened_at, open_fired, refused, ended_at, closed_at} ],
- *      "desk_renders": [ {at, trigger, frame} ], "floor_renders": [ {at, frame} ],
+ *      "desk_renders": [ {at, trigger, frame, …} ], "floor_renders": [ {at, frame} ],
  *      "lobby_renders": [ {at, frame} ], "camera_acts": [ {at, act, before, after, glide_ms} ],
  *      "animation_log": [ <§ 11 rows> ] }`
  *   and each record
@@ -80,6 +84,10 @@
  *      "read_status": { "<key>": {missing, failStreak, confirmedAt} }, "discrepancy_state",
  *      "strip", "failure" }` — the last two the SHIPPED status strip and failure renders over the
  *   client's own `feed`, which is what AT-D3-7's strip half and AT-D3-8 read without a floor.
+ *   A `desk_renders[]` entry whose trigger is `apply` also carries AT-D3-1's per-render record:
+ *   `{ "stilled", "held": { "<key>": {object, missing} }, "removals": [ {key, cause} ], "rows" }` —
+ *   the stilled floor (§ 9 F6), each held seat's object and § 2.3 row 5's state, the removals that
+ *   render's journal applied with their `cause`, and the animation-log rows that render wrote.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE BROWSER'S CLOCK IS THE SCENARIO CLOCK PLUS `browser_clock_ms`, and nothing else. That
@@ -406,7 +414,7 @@ async function replay(scenario) {
     let screen = null;
     let lobby = null;
 
-    if ([scenario.desk_floor === true, scenario.floor !== undefined, scenario.lobby === true].filter(Boolean).length > 1) {
+    if ([scenario.desk_floor === true, (scenario.floor ?? null) !== null, scenario.lobby === true].filter(Boolean).length > 1) {
         throw new Error('a scenario names more than one of `desk_floor`, `floor` and `lobby`: two renderers, one journal');
     }
 
@@ -472,12 +480,39 @@ async function replay(scenario) {
     }
 
     if (scenario.desk_floor === true) {
+        // What each apply render drained, observed at the one drain rather than re-derived: the
+        // desk floor calls `takeWire()` once per `render()`, and never on a tick.
+        let drained = [];
+        const takeWire = client.takeWire.bind(client);
+        client.takeWire = () => (drained = takeWire());
+        let logged = 0;
+
         floor = startDeskFloor(client, clock, timersImpl, log, (frame, trigger) => {
-            deskRenders.push({ at: now, trigger, frame: JSON.parse(JSON.stringify(frame)) });
+            const render = { at: now, trigger, frame: JSON.parse(JSON.stringify(frame)) };
+
+            // AT-D3-1's per-render record (Appendix B row 15 (c)): what § 11's precedence compares
+            // one render with the one before it on, and the rows that render wrote. A tick drains
+            // nothing and writes no row, so only an apply carries it.
+            if (trigger === 'apply') {
+                const rows = log.rows;
+
+                render.stilled = (client.feed?.signed_out ?? null) !== null;
+                render.held = Object.fromEntries([...client.seats].map(([k, v]) => [k, {
+                    object: JSON.parse(JSON.stringify(v)),
+                    missing: client.readStatus(k).missing,
+                }]));
+                render.removals = drained.filter((entry) => entry.t === 'seat.removed')
+                    .map((entry) => ({ key: `${entry.install_id}/${entry.seat_id}`, cause: entry.cause }));
+                render.rows = rows.slice(logged);
+                logged = rows.length;
+                drained = [];
+            }
+
+            deskRenders.push(render);
         }, { reduce: scenario.reduce === true });
     }
 
-    if (scenario.floor !== undefined) {
+    if ((scenario.floor ?? null) !== null) {
         screen = startFloorScreen(client, buildingHttp.fetch, clock, log, (frame) => {
             floorRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)) });
         }, {
