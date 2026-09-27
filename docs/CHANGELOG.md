@@ -27,6 +27,19 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **Appendix B row 15 has landed, so the release gate on the room drawing is met.** Every
+  exit of a held desk render in the animation log now records the cause FLOOR.md § 11's precedence
+  gives it: a desk that turns into the empty chair because its reads keep being refused records
+  `unconfirmed`, and a desk whose loop stops because the session ended and the floor went still records
+  `stilled`, where each used to record the version of the seat it was already showing. AT-D3-1 checks
+  every desk exit against the precedence, from a per-render record the test harness now writes, and
+  now also replays the signed-out floor run and the unconfirmed desk run, and every run of
+  `fx-snapshot-4` and `fx-degraded`. A direct case for each pair of adjacent steps that can apply in
+  one render checks that the client asks the steps in the ruled order. The unconfirmed desk's fixture
+  answers each refused read with the server time it was answered at. The floor page's focus test also
+  checks that a repaint moves the keyboard's focus only when it was inside the drawing. § 14 item 29's
+  build half is done. Promoting `dev` to `main` is the operator's act.
+
 - **card#7341** — **FLOOR.md § 14 item 29 is answered: every exit of a held desk render in the
   animation log records one named cause.** The rule is a precedence in § 11, under the animation-log
   schema table, and the order of its steps is an operator ruling. It also names the two causes the
@@ -38,11 +51,10 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   and § 2.3 row 5 states which refused reads count toward the empty chair and what clears the count.
   The coordination thread line (A18) is outside the precedence, and two behaviours of it, a line on a
   stilled floor logging motion and a line ended by a seat's removal naming its thread, are named and
-  routed to Appendix B row 14. AT-D3-1's GREEN holds every exit of a desk episode to one predicate:
-  its cause is the one the precedence gives for the render that wrote it, and a `stilled` exit is also
-  checked for the desk re-entering the same animation without motion. The design only is done here:
-  the client, test, probe and fixture work it needs is listed in FLOOR.md Appendix B row 15, which
-  states where each stands.
+  routed to Appendix B row 14. AT-D3-1's GREEN holds every exit of a desk episode to the one predicate
+  and the `stilled` re-entry check it states. The design only is done here: the client, test, probe
+  and fixture work it needs is FLOOR.md Appendix B row 15's build list, and row 15 (e) names what
+  each replayed run rests on.
 
 - **card#7341** — **The floor page has a camera, and a viewport floor (Appendix B row 15, slice B).** At a
   browser viewport of at least 1,280 × 800 CSS px the room drawing fills the page's width and the viewport's

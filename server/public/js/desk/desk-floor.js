@@ -19,9 +19,9 @@
  * ⛔ EVERY § 6.2 ROW GOES THROUGH `wire/animation-set.js`, AND THIS FILE STARTS NONE ITSELF
  * (card#7341 step 6). Step 5 entered and left each desk's held render here because the desk floor
  * was the only renderer there was; the SET is what owns a § 6.2 row, so what this file does now is
- * hand it the journal the protocol drained, the frame, and the seats the frame was derived from —
- * and hold no episode state of its own. A second path into the log would be a second
- * implementation of the one record AT-D3-1 reads.
+ * hand it the journal the protocol drained, the frame, the seats the frame was derived from, and
+ * what § 11's precedence compares with the previous render — and hold no episode state of its own.
+ * A second path into the log would be a second implementation of the one record AT-D3-1 reads.
  *
  * ⛔ A REFUSAL FROM THE LOG IS NOT CAUGHT. § 11 leaves "what a renderer does with a refusal" to the
  * step that builds one. A refusal here means this module asked the log for something impossible —
@@ -54,6 +54,9 @@ export class DeskFloor {
 
     /** key → what only the protocol knows about the seat, read at the last `render()`. */
     #facts = new Map();
+
+    /** Whether the last `render()` drew the floor stilled (§ 9 F6) — § 11's precedence compares with it. */
+    #stilled = false;
 
     /**
      * § 9 F9's dedup, `field value` pairs already written into the record — "the client's event log
@@ -129,18 +132,21 @@ export class DeskFloor {
 
         // § 9 F6: once any read returned 401 the floor beneath the prompt is still, and dimmed.
         const stilled = (this.#source.feed?.signed_out ?? null) !== null;
+        const before = { facts: this.#facts, stilled: this.#stilled };
 
         this.#facts = new Map([...this.#held.keys()].map((k) => [k, {
             missing: this.#source.readStatus(k).missing,
             derivation_stamp: this.#source.stampOf(k, 'derivation'),
             stilled,
         }]));
+        this.#stilled = stilled;
 
         this.#recordUnrecognised();
 
         const offset = this.#source.clockOffsetMs;
         const browserNow = this.#clock.now();
-        const frame = this.view(floorAgeReadouts(this.#held, offset, browserNow));
+        const readouts = floorAgeReadouts(this.#held, offset, browserNow);
+        const frame = this.view(readouts);
         const at = correctedNowMs(offset, browserNow);
 
         // The `edge` rows first — each is caused by one of the messages in the journal — and the
@@ -150,9 +156,38 @@ export class DeskFloor {
         // has no held object left, so the version that ended its desk's held render is the removal's.
         this.#set.held(frame.desks, this.#held, at, new Map(journal
             .filter((entry) => entry.t === 'seat.removed')
-            .map((entry) => [`${entry.install_id}/${entry.seat_id}`, entry.cause])));
+            .map((entry) => [`${entry.install_id}/${entry.seat_id}`, entry.cause])), this.#conditions(frame, readouts, before));
 
         return frame;
+    }
+
+    /**
+     * What § 11's precedence compares with the previous render, per seat held now — the animation
+     * set's `held()` parameter of that name. The set owns the precedence; this owns the desk render,
+     * so this is where the object held now is drawn with § 2.3 row 5's condition and the stilled
+     * floor at the values the previous render had (`prior`). Where neither changed, that drawing is
+     * the frame's own. A seat the previous render did not hold has no episode open, so nothing reads
+     * its entry; its own row-5 state stands in for the one it never had.
+     */
+    #conditions(frame, readouts, before) {
+        const conditions = new Map();
+
+        for (const [k, seat] of this.#held) {
+            const now = this.#facts.get(k);
+            const wasMissing = before.facts.get(k)?.missing ?? now.missing;
+            const changed = wasMissing !== now.missing || before.stilled !== now.stilled;
+            const prior = changed
+                ? deskModel(seat, readouts.desks[k], { ...now, missing: wasMissing, stilled: before.stilled }, this.#options)?.held ?? null
+                : frame.desks[k]?.held ?? null;
+
+            conditions.set(k, {
+                prior,
+                unconfirmed: now.missing && !wasMissing,
+                stilled: now.stilled && !before.stilled,
+            });
+        }
+
+        return conditions;
     }
 
     /**

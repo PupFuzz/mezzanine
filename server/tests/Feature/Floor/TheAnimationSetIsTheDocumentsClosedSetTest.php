@@ -34,6 +34,38 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
     /** § 6.2's own reference to the fixed rate, which § 12's *Loop frame rate* row publishes. */
     private const FPS_ROW = '| **Loop frame rate** | **4 fps** |';
 
+    /** One seat's A3 episode, entered at `motion: true` against v5 — the render every pair case follows. */
+    private const ENTER_A3 = [
+        'op' => 'held', 'at' => 1000,
+        'desks' => ['aimla/aimla-pm' => ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', 'held' => ['animation_id' => 'A3', 'motion' => true]]],
+        'seats' => ['aimla/aimla-pm' => ['state_version' => 5]],
+    ];
+
+    /**
+     * Each adjacent pair of § 11's ruled order: the render after `ENTER_A3` in which both steps apply
+     * — v6 applied and held — and the `cause` the higher step gives it.
+     */
+    private const PRECEDENCE_PAIRS = [
+        // v6 draws A6, and row 5's condition newly draws the empty chair.
+        '(2a)+(3)' => [[
+            'desks' => ['aimla/aimla-pm' => ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', 'held' => null]],
+            'seats' => ['aimla/aimla-pm' => ['state_version' => 6]],
+            'conditions' => ['aimla/aimla-pm' => ['prior' => ['animation_id' => 'A6', 'motion' => true], 'unconfirmed' => true, 'stilled' => false]],
+        ], 6],
+        // v6 keeps A3 and withholds its loop, and row 5's condition newly draws the empty chair.
+        '(3)+(2b)' => [[
+            'desks' => ['aimla/aimla-pm' => ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', 'held' => null]],
+            'seats' => ['aimla/aimla-pm' => ['state_version' => 6]],
+            'conditions' => ['aimla/aimla-pm' => ['prior' => ['animation_id' => 'A3', 'motion' => false], 'unconfirmed' => true, 'stilled' => false]],
+        ], 'unconfirmed'],
+        // v6 keeps A3 and withholds its loop, and the floor newly stills.
+        '(2b)+(4)' => [[
+            'desks' => ['aimla/aimla-pm' => ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', 'held' => ['animation_id' => 'A3', 'motion' => false]]],
+            'seats' => ['aimla/aimla-pm' => ['state_version' => 6]],
+            'conditions' => ['aimla/aimla-pm' => ['prior' => ['animation_id' => 'A3', 'motion' => false], 'unconfirmed' => false, 'stilled' => true]],
+        ], 6],
+    ];
+
     public function test_the_shipped_set_is_section_62s_table_in_both_directions(): void
     {
         $document = $this->documentAnimationRows();
@@ -240,6 +272,80 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
         ]]]);
 
         $this->assertFalse($reduced['rows'][0]['motion']);
+    }
+
+    /**
+     * ⛔ § 11's PRECEDENCE IS A TOTAL ORDER, AND ITS ORDER IS CHECKED HERE — one direct case per
+     * ADJACENT pair of the ruled order, since a total order over its steps is pinned by its adjacent
+     * pairs. AT-D3-1's replayed runs name an exit by every step but hold no render in which two steps
+     * apply together, so they would pass a client that asked them in another order; such renders are
+     * reachable all the same, because `wire/live-page.js` coalesces a delta and the refused read that
+     * crosses § 2.3 row 5's threshold, or a delta and a `401`, into one render. Each case drives one
+     * render in which both steps apply and reads the `cause` the higher step gives.
+     *
+     * ⚠ THE PAIR (1)/(2a) HAS NO CASE, BECAUSE THE TWO NEVER APPLY TOGETHER. (1) is *the client no
+     * longer holds the seat*; (2a) and every step after it ask about *the object the client now
+     * holds*, and the desk floor hands `held()` a `conditions` entry only for a seat it still holds
+     * (`desk/desk-floor.js`, `#conditions()`). A render that applied an object and then removed the
+     * seat reaches `held()` as a removal and nothing else.
+     *
+     * `conditions` is what `desk/desk-floor.js` hands `held()`: `prior` is the object held now drawn
+     * with row 5's condition and the stilled floor at their previous values.
+     */
+    public function test_the_exit_precedence_is_asked_in_its_ruled_order(): void
+    {
+        foreach (self::PRECEDENCE_PAIRS as $pair => [$render, $cause]) {
+            $this->assertSame($cause, $this->exitCauseIn($render), "{$pair}: the exit does not name the higher step's cause");
+        }
+
+        // The probe asks for what the precedence is asked of rather than defaulting it: an episode
+        // left on a seat still held, with no `conditions` for that seat, fails by name.
+        $bare = self::PRECEDENCE_PAIRS['(2a)+(3)'][0];
+        unset($bare['conditions']);
+        $driven = $this->shippedSet(['ops' => [self::ENTER_A3, ['op' => 'held', 'at' => 2000] + $bare]]);
+
+        $this->assertSame('MissingConditions', $driven['errors'][0]['name'] ?? null,
+            'a held op that leaves a held seat\'s episode with no `conditions` did not fail by name');
+    }
+
+    /**
+     * ⛔ THE ORDER'S CONTROLS: each adjacent swap planted in `exitCause()` reds the pair case that
+     * pins it. The swap of (1) and (2a) is not among them — see the order test's header.
+     */
+    public function test_each_adjacent_swap_of_the_precedence_reds_its_pair(): void
+    {
+        $step = [
+            '(2a)' => "    if (prior === null || prior.animation_id !== open.animation_id) {\n        return version; // (2a)\n    }\n",
+            '(3)' => "    if (unconfirmed) {\n        return UNCONFIRMED; // (3)\n    }\n",
+            '(2b)' => "    if (prior.motion !== open.motion) {\n        return version; // (2b)\n    }\n",
+            '(4)' => "    if (stilled) {\n        return STILLED; // (4)\n    }\n",
+        ];
+
+        foreach ([['(2a)', '(3)'], ['(3)', '(2b)'], ['(2b)', '(4)']] as [$higher, $lower]) {
+            $swapped = $this->plantedSet("{$step[$higher]}\n{$step[$lower]}", "{$step[$lower]}\n{$step[$higher]}");
+            [$render, $cause] = self::PRECEDENCE_PAIRS["{$higher}+{$lower}"];
+
+            $this->assertNotSame($cause, $this->exitCauseIn($render, $swapped),
+                "the swap of {$higher} and {$lower} did not red: a client asking {$lower} first still named the higher step's cause");
+        }
+    }
+
+    /**
+     * The `cause` of the one `left` row the render writes after `ENTER_A3`.
+     *
+     * @param  array<string, mixed>  $render
+     */
+    private function exitCauseIn(array $render, ?string $moduleDir = null): int|string|null
+    {
+        $driven = $this->shippedSet(['ops' => [self::ENTER_A3, ['op' => 'held', 'at' => 2000] + $render]], $moduleDir);
+
+        $this->assertSame([], $driven['errors'], 'driving the set over a pair case threw');
+
+        $left = array_values(array_filter($driven['rows'], static fn (array $r): bool => $r['phase'] === 'left'));
+
+        $this->assertCount(1, $left, 'a pair case did not leave exactly the one episode it entered');
+
+        return $left[0]['cause'];
     }
 
     /**

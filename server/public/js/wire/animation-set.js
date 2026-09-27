@@ -12,7 +12,8 @@
  * ⛔ THE TWO CLASSES ARE NOT DECORATION (§ 6.2). An `edge` row HAS a causing message and is an
  * INSTANT — one `edge()` call, one row, no exit. A `held` row has NO causing message, is entered
  * whenever the object the client holds says so, and may be entered more than once on one seat —
- * so it is `enterHeld()`/`leaveHeld()` and its `cause` is a `state_version` rather than a message.
+ * so it is `enterHeld()`/`leaveHeld()`, its entry's `cause` is a `state_version` rather than a
+ * message, and its exit's is the one § 11's precedence gives (`exitCause()` below).
  * Which call a row goes through follows from `ANIMATION_SET[id].class` and is never decided at the
  * call site, because § 11's log records `class` from the entry point it is called through.
  *
@@ -192,7 +193,7 @@ export function animationForm(animationId, reduce = false) {
  * held row of § 6.2 was a 4 fps loop or one of those two states until A18 — a line whose reduced
  * cell says *drawn static … no travel along it*, so its ordinary form DOES move and it runs no
  * frame loop. Deriving motion from `loops()` drew that line with `motion: false`, which is § 11's
- * claim that one of its three reasons applied when none did (card#7341 step 7, the step that first
+ * claim that one of its reasons applied when none did (card#7341 step 7, the step that first
  * fires the row).
  */
 function staticByDesign(animationId) {
@@ -201,13 +202,14 @@ function staticByDesign(animationId) {
 
 /**
  * ⛔ THE ONE PLACE § 6.4's CONDITION DECIDES `motion`, for every row of either class. § 11's
- * `motion` column names three reasons a row is drawn without it — a held render static by design,
- * a loop a § 7.3 currency treatment stopped, and reduced motion — and this is where all three
- * meet, so a second caller cannot answer the question differently.
+ * `motion` column names the reasons a row is drawn without it, and they meet here as three
+ * inputs — a held render static by design (this set's own answer), the caller's `permitted`, and
+ * reduced motion — so a second caller cannot answer the question differently.
  *
- * `permitted` is the CALLER's half and nothing more: for a held desk render it is § 7.3's verdict
- * (`desk/desk-render.js` owns it — a `fold_lag` badge, a `config_invalid` reporter, a desk with
- * nobody at it), and for an `edge` row there is no treatment to consult and it is simply true.
+ * `permitted` is the CALLER's half and nothing more: for a held desk render it is the desk
+ * render's verdict (`desk/desk-render.js` owns it — § 7.3's currency treatment of a `fold_lag`
+ * badge or a `config_invalid` reporter, a value § 9 F9 does not recognise, and a floor § 9 F6
+ * stilled), and for an `edge` row there is no treatment to consult and it is simply true.
  */
 function motionOf(animationId, permitted, reduce) {
     const cls = classOf(animationId);
@@ -283,6 +285,56 @@ const DELTA_ROWS = Object.freeze([
 
 /** The `changed[]` member each delta-driven row is gated on — read by the closed-set assertions. */
 export const DELTA_ROW_DRIVERS = Object.freeze(Object.fromEntries(DELTA_ROWS.map((r) => [r.id, r.changed])));
+
+/** § 11's literal `cause` for exit (3): § 2.3 row 5's condition drew the empty chair. */
+export const UNCONFIRMED = 'unconfirmed';
+
+/** § 11's literal `cause` for exit (4): § 9 F6/F7 stilled the floor. */
+export const STILLED = 'stilled';
+
+/**
+ * The `cause` of one desk episode's `left` row — `docs/design/FLOOR.md § 11`'s precedence, which
+ * owns the rule, asked in its order: (1), (2a), (3), (2b), (4). `open` is the episode being left;
+ * `conditions` is `held()`'s parameter of that name.
+ *
+ * ⛔ THE OBJECT IS ASKED ABOUT UNDER THE PREVIOUS RENDER'S CONDITIONS, which is what `prior` is. An
+ * object held unchanged since that render draws exactly what that render drew — the episode, still
+ * open — so (2a) and (2b) never fire on it and a literal names the exit; an object applied since
+ * then that draws another row (or none) is (2a) even where a literal also changed, and one that
+ * changes only `motion` yields to (3) and is named ahead of (4).
+ *
+ * ⚠ THE LAST `null` IS NO STEP APPLYING — a render § 11 says ends no episode. Nothing reaches it
+ * while the held rendering is a function of the object, row 5's condition, the stilled floor and
+ * reduced motion; `null` is the log's mark of a row with nothing behind it, which AT-D3-1 reds on.
+ */
+function exitCause(k, open, seats, removed, conditions) {
+    if (!seats.has(k)) {
+        // (1): the removal's answer — the retired object's version, which both announcements carry
+        // (§ 3.5), or § 2.3 row 4's `snapshot`, which the protocol journals as the removal's cause.
+        return removed.get(k) ?? null;
+    }
+
+    const version = seats.get(k).state_version;
+    const { prior, unconfirmed, stilled } = conditions.get(k);
+
+    if (prior === null || prior.animation_id !== open.animation_id) {
+        return version; // (2a)
+    }
+
+    if (unconfirmed) {
+        return UNCONFIRMED; // (3)
+    }
+
+    if (prior.motion !== open.motion) {
+        return version; // (2b)
+    }
+
+    if (stilled) {
+        return STILLED; // (4)
+    }
+
+    return null;
+}
 
 export class AnimationSet {
     #log;
@@ -468,7 +520,7 @@ export class AnimationSet {
 
     /**
      * § 6.2's `held` class over one frame: enter every desk's held render against the object that
-     * holds it, and leave the ones whose hold has ended against the object that ended it.
+     * holds it, and leave the ones whose hold has ended with the `cause` § 11's precedence gives.
      *
      * ⛔ AN EPISODE IS ONE CONTINUOUS RUN OF ONE RENDER ON ONE SEAT (§ 11). A change of the held
      * row OR of whether motion is drawn leaves one episode and enters another, because two rows
@@ -483,23 +535,23 @@ export class AnimationSet {
      * @param {Record<string, object>} desks the frame's desks, keyed as the client keys its seats
      * @param {Map<string, object>} seats the held seat objects the frame was derived from
      * @param {number} at § 2.4's corrected server-clock instant
-     * @param {Map<string, *>} [removed] key → the `cause` the protocol journalled when it REMOVED the
+     * @param {Map<string, *>} removed key → the `cause` the protocol journalled when it REMOVED the
      *        seat (`seat.removed`, Appendix B step 10): a removed seat has no held object left to read
      *        a version off, so the version that ended its hold travels with the removal instead
+     * @param {Map<string, {prior: ?object, unconfirmed: boolean, stilled: boolean}>} conditions
+     *        key → what § 11's precedence compares with the render before this one, for each seat
+     *        held now: `prior`, the held rendering the object held NOW draws with every client
+     *        condition at the value it had in the previous render (the desk floor derives it, because
+     *        the desk render is its module and not this one); `unconfirmed`, whether § 2.3 row 5's
+     *        condition holds in this render and did not in the previous one; and `stilled`, the same
+     *        for § 9 F6's stilled floor
      */
-    held(desks, seats, at, removed = new Map()) {
+    held(desks, seats, at, removed, conditions) {
         for (const [k, open] of this.#episodes) {
             const want = desks[k]?.held ?? null;
 
             if (want === null || want.animation_id !== open.animation_id || want.motion !== open.motion) {
-                // § 11: a `left` row's cause is the `state_version` of the object that ENDED the
-                // hold — the first object the client applied in which the condition is false. For a
-                // retired seat that object is the retired one, whose version the announcement carries
-                // (§ 3.5), and for the § 2.3 row 4 backstop it is the population that no longer lists
-                // the seat, journalled as `snapshot`.
-                const cause = seats.has(k) ? seats.get(k).state_version : (removed.get(k) ?? null);
-
-                this.#log.leaveHeld(open.episode_id, { cause, at });
+                this.#log.leaveHeld(open.episode_id, { cause: exitCause(k, open, seats, removed, conditions), at });
                 this.#episodes.delete(k);
             }
         }

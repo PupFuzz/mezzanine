@@ -32,8 +32,18 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
     use DrivesTheDeskFloor;
     use ReadsTheAnimationTable;
 
-    /** The closed-set half's own Build bullet: these four, end to end, in this order. */
-    private const CLOSED_SET_RUNS = ['ages', 'fx-clear-trace', 'degraded', 'fx-interns'];
+    /**
+     * The fixture files the closed-set half's own Build bullet names, each end to end — every run
+     * each holds, derived from the file rather than listed here.
+     */
+    private const CLOSED_SET_FILES = ['fx-snapshot-4', 'fx-clear-trace', 'fx-degraded', 'fx-interns'];
+
+    /**
+     * ⛔ AND THE RUNS APPENDIX B ROW 15 (e) WIDENS IT TO: `refusal_401_warm`, the one checked-in
+     * run that stills a floor with a loop running, whose exits are § 11's (4); and
+     * `missing_persistent`, the unconfirmed desk's, whose exit is (3).
+     */
+    private const CLOSED_SET_ADDED_RUNS = ['refusal_401_warm', 'missing_persistent'];
 
     /**
      * ⛔ THE INSTRUMENT HALF, AND ITS GREEN IS A TWO-SIDED CONTROL. `fx-snapshot-4` alone, then
@@ -90,13 +100,15 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
     }
 
     /**
-     * ⛔ THE CLOSED-SET HALF. Four fixtures end to end, one predicate per clause of § 11's GREEN.
+     * ⛔ THE CLOSED-SET HALF. The Build bullet's fixture files end to end and row 15 (e)'s runs, one
+     * predicate per clause of § 11's GREEN.
      */
-    public function test_every_row_the_four_fixtures_write_obeys_section_62(): void
+    public function test_every_row_the_closed_set_runs_write_obeys_section_62(): void
     {
         $runs = $this->closedSetRuns();
         $table = $this->documentAnimationRows();
         $checked = ['edge' => 0, 'entered' => 0, 'left' => 0];
+        $steps = ['(1)' => 0, '(2a)' => 0, '(3)' => 0, '(2b)' => 0, '(4)' => 0];
 
         foreach ($runs as $run => $result) {
             foreach ($result['animation_log'] as $row) {
@@ -115,15 +127,26 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
                 $checked[$row['phase']]++;
             }
 
-            $this->assertHoldConditionsPointOppositeWays($run, $result);
+            $this->assertEveryEntryHoldsItsRow($run, $result);
+
+            foreach ($this->assertEveryExitHasThePrecedencesCause($run, $result) as $step) {
+                $steps[$step]++;
+            }
+
             $this->assertEpisodesPairExactlyOnce($run, $result);
         }
 
         // CONTROLS ON THE WALK: a clause asserted over an empty population is a clause that passed
-        // without being able to fail, and all three populations are non-empty on these four fixtures.
-        $this->assertGreaterThan(0, $checked['edge'], 'no `edge` row was written across four fixtures — the edge clauses are vacuous');
+        // without being able to fail, and all three populations are non-empty on these runs.
+        $this->assertGreaterThan(0, $checked['edge'], 'no `edge` row was written across the closed-set runs — the edge clauses are vacuous');
         $this->assertGreaterThan(0, $checked['entered'], 'no held entry was written — the entry clause is vacuous');
         $this->assertGreaterThan(0, $checked['left'], 'no held exit was written — the exit clause and the pairing are vacuous');
+
+        // And every step of § 11's precedence names at least one exit on these runs, so no step's
+        // answer is a clause the predicate carries without it ever being asked.
+        foreach ($steps as $step => $n) {
+            $this->assertGreaterThan(0, $n, "no desk exit on the closed-set runs is § 11's step {$step} — that step of the predicate is vacuous");
+        }
     }
 
     /**
@@ -193,7 +216,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
             "        for (const [k, desk] of Object.entries(desks)) {\n            this.#log.enterHeld({\n"
             ."                animation_id: 'breathe', cause: null, install_id: desk.install_id,\n"
             ."                seat_id: desk.seat_id, motion: true, at,\n            });\n\n"
-            ."            if (desk.held === null || this.#episodes.has(k)) {",
+            .'            if (desk.held === null || this.#episodes.has(k)) {',
         );
 
         $rows = $this->deskRun('ages', $breathing)['animation_log'];
@@ -227,7 +250,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
     {
         $intervals = $this->everyFrameInterval($this->closedSetRuns());
 
-        $this->assertNotSame([], $intervals, 'no running loop was drawn across four fixtures — the rate assertion is vacuous');
+        $this->assertNotSame([], $intervals, 'no running loop was drawn across the closed-set runs — the rate assertion is vacuous');
         $this->assertSame([250], array_values(array_unique($intervals)),
             'a running loop was drawn at more than one frame interval — § 6.1 rule 2 fixes it for every loop and every seat');
 
@@ -257,7 +280,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
     /**
      * Each `edge` row against § 11's `cause` column and § 6.2's Driving fact cell: a non-null cause
-     * that is one of the four causing messages, and the driving field in the causing delta's
+     * that is one of § 11's causing messages, and the driving field in the causing delta's
      * `changed[]`.
      *
      * @param  array<string, mixed>  $row
@@ -270,7 +293,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
         $this->assertSame('fired', $row['phase'], "[{$run}] an `edge` row carries a phase other than `fired`");
 
         // A row whose DRIVER is a message type carries that type as its cause (§ 11, AT-D3-1's own
-        // parenthetical). Over these four fixtures the only such rows are the heartbeat's.
+        // parenthetical). Over these runs the only such rows are the heartbeat's.
         if (is_string($row['cause'])) {
             $this->assertContains($row['cause'], ['feed.heartbeat', 'seat.retired'],
                 "[{$run}] {$row['animation_id']}'s cause is a string that is none of § 11's causing message types");
@@ -291,32 +314,24 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
     }
 
     /**
-     * § 11's two phases asserted in OPPOSITE directions — which is what makes both satisfiable on a
-     * correct client. In an `entered` row's object the fact its § 6.2 row names HAS the value its hold
-     * condition states; in a `left` row's object it does NOT.
+     * The `entered` half of § 11's clause on a `held` row's `cause`: in an `entered` row's object the
+     * fact its § 6.2 row names HAS the value its hold condition states.
      *
      * ⛔ THE PREDICATE IS § 6.2's TABLE AS A TOTAL FUNCTION — *which row does THIS object hold* — and
      * not one row's equalities read alone. A3's condition is `render_state == "working"` **and not
-     * A4's condition**, so on `fx-clear-trace` A3 is left at E0 against an object that is still
-     * `working`: read one row at a time the exit looks illegitimate, and the client is correct. Asking
-     * the table which row the object holds carries that exclusion without a second copy of it, and it
-     * is what § 6.2 means by *the held rows this table predicts a single answer rather than two*.
-     *
-     * ⚠ THE ONE SHAPE THIS CLAUSE AS § 11 WRITES IT WOULD REJECT, named rather than left to be found:
-     * a § 7.3 CURRENCY-TREATMENT exit, where a `fold_lag` badge arrives and stops a loop while the
-     * § 6.2 condition stays true. The episode legitimately ends (its `motion` changed) and the object
-     * still holds the same row. No fixture at this step delivers a badge mid-run — `fx-degraded`'s
-     * lagged seat carries its badge in the snapshot and never transitions — so the strong form is what
-     * runs here, and AT-D3-5 is where the treatment path is asserted.
+     * A4's condition**, so asking the table which row the object holds carries that exclusion without
+     * a second copy of it, and it is what § 6.2 means by *the held rows this table predicts a single
+     * answer rather than two*. The `left` half is not the opposite of this one: it is § 11's
+     * precedence, asserted below.
      *
      * @param  array<string, mixed>  $result
      */
-    private function assertHoldConditionsPointOppositeWays(string $run, array $result): void
+    private function assertEveryEntryHoldsItsRow(string $run, array $result): void
     {
         $conditions = $this->documentHoldConditions();
 
         foreach ($result['animation_log'] as $row) {
-            if ($row['class'] !== 'held' || ! isset($conditions[$row['animation_id']])) {
+            if ($row['class'] !== 'held' || $row['phase'] !== 'entered' || ! isset($conditions[$row['animation_id']])) {
                 continue;
             }
 
@@ -324,23 +339,175 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
             $object = $this->seatAtVersion($result, $key, $row['cause']);
 
             $this->assertNotNull($object,
-                "[{$run}] {$row['animation_id']}'s {$row['phase']} row names `state_version` {$row['cause']}, which this client never held for {$key}");
+                "[{$run}] {$row['animation_id']}'s entered row names `state_version` {$row['cause']}, which this client never held for {$key}");
 
             $holds = $this->heldRowFor($object);
 
-            if ($row['phase'] === 'entered') {
-                $this->assertSame($row['animation_id'], $holds,
-                    "[{$run}] {$row['animation_id']} was entered against an object § 6.2 says holds "
-                    .($holds ?? 'no row at all'));
+            $this->assertSame($row['animation_id'], $holds,
+                "[{$run}] {$row['animation_id']} was entered against an object § 6.2 says holds "
+                .($holds ?? 'no row at all'));
+        }
+    }
 
-                continue;
+    /**
+     * ⛔ AT-D3-1's ONE PREDICATE ON AN EXIT, AND THE `stilled` RE-ENTRY CHECK BESIDE IT. Every `left`
+     * row of a desk episode has the `cause` § 11's precedence gives for the render that wrote it —
+     * the first step, in the precedence's order, that applies to that seat in that render compared
+     * with the render before it, and that step's answer; a render in which no step applies ends no
+     * episode, so a `left` row written there reds whatever it names. And every `left` row whose
+     * `cause` is `stilled` leaves an episode entered at `motion: true`, with the same `animation_id`
+     * entered again on that seat in that render at `motion: false`.
+     *
+     * ⛔ IT IS EVALUATED FROM THE PROBE'S PER-RENDER RECORDS, because the previous render's conditions
+     * are not on the log (Appendix B row 15 (c)): each apply render's stilled floor, each held seat's
+     * object and § 2.3 row 5 state, the removals its journal applied, and the rows it wrote. The rows
+     * are first asserted to partition the log, so an exit no record owns cannot escape the predicate.
+     *
+     * [A18](§ 6.2) is outside the precedence — its exit `cause` is its `thread_ref` — and its rows
+     * carry no seat, which is how they are told apart here.
+     *
+     * @param  array<string, mixed>  $result
+     * @return list<string> the step that named each desk exit checked, for the caller's controls
+     */
+    private function assertEveryExitHasThePrecedencesCause(string $run, array $result): array
+    {
+        $renders = array_values(array_filter($result['desk_renders'], static fn (array $r): bool => $r['trigger'] === 'apply'));
+
+        $this->assertSame($result['animation_log'], array_merge([], ...array_column($renders, 'rows')),
+            "[{$run}] the per-render records' rows are not the log in order — an exit no record owns would escape the predicate");
+
+        $entries = [];
+        $steps = [];
+        $previous = null;
+
+        foreach ($renders as $render) {
+            foreach ($render['rows'] as $row) {
+                if ($row['class'] !== 'held') {
+                    continue;
+                }
+
+                if ($row['phase'] === 'entered') {
+                    $entries[$row['episode_id']] = $row;
+
+                    continue;
+                }
+
+                if ($row['seat_id'] === null) {
+                    continue;
+                }
+
+                $entry = $entries[$row['episode_id']] ?? null;
+
+                $this->assertNotNull($entry, "[{$run}] a desk `left` row's `episode_id` matches no earlier `entered` row");
+
+                $key = "{$row['install_id']}/{$row['seat_id']}";
+                $given = $this->precedenceGives($run, $render, $previous, $entry);
+
+                $this->assertNotNull($given,
+                    "[{$run}] {$row['animation_id']} on {$key} was left at {$render['at']} ms, in a render where no step of § 11's "
+                    .'precedence applies — that render ended no episode, so the row reds whatever it names ('.json_encode($row['cause']).')');
+
+                [$step, $cause] = $given;
+
+                $this->assertSame($cause, $row['cause'],
+                    "[{$run}] {$row['animation_id']} on {$key} was left at {$render['at']} ms naming ".json_encode($row['cause'])
+                    ." where § 11's precedence gives step {$step}'s answer, ".json_encode($cause));
+
+                if ($row['cause'] === 'stilled') {
+                    $this->assertTrue($entry['motion'],
+                        "[{$run}] a `stilled` exit on {$key} splits an episode entered at `motion: false` — a desk already drawn static is not left when the floor stills");
+
+                    $reentered = array_filter($render['rows'], static fn (array $r): bool => $r['class'] === 'held'
+                        && $r['phase'] === 'entered' && $r['animation_id'] === $row['animation_id']
+                        && $r['install_id'] === $row['install_id'] && $r['seat_id'] === $row['seat_id'] && $r['motion'] === false);
+
+                    $this->assertNotSame([], $reentered,
+                        "[{$run}] {$row['animation_id']} on {$key} was left `stilled` and not entered again in that render at `motion: false`");
+                }
+
+                $steps[] = $step;
             }
 
-            $this->assertNotSame($row['animation_id'], $holds,
-                "[{$run}] {$row['animation_id']} was left against an object that still holds it — a render the client "
-                .'stopped drawing while the wire still said to draw it');
-            $this->assertFalse($row['motion'], "[{$run}] a `left` row claims motion, and nothing is drawn by a render that has been left");
+            $previous = $render;
         }
+
+        return $steps;
+    }
+
+    /**
+     * § 11's precedence over one desk episode in one render, compared with the render before it:
+     * `[step, cause]` for the first step that applies, or `null` where none does.
+     *
+     * ⚠ (2b)'s `motion` IS READ WHERE THE RECORDS CARRY IT. § 11 asks at what `motion` the object held
+     * now draws the episode's row with every client condition at its previous value. Where the stilled
+     * floor is the same in both renders, that drawing IS this render's frame for the seat, and the
+     * frame is read. Where the floor was stilled before, every desk is drawn static. Where it stills in
+     * THIS render and the object is unchanged, the object draws what the previous render drew, which is
+     * the episode's own `motion`. The one remaining case — a render that stills the floor AND applies
+     * an object that keeps the row — asks for a drawing no record carries, and it fails by name rather
+     * than guess; no replayed run reaches it.
+     *
+     * @param  array<string, mixed>  $render
+     * @param  array<string, mixed>|null  $previous
+     * @param  array<string, mixed>  $entry
+     * @return array{0: string, 1: int|string|null}|null
+     */
+    private function precedenceGives(string $run, array $render, ?array $previous, array $entry): ?array
+    {
+        $key = "{$entry['install_id']}/{$entry['seat_id']}";
+        $held = $render['held'][$key] ?? null;
+
+        if ($held === null) {
+            // (1): the removal's answer, § 2.3 row 4's `snapshot` or the retired object's version.
+            foreach ($render['removals'] as $removal) {
+                if ($removal['key'] === $key) {
+                    $this->assertTrue($removal['cause'] === 'snapshot' || is_int($removal['cause']),
+                        "[{$run}] the removal of {$key} journalled ".json_encode($removal['cause']).', which is neither `snapshot` nor a version');
+
+                    return ['(1)', $removal['cause']];
+                }
+            }
+
+            return null;
+        }
+
+        // An episode open in this render was drawn in the previous one, so that render held the seat.
+        $was = $previous['held'][$key];
+
+        $object = $held['object'];
+        $changed = $was['object'] !== $object;
+        $version = $object['state_version'];
+
+        // (2a): the object held now, drawn with row 5's condition at its previous value — a
+        // missing seat draws the empty chair, which holds no row.
+        $row = $was['missing'] ? null : $this->heldRowFor($object);
+
+        if ($changed && $row !== $entry['animation_id']) {
+            return ['(2a)', $version];
+        }
+
+        if ($held['missing'] && ! $was['missing']) {
+            return ['(3)', 'unconfirmed'];
+        }
+
+        if ($changed) {
+            $motion = match (true) {
+                $previous['stilled'] => false,
+                $render['stilled'] === $previous['stilled'] => $render['frame']['desks'][$key]['held']['motion'] ?? null,
+                default => $this->fail("[{$run}] a render stilled the floor and applied an object on {$key} that keeps its row — "
+                    .'(2b) asks for a drawing no record carries'),
+            };
+
+            if ($motion !== $entry['motion']) {
+                return ['(2b)', $version];
+            }
+        }
+
+        if ($render['stilled'] && ! $previous['stilled']) {
+            return ['(4)', 'stilled'];
+        }
+
+        return null;
     }
 
     /**
@@ -375,6 +542,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
                 "[{$run}] a `left` row pairs with an entry for another animation or another seat",
             );
             $this->assertGreaterThan($entry['at'], $row['at'], "[{$run}] a `left` row is dated at or before its own entry");
+            $this->assertFalse($row['motion'], "[{$run}] a `left` row claims motion, and nothing is drawn by a render that has been left");
         }
 
         // An `edge` row's episode is one row long: no `left` row ever carries its id.
@@ -393,7 +561,12 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
     }
 
     /**
-     * The closed-set half's four fixtures, each replayed once.
+     * The closed-set half's runs, each replayed once under the desk floor.
+     *
+     * ⚠ A RUN WRITTEN FOR THE FLOOR SCREEN OR THE LOBBY IS REPLAYED UNDER THE DESK FLOOR — the same
+     * bytes on another page. AT-D3-1 reads the desk floor's log and its per-render records, the lobby
+     * writes no animation log at all, and `fx-snapshot-4`'s `lobby_over` is the run that reaches
+     * § 11's (1) through § 2.3 row 4's `snapshot` literal.
      *
      * @return array<string, array<string, mixed>>
      */
@@ -401,8 +574,14 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
     {
         $runs = [];
 
-        foreach (self::CLOSED_SET_RUNS as $run) {
-            $runs[$run] = $this->deskRun($run, $moduleDir);
+        foreach (self::CLOSED_SET_FILES as $file) {
+            foreach (array_keys($this->fixtureFile($file)['runs']) as $run) {
+                $runs[$run] = $this->deskRun($run, $moduleDir, ['floor' => null, 'lobby' => false]);
+            }
+        }
+
+        foreach (self::CLOSED_SET_ADDED_RUNS as $run) {
+            $runs[$run] = $this->deskRun($run, $moduleDir, ['floor' => null, 'lobby' => false]);
         }
 
         return $runs;
