@@ -18,13 +18,17 @@
  * floors the smaller. So all of a plate's text is ONE label over the plate, which the camera MOVES and
  * never SCALES: set at `building-scene.js`'s `LABEL_FONT` (the page's base size, `1rem`) under
  * `scale(var(--label-scale))`, the counter-scale `lobby/main.js`'s `view()` writes from the camera it
- * shows. Two lines, stacked, the name first: the name, then the status line — the summary, the rooms
- * where the plate names them, and *the elevator is here* on the cab's plate. The label stands at the
- * plate's bottom-left corner and grows up from it, so two plates' labels can meet only where a plate on
- * the screen is shorter than those two lines.
+ * shows. Stacked, the name first: the name, a line of its own, then the status line — the summary, the
+ * rooms where the plate names them, and *the elevator is here* on the cab's plate. The label wraps within
+ * the surface's width (`--label-max`, which `view()` writes too), so on a narrow or browser-zoomed surface
+ * a long status line takes more lines rather than running past the surface's edge, where the drawing's
+ * clip would hide it from every pan. The label stands at the plate's bottom-left corner and grows up from
+ * it, so two plates' labels can meet only where a plate on the screen is shorter than its label's lines —
+ * however many the wrap makes — and the top plate's label then runs above the building's top edge
+ * (Appendix B row 16 states what that costs).
  *
  * ⛔ THE PLATE'S ACCESSIBLE NAME IS WHAT IT WAS: the link carries the name, ` — ` and the summary, in
- * that order, as it always did — the separator VISUALLY HIDDEN now that the two sit on two lines, and
+ * that order, as it always did — the separator VISUALLY HIDDEN now that the two sit on lines of their own, and
  * still read. The rooms and the cab's word stay outside the link, as they were.
  */
 
@@ -76,7 +80,12 @@ export function plateRow(doc, plate, rect, here) {
         left: '0',
         bottom: '0',
         fontSize: LABEL_FONT,
-        whiteSpace: 'nowrap',
+        // ⛔ WRAPPED WITHIN THE SURFACE (card#7343 r3, the seat's ruling): the label's px are screen px
+        // (the counter-scale), so a label no wider than the surface — `--label-max`, the surface's width,
+        // which `lobby/main.js`'s `view()` writes — is one a pan can always bring wholly into view.
+        whiteSpace: 'normal',
+        overflowWrap: 'anywhere',
+        maxWidth: 'var(--label-max)',
         transformOrigin: '0 100%',
         transform: 'scale(var(--label-scale))',
     });

@@ -14,6 +14,13 @@
  * ratified reference draws the first of it at the top (`building-model.js`'s `plates()` says why that is
  * a rendering choice and not a ruling). A plate is `PLATE_H` below the one before it.
  *
+ * ⛔ THE SURFACE IS A DRAWING ONLY WHILE THERE IS A BUILDING TO DRAW (card#7343 r3, the seat's ruling).
+ * `surfaceStyle()` is `#lobby-building`'s own style: with a scene that has an extent it is the drawing —
+ * a fixed height that clips the plates, which the camera alone moves; with none — no snapshot yet, § 9
+ * F17's cold start with no layout (its rooms listed with no floor claimed), or no install — it is no
+ * style at all, and the list flows in the page as the lobby's list always did, every row reachable by
+ * the page's own scroll.
+ *
  * ⛔ THE NUMBERS ARE THE DRAWING's (§ 10.4's last bullet): a plate's size carries no fact. The plate is
  * a storey's proportion — the reference's storey has about the proportions of § 12's viewport
  * floor — so a zoom to one plate fills the surface rather than panning a strip across it. Slice B,
@@ -68,5 +75,26 @@ export function buildingScene(plates) {
             floor: plate.floor,
             rect: { x: 0, y: plate.level * PLATE_H, w: PLATE_W, h: PLATE_H },
         })),
+    };
+}
+
+/** The drawing surface's height while it draws a building — the drawing's, carrying no fact. */
+export const SURFACE_H = '70vh';
+
+/**
+ * `#lobby-building`'s style for a scene: the clipping drawing surface the camera looks in when the scene
+ * has an extent, and nothing — the list flowing in the page — when it has none or there is no scene.
+ * Every member is set either way, so a lobby whose building goes away stops clipping.
+ *
+ * @param {{extent: object|null}|null} scene `buildingScene()`'s, or `null` where nothing is composed
+ */
+export function surfaceStyle(scene) {
+    const drawn = (scene?.extent ?? null) !== null;
+
+    return {
+        height: drawn ? SURFACE_H : '',
+        overflow: drawn ? 'hidden' : '',
+        touchAction: drawn ? 'none' : '',
+        cursor: drawn ? 'grab' : '',
     };
 }

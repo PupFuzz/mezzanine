@@ -85,6 +85,7 @@ console.log(JSON.stringify({
 /** The scripted run — see this file's header. Imported only when asked for. */
 async function runScenario(scenario) {
     const { LobbyScreen } = await import(url('lobby-screen.js'));
+    const { surfaceStyle } = await import(url('building-scene.js'));
     const { Building } = await import(url('../wire/building.js'));
     const { FleetClient } = await import(url('../wire/fleet-client.js'));
 
@@ -158,6 +159,9 @@ async function runScenario(scenario) {
             rooms: Object.fromEntries(rendered.map((id) => [id, surface.room(id)])),
             lobby: frame.summary,
             building: frame.building,
+            // `#lobby-building`'s own style over this frame's scene — a clipping drawing only while
+            // there is a building to draw (card#7343 r3), the style `lobby/main.js` applies.
+            surface: surfaceStyle(frame.scene),
             discrepancy: frame.discrepancy,
             failure: frame.failure,
         });

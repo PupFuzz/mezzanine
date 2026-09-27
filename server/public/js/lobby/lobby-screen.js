@@ -52,11 +52,12 @@
  * ruling; Appendix B row 16). From `ride()` until the page's glide has arrived and the page has asked
  * for the ride's route — `returned()`, which the page also calls when the back-forward cache restores
  * it — a ride is IN FLIGHT: the frame says so (`riding`, which disables the ride control), a second
- * `ride()` is refused, and the wheel, the keys, the zoom buttons, the drag, the whole-building control
- * and a focused plate leave the camera on the plate. The page's glide is committed
- * (`wire/camera-view.js`), so any of them cuts it to the plate and it arrives. Once it has arrived the
- * hold is over: a navigation the browser then cancels or never completes leaves a lobby whose controls
- * work, never one held for good.
+ * `ride()` is refused, and the wheel, the keys, the zoom buttons, the drag and the whole-building control
+ * leave the camera on the plate. The page's glide is committed (`wire/camera-view.js`), so any of them
+ * cuts it to the plate and it arrives. The keyboard's focus on a plate does neither: `focusPlate()` moves
+ * nothing while a ride is in flight, so the glide runs on. Once it has arrived the hold is over: a
+ * navigation the browser then cancels or never completes leaves a lobby whose controls work, never one
+ * held for good.
  *
  * ⛔ A FOCUSED PLATE IS BROUGHT INTO VIEW (card#7343 r2-2). The plates are links the keyboard reaches;
  * a plate the viewer tabs to outside the view is one they cannot see they are on, and the drawing's

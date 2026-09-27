@@ -27,13 +27,13 @@ use Tests\TestCase;
  *
  * ⛔ THE CLICK COMMITS THE RIDE (card#7343 r1 ruling). A committed glide interrupted — by a `show()`, which
  * is what a wheel, a key, a zoom button, a drag and a resize do, or by another `glideTo()`, which is the
- * whole-building control and a focused plate — cuts to its destination and runs its arrival; an
+ * whole-building control — cuts to its destination and runs its arrival; an
  * uncommitted one — the floor's fit, the lobby's whole-building — stops where it is, as the floor's did
  * before. The model's half — the ride held in flight until its glide arrives, a second one refused — is
  * `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`'s.
  *
  * ⚠ WHAT THIS DOES NOT HOLD: that a browser delivers these events to these listeners, honours
- * `user-select`, or paints what is applied. There is no browser on the build host; the pages' wiring tests
+ * `user-select` (or its WebKit-prefixed form), or paints what is applied. There is no browser on the build host; the pages' wiring tests
  * hold that each page hands its drawing, its zoom buttons and its screen's acts to `cameraGestures()` and
  * `cameraKeys()`, and grows no copy of either beside them.
  */
@@ -117,6 +117,9 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             'a pan that drags the link it started on out' => ['camera-gestures.js', "    element.addEventListener('dragstart', (event) => {\n        event.preventDefault();\n    });\n", ''],
             'a pan that selects the text it crosses' => ['camera-gestures.js', "        element.style.userSelect = 'none';\n", ''],
             'a press that leaves the text unselectable for good' => ['camera-gestures.js', "        element.style.userSelect = '';\n", ''],
+            // card#7343 r3: the prefixed property WebKit engines read, set and reset beside the standard one.
+            'a pan that selects the text it crosses on WebKit' => ['camera-gestures.js', "        element.style.webkitUserSelect = 'none';\n", ''],
+            'a press that leaves the text unselectable for good on WebKit' => ['camera-gestures.js', "        element.style.webkitUserSelect = '';\n", ''],
         ];
     }
 
@@ -212,7 +215,8 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
         $move = static fn (int $x, int $y = 0, int $buttons = 1): array => ['type' => 'pointermove', 'buttons' => $buttons, 'clientX' => $x, 'clientY' => $y, 'pointerId' => 7];
         $drag = static fn (int $dx, int $dy): array => ['show' => ['act' => 'drag', 'dx' => $dx, 'dy' => $dy]];
 
-        // [event, what it produces, default prevented, propagation stopped, the drawing's user-select after it]
+        // [event, what it produces, default prevented, propagation stopped, the drawing's user-select after it —
+        // the standard property and the WebKit-prefixed one alike]
         $steps = [
             // The wheel: about the cursor on the drawing, with its mode and its pinch, and not the page's scroll.
             [['type' => 'wheel', 'clientX' => 110, 'clientY' => 220, 'deltaY' => -120, 'deltaMode' => 1, 'ctrlKey' => true],
@@ -259,7 +263,7 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
 
         foreach ($steps as [$event, $produces, $prevented, $stopped, $userSelect]) {
             array_push($expected, ...$produces);
-            $expected[] = ['event' => $event['type'], 'default_prevented' => $prevented, 'propagation_stopped' => $stopped, 'user_select' => $userSelect];
+            $expected[] = ['event' => $event['type'], 'default_prevented' => $prevented, 'propagation_stopped' => $stopped, 'user_select' => $userSelect, 'webkit_user_select' => $userSelect];
         }
 
         return $this->logDefects($this->probe(['gestures' => array_column($steps, 0)], $dir)['log'], $expected, 'gesture');
@@ -308,7 +312,7 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
 
         foreach ($steps as [$event, $produces, $prevented]) {
             array_push($expected, ...$produces);
-            $expected[] = ['event' => $event['type'], 'default_prevented' => $prevented, 'propagation_stopped' => false, 'user_select' => ''];
+            $expected[] = ['event' => $event['type'], 'default_prevented' => $prevented, 'propagation_stopped' => false, 'user_select' => '', 'webkit_user_select' => ''];
         }
 
         return $this->logDefects($this->probe(['keys' => array_column($steps, 0)], $dir)['log'], $expected, 'key');

@@ -21,11 +21,12 @@
  * re-render is the person this line is for.
  *
  * ⭐ THE CAMERA AT BUILDING SCALE AND THE RIDE'S ARRIVAL ARE THE SCREEN's (Appendix B row 16, slice A,
- * card#7343); this file supplies the building's drawing surface, stands each plate at the rect the
+ * card#7343); this file supplies the building's drawing surface — a clipping drawing only while there
+ * is a building to draw (`building-scene.js`'s `surfaceStyle()`) — stands each plate at the rect the
  * screen's scene gives it (`plate-row.js`'s row), shows the screen's camera on the plates as one
  * transform — each plate's text, its name and its status line, counter-scaled from that same camera,
  * so it is read at the page's body text size at every zoom (the operator's rulings, `building-scene.js`'s
- * `LABEL_FONT`) — and wires the wheel, the drag, the keys, the zoom buttons, the keyboard's focus on a
+ * `LABEL_FONT`), and wrapped within the surface's width — and wires the wheel, the drag, the keys, the zoom buttons, the keyboard's focus on a
  * plate, the whole-building control and the ride to the screen's camera acts — none of which renders.
  * A ride's click moves the cab — the page's `cab`, set to the stop `ride()` names — glides the camera to
  * the plate (or cuts, under `prefers-reduced-motion`) and then ARRIVES: the page goes to the route the
@@ -41,7 +42,7 @@ import { cameraView } from '../wire/camera-view.js';
 import { cameraGestures } from '../wire/camera-gestures.js';
 import { cameraKeys } from '../wire/camera-keys.js';
 import { startLobbyScreen } from './lobby-screen.js';
-import { labelScale } from './building-scene.js';
+import { labelScale, surfaceStyle } from './building-scene.js';
 import { plateRow } from './plate-row.js';
 
 /**
@@ -86,13 +87,15 @@ function surface() {
 }
 
 /**
- * ⛔ THE CAMERA IS THE ONLY THING THAT MOVES THE VIEW. `#lobby-building` clips the plates
- * (`overflow: hidden`), and a clipping element can still be SCROLLED — focus moving to a plate outside
- * the view scrolls it into view — which slides the plates out from under the camera: the transform
+ * ⛔ THE CAMERA IS THE ONLY THING THAT MOVES THE VIEW. While it draws a building `#lobby-building` clips
+ * the plates (`overflow: hidden`, `building-scene.js`'s `surfaceStyle()`), and a clipping element can
+ * still be SCROLLED — focus moving to a plate outside the view scrolls it into view — which slides the plates out from under the camera: the transform
  * says one place and the pixels show another. So its scroll is held at the origin, on every camera
  * shown and on every scroll the browser makes — and what the browser's scroll-into-view was FOR, a
  * focused plate the viewer can see, is the camera's instead: the keyboard's focus on a plate outside
- * the view brings the camera to it (the `focusin` below, the screen's `focusPlate()`).
+ * the view brings the camera to it (the `focusin` below, the screen's `focusPlate()`). With no building
+ * drawn the surface clips nothing and scrolls nothing — the list flows in the page — so `view()` holds
+ * the scroll only while a camera is framed.
  */
 function unscroll() {
     const node = el('lobby-building');
@@ -111,15 +114,24 @@ function unscroll() {
  * (`plate-row.js`). One camera, one write: a plate's name and status line are moved by the camera and
  * never scaled by it, at fit, after a wheel, a key or a drag, on every step of a glide and after a
  * resize, because each of them is shown through this function.
+ *
+ * ⛔ AND THE SURFACE'S WIDTH IS THE LABELS' WIDTH (card#7343 r3, the seat's ruling): `--label-max`, the
+ * width each plate label wraps within (`plate-row.js`). A label's px are screen px under its
+ * counter-scale, so a label no wider than the surface is one a pan can always bring wholly into view —
+ * where a label that ran on in one line past the surface's edge would be clipped beyond any pan.
  */
 function view(camera) {
-    unscroll();
+    if (camera.bounds !== null) {
+        unscroll();
+    }
+
     const floors = el('lobby-floors');
 
     floors.style.transform = camera.bounds === null
         ? ''
         : `scale(${camera.zoom}) translate(${-camera.x}px, ${-camera.y}px)`;
     floors.style.setProperty('--label-scale', String(labelScale(camera)));
+    floors.style.setProperty('--label-max', `${camera.surface.width}px`);
 }
 
 const { show, glideTo, current } = cameraView(view);
@@ -155,6 +167,9 @@ function renderBuilding(building, scene, unclaimed, riding) {
     const rows = el('lobby-floors');
 
     rows.textContent = '';
+    // The surface is a drawing that clips only while there is a building to draw; with none — § 9 F17's
+    // cold start, or no install — it is no box at all and the list flows in the page (card#7343 r3).
+    Object.assign(el('lobby-building').style, surfaceStyle(scene));
     // The plates stand where the scene puts them (Appendix B row 16); with none, the list flows.
     rows.style.position = scene?.extent ? 'relative' : '';
     rows.style.width = scene?.extent ? `${scene.extent.w}px` : '';
@@ -238,9 +253,16 @@ function paint(frame) {
     }
 
     renderBuilding(building, frame.scene, summary.unclaimed, frame.riding);
+    // The render may just have made the surface a drawing, or stopped it being one (`surfaceStyle()`), so
+    // the camera is sized to the surface as it now stands — a camera still at fit stays at fit.
+    const size = surface();
+    const camera = size.width === frame.camera.surface.width && size.height === frame.camera.surface.height
+        ? frame.camera
+        : screen.resize(size);
+
     // A render never moves the viewer: a glide in flight keeps its step, and otherwise the plates show
     // the screen's camera, which the render left where the viewer put it.
-    view(current(frame.camera));
+    view(current(camera));
 
     // § 9 F17's statement, in its own region beside F4/F5's store statement.
     say('lobby-layout-statement', summary.layout_statement);
@@ -279,11 +301,12 @@ el('lobby-refresh').addEventListener('click', () => {
  * rather than read off the button.
  *
  * ⛔ THE CLICK COMMITS THE RIDE, AND THE HOLD PROTECTS THE GLIDE (card#7343 r1 ruling; r2-4). The glide
- * is `camera-view.js`'s COMMITTED glide: a wheel, a key, a zoom button, a drag, a focused plate, a
- * resize or the whole-building control during it cuts it to the plate and arrives, and the ride control
- * is disabled from the click until the glide has arrived. Arriving asks for the route and then ends
- * the hold (`returned()`) and re-draws — so a navigation the browser cancels, or one that never
- * completes, leaves a lobby whose controls work.
+ * is `camera-view.js`'s COMMITTED glide: a wheel, a key, a zoom button, a drag, a resize or the
+ * whole-building control during it cuts it to the plate and arrives, and the ride control is disabled
+ * from the click until the glide has arrived. The keyboard's focus on a plate during it leaves the glide
+ * running (the screen's `focusPlate()` moves nothing while a ride is in flight). Arriving asks for the
+ * route and then ends the hold (`returned()`) and re-draws — so a navigation the browser cancels, or one
+ * that never completes, leaves a lobby whose controls work.
  */
 el('lobby-elevator').addEventListener('click', () => {
     const ride = screen.ride();

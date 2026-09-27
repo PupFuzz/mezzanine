@@ -24,7 +24,8 @@
  * stdout — JSON: `{ "log": [ … ] }` — for `view`, each camera applied, named `from` / `to` / `other`
  * or `between`, and each `done` run, in order; for `gestures` and `keys`, each act, show and pointer
  * capture, and for each event whether it was `default_prevented`, had its propagation stopped, and the
- * drawing's `user-select` after it (`user_select`, `""` when none is set).
+ * drawing's `user-select` after it (`user_select`, `""` when none is set) and its prefixed
+ * `-webkit-user-select` (`webkit_user_select`, likewise).
  *
  * Any throw exits non-zero with the message on stderr.
  */
@@ -132,6 +133,8 @@ if (payload.view !== undefined) {
             default_prevented: event.defaultPrevented,
             propagation_stopped: event.cancelBubble,
             user_select: element.style.userSelect ?? '',
+            // The prefixed property, which WebKit engines read and which the module sets and resets beside it.
+            webkit_user_select: element.style.webkitUserSelect ?? '',
         });
     }
 } else {

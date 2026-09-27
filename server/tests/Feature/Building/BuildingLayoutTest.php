@@ -245,8 +245,8 @@ class BuildingLayoutTest extends TestCase
         // ⛔ WHAT A VIEWER READS IS HTML, NOT BYTES, so the comparison is on the RENDERED form.
         // `server/public/js/lobby/plate-row.js` writes the plate's name with `textContent`, into a page
         // that ships no stylesheet at all (`server/public/` carries no CSS), under the label's
-        // `white-space: nowrap` — which, like the browser's default `normal`, strips that text at both
-        // ends and collapses every run of whitespace inside it, and only stops it wrapping. A comparison on the BYTES therefore accepts documents whose plates
+        // `white-space: normal` — the browser's default, which strips that text at both ends and
+        // collapses every run of whitespace inside it. A comparison on the BYTES therefore accepts documents whose plates
         // are indistinguishable on the screen — which is exactly the building § 4.6 refuses: "two
         // plates reading alike is a building nobody can navigate".
         //

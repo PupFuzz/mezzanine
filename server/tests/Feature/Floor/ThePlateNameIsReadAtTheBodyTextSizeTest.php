@@ -42,10 +42,15 @@ use Tests\TestCase;
  * the link's text — the plate's accessible name — is the name, ` — ` and the summary, as it always was:
  * the separator is kept for assistive technology and visually hidden, never painted between two lines.
  *
+ * ⛔ AND THE LABEL WRAPS WITHIN THE SURFACE (card#7343 r3, the seat's ruling): bounded by `--label-max`, the
+ * surface's width, with every painted text free to break — so a status line wider than the surface takes
+ * more lines rather than running past the drawing's clip (`wrapDefects()`).
+ *
  * ⚠ WHAT THIS DOES NOT HOLD: nothing here lays out or paints — there is no browser on the build host — so
- * that a browser draws the product above at the size above is the CSS transform model, not a measurement;
- * and where two plates' labels meet (a plate on the screen shorter than the label's two lines of body text)
- * is not asserted, because a line's height is the font's and no browser here measures it.
+ * that a browser draws the product above at the size above, and wraps it where the width says, is the CSS
+ * model, not a measurement; and where two plates' labels meet (a plate on the screen shorter than its
+ * label's lines of body text, however many the wrap makes) is not asserted, because a line's height and
+ * where a line breaks are the font's and no browser here measures them.
  */
 class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
 {
@@ -165,6 +170,13 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             'the status line first' => ['    link.append(name, separator, summary);', '    link.append(summary, separator, name);', 'is not the name'],
             'a separator painted between the lines' => ["    Object.assign(separator.style, VISUALLY_HIDDEN);\n", '', 'is painted'],
             'a plate whose accessible name lost its separator' => ['    link.append(name, separator, summary);', '    link.append(name, summary);', 'accessible name'],
+            // The r3 ruling's reds: a status line wider than the surface must wrap within it, or the drawing's
+            // clip hides its end from every pan.
+            'a label that does not wrap' => ["        whiteSpace: 'normal',\n", "        whiteSpace: 'nowrap',\n", 'does not wrap within the surface'],
+            'a status line that does not wrap' => ['        status.push(rooms);', "        rooms.style.whiteSpace = 'nowrap';\n        status.push(rooms);", 'does not wrap within the surface'],
+            'a label with no width to wrap within' => ["        maxWidth: 'var(--label-max)',\n", '', 'can run wider than the surface'],
+            'a label wrapped at a width of its own' => ["maxWidth: 'var(--label-max)'", "maxWidth: '1280px'", 'can run wider than the surface'],
+            'a word that never breaks' => ["        overflowWrap: 'anywhere',\n", '', 'a word wider than the surface'],
         ];
     }
 
@@ -261,7 +273,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         $shown = [];
 
         foreach ($rows as [$plate, $row]) {
-            array_push($defects, ...$this->readingDefects($plate, $row));
+            array_push($defects, ...$this->readingDefects($plate, $row), ...$this->wrapDefects($plate, $row));
 
             foreach ($this->texts($row) as $t) {
                 if ($t['hidden']) {
@@ -335,6 +347,44 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         return $defects;
     }
 
+    /**
+     * card#7343 r3 (the seat's ruling): a plate's label wraps within the surface. The label is no wider than
+     * `--label-max` — the surface's width, which `lobby/main.js`'s `view()` writes (held by
+     * `Tests\Feature\Lobby\LobbyPageWiringTest`) — and its px are screen px under its one counter-scale (the
+     * size check), so a pan can bring the whole of it into view; every painted text in it may wrap, and a
+     * word longer than that width breaks rather than running past it. Nothing here lays text out, so a line
+     * wider than the surface is not measured: what is held is that no painted text can be one.
+     *
+     * @return list<string>
+     */
+    private function wrapDefects(array $plate, array $row): array
+    {
+        $label = $this->find($row, static fn (array $n): bool => ($n['style']['transform'] ?? null) === self::COUNTER_SCALE);
+
+        if ($label === null) {
+            return ["the plate {$plate['floor']} has no counter-scaled label — the wrap clause read nothing"];
+        }
+
+        $defects = [];
+
+        if (($label['style']['maxWidth'] ?? null) !== 'var(--label-max)') {
+            $defects[] = "the plate {$plate['floor']}'s label is not bounded by the surface's width (`--label-max`), so it can run wider than the surface: "
+                .json_encode($label['style']['maxWidth'] ?? null);
+        }
+
+        if (! in_array($label['style']['overflowWrap'] ?? null, ['anywhere', 'break-word'], true)) {
+            $defects[] = "the plate {$plate['floor']}'s label keeps a word wider than the surface whole";
+        }
+
+        foreach ($this->texts($label) as $t) {
+            if (! $t['hidden'] && ! $t['wraps']) {
+                $defects[] = "the plate {$plate['floor']}'s {$this->partOf($t['text'], $plate)} does not wrap within the surface";
+            }
+        }
+
+        return $defects;
+    }
+
     /** Which part of the plate a text is — the name, the summary, the rooms, the cab's word, or the separator. */
     private function partOf(string $text, array $plate): string
     {
@@ -379,14 +429,17 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     /**
      * Every text in a node, in document order, with what it is drawn under: the nearest `fontSize` on it
      * or above it, how many counter-scales and which other transforms are above it, whether it is visually
-     * hidden, and the `display` of the element that holds it.
+     * hidden, the `display` of the element that holds it, and whether the nearest `whiteSpace` on the path
+     * lets its lines break.
      *
-     * @return list<array{text: string, font: ?string, counter: int, other: list<string>, hidden: bool, display: ?string}>
+     * @return list<array{text: string, font: ?string, counter: int, other: list<string>, hidden: bool, display: ?string, wraps: bool}>
      */
-    private function texts(array $node, ?string $font = null, int $counter = 0, array $other = [], bool $hidden = false): array
+    private function texts(array $node, ?string $font = null, int $counter = 0, array $other = [], bool $hidden = false, bool $wraps = true): array
     {
         $style = $node['style'] ?? [];
         $font = $style['fontSize'] ?? $font;
+        // `white-space` inherits: the nearest one set on the path decides whether a line may break.
+        $wraps = isset($style['whiteSpace']) ? ! in_array($style['whiteSpace'], ['nowrap', 'pre'], true) : $wraps;
         $transform = $style['transform'] ?? '';
 
         if ($transform === self::COUNTER_SCALE) {
@@ -398,7 +451,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         $hidden = $hidden || (($style['clipPath'] ?? null) === 'inset(50%)' && ($style['width'] ?? null) === '1px'
             && ($style['height'] ?? null) === '1px' && ($style['overflow'] ?? null) === 'hidden');
         $found = [];
-        $here = ['font' => $font, 'counter' => $counter, 'other' => $other, 'hidden' => $hidden, 'display' => $style['display'] ?? null];
+        $here = ['font' => $font, 'counter' => $counter, 'other' => $other, 'hidden' => $hidden, 'display' => $style['display'] ?? null, 'wraps' => $wraps];
 
         if (isset($node['text']) && $node['text'] !== '') {
             $found[] = ['text' => $node['text']] + $here;
@@ -411,7 +464,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
                 continue;
             }
 
-            array_push($found, ...$this->texts($child, $font, $counter, $other, $hidden));
+            array_push($found, ...$this->texts($child, $font, $counter, $other, $hidden, $wraps));
         }
 
         return $found;

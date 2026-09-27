@@ -85,9 +85,12 @@
             or `#lobby-zoom-in`/`#lobby-zoom-out` zoom about its centre and the arrow keys pan — the floor
             drawing's keys and buttons, in its words (`public/js/wire/camera-keys.js` wires both pages) —
             and a plate the keyboard's focus lands on outside the view is brought into it. Nothing it
-            does is state.
+            does is state. ⛔ It carries no size or clip of its own: it is a fixed-height, clipping drawing
+            only while there is a building to draw (`building-scene.js`'s `surfaceStyle()`, which
+            `lobby/main.js` applies on every render), and with none — no snapshot yet, or § 9 F17's
+            rooms with no floor claimed — the list flows in the page.
         --}}
-        <div id="lobby-building" role="group" aria-label="the building drawing" tabindex="0" aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight" style="height: 70vh; overflow: hidden; touch-action: none; cursor: grab">
+        <div id="lobby-building" role="group" aria-label="the building drawing" tabindex="0" aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight">
             <ul id="lobby-floors" aria-labelledby="lobby-floors-heading" style="margin: 0; transform-origin: 0 0">
                 <li>waiting for the fleet snapshot</li>
             </ul>

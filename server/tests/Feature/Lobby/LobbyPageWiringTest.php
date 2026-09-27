@@ -179,7 +179,7 @@ class LobbyPageWiringTest extends TestCase
             'CONTROL (a press on a plate moving the camera to it) did not bite');
 
         // CONTROL — the clipping surface left scrollable out from under the camera.
-        $scrolled = str_replace("function view(camera) {\n    unscroll();", 'function view(camera) {', $js);
+        $scrolled = str_replace("function view(camera) {\n    if (camera.bounds !== null) {\n        unscroll();\n    }\n", "function view(camera) {\n", $js);
         $this->assertNotSame($scrolled, $js, "the scroll control's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('scroll', $this->cameraDefects($scrolled),
             'CONTROL (a camera shown over a scrolled surface) did not bite');
@@ -195,6 +195,24 @@ class LobbyPageWiringTest extends TestCase
         $this->assertNotSame($scaled, $js, "the plate-text control's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('plate text', $this->cameraDefects($scaled),
             'CONTROL (a plate text the camera scales) did not bite');
+
+        // CONTROL — a label with no width to wrap within (card#7343 r3): `--label-max` never written.
+        $unbounded = str_replace("    floors.style.setProperty('--label-max', `\${camera.surface.width}px`);\n", '', $js);
+        $this->assertNotSame($unbounded, $js, "the label-width control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('plate text', $this->cameraDefects($unbounded),
+            'CONTROL (a label width never written) did not bite');
+
+        // CONTROL — the surface's style never applied: the page keeps whatever box it started with (r3).
+        $unstyled = str_replace("    Object.assign(el('lobby-building').style, surfaceStyle(scene));\n", '', $js);
+        $this->assertNotSame($unstyled, $js, "the surface control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('surface', $this->cameraDefects($unstyled),
+            'CONTROL (a surface style never applied) did not bite');
+
+        // CONTROL — a camera left sized to the surface the render replaced.
+        $unsized = str_replace('view(current(camera));', 'view(current(frame.camera));', $js);
+        $this->assertNotSame($unsized, $js, "the surface-size control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('surface', $this->cameraDefects($unsized),
+            'CONTROL (a camera sized to the old surface) did not bite');
 
         // CONTROL — a plate drawn by the page itself rather than by `plate-row.js`, which the size test builds.
         $inline = str_replace('rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at));',
@@ -225,7 +243,9 @@ class LobbyPageWiringTest extends TestCase
         foreach ([
             'a building the keyboard cannot reach' => [' tabindex="0" aria-keyshortcuts', ' aria-keyshortcuts'],
             'a building drawn as an image' => ['id="lobby-building" role="group"', 'id="lobby-building" role="img"'],
-            'keys named that the floor does not name' => ['aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight" style="height: 70vh', 'aria-keyshortcuts="+ -" style="height: 70vh'],
+            'keys named that the floor does not name' => ['aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight">', 'aria-keyshortcuts="+ -">'],
+            // card#7343 r3: a size or a clip in the markup holds the list in a box before and without a building.
+            'a surface clipped in the markup' => ['aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight">', 'aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight" style="height: 70vh; overflow: hidden">'],
             'a zoom button in words of its own' => ['id="lobby-zoom-in">Zoom in<', 'id="lobby-zoom-in">Closer<'],
         ] as $what => [$anchor, $replacement]) {
             $planted = str_replace($anchor, $replacement, $html);
@@ -248,6 +268,11 @@ class LobbyPageWiringTest extends TestCase
 
         if (! str_contains($m[1], 'tabindex="0"')) {
             $defects[] = 'the building takes no keyboard focus, so its keys reach nothing';
+        }
+
+        // The surface's size and clip are `surfaceStyle()`'s, applied only while a building is drawn (r3).
+        if (preg_match('/\\bstyle\\s*=/i', $m[1]) === 1) {
+            $defects[] = 'the building carries a style of its own in the markup — it clips the list before and without a building';
         }
 
         if (str_contains($m[1], 'role="img"')) {
@@ -335,7 +360,7 @@ class LobbyPageWiringTest extends TestCase
             'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { wheel: screen.wheel,'],
             'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { wheel: screen.wheel, drag: screen.drag }, show);'],
             // The clipping surface is never scrolled out from under the camera (card#7343 r1).
-            'scroll' => ["function view(camera) {\n    unscroll();", "building.addEventListener('scroll', unscroll);",
+            'scroll' => ["function view(camera) {\n    if (camera.bounds !== null) {\n        unscroll();\n    }\n", "building.addEventListener('scroll', unscroll);",
                 "    node.scrollTop = 0;\n    node.scrollLeft = 0;"],
             'resize' => ['show(screen.resize(surface()))'],
             // The F1 ruling (card#7343): a plate's name at the page's body text size, moved by the camera and
@@ -344,8 +369,10 @@ class LobbyPageWiringTest extends TestCase
             // The size those make is `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`'s.
             // The r2 ruling extends it to the status line: both are `plate-row.js`'s one label, which the size
             // test builds; what only this file can hold is that the page stands that module's rows.
-            'plate text' => ["import { labelScale } from './building-scene.js';", "import { plateRow } from './plate-row.js';",
+            'plate text' => ["import { labelScale, surfaceStyle } from './building-scene.js';", "import { plateRow } from './plate-row.js';",
                 "floors.style.setProperty('--label-scale', String(labelScale(camera)));",
+                // … and the r3 ruling: the label wraps within the surface's width, which `view()` writes.
+                "floors.style.setProperty('--label-max', `\${camera.surface.width}px`);",
                 'rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at));'],
             // The keyboard and the zoom buttons (card#7343 r2-2): the floor's, through the one module.
             'keys' => ["import { cameraKeys } from '../wire/camera-keys.js';",
@@ -354,6 +381,13 @@ class LobbyPageWiringTest extends TestCase
             'focus' => ["building.addEventListener('focusin', (event) => {", "const row = event.target.closest('li[data-floor]');",
                 "if (row === null || !event.target.matches(':focus-visible')) {", 'const focus = screen.focusPlate(row.dataset.floor);',
                 'glideTo(focus.from, focus.to, focus.glide_ms);'],
+            // The surface is a clipping drawing only while there is a building to draw (card#7343 r3):
+            // `building-scene.js`'s `surfaceStyle()`, applied on every render, and the camera sized to the
+            // surface the render leaves. What the style is for each scene is
+            // `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest`'s.
+            'surface' => ["import { labelScale, surfaceStyle } from './building-scene.js';",
+                "Object.assign(el('lobby-building').style, surfaceStyle(scene));",
+                ': screen.resize(size);', 'view(current(camera));'],
             'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
         ];
 

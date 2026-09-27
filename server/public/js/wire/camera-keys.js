@@ -6,8 +6,9 @@
  * ⚠ HOISTED HERE AT ITS SECOND CALLER (card#7343 r2-2). The floor page (`floor/main.js`, row 15) wired
  * these inline, and the lobby (`lobby/main.js`, row 16) had none — a building camera the wheel and the
  * drag reached and the keyboard did not, which is a camera a viewer without a pointer cannot move.
- * Both pages call `cameraKeys()`, beside `camera-gestures.js`'s `cameraGestures()`, with the same
- * three arguments that takes: the drawing, the screen's acts, and `show`.
+ * Both pages call `cameraKeys()`, beside `camera-gestures.js`'s `cameraGestures()`, with four arguments:
+ * the drawing (`element`), its zoom-in and zoom-out buttons (`buttons`), the screen's acts (`acts`) and
+ * `show` — `cameraGestures()`'s three, with the buttons after the drawing.
  *
  * ⛔ THIS FILE DECIDES NOTHING ABOUT THE CAMERA. How far a notch zooms and a pan moves are the screen's
  * acts (`zoomStep(notches)`, `drag(dx, dy)`, each over `camera.js`); what comes back is handed to `show`.
