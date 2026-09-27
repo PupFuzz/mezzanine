@@ -27,6 +27,23 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **FLOOR.md § 14 item 29 is answered: every exit of a held desk render in the
+  animation log records one named cause.** The rule is a precedence in § 11, under the animation-log
+  schema table, and the order of its steps is an operator ruling. It also names the two causes the
+  client holds itself, the literals `unconfirmed` (§ 2.3 row 5's empty chair) and `stilled` (§ 9
+  F6/F7's signed-out floor), and says how *for how long* is read from the log. § 6.2's `held` class,
+  the `cause` column, AT-D3-1's GREEN, § 7.3's F9 paragraph and item 29 point at § 11 instead of
+  restating it. § 6.4 now states that `prefers-reduced-motion` is read once when the floor page loads
+  and is fixed for its life, § 9 F6 states that recovery from a signed-out floor is a new page load,
+  and § 2.3 row 5 states which refused reads count toward the empty chair and what clears the count.
+  The coordination thread line (A18) is outside the precedence, and two behaviours of it, a line on a
+  stilled floor logging motion and a line ended by a seat's removal naming its thread, are named and
+  routed to Appendix B row 14. AT-D3-1's GREEN holds every exit of a desk episode to one predicate:
+  its cause is the one the precedence gives for the render that wrote it, and a `stilled` exit is also
+  checked for the desk re-entering the same animation without motion. The design only is done here:
+  the client, test, probe and fixture work it needs is listed in FLOOR.md Appendix B row 15, which
+  states where each stands.
+
 - **card#7341** — **The floor page has a camera, and a viewport floor (Appendix B row 15, slice B).** At a
   browser viewport of at least 1,280 × 800 CSS px the room drawing fills the page's width and the viewport's
   height and opens framed on the whole floor, the overflow row below it included: the mouse wheel, a
