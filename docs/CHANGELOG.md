@@ -39,13 +39,10 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   The coordination thread line (A18) is outside the precedence, and two behaviours of it, a line on a
   stilled floor logging motion and a line ended by a seat's removal naming its thread, are named and
   routed to Appendix B row 14. AT-D3-1's GREEN holds every exit of a desk episode to one predicate:
-  its cause is the one the precedence gives for the render that wrote it. The design only is done
-  here. The client still writes these exits with the held object's version, AT-D3-1's test still reads
-  every exit cause as a version, the probe does not yet write the per-render records the predicate is
-  evaluated from, and `fx-confirm`'s `missing_persistent` run gives every refused read the same
-  `server_time`. The client fix, the test's assertion of that predicate and the records it reads, that
-  fixture correction and AT-D3-1's replay of that run and of `fx-refusals`' `refusal_401_warm` run are
-  Appendix B row 15's.
+  its cause is the one the precedence gives for the render that wrote it, and a `stilled` exit is also
+  checked for the desk re-entering the same animation without motion. The design only is done here:
+  the client, test, probe and fixture work it needs is listed in FLOOR.md Appendix B row 15, which
+  states where each stands.
 
 - **card#7341** — **The floor page has a camera, and a viewport floor (Appendix B row 15, slice B).** At a
   browser viewport of at least 1,280 × 800 CSS px the room drawing fills the page's width and the viewport's
