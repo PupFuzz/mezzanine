@@ -36,12 +36,30 @@
  * (`FleetClient#takeWire`); a page that never drained it would grow it without bound. The lobby reads
  * only its `building.layout` entries — nothing on this screen animates (§ 6.5, and § 4.1's plates
  * carry no § 6.2 row).
+ *
+ * ⭐ THE CAMERA AT BUILDING SCALE AND THE RIDE'S ARRIVAL — Appendix B row 16, slice A (card#7343). This
+ * screen holds row 15's camera (`../wire/camera.js`) as `floor/floor-screen.js` holds it on the floor:
+ * its second caller, framing every plate of the building (`building-scene.js`) where the floor screen
+ * frames the floor. The first framing fits — whole-building, § 6.5's setting and not a move — and every
+ * later render keeps the viewer's zoom and pan and only re-clamps them. The whole-building control is
+ * the fit; zoom-to-a-plate is the ride: `ride()` moves the cab to the elevator's next stop, zooms the
+ * camera to that plate and hands back the route the page arrives at, `/floor/{key}` — the plate's own
+ * `href`, the KEY and never the label (§ 4.4, card#9273) — which row 8 serves and which deep-links on a
+ * cold start like any other visit to it.
+ *
+ * ⛔ NAVIGATION IS NEVER STATE (§ 4.5, § 4.6's elevator row). A ride, a zoom and a pan draw nothing,
+ * drain nothing and fetch nothing; this screen holds no animation log and loads nothing that could write
+ * one or start anything through the animation set (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`
+ * holds the lobby page's whole import graph to that). A glide is the viewer's, and under
+ * `prefers-reduced-motion` it is a cut: `glide_ms` is `0`, for the cab and the camera alike.
  */
 
 import { Building } from '../wire/building.js';
+import { createCamera, fit, focusOn, frameOn, glideMs, panBy, resize, unframe, wheel } from '../wire/camera.js';
 import { failureRender } from '../wire/failure-render.js';
 import { statusStrip } from '../floor/status-strip.js';
 import { buildingModel } from './building-model.js';
+import { buildingScene } from './building-scene.js';
 import { discrepancyNotice, heldBody, lobbyModel } from './lobby-model.js';
 
 export class LobbyScreen {
@@ -52,13 +70,34 @@ export class LobbyScreen {
     /** Whether the entry's layout request (§ 4.4) has been made — after the first applied snapshot. */
     #layoutAsked = false;
 
+    /** The camera (`wire/camera.js`) — the viewer's head, never the fleet's; framed while a plate is drawn. */
+    #camera;
+
+    /** `prefers-reduced-motion: reduce`, as the page reads it: a ride and the whole-building control cut. */
+    #reduce;
+
+    /**
+     * The last frame DRAWN — the building the plates and the ride control were drawn from, and its scene.
+     * A ride reads it rather than composing a second building, so the ride goes where the control said.
+     */
+    #drawn = null;
+
     /**
      * @param {object} client a `FleetClient`
      * @param {object} building a `wire/building.js` `Building`
+     * @param {{surface: {width: number, height: number}, reduce?: boolean}} options the building's drawing
+     *        surface in CSS px, and whether the viewer prefers reduced motion
      */
-    constructor(client, building) {
+    constructor(client, building, options) {
         this.#client = client;
         this.#building = building;
+        this.#camera = createCamera(options.surface);
+        this.#reduce = options.reduce === true;
+    }
+
+    /** The camera as it stands — the viewer's head, as data. */
+    get camera() {
+        return this.#camera;
     }
 
     /**
@@ -97,7 +136,9 @@ export class LobbyScreen {
 
     /**
      * The lobby, drawn over what the protocol and the building client hold now — pure but for the
-     * `401` it reports (§ 9 F6: "ANY read returns 401", the layout request included).
+     * `401` it reports (§ 9 F6: "ANY read returns 401", the layout request included) and the camera it
+     * frames on the building's extent: at fit the first time there is one, and kept where the viewer
+     * put it on every draw after (row 15: a camera move "survives every re-render").
      *
      * `summary` is `null` until a full snapshot has applied: before it the client holds no population,
      * and drawing the building — *no installs are provisioned* over a fleet not yet read — would be a
@@ -118,15 +159,96 @@ export class LobbyScreen {
         const state = client.discrepancyState();
         const body = heldBody(client.seats.values(), client.fleet, client.membershipAsOf);
 
-        return Object.freeze({
+        const building = feed.applied ? buildingModel(body, cab, this.#building.floors) : null;
+        const scene = building?.composed === true ? buildingScene(building.plates) : null;
+
+        // Nothing to frame — no snapshot yet, no layout held (§ 9 F17), or no plate — leaves the camera
+        // unframed, and the next framing is a first framing again: at fit.
+        this.#camera = scene === null || scene.extent === null
+            ? unframe(this.#camera)
+            : frameOn(this.#camera, scene.extent);
+
+        this.#drawn = Object.freeze({
             summary: feed.applied ? lobbyModel(body, this.#building.floors, layoutFailure) : null,
-            building: feed.applied ? buildingModel(body, cab, this.#building.floors) : null,
+            building,
+            scene,
+            camera: this.#camera,
             // § 4.1's words over the protocol's own pair — and silence while no check can run.
             discrepancy: feed.applied && state !== null ? discrepancyNotice(state.held, state.total) : null,
             strip: statusStrip(feed, client.fleet),
             failure: failureRender(client.feed),
             event_log: client.eventLog,
         });
+
+        return this.#drawn;
+    }
+
+    /**
+     * The elevator's ride to its next stop — the one the last drawn ride control offered — and its
+     * arrival: the cab at that plate, the camera zoomed to it, and the route the page arrives at.
+     * `null` when there is nowhere to ride (`building-model.js`'s `NO_STOPS` / `ONE_STOP`, or no building
+     * drawn yet), and then nothing moves.
+     *
+     * ⛔ THE REFUSAL IS RE-ASKED OF THE DRAWN MODEL RATHER THAN READ OFF THE BUTTON. Before the first
+     * snapshot lands there is no building to ride, and a ride to nowhere would put the cab on `null`,
+     * which resolves to the first plate and reads as a ride the viewer never took.
+     *
+     * ⛔ THE ROUTE IS THE PLATE's `href` — `lobby-model.js`'s `/floor/{key}`, D3's own route — and never
+     * one minted here from the plate's `name`: a label is edited freely, and a link built from it would
+     * not resolve (§ 4.4's ⛔, card#9273). The plate is the one `elevator().next` names, found by that key
+     * — the key the cab is moved to — and its `level` is its index in both the stack and the scene.
+     *
+     * @returns {{cab: string, route: string, from: object, to: object, glide_ms: number}|null}
+     */
+    ride() {
+        const building = this.#drawn?.building ?? null;
+        const next = building === null ? null : building.elevator.next;
+
+        if (next === null) {
+            return null;
+        }
+
+        const plate = building.plates.find((p) => p.floor === next);
+        const from = this.#camera;
+
+        this.#camera = focusOn(from, this.#drawn.scene.plates[plate.level].rect);
+
+        return { cab: plate.floor, route: plate.href, from, to: this.#camera, glide_ms: glideMs(this.#reduce) };
+    }
+
+    /**
+     * The whole-building control: the camera framed on every plate. `glide_ms` is how long the page may
+     * take to get there — none under `prefers-reduced-motion`, where the camera cuts.
+     *
+     * @returns {{from: object, to: object, glide_ms: number}}
+     */
+    wholeBuilding() {
+        const from = this.#camera;
+
+        this.#camera = fit(from);
+
+        return { from, to: this.#camera, glide_ms: glideMs(this.#reduce) };
+    }
+
+    /** One wheel event at a point on the surface — `wire/camera.js`'s `wheel()`. Renders nothing. */
+    wheel(point, delta) {
+        this.#camera = wheel(this.#camera, point, delta);
+
+        return this.#camera;
+    }
+
+    /** A drag by `dx`, `dy` CSS px. Renders nothing. */
+    drag(dx, dy) {
+        this.#camera = panBy(this.#camera, dx, dy);
+
+        return this.#camera;
+    }
+
+    /** The building's drawing surface changed size; a camera still at fit stays at fit. */
+    resize(surface) {
+        this.#camera = resize(this.#camera, surface);
+
+        return this.#camera;
     }
 }
 
@@ -136,10 +258,13 @@ export class LobbyScreen {
  * @param {object} client a `FleetClient`
  * @param {Function} fetchImpl the browser's own `fetch`, unbound — `wire/building.js`'s injection
  * @param {function(object): void} draw receives each lobby frame
- * @returns {{render: function(string|null): Promise<void>, refresh: function(): Promise<void>, draw: function(string|null): void}}
+ * @param {{surface: {width: number, height: number}, reduce?: boolean}} options `LobbyScreen`'s
+ * @returns {{render: function(string|null): Promise<void>, refresh: function(): Promise<void>, draw: function(string|null): void,
+ *            ride: function(): object|null, wholeBuilding: function(): object, wheel: Function, drag: Function,
+ *            resize: Function, camera: function(): object}}
  */
-export function startLobbyScreen(client, fetchImpl, draw) {
-    const screen = new LobbyScreen(client, new Building(fetchImpl));
+export function startLobbyScreen(client, fetchImpl, draw, options) {
+    const screen = new LobbyScreen(client, new Building(fetchImpl), options);
 
     return {
         render: async (cab = null) => {
@@ -148,9 +273,17 @@ export function startLobbyScreen(client, fetchImpl, draw) {
         refresh: async () => {
             await screen.refresh();
         },
-        // An elevator ride (§ 4.5) re-draws from what is held and drains nothing.
+        // A ride's cab re-draws from what is held and drains nothing.
         draw: (cab = null) => {
             draw(screen.draw(cab));
         },
+        // Appendix B row 16: the viewer's camera at building scale, and the ride. None renders; the page
+        // shows the camera each returns, and a ride's arrival is the page's route change.
+        ride: () => screen.ride(),
+        wholeBuilding: () => screen.wholeBuilding(),
+        wheel: (point, delta) => screen.wheel(point, delta),
+        drag: (dx, dy) => screen.drag(dx, dy),
+        resize: (surface) => screen.resize(surface),
+        camera: () => screen.camera,
     };
 }

@@ -39,7 +39,8 @@
  * at or above it, the drawing under the camera and no list. The whole-building control is a link to
  * `/` (§ 4.4's lobby route), never a second scale drawn here.
  * A glide is the page's alone — the camera's state is already its destination — and under
- * `prefers-reduced-motion` the screen hands back no glide at all, so the view cuts.
+ * `prefers-reduced-motion` the screen hands back no glide at all, so the view cuts. How a glide steps
+ * is `wire/camera-view.js`'s, which the lobby's glide shares (Appendix B row 16).
  *
  * ⛔ THE DRILL-DOWN IS OPENED FROM A DESK AND CLOSED TO THE FLOOR WITHOUT LEAVING THE PAGE (§ 4, § 4.3;
  * Appendix B row 10). Selecting a desk pushes `/floor/{floor}/{seat_id}` (§ 4.4) into the browser's
@@ -55,7 +56,8 @@ import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
 import { renderDrillDown } from '../drilldown/main.js';
 import { createPainter, loadArt, measurer } from './painter.js';
-import { PAN_STEP_PX, between } from '../wire/camera.js';
+import { PAN_STEP_PX } from '../wire/camera.js';
+import { cameraView } from '../wire/camera-view.js';
 import { deskListRow } from '../desk/desk-list.js';
 
 /** § 12's *The floor page's animation-log retention* — the page's bound, and no one else's. */
@@ -107,11 +109,10 @@ let lastFrame = null;
 let painter = null;
 
 /**
- * The camera the drawing shows right now — the screen's, or a glide's step towards it — and the
- * glide's frame request, if one is running (Appendix B row 15).
+ * The camera the drawing shows right now — the screen's, or a glide's step towards it (Appendix B row
+ * 15) — shown through `wire/camera-view.js`: `show()` at once, `glideTo()` over a glide's length.
  */
-let shown = null;
-let glide = null;
+const { show, glideTo, current } = cameraView((camera) => painter?.view(camera));
 
 /** The viewer's viewport in CSS px — what § 4.5's capability floor reads. */
 function viewport() {
@@ -121,39 +122,6 @@ function viewport() {
 /** The drawing surface: the floor section's width, the viewport's height (the view's stylesheet). */
 function surface() {
     return { width: root.clientWidth, height: window.innerHeight };
-}
-
-/** Show a camera on the drawing, stopping any glide in flight. */
-function show(camera) {
-    if (glide !== null) {
-        cancelAnimationFrame(glide);
-        glide = null;
-    }
-
-    shown = camera;
-    painter?.view(camera);
-}
-
-/** The fit-floor control's move: a glide of the given length to `to`, or a cut when it is none. */
-function glideTo(from, to, ms) {
-    show(from);
-
-    if (ms === 0) {
-        show(to);
-
-        return;
-    }
-
-    const start = performance.now();
-    const step = (now) => {
-        const t = Math.min(1, (now - start) / ms);
-
-        shown = between(from, to, t);
-        painter?.view(shown);
-        glide = t < 1 ? requestAnimationFrame(step) : null;
-    };
-
-    glide = requestAnimationFrame(step);
 }
 
 const { client, clock, fetch: pageFetch, requestRender } = livePage(() => screen.render());
@@ -308,8 +276,7 @@ function paint(frame) {
     if (drawn) {
         // A render never moves the viewer: a glide in flight keeps its step, and otherwise the drawing
         // shows the screen's camera, which the render left where the viewer put it.
-        shown = glide === null ? frame.camera : shown;
-        painter?.paint(frame.scene ?? null, shown);
+        painter?.paint(frame.scene ?? null, current(frame.camera));
     } else {
         show(frame.camera);
         painter?.paint(null, frame.camera);

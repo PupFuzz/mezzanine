@@ -576,10 +576,12 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
             .'check stayed clean');
 
         // ⛔ CONTROL 19 — the exact defect that shipped in the click handler, planted back: a
-        // second composition of the building on the click, written without the layout.
+        // second composition of the building on the click, written without the layout. The click
+        // reads the drawn building in `lobby-screen.js`'s `ride()` since Appendix B row 16 (card#7343)
+        // moved the ride's decision there, so that is where the plant goes.
         $recomposed = str_replace(
-            'lastBuilding === null ? null : lastBuilding.elevator.next',
-            'lastSnapshot === null ? null : buildingModel(lastSnapshot, cab).elevator.next',
+            'const next = building === null ? null : building.elevator.next;',
+            'const next = building === null ? null : buildingModel(this.#drawn.summary, null).elevator.next;',
             $js,
         );
 

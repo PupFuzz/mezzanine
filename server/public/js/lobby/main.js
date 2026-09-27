@@ -19,9 +19,19 @@
  * ⛔ NO ANIMATION. § 6.5: "a snapshot never animates", and § 4.1's plates carry no § 6.2 row — so
  * there is nothing here to suppress, stated because the next reader adding a transition to a
  * re-render is the person this line is for.
+ *
+ * ⭐ THE CAMERA AT BUILDING SCALE AND THE RIDE'S ARRIVAL ARE THE SCREEN's (Appendix B row 16, slice A,
+ * card#7343); this file supplies the building's drawing surface, places each plate at the rect the
+ * screen's scene gives it, shows the screen's camera on the plates as one transform, and wires the
+ * wheel, the drag, the whole-building control and the ride to the screen's camera acts — none of which
+ * renders. A ride moves the cab, glides the camera to the plate (or cuts, under
+ * `prefers-reduced-motion`) and then ARRIVES: the page goes to the route the screen handed back,
+ * `/floor/{key}`, which the floor page serves on a cold start. The glide is the viewer's, and it steps
+ * through `wire/camera-view.js`, the floor page's own.
  */
 
 import { livePage } from '../wire/live-page.js';
+import { cameraView } from '../wire/camera-view.js';
 import { startLobbyScreen } from './lobby-screen.js';
 
 /**
@@ -31,13 +41,6 @@ import { startLobbyScreen } from './lobby-screen.js';
  * plate.
  */
 let cab = null;
-
-/**
- * The last building this page RENDERED — the model the plates and the ride control were drawn
- * from, kept so the elevator's click can re-ask the model that produced the button rather than
- * composing a second one.
- */
-let lastBuilding = null;
 
 /**
  * ⛔ A MISSING ELEMENT THROWS RATHER THAN BEING GUARDED PAST. The guarded form — `if (node ===
@@ -64,6 +67,26 @@ function say(id, text) {
     node.textContent = text ?? '';
     node.hidden = text === null || text === undefined || text === '';
 }
+
+/** The building's drawing surface in CSS px — the element the plates are drawn and the camera looks in. */
+function surface() {
+    const node = el('lobby-building');
+
+    return { width: node.clientWidth, height: node.clientHeight };
+}
+
+/**
+ * One camera on the plates: the scene point at the camera's `x`, `y` at the surface's top-left, at its
+ * zoom — `wire/camera.js`'s `view`, as a CSS transform. Nothing framed is no transform at all: the list
+ * as it flows, which is how a lobby with no plate reads (§ 9 F17's rooms, or no install).
+ */
+function view(camera) {
+    el('lobby-floors').style.transform = camera.bounds === null
+        ? ''
+        : `scale(${camera.zoom}) translate(${-camera.x}px, ${-camera.y}px)`;
+}
+
+const { show, glideTo, current } = cameraView(view);
 
 /** A list element rebuilt from lines the model has already decided the text of. */
 function list(id, lines) {
@@ -92,10 +115,14 @@ function list(id, lines) {
  * ⚠ THE STACK IS DRAWN FIRST-AT-THE-TOP, which is the reference artifact's direction and not a
  * ruling in the document — see `building-model.js`.
  */
-function renderBuilding(building, unclaimed) {
+function renderBuilding(building, scene, unclaimed) {
     const rows = el('lobby-floors');
 
     rows.textContent = '';
+    // The plates stand where the scene puts them (Appendix B row 16); with none, the list flows.
+    rows.style.position = scene?.extent ? 'relative' : '';
+    rows.style.width = scene?.extent ? `${scene.extent.w}px` : '';
+    rows.style.height = scene?.extent ? `${scene.extent.h}px` : '';
 
     // § 9 F17's cold start: no layout was ever loaded, so no floor is composed and each install
     // the client holds is listed as a room with no floor claimed — every seat still reachable
@@ -119,6 +146,18 @@ function renderBuilding(building, unclaimed) {
 
     for (const plate of building.plates) {
         const row = document.createElement('li');
+        // `level` indexes the stack and the scene alike (`building-scene.js`).
+        const rect = scene.plates[plate.level].rect;
+
+        Object.assign(row.style, {
+            position: 'absolute',
+            left: `${rect.x}px`,
+            top: `${rect.y}px`,
+            width: `${rect.w}px`,
+            height: `${rect.h}px`,
+            // Scene px, which the camera scales: a size the drawing's, carrying no fact.
+            fontSize: '48px',
+        });
         // § 4.1: "one row per floor, THE ROW BEING THE LINK to the floor".
         const link = document.createElement('a');
         link.href = plate.href;
@@ -197,15 +236,16 @@ function paint(frame) {
 
     const building = frame.building;
 
-    lastBuilding = building;
-
     // The cab is re-seated on what the model RESOLVED it to, so a stranded cab reports itself once
     // and the next render is an ordinary one. An uncomposed lobby (§ 9 F17) resolved nothing.
     if (building.composed) {
         cab = building.elevator.at;
     }
 
-    renderBuilding(building, summary.unclaimed);
+    renderBuilding(building, frame.scene, summary.unclaimed);
+    // A render never moves the viewer: a glide in flight keeps its step, and otherwise the plates show
+    // the screen's camera, which the render left where the viewer put it.
+    view(current(frame.camera));
 
     // § 9 F17's statement, in its own region beside F4/F5's store statement.
     say('lobby-layout-statement', summary.layout_statement);
@@ -224,7 +264,10 @@ function paint(frame) {
 }
 
 const { client, fetch: pageFetch, requestRender } = livePage(() => screen.render(cab));
-const screen = startLobbyScreen(client, pageFetch, paint);
+const screen = startLobbyScreen(client, pageFetch, paint, {
+    surface: surface(),
+    reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+});
 
 // § 2.3 names "the lobby's refresh control" as one of the three paths to a fresh membership
 // picture: one full snapshot through the protocol, then the layout.
@@ -233,24 +276,99 @@ el('lobby-refresh').addEventListener('click', () => {
 });
 
 /**
- * § 4.1's elevator, as § 4.5's camera: it moves the cab and re-draws the building from what is
- * held. No fetch, no route change, no animation.
- *
- * ⚠ The ride moves between the plates of this screen; the plate's own link is the way to the
- * floor route (`/floor/{floor}`, Appendix B row 8), which § 4.5's camera would arrive at.
+ * § 4.1's elevator, as § 4.5's camera (Appendix B row 16): the cab moves to the next stop and is
+ * re-drawn there from what is held, the camera glides to that plate — a cut under
+ * `prefers-reduced-motion` — and the page ARRIVES at the route the screen handed back, `/floor/{key}`.
+ * No fetch and no animation: the ride is navigation. The refusal is the screen's (`ride()` answers
+ * `null` where there is nowhere to ride), re-asked of the drawn model rather than read off the button.
  */
 el('lobby-elevator').addEventListener('click', () => {
-    // ⛔ THE REFUSAL IS RE-ASKED OF THE MODEL RATHER THAN READ OFF THE BUTTON. Before the first
-    // snapshot lands there is no building to ride, and a ride to nowhere would put the cab on
-    // `null`, which resolves to the first plate and reads as a ride the viewer never took.
-    const next = lastBuilding === null ? null : lastBuilding.elevator.next;
+    const ride = screen.ride();
 
-    if (next === null) {
+    if (ride === null) {
         return;
     }
 
-    cab = next;
+    cab = ride.cab;
     screen.draw(cab);
+    glideTo(ride.from, ride.to, ride.glide_ms, () => {
+        window.location.assign(ride.route);
+    });
+});
+
+// The whole-building control: every plate in view, gliding there — or cutting, under reduced motion.
+el('lobby-whole-building').addEventListener('click', () => {
+    const { from, to, glide_ms: ms } = screen.wholeBuilding();
+
+    glideTo(from, to, ms);
+});
+
+// The wheel zooms about the cursor in proportion to its scroll, and a drag with the primary button pans
+// — row 15's acts at building scale. Neither renders; each shows the camera the screen hands back.
+const building = el('lobby-building');
+let drag = null;
+let dragged = false;
+
+building.addEventListener('wheel', (event) => {
+    event.preventDefault();
+
+    const r = building.getBoundingClientRect();
+
+    show(screen.wheel({ x: event.clientX - r.left, y: event.clientY - r.top }, { deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }));
+}, { passive: false });
+building.addEventListener('pointerdown', (event) => {
+    // Only the primary pointer's primary button drags; a press on a plate's link stays a click until
+    // it moves.
+    if (!event.isPrimary || event.button !== 0) {
+        return;
+    }
+
+    dragged = false;
+    drag = { x: event.clientX, y: event.clientY, moved: false };
+});
+building.addEventListener('pointermove', (event) => {
+    // A move with the primary button no longer held ends the drag (its `pointerup` was elsewhere).
+    if (drag === null || (event.buttons & 1) === 0) {
+        drag = null;
+
+        return;
+    }
+
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+
+    if (!drag.moved && Math.hypot(dx, dy) < 4) {
+        return;
+    }
+
+    if (!drag.moved) {
+        drag.moved = true;
+        building.setPointerCapture(event.pointerId);
+    }
+
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+    show(screen.drag(dx, dy));
+});
+building.addEventListener('pointerup', () => {
+    dragged = drag?.moved === true;
+    drag = null;
+});
+building.addEventListener('pointercancel', () => {
+    dragged = false;
+    drag = null;
+});
+// A drag that moved is not a click on the plate — the link — it ended over.
+building.addEventListener('click', (event) => {
+    if (dragged) {
+        event.preventDefault();
+        event.stopPropagation();
+        dragged = false;
+    }
+}, { capture: true });
+// A resize re-shows the screen's camera at once, stopping a glide in flight over the old surface.
+window.addEventListener('resize', () => {
+    show(screen.resize(surface()));
 });
 
 // § 4.4: the stream first, then the snapshot (§ 2.2) — and the layout after it, on the first render

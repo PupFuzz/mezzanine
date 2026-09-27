@@ -104,7 +104,11 @@ async function runScenario(scenario) {
     // run is exactly the steps it scripts.
     const client = new FleetClient(fetchImpl, SilentEventSource, { now: () => 0 });
     const surface = new Building(fetchImpl);
-    const screen = new LobbyScreen(client, surface);
+    // The building's drawing surface (Appendix B row 16's camera): this probe asks what the entry
+    // fetches and composes and moves no camera, so the surface is § 12's viewport floor, the size the
+    // harness states for a page that names none (`../Floor/fleet-client-probe.mjs`).
+    const { VIEWPORT_FLOOR } = await import(url('../floor/floor-screen.js'));
+    const screen = new LobbyScreen(client, surface, { surface: VIEWPORT_FLOOR });
     const rendered = scenario.rendered ?? [];
     const records = [];
     const settle = () => new Promise((resolve) => setImmediate(resolve));

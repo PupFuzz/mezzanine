@@ -99,6 +99,32 @@ class LobbyPageWiringTest extends TestCase
             'no relative import was found — the check measured nothing');
     }
 
+    /**
+     * Appendix B row 16 (card#7343): the ride ARRIVES and the building's camera reaches the screen. The
+     * decisions are `lobby-screen.js`'s and held headlessly by
+     * `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`; what only this file can
+     * hold is that the page hands each act to the screen and performs the arrival the ride returns —
+     * there is no browser on this host, so the wiring is asserted as the source's own lines.
+     */
+    public function test_the_page_wires_the_ride_and_the_building_camera_to_the_screen(): void
+    {
+        $js = $this->mainJs();
+
+        $this->assertSame([], $this->cameraDefects($js));
+
+        // CONTROL — a ride that moves the cab and the camera and never arrives: the lobby as it was.
+        $stays = str_replace('window.location.assign(ride.route);', '', $js);
+        $this->assertNotSame($stays, $js, "the arrival control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('ride', $this->cameraDefects($stays),
+            'CONTROL (a ride that never arrives at its route) did not bite');
+
+        // CONTROL — the whole-building control wired to nothing.
+        $unwired = str_replace('screen.wholeBuilding()', 'screen.camera()', $js);
+        $this->assertNotSame($unwired, $js, "the whole-building control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('whole-building', $this->cameraDefects($unwired),
+            'CONTROL (a whole-building control that never reaches the camera) did not bite');
+    }
+
     /** ⛔ THE CONTROLS — each re-mints one of the two directions' defects. */
     public function test_the_wiring_check_goes_red_against_each_defect_it_exists_to_catch(): void
     {
@@ -142,6 +168,31 @@ class LobbyPageWiringTest extends TestCase
         $this->assertNotSame($bypassed, $js, "CONTROL 12's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('recovery', $this->livePageDefects($bypassed),
             'CONTROL 12 did not bite: the page constructed its own protocol and the recovery check stayed clean');
+    }
+
+    /** @return array<string, string> */
+    private function cameraDefects(string $js): array
+    {
+        $defects = [];
+        $wired = [
+            'ride' => ["el('lobby-elevator').addEventListener('click'", 'const ride = screen.ride();',
+                'glideTo(ride.from, ride.to, ride.glide_ms, () => {', 'window.location.assign(ride.route);'],
+            'whole-building' => ["el('lobby-whole-building').addEventListener('click'", 'screen.wholeBuilding()'],
+            'wheel' => ["building.addEventListener('wheel'", 'show(screen.wheel('],
+            'drag' => ["building.addEventListener('pointermove'", 'show(screen.drag('],
+            'resize' => ['show(screen.resize(surface()))'],
+            'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
+        ];
+
+        foreach ($wired as $act => $needles) {
+            foreach ($needles as $needle) {
+                if (! str_contains($js, $needle)) {
+                    $defects[$act] = "the lobby does not wire the {$act} to the screen (`{$needle}` is missing)";
+                }
+            }
+        }
+
+        return $defects;
     }
 
     /** The rendered page, as an MFA-satisfied session actually receives it. */

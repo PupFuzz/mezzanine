@@ -8,7 +8,9 @@
  * ⛔ ONE MACHINERY AT TWO SCALES (card#7341's scope addition, operator 2026-08-26: "same one zoom/pan
  * machinery serves both scales"). Nothing here knows what a floor is. It frames a RECT in a scene's
  * own coordinates — the floor's scene extent on `/floor/{floor}` (row 15), every plate of the
- * building on `/` (row 16) — so the second scale is a second caller, never a second camera.
+ * building on `/` (row 16, `lobby/lobby-screen.js`) — so the second scale is a second caller, never a
+ * second camera. What the second caller needed and the first did not — zooming to one rect inside
+ * what is framed, a plate inside the building — is `focusOn()` here, not a function of its own there.
  *
  * ⛔ A MODEL AND NOT A PAGE, for the reason every renderer in Appendix B keeps the split: there is no
  * browser on the build host, so every decision about where the viewer is looking is made here and
@@ -103,16 +105,34 @@ export function fit(camera) {
         return camera;
     }
 
-    const b = camera.bounds;
-    const zoom = fitZoom(camera.surface, b);
+    return settle({ ...centredOn(camera, camera.bounds, fitZoom(camera.surface, camera.bounds)), fitted: true });
+}
 
-    return settle({
+/**
+ * Zoom to a rect INSIDE what is framed: the rect whole in the surface, centred, at the zoom that just
+ * holds it — within the zoom range, then the clamp. What is framed does not change, so the viewer can
+ * still zoom back out to the whole of it. Row 16's zoom-to-a-plate: the building stays framed and the
+ * view goes to one plate of it (card#7343).
+ */
+export function focusOn(camera, rect) {
+    if (camera.bounds === null) {
+        return camera;
+    }
+
+    const r = rectOf(rect);
+    const [low, high] = zoomRange(camera);
+
+    return clamp({ ...centredOn(camera, r, Math.min(high, Math.max(low, fitZoom(camera.surface, r)))), fitted: false });
+}
+
+/** The camera at `zoom` with the centre of `rect` at the surface's centre — the fit's and the focus's one centring. */
+function centredOn(camera, rect, zoom) {
+    return {
         ...camera,
         zoom,
-        x: b.x + b.w / 2 - camera.surface.width / zoom / 2,
-        y: b.y + b.h / 2 - camera.surface.height / zoom / 2,
-        fitted: true,
-    });
+        x: rect.x + rect.w / 2 - camera.surface.width / zoom / 2,
+        y: rect.y + rect.h / 2 - camera.surface.height / zoom / 2,
+    };
 }
 
 /**

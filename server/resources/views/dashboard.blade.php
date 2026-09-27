@@ -16,14 +16,12 @@
         "a floor that fails quietly is indistinguishable from a fleet that has gone home."
 
         ⚠ WHAT IS NOT HERE, AND WHY — none of it is an oversight:
-          · the tiled MAP, the camera and the desks — those are the floor page's
-            (`/floor/{floor}`, `docs/design/FLOOR.md` Appendix B step 8, card#7341), which a plate
-            links to; the camera § 4.5 describes is not built. The maps are served (`GET /api/building/rooms/{install_id}/map`, D2 § 8.7) and held by
-            version in `public/js/wire/building.js`; nothing on this page draws one, because a
-            plate names its rooms and never draws a room interior (§ 4.1).
-          · the elevator's DESTINATION, for the same reason — card#7343 builds the elevator as
-            § 4.1's way between the stacked plates of THIS screen, and a ride moves the cab and
-            nothing else. The plate's own link is still the only thing pointing at that route.
+          · the tiled MAP and the desks — those are the floor page's (`/floor/{floor}`,
+            `docs/design/FLOOR.md` Appendix B step 8, card#7341), which a plate links to and a ride
+            arrives at. The maps are served (`GET /api/building/rooms/{install_id}/map`, D2 § 8.7)
+            and held by version in `public/js/wire/building.js`; nothing on this page draws one,
+            because a plate names its rooms and never draws a room interior (§ 4.1). The CAMERA is
+            here, at building scale (Appendix B row 16, card#7343): `#lobby-building` below.
           · every duration / age label — card#9209 published the duration FORMAT (D3 § 2.4, § 12's
             own row) and left the WORDING for § 5.3's two fleet ages open (§ 14 item 17), so a
             string picked here would still be the one nobody ratified; none is drawn.
@@ -78,9 +76,19 @@
             list rather than repeated on every row.
         --}}
         <h3 id="lobby-floors-heading">Floors — each summary counts the seats this client holds</h3>
-        <ul id="lobby-floors" aria-labelledby="lobby-floors-heading">
-            <li>waiting for the fleet snapshot</li>
-        </ul>
+        {{--
+            § 4.5's camera at building scale — Appendix B row 16, slice A (card#7343). `#lobby-building`
+            is the drawing surface: the plates stand in it where `public/js/lobby/building-scene.js`
+            puts them, and the camera (`public/js/wire/camera.js`, held by `lobby-screen.js`) is one
+            transform on `#lobby-floors` — every plate in view on entry and on the whole-building
+            control, one plate in view on a ride. Wheel to zoom, drag to pan. Nothing it does is state.
+        --}}
+        <div id="lobby-building" style="height: 70vh; overflow: hidden; touch-action: none; cursor: grab">
+            <ul id="lobby-floors" aria-labelledby="lobby-floors-heading" style="margin: 0; transform-origin: 0 0">
+                <li>waiting for the fleet snapshot</li>
+            </ul>
+        </div>
+        <button type="button" id="lobby-whole-building">Whole building</button>
 
         {{--
             THE BUILDING LAYOUT — `docs/design/FLOOR.md § 4.6`, card#9267: a room is an install
@@ -99,7 +107,9 @@
             FLOOR — since card#9267 a composed set of rooms, one room per floor until the layout
             above says otherwise — "with an elevator as the way between them", and § 4.5 makes
             that ride a CAMERA move: it is navigation, it renders no fact, and it takes no § 6.2
-            row.
+            row. The ride ARRIVES (Appendix B row 16): the cab moves to the next stop, the camera
+            zooms to that plate, and the page goes to `/floor/{key}` — the floor's key, never its
+            label (card#9273).
 
             ⛔ THE CONTROL IS REFUSED WHEN THERE IS NOWHERE TO RIDE, and the reason is written
             beside it rather than left as a dead button. A building with one floor — which is

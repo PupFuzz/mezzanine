@@ -27,6 +27,20 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7343** — **The lobby's elevator ride now arrives at the floor, and the lobby has the floor's
+  camera at building scale** (FLOOR.md Appendix B row 16, slice A). The lobby opens with every floor
+  plate in view; the wheel zooms and a drag pans the building, and a *Whole building* control brings
+  every plate back into view. *Ride the elevator* moves the cab to the next floor, zooms the camera to
+  that floor's plate and then opens `/floor/{key}` — the floor's key, also on a floor the operator has
+  labelled, so the link does not change when a label does. Under `prefers-reduced-motion` the ride and
+  the whole-building control cut rather than glide. None of it is fleet state: no ride, zoom or pan
+  writes an animation-log row, and a render leaves the camera where the viewer put it. The plates keep
+  their current text rendering; drawing each plate as the reference's section, with the roof sign,
+  ground lobby and sky, is slice B. The shared camera (`wire/camera.js`) gained `focusOn()`, a zoom to
+  one rect inside what is framed, and the floor page and the lobby share one glide through
+  `wire/camera-view.js`. AT-D3-21's building half is
+  `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`.
+
 - **card#7341** — **Appendix B row 15 has landed, so the release gate on the room drawing is met.** Every
   exit of a held desk render in the animation log now records the cause FLOOR.md § 11's precedence
   gives it: a desk that turns into the empty chair because its reads keep being refused records
