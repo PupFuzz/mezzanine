@@ -60,6 +60,8 @@ text{font:${FONT};fill:#3b2f2a}
 .bubble{fill:#fff;stroke:#8a6f5a}.bubble-tail{stroke:#8a6f5a}.bubble-source{fill:#7a6a60}
 .lighting-dimmed{opacity:.72}.lighting-dark{opacity:.45}.lighting-desaturated{filter:saturate(.3)}
 .thread{fill:none;stroke:#6b8fd6;stroke-width:3}.thread.ended{stroke-dasharray:8 6;opacity:.6}
+.thread.thread-moving{stroke-dasharray:4 8;stroke-linecap:round;animation-name:thread-flow;animation-iteration-count:infinite}
+@keyframes thread-flow{from{stroke-dashoffset:12}to{stroke-dashoffset:0}}
 .strip-header{font-weight:bold}
 .decor{fill:#ffcf7d;opacity:.25}.decor-moving{animation:decor ease-in-out infinite alternate}
 @keyframes decor{from{opacity:.12}to{opacity:.34}}
@@ -405,6 +407,9 @@ export function createPainter({ characters, failed, select }) {
             node('polyline', {
                 points: line.ends.map((p) => `${p.x},${p.y}`).join(' '),
                 class: [line.ended ? 'thread ended' : 'thread', line.motion ? 'thread-moving' : null].filter(Boolean).join(' '),
+                style: line.frames > 0
+                    ? `animation-duration:${(line.frames * line.frame_interval_ms) / 1000}s;animation-timing-function:steps(${line.frames})`
+                    : null,
             }, lines);
 
             if (line.label !== null) {

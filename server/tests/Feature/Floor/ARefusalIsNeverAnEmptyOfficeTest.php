@@ -32,6 +32,15 @@ class ARefusalIsNeverAnEmptyOfficeTest extends TestCase
     /** Second RED — the floor keeps animating behind the sign-in prompt. */
     private const ANIMATES_BEHIND = ['../desk/desk-render.js', ' && facts.stilled !== true;', ';'];
 
+    /**
+     * Second RED, on the coordination line — the line asks for motion as permitted whatever the
+     * floor, which is what the shipped client did until card#7341: an open A18 line behind the
+     * prompt logged `motion: true` and was drawn moving.
+     */
+    private const LINE_ANIMATES_BEHIND = [self::FLOOR_SCREEN,
+        "heldRendering('A18', !this.#desks.stilled, this.#set.reduce)",
+        "heldRendering('A18', true, this.#set.reduce)"];
+
     /** Fourth RED — F8's banner on every deploy, whatever `feed_version` it carries. */
     private const BANNER_EVERY_DEPLOY = ['fleet-client.js',
         'if (envelope.feed_version !== FEED_VERSION) {',
@@ -59,6 +68,8 @@ class ARefusalIsNeverAnEmptyOfficeTest extends TestCase
     {
         $this->assertSame([], $this->signInDefects('refusal_401_cold', false));
         $this->assertSame([], $this->signInDefects('refusal_401_warm', true));
+        $this->assertSame([], $this->signInDefects('refusal_401_line', true));
+        $this->assertSame([], $this->lineDefects('refusal_401_line'));
     }
 
     public function test_green_db_down_renders_the_store_statement_and_the_stream_ends(): void
@@ -117,6 +128,10 @@ class ARefusalIsNeverAnEmptyOfficeTest extends TestCase
         $defects = $this->signInDefects('refusal_401_warm', true, $this->mutatedModules(self::ANIMATES_BEHIND));
 
         $this->assertSame(['motion'], array_keys($defects), 'the RED failed some other clause, or none: '.json_encode($defects));
+
+        $defects = $this->lineDefects('refusal_401_line', $this->mutatedModules(self::LINE_ANIMATES_BEHIND));
+
+        $this->assertSame(['exit', 'reentry'], array_keys($defects), 'the line RED failed some other clause, or none: '.json_encode($defects));
     }
 
     /** Third RED — the held-open stream, planted in the FIXTURE: the statement renders, the end does not happen. */
@@ -237,6 +252,49 @@ class ARefusalIsNeverAnEmptyOfficeTest extends TestCase
             }
 
             $defects += array_diff_key($this->keptDefects($frame, true, $run), ['kept' => 1]);
+        }
+
+        return $defects;
+    }
+
+    /**
+     * What the stilled floor owes an OPEN coordination line (§ 11's paragraph on an A18 line and the
+     * stilled floor), as named defects: `entry` — the line was not first entered moving against its
+     * `thread_ref`; `exit` — its episode was not left once, with § 11's literal `stilled`, at
+     * `motion: false`; `reentry` — the same line was not entered
+     * again in that render at `motion: false` against its `thread_ref`; `after` — any A18 row after
+     * that. What the scene draws of it is row 14's, and `TheSceneDrawsOnlyWhatTheSetLoggedTest` holds it.
+     *
+     * @return array<string, string>
+     */
+    private function lineDefects(string $run, ?string $dir = null): array
+    {
+        $result = $this->floorRun($run, $dir);
+
+        $this->assertNotNull($this->lastFloor($result)['failure']['sign_in'],
+            "[{$run}] the run never stilled the floor — every clause below would read a live floor");
+
+        $rows = array_values(array_filter($result['animation_log'], static fn (array $r): bool => $r['animation_id'] === 'A18'));
+        [$entry, $exit, $reentry] = array_pad($rows, 3, null);
+        $defects = [];
+
+        if ($entry === null || $entry['phase'] !== 'entered' || $entry['cause'] !== 'T1' || $entry['motion'] !== true) {
+            $defects['entry'] = 'the open line was not entered moving against its `thread_ref`: '.json_encode($entry);
+        }
+
+        if ($exit === null || $exit['phase'] !== 'left' || $exit['cause'] !== 'stilled' || $exit['motion'] !== false
+            || $exit['episode_id'] !== ($entry['episode_id'] ?? null)) {
+            $defects['exit'] = 'stilling the floor did not leave the moving line with § 11\'s literal `stilled`: '.json_encode($exit);
+        }
+
+        if ($reentry === null || $reentry['phase'] !== 'entered' || $reentry['cause'] !== 'T1' || $reentry['motion'] !== false
+            || $reentry['install_id'] !== 'aimla' || $reentry['seat_id'] !== null || $reentry['at'] !== ($exit['at'] ?? null)) {
+            $defects['reentry'] = 'the stilled line was not entered again in that render at `motion: false`: '.json_encode($reentry);
+        }
+
+        if (count($rows) > 3) {
+            $defects['after'] = 'A18 rows follow the re-entry, and nothing but the stilling happened to the open line: '
+                .json_encode(array_slice($rows, 3));
         }
 
         return $defects;
