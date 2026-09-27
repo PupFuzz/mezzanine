@@ -93,6 +93,15 @@ export class DeskFloor {
         return this.#set;
     }
 
+    /**
+     * Whether the last `render()` drew the floor stilled (§ 9 F6) — read by a screen above this one
+     * for what it draws beside the desks (`floor/floor-screen.js`'s A18 line), so the floor is
+     * stilled by one derivation and not by a second reading of the feed.
+     */
+    get stilled() {
+        return this.#stilled;
+    }
+
     /** The seats the last `render()` read — the age ticker's population (§ 2.5's tick row). */
     get seats() {
         return new Map(this.#held);

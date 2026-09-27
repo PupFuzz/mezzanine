@@ -92,7 +92,8 @@ export const ANIMATION_SET = Object.freeze({
  *                   is `null` on all three (they are drawn BETWEEN desks and claim nothing about
  *                   any one desk), `install_id` is the message's own (§ 5.7 clause 3's room), and
  *                   `cause` is the identity of the causing message — `post_ref` for A19 and A20,
- *                   `thread_ref` for A18 on the way in and again on the way out. ⭐ card#7341
+ *                   `thread_ref` for A18 on the way in and again on the way out — save the exit
+ *                   of a line § 9 F6 stilled, which is § 11's literal `stilled` (`lines()`). ⭐ card#7341
  *                   step 7 is the first consumer that applies those messages, so the rows are
  *                   written now and AT-D3-1's causing-message set gains `coord.round` and
  *                   `coord.thread` in the same change, with AT-D3-18 as the discriminating test
@@ -289,7 +290,7 @@ export const DELTA_ROW_DRIVERS = Object.freeze(Object.fromEntries(DELTA_ROWS.map
 /** § 11's literal `cause` for exit (3): § 2.3 row 5's condition drew the empty chair. */
 export const UNCONFIRMED = 'unconfirmed';
 
-/** § 11's literal `cause` for exit (4): § 9 F6/F7 stilled the floor. */
+/** § 11's literal `cause` for exit (4) and for an A18 line's (`lines()`): § 9 F6/F7 stilled the floor. */
 export const STILLED = 'stilled';
 
 /**
@@ -344,7 +345,10 @@ export class AnimationSet {
     /** key → the open `held` episode: `{ episode_id, animation_id, motion }`. */
     #episodes = new Map();
 
-    /** `thread_ref` → the open A18 episode. § 5.7 makes the ref the thread's identity. */
+    /**
+     * `install_id/thread_ref` → the open A18 episode: `{ episode_id, thread_ref, motion }`. § 5.7
+     * makes the ref the thread's identity; `lines()` says why the install is in the key.
+     */
     #lines = new Map();
 
     /**
@@ -465,8 +469,20 @@ export class AnimationSet {
      * resolved endpoints fall below two" — and a renderer that watched only the lifecycle would
      * keep a line drawn between desks one of which no longer resolves.
      *
-     * @param {list<{thread_ref: string, install_id: string, animations: list<string>}>} threads one
-     *        room's rendered threads, as `coord/coord-model.js` returns them
+     * ⛔ AND A LINE WHOSE `motion` CHANGES IS LEFT AND ENTERED AGAIN, exactly as a desk's held render
+     * is (§ 11: an episode is one continuous run of one render). The rendering is the line's `held`,
+     * decided by the caller through `heldRendering()` as a desk's is by its desk render, so the row
+     * logged here and the line the scene draws are one answer. A line's `motion` depends on nothing
+     * but reduced motion, which is fixed for the page's life, and the stilled floor, which stays
+     * stilled once it is (§ 9 F6's recovery is a new page load) — so a line still drawn whose
+     * `motion` changed was stilled, and its exit is § 11's literal `stilled`: no `coord.thread` ended
+     * that hold. A line no longer drawn is asked first, as (2a) is asked before (4) for a desk: a
+     * thread that closed, or whose endpoints fell below two, ended the hold whatever else the render
+     * did, and its exit names the `thread_ref`.
+     *
+     * @param {list<{thread_ref: string, install_id: string, animations: list<string>, held: ?object}>}
+     *        threads one room's rendered threads, as `coord/coord-model.js` returns them, each with
+     *        the `held` rendering `heldRendering('A18', …)` gave it (`null` where it draws no A18)
      * @param {number} at § 2.4's corrected server-clock instant
      */
     lines(threads, at) {
@@ -480,10 +496,15 @@ export class AnimationSet {
             .map((thread) => [`${thread.install_id}/${thread.thread_ref}`, thread]));
 
         for (const [key, open] of this.#lines) {
-            if (!drawn.has(key)) {
+            const want = drawn.get(key) ?? null;
+
+            if (want === null) {
                 // § 11: the exit row carries the `thread_ref` of the `coord.thread` that ENDED the
                 // hold — which is this thread's own, because a thread is its `thread_ref`.
                 this.#log.leaveHeld(open.episode_id, { cause: open.thread_ref, at });
+                this.#lines.delete(key);
+            } else if (want.held.motion !== open.motion) {
+                this.#log.leaveHeld(open.episode_id, { cause: STILLED, at });
                 this.#lines.delete(key);
             }
         }
@@ -498,11 +519,11 @@ export class AnimationSet {
                 cause: thread.thread_ref,
                 install_id: thread.install_id,
                 seat_id: null,
-                motion: motionOf('A18', true, this.#reduce),
+                motion: thread.held.motion,
                 at,
             });
 
-            this.#lines.set(key, { episode_id: episodeId, thread_ref: thread.thread_ref });
+            this.#lines.set(key, { episode_id: episodeId, thread_ref: thread.thread_ref, motion: thread.held.motion });
         }
     }
 

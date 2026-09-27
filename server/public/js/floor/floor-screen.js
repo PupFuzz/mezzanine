@@ -62,6 +62,7 @@
 
 import { Building } from '../wire/building.js';
 import { DeskFloor } from '../desk/desk-floor.js';
+import { heldRendering } from '../wire/animation-set.js';
 import { DrillDownPanel } from '../drilldown/drilldown-panel.js';
 import { coordModel } from '../coord/coord-model.js';
 import { correctedNowMs } from '../wire/duration.js';
@@ -1075,8 +1076,16 @@ export class FloorScreen {
 
             // The line's endpoints are DESK POSITIONS, which is why this render is step 7's at all:
             // "drawing a line between two desks needs their floor positions" (§ 14 item 24).
+            //
+            // ⛔ `held` IS A18's RENDERING, DECIDED ONCE HERE AS A DESK's IS IN ITS DESK RENDER: the
+            // set logs it and the scene draws it, so neither can answer `motion` differently. A floor
+            // § 9 F6 stilled withholds permission exactly as it does for a desk's loop — "a frozen
+            // floor that still animates" — and the desk floor's own stilled reading is the one read.
             const lines = model.threads.map((thread) => Object.freeze({
                 ...thread,
+                held: thread.animations.includes('A18')
+                    ? Object.freeze(heldRendering('A18', !this.#desks.stilled, this.#set.reduce))
+                    : null,
                 ends: Object.freeze(thread.endpoints.map((seatId) => {
                     const at_desk = positions.get(`${room.install_id}/${seatId}`) ?? null;
 

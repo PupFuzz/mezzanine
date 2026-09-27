@@ -87,6 +87,12 @@ const ENVELOPE_PX_PER_FRAME = 96;
 const RING_PX_PER_FRAME = 240;
 const RING_FADE_FRAMES = 2;
 
+/**
+ * A moving A18 line's flow: the frames one dash period takes to travel along it, at § 12's loop rate.
+ * It decides how fast the dashes flow and carries no fact — every moving line flows alike.
+ */
+const THREAD_FLOW_FRAMES = 4;
+
 /** A § 6.2 edge row's single-frame forms — the 250 ms fades and eases, one loop frame each. */
 const ONE_FRAME = new Set(['A5', 'A11', 'A12', 'A14', 'A17']);
 
@@ -627,7 +633,13 @@ function buildLines(frame, anchors, input) {
                 carrier: thread.carrier,
                 lifecycle: thread.lifecycle,
                 beads: thread.beads_label,
-                ...form('A18', input.reduce === true),
+                // ⛔ THE LINE's `held` IS THE RENDERING THE SET LOGGED (`floor/floor-screen.js`), so a
+                // line § 9 F6 stilled is drawn static here as it is logged static there; reduced motion
+                // is already folded into it. A moving line flows at § 12's loop rate, one dash period
+                // per THREAD_FLOW_FRAMES frames — a fixed rate carrying no fact (§ 6.1 rule 2).
+                ...form('A18', !thread.held.motion),
+                frame_interval_ms: 1000 / LOOP_FPS,
+                frames: thread.held.motion ? THREAD_FLOW_FRAMES : 0,
             }));
         }
     }

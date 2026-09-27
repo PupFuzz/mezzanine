@@ -363,8 +363,9 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
      * object and § 2.3 row 5 state, the removals its journal applied, and the rows it wrote. The rows
      * are first asserted to partition the log, so an exit no record owns cannot escape the predicate.
      *
-     * [A18](§ 6.2) is outside the precedence — its exit `cause` is its `thread_ref` — and its rows
-     * carry no seat, which is how they are told apart here.
+     * [A18](§ 6.2) is outside the precedence — its exit `cause` is its `thread_ref`, or `stilled` for
+     * a drawn line the floor stills, which AT-D3-8 holds — and its rows carry no seat, which is how
+     * they are told apart here.
      *
      * @param  array<string, mixed>  $result
      * @return list<string> the step that named each desk exit checked, for the caller's controls
