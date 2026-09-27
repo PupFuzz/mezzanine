@@ -28,6 +28,8 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
 
     private const ROOM = 'scene_default';
 
+    private const STILLED = 'refusal_401_line';
+
     public function test_every_form_the_scene_draws_is_a_row_the_set_logged(): void
     {
         foreach ([self::COORD, self::ROOM] as $run) {
@@ -69,6 +71,17 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
         }
     }
 
+    /**
+     * The line moves as the set logged it: flowing on a live floor, static once § 9 F6 stills the
+     * floor under it (`fx-refusals`' `refusal_401_line`, card#7341), and static throughout under reduced
+     * motion. The motion is the line's `held` rendering, the one the A18 row was logged at.
+     */
+    public function test_the_thread_line_moves_only_where_the_set_logged_it_moving(): void
+    {
+        $this->assertSame([], $this->lineMotionDefects($this->floorRun(self::STILLED), true));
+        $this->assertSame([], $this->lineMotionDefects($this->floorRun(self::COORD, null, ['reduce' => true]), false));
+    }
+
     public function test_decorative_motion_is_data_bounded_by_section_6_3_and_on_no_desk(): void
     {
         $this->assertSame([], $this->decorativeDefects($this->sceneOf(self::ROOM)));
@@ -89,6 +102,11 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
             'heading_deg: Math.atan2(to.y - origin.y, to.x - origin.x) * 180 / Math.PI,', 'heading_deg: 90,']);
         $this->assertNotSame([], $this->formDefects($this->floorRun(self::COORD, $noseless)),
             'CONTROL (an envelope whose nose does not point along its travel) did not bite');
+
+        $unstilled = $this->mutatedModules(['../floor/scene.js',
+            "...form('A18', !thread.held.motion),", "...form('A18', input.reduce === true),"]);
+        $this->assertNotSame([], $this->lineMotionDefects($this->floorRun(self::STILLED, $unstilled), true),
+            'CONTROL (a line drawn moving on the floor § 9 F6 stilled) did not bite');
 
         $invented = $this->mutatedModules(['../floor/scene.js',
             "        if (row.class !== 'edge') {\n            continue;\n        }\n", '']);
@@ -128,6 +146,46 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
                     $defects[] = "the scene drew {$fx['animation_id']} ({$fx['cause']}) with no edge row behind it";
                 }
             }
+        }
+
+        return $defects;
+    }
+
+    /**
+     * Every A18 line the run drew, against the floor it was drawn on: a moving line flows (frames to
+     * step) and a static one does not, and a line on a stilled floor — or under reduced motion — is
+     * static. `$live` is whether the run's live floor draws the line moving at all.
+     */
+    private function lineMotionDefects(array $result, bool $live): array
+    {
+        $defects = [];
+        $seen = [];
+
+        foreach ($result['floor_renders'] as $render) {
+            $stilled = $render['frame']['failure']['sign_in'] !== null;
+
+            foreach ($render['frame']['scene']['lines'] ?? [] as $line) {
+                $want = $live && ! $stilled;
+                $seen[$stilled ? 'stilled' : 'live'] = true;
+
+                if ($line['motion'] !== $want) {
+                    $defects[] = "{$line['thread_ref']} is drawn ".($line['motion'] ? 'moving' : 'static')
+                        .' on a '.($stilled ? 'stilled' : 'live').' floor'.($live ? '' : ' under reduced motion');
+                }
+
+                // A line carrying no `frames` at all is a scene that states no flow for the painter.
+                $frames = $line['frames'] ?? null;
+
+                if (($frames > 0) !== $line['motion']) {
+                    $defects[] = "{$line['thread_ref']}'s flow frames (".json_encode($frames).') disagree with its motion';
+                }
+            }
+        }
+
+        $this->assertArrayHasKey('live', $seen, 'no line was drawn on a live floor — the check read nothing');
+
+        if ($live) {
+            $this->assertArrayHasKey('stilled', $seen, 'no line was drawn on the stilled floor — the check read nothing');
         }
 
         return $defects;

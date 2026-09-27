@@ -4220,8 +4220,10 @@ condition, the stilled floor and reduced motion. Reduced motion is fixed for the
 invariant), and so is a stilled floor once it is stilled
 ([§ 9](#9-failure-paths-and-their-observables) F6's recovery, which owns that invariant). The
 precedence applies to desk episodes.
-[A18](#62-the-animation-table--the-closed-set)'s exit `cause` is its `thread_ref` (the paragraph on
-the coordination rows, below). The shipped client's exit is `held()`'s, in
+[A18](#62-the-animation-table--the-closed-set)'s exit `cause` is its `thread_ref`, or the literal
+`stilled` where the floor stills a line still drawn (the paragraph on an A18 line and the stilled
+floor, below).
+The shipped client's exit is `held()`'s, in
 `wire/animation-set.js`, which asks these steps in this order through `exitCause()`
 ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15 (a); row 15 (b) names what
 checks the order).
@@ -4319,7 +4321,8 @@ desk; `install_id` is **the message's own**, which
 `cause` is the **identity of the message that caused it** — `coord_round.post_ref` for A19 and A20,
 and `coord_thread.thread_ref` for A18 on the way in and again on the way out, where the exit row
 carries the `thread_ref` of the `coord.thread` that ENDED the hold, exactly as a held row's exit
-carries the version of the object that ended one. Those are the members D2 publishes as *the
+carries the version of the object that ended one — save a line the floor stills, whose exit is the
+literal `stilled` (the paragraph on an A18 line and the stilled floor, below). Those are the members D2 publishes as *the
 identities a consumer needs*, which is why it withholds a delivery digest beside them.
 
 ⭐ **THE SET IS SIX, AND IT BECAME SIX IN THE CHANGE THAT FIRST WROTE THESE ROWS — card#7341
@@ -4346,20 +4349,31 @@ desk* clause in the amendment [§ 14](#14-open-questions-for-the-review-loop) it
 `roundAnimations()` had gone on firing on the address alone — the defect that test's Third RED plants,
 running as shipped code because the row had no caller to exercise it.**
 
-⚠ **[§ 11](#11-acceptance-tests)'s precedence under the schema table is a desk's, and A18 takes none
-of it; two sibling shapes of the question it answers are named here and routed, not fixed** (card#7341,
-[§ 14](#14-open-questions-for-the-review-loop) item 29; PR #240's design review). Both are
-[Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's, the owner of the room drawing
-that draws the line. *(i)* An A18 line on a floor [§ 9](#9-failure-paths-and-their-observables) F6
-has stilled logs `motion: true`: `lines()` always asks for motion as permitted (its
-`motionOf('A18', true, …)`, in `wire/animation-set.js`), and the scene's `form()` sets `motion` from
-reduced motion alone (`floor/scene.js`) — against F6's *a frozen floor that still animates*. Row 14's
-fix for it owes this section an exit `cause` for an A18 line the floor stills, because a line that
-stops moving on a stilled floor ends an episode no `thread_ref` ended. *(ii)* An A18 line ended by an
-endpoint seat's removal records the line's `thread_ref`, as every A18 exit does, where a desk's exit
-would name the removal. Whether an A18 line ever moves on screen is itself unverified: the painter
-gives a moving line the `thread-moving` class token (`floor/painter.js`), and no stylesheet carries a
-rule for it.
+✅ **An A18 line takes the stilled floor as a desk does, and its exit on it is the literal
+`stilled`** (card#7341, [§ 14](#14-open-questions-for-the-review-loop) item 29; PR #240's design
+review routed the shape to [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's
+owner). A line's rendering is decided once, as a desk's is: the floor screen gives each drawn line the
+held rendering `heldRendering('A18', …)` answers for it (`floor/floor-screen.js`), withholding
+permission on a floor [§ 9](#9-failure-paths-and-their-observables) F6 has stilled exactly as the desk
+render withholds it from a desk's loop, and the animation set logs that rendering while the scene
+draws it (`wire/animation-set.js`'s `lines()`, `floor/scene.js`). Nothing else moves a line's
+`motion`: reduced motion is fixed for the page's life and a stilled floor stays stilled, so a line
+still drawn whose `motion` changed was stilled, and no `coord.thread` ended that hold. Its episode is
+therefore left with the literal **`stilled`** — [§ 11](#11-acceptance-tests)'s table row for F6's
+render, the desk precedence's (4) — and the same line is entered again at `motion: false` against its
+`thread_ref`, as every A18 entry is; the episode key stays `(install_id, thread_ref)`. A line no longer
+drawn is asked first, as (2a) is asked before (4): a thread that closed, or whose resolved endpoints
+fell below two, ended the hold whatever else the render did, and its exit names the `thread_ref`.
+⚠ **An A18 line ended by an endpoint seat's removal records the line's `thread_ref`, and that is
+RULED as intended** (card#7341, card comment 6949, item 3). It agrees with
+[§ 6.2](#62-the-animation-table--the-closed-set) A18's *Ends* cell: a removal ends a line only by
+taking its resolved endpoints below two, and the hold it ends is the thread's, so the exit names the
+thread rather than the removal a desk's exit would name.
+[AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office) gates the stilled exit. On screen a
+moving line flows: the painter gives it the `thread-moving` class token (`floor/painter.js`), whose
+rule in the drawing's own stylesheet steps a dash pattern along it at the rate the scene carries —
+[§ 12](#12-every-number-and-where-it-comes-from)'s loop rate — and a static line carries no such
+token, so reduced motion and a stilled floor both draw it still.
 
 A **held** row is written when the render is **entered** and again when it is **left**, so the log
 records which states a desk held and for how long. *For how long* is read off the **run**: a seat's
@@ -4368,9 +4382,9 @@ before it. The log shows this without `at`. The episode's `entered` row is the s
 after its predecessor's `left` row in write order, and that `left` row was written by (2b) or (4) of
 [the precedence under the schema table](#11-acceptance-tests). A `left` row written by (1), (2a) or
 (3) ends the run, so an unconfirmed stretch is the gap between two runs. An
-[A18](#62-the-animation-table--the-closed-set) line's episode does not split on `motion` while the
-shipped client logs every line at `motion: true` (shape *(i)* above), so its *for how long* is today
-that one episode's `left.at − entered.at`. A desk's is the run's last episode's `left.at`
+[A18](#62-the-animation-table--the-closed-set) line's run is read the same way over its own episodes —
+one `install_id` and `thread_ref` — and its one exit that leaves the run going is `stilled` (the
+paragraph on an A18 line and the stilled floor, above). A desk's is the run's last episode's `left.at`
 − its first episode's `entered.at`, each episode's two rows found by the `episode_id` they share,
 which is why `at` is on the row at all. A version pair cannot answer it: `state_version` counts
 changes, not seconds. Neither can the `(animation_id, install_id, seat_id)` triple an earlier revision
@@ -4396,7 +4410,7 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 | `fx-membership` | **three legs.** (a) deltas for a seat absent from `fx-snapshot-4`, **each patching only `context`** — a patch that carried `render_state` would hand the patch-into-an-empty-object client the member [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched)'s RED reads as missing, and that RED could not fail; (b) a later snapshot missing a seat that was present; (c) **the mid-session install leg** — a `feed.heartbeat` whose `fleet.seats_total` is 6 against the four seats the client holds, then a snapshot carrying a **second install** `aimla-win` with two `live` seats (`aimla-win/win-1`, `aimla-win/win-2`), and a `seat.delta` for `aimla-win/win-1` emitted on the stream **during** that snapshot's round trip, while the client holds no `aimla-win` seat, at `state_version` one above the version both that snapshot and the seat's own fetch return |
 | `fx-confirm` | ✅ landed with step 3 (`server/tests/Feature/Floor/fixtures/fx-confirm.json`, replayed by `Tests\Feature\Floor\TheClientProtocolReplaysTheSameWayEveryTimeTest`) and declared here since PR #227's design round: [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5's runs, each a seat the client holds whose confirming read is refused. **`missing_persistent` is the unconfirmed desk's run** — a snapshot, then every read of one held seat refused past row 5's threshold of refused reads, the stream carrying on — the one run in which the desk model's `unconfirmed` is true, which no snapshot can make it. The held render that exits there is ended by a failed read and not by an object, and (3) of [§ 11](#11-acceptance-tests)'s precedence is what that exit records ([§ 14](#14-open-questions-for-the-review-loop) item 29, closed). Each refused read answers a `503` whose `server_time` is the instant it answers, on the run's own clock — every one is `clocked` (`server/tests/Feature/Support/scripted-fetch.mjs`) — so [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset, refreshed from each, keeps the corrected clock advancing. ⛔ [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s closed-set half replays the run; [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15 (e) owns what that replay rests on. A fixture sets values; it renders none, so this row is **`named-not-rendered`** |
 | `fx-gap` | `fx-snapshot-4`, then three deltas for one seat with the middle one dropped. **The dropped delta patches only a member neither delivered delta patches** (`context`, where the two delivered ones patch the call members): a dropped patch that a later delivered one overwrites leaves the apply-unconditionally client holding the served object, and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat)'s RED could not fail |
-| `fx-refusals` | the responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, **a stream whose FIRST message is a `fleet.health` with `db: "down"` and whose LAST is `feed.close{reason:"unavailable"}`, the stream then ENDING** ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)'s stream-connect posture: the connection is accepted to say why, and ends in the same breath), and **a `fleet.reload`, after which the stream also ends** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) declares that message terminal and pairs it with its own `feed.close` — in **two forms**, by operator ruling A4: carrying a `feed_version` the client does not know, and carrying its own, the second followed by re-opens the stub refuses `503` for the spans [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office) names before it accepts one; and **a stream that ends with no `feed.close` at all**, which is the deploy's drain ending a stream that missed the message ([D2 § 2.1](FLEET-STATE.md#21-processes)'s feed-reload row). ⛔ A fixture that held the `db: "down"` stream or the `fleet.reload` stream OPEN would be the posture card#9287's ruling withdrew, and [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office)'s GREEN would certify it — the fixture is where that certification starts, so the end is written here rather than left to the test |
+| `fx-refusals` | the responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, **a stream whose FIRST message is a `fleet.health` with `db: "down"` and whose LAST is `feed.close{reason:"unavailable"}`, the stream then ENDING** ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)'s stream-connect posture: the connection is accepted to say why, and ends in the same breath), and **a `fleet.reload`, after which the stream also ends** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) declares that message terminal and pairs it with its own `feed.close` — in **two forms**, by operator ruling A4: carrying a `feed_version` the client does not know, and carrying its own, the second followed by re-opens the stub refuses `503` for the spans [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office) names before it accepts one; and **a stream that ends with no `feed.close` at all**, which is the deploy's drain ending a stream that missed the message ([D2 § 2.1](FLEET-STATE.md#21-processes)'s feed-reload row); and the warm `401` once more with an **open coordination line** on the floor — a `coord.thread` between `"pm"` and `"impl-1"`, two names `fx-snapshot-4`'s seats each declare once, opened before the refusal and never closed — so [§ 9](#9-failure-paths-and-their-observables) F6 stills the floor under a line that was moving (card#7341). ⛔ A fixture that held the `db: "down"` stream or the `fleet.reload` stream OPEN would be the posture card#9287's ruling withdrew, and [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office)'s GREEN would certify it — the fixture is where that certification starts, so the end is written here rather than left to the test |
 | `fx-coord` | Two installs. **`aimla`** — four seats: `aimla-pm` declares `protocol_agent_name: "pm"`, `checked`, and `aimla-impl-1` declares `"coder"`, **`unchecked`** — **one declaring seat each**, so both resolve and they are the two endpoints the line is drawn between. ⛔ **The two endpoints are deliberately in DIFFERENT check states.** An `unchecked` seat declared and no coordination roster was readable **on its own box** to check the declaration against ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), which neither rule of the join refuses: [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) **rule 1** counts the seats that **declare**, whatever their check state, so one `unchecked` declarer is not a duplicate, and **rule 2** — *"Only `checked` and `unchecked` resolve"* — admits it. So `"coder"` resolves exactly as `"pm"` does, and [§ 5.7](#57-the-coordination-thread-line)'s *rests on an UNCHECKED declaration* row gets the one thing that gates it at all: a **resolving** endpoint to mark, with the `checked` endpoint beside it as the control for *`checked` draws nothing extra*. On the duplicate arm below, where this fixture's only `unchecked` declaration first sat, the check state changes no outcome, so that row was left with nothing to break; `aimla-impl-2` and `aimla-review` **both** declare `"helper"` — `checked` and `unchecked` respectively, the **duplicate-declaration** case ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1), whose duplicate arm counts every seat of the install that **declares** the name whatever its check state, so `"helper"` resolves to **nothing**. ⛔ **The duplicated name is deliberately one no object here needs as an endpoint.** A fixture that duplicates the name it also draws the line to has one resolving name left and cannot demonstrate a two-endpoint line at all — the render this fixture exists to gate ([§ 5.7](#57-the-coordination-thread-line)) — so the clean-resolve case and the must-not-resolve case are carried by different names here, on purpose. No seat's `seat_id` is itself a declared name. **`win`** — one seat, `win-1`, declares `"reviewer"`, `checked` — a name real on a **different** install. On `aimla`: a `coord.thread` (`thread_ref: "T1"`, `lifecycle: "opened"`, `participants: ["pm", "coder", "helper", "reviewer", "aimla-impl-2", "all"]` — **two** resolvable names, one duplicate, one other-install, one seat-id coincidence, and the literal `all`, unexpanded); `coord.round` **R1**, the thread's opening post (`from: "pm"`, `to: ["all"]`, `targets: null`, `declares_close: false`) — **the one wire state [D1 § 18.7](EVENT-SCHEMA.md#187-coordround) assigns `null` to**, *`to` contains `all` and that roster is unreadable*, which `coord_targets_unresolved` alarms on ([D1 § 18.8.1](EVENT-SCHEMA.md#1881-the-counters-this-route-mints)). ⛔ **`null` belongs on no other address.** D1 pins it to that case and publishes no second path to it, so a `to` naming a seat carries a resolved `targets` and never this — a fixture putting `null` beside `to: ["coder"]` would gate the *not resolvable* render against a combination the producer cannot emit. With `"pm"` resolving, R1 is also the post that draws a ring and **no** envelope, which splits [A20](#62-the-animation-table--the-closed-set) from [A19](#62-the-animation-table--the-closed-set) by **reach** where the R2/R3 pair below splits them by **origin**. ⚠ **The unreadable roster here is [D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)'s install-facts input, held by the PRODUCER** — the copy provisioned with the hook — and it is readable again by R2, which is the only way one thread carries both this answer and a resolved fan-out. It is **not** the roster `unchecked` names above, which is read on a **seat's own box**: two artifacts on two machines, and this fixture holds both unreadable on purpose so a builder does not covary them. ⛔ **The roster that input holds from R2 onward is `["pm", "coder", "helper"]`**, and **every `targets` below is re-derived from it** by [D1 § 18.7](EVENT-SCHEMA.md#187-coordround)'s rule rather than asserted: R1 is `null` because the input is unreadable there, R2 and R3 carry one address from two authors and therefore **different** fan-outs, and R4's `[]` is `to: ["pm"]` from `pm` with the author removed. ⚠ **Those are the coordination names `aimla`'s own seats declare, and the fixture CHOOSES that rather than inheriting it** — the input is a copy of another repository's config and nothing forces the two artifacts equal ([D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)) — so it is what an install in agreement with itself looks like, and it is what gives the author-removal clause of that rule two different answers to be checked by. A roster naming only `"pm"` satisfies all four values too, and gates that clause with nothing: neither R2's author nor R3's is in it, so removing the author removes nothing and the two broadcasts come out identical. ⛔ **`"helper"` is a roster member that resolves to no desk** — it is the duplicate declaration above — so R3's fan-out is this fixture's one case of [A19](#62-the-animation-table--the-closed-set)'s *"A destination that does not resolve gets **no envelope and no line**, and the ones that do still get theirs"*; `coord.round` **R2** (`from: "helper"` — unresolved, duplicate, and the object still renders — `to: ["all"]`, `targets: ["pm", "coder"]` — the roster with its own author removed, and **both** members resolve to a desk — `declares_close: false`); `coord.round` **R3** (`from: "coder"`, `to: ["all"]`, `targets: ["pm", "helper"]` — the same roster with a **different** author removed, so one member resolves and one does not — `declares_close: false` — R2's address from an origin that **does** resolve, the pair that holds [A19](#62-the-animation-table--the-closed-set)'s and [A20](#62-the-animation-table--the-closed-set)'s origin precondition apart from the address they read); `coord.round` **R4** (`from: "pm"`, `to: ["pm"]`, `targets: []` — the one address the roster is never consulted for, its whole membership being its own author, so *this post reached nobody*, which is not R1's *the fan-out is not resolvable here* — and `declares_close: true`, never rendered as convergence); then a `coord.thread` closing T1 (`lifecycle: "closed"`) |
 | `fx-nulls` | **two** seats, because the **39** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `blocked_since`, `model_label`, `badges_since`, `enabled`, `protocol_agent_name`, `protocol_agent_name_check`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat (a fixture sets values and renders none: **`named-not-rendered`**); all three nullable `reporter.*`. The two together cover all 39, and neither covers them alone. **`nulls-a`'s `render_state` is `idle`**, a state whose desk draws a character ([§ 7.1](#71-the-render-per-state)) — stated because [§ 5.1](#51-the-desk)'s thought bubble is anchored to one, so on a desk without a character *no bubble* would be true whatever `task` held and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero)'s assertion would pass without being able to fail. **`nulls-b` is the never-reported seat above**, which [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints `offline`: its desk draws no character, so it asserts nothing about the bubble and is not asked to |
 
@@ -4467,8 +4481,9 @@ observable before both exist, so the test is **re-gated** rather than split furt
   there — (2b)'s answer, which the ruling asks after (3) — reds. The previous render's conditions are not
   on the log, so the predicate is evaluated from the harness's per-render records, which the probe
   writes ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15 (c)).
-  [A18](#62-the-animation-table--the-closed-set) is outside it: its exit `cause` is its `thread_ref`
-  (§ 11's paragraph on the coordination rows). **The pairing is over `episode_id`, not over `(animation_id, install_id, seat_id)`:** every
+  [A18](#62-the-animation-table--the-closed-set) is outside it: its exit `cause` is its `thread_ref`,
+  or `stilled` for a line the floor stills (§ 11's paragraph on an A18 line and the stilled floor),
+  which [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office) holds. **The pairing is over `episode_id`, not over `(animation_id, install_id, seat_id)`:** every
   `episode_id` appears on at most one `entered` row and at most one `left` row; every `left` row's
   `episode_id` matches an `entered` row earlier in the log for the same `animation_id`, `install_id`
   and `seat_id`; `left.at > entered.at` for that pair; and every `left` row's `motion` is `false`. The
@@ -4842,10 +4857,16 @@ resync itself, and the line the record gains, are the protocol's and are observa
 ### AT-D3-8 a refusal is never an empty office
 
 - **Build:** replay `fx-refusals`, each response in a separate run, both on a cold start and on a client
-  already holding `fx-snapshot-4`. **Reads:** **the harness**, the **failure renders**, the **status strip**, the **floor layout**, the **stream recovery**.
+  already holding `fx-snapshot-4`; its `refusal_401_line` run is the warm `401` with an open
+  coordination line on the floor — a `coord.thread` between two names `fx-snapshot-4`'s seats each
+  declare once, opened before the refusal and never closed. **Reads:** **the harness**, the **failure renders**, the **status strip**, the **floor layout**, the **stream recovery**, the **animation set**, the **animation log**.
 - **GREEN:** `503` renders the store-unavailable statement — on a warm client over a floor labelled
   *last known good*, on a cold one as words; `401` renders the sign-in prompt with the floor beneath
-  dimmed and labelled *not live since HH:MM:SS*, **and the client closes the stream**; `db: "down"`
+  dimmed and labelled *not live since HH:MM:SS*, **and the client closes the stream**, and nothing on
+  that floor moves — every desk's held render is drawn static, and an open
+  [A18](#62-the-animation-table--the-closed-set) line's moving episode is left with
+  [§ 11](#11-acceptance-tests)'s literal `stilled` and the same line entered again in that render at
+  `motion: false` (§ 11's paragraph on an A18 line and the stilled floor); `db: "down"`
   renders the same statement as `503` **and the stream ENDS** — the fixture delivers it as the stream's
   first message and `feed.close{reason:"unavailable"}` as its last ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)),
   so the connection indicator **no longer reads *connected***, which is
@@ -4874,7 +4895,9 @@ resync itself, and the line the record gains, are the protocol's and are observa
   fleet that has gone home and is exactly the failure [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange)
   forbids on the wire, arriving through the renderer instead.
 - **Second RED:** keep animating the floor behind the `401` modal → a live-looking floor whose data the
-  client is no longer authorized to have.
+  client is no longer authorized to have. Plant it twice — in the desk render's permission, and in the
+  line's, asking for its motion as permitted whatever the floor, which is what the shipped client did
+  until card#7341.
 - **Third RED — the held-open stream rendered as a live one:** deliver `fleet.health` with `db: "down"`
   and then **hold the stream open** rather than ending it, and let the client keep its connection
   indicator at *connected* → the statement renders, every other assertion above passes, and the build
@@ -6579,11 +6602,13 @@ reason to leave two readings live.
     precedence gives that exit (4)'s literal. So the ruling is the class, and F6 takes its own
     literal in § 11's table rather than staying open behind row 5's.
 
-    **A18 is outside the precedence, and two sibling shapes are routed, not fixed here** (PR #240's
-    design review): an A18 line on a stilled floor logs `motion: true`, and an A18 line ended by an
-    endpoint seat's removal records its `thread_ref`. § 11's paragraph on the coordination rows names
-    both and routes them to [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's
-    owner. Row 14's fix of the first owes § 11 an exit `cause` for an A18 line the floor stills.
+    ✅ **A18 is outside the precedence, and its two sibling shapes are answered** (PR #240's design
+    review routed them to [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's
+    owner; card#7341 answered them). An A18 line on a stilled floor is drawn and logged at
+    `motion: false`, its moving episode left with the literal `stilled`, and an A18 line ended by an
+    endpoint seat's removal records its `thread_ref`, which is ruled as intended (card comment 6949).
+    § 11's paragraph on an A18 line and the stilled floor owns both answers, and
+    [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office) gates the first.
 
     ✅ **The build half is done too** (card#7341, row 15's landing).
     [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15 (a)–(e) owns the build
