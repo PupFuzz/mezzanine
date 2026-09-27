@@ -23,7 +23,11 @@
  *                                          | { "op": "displaced", "install_id", "seat_id",
  *                                              "arriving", "at" } ] }`
  *          `held`'s `seats`, `removed` and `conditions` are objects keyed as the client keys its
- *          seats and are handed to the module as the `Map`s it takes.
+ *          seats and are handed to the module as the `Map`s it takes. `conditions` is REQUIRED for
+ *          every seat whose episode the op leaves while the seat is still held — the module asks
+ *          § 11's precedence of it there (`exitCause()`), as the desk floor always hands it one — and
+ *          an op that leaves one without it fails by name (`MissingConditions`) rather than
+ *          defaulting to nothing and surfacing as a TypeError inside the module.
  * stdout — JSON: `{ "set", "fired_by", "heartbeat_rows", "heartbeat", "delta_row_drivers",
  *                   "loop_fps", "loops", "frame_interval_ms", "forms", "held_renderings",
  *                   "outside", "rows", "errors" }`
@@ -46,6 +50,22 @@ const { createAnimationLog } = await import(pathToFileURL(join(dir, 'animation-l
 const payload = JSON.parse(readFileSync(0, 'utf8') || '{}');
 const ids = Object.keys(set.ANIMATION_SET);
 
+/**
+ * `held()`'s `conditions`, strict: the module reads it only for a seat still held whose episode is
+ * left, and a key missing there is a payload that omitted what the precedence is asked of.
+ */
+class RequiredConditions extends Map {
+    get(key) {
+        if (!this.has(key)) {
+            const error = new Error(`a held op left the episode on ${key} while the seat is held, and its \`conditions\` has no entry for ${key}`);
+            error.name = 'MissingConditions';
+            throw error;
+        }
+
+        return super.get(key);
+    }
+}
+
 const log = createAnimationLog();
 const live = new set.AnimationSet(log, { reduce: payload.reduce === true });
 const errors = [];
@@ -56,7 +76,7 @@ for (const step of payload.ops ?? []) {
             live.edges(step.journal ?? [], step.at);
         } else if (step.op === 'held') {
             live.held(step.desks ?? {}, new Map(Object.entries(step.seats ?? {})), step.at,
-                new Map(Object.entries(step.removed ?? {})), new Map(Object.entries(step.conditions ?? {})));
+                new Map(Object.entries(step.removed ?? {})), new RequiredConditions(Object.entries(step.conditions ?? {})));
         } else if (step.op === 'displaced') {
             live.displaced(step.install_id, step.seat_id, step.arriving, step.at);
         } else {

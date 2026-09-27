@@ -34,10 +34,11 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   `stilled`, where each used to record the version of the seat it was already showing. AT-D3-1 checks
   every desk exit against the precedence, from a per-render record the test harness now writes, and
   now also replays the signed-out floor run and the unconfirmed desk run, and every run of
-  `fx-snapshot-4` and `fx-degraded`. The unconfirmed desk's fixture answers each refused read with the
-  server time it was answered at. The floor page's focus test also checks that a repaint moves the
-  keyboard's focus only when it was inside the drawing. § 14 item 29's build half is done. Promoting
-  `dev` to `main` is the operator's act.
+  `fx-snapshot-4` and `fx-degraded`. A direct case for each pair of adjacent steps that can apply in
+  one render checks that the client asks the steps in the ruled order. The unconfirmed desk's fixture
+  answers each refused read with the server time it was answered at. The floor page's focus test also
+  checks that a repaint moves the keyboard's focus only when it was inside the drawing. § 14 item 29's
+  build half is done. Promoting `dev` to `main` is the operator's act.
 
 - **card#7341** — **FLOOR.md § 14 item 29 is answered: every exit of a held desk render in the
   animation log records one named cause.** The rule is a precedence in § 11, under the animation-log
