@@ -37,14 +37,17 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   control during the ride takes the viewer straight to the floor instead of stopping it halfway. Coming
   back to the lobby with the browser's Back button enables the ride control again. Under
   `prefers-reduced-motion` the ride and the whole-building control cut rather than glide. None of it is fleet state: no ride, zoom or pan
-  writes an animation-log row, and a render leaves the camera where the viewer put it. The plates keep
-  their current text rendering; drawing each plate as the reference's section, with the roof sign,
-  ground lobby and sky, is slice B. The shared camera (`wire/camera.js`) gained `focusOn()`, a zoom to
+  writes an animation-log row, and a render leaves the camera where the viewer put it. Each floor's
+  name is drawn over its plate at the page's own body text size and keeps that size at every zoom, so
+  the names can be read with the whole building in view however many floors it has; the rest of a
+  plate's text keeps its current rendering, and drawing each plate as the reference's section, with the
+  roof sign, ground lobby and sky, is slice B. The shared camera (`wire/camera.js`) gained `focusOn()`, a zoom to
   one rect inside what is framed, and the floor page and the lobby share one glide through
   `wire/camera-view.js` and one wheel-and-drag wiring through `wire/camera-gestures.js`: a drag that
   ends over a desk or a floor plate is never a click on it. AT-D3-21's building half is
-  `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`, and the shared wiring is
-  driven under `node` by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.
+  `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`, the shared wiring is
+  driven under `node` by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`, and the names' size
+  is held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`.
 
 - **card#7341** — **Appendix B row 15 has landed, so the release gate on the room drawing is met.** Every
   exit of a held desk render in the animation log now records the cause FLOOR.md § 11's precedence

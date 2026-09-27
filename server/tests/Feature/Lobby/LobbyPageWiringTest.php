@@ -148,6 +148,12 @@ class LobbyPageWiringTest extends TestCase
         $this->assertArrayHasKey('gestures', $this->cameraDefects($copied),
             'CONTROL (a gesture copy beside wire/camera-gestures.js) did not bite');
 
+        // CONTROL — a plate name the camera scales: its counter-scale never written from the camera.
+        $scaled = str_replace("    floors.style.setProperty('--label-scale', String(labelScale(camera)));\n", '', $js);
+        $this->assertNotSame($scaled, $js, "the plate-name control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('plate name', $this->cameraDefects($scaled),
+            'CONTROL (a plate name the camera scales) did not bite');
+
         // CONTROL — the whole-building control wired to nothing.
         $unwired = str_replace('screen.wholeBuilding()', 'screen.camera()', $js);
         $this->assertNotSame($unwired, $js, "the whole-building control's anchor is gone — it mutated nothing");
@@ -219,6 +225,14 @@ class LobbyPageWiringTest extends TestCase
             'scroll' => ["function view(camera) {\n    unscroll();", "building.addEventListener('scroll', unscroll);",
                 "    node.scrollTop = 0;\n    node.scrollLeft = 0;"],
             'resize' => ['show(screen.resize(surface()))'],
+            // The F1 ruling (card#7343): a plate's name at the page's body text size, moved by the camera and
+            // never scaled by it — `building-scene.js`'s font and counter-scale, written from the SAME camera
+            // `view()` shows, and the name still first in the plate's link, so its accessible name is unchanged.
+            // The size those make is `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`'s.
+            'plate name' => ["import { LABEL_FONT, labelScale } from './building-scene.js';",
+                "floors.style.setProperty('--label-scale', String(labelScale(camera)));",
+                'fontSize: LABEL_FONT,', "transform: 'scale(var(--label-scale))',",
+                "link.append(name, document.createTextNode(' — '), summary);"],
             'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
         ];
 

@@ -22,7 +22,9 @@
  *
  * ⭐ THE CAMERA AT BUILDING SCALE AND THE RIDE'S ARRIVAL ARE THE SCREEN's (Appendix B row 16, slice A,
  * card#7343); this file supplies the building's drawing surface, places each plate at the rect the
- * screen's scene gives it, shows the screen's camera on the plates as one transform, and wires the
+ * screen's scene gives it, shows the screen's camera on the plates as one transform — each plate's
+ * name counter-scaled from that same camera, so it is read at the page's body text size at every zoom
+ * (the F1 ruling, `building-scene.js`'s `LABEL_FONT`) — and wires the
  * wheel, the drag, the whole-building control and the ride to the screen's camera acts — none of which
  * renders. A ride's click moves the cab — the page's `cab`, set to the stop `ride()` names — glides
  * the camera to the plate (or cuts, under `prefers-reduced-motion`) and then ARRIVES: the page goes to
@@ -37,6 +39,7 @@ import { livePage } from '../wire/live-page.js';
 import { cameraView } from '../wire/camera-view.js';
 import { cameraGestures } from '../wire/camera-gestures.js';
 import { startLobbyScreen } from './lobby-screen.js';
+import { LABEL_FONT, labelScale } from './building-scene.js';
 
 /**
  * THE VIEWER'S OWN CAB POSITION, and it lives here because § 4.5 says navigation is never state:
@@ -99,12 +102,20 @@ function unscroll() {
  * One camera on the plates: the scene point at the camera's `x`, `y` at the surface's top-left, at its
  * zoom — `wire/camera.js`'s `view`, as a CSS transform. Nothing framed is no transform at all: the list
  * as it flows, which is how a lobby with no plate reads (§ 9 F17's rooms, or no install).
+ *
+ * ⛔ THE SAME CAMERA SETS THE PLATES' NAMES' COUNTER-SCALE (`building-scene.js`'s `labelScale()`, the F1
+ * ruling), as `--label-scale` on the plates, which every name's own transform reads. One camera, one
+ * write: a name is moved by the camera and never scaled by it, at fit, after a wheel or a drag, on
+ * every step of a glide and after a resize, because each of them is shown through this function.
  */
 function view(camera) {
     unscroll();
-    el('lobby-floors').style.transform = camera.bounds === null
+    const floors = el('lobby-floors');
+
+    floors.style.transform = camera.bounds === null
         ? ''
         : `scale(${camera.zoom}) translate(${-camera.x}px, ${-camera.y}px)`;
+    floors.style.setProperty('--label-scale', String(labelScale(camera)));
 }
 
 const { show, glideTo, current } = cameraView(view);
@@ -176,7 +187,8 @@ function renderBuilding(building, scene, unclaimed, riding) {
             top: `${rect.y}px`,
             width: `${rect.w}px`,
             height: `${rect.h}px`,
-            // Scene px, which the camera scales: a size the drawing's, carrying no fact.
+            // Scene px, which the camera scales: a size the drawing's, carrying no fact — for the
+            // summary, the rooms and the cab's word. The NAME is not in it (below).
             fontSize: '48px',
         });
         // § 4.1: "one row per floor, THE ROW BEING THE LINK to the floor".
@@ -187,6 +199,21 @@ function renderBuilding(building, scene, unclaimed, riding) {
         // § 4.6 (card#9273): the floor reads as its LABEL where the layout gives it one, else as
         // its key. The link above is the key either way.
         name.textContent = plate.name;
+        // ⛔ THE NAME IS A LABEL OVER ITS PLATE AT THE PAGE'S OWN BODY TEXT SIZE (the F1 ruling,
+        // `building-scene.js`'s `LABEL_FONT`): the camera moves it and `view()`'s `--label-scale` undoes
+        // the camera's zoom on it. It stands at the plate's bottom-left corner and grows up from it, so
+        // the summary, drawn from the plate's top, runs above it; it is ONE line, so two names can meet
+        // only where a plate on the screen is shorter than a line of body text. It stays inside the link
+        // and first in it, so the plate's accessible name and its click are what they were.
+        Object.assign(name.style, {
+            position: 'absolute',
+            left: '0',
+            bottom: '0',
+            fontSize: LABEL_FONT,
+            whiteSpace: 'nowrap',
+            transformOrigin: '0 100%',
+            transform: 'scale(var(--label-scale))',
+        });
 
         const summary = document.createElement('span');
         // § 2.1 row 5: the per-floor count is labelled as a count of the seats THE CLIENT HOLDS.

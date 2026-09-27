@@ -91,10 +91,13 @@
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
  *      "streams": [ {opened_at, open_fired, refused, ended_at, closed_at} ],
  *      "desk_renders": [ {at, trigger, frame, …} ], "floor_renders": [ {at, frame} ],
- *      "lobby_renders": [ {at, frame} ], "camera_acts": [ {at, act, before, after, glide_ms} ] — on the
- *      lobby, a ride's also carrying `ride: {cab, route, resolves_to}` — `resolves_to` the floor the floor
- *      page's `resolveRoute()` finds for the route over the building the lobby drew — or `null` when
- *      the ride was refused —
+ *      "lobby_renders": [ {at, frame, label} ], "camera_acts": [ {at, act, before, after, glide_ms} ] — on
+ *      the lobby, each act also carrying `label: {after, mid}`, and a ride's `ride: {cab, route, resolves_to}`
+ *      — `resolves_to` the floor the floor page's `resolveRoute()` finds for the route over the building the
+ *      lobby drew — or `null` when the ride was refused. A `label` is a plate name's size under a camera,
+ *      `{font, zoom, scale}` — `lobby/building-scene.js`'s `LABEL_FONT`, the camera's zoom and its
+ *      `labelScale()` — under the frame's camera, the camera an act leaves, and (`mid`, `null` for an act
+ *      that does not glide) the camera the page shows halfway through the act's glide —
  *      "animation_log": [ <§ 11 rows> ] }`
  *   and each record
  *   `{ "at", "label", "outcome", "seats", "event_log", "requests", "phase", "clock_offset_ms",
@@ -207,6 +210,16 @@ const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'sta
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
 const { healthCounters } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-model.js')).href);
+const { LABEL_FONT, labelScale } = await import(pathToFileURL(join(dir, '..', 'lobby', 'building-scene.js')).href);
+const { between } = await import(pathToFileURL(join(dir, 'camera.js')).href);
+
+/**
+ * A plate name's size under a lobby camera, as `lobby/main.js` draws it (Appendix B row 16, the F1 ruling):
+ * the name's font, the camera's zoom the plates are shown at, and the name's own counter-scale.
+ */
+function plateLabel(camera) {
+    return { font: LABEL_FONT, zoom: camera.zoom, scale: labelScale(camera) };
+}
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const furniture = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'furniture-box.js')).href);
@@ -651,7 +664,7 @@ async function replay(scenario) {
 
     if (lobbyRun !== null) {
         lobby = startLobbyScreen(client, buildingHttp.fetch, (frame) => {
-            lobbyRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)) });
+            lobbyRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)), label: plateLabel(frame.camera) });
         }, { surface: lobbyRun.surface ?? VIEWPORT_FLOOR, reduce: scenario.reduce === true });
     }
 
@@ -707,7 +720,12 @@ async function replay(scenario) {
                     throw new Error(`unknown lobby camera act ${act.act}`);
             }
 
-            cameraActs.push({ at: now, act, before, after: after ?? lobby.camera(), glide_ms: glide, ...(act.act === 'ride' ? { ride } : {}) });
+            const shown = after ?? lobby.camera();
+            // The plate names under the camera the act leaves, and — for a glide — under the camera the page
+            // shows halfway through it (`wire/camera-view.js` steps a glide through `camera.js`'s `between()`).
+            const label = { after: plateLabel(shown), mid: glide > 0 ? plateLabel(between(before, shown, 0.5)) : null };
+
+            cameraActs.push({ at: now, act, before, after: shown, glide_ms: glide, label, ...(act.act === 'ride' ? { ride } : {}) });
 
             return act.act;
         });
