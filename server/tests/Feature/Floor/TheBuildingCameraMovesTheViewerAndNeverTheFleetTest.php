@@ -4,6 +4,8 @@ namespace Tests\Feature\Floor;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Feature\Support\ModuleSpecifiers;
 use Tests\TestCase;
 
 /**
@@ -22,19 +24,31 @@ use Tests\TestCase;
  * `resolveRoute()` lands it over the building the lobby drew. Because a ride LEAVES the lobby, each is
  * followed by the page coming back from the back-forward cache (`return`) before the next act.
  *
- * ⛔ THE CLICK COMMITS THE RIDE (card#7343 r1 ruling, row 16), held over `building_ride_in_flight`: from
- * a ride's click until the page comes back, every frame says the ride is in flight (the page disables the
- * control on it), a second ride is refused, and the wheel, the drag and the whole-building control leave
- * the camera on the plate. The page's half — an interrupted glide cutting to the plate and arriving — is
- * `wire/camera-view.js`'s committed glide, held by `TheCameraWireIsOneForBothPagesTest`.
+ * ⛔ THE CLICK COMMITS THE RIDE, AND THE HOLD PROTECTS THE GLIDE (card#7343 r1 ruling; r2-4, the seat's
+ * ruling; row 16), held over `building_ride_in_flight`: from a ride's click until its glide arrives and
+ * the page asks for the route (`arrive`) — or the page comes back from the back-forward cache (`return`)
+ * — every frame says the ride is in flight (the page disables the control on it), a second ride is
+ * refused, and the wheel, a key's zoom, the drag, the keyboard's focus on a plate and the whole-building
+ * control leave the camera on the plate; after it the camera moves and the viewer rides again, whether
+ * or not the navigation completed. The page's half — an interrupted glide cutting to the plate and
+ * arriving — is `wire/camera-view.js`'s committed glide, held by `TheCameraWireIsOneForBothPagesTest`.
+ *
+ * ⛔ A FOCUSED PLATE OUT OF VIEW IS BROUGHT INTO IT (card#7343 r2-2), held over `building_focus`: the
+ * keyboard's focus on a plate not wholly in view glides the camera to it, and a focus on a plate already
+ * in view — every plate, at fit — or on a key no plate has moves nothing.
  *
  * ⛔ THE LOG CLAUSE HAS ITS TEETH IN THE IMPORT GRAPH, AND THIS SAYS WHY. The lobby holds no animation
  * log — it animates nothing (§ 6.5; § 4.1's plates carry no § 6.2 row) — so the harness's log is empty
  * with the camera acts and without them, and no plant inside the lobby can reach it. What makes *the
  * animation log gains no row* true is that no module the lobby page loads can write one or start
- * anything through the set; that is asserted over the page's whole import graph from `lobby/main.js`,
- * following every form a module loads another by (`DrivesAShippedClientModule::relativeImports()`), and
- * its RED plants the import in each of those forms. The replayed log comparison stays as the harness's own reading of the
+ * anything through the set; that is asserted over the page's whole import graph from `lobby/main.js`.
+ * The walk reads, in each module's code (its comments blanked), every string-literal specifier after
+ * `from`, after a bare `import` and inside `import(` — single quotes, double quotes, or a backtick with no
+ * `${` (`Tests\Feature\Support\ModuleSpecifiers`) — and follows each that starts `./` or `../`; every
+ * other specifier — an absolute path, a URL, a bare name, a template with `${`, an `import(` of anything
+ * but one literal — is a DEFECT it cannot follow, never one it skips (card#7343 r2-1). Its REDs plant the
+ * import in each form, each held to the reason it must red for: reaching the log or the set, or a
+ * specifier the walk cannot follow. The replayed log comparison stays as the harness's own reading of the
  * GREEN, beside the discriminating control § 11 names.
  *
  * ⚠ WHAT THIS DOES NOT HOLD: the plate drawn as the reference's section, the cab drawn and glided, the
@@ -54,6 +68,8 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     private const REDUCED = 'building_rides_reduced';
 
     private const IN_FLIGHT = 'building_ride_in_flight';
+
+    private const FOCUS = 'building_focus';
 
     private const SCREEN = '../lobby/lobby-screen.js';
 
@@ -141,6 +157,12 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         }
     }
 
+    /** card#7343 r2-2: a plate the keyboard focuses outside the view is brought into it, and one in view stays put. */
+    public function test_green_a_focused_plate_out_of_view_is_brought_into_it(): void
+    {
+        $this->assertSame([], $this->focusDefects($this->replay(self::FOCUS)));
+    }
+
     public function test_green_under_reduced_motion_the_cab_and_the_camera_cut_rather_than_glide(): void
     {
         $this->assertSame([], $this->glideDefects($this->replay(self::REDUCED), $this->replay(self::RUN)));
@@ -169,28 +191,61 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     /**
      * The logged ride: the lobby given the animation log to write a ride into, or the set to start one
-     * through — in every form a module can load another, each in both quotes, so the bound cannot be
-     * walked around by spelling the import differently.
+     * through — planted once per specifier form: after `from` (an import, a re-export), after a bare
+     * `import`, and inside `import(`, in single quotes, double quotes and a backtick; and as an absolute
+     * `/js/…` path, a URL, a bare name, a template with `${`, a variable and a concatenation. Each
+     * control is held to the REASON it reds: a relative literal reds because the walk followed it to
+     * the log or the set, and every other form reds because the walk could not follow it (card#7343
+     * r2-1: fail closed). A form outside these — `require()`, a `<script>` the module injects, a Worker
+     * — is not read by the walk; none is used anywhere in `server/public/js`.
+     *
+     * @return array<string, array{0: string, 1: string}>
      */
-    public function test_red_a_lobby_that_loads_the_animation_log_in_any_import_form(): void
+    public static function importForms(): array
     {
-        $forms = [
-            'a static import' => "import { createAnimationLog } from '../wire/animation-log.js';",
-            'a static import, double-quoted' => 'import { createAnimationLog } from "../wire/animation-log.js";',
-            'a re-export' => "export { createAnimationLog } from '../wire/animation-log.js';",
-            'a bare import' => "import '../wire/animation-set.js';",
-            'a bare import, double-quoted' => 'import "../wire/animation-set.js";',
-            'a dynamic import' => "const loadLog = () => import('../wire/animation-log.js');",
-            'a dynamic import, double-quoted' => 'const loadLog = () => import("../wire/animation-log.js");',
+        $reached = 'writes the animation log or starts the set';
+        $unfollowable = 'which this walk cannot follow';
+
+        return [
+            'a static import' => ["import { createAnimationLog } from '../wire/animation-log.js';", $reached],
+            'a static import, double-quoted' => ['import { createAnimationLog } from "../wire/animation-log.js";', $reached],
+            'a re-export' => ["export { createAnimationLog } from '../wire/animation-log.js';", $reached],
+            'a bare import' => ["import '../wire/animation-set.js';", $reached],
+            'a bare import, double-quoted' => ['import "../wire/animation-set.js";', $reached],
+            'a dynamic import' => ["const loadLog = () => import('../wire/animation-log.js');", $reached],
+            'a dynamic import, double-quoted' => ['const loadLog = () => import("../wire/animation-log.js");', $reached],
+            'a dynamic import, backtick' => ['const loadLog = () => import(`../wire/animation-log.js`);', $reached],
+            'an absolute path' => ["import { createAnimationLog } from '/js/wire/animation-log.js';", $unfollowable],
+            'an absolute path, dynamic' => ["const loadLog = () => import('/js/wire/animation-log.js');", $unfollowable],
+            'a URL' => ["import 'https://mezzanine.test/js/wire/animation-set.js';", $unfollowable],
+            'a bare name' => ["import 'animation-log';", $unfollowable],
+            'a template with ${}' => ['const loadLog = (m) => import(`../wire/${m}.js`);', $unfollowable],
+            'a dynamic import of a variable' => ['const loadLog = (m) => import(m);', $unfollowable],
+            'a dynamic import of a concatenation' => ["const loadLog = (m) => import('../wire/' + m);", $unfollowable],
         ];
+    }
 
-        foreach ($forms as $form => $line) {
-            $dir = $this->mutatedModules([self::SCREEN,
-                "import { buildingScene } from './building-scene.js';\n",
-                "import { buildingScene } from './building-scene.js';\n{$line}\n"]);
+    #[DataProvider('importForms')]
+    public function test_red_a_lobby_that_loads_the_animation_log_in_any_import_form(string $line, string $reason): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN,
+            "import { buildingScene } from './building-scene.js';\n",
+            "import { buildingScene } from './building-scene.js';\n{$line}\n"]);
 
-            $this->assertNotSame([], $this->graphDefects(dirname($dir)), "CONTROL (the lobby loading the log or the set by {$form}) did not bite");
-        }
+        $defects = $this->graphDefects(dirname($dir));
+
+        $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, $reason)),
+            "CONTROL (the lobby loading the log or the set by `{$line}`) did not bite for its reason ({$reason}): ".json_encode($defects));
+    }
+
+    /** A commented-out import is no import: the walk reads code, and documentation naming a module does not red. */
+    public function test_green_an_import_in_a_comment_is_not_read(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN,
+            "import { buildingScene } from './building-scene.js';\n",
+            "import { buildingScene } from './building-scene.js';\n// import '../wire/animation-log.js';\n/* import('/js/wire/animation-set.js') from `x` */\n"]);
+
+        $this->assertSame([], $this->graphDefects(dirname($dir)));
     }
 
     /** A ride that glides under `prefers-reduced-motion`. */
@@ -234,14 +289,54 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $this->assertNotSame([], $this->ridingDefects($this->replay(self::RUN, $dir)), 'CONTROL (a frame hiding the ride in flight) did not bite');
     }
 
-    /** A ride that stays in flight after the page came back — the lobby's ride control dead for good. */
-    public function test_red_a_ride_that_never_ends_when_the_page_comes_back(): void
+    /** A ride that stays in flight after its glide arrived — the lobby's controls dead for good (r2-4). */
+    public function test_red_a_ride_that_never_ends_when_its_glide_arrives(): void
     {
         $dir = $this->mutatedModules([self::SCREEN,
             "    returned() {\n        this.#riding = null;\n    }",
             "    returned() {\n    }"]);
 
-        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a ride never ended by the page coming back) did not bite');
+        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a ride never ended when its glide arrived) did not bite');
+    }
+
+    /** A key's or a zoom button's zoom during a ride moves the camera off the plate it is arriving at. */
+    public function test_red_a_key_zoom_that_moves_the_camera_during_a_ride(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN,
+            'this.#camera = this.#riding === null ? zoomStep(this.#camera, notches) : this.#camera;',
+            'this.#camera = zoomStep(this.#camera, notches);']);
+
+        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a key zoom moving the camera in flight) did not bite');
+    }
+
+    /** The keyboard's focus during a ride moves the camera off the plate it is arriving at. */
+    public function test_red_a_focus_that_moves_the_camera_during_a_ride(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN,
+            'if (plate === null || this.#riding !== null || within(from.view, plate.rect)) {',
+            'if (plate === null || within(from.view, plate.rect)) {']);
+
+        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a focus moving the camera in flight) did not bite');
+    }
+
+    /** A focused plate out of view that the camera never comes to. */
+    public function test_red_a_focus_that_never_brings_the_plate_into_view(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN,
+            '        this.#camera = focusOn(from, plate.rect);',
+            '        this.#camera = from;']);
+
+        $this->assertNotSame([], $this->focusDefects($this->replay(self::FOCUS, $dir)), 'CONTROL (a focus that never brings the plate into view) did not bite');
+    }
+
+    /** A focus that moves the camera to a plate already in view — tabbing through a building at fit zooms. */
+    public function test_red_a_focus_that_moves_a_plate_already_in_view(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN,
+            'if (plate === null || this.#riding !== null || within(from.view, plate.rect)) {',
+            'if (plate === null || this.#riding !== null) {']);
+
+        $this->assertNotSame([], $this->focusDefects($this->replay(self::FOCUS, $dir)), 'CONTROL (a focus moving a plate already in view) did not bite');
     }
 
     /** § 11's second RED at building scale: re-fit the building on every render. */
@@ -499,8 +594,8 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     }
 
     /**
-     * Whether each frame says a ride is in flight exactly while one is: from a ride's click to the page's
-     * return, taking the acts in order.
+     * Whether each frame says a ride is in flight exactly while one is: from a ride's click until its glide
+     * arrives or the page comes back, taking the acts in order.
      *
      * @return list<string>
      */
@@ -525,7 +620,7 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
                 if ($a['act']['act'] === 'ride' && $a['ride'] !== null) {
                     $riding = true;
-                } elseif ($a['act']['act'] === 'return') {
+                } elseif (in_array($a['act']['act'], ['arrive', 'return'], true)) {
                     $riding = false;
                 }
             }
@@ -546,9 +641,11 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     }
 
     /**
-     * The ruling over `building_ride_in_flight`: a ride's click commits it — a second ride is refused, and
-     * the wheel, the drag and the whole-building control leave the camera on the plate until the page
-     * comes back; after it, the viewer rides again.
+     * The rulings over `building_ride_in_flight`: a ride's click commits it — a second ride is refused, and
+     * the wheel, a key's zoom, the drag, the keyboard's focus on a plate and the whole-building control
+     * leave the camera on the plate while its glide is in flight (card#7343 r1) — and the hold protects the
+     * glide only: once the glide has arrived and the page has asked for the route, the controls work again
+     * and the viewer rides again (r2-4), whether or not the navigation completed.
      *
      * @return list<string>
      */
@@ -556,7 +653,9 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     {
         $defects = $this->ridingDefects($result);
         $inFlight = null;
+        $arrived = false;
         $interrupted = [];
+        $freed = [];
         $refused = 0;
         $taken = 0;
 
@@ -576,7 +675,8 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
                     $inFlight = $a;
                     $taken++;
                 }
-            } elseif ($act === 'return') {
+            } elseif (in_array($act, ['arrive', 'return'], true)) {
+                $arrived = $arrived || ($act === 'arrive' && $inFlight !== null);
                 $inFlight = null;
             } elseif ($inFlight !== null) {
                 $interrupted[] = $act;
@@ -588,17 +688,82 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
                         break;
                     }
                 }
+            } elseif ($arrived) {
+                $freed[] = $act;
+
+                if (abs($a['after']['zoom'] - $a['before']['zoom']) < self::EPSILON && abs($a['after']['x'] - $a['before']['x']) < self::EPSILON
+                    && abs($a['after']['y'] - $a['before']['y']) < self::EPSILON) {
+                    $defects[] = "the {$act} at {$a['at']} ms, after the ride's glide had arrived, moved nothing — the lobby is still held";
+                }
             }
         }
 
-        foreach (['wheel', 'drag', 'building'] as $act) {
+        foreach (['wheel', 'zoom', 'drag', 'focus', 'building'] as $act) {
             if (! in_array($act, $interrupted, true)) {
                 $defects[] = "the run never interrupts a ride with the {$act} — the clause measured nothing for it";
             }
         }
 
+        if (! $arrived || $freed === []) {
+            $defects[] = 'the run never lets a ride arrive and then moves the camera — the hold\'s end measured nothing';
+        }
+
         if ($refused === 0 || $taken < 2) {
-            $defects[] = 'the run refuses no second ride, or never rides again after the page came back';
+            $defects[] = 'the run refuses no second ride, or never rides again after the ride arrived';
+        }
+
+        return $defects;
+    }
+
+    /**
+     * Focus-into-view over `building_focus` (card#7343 r2-2): the keyboard's focus on a plate not wholly in
+     * view brings the camera to that plate — the plate whole in the view after it, by a glide — and a focus
+     * on a plate already in view, or on a key no drawn plate has, moves nothing. The run must hold both.
+     *
+     * @return list<string>
+     */
+    private function focusDefects(array $result): array
+    {
+        $built = $this->built($result);
+
+        if ($built === []) {
+            return ['the run draws no building'];
+        }
+
+        $rects = array_column($built[count($built) - 1]['scene']['plates'], 'rect', 'floor');
+        $defects = [];
+        $moved = 0;
+        $held = 0;
+
+        foreach ($this->acts($result, 'focus') as $a) {
+            $rect = $rects[$a['act']['floor']] ?? null;
+            $still = abs($a['after']['zoom'] - $a['before']['zoom']) < self::EPSILON
+                && abs($a['after']['x'] - $a['before']['x']) < self::EPSILON && abs($a['after']['y'] - $a['before']['y']) < self::EPSILON;
+
+            if ($rect === null || $this->contains($a['before']['view'], $rect)) {
+                $held++;
+
+                if (! $still || $a['glide_ms'] !== null) {
+                    $defects[] = "the focus on {$a['act']['floor']} at {$a['at']} ms moved the camera, though "
+                        .($rect === null ? 'no drawn plate has that key' : 'the plate was already wholly in view');
+                }
+
+                continue;
+            }
+
+            $moved++;
+
+            if (! $this->contains($a['after']['view'], $rect)) {
+                $defects[] = "the focus on {$a['act']['floor']} at {$a['at']} ms left that plate out of view";
+            }
+
+            if (! ($a['glide_ms'] > 0)) {
+                $defects[] = "the focus on {$a['act']['floor']} at {$a['at']} ms does not glide — without reduced motion a camera move glides";
+            }
+        }
+
+        if ($moved === 0 || $held === 0) {
+            $defects[] = 'the run has no focus out of view, or none in view — the clause read one side only';
         }
 
         return $defects;
@@ -675,8 +840,14 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     }
 
     /**
-     * Every module the lobby page loads, from `lobby/main.js` through every relative import — and each
-     * that is the animation log or the animation set, the only two ways to write a row or start one.
+     * Every module the lobby page loads, from `lobby/main.js` through every specifier each module names
+     * (`ModuleSpecifiers::of()`) — and a defect for each that is the animation log or the animation set,
+     * the only two ways to write a row or start one, and for each specifier the walk cannot follow.
+     *
+     * ⛔ AN UNFOLLOWABLE SPECIFIER IS A DEFECT, NEVER SKIPPED (card#7343 r2-1). An absolute `/js/…` path,
+     * a URL, a bare name, a template with `${` or an `import(` of a variable loads a module this walk
+     * cannot read, and a bound over "every module the page loads" that stepped over it would report
+     * clean over exactly the module it could not see.
      *
      * @return list<string>
      */
@@ -684,6 +855,7 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     {
         $seen = [];
         $queue = ['lobby/main.js'];
+        $defects = [];
 
         while ($queue !== []) {
             $file = array_shift($queue);
@@ -696,18 +868,25 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             $this->assertFileExists($path, "the lobby page imports {$file}, which is not there");
             $seen[$file] = true;
 
-            foreach ($this->relativeImports((string) file_get_contents($path)) as $import) {
-                $queue[] = $this->normalise(dirname($file).'/'.$import);
+            foreach (ModuleSpecifiers::of((string) file_get_contents($path)) as $s) {
+                if (! $s['followable']) {
+                    $defects[] = sprintf('%s loads %s by %s, which this walk cannot follow: %s',
+                        $file, $s['specifier'] === null ? 'a non-literal' : "`{$s['specifier']}`", $s['form'], $s['why']);
+
+                    continue;
+                }
+
+                $queue[] = $this->normalise(dirname($file).'/'.$s['specifier']);
             }
         }
 
         $this->assertContains('lobby/lobby-screen.js', array_keys($seen), 'the walk never reached the lobby screen — it read nothing');
         $this->assertContains('wire/camera.js', array_keys($seen), 'the walk never reached the camera — it read nothing');
 
-        return array_values(array_map(
+        return [...$defects, ...array_values(array_map(
             static fn (string $f): string => "the lobby page loads {$f}, which writes the animation log or starts the set",
             array_filter(array_keys($seen), static fn (string $f): bool => in_array(basename($f), ['animation-log.js', 'animation-set.js'], true)),
-        ));
+        ))];
     }
 
     private function normalise(string $path): string

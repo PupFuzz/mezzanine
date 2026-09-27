@@ -77,14 +77,15 @@ trait DrivesAShippedClientModule
     }
 
     /**
-     * Drive the client model over a payload and return what it rendered.
+     * Drive the client model over a payload and return what it rendered — through this rig's probe, or
+     * through `$script`, another probe over the same module directory.
      *
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    protected function probe(array $payload, ?string $moduleDir = null): array
+    protected function probe(array $payload, ?string $moduleDir = null, ?string $script = null): array
     {
-        [$status, $stdout, $stderr] = $this->runProbe($payload, $moduleDir);
+        [$status, $stdout, $stderr] = $this->runProbe($payload, $moduleDir, $script);
 
         $this->assertSame(0, $status, "the client probe failed:\n".$stderr);
 
@@ -101,12 +102,12 @@ trait DrivesAShippedClientModule
      * @param  array<string, mixed>  $payload
      * @return array{int, string, string}
      */
-    protected function runProbe(array $payload, ?string $moduleDir = null): array
+    protected function runProbe(array $payload, ?string $moduleDir = null, ?string $script = null): array
     {
         $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
 
         $process = proc_open(
-            ['node', $this->probeScript(), $moduleDir ?? $this->moduleDir()],
+            ['node', $script ?? $this->probeScript(), $moduleDir ?? $this->moduleDir()],
             $descriptors,
             $pipes,
         );
@@ -199,23 +200,25 @@ trait DrivesAShippedClientModule
     }
 
     /**
-     * Every relative module specifier a module's source loads, in every form a module can load one: a
-     * static `import … from` or `export … from`, a bare `import '…'`, and a dynamic `import('…')` — each
-     * in single or double quotes.
+     * The relative module specifiers a module's source loads — `ModuleSpecifiers::of()`'s FOLLOWABLE
+     * ones: a string literal starting `./` or `../` after `from`, after a bare `import` or inside
+     * `import(`, in single quotes, double quotes or a backtick with no `${`, comments not read.
      *
-     * ⛔ ONE EXTRACTOR FOR EVERY IMPORT WALK (card#7343 r1). It read only `from '…'` in single quotes, in
-     * two copies — the resolve check above and the lobby's import-graph bound — so a module loaded by a
-     * bare import, a dynamic one or a double-quoted specifier was outside both, and the graph bound
-     * could be walked around by spelling the import another way. A specifier that is not a literal
-     * (`import(specifier)`) names no file this can read, and is not matched.
+     * ⚠ THIS IS THE RESOLVE CHECK's POPULATION, AND IT IS NOT THE WHOLE OF WHAT A MODULE LOADS. A
+     * specifier this cannot follow — an absolute path, a URL, a bare name, a template with `${`, an
+     * `import(` of a variable (`floor/painter.js` loads the art modules that way, by the asset route) —
+     * is outside the question *does this relative import name a file that is there*, and is not
+     * returned here. A walk that must know EVERYTHING a module loads — the lobby's import-graph bound —
+     * reads `ModuleSpecifiers::of()` itself and treats each unfollowable specifier as a defect.
      *
      * @return list<string>
      */
     protected function relativeImports(string $source): array
     {
-        preg_match_all('/(?:\bfrom|\bimport)\s*\(?\s*([\'"])(\.\.?\/[A-Za-z0-9._\/-]+)\1/', $source, $m);
-
-        return $m[2];
+        return array_values(array_map(
+            static fn (array $s): string => (string) $s['specifier'],
+            array_filter(ModuleSpecifiers::of($source), static fn (array $s): bool => $s['followable']),
+        ));
     }
 
     /**

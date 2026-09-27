@@ -58,18 +58,25 @@
  *                                               //  another page) — or, for Appendix B row 16's camera
  *                                               //  at building scale, an object: `{ "surface":
  *                                               //  {width, height},` the building's drawing surface
- *                                               //  (absent, § 12's viewport floor), `"camera": [ {
- *                                               //  "at_ms": N, "act": "ride" } | { "act": "return" }
- *                                               //  | { "act": "building" } | { "act": "wheel", "x",
- *                                               //  "y", "delta_y" } | { "act": "drag", "dx", "dy" } |
- *                                               //  { "act": "resize", "width", "height" } ] }` — the
- *                                               //  ride control (the viewer's cab moved to the stop
- *                                               //  it returns and the lobby DRAWN, as the page draws
- *                                               //  it; nothing drained), the page coming back from
- *                                               //  the back-forward cache after a ride arrived (the
- *                                               //  screen's `returned()`, then drawn), the
- *                                               //  whole-building control, the wheel, the drag and a
- *                                               //  surface resize, none followed by a render
+ *                                               //  (absent, the harness's default 1280 × 800 —
+ *                                               //  `VIEWPORT_FLOOR`), `"camera": [ { "at_ms": N,
+ *                                               //  "act": "ride" } | { "act": "arrive" } | { "act":
+ *                                               //  "return" } | { "act": "building" } | { "act":
+ *                                               //  "wheel", "x", "y", "delta_y" } | { "act": "zoom",
+ *                                               //  "notches" } | { "act": "drag", "dx", "dy" } | {
+ *                                               //  "act": "focus", "floor" } | { "act": "resize",
+ *                                               //  "width", "height" } ] }` — the ride control (the
+ *                                               //  viewer's cab moved to the stop it returns and the
+ *                                               //  lobby DRAWN, as the page draws it; nothing
+ *                                               //  drained), the ride's glide arriving (the page
+ *                                               //  asks for the route, then the screen's
+ *                                               //  `returned()` and a draw), the page coming back
+ *                                               //  from the back-forward cache (`returned()`, then
+ *                                               //  drawn), the whole-building control, the wheel, a
+ *                                               //  key's or a zoom button's zoom, the drag (or an
+ *                                               //  arrow key's), the keyboard's focus on a plate
+ *                                               //  (`focusPlate()`) and a surface resize, none
+ *                                               //  followed by a render
  *      "reduce":     true                       // § 6.4's `prefers-reduced-motion: reduce`, as a
  *                                               //  page reads it — every § 6.2 row draws its
  *                                               //  reduced-motion form and logs `motion: false`
@@ -94,10 +101,11 @@
  *      "lobby_renders": [ {at, frame, label} ], "camera_acts": [ {at, act, before, after, glide_ms} ] — on
  *      the lobby, each act also carrying `label: {after, mid}`, and a ride's `ride: {cab, route, resolves_to}`
  *      — `resolves_to` the floor the floor page's `resolveRoute()` finds for the route over the building the
- *      lobby drew — or `null` when the ride was refused. A `label` is a plate name's size under a camera,
- *      `{font, zoom, scale}` — `lobby/building-scene.js`'s `LABEL_FONT`, the camera's zoom and its
- *      `labelScale()` — under the frame's camera, the camera an act leaves, and (`mid`, `null` for an act
- *      that does not glide) the camera the page shows halfway through the act's glide —
+ *      lobby drew — or `null` when the ride was refused. A `label` is the transform a plate's label is
+ *      shown under, `{zoom, scale}` — the camera's zoom (the plates' `scale(zoom)`) and its
+ *      `lobby/building-scene.js` `labelScale()` (the label's own counter-scale) — under the frame's camera,
+ *      the camera an act leaves, and (`mid`, `null` for an act that does not glide) the camera the page
+ *      shows halfway through the act's glide —
  *      "animation_log": [ <§ 11 rows> ] }`
  *   and each record
  *   `{ "at", "label", "outcome", "seats", "event_log", "requests", "phase", "clock_offset_ms",
@@ -210,15 +218,16 @@ const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'sta
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
 const { healthCounters } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-model.js')).href);
-const { LABEL_FONT, labelScale } = await import(pathToFileURL(join(dir, '..', 'lobby', 'building-scene.js')).href);
+const { labelScale } = await import(pathToFileURL(join(dir, '..', 'lobby', 'building-scene.js')).href);
 const { between } = await import(pathToFileURL(join(dir, 'camera.js')).href);
 
 /**
- * A plate name's size under a lobby camera, as `lobby/main.js` draws it (Appendix B row 16, the F1 ruling):
- * the name's font, the camera's zoom the plates are shown at, and the name's own counter-scale.
+ * The transform a plate's label is shown under on a lobby camera, as `lobby/main.js` shows it (Appendix
+ * B row 16, the operator's rulings): the camera's zoom the plates are shown at, and the label's own
+ * counter-scale. The label's font and what sits inside it are `lobby/plate-row.js`'s, read off the row.
  */
 function plateLabel(camera) {
-    return { font: LABEL_FONT, zoom: camera.zoom, scale: labelScale(camera) };
+    return { zoom: camera.zoom, scale: labelScale(camera) };
 }
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
@@ -700,7 +709,10 @@ async function replay(scenario) {
                         ride = { cab: ride.cab, route: ride.route, resolves_to: resolved?.floor?.floor ?? null };
                     }
                     break;
+                case 'arrive':
                 case 'return':
+                    // The ride's glide arrived and the page asked for its route, or the back-forward
+                    // cache restored the page: either way the page ends the ride and draws.
                     lobby.returned();
                     lobby.draw(cab);
                     break;
@@ -710,8 +722,14 @@ async function replay(scenario) {
                 case 'wheel':
                     lobby.wheel({ x: act.x, y: act.y }, { deltaY: act.delta_y, deltaMode: act.delta_mode ?? 0, ctrlKey: act.ctrl_key ?? false });
                     break;
+                case 'zoom':
+                    lobby.zoomStep(act.notches);
+                    break;
                 case 'drag':
                     lobby.drag(act.dx, act.dy);
+                    break;
+                case 'focus':
+                    glide = lobby.focusPlate(act.floor)?.glide_ms ?? null;
                     break;
                 case 'resize':
                     lobby.resize({ width: act.width, height: act.height });

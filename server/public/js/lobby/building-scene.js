@@ -4,8 +4,8 @@
  * `docs/design/FLOOR.md` Appendix B row 16, slice A (card#7343).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ GEOMETRY AND NOTHING ELSE. A plate here is its key and a rect, and its name's size on the screen is
- * `LABEL_FONT` under `labelScale()` (below); every fact the plate carries —
+ * ⛔ GEOMETRY AND NOTHING ELSE. A plate here is its key and a rect, and its text's size on the screen is
+ * `LABEL_FONT` under `labelScale()` (below; `plate-row.js` sets it); every fact the plate carries —
  * its name, its rooms, its summary, its link — is `building-model.js`'s `plates()`, which this module
  * reads for the stack position alone (`level`) and never re-derives. So the cross-section still reads
  * no field the table does not and recounts nothing (row 16; AT-D3-15 stays at row 9).
@@ -27,26 +27,27 @@ export const PLATE_W = 1600;
 export const PLATE_H = 1000;
 
 /**
- * ⛔ A PLATE'S NAME IS DRAWN AT A FIXED SCREEN SIZE, AND THAT SIZE IS THE PAGE'S OWN (operator ruling on
- * card#7343 F1, 2026-09-27, Appendix B row 16). The lobby exists to pick a floor, so its names are read
- * before any zoom: at whole-building fit a plate's text shrinks with the plate — a storey's proportions,
- * height-bound, so the more floors the smaller — and a name drawn in scene px would too. So the name is a
- * label over its plate that the camera MOVES and never SCALES: `LABEL_FONT` is the lobby page's base
+ * ⛔ A PLATE'S TEXT IS DRAWN AT A FIXED SCREEN SIZE, AND THAT SIZE IS THE PAGE'S OWN (operator rulings on
+ * card#7343, 2026-09-27, Appendix B row 16: F1 for the name, then r2 for its status line — the summary,
+ * the rooms and the cab's word). The lobby exists to pick a floor, so a plate is read before any zoom:
+ * at whole-building fit a plate shrinks — a storey's proportions, height-bound, so the more floors the
+ * smaller — and text drawn in scene px would shrink with it. So the name and the status line are one
+ * label over the plate that the camera MOVES and never SCALES: `LABEL_FONT` is the lobby page's base
  * font size — `1rem`, the root's size, which the page's body text is set in because the page ships no
  * stylesheet that sets another (`Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` reds if
  * one arrives) — and `labelScale()` is the counter-scale that undoes the camera's zoom on it. The
- * product is the one the page draws: a name at `LABEL_FONT`, under the camera's `scale(zoom)`, under its
- * own `scale(labelScale(camera))`, is `LABEL_FONT` on the screen at every zoom — at fit, after a wheel or
- * a drag, mid-glide and after a resize. No figure is chosen here: the size is the viewer's own base size.
+ * product is the one the page draws: text at `LABEL_FONT`, under the camera's `scale(zoom)`, under the
+ * label's own `scale(labelScale(camera))`, is `LABEL_FONT` on the screen at every zoom — at fit, after a
+ * wheel, a key or a drag, mid-glide and after a resize. No figure is chosen here: the size is the
+ * viewer's own base size.
  *
- * ⚠ § 12's zoom-to-read rule is the FLOOR's, and it does not carry over to a plate's name. The rest of a
- * plate's text — its summary, its rooms, the cab's word — is still drawn in scene px and scales with it.
+ * ⚠ § 12's zoom-to-read rule is the FLOOR's, and it does not carry over to a plate's text.
  */
 export const LABEL_FONT = '1rem';
 
 /**
- * The scale a plate's name is drawn at inside the camera's transform: the inverse of its zoom, so the
- * name's size on the screen is `LABEL_FONT` whatever the camera does (`LABEL_FONT`'s ruling).
+ * The scale a plate's label is drawn at inside the camera's transform: the inverse of its zoom, so the
+ * text's size on the screen is `LABEL_FONT` whatever the camera does (`LABEL_FONT`'s ruling).
  *
  * @param {{zoom: number}} camera a `wire/camera.js` camera — the one the plates are shown under
  */

@@ -1,7 +1,8 @@
 /**
  * The probe the PHP suite drives the camera's PAGE WIRE through — `wire/camera-view.js` (how a page
- * shows the camera: at once, or as a glide) and `wire/camera-gestures.js` (the wheel and the drag) —
- * under `node`, with a stubbed frame clock and a stand-in element. No DOM, no network.
+ * shows the camera: at once, or as a glide), `wire/camera-gestures.js` (the wheel and the drag) and
+ * `wire/camera-keys.js` (the keyboard and the zoom buttons) — under `node`, with a stubbed frame clock
+ * and stand-in elements. No DOM, no network.
  *
  * ⛔ IT IMPORTS THE SHIPPED MODULES AND RE-IMPLEMENTS NOTHING. The module directory is argv[2] — the
  * shipped `public/js/wire` or a MUTATED COPY of it — so every planted control re-mints its defect in
@@ -17,9 +18,13 @@
  *  · `{ "gestures": [event, …] }` — `cameraGestures()` on a stand-in element whose box is at
  *    (10, 20), with acts that record their arguments. Each event is `{ "type", …the event's own
  *    members }`, dispatched cancelable.
+ *  · `{ "keys": [event, …] }` — `cameraKeys()` on a stand-in drawing and two stand-in buttons, with
+ *    acts that record their arguments. Each event is `{ "type", …members }`, dispatched cancelable on
+ *    the drawing — or, with `"on": "zoom_in"` / `"zoom_out"`, on that button.
  * stdout — JSON: `{ "log": [ … ] }` — for `view`, each camera applied, named `from` / `to` / `other`
- * or `between`, and each `done` run, in order; for `gestures`, each act, show and pointer capture,
- * and for each event whether it was `default_prevented` and had its propagation stopped.
+ * or `between`, and each `done` run, in order; for `gestures` and `keys`, each act, show and pointer
+ * capture, and for each event whether it was `default_prevented`, had its propagation stopped, and the
+ * drawing's `user-select` after it (`user_select`, `""` when none is set).
  *
  * Any throw exits non-zero with the message on stderr.
  */
@@ -53,6 +58,7 @@ Object.defineProperty(globalThis, 'performance', { value: { now: () => clock }, 
 
 const { cameraView } = await import(pathToFileURL(join(dir, 'camera-view.js')).href);
 const { cameraGestures } = await import(pathToFileURL(join(dir, 'camera-gestures.js')).href);
+const { cameraKeys } = await import(pathToFileURL(join(dir, 'camera-keys.js')).href);
 const { createCamera, focusOn, frameOn } = await import(pathToFileURL(join(dir, 'camera.js')).href);
 
 const payload = JSON.parse(readFileSync(0, 'utf8'));
@@ -95,26 +101,41 @@ if (payload.view !== undefined) {
                 throw new Error(`unknown view op ${op.op}`);
         }
     }
-} else if (payload.gestures !== undefined) {
+} else if (payload.gestures !== undefined || payload.keys !== undefined) {
     const element = new EventTarget();
+    const targets = { drawing: element, zoom_in: new EventTarget(), zoom_out: new EventTarget() };
 
+    element.style = {};
     element.getBoundingClientRect = () => ({ left: 10, top: 20 });
     element.setPointerCapture = (id) => log.push({ capture: id });
 
-    cameraGestures(element, {
+    const acts = {
         wheel: (point, delta) => ({ act: 'wheel', point, delta }),
+        zoomStep: (notches) => ({ act: 'zoomStep', notches }),
         drag: (dx, dy) => ({ act: 'drag', dx, dy }),
-    }, (camera) => log.push({ show: camera }));
+    };
+    const show = (camera) => log.push({ show: camera });
 
-    for (const spec of payload.gestures) {
-        const { type, ...members } = spec;
+    if (payload.gestures !== undefined) {
+        cameraGestures(element, { wheel: acts.wheel, drag: acts.drag }, show);
+    } else {
+        cameraKeys(element, { zoomIn: targets.zoom_in, zoomOut: targets.zoom_out }, { zoomStep: acts.zoomStep, drag: acts.drag }, show);
+    }
+
+    for (const spec of payload.gestures ?? payload.keys) {
+        const { type, on = 'drawing', ...members } = spec;
         const event = Object.assign(new Event(type, { cancelable: true }), members);
 
-        element.dispatchEvent(event);
-        log.push({ event: type, default_prevented: event.defaultPrevented, propagation_stopped: event.cancelBubble });
+        targets[on].dispatchEvent(event);
+        log.push({
+            event: type,
+            default_prevented: event.defaultPrevented,
+            propagation_stopped: event.cancelBubble,
+            user_select: element.style.userSelect ?? '',
+        });
     }
 } else {
-    throw new Error('the payload names neither `view` nor `gestures`');
+    throw new Error('the payload names none of `view`, `gestures` and `keys`');
 }
 
 process.stdout.write(JSON.stringify({ log }));

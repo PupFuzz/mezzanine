@@ -1,0 +1,130 @@
+/**
+ * ONE PLATE OF THE CROSS-SECTION, AS ELEMENTS — the row `lobby/main.js` stands at its rect in the
+ * building's scene, and the text it carries. `docs/design/FLOOR.md § 4.1`, Appendix B row 16 (card#7343).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * ⛔ IT DECIDES NO FACT. Every string is `building-model.js`'s plate — its `name` (§ 4.6: the label,
+ * else the key), its `summary`, its `rooms`, its `href` — and whether the cab is here is the building's
+ * `elevator.at`, which the page passes in; where the plate stands is `building-scene.js`'s rect. What
+ * this module owns is how those are put into elements, and it is a module rather than lines of the
+ * page because that is the part the plate's text size depends on: the harness builds these very rows
+ * under `node` with a stand-in `document` (`Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`),
+ * so where the text sits under the camera's transform is read off the shipped construction rather than
+ * off a copy of it.
+ *
+ * ⛔ THE PLATE'S TEXT IS READ AT THE PAGE'S BODY TEXT SIZE — ITS NAME AND ITS STATUS LINE BOTH (operator
+ * rulings on card#7343, 2026-09-27: F1 for the name, r2 for the status line). The lobby exists to pick a
+ * floor, and at whole-building fit a plate is small — a storey's proportions, height-bound, so the more
+ * floors the smaller. So all of a plate's text is ONE label over the plate, which the camera MOVES and
+ * never SCALES: set at `building-scene.js`'s `LABEL_FONT` (the page's base size, `1rem`) under
+ * `scale(var(--label-scale))`, the counter-scale `lobby/main.js`'s `view()` writes from the camera it
+ * shows. Two lines, stacked, the name first: the name, then the status line — the summary, the rooms
+ * where the plate names them, and *the elevator is here* on the cab's plate. The label stands at the
+ * plate's bottom-left corner and grows up from it, so two plates' labels can meet only where a plate on
+ * the screen is shorter than those two lines.
+ *
+ * ⛔ THE PLATE'S ACCESSIBLE NAME IS WHAT IT WAS: the link carries the name, ` — ` and the summary, in
+ * that order, as it always did — the separator VISUALLY HIDDEN now that the two sit on two lines, and
+ * still read. The rooms and the cab's word stay outside the link, as they were.
+ */
+
+import { LABEL_FONT } from './building-scene.js';
+
+/**
+ * Text kept for assistive technology and never painted — the conventional clip, since the page ships
+ * no stylesheet to put a class in.
+ */
+const VISUALLY_HIDDEN = {
+    position: 'absolute',
+    width: '1px',
+    height: '1px',
+    margin: '-1px',
+    padding: '0',
+    border: '0',
+    overflow: 'hidden',
+    clipPath: 'inset(50%)',
+    whiteSpace: 'nowrap',
+};
+
+/**
+ * The plate's `<li>`, standing at `rect` in the building's scene px, carrying its label.
+ *
+ * @param {Document} doc the page's `document` — or the harness's stand-in
+ * @param {{floor: string, name: string, summary: string, href: string,
+ *          rooms: Array<{install_id: string, form: string, reported: boolean}>}} plate a
+ *        `building-model.js` plate
+ * @param {{x: number, y: number, w: number, h: number}} rect where `building-scene.js` stands it
+ * @param {boolean} here whether the elevator's cab is at this plate
+ */
+export function plateRow(doc, plate, rect, here) {
+    const row = doc.createElement('li');
+
+    // The key the keyboard's focus reports back to the screen (`lobby/main.js`'s focus-into-view).
+    row.dataset.floor = plate.floor;
+    Object.assign(row.style, {
+        position: 'absolute',
+        left: `${rect.x}px`,
+        top: `${rect.y}px`,
+        width: `${rect.w}px`,
+        height: `${rect.h}px`,
+    });
+
+    const label = doc.createElement('div');
+
+    Object.assign(label.style, {
+        position: 'absolute',
+        left: '0',
+        bottom: '0',
+        fontSize: LABEL_FONT,
+        whiteSpace: 'nowrap',
+        transformOrigin: '0 100%',
+        transform: 'scale(var(--label-scale))',
+    });
+
+    // § 4.1: "one row per floor, THE ROW BEING THE LINK to the floor".
+    const link = doc.createElement('a');
+
+    link.href = plate.href;
+
+    const name = doc.createElement('span');
+
+    // § 4.6 (card#9273): the floor reads as its LABEL where the layout gives it one, else as its key.
+    // The link is the key either way. A line of its own: the status line stands under it.
+    name.textContent = plate.name;
+    name.style.display = 'block';
+
+    const separator = doc.createElement('span');
+
+    separator.textContent = ' — ';
+    Object.assign(separator.style, VISUALLY_HIDDEN);
+
+    const summary = doc.createElement('span');
+
+    // § 2.1 row 5: the per-floor count is labelled as a count of the seats THE CLIENT HOLDS.
+    summary.textContent = plate.summary === '' ? 'no seats held' : plate.summary;
+    link.append(name, separator, summary);
+
+    const status = [];
+
+    if (plate.rooms.length > 1 || plate.rooms.some((room) => !room.reported)) {
+        const rooms = doc.createElement('span');
+
+        rooms.textContent = ' — rooms: ' + plate.rooms
+            .map((room) => `${room.install_id} (${room.form}${room.reported ? '' : ' — no seats reported for this room'})`)
+            .join(', ');
+        status.push(rooms);
+    }
+
+    if (here) {
+        // § 4.5: "Colour is never the only carrier of a fact" — so the cab is a word.
+        const cab = doc.createElement('span');
+
+        cab.textContent = ' — the elevator is here';
+        status.push(cab);
+    }
+
+    label.append(link, ...status);
+    row.append(label);
+
+    return row;
+}

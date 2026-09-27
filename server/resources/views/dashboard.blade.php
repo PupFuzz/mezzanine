@@ -81,14 +81,22 @@
             is the drawing surface: the plates stand in it where `public/js/lobby/building-scene.js`
             puts them, and the camera (`public/js/wire/camera.js`, held by `lobby-screen.js`) is one
             transform on `#lobby-floors` — every plate in view on entry and on the whole-building
-            control, one plate in view on a ride. Wheel to zoom, drag to pan. Nothing it does is state.
+            control, one plate in view on a ride. Wheel to zoom, drag to pan; it takes focus, so `+`/`-`
+            or `#lobby-zoom-in`/`#lobby-zoom-out` zoom about its centre and the arrow keys pan — the floor
+            drawing's keys and buttons, in its words (`public/js/wire/camera-keys.js` wires both pages) —
+            and a plate the keyboard's focus lands on outside the view is brought into it. Nothing it
+            does is state.
         --}}
-        <div id="lobby-building" style="height: 70vh; overflow: hidden; touch-action: none; cursor: grab">
+        <div id="lobby-building" role="group" aria-label="the building drawing" tabindex="0" aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight" style="height: 70vh; overflow: hidden; touch-action: none; cursor: grab">
             <ul id="lobby-floors" aria-labelledby="lobby-floors-heading" style="margin: 0; transform-origin: 0 0">
                 <li>waiting for the fleet snapshot</li>
             </ul>
         </div>
-        <button type="button" id="lobby-whole-building">Whole building</button>
+        <nav aria-label="the camera">
+            <button type="button" id="lobby-zoom-in">Zoom in</button>
+            <button type="button" id="lobby-zoom-out">Zoom out</button>
+            <button type="button" id="lobby-whole-building">Whole building</button>
+        </nav>
 
         {{--
             THE BUILDING LAYOUT — `docs/design/FLOOR.md § 4.6`, card#9267: a room is an install

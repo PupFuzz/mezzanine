@@ -30,24 +30,31 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 - **card#7343** — **The lobby's elevator ride now arrives at the floor, and the lobby has the floor's
   camera at building scale** (FLOOR.md Appendix B row 16, slice A). The lobby opens with every floor
   plate in view; the wheel zooms and a drag pans the building, and a *Whole building* control brings
-  every plate back into view. *Ride the elevator* moves the cab to the next floor, zooms the camera to
-  that floor's plate and then opens `/floor/{key}` — the floor's key, also on a floor the operator has
-  labelled, so the link does not change when a label does. The click commits the ride: the ride control
-  is disabled until the page has left, and a wheel, a drag, a window resize or the *Whole building*
-  control during the ride takes the viewer straight to the floor instead of stopping it halfway. Coming
-  back to the lobby with the browser's Back button enables the ride control again. Under
-  `prefers-reduced-motion` the ride and the whole-building control cut rather than glide. None of it is fleet state: no ride, zoom or pan
-  writes an animation-log row, and a render leaves the camera where the viewer put it. Each floor's
-  name is drawn over its plate at the page's own body text size and keeps that size at every zoom, so
-  the names can be read with the whole building in view however many floors it has; the rest of a
-  plate's text keeps its current rendering, and drawing each plate as the reference's section, with the
-  roof sign, ground lobby and sky, is slice B. The shared camera (`wire/camera.js`) gained `focusOn()`, a zoom to
-  one rect inside what is framed, and the floor page and the lobby share one glide through
-  `wire/camera-view.js` and one wheel-and-drag wiring through `wire/camera-gestures.js`: a drag that
-  ends over a desk or a floor plate is never a click on it. AT-D3-21's building half is
-  `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`, the shared wiring is
-  driven under `node` by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`, and the names' size
-  is held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`.
+  every plate back into view. The building takes keyboard focus like the floor's drawing: `+` and `-`
+  zoom, the arrow keys pan, and *Zoom in* and *Zoom out* buttons sit beside *Whole building* — which
+  is also how a touch screen zooms it. Tabbing to a floor plate that is out of view brings the camera
+  to it. *Ride the elevator* moves the cab to the next floor, zooms the camera to that floor's plate
+  and then opens `/floor/{key}` — the floor's key, also on a floor the operator has labelled, so the
+  link does not change when a label does. The click commits the ride: the ride control is disabled
+  until the camera has reached the floor, and a wheel, a key, a zoom button, a drag, a window resize
+  or the *Whole building* control during the ride takes the viewer straight to the floor instead of
+  stopping it halfway. Once the page has asked for the floor the controls work again, so a navigation
+  the browser cancels does not leave the lobby stuck; coming back with the browser's Back button
+  works too. Under `prefers-reduced-motion` every camera move cuts rather than glides. None of it is
+  fleet state: no ride, zoom or pan writes an animation-log row, and a render leaves the camera where
+  the viewer put it. Each plate's name, and under it its status line — the seat counts, the rooms and
+  *the elevator is here* — is drawn over the plate at the page's own body text size and keeps that
+  size at every zoom, so a plate can be read with the whole building in view; on a building tall
+  enough that a plate on the screen is shorter than those two lines, neighbouring plates' labels
+  overlap at that view. Drawing each plate as the reference's section, with the roof sign, ground
+  lobby and sky, is slice B. A press on either drawing starts no native drag and selects no text.
+  The shared camera (`wire/camera.js`) gained `focusOn()`, a zoom to one rect inside what is framed,
+  and the floor page and the lobby share one glide through `wire/camera-view.js`, one wheel-and-drag
+  wiring through `wire/camera-gestures.js` and one keyboard-and-zoom-button wiring through
+  `wire/camera-keys.js`: a drag that ends over a desk or a floor plate is never a click on it.
+  AT-D3-21's building half is `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`,
+  the shared wiring is driven under `node` by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`,
+  and the plates' text size is held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`.
 
 - **card#7341** — **Appendix B row 15 has landed, so the release gate on the room drawing is met.** Every
   exit of a held desk render in the animation log now records the cause FLOOR.md § 11's precedence

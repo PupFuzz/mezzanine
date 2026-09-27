@@ -31,11 +31,13 @@ use Tests\TestCase;
  * from that module — a painter nobody constructs addresses nothing and would pass vacuously.
  *
  * ⛔ AND TO THE CAMERA's (Appendix B row 15): the entry hands the screen the viewer's viewport and
- * wires the wheel and the drag through `wire/camera-gestures.js` (the lobby's too since card#7343 r1;
- * the gesture rules — `deltaMode` and `ctrlKey`, the primary button only, the end on a `pointercancel`
- * or a buttonless move — are held and planted by `TheCameraWireIsOneForBothPagesTest`, and here only
- * that the entry hands that module its drawing and the screen's acts, with no copy of its own), the
- * keyboard, the zoom buttons, the fit-floor control and a resize (which
+ * wires the wheel and the drag through `wire/camera-gestures.js` (the lobby's too since card#7343 r1)
+ * and the keyboard and the zoom buttons through `wire/camera-keys.js` (the lobby's too since card#7343
+ * r2-2) — the rules of both — `deltaMode` and `ctrlKey`, the primary button only, the end on a
+ * `pointercancel` or a buttonless move, which key zooms and which way an arrow pans — are held and
+ * planted by `TheCameraWireIsOneForBothPagesTest`, and here only that the entry hands those modules its
+ * drawing, its zoom buttons and the screen's acts, with no copy of its own — and the fit-floor control
+ * and a resize (which
  * re-shows the camera at once, stopping a glide) to the screen's camera acts — a camera no event
  * reaches is a floor that never moves and would pass AT-D3-21, which drives the acts directly. And the
  * drawing is reachable: it takes focus, and neither it nor the painter's `<svg>` is an image, whose
@@ -176,7 +178,7 @@ class FloorPageWiringTest extends TestCase
 
         // The gestures are wire/camera-gestures.js's, whose own defects TheCameraWireIsOneForBothPagesTest
         // plants and watches red; what can drift here is a page growing its own copy back beside it.
-        $copied = str_replace("drawing.addEventListener('keydown'", "drawing.addEventListener('pointermove', () => {});\ndrawing.addEventListener('keydown'", $js);
+        $copied = str_replace('cameraKeys(drawing, ', "drawing.addEventListener('pointermove', () => {});\ncameraKeys(drawing, ", $js);
         $this->assertNotSame($copied, $js);
         $this->assertArrayHasKey('gestures', $this->cameraDefects($copied),
             'CONTROL (the page wiring a pointer gesture of its own beside the shared module) did not bite');
@@ -186,15 +188,28 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('resize', $this->cameraDefects($stale),
             'CONTROL (a resize that leaves a glide running over the old surface) did not bite');
 
-        $keyless = str_replace("drawing.addEventListener('keydown'", "drawing.addEventListener('keyup-never'", $js);
+        // The keys and the zoom buttons are wire/camera-keys.js's since card#7343 r2-2, whose own defects —
+        // the ones this file planted in the inline copy — TheCameraWireIsOneForBothPagesTest plants and
+        // watches red; what can drift here is the entry's hand-off, and a copy growing back beside it.
+        $keyless = str_replace('cameraKeys(drawing, ', "cameraKeys(el('floor-desks'), ", $js);
         $this->assertNotSame($keyless, $js);
         $this->assertArrayHasKey('keyboard', $this->cameraDefects($keyless),
-            'CONTROL (a keyboard that never reaches the camera) did not bite');
+            'CONTROL (a keyboard handed an element that is not the drawing) did not bite');
 
-        $buttonless = str_replace("el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));", "el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.camera());", $js);
+        $buttonless = str_replace("zoomIn: el('floor-zoom-in')", "zoomIn: el('floor-fit')", $js);
         $this->assertNotSame($buttonless, $js);
         $this->assertArrayHasKey('buttons', $this->cameraDefects($buttonless),
             'CONTROL (a zoom button that never reaches the camera) did not bite');
+
+        foreach ([
+            'a keydown of its own' => "drawing.addEventListener('keydown', () => {});\n",
+            'a zoom button of its own' => "el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));\n});\n",
+        ] as $what => $copy) {
+            $keyCopy = str_replace('cameraKeys(drawing, ', $copy.'cameraKeys(drawing, ', $js);
+            $this->assertNotSame($keyCopy, $js);
+            $this->assertArrayHasKey('keys', $this->cameraDefects($keyCopy),
+                "CONTROL (the page wiring {$what} beside wire/camera-keys.js) did not bite");
+        }
 
         $painter = $this->painterJs();
         $imaged = str_replace("class: 'floor-scene', role: 'group'", "class: 'floor-scene', role: 'img'", $painter);
@@ -292,9 +307,8 @@ class FloorPageWiringTest extends TestCase
             'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel,'],
             'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag }, show);'],
             'resize' => ["    screen.resize(viewport(), surface());\n    show(screen.camera());\n"],
-            'keyboard' => ["drawing.addEventListener('keydown'", 'show(screen.zoomStep(KEY_ZOOM[event.key]))', 'show(screen.drag(...KEY_PAN[event.key]))'],
-            'buttons' => ["el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));",
-                "el('floor-zoom-out').addEventListener('click', () => {\n    show(screen.zoomStep(-1));"],
+            'keyboard' => ["import { cameraKeys } from '../wire/camera-keys.js';", 'cameraKeys(drawing, {'],
+            'buttons' => ["cameraKeys(drawing, { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out') }, { zoomStep: screen.zoomStep, drag: screen.drag }, show);"],
             'fit' => ["el('floor-fit').addEventListener('click'", 'screen.fitFloor()'],
         ];
 
@@ -306,9 +320,14 @@ class FloorPageWiringTest extends TestCase
             }
         }
 
-        // One gesture wiring for both pages (card#7343 r1): a pointer or wheel listener here is a copy.
-        if (preg_match("/addEventListener\\('(wheel|pointerdown|pointermove|pointerup|pointercancel)'/", $js, $m) === 1) {
+        // One gesture wiring for both pages (card#7343 r1): a pointer, wheel or drag listener here is a copy.
+        if (preg_match("/addEventListener\\('(wheel|pointerdown|pointermove|pointerup|pointercancel|dragstart)'/", $js, $m) === 1) {
             $defects['gestures'] = "the entry wires a {$m[1]} of its own beside wire/camera-gestures.js";
+        }
+
+        // And one key wiring (card#7343 r2-2): a keydown listener, or a zoom step of the entry's own, is a copy.
+        if (preg_match("/addEventListener\\('keydown'|\\.zoomStep\\(/", $js, $m) === 1) {
+            $defects['keys'] = "the entry wires `{$m[0]}` of its own beside wire/camera-keys.js";
         }
 
         return $defects;

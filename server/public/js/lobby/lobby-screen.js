@@ -48,11 +48,22 @@
  * the label (§ 4.4, card#9273) — which row 8 serves and which deep-links on a cold start like any other
  * visit to it.
  *
- * ⛔ THE CLICK COMMITS THE RIDE (card#7343 r1 ruling, Appendix B row 16). From `ride()` until the page
- * is left — or comes back from the back-forward cache, `returned()` — a ride is IN FLIGHT: the frame
- * says so (`riding`, which disables the ride control), a second `ride()` is refused, and the wheel, the
- * drag and the whole-building control leave the camera on the plate. The page's glide is committed
- * (`wire/camera-view.js`), so any of them cuts it to the plate and it arrives.
+ * ⛔ THE CLICK COMMITS THE RIDE, AND THE HOLD PROTECTS THE GLIDE (card#7343 r1 ruling; r2-4, the seat's
+ * ruling; Appendix B row 16). From `ride()` until the page's glide has arrived and the page has asked
+ * for the ride's route — `returned()`, which the page also calls when the back-forward cache restores
+ * it — a ride is IN FLIGHT: the frame says so (`riding`, which disables the ride control), a second
+ * `ride()` is refused, and the wheel, the keys, the zoom buttons, the drag, the whole-building control
+ * and a focused plate leave the camera on the plate. The page's glide is committed
+ * (`wire/camera-view.js`), so any of them cuts it to the plate and it arrives. Once it has arrived the
+ * hold is over: a navigation the browser then cancels or never completes leaves a lobby whose controls
+ * work, never one held for good.
+ *
+ * ⛔ A FOCUSED PLATE IS BROUGHT INTO VIEW (card#7343 r2-2). The plates are links the keyboard reaches;
+ * a plate the viewer tabs to outside the view is one they cannot see they are on, and the drawing's
+ * clip holds its scroll at the origin (`lobby/main.js`'s `unscroll()`), so the browser's own
+ * scroll-into-view cannot bring it. `focusPlate()` brings the camera to it — row 15's `focusOn()`, the
+ * ride's own zoom — and leaves a plate already wholly in view where it is, so tabbing through a building
+ * at fit moves nothing.
  *
  * ⛔ NAVIGATION IS NEVER STATE (§ 4.5, § 4.6's elevator row). A ride, a zoom and a pan draw nothing,
  * drain nothing and fetch nothing; this screen holds no animation log and loads nothing that could write
@@ -62,7 +73,7 @@
  */
 
 import { Building } from '../wire/building.js';
-import { createCamera, fit, focusOn, frameOn, glideMs, panBy, resize, unframe, wheel } from '../wire/camera.js';
+import { createCamera, fit, focusOn, frameOn, glideMs, panBy, resize, unframe, wheel, zoomStep } from '../wire/camera.js';
 import { failureRender } from '../wire/failure-render.js';
 import { statusStrip } from '../floor/status-strip.js';
 import { buildingModel } from './building-model.js';
@@ -83,7 +94,7 @@ export class LobbyScreen {
     /** `prefers-reduced-motion: reduce`, as the page reads it: a ride and the whole-building control cut. */
     #reduce;
 
-    /** The ride in flight, from its click until the page is left or comes back (`returned()`); `null` when none. */
+    /** The ride in flight, from its click until its glide has arrived (`returned()`); `null` when none. */
     #riding = null;
 
     /**
@@ -230,11 +241,33 @@ export class LobbyScreen {
     }
 
     /**
-     * The page is back from the back-forward cache: the ride that left it has arrived, and the viewer may
-     * ride again. The camera stays where the ride left it.
+     * The ride is over: its glide has arrived and the page has asked for its route, or the page is back
+     * from the back-forward cache. The viewer may ride — and move the camera — again; the camera stays
+     * where the ride left it.
      */
     returned() {
         this.#riding = null;
+    }
+
+    /**
+     * The keyboard's focus on a plate: the camera brought to that plate (`focusOn()`, the ride's zoom)
+     * when the plate is not wholly in view. `null` — and nothing moves — when it already is, when no
+     * drawn plate has that key, or while a ride is in flight. `glide_ms` as the whole-building control's.
+     *
+     * @param {string} floor the focused plate's key
+     * @returns {{from: object, to: object, glide_ms: number}|null}
+     */
+    focusPlate(floor) {
+        const plate = this.#drawn?.scene?.plates.find((p) => p.floor === floor) ?? null;
+        const from = this.#camera;
+
+        if (plate === null || this.#riding !== null || within(from.view, plate.rect)) {
+            return null;
+        }
+
+        this.#camera = focusOn(from, plate.rect);
+
+        return { from, to: this.#camera, glide_ms: glideMs(this.#reduce) };
     }
 
     /**
@@ -262,7 +295,17 @@ export class LobbyScreen {
         return this.#camera;
     }
 
-    /** A drag by `dx`, `dy` CSS px. Renders nothing, and moves nothing while a ride is in flight. */
+    /**
+     * `notches` wheel notches about the surface's centre — the keyboard's zoom and the zoom buttons'
+     * (`wire/camera.js`'s `zoomStep()`). Renders nothing, and moves nothing while a ride is in flight.
+     */
+    zoomStep(notches) {
+        this.#camera = this.#riding === null ? zoomStep(this.#camera, notches) : this.#camera;
+
+        return this.#camera;
+    }
+
+    /** A drag by `dx`, `dy` CSS px — the pointer's, or an arrow key's. Renders nothing, and moves nothing while a ride is in flight. */
     drag(dx, dy) {
         this.#camera = this.#riding === null ? panBy(this.#camera, dx, dy) : this.#camera;
 
@@ -278,6 +321,17 @@ export class LobbyScreen {
 }
 
 /**
+ * Whether `inner` lies wholly inside `outer`, both scene rects — to within a millionth of a scene px, so
+ * the arithmetic of a camera already on the plate never reads as a plate out of view.
+ */
+function within(outer, inner) {
+    const e = 1e-6;
+
+    return inner.x >= outer.x - e && inner.y >= outer.y - e
+        && inner.x + inner.w <= outer.x + outer.w + e && inner.y + inner.h <= outer.y + outer.h + e;
+}
+
+/**
  * The lobby, started — the shape its page and the harness both drive.
  *
  * @param {object} client a `FleetClient`
@@ -286,7 +340,8 @@ export class LobbyScreen {
  * @param {{surface: {width: number, height: number}, reduce?: boolean}} options `LobbyScreen`'s
  * @returns {{render: function(string|null): Promise<void>, refresh: function(): Promise<void>, draw: function(string|null): void,
  *            ride: function(): object|null, returned: function(): void, wholeBuilding: function(): object,
- *            wheel: Function, drag: Function, resize: Function, camera: function(): object}}
+ *            focusPlate: function(string): object|null, wheel: Function, zoomStep: Function, drag: Function,
+ *            resize: Function, camera: function(): object}}
  */
 export function startLobbyScreen(client, fetchImpl, draw, options) {
     const screen = new LobbyScreen(client, new Building(fetchImpl), options);
@@ -307,7 +362,9 @@ export function startLobbyScreen(client, fetchImpl, draw, options) {
         ride: () => screen.ride(),
         returned: () => screen.returned(),
         wholeBuilding: () => screen.wholeBuilding(),
+        focusPlate: (floor) => screen.focusPlate(floor),
         wheel: (point, delta) => screen.wheel(point, delta),
+        zoomStep: (notches) => screen.zoomStep(notches),
         drag: (dx, dy) => screen.drag(dx, dy),
         resize: (surface) => screen.resize(surface),
         camera: () => screen.camera,

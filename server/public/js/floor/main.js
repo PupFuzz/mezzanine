@@ -33,8 +33,8 @@
  *
  * ⛔ THE CAPABILITY FLOOR AND THE CAMERA ARE THE SCREEN's (Appendix B row 15, § 4.5); this file supplies
  * the viewport and the drawing surface's size, wires the wheel and the drag (through
- * `wire/camera-gestures.js`, which the lobby shares), the keyboard, the zoom buttons and the fit-floor
- * control to the screen's camera acts, and sets the drawing's view from the camera
+ * `wire/camera-gestures.js`) and the keyboard and the zoom buttons (through `wire/camera-keys.js`),
+ * both of which the lobby shares, and the fit-floor control to the screen's camera acts, and sets the drawing's view from the camera
  * each returns — a camera act renders nothing. Below § 12's viewport floor the frame is the list view
  * and this file paints the desk list — `paintDesks()`, over `deskListRow()` — and hides the drawing;
  * at or above it, the drawing under the camera and no list. The whole-building control is a link to
@@ -57,9 +57,9 @@ import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
 import { renderDrillDown } from '../drilldown/main.js';
 import { createPainter, loadArt, measurer } from './painter.js';
-import { PAN_STEP_PX } from '../wire/camera.js';
 import { cameraView } from '../wire/camera-view.js';
 import { cameraGestures } from '../wire/camera-gestures.js';
+import { cameraKeys } from '../wire/camera-keys.js';
 import { deskListRow } from '../desk/desk-list.js';
 
 /** § 12's *The floor page's animation-log retention* — the page's bound, and no one else's. */
@@ -354,37 +354,13 @@ el('floor-panel-more').addEventListener('click', () => {
 // Appendix B row 15: the viewer's camera. The wheel zooms about the cursor in proportion to its scroll
 // (a trackpad's small deltas and a pinch — a wheel event with `ctrlKey`, which the camera scales by its
 // `PINCH_GAIN` — through the same path) and a drag with the primary button pans, both wired by
-// `wire/camera-gestures.js`, the lobby's too; the keyboard and the zoom buttons zoom about the drawing's
-// centre and pan by a step. None renders — each sets the drawing's view from the camera the screen
-// hands back.
+// `wire/camera-gestures.js`; the keyboard and the zoom buttons zoom about the drawing's centre and pan
+// by a step, wired by `wire/camera-keys.js` — both modules the lobby's too. None renders — each sets
+// the drawing's view from the camera the screen hands back.
 const drawing = el('floor-drawing');
 
 cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag }, show);
-// The keyboard's camera, on the focusable drawing: `+`/`=` in and `-` out about its centre, the arrow
-// keys a pan by `PAN_STEP_PX` — the view moves the way the arrow points. A key with a modifier is the
-// browser's (Ctrl + is the page zoom) and passes through.
-const KEY_ZOOM = { '+': 1, '=': 1, '-': -1, '_': -1 };
-const KEY_PAN = { ArrowLeft: [PAN_STEP_PX, 0], ArrowRight: [-PAN_STEP_PX, 0], ArrowUp: [0, PAN_STEP_PX], ArrowDown: [0, -PAN_STEP_PX] };
-
-drawing.addEventListener('keydown', (event) => {
-    if (event.ctrlKey || event.metaKey || event.altKey) {
-        return;
-    }
-
-    if (event.key in KEY_ZOOM) {
-        event.preventDefault();
-        show(screen.zoomStep(KEY_ZOOM[event.key]));
-    } else if (event.key in KEY_PAN) {
-        event.preventDefault();
-        show(screen.drag(...KEY_PAN[event.key]));
-    }
-});
-el('floor-zoom-in').addEventListener('click', () => {
-    show(screen.zoomStep(1));
-});
-el('floor-zoom-out').addEventListener('click', () => {
-    show(screen.zoomStep(-1));
-});
+cameraKeys(drawing, { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out') }, { zoomStep: screen.zoomStep, drag: screen.drag }, show);
 el('floor-fit').addEventListener('click', () => {
     const { from, to, glide_ms: ms } = screen.fitFloor();
 

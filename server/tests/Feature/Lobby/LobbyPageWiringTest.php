@@ -32,6 +32,13 @@ use Tests\TestCase;
  * floor page's own construction (Appendix B row 8's ⛔, which binds every page holding a real
  * `EventSource`).
  *
+ * ⛔ AND THE BUILDING's CAMERA (Appendix B row 16, card#7343): that the page hands each viewer act to the
+ * lobby screen — the ride and its arrival, the whole-building control, the wheel and the drag through
+ * `wire/camera-gestures.js`, the keys and the zoom buttons through `wire/camera-keys.js`, the keyboard's
+ * focus on a plate — grows no copy of either shared module, stands `plate-row.js`'s rows and writes their
+ * counter-scale from the camera it shows; and that the building takes focus with the floor's keys and
+ * zoom buttons. Each as the source's own lines, each with a control.
+ *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that anything renders, lays out, or is legible. It is
  * evidence that every fact the model produces has an element with its name on it.
  */
@@ -131,10 +138,45 @@ class LobbyPageWiringTest extends TestCase
             'CONTROL (a ride control enabled in flight) did not bite');
 
         // CONTROL — a lobby the back-forward cache restores with its ride still in flight, the control dead.
-        $stranded = str_replace("        screen.returned();\n", '', $js);
+        $stranded = str_replace("    if (event.persisted) {\n        screen.returned();\n", "    if (event.persisted) {\n", $js);
         $this->assertNotSame($stranded, $js, "the return control's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('ride in flight', $this->cameraDefects($stranded),
             'CONTROL (a restored lobby whose ride never ends) did not bite');
+
+        // CONTROL — a ride whose glide arrived and whose hold never ended (card#7343 r2-4): a navigation
+        // the browser cancels leaves the lobby's controls dead.
+        $held = str_replace("        window.location.assign(ride.route);\n        screen.returned();\n", "        window.location.assign(ride.route);\n", $js);
+        $this->assertNotSame($held, $js, "the arrival-hold control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('ride in flight', $this->cameraDefects($held),
+            'CONTROL (a hold that outlives the glide) did not bite');
+
+        // CONTROL — the keys and the zoom buttons wired to nothing (card#7343 r2-2).
+        $keyless = str_replace('cameraKeys(building, ', "cameraKeys(el('lobby-floors'), ", $js);
+        $this->assertNotSame($keyless, $js, "the keys control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('keys', $this->cameraDefects($keyless),
+            'CONTROL (keys handed an element that is not the drawing) did not bite');
+
+        // CONTROL — the lobby growing its own key or zoom-button copy back beside the shared module.
+        foreach ([
+            'a keydown of its own' => "building.addEventListener('keydown', () => {});\n",
+            'a zoom button of its own' => "el('lobby-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));\n});\n",
+        ] as $what => $copy) {
+            $keyCopy = str_replace('cameraKeys(building, ', $copy.'cameraKeys(building, ', $js);
+            $this->assertNotSame($keyCopy, $js);
+            $this->assertArrayHasKey('key copy', $this->cameraDefects($keyCopy),
+                "CONTROL (the lobby wiring {$what} beside wire/camera-keys.js) did not bite");
+        }
+
+        // CONTROL — focus-into-view wired to nothing, and wired to a press too (card#7343 r2-2).
+        $unfocused = str_replace('const focus = screen.focusPlate(row.dataset.floor);', 'const focus = null;', $js);
+        $this->assertNotSame($unfocused, $js, "the focus control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('focus', $this->cameraDefects($unfocused),
+            'CONTROL (a focused plate the camera never comes to) did not bite');
+
+        $pressed = str_replace(" || !event.target.matches(':focus-visible')", '', $js);
+        $this->assertNotSame($pressed, $js, "the focus-visible control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('focus', $this->cameraDefects($pressed),
+            'CONTROL (a press on a plate moving the camera to it) did not bite');
 
         // CONTROL — the clipping surface left scrollable out from under the camera.
         $scrolled = str_replace("function view(camera) {\n    unscroll();", 'function view(camera) {', $js);
@@ -148,17 +190,86 @@ class LobbyPageWiringTest extends TestCase
         $this->assertArrayHasKey('gestures', $this->cameraDefects($copied),
             'CONTROL (a gesture copy beside wire/camera-gestures.js) did not bite');
 
-        // CONTROL — a plate name the camera scales: its counter-scale never written from the camera.
+        // CONTROL — a plate's text the camera scales: its counter-scale never written from the camera.
         $scaled = str_replace("    floors.style.setProperty('--label-scale', String(labelScale(camera)));\n", '', $js);
-        $this->assertNotSame($scaled, $js, "the plate-name control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('plate name', $this->cameraDefects($scaled),
-            'CONTROL (a plate name the camera scales) did not bite');
+        $this->assertNotSame($scaled, $js, "the plate-text control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('plate text', $this->cameraDefects($scaled),
+            'CONTROL (a plate text the camera scales) did not bite');
+
+        // CONTROL — a plate drawn by the page itself rather than by `plate-row.js`, which the size test builds.
+        $inline = str_replace('rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at));',
+            "rows.append(document.createElement('li'));", $js);
+        $this->assertNotSame($inline, $js, "the plate-row control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('plate text', $this->cameraDefects($inline),
+            'CONTROL (a plate not built by plate-row.js) did not bite');
 
         // CONTROL — the whole-building control wired to nothing.
         $unwired = str_replace('screen.wholeBuilding()', 'screen.camera()', $js);
         $this->assertNotSame($unwired, $js, "the whole-building control's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('whole-building', $this->cameraDefects($unwired),
             'CONTROL (a whole-building control that never reaches the camera) did not bite');
+    }
+
+    /**
+     * card#7343 r2-2: the building takes the keyboard's focus, as the floor's drawing does, and its zoom
+     * buttons are the floor's — the same keys named on the drawing and the same words on the buttons,
+     * read off the floor's own view rather than written here — and the drawing is never an image, whose
+     * children (the plates' links) would be presentational.
+     */
+    public function test_the_building_takes_focus_and_its_keys_and_zoom_buttons_are_the_floors(): void
+    {
+        $this->assertSame([], $this->keyMarkupDefects($this->lobbyPage()));
+
+        $html = $this->lobbyPage();
+
+        foreach ([
+            'a building the keyboard cannot reach' => [' tabindex="0" aria-keyshortcuts', ' aria-keyshortcuts'],
+            'a building drawn as an image' => ['id="lobby-building" role="group"', 'id="lobby-building" role="img"'],
+            'keys named that the floor does not name' => ['aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight" style="height: 70vh', 'aria-keyshortcuts="+ -" style="height: 70vh'],
+            'a zoom button in words of its own' => ['id="lobby-zoom-in">Zoom in<', 'id="lobby-zoom-in">Closer<'],
+        ] as $what => [$anchor, $replacement]) {
+            $planted = str_replace($anchor, $replacement, $html);
+            $this->assertNotSame($planted, $html, "the {$what} control's anchor is gone — it mutated nothing");
+            $this->assertNotSame([], $this->keyMarkupDefects($planted), "CONTROL ({$what}) did not bite");
+        }
+    }
+
+    /** @return list<string> */
+    private function keyMarkupDefects(string $html): array
+    {
+        $floor = (string) file_get_contents(resource_path('views/floor.blade.php'));
+        $defects = [];
+
+        if (preg_match('/<div id="lobby-building"([^>]*)>/', $html, $m) !== 1) {
+            return ['the page declares no #lobby-building'];
+        }
+
+        $this->assertSame(1, preg_match('/<div id="floor-drawing"([^>]*)>/', $floor, $f), "the floor's drawing did not parse");
+
+        if (! str_contains($m[1], 'tabindex="0"')) {
+            $defects[] = 'the building takes no keyboard focus, so its keys reach nothing';
+        }
+
+        if (str_contains($m[1], 'role="img"')) {
+            $defects[] = 'the building is an image — its plates\' links are presentational';
+        }
+
+        preg_match('/aria-keyshortcuts="([^"]*)"/', $f[1], $floorKeys);
+        preg_match('/aria-keyshortcuts="([^"]*)"/', $m[1], $keys);
+
+        if (($keys[1] ?? null) !== ($floorKeys[1] ?? false)) {
+            $defects[] = 'the building names keys the floor\'s drawing does not: '.json_encode($keys[1] ?? null);
+        }
+
+        foreach (['zoom-in', 'zoom-out'] as $button) {
+            $this->assertSame(1, preg_match('/<button type="button" id="floor-'.$button.'">([^<]*)<\/button>/', $floor, $fb), "the floor's {$button} did not parse");
+
+            if (preg_match('/<button type="button" id="lobby-'.$button.'">([^<]*)<\/button>/', $html, $lb) !== 1 || $lb[1] !== $fb[1]) {
+                $defects[] = "the lobby's {$button} button is not the floor's ({$fb[1]})";
+            }
+        }
+
+        return $defects;
     }
 
     /** ⛔ THE CONTROLS — each re-mints one of the two directions' defects. */
@@ -215,9 +326,11 @@ class LobbyPageWiringTest extends TestCase
                 'glideTo(ride.from, ride.to, ride.glide_ms, () => {', 'window.location.assign(ride.route);'],
             // The click commits the ride (card#7343 r1 ruling): the glide is committed, the control is
             // disabled while the frame says a ride is in flight, and the page coming back ends it.
+            // … and the hold protects the glide only (r2-4): arriving asks for the route, then ends the hold.
             'ride in flight' => ['}, { commit: true });', 'ride.disabled = building.elevator.next === null || riding;',
                 'renderBuilding(building, frame.scene, summary.unclaimed, frame.riding);',
-                "window.addEventListener('pageshow', (event) => {\n    if (event.persisted) {\n        screen.returned();"],
+                "window.addEventListener('pageshow', (event) => {\n    if (event.persisted) {\n        screen.returned();",
+                "        window.location.assign(ride.route);\n        screen.returned();\n        screen.draw(cab);\n    }, { commit: true });"],
             'whole-building' => ["el('lobby-whole-building').addEventListener('click'", 'screen.wholeBuilding()'],
             'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { wheel: screen.wheel,'],
             'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { wheel: screen.wheel, drag: screen.drag }, show);'],
@@ -229,10 +342,18 @@ class LobbyPageWiringTest extends TestCase
             // never scaled by it — `building-scene.js`'s font and counter-scale, written from the SAME camera
             // `view()` shows, and the name still first in the plate's link, so its accessible name is unchanged.
             // The size those make is `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`'s.
-            'plate name' => ["import { LABEL_FONT, labelScale } from './building-scene.js';",
+            // The r2 ruling extends it to the status line: both are `plate-row.js`'s one label, which the size
+            // test builds; what only this file can hold is that the page stands that module's rows.
+            'plate text' => ["import { labelScale } from './building-scene.js';", "import { plateRow } from './plate-row.js';",
                 "floors.style.setProperty('--label-scale', String(labelScale(camera)));",
-                'fontSize: LABEL_FONT,', "transform: 'scale(var(--label-scale))',",
-                "link.append(name, document.createTextNode(' — '), summary);"],
+                'rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at));'],
+            // The keyboard and the zoom buttons (card#7343 r2-2): the floor's, through the one module.
+            'keys' => ["import { cameraKeys } from '../wire/camera-keys.js';",
+                "cameraKeys(building, { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out') }, { zoomStep: screen.zoomStep, drag: screen.drag }, show);"],
+            // Focus-into-view (card#7343 r2-2): the keyboard's focus on a plate, and never a press's.
+            'focus' => ["building.addEventListener('focusin', (event) => {", "const row = event.target.closest('li[data-floor]');",
+                "if (row === null || !event.target.matches(':focus-visible')) {", 'const focus = screen.focusPlate(row.dataset.floor);',
+                'glideTo(focus.from, focus.to, focus.glide_ms);'],
             'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
         ];
 
@@ -244,9 +365,14 @@ class LobbyPageWiringTest extends TestCase
             }
         }
 
-        // One gesture wiring for both pages (card#7343 r1): a pointer or wheel listener here is a copy.
-        if (preg_match("/addEventListener\\('(wheel|pointerdown|pointermove|pointerup|pointercancel)'/", $js, $m) === 1) {
+        // One gesture wiring for both pages (card#7343 r1): a pointer, wheel or drag listener here is a copy.
+        if (preg_match("/addEventListener\\('(wheel|pointerdown|pointermove|pointerup|pointercancel|dragstart)'/", $js, $m) === 1) {
             $defects['gestures'] = "the lobby wires a {$m[1]} of its own beside wire/camera-gestures.js";
+        }
+
+        // And one key wiring (card#7343 r2-2): a keydown listener, or a zoom step of the page's own, is a copy.
+        if (preg_match("/addEventListener\\('keydown'|\\.zoomStep\\(/", $js, $m) === 1) {
+            $defects['key copy'] = "the lobby wires `{$m[0]}` of its own beside wire/camera-keys.js";
         }
 
         return $defects;

@@ -24,7 +24,19 @@
  *    because nothing inside the floor's drawing has a default click action (its desks are SVG groups
  *    with click handlers, `floor/painter.js`); taking the default action too changes nothing on the
  *    floor and closes the case on the lobby, so the two pages share the whole policy rather than a
- *    parameter that keeps them apart.
+ *    parameter that keeps them apart;
+ *  · A PRESS NEVER SELECTS TEXT AND NEVER DRAGS AN ELEMENT OUT (card#7343 r2-3). A pan started on a
+ *    plate's link was the browser's native link drag, and a pan across the plates selected their text.
+ *    So a `dragstart` inside the drawing is refused — a drag here pans, and nothing in either drawing
+ *    is meant to be dragged out of it — and from a primary press until the drag ends the drawing is
+ *    `user-select: none`. That property, rather than cancelling the `pointerdown`: `user-select` is the
+ *    one control whose whole meaning is *no selection starts here*, where cancelling a `pointerdown` is
+ *    specified to suppress the compatibility mouse events and would also cancel the press's focus on
+ *    the engines that tie focus to them — the plate a press lands on is a link the keyboard reaches
+ *    too. Scoped to the press, so the drawing's text is selectable as ever by any other means. On the
+ *    floor the two rules close the same two cases — its SVG `<text>` selected by a pan, and a
+ *    native drag wherever an engine would start one — and change nothing else it does: a press there still pans, clicks and
+ *    focuses exactly as before.
  *
  * Driven under `node` with a stand-in element by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.
  */
@@ -34,7 +46,7 @@ export const DRAG_SLOP_PX = 4;
 
 /**
  * @param {EventTarget & {getBoundingClientRect: function(): {left: number, top: number},
- *         setPointerCapture: function(number): void}} element the drawing the viewer points at
+ *         setPointerCapture: function(number): void, style: object}} element the drawing the viewer points at
  * @param {{wheel: function(object, object): object, drag: function(number, number): object}} acts the
  *        screen's camera acts, each returning the camera it leaves
  * @param {function(object): void} show puts a camera on the drawing (`camera-view.js`'s `show`)
@@ -42,6 +54,17 @@ export const DRAG_SLOP_PX = 4;
 export function cameraGestures(element, acts, show) {
     let drag = null;
     let dragged = false;
+
+    /** The press is over, however it ended: the drawing's text is selectable again. */
+    function release() {
+        drag = null;
+        element.style.userSelect = '';
+        element.style.webkitUserSelect = '';
+    }
+
+    element.addEventListener('dragstart', (event) => {
+        event.preventDefault();
+    });
 
     element.addEventListener('wheel', (event) => {
         event.preventDefault();
@@ -58,11 +81,13 @@ export function cameraGestures(element, acts, show) {
 
         dragged = false;
         drag = { x: event.clientX, y: event.clientY, moved: false };
+        element.style.userSelect = 'none';
+        element.style.webkitUserSelect = 'none';
     });
 
     element.addEventListener('pointermove', (event) => {
         if (drag === null || (event.buttons & 1) === 0) {
-            drag = null;
+            release();
 
             return;
         }
@@ -86,12 +111,12 @@ export function cameraGestures(element, acts, show) {
 
     element.addEventListener('pointerup', () => {
         dragged = drag?.moved === true;
-        drag = null;
+        release();
     });
 
     element.addEventListener('pointercancel', () => {
         dragged = false;
-        drag = null;
+        release();
     });
 
     element.addEventListener('click', (event) => {
