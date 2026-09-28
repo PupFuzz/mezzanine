@@ -125,8 +125,11 @@ reader that stopped at one of them would have reported the other's requirement a
 
 **A required context is the name of the CHECK RUN, never the workflow file's name** — so a second
 job added to an existing workflow file is a second, independently requirable context, and that is
-why two jobs in one file can be required separately. In this repo that name is the JOB id, because
-no job declares a `name:`. Derive that rather than trusting it — **the authoritative form is to ask
+why two jobs in one file can be required separately. In this repo that name is the JOB id for every
+job a pull_request runs, because none of them declares a `name:`, a matrix `strategy:` or a
+reusable-workflow `uses:` — the checked form of that is `bin/release-facts.py` § 1, which exits 1
+when one does. A job no pull_request runs can differ (the `audit` job in `dependency-ref-matrix.yml`
+has a matrix and `uses:`, so its contexts are not `audit`). Derive that rather than trusting it — **the authoritative form is to ask
 GitHub what it actually reported**, since those strings are the ones a ruleset matches:
 
 ```
@@ -143,7 +146,7 @@ status rather than the silence, and treat this as the offline approximation of t
 grep -n '^    name:' .github/workflows/*.yml
 case $? in
   0) echo 'a job DOES declare a name: — its context is that string, not the job id' ;;
-  1) echo 'no job declares a name: at THIS indentation — the context IS the job id' ;;
+  1) echo 'no job declares a name: at THIS indentation — for a job a pull_request runs, the context IS the job id (bin/release-facts.py § 1 also checks strategy:/uses:)' ;;
   *) echo 'THE READ DID NOT HAPPEN (no such path — wrong directory?) — this says nothing either way' ;;
 esac
 ```
