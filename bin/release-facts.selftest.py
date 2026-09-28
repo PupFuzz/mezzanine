@@ -148,6 +148,28 @@ def c_named_job(s):
     return f
 
 
+SCHED = ("on:\n  schedule:\n    - cron: '17 6 * * *'\n  workflow_dispatch:\njobs:\n  caller:\n    strategy:\n"
+         "      matrix:\n        ref: [main, dev]\n    uses: o/r/.github/workflows/callee.yml@dev\n")
+
+
+def c_context_scope(s):
+    """name:/strategy:/uses: is a finding on a job a pull_request runs, and only there. A schedule-only
+    reusable-workflow caller is printed and not counted; the SAME job with a pull_request trigger added
+    still reds — the control that the rule has not been switched off, only scoped."""
+    f, (rc, out, err) = [], run(s, workflows={**WORKFLOWS, "sched.yml": SCHED})
+    expect(f, "a schedule-only caller with strategy:/uses: exits 0", rc == 0)
+    expect(f, "… is not a CONTEXT != JOB ID finding", "CONTEXT != JOB ID" not in out)
+    expect(f, "… and is still printed, naming both keys",
+           "sched.yml: job `caller` declares `strategy:`" in out and "sched.yml: job `caller` declares `uses:`" in out)
+    wfs = {**WORKFLOWS, "sched.yml": SCHED.replace("on:\n", "on:\n  pull_request:\n", 1)}
+    f2, (rc, out, err) = [], run(s, workflows=wfs)
+    expect(f, "CONTROL: the same job with a pull_request trigger exits nonzero", rc == 1)
+    expect(f, "CONTROL: … naming strategy: and uses: as findings",
+           "✗ CONTEXT != JOB ID — sched.yml: job `caller` declares `strategy:`" in out
+           and "✗ CONTEXT != JOB ID — sched.yml: job `caller` declares `uses:`" in out)
+    return f + f2
+
+
 def c_flow_refused(s):
     wfs = {**WORKFLOWS, "flow.yml": "on:\n  pull_request: {paths: ['x/**']}\njobs:\n  hidden:\n    runs-on: x\n"}
     f, (rc, out, err) = [], run(s, workflows=wfs)
@@ -269,7 +291,8 @@ def c_no_floor_invented(s):
     return f
 
 
-CASES = {c.__name__: c for c in (c_positive, c_empty_200, c_403, c_404, c_named_job, c_flow_refused, c_paths_filtered,
+CASES = {c.__name__: c for c in (c_positive, c_empty_200, c_403, c_404, c_named_job, c_context_scope, c_flow_refused,
+                                  c_paths_filtered,
                                   c_null_bypass, c_no_token_leak, c_token_refused, c_transport_header_error,
                                   c_transport_http_exception, c_every_instance, c_no_floor_invented)}
 
@@ -279,6 +302,10 @@ MUTANTS = [
     ("c_403", "            required[b] = None\n", "            required[b] = set()\n"),  # failed read = "nothing required"
     ("c_404", 'cell = "UNKNOWN" if r is None else', 'cell = "no" if r is None else'),
     ("c_named_job", 'CONTEXT_KEYS = ("name", "strategy", "uses")', 'CONTEXT_KEYS = ("strategy", "uses")'),
+    # both directions: the scope removed (a schedule-only caller reds again) and widened to every job
+    # (a pull_request job's strategy:/uses: goes unreported)
+    ("c_context_scope", "            if trig is None:\n                exempt +=", "            if False:\n                exempt +="),
+    ("c_context_scope", "            if trig is None:\n                exempt +=", "            if True:\n                exempt +="),
     ("c_flow_refused", '                    if r[2].startswith("{"):', "                    if False:"),
     ("c_paths_filtered",'PR_FILTERS = ("paths", "paths-ignore", "branches", "branches-ignore")',
      'PR_FILTERS = ("paths-ignore", "branches-ignore")'),
