@@ -154,20 +154,27 @@ SCHED = ("on:\n  schedule:\n    - cron: '17 6 * * *'\n  workflow_dispatch:\njobs
 
 def c_context_scope(s):
     """name:/strategy:/uses: is a finding on a job a pull_request runs, and only there. A schedule-only
-    reusable-workflow caller is printed and not counted; the SAME job with a pull_request trigger added
-    still reds — the control that the rule has not been switched off, only scoped."""
+    reusable-workflow caller is printed and not counted; the SAME job with a pull_request trigger added,
+    bare or `paths:`-filtered, still reds — the controls that the rule has not been switched off, and that
+    its scope is every job a pull_request runs, not only the unfiltered ones."""
     f, (rc, out, err) = [], run(s, workflows={**WORKFLOWS, "sched.yml": SCHED})
     expect(f, "a schedule-only caller with strategy:/uses: exits 0", rc == 0)
     expect(f, "… is not a CONTEXT != JOB ID finding", "CONTEXT != JOB ID" not in out)
     expect(f, "… and is still printed, naming both keys",
            "sched.yml: job `caller` declares `strategy:`" in out and "sched.yml: job `caller` declares `uses:`" in out)
     wfs = {**WORKFLOWS, "sched.yml": SCHED.replace("on:\n", "on:\n  pull_request:\n", 1)}
-    f2, (rc, out, err) = [], run(s, workflows=wfs)
+    rc, out, err = run(s, workflows=wfs)
     expect(f, "CONTROL: the same job with a pull_request trigger exits nonzero", rc == 1)
     expect(f, "CONTROL: … naming strategy: and uses: as findings",
            "✗ CONTEXT != JOB ID — sched.yml: job `caller` declares `strategy:`" in out
            and "✗ CONTEXT != JOB ID — sched.yml: job `caller` declares `uses:`" in out)
-    return f + f2
+    wfs = {**WORKFLOWS, "sched.yml": SCHED.replace("on:\n", "on:\n  pull_request:\n    paths:\n      - 'x/**'\n", 1)}
+    rc, out, err = run(s, workflows=wfs)
+    expect(f, "CONTROL: the same job with a paths:-filtered pull_request trigger exits nonzero", rc == 1)
+    expect(f, "CONTROL: … naming strategy: and uses: as findings",
+           "✗ CONTEXT != JOB ID — sched.yml: job `caller` declares `strategy:`" in out
+           and "✗ CONTEXT != JOB ID — sched.yml: job `caller` declares `uses:`" in out)
+    return f
 
 
 def c_flow_refused(s):
@@ -306,6 +313,8 @@ MUTANTS = [
     # (a pull_request job's strategy:/uses: goes unreported)
     ("c_context_scope", "            if trig is None:\n                exempt +=", "            if False:\n                exempt +="),
     ("c_context_scope", "            if trig is None:\n                exempt +=", "            if True:\n                exempt +="),
+    # the scope narrowed to unfiltered pull_request jobs (a filtered one's strategy:/uses: goes unreported)
+    ("c_context_scope", "            if trig is None:\n                exempt +=", "            if not lanes[job]:\n                exempt +="),
     ("c_flow_refused", '                    if r[2].startswith("{"):', "                    if False:"),
     ("c_paths_filtered",'PR_FILTERS = ("paths", "paths-ignore", "branches", "branches-ignore")',
      'PR_FILTERS = ("paths-ignore", "branches-ignore")'),
