@@ -1,0 +1,607 @@
+# dependency-audit.yml — the CALLEE: one dependency-advisory audit of ONE ref, exposed as
+# a `workflow_call` so a single implementation serves every ref its caller matrixes over.
+#
+# ADOPT (per repo): copy to `.github/workflows/` on the INTEGRATION branch and set the
+# CUSTOMIZE zone (lockfile names, excluded directories, the pinned scanner install + its
+# invocation, the two fetchers, the source-2 control repo). Its caller is
+# `dependency-ref-matrix.yml`, which must live on the DEFAULT branch — see that file.
+# The pair is documented in the coord plugin's `docs/DEPENDENCY-AUDIT.md`.
+#
+# WHY THE CALLEE LIVES ON THE INTEGRATION BRANCH. The caller couples to it with
+# `uses: …@<integration>` rather than a SHA pin, so this implementation can be iterated
+# without a release. That coupling is deliberate and is argued in the caller.
+#
+# TWO SOURCES, AND NEITHER IS THE OTHER'S BACKUP:
+#   SOURCE 1  a lockfile scanner over the GLOBAL advisory feed (OSV/GHSA-derived).
+#   SOURCE 2  the `/repos/<dep-org>/<dep-repo>/security-advisories` endpoint, per production
+#             dependency, over the FULL production population resolved from the lockfiles at
+#             run time.
+# Source 2 exists because source 1 has a measured blind spot: on 2026-08-20 two repos
+# carried `league/commonmark 2.9.0`/`2.9.1`, four HIGH advisories (one XSS) applied, and the
+# global feed returned ZERO — the advisories were published only on the dependency's own
+# repository and never syndicated. `composer audit`, OSV dependency-review and Dependabot
+# alerts all read that one feed, so they are one source wearing three badges. A gate built on
+# source 1 alone would report clean over exactly the class it was installed to catch.
+#
+# EVERY FAILURE IS RED, WITH A NAMED REASON RECORDED — not merely printed. An unreadable source
+# is never a pass: "we saw nothing" and "there is nothing" are the two states this whole gate
+# exists to keep apart. ⛔ THE LIST OF REASONS IS NOT REPEATED HERE. The coord plugin's
+# `docs/DEPENDENCY-AUDIT.md` § "Failure semantics" owns it, per code; a copy in this header
+# would be one more thing to keep in step with the `err`/`fatal` calls below, and the copies
+# are what went false the last time this guarantee stopped being true.
+#
+# THE POPULATION STATEMENT IS EMITTED BEFORE ANY VERDICT and is exported as an OUTPUT, not
+# only logged. A caller's reporting job asserts on it, so a green over an empty population is
+# impossible to confuse with a green over audited lockfiles. (Anchor: a release's committed
+# `.vulns.json` read `0` and was taken as a statement about the shipped bundle; it was a
+# statement about the lockfile graph. An artifact that does not name its population lets the
+# reader supply one from expectation.)
+#
+# ⚠ RUNNER PREREQUISITE, AND IT CHANGED WITH THE PINS. This workflow requires an Actions runner
+#   that supports node24. Its action references are SHA pins taken at majors that declare
+#   `runs.using: node24`, where the v4/v5 majors this template shipped before declared node20 —
+#   so the pin that made these references immutable also moved the action runtime. Do NOT unpin
+#   to get node20 back: a tag can be repointed at any commit by whoever owns it and a SHA
+#   cannot, which is the whole reason for the pin. If your runner is too old for node24, pin
+#   instead to a SHA you have READ as node20 — read the object id itself, never infer the
+#   runtime from the major:
+#       curl -sS https://raw.githubusercontent.com/<owner>/<action>/<sha>/action.yml | grep using
+#   "the newest v4/v5 major" is NOT a rule, and this line said it was until it was measured:
+#   on 2026-09-21 `actions/checkout`'s newest v4 declares node20 but its newest v5 ALREADY
+#   declares node24, while `actions/setup-python`'s newest v5 still declares node20. The
+#   major does not answer the question; the object id does.
+name: Dependency advisory audit (callable)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: The git ref to audit (the caller passes one matrix leg per audited branch).
+        required: true
+        type: string
+    outputs:
+      population:
+        description: >-
+          One-line JSON naming what was actually read: manifest count, production package
+          count, resolved/unresolved counts, source-2 repo count. EMPTY or absent means the
+          audit did not reach its verdict — the caller's reporting job treats that as RED.
+        value: ${{ jobs.audit.outputs.population }}
+      findings:
+        description: Number of advisory findings across both sources (integer, as a string).
+        value: ${{ jobs.audit.outputs.findings }}
+      status:
+        description: '`audited` only when both sources completed; `error` otherwise.'
+        value: ${{ jobs.audit.outputs.status }}
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    outputs:
+      population: ${{ steps.audit.outputs.population }}
+      findings: ${{ steps.audit.outputs.findings }}
+      status: ${{ steps.audit.outputs.status }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false   # nothing here pushes; the audit reads other orgs' advisories with its own token
+      # CUSTOMIZE — install the lockfile scanner by a PINNED mechanism (a checksum-verified
+      # download, or your repo's existing install-pinned-binary composite). Never `latest`:
+      # a floating scanner changes this gate's verdict without its subject changing, which is
+      # the definition of a check that is not a check.
+      #
+      # MEZZANINE: osv-scanner, one release binary pinned by sha256. The digest was read on
+      # 2026-09-28 from the release's own `osv-scanner_SHA256SUMS` asset and agreed with the
+      # asset `digest` the GitHub releases API reports for the same file. To move the pin, change
+      # VERSION and SHA256 together from those two sources, then run the new binary once over
+      # `server/composer.lock` and `server/package-lock.json` and read the JSON: the audit reads
+      # only `.results[].packages[].vulnerabilities[]`, and a release that renames that shape
+      # reds here as SOURCE1-UNPARSEABLE rather than reading as clean. A download that fails, a
+      # digest that does not match, or a binary reporting another version FAILS this step.
+      - name: Install the lockfile scanner (pinned)
+        run: |
+          set -euo pipefail
+          VERSION=2.6.0
+          SHA256=ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108
+          dir="$RUNNER_TEMP/osv-scanner"; mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/osv-scanner" \
+            "https://github.com/google/osv-scanner/releases/download/v$VERSION/osv-scanner_linux_amd64"
+          printf '%s  %s\n' "$SHA256" "$dir/osv-scanner" | sha256sum -c -
+          chmod +x "$dir/osv-scanner"
+          reported="$("$dir/osv-scanner" --version | sed -n 's/^osv-scanner version: //p')"
+          [ "$reported" = "$VERSION" ] \
+            || { echo "::error::the pinned binary reports version '$reported', not $VERSION"; exit 1; }
+          echo "OSV_SCANNER_BIN=$dir/osv-scanner" >> "$GITHUB_ENV"
+      - name: Audit
+        id: audit
+        env:
+          AUDIT_REF: ${{ inputs.ref }}
+          # CUSTOMIZE if any production dependency lives in a PRIVATE repo: the default
+          # GITHUB_TOKEN reads public repository advisories, and returns 404 for a private one
+          # it has no access to — SOURCE2-FETCH-FAILED, not "clean". Swap in a PAT with read
+          # access to those repos if that applies.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # ============================ CUSTOMIZE ZONE ============================
+          # Everything in this zone is per-adopter. Everything BELOW the first `# ---`
+          # marker is the shared, parameter-free implementation the selftest extracts and
+          # runs verbatim (bin/dependency-audit.selftest.sh, run on every PR by dependency-audit-selftest.yml).
+          #
+          # LOCKFILE_NAMES — the lockfile BASENAMES this repo's ecosystems use. Discovery is
+          # by name over the checked-out tree at RUN TIME; there is deliberately no configured
+          # list of PATHS, so a lockfile added in a new directory is audited the day it lands.
+          LOCKFILE_NAMES="composer.lock package-lock.json"
+          # EXCLUDE_DIRS — path fragments pruned from discovery. `sboms` is not optional
+          # housekeeping: committed CycloneDX files ARE lockfile-shaped, the scanner reads them,
+          # and they describe historical releases that were characterised at the time. Measured
+          # on an adopting repo: scanning from the root produced 18 findings, ALL of them from
+          # committed SBOMs — a permanently red gate, which gets muted within a week. `vendor`
+          # and `node_modules` are installed trees, not this repo's declared dependencies.
+          EXCLUDE_DIRS="sboms vendor node_modules .git"
+          # ADVISORY_CONTROL_REPO — a PUBLIC repo, in an org that is not yours, KNOWN to carry
+          # at least one repository-level advisory. Source 2 probes it on every run: if the
+          # probe comes back empty, the token cannot read another org's advisories and every
+          # per-dependency query would return a silent, information-free empty. Fail there, not
+          # at the verdict. (Default: the package whose repo-level advisories motivated this
+          # gate; replace it if it ever stops carrying any.)
+          ADVISORY_CONTROL_REPO="thephpleague/commonmark"
+          OSV_SCANNER_BIN="${OSV_SCANNER_BIN:-osv-scanner}"
+          # CUSTOMIZE-BEGIN audit-seams
+          # The THREE network seams, isolated here so the implementation below is exercisable
+          # with zero network in the selftest. Contract for each: print the payload on stdout
+          # and exit 0, or exit non-zero. A non-zero exit is RED with a named reason — never an
+          # empty result. Adapt the flags to YOUR scanner version; the block below only reads
+          # the JSON, so a flag rename cannot silently change the verdict.
+          osv_scan() {            # "$@" = discovered lockfile paths -> scanner JSON on stdout
+            local args=() f
+            for f in "$@"; do args+=(--lockfile "$f"); done
+            "$OSV_SCANNER_BIN" --format json "${args[@]}"
+          }
+          advisory_fetch() {      # $1 = <owner>/<repo> -> JSON ARRAY of repository advisories
+            gh api "repos/$1/security-advisories" --paginate
+          }
+          registry_repo_lookup() {  # $1 = npm package name -> "<owner>/<repo>" or nothing
+            # npm lockfiles resolve to the REGISTRY, not to a source repo, so source 2 needs
+            # this hop. Packages whose metadata carries no usable GitHub repository field are
+            # COUNTED and REPORTED as unresolved in the population statement — never dropped.
+            curl -fsS --max-time 20 "https://registry.npmjs.org/${1//\//%2f}" \
+              | jq -r '(.repository.url // .repository // "")
+                       | tostring
+                       | capture("github\\.com[:/](?<o>[^/]+)/(?<r>[^/#?]+?)(\\.git)?$")
+                       | "\(.o)/\(.r)"' 2>/dev/null
+          }
+          # CUSTOMIZE-END audit-seams
+          # ========================== END CUSTOMIZE ZONE ==========================
+          # --- dep-audit-lib
+          WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+          mkdir -p "$WORK/adv"
+          AUDIT_ERRORS=0; FINDINGS=0; FATAL=0
+          ERROR_LINES=""; FINDING_LINES=""; ERROR_CODES=""
+          N_MANIFESTS=0; N_PACKAGES=0; N_RESOLVED=0; N_UNRESOLVED=0; N_REPOS=0; N_SUPPORTED=0
+          # ONE representation of each manifest list — newline-separated, the machine form.
+          # Every display and every JSON rendering is DERIVED from it below, so the statement
+          # and the exported output cannot disagree about what source 2 could read.
+          SUPPORTED_MANIFESTS=""; UNSUPPORTED_MANIFESTS=""
+          list_json() { printf '%s' "$1" | jq -Rsc 'split("\n") | map(select(length > 0))'; }
+          list_text() { printf '%s' "$1" | jq -Rsr 'split("\n") | map(select(length > 0)) | join(", ")'; }
+          MANIFESTS=(); PKG_TSV="$WORK/packages.tsv"; : > "$PKG_TSV"
+          err() {   # $1=code $2=detail. Recorded, printed, and RED at the verdict.
+            AUDIT_ERRORS=$((AUDIT_ERRORS + 1))
+            ERROR_LINES="${ERROR_LINES}  AUDIT-ERROR[$1] $2"$'\n'
+            ERROR_CODES="${ERROR_CODES}$1"$'\n'
+            printf 'AUDIT-ERROR[%s] %s\n' "$1" "$2" >&2
+          }
+          fatal() { err "$1" "$2"; FATAL=1; }   # cannot continue; the statement is still emitted
+          # Version comparison and range matching, as one jq program reused by every leg.
+          # It is deliberately CLOSED: a version it cannot parse and a range form it does not
+          # recognise both come back as an explicit marker the caller turns into a RED. There
+          # is no branch here that answers "not affected" out of ignorance.
+          #   Recognised range forms, all seen in live repository advisories:
+          #     ">= 1.5.0, < 2.10.0"   comma-separated operator constraints (>=,>,<=,<,=)
+          #     "2.3.0 - 2.8.1"        inclusive hyphen range
+          #     "0.15.6 through 0.18.0"  inclusive prose range (legacy repo-level advisories)
+          VMATCH_JQ='
+            def vparse:
+              . as $v
+              | ($v | sub("^[vV]"; "") | split("+")[0]) as $s
+              | ($s | split("-")) as $p
+              | ($p[0] | split(".")) as $core
+              | if ($core | length) == 0 or ($core | any(test("^[0-9]+$") | not))
+                then null
+                else {c: ($core | map(tonumber)), pre: (($p | length) > 1)}
+                end;
+            def pad($n): . + [range(0; $n - length) | 0];
+            def vcmp($a; $b):
+              ([($a.c | length), ($b.c | length)] | max) as $n
+              | ($a.c | pad($n)) as $x | ($b.c | pad($n)) as $y
+              | first(range(0; $n) | select($x[.] != $y[.]) | (if $x[.] < $y[.] then -1 else 1 end))
+                // (if $a.pre == $b.pre then 0 elif $a.pre then -1 else 1 end);
+            def satisfies($ver; $op; $bound):
+              vcmp($ver; $bound) as $c
+              | if   $op == ">="  then $c >= 0
+                elif $op == ">"   then $c >  0
+                elif $op == "<="  then $c <= 0
+                elif $op == "<"   then $c <  0
+                elif $op == "="   then $c == 0
+                else null end;
+            def in_range($ver; $range):
+              ($range | gsub("^\\s+|\\s+$"; "")) as $r
+              | (($r | capture("^(?<a>[^\\s]+)\\s+(?:-|through)\\s+(?<b>[^\\s]+)$")) // null) as $hy
+              | if $hy != null then
+                  ($hy.a | vparse) as $lo | ($hy.b | vparse) as $hi
+                  | if $lo == null or $hi == null then "RANGE-UNPARSEABLE"
+                    else (vcmp($ver; $lo) >= 0 and vcmp($ver; $hi) <= 0) end
+                else
+                  [ $r | split(",")[] | gsub("^\\s+|\\s+$"; "") | select(length > 0)
+                    | (capture("^(?<op>>=|<=|=|>|<)\\s*(?<v>.+)$") // null)
+                    | if . == null then "RANGE-UNPARSEABLE"
+                      else (.v | vparse) as $b
+                           | if $b == null then "RANGE-UNPARSEABLE"
+                             else satisfies($ver; .op; $b) end
+                      end ] as $parts
+                  | if ($parts | any(. == "RANGE-UNPARSEABLE")) then "RANGE-UNPARSEABLE"
+                    elif ($parts | length) == 0 then "RANGE-UNPARSEABLE"
+                    else ($parts | all(. == true)) end
+                end;
+            ($version | vparse) as $ver
+            | if $ver == null then [{verdict: "VERSION-UNPARSEABLE", ghsa: "", range: ""}]
+              else
+                [ .[]
+                  | select(.withdrawn_at == null)
+                  | . as $adv
+                  | (.vulnerabilities // [])[]
+                  | select((.package.ecosystem // "" | ascii_downcase) == ($ecosystem | ascii_downcase))
+                  | select((.package.name // "" | ascii_downcase) == ($package | ascii_downcase))
+                  | {r: (.vulnerable_version_range // "")} as $vr
+                  | in_range($ver; $vr.r) as $hit
+                  | select($hit == true or $hit == "RANGE-UNPARSEABLE")
+                  | {verdict: (if $hit == true then "AFFECTED" else "RANGE-UNPARSEABLE" end),
+                     ghsa: ($adv.ghsa_id // ""), severity: ($adv.severity // ""), range: $vr.r}
+                ]
+              end'
+          # --- end dep-audit-lib
+          # --- dep-audit-discovery
+          # Discovery is by lockfile NAME over the tree that is actually checked out, so the
+          # audited set is a property of the ref, not of a config file someone forgot to update.
+          discover_manifests() {
+            local name path skip frag
+            while IFS= read -r path; do
+              skip=0
+              for frag in $EXCLUDE_DIRS; do
+                case "/$path" in */"$frag"/*) skip=1; break;; esac
+              done
+              [ "$skip" = 1 ] || MANIFESTS+=("${path#./}")
+            done < <(
+              for name in $LOCKFILE_NAMES; do find . -type f -name "$name" -print; done | sort
+            )
+            N_MANIFESTS=${#MANIFESTS[@]}
+            if [ "$N_MANIFESTS" -eq 0 ]; then
+              # NOT a quiet green. A ref with no lockfiles is a ref this gate cannot say
+              # anything about, and "nothing to audit" is exactly what a green over nothing
+              # looks like from the runs list.
+              fatal NO-MANIFESTS "no lockfile named in LOCKFILE_NAMES ($LOCKFILE_NAMES) exists on ref '${AUDIT_REF:-?}' — this run audited NOTHING"
+            fi
+          }
+          # --- end dep-audit-discovery
+          # --- dep-audit-source1
+          # Source 1 is handed the DISCOVERED lockfiles explicitly; it is never pointed at the
+          # repo root. That is what keeps committed SBOM directories out of it, independently of
+          # whichever exclusion flag the current scanner version spells.
+          run_source1() {
+            local rc=0
+            osv_scan "${MANIFESTS[@]}" > "$WORK/osv.json" 2> "$WORK/osv.err" || rc=$?
+            if ! jq -e 'has("results")' "$WORK/osv.json" >/dev/null 2>&1; then
+              # A scanner that errored and a scanner that found nothing are different states,
+              # and only one of them is evidence. No parseable results object ⇒ RED.
+              fatal SOURCE1-UNPARSEABLE "scanner exited $rc with no parseable results object; stderr: $(tr '\n' ' ' < "$WORK/osv.err" | cut -c1-300)"
+              return 0
+            fi
+            local n
+            n=$(jq '[.results[]?.packages[]?.vulnerabilities[]?] | length' "$WORK/osv.json") \
+              || { fatal SOURCE1-UNPARSEABLE "results object present but not countable"; return 0; }
+            # A count that is not a NUMBER is not a zero. Unguarded, `$((FINDINGS + ))` and
+            # `[ "" -gt 0 ]` are shell ERRORS — and `set -e` is exempt inside `if`, so the
+            # findings would be dropped on the quiet.
+            if ! [[ $n =~ ^[0-9]+$ ]]; then
+              fatal SOURCE1-UNPARSEABLE "the results object is present but its vulnerability count came back as '$n', not a number"
+              return 0
+            fi
+            FINDINGS=$((FINDINGS + n))
+            if [ "$n" -gt 0 ]; then
+              FINDING_LINES="${FINDING_LINES}$(jq -r '.results[]?.packages[]? as $p | $p.vulnerabilities[]? | "  SOURCE1 \($p.package.ecosystem):\($p.package.name)@\($p.package.version) \(.id)"' "$WORK/osv.json")"$'\n'
+            fi
+          }
+          # --- end dep-audit-source1
+          # --- dep-audit-source2
+          # The population is the FULL production dependency set, transitive included, re-derived
+          # from the lockfiles every run. It is deliberately NOT scoped to direct dependencies:
+          # measured on two repos, the package carrying the four HIGH repo-level advisories was
+          # TRANSITIVE in both, so a direct-only scope would have excluded this gate's own
+          # known-positive control. Cost was measured before the scope was dropped, not assumed.
+          read_rows() {   # $1=manifest $2=jq program -> appends TSV rows; 1 = fatal, already recorded
+            local rc=0
+            jq -er "$2" "$1" >> "$PKG_TSV" || rc=$?
+            case "$rc" in
+              0) return 0 ;;
+              4) return 0 ;;   # jq -e: NO output. The lockfile PARSED and declares no production
+                               # packages — a different state from "could not be read", and the
+                               # zero-package check below is what names it.
+              *) fatal SOURCE2-LOCKFILE-UNPARSEABLE "$1 could not be read as a lockfile (reader exit $rc)"; return 1 ;;
+            esac
+          }
+          resolve_population() {
+            local m base
+            for m in "${MANIFESTS[@]}"; do
+              base="$(basename "$m")"
+              case "$base" in
+                composer.lock)
+                  read_rows "$m" '.packages
+                          | .[]
+                          | [ "composer", .name, .version,
+                              ((.source.url // "")
+                               | capture("github\\.com[:/](?<o>[^/]+)/(?<r>[^/#?]+?)(\\.git)?$")
+                               | "\(.o)/\(.r)") // "" ]
+                          | @tsv' || return 0
+                  ;;
+                package-lock.json)
+                  read_rows "$m" 'if has("packages") then
+                            .packages | to_entries[]
+                            | select(.key != "") | select(.value.dev != true)
+                            | select(.value.link != true)
+                            | [ "npm",
+                                (.value.name // (.key | sub("^.*node_modules/"; ""))),
+                                (.value.version // ""), "" ]
+                          elif has("dependencies") then
+                            .dependencies | to_entries[]
+                            | select(.value.dev != true)
+                            | [ "npm", .key, (.value.version // ""), "" ]
+                          else error("neither .packages nor .dependencies") end
+                          | @tsv' || return 0
+                  ;;
+                *)
+                  # Named, not dropped: source 2 has no resolver for this ecosystem, so its
+                  # packages are covered by source 1 only — which the statement must say.
+                  UNSUPPORTED_MANIFESTS="${UNSUPPORTED_MANIFESTS}$m"$'\n'
+                  continue
+                  ;;
+              esac
+              SUPPORTED_MANIFESTS="${SUPPORTED_MANIFESTS}$m"$'\n'
+            done
+            N_SUPPORTED="$(printf '%s' "$SUPPORTED_MANIFESTS" | grep -c . || true)"
+            N_PACKAGES=$(wc -l < "$PKG_TSV" | tr -d ' ')
+            if [ "$N_SUPPORTED" -gt 0 ] && [ "$N_PACKAGES" -eq 0 ]; then
+              # A lockfile source 2 CAN read, that yields no production packages, is a lockfile
+              # this audit did not actually read — not a dependency-free repo. Scoped to SUPPORTED
+              # manifests on purpose: a repo whose only lockfiles belong to an ecosystem source 2
+              # has no resolver for is covered by source 1, and a permanent red there would be a
+              # decoration in the same way a never-failing gate is.
+              fatal NO-PACKAGES "$N_SUPPORTED lockfile(s) source 2 can read produced ZERO production packages — the lockfile was not read, it is not a repo without dependencies"
+              return 0
+            fi
+            local eco name version repo npm_total=0 npm_ok=0
+            : > "$WORK/resolved.tsv"
+            while IFS=$'\t' read -r eco name version repo; do
+              [ -n "$name" ] || continue
+              if [ "$eco" = npm ]; then
+                npm_total=$((npm_total + 1))
+                repo="$(registry_repo_lookup "$name" < /dev/null || true)"
+                repo="$(printf '%s' "$repo" | head -n 1 | tr -d '[:space:]')"
+                [ -n "$repo" ] && npm_ok=$((npm_ok + 1))
+              fi
+              # ONE validation point for every candidate repo token, whichever source produced
+              # it — a lockfile field, or an adopter-replaced registry seam. It is deliberately
+              # NOT done by tightening the extracting regexes: a stricter capture makes a
+              # crafted token simply fail to match, and the package then joins the UNRESOLVED
+              # pile indistinguishably from one that never declared a repository — silently
+              # shrinking source 2's population, which is the exact class this gate exists to
+              # prevent. A token that does not conform is NAMED and RED here, and only then
+              # dropped from the resolved set. (Nothing eval's this string — checked — so this
+              # is a population-integrity check, not an injection fix.)
+              if [ -n "$repo" ] && ! [[ $repo =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+                err SOURCE2-REPO-TOKEN-INVALID "$eco:$name@$version resolved to '$repo', which is not a <owner>/<repo> of [A-Za-z0-9._-]+ — refusing to build an advisory API path from it"
+                repo=""
+              fi
+              if [ -n "$repo" ]; then
+                N_RESOLVED=$((N_RESOLVED + 1))
+                printf '%s\t%s\t%s\t%s\n' "$eco" "$name" "$version" "$repo" >> "$WORK/resolved.tsv"
+              else
+                N_UNRESOLVED=$((N_UNRESOLVED + 1))
+                printf '%s\t%s\t%s\n' "$eco" "$name" "$version" >> "$WORK/unresolved.tsv"
+              fi
+            done < "$PKG_TSV"
+            if [ "$npm_total" -gt 0 ] && [ "$npm_ok" -eq 0 ]; then
+              # Some npm packages legitimately carry no repository field; ALL of them failing is
+              # the registry hop being broken, which would shrink source 2's population silently.
+              fatal SOURCE2-NPM-RESOLUTION-EMPTY "$npm_total npm package(s) and NOT ONE resolved to a repository — the registry hop is failing, not the packages"
+            fi
+            N_REPOS=$(cut -f4 "$WORK/resolved.tsv" 2>/dev/null | sort -u | grep -c . || true)
+          }
+          # ⛔ FETCHES, RECORDS NOTHING, AND IS NEVER COMMAND-SUBSTITUTED. It reports its outcome
+          # through ADV_CACHE / ADV_FAIL_CODE / ADV_FAIL_DETAIL and its exit status; the CALLER
+          # raises the error, in the parent shell. The previous shape returned the payload on
+          # STDOUT and called `err` itself, which forced every call site into `$(...)` — so the
+          # AUDIT_ERRORS increment happened in a SUBSHELL and died with it, while the printf
+          # still reached the log. One call site was covered by a parent-side `fatal`; the other
+          # was not, and a failed per-dependency advisory read exported `"errors":0` and exited
+          # 0 with VERDICT: GREEN. Keeping the payload in a FILE is what removes the reason to
+          # command-substitute this at all: there is no output to capture.
+          ADV_CACHE=""; ADV_FAIL_CODE=""; ADV_FAIL_DETAIL=""
+          fetch_advisories() {   # $1=<owner>/<repo>; caches per run. 0 => ADV_CACHE is the payload.
+            local repo="$1" cache="$WORK/adv/$(printf '%s' "$1" | tr '/' '@').json"
+            ADV_CACHE=""; ADV_FAIL_CODE=""; ADV_FAIL_DETAIL=""
+            if [ ! -f "$cache" ]; then
+              if ! advisory_fetch "$repo" > "$cache" 2>"$WORK/adv.err" < /dev/null; then
+                ADV_FAIL_CODE=SOURCE2-FETCH-FAILED
+                ADV_FAIL_DETAIL="advisory read for '$repo' exited non-zero: $(tr '\n' ' ' < "$WORK/adv.err" | cut -c1-200)"
+                rm -f "$cache"; return 1
+              fi
+              # A response that is not a JSON ARRAY is an error payload (rate limit, 403, an API
+              # change), and jq would happily read it as "no advisories".
+              if ! jq -e 'type == "array"' "$cache" >/dev/null 2>&1; then
+                ADV_FAIL_CODE=SOURCE2-UNPARSEABLE
+                ADV_FAIL_DETAIL="advisory read for '$repo' returned a non-array payload: $(head -c 200 "$cache" | tr '\n' ' ')"
+                rm -f "$cache"; return 1
+              fi
+            fi
+            ADV_CACHE="$cache"
+          }
+          run_source2() {
+            local control_n
+            # Called bare, in the PARENT shell — never inside `$(...)`, so the err() below is the
+            # one that counts, in both senses.
+            if ! fetch_advisories "$ADVISORY_CONTROL_REPO"; then
+              fatal SOURCE2-CONTROL-FAILED "the control read of '$ADVISORY_CONTROL_REPO' failed [$ADV_FAIL_CODE]: $ADV_FAIL_DETAIL — source 2 cannot be trusted this run"
+              return 0
+            fi
+            control_n="$(jq 'length' "$ADV_CACHE" 2>/dev/null || true)"
+            if ! [[ $control_n =~ ^[0-9]+$ ]]; then
+              # Not padding: an uncountable control is an UNKNOWN, and the test below would read
+              # `[ "" -lt 1 ]` as a shell ERROR that `if` swallows — a green on a source nobody
+              # could count.
+              fatal SOURCE2-CONTROL-UNCOUNTABLE "the control read of '$ADVISORY_CONTROL_REPO' could not be counted (got '$control_n') — source 2 cannot be trusted this run"
+              return 0
+            fi
+            if [ "$control_n" -lt 1 ]; then
+              # Empty-where-non-empty-expected. Without this probe, a token that cannot read
+              # another org's advisories produces a clean, empty, entirely information-free run.
+              fatal SOURCE2-CONTROL-EMPTY "the control repo '$ADVISORY_CONTROL_REPO' returned ZERO advisories — either this token cannot read another org's repository advisories, or the control repo no longer carries any. Source 2 is blind either way."
+              return 0
+            fi
+            [ -s "$WORK/resolved.tsv" ] || return 0
+            local eco name version repo adv hits verdicts n_adv
+            # `< "$WORK/resolved.tsv"` and NOT a pipe: a piped `while` body runs in a subshell,
+            # where every err() below would increment a counter that dies at the `done`.
+            while IFS=$'\t' read -r eco name version repo; do
+              if ! fetch_advisories "$repo"; then
+                err "$ADV_FAIL_CODE" "$ADV_FAIL_DETAIL"
+                continue
+              fi
+              adv="$ADV_CACHE"
+              hits="$(jq -c --arg package "$name" --arg version "$version" \
+                        --arg ecosystem "$eco" "$VMATCH_JQ" "$adv")" \
+                || { err SOURCE2-MATCH-FAILED "range matching failed for $name@$version ($repo)"; continue; }
+              verdicts="$(printf '%s' "$hits" | jq -r '.[].verdict' | sort -u)"
+              case "$verdicts" in
+                *VERSION-UNPARSEABLE*)
+                  # Only RED where it matters: the package HAS advisories and we cannot say
+                  # whether this version is inside them. Silence here would be a guess.
+                  n_adv="$(jq --arg p "$name" --arg e "$eco" '[.[] | (.vulnerabilities // [])[] | select((.package.name // "" | ascii_downcase) == ($p | ascii_downcase)) | select((.package.ecosystem // "" | ascii_downcase) == ($e | ascii_downcase))] | length' "$adv" 2>/dev/null || true)"
+                  if ! [[ $n_adv =~ ^[0-9]+$ ]]; then
+                    # `[ "" -gt 0 ]` exits 2, and `set -e` is exempt inside `if` — so an
+                    # uncountable payload here would silently take the "not affected" path on a
+                    # version this audit has already said it cannot compare.
+                    err SOURCE2-UNCOUNTABLE "could not count $name@$version ($repo)'s advisories to decide whether an uncomparable version matters (got '$n_adv')"
+                  elif [ "$n_adv" -gt 0 ]; then
+                    err SOURCE2-VERSION-UNCOMPARABLE "$name@$version ($repo) has advisories, and '$version' cannot be compared against their ranges"
+                  fi
+                  ;;
+              esac
+              case "$verdicts" in
+                *RANGE-UNPARSEABLE*)
+                  err SOURCE2-RANGE-UNPARSEABLE "$name@$version ($repo): an advisory range form this audit does not recognise — $(printf '%s' "$hits" | jq -r '[.[] | select(.verdict == "RANGE-UNPARSEABLE") | "\(.ghsa) \"\(.range)\""] | join("; ")')"
+                  ;;
+              esac
+              local n
+              n="$(printf '%s' "$hits" | jq '[.[] | select(.verdict == "AFFECTED")] | length' 2>/dev/null || true)"
+              if ! [[ $n =~ ^[0-9]+$ ]]; then
+                # Same swallow class: a non-number here would drop REAL findings, because
+                # `[ "" -gt 0 ]` exits 2 and `if` is exempt from `set -e`.
+                err SOURCE2-UNCOUNTABLE "could not count the AFFECTED verdicts for $name@$version ($repo) (got '$n')"
+              elif [ "$n" -gt 0 ]; then
+                FINDINGS=$((FINDINGS + n))
+                FINDING_LINES="${FINDING_LINES}$(printf '%s' "$hits" | jq -r --arg p "$name" --arg v "$version" --arg r "$repo" '.[] | select(.verdict == "AFFECTED") | "  SOURCE2 \($p)@\($v) \(.ghsa) \(.severity) [\(.range)] (repo-level on \($r))"')"$'\n'
+              fi
+            done < "$WORK/resolved.tsv"
+          }
+          # --- end dep-audit-source2
+          # --- dep-audit-report
+          # The statement is printed BEFORE the verdict and exported as an output, so a reader
+          # of the run — and the caller's reporting job — sees WHAT WAS LOOKED AT rather than
+          # inferring a scope from a green tick. It names both sources' blind spots explicitly.
+          population_statement() {
+            local unresolved_note="none"
+            [ "$N_UNRESOLVED" -gt 0 ] && unresolved_note="$N_UNRESOLVED package(s) — listed below, covered by source 1 ONLY"
+            printf 'POPULATION STATEMENT — ref %s\n' "'${AUDIT_REF:-?}'"
+            printf '  READ: %s lockfile(s) discovered by name at run time:\n' "$N_MANIFESTS"
+            if [ "$N_MANIFESTS" -gt 0 ]; then printf '    %s\n' "${MANIFESTS[@]}"; else printf '    (none)\n'; fi
+            printf '  PRODUCTION PACKAGES RESOLVED FROM THOSE LOCKFILES: %s (transitive included)\n' "$N_PACKAGES"
+            printf '    with an upstream repository: %s, across %s distinct repositories\n' "$N_RESOLVED" "$N_REPOS"
+            printf '    without one: %s\n' "$unresolved_note"
+            printf '  NOT READ: anything not derived from these lockfiles at scan time — in particular a\n'
+            printf '    COMMITTED BUILD ARTIFACT is not covered by this gate; the lockfile graph is a valid\n'
+            printf '    proxy for the shipped bundle only while a separate control keeps the two in step.\n'
+            printf '  SOURCES, AND WHAT EACH IS BLIND TO:\n'
+            printf '    (1) lockfile scanner over the GLOBAL advisory feed\n'
+            printf '        BLIND TO: advisories published only on the upstream repository of a dependency.\n'
+            printf '        2026-08-20: four HIGH advisories on league/commonmark 2.9.0 returned ZERO here.\n'
+            printf '    (2) per-dependency repository advisories, over the full production population\n'
+            printf '        BLIND TO: the %s package(s) with no resolvable upstream repository\n' "$N_UNRESOLVED"
+            [ -n "$UNSUPPORTED_MANIFESTS" ] && printf '        BLIND TO: every package in the manifest(s) source 2 has no resolver for: %s\n' "$(list_text "$UNSUPPORTED_MANIFESTS")"
+            if [ "$N_UNRESOLVED" -gt 0 ] && [ -s "$WORK/unresolved.tsv" ]; then
+              printf '  UNRESOLVED PACKAGES (named, never dropped):\n'
+              sed 's/^/    /' "$WORK/unresolved.tsv"
+            fi
+            return 0
+          }
+          emit_outputs() {
+            if [ -z "${GITHUB_OUTPUT:-}" ]; then
+              # Boundary check, not defensive padding: without this file the audit cannot EXPORT
+              # its population, and a caller reporting job would read a withheld one.
+              echo "AUDIT-ERROR[NO-GITHUB-OUTPUT] GITHUB_OUTPUT is unset; the population cannot be exported" >&2
+              exit 1
+            fi
+            local status=audited
+            [ "$AUDIT_ERRORS" -eq 0 ] || status=error
+            # `error_codes` carries the NAMED reasons alongside the count, so a consumer can
+            # assert on the exported population rather than on log text — a log line is
+            # written by a printf that no counter has to agree with, which is exactly how a
+            # swallowed error once read as a clean run.
+            # `supported_manifests`/`unsupported_manifests` are exported rather than only
+            # printed: an ecosystem source 2 has no resolver for is a real coverage gap, and
+            # whether it is RED or merely logged is the ADOPTER's policy to set from the
+            # reporting job — not this template's to decide for them.
+            POPULATION_JSON="$(jq -cn --arg ref "${AUDIT_REF:-}" --arg status "$status" \
+              --argjson manifests "$N_MANIFESTS" --argjson packages "$N_PACKAGES" \
+              --argjson resolved "$N_RESOLVED" --argjson unresolved "$N_UNRESOLVED" \
+              --argjson repos "$N_REPOS" --argjson findings "$FINDINGS" \
+              --argjson errors "$AUDIT_ERRORS" \
+              --argjson codes "$(list_json "$ERROR_CODES")" \
+              --argjson supported "$(list_json "$SUPPORTED_MANIFESTS")" \
+              --argjson unsupported "$(list_json "$UNSUPPORTED_MANIFESTS")" \
+              '{ref: $ref, status: $status, manifests: $manifests, packages: $packages,
+                resolved: $resolved, unresolved: $unresolved, advisory_repos: $repos,
+                findings: $findings, errors: $errors, error_codes: $codes,
+                supported_manifests: $supported, unsupported_manifests: $unsupported}')"
+            {
+              printf 'population=%s\n' "$POPULATION_JSON"
+              printf 'findings=%s\n' "$FINDINGS"
+              printf 'status=%s\n' "$status"
+            } >> "$GITHUB_OUTPUT"
+          }
+          verdict() {
+            [ -z "$FINDING_LINES" ] || printf 'FINDINGS:\n%s' "$FINDING_LINES"
+            [ -z "$ERROR_LINES" ]   || printf 'ERRORS:\n%s' "$ERROR_LINES"
+            if [ "$AUDIT_ERRORS" -gt 0 ]; then
+              echo "VERDICT: RED — $AUDIT_ERRORS source error(s). An unreadable source is not a clean one." >&2
+              exit 1
+            fi
+            if [ "$FINDINGS" -gt 0 ]; then
+              echo "VERDICT: RED — $FINDINGS advisory finding(s) on ref '${AUDIT_REF:-?}'." >&2
+              exit 1
+            fi
+            echo "VERDICT: GREEN — $N_PACKAGES production package(s) from $N_MANIFESTS lockfile(s), both sources completed."
+          }
+          # --- end dep-audit-report
+          # --- dep-audit-main
+          discover_manifests
+          if [ "$FATAL" -eq 0 ]; then run_source1; fi
+          if [ "$FATAL" -eq 0 ]; then resolve_population; fi
+          if [ "$FATAL" -eq 0 ]; then run_source2; fi
+          population_statement | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          emit_outputs
+          verdict
+          # --- end dep-audit-main
