@@ -20,15 +20,18 @@
  * `scale(var(--label-scale))`, the counter-scale `lobby/main.js`'s `view()` writes from the camera it
  * shows. Stacked, the name first: the name, a line of its own, then the status line — the summary, the
  * rooms where the plate names them, and *the elevator is here* on the cab's plate. The label wraps within
- * the surface's width (`--label-max`, which `view()` writes too), so on a narrow or browser-zoomed surface
- * a long status line takes more lines rather than running past the surface's edge, where the drawing's
- * clip would hide it from every pan. The label stands at the plate's TOP-LEFT corner and grows down from
- * it (card#7343 r3b, the seat's ruling), so a floor's name — the label's first line — is on its plate's top
+ * `--label-max`, which `view()` writes too — `building-scene.js`'s `labelMax()`, what is visible of the
+ * surface to the right of the plate's on-screen left edge, never wider than the surface (card#7343 r4b) —
+ * so at whole-building fit a label reads to its end without a pan wherever the surface shows at least
+ * `LABEL_MIN_PX` beside the plates, and on a narrow or browser-zoomed surface a long status line takes
+ * more lines rather than running past the surface's edge, where the drawing's clip would hide it from
+ * every pan. The label stands at the plate's TOP-LEFT corner and grows down from it (card#7343 r3b, the
+ * seat's ruling), so a floor's name — the label's first line — is on its plate's top
  * edge however many lines the wrap makes. Two plates' labels can meet only where a plate on the screen is
  * shorter than its label's lines; a label then runs down over the plate below it, and the bottom plate's
  * below the building's bottom edge, so what the surface's clip cuts first is a label's last lines — the
  * status line's. A name is reached only where a plate on the screen is shorter than the name's own lines,
- * far past the point where labels meet. Anchored at the bottom instead, a label taller than its plate ran
+ * past the point where labels meet (a plate shorter than the name's lines, not all of the label's). Anchored at the bottom instead, a label taller than its plate ran
  * up past the building's top edge, and the clip cut the top floor's name first (Appendix B row 16,
  * decision 38).
  *
@@ -88,9 +91,11 @@ export function plateRow(doc, plate, rect, here) {
         left: '0',
         top: '0',
         fontSize: LABEL_FONT,
-        // ⛔ WRAPPED WITHIN THE SURFACE (card#7343 r3, the seat's ruling): the label's px are screen px
-        // (the counter-scale), so a label no wider than the surface — `--label-max`, the surface's width,
-        // which `lobby/main.js`'s `view()` writes — is one a pan can always bring wholly into view.
+        // ⛔ WRAPPED WITHIN WHAT IS VISIBLE (card#7343 r3, then r4b, the seat's rulings): the label's px are
+        // screen px (the counter-scale), so a label no wider than `--label-max` — `building-scene.js`'s
+        // `labelMax()`, which `lobby/main.js`'s `view()` writes: the surface to the right of the plate's
+        // on-screen left edge, never wider than the surface — reads to its end at fit wherever at least
+        // `LABEL_MIN_PX` is visible, and is one a pan can always bring wholly into view.
         whiteSpace: 'normal',
         overflowWrap: 'anywhere',
         maxWidth: 'var(--label-max)',

@@ -178,10 +178,23 @@ class FloorPageWiringTest extends TestCase
 
         // card#7343 r3b: the gestures ask the screen's camera whether it frames the floor; one that never
         // does leaves every wheel over the drawn floor to the page's scroll.
-        $unframed = str_replace('camera: screen.camera }, show);', 'camera: () => ({ bounds: null }) }, show);', $js);
+        $unframed = str_replace('cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);',
+            'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: () => ({ bounds: null }) }, show);', $js);
         $this->assertNotSame($unframed, $js);
         $this->assertArrayHasKey('wheel', $this->cameraDefects($unframed),
             'CONTROL (a wheel handed a camera that frames nothing) did not bite');
+
+        // card#7343 r4b: the keys ask the same camera, so one that never frames leaves every key over the
+        // drawn floor to the browser; and the keys and the zoom buttons are offered from the frame's camera.
+        $keysUnframed = str_replace('{ zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }', '{ zoomStep: screen.zoomStep, drag: screen.drag, camera: () => ({ bounds: null }) }', $js);
+        $this->assertNotSame($keysUnframed, $js);
+        $this->assertArrayHasKey('keyboard', $this->cameraDefects($keysUnframed),
+            'CONTROL (keys handed a camera that frames nothing) did not bite');
+
+        $unoffered = str_replace("    offerKeys(el('floor-drawing'), zoomButtons, frame.camera);\n", '', $js);
+        $this->assertNotSame($unoffered, $js);
+        $this->assertArrayHasKey('buttons', $this->cameraDefects($unoffered),
+            'CONTROL (keys and zoom buttons never offered) did not bite');
 
         // The gestures are wire/camera-gestures.js's, whose own defects TheCameraWireIsOneForBothPagesTest
         // plants and watches red; what can drift here is a page growing its own copy back beside it.
@@ -244,7 +257,7 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('refocus', $this->exposureDefects($html, $unguarded),
             'CONTROL (a rebuild that moves focus into the drawing whether or not the keyboard was in it) did not bite');
 
-        $unfocusable = str_replace(' tabindex="0" aria-keyshortcuts', ' aria-keyshortcuts', $html);
+        $unfocusable = str_replace(' tabindex="0" data-dimmed', ' data-dimmed', $html);
         $this->assertNotSame($unfocusable, $html);
         $this->assertArrayHasKey('focus', $this->exposureDefects($unfocusable, $painter),
             'CONTROL (a drawing the keyboard cannot reach) did not bite');
@@ -312,11 +325,14 @@ class FloorPageWiringTest extends TestCase
         $wired = [
             'viewport' => ['viewport: viewport(),', 'screen.resize(viewport(), surface())'],
             // … and the camera as it stands, so the wheel is the page's scroll while it frames nothing (card#7343 r3b).
-            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel,', ', camera: screen.camera }, show);'],
+            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel,', 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
             'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
             'resize' => ["    screen.resize(viewport(), surface());\n    show(screen.camera());\n"],
-            'keyboard' => ["import { cameraKeys } from '../wire/camera-keys.js';", 'cameraKeys(drawing, {'],
-            'buttons' => ["cameraKeys(drawing, { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out') }, { zoomStep: screen.zoomStep, drag: screen.drag }, show);"],
+            // … and the camera as it stands, so every key is the browser's while it frames nothing (card#7343 r4b).
+            'keyboard' => ["import { cameraKeys, offerKeys } from '../wire/camera-keys.js';", 'cameraKeys(drawing, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);'],
+            // … and the zoom buttons and the drawing's keys offered from each frame's camera (card#7343 r4b).
+            'buttons' => ["const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out') };",
+                "    offerKeys(el('floor-drawing'), zoomButtons, frame.camera);"],
             'fit' => ["el('floor-fit').addEventListener('click'", 'screen.fitFloor()'],
         ];
 

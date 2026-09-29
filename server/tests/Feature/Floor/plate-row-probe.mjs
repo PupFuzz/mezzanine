@@ -9,11 +9,14 @@
  * `../lobby/plate-row.js` beside it, so a planted control re-mints its defect in the real code.
  *
  * stdin — JSON: `{ "frames": [ { "building", "scene" } … ] }` — lobby frames the harness drew
- *   (`fleet-client-probe.mjs`'s `lobby_renders[].frame`), each with the building composed.
+ *   (`fleet-client-probe.mjs`'s `lobby_renders[].frame`), each with the building composed; or
+ *   `{ "label_max": [ camera … ] }` — cameras (`{surface, bounds, zoom, x, y}`), each handed to
+ *   `lobby/building-scene.js`'s `labelMax()`, the width a label wraps within (card#7343 r4b).
  * stdout — JSON: `{ "frames": [ { "rows": [ <node> … ] } … ] }`, a row per plate in the building's
  *   order, each node
  *   `{ "tag", "style": {…}, "href"?, "text"?, "children": [ <node | {"text"}> … ] }` — `text` an
- *   element's own `textContent` where the module set one, a child `{"text"}` a text node.
+ *   element's own `textContent` where the module set one, a child `{"text"}` a text node; or, for
+ *   `label_max`, `{ "label_max": [ px … ] }`, one per camera.
  *
  * Any throw exits non-zero with the message on stderr.
  */
@@ -65,12 +68,17 @@ function serialise(node) {
 }
 
 const { plateRow } = await import(pathToFileURL(join(dir, '..', 'lobby', 'plate-row.js')).href);
-const { frames } = JSON.parse(readFileSync(0, 'utf8'));
+const { labelMax } = await import(pathToFileURL(join(dir, '..', 'lobby', 'building-scene.js')).href);
+const payload = JSON.parse(readFileSync(0, 'utf8'));
 
-process.stdout.write(JSON.stringify({
-    frames: frames.map(({ building, scene }) => ({
-        rows: building.plates.map((plate) => serialise(
-            plateRow(doc, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at),
-        )),
-    })),
-}));
+if (payload.label_max !== undefined) {
+    process.stdout.write(JSON.stringify({ label_max: payload.label_max.map((camera) => labelMax(camera)) }));
+} else {
+    process.stdout.write(JSON.stringify({
+        frames: payload.frames.map(({ building, scene }) => ({
+            rows: building.plates.map((plate) => serialise(
+                plateRow(doc, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at),
+            )),
+        })),
+    }));
+}

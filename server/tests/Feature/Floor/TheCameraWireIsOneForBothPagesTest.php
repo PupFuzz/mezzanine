@@ -21,9 +21,13 @@ use Tests\TestCase;
  * planted in the shipped file and watched red — the floor's own keyboard and zoom-button checks among
  * them, moved here with the code they check (card#7343 r2-2).
  *
- * ⛔ THE WHEEL IS THE CAMERA's ONLY WHILE THE CAMERA FRAMES SOMETHING (card#7343 r3b, the seat's ruling):
- * over a drawing that frames a scene it zooms and is taken from the page's scroll; over one that frames
- * nothing — the uncomposed lobby, whose list flows in the page — it is left to the browser.
+ * ⛔ NOTHING FRAMED, NOTHING TAKEN (card#7343 r4b, the seat's ruling, widening r3b's on the wheel): over a
+ * drawing whose camera frames nothing — the uncomposed lobby, whose list flows in the page — every event is
+ * left to the browser: the wheel, a `dragstart`, a press and its `user-select`, the move's capture and pan,
+ * the click after a drag, and the arrow and zoom keys; and the zoom buttons are hidden and the drawing
+ * names no `aria-keyshortcuts` (`offerKeys()`). Each gate is planted out alone and watched red on its own
+ * step of `unframedDefects()`, and planted always-shut and watched red on the framed checks, which are the
+ * controls that a framed drawing keeps every behaviour.
  *
  * ⛔ A PRESS NEVER DRAGS AN ELEMENT OUT AND NEVER SELECTS TEXT (card#7343 r2-3): a `dragstart` in the
  * drawing is refused, and the drawing is `user-select: none` from a primary press until it ends — and
@@ -115,14 +119,10 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             'a wheel whose ctrlKey (a pinch) never reaches the camera' => ['camera-gestures.js', '{ deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }', '{ deltaY: event.deltaY, deltaMode: event.deltaMode }'],
             'a wheel about the page, not the drawing' => ['camera-gestures.js', '{ x: event.clientX - r.left, y: event.clientY - r.top }', '{ x: event.clientX, y: event.clientY }'],
             'a wheel that also scrolls the page' => ['camera-gestures.js', "        event.preventDefault();\n\n        const r = element.getBoundingClientRect();\n", "        const r = element.getBoundingClientRect();\n"],
-            // card#7343 r3b (the seat's ruling): the wheel is the camera's only while it frames something.
-            'a wheel taken from the page over a drawing that frames nothing' => ['camera-gestures.js', "        if (acts.camera().bounds === null) {\n            return;\n        }\n\n", ''],
-            'a wheel left to the page over a drawing that frames a scene' => ['camera-gestures.js', 'if (acts.camera().bounds === null) {', 'if (true) {'],
-            'a wheel whose guard reads the camera backwards' => ['camera-gestures.js', 'if (acts.camera().bounds === null) {', 'if (acts.camera().bounds !== null) {'],
-            'a drag that follows the plate link it ended over' => ['camera-gestures.js', "            event.preventDefault();\n            event.stopPropagation();", '            event.stopPropagation();'],
-            'a drag that selects the desk it ended over' => ['camera-gestures.js', "            event.preventDefault();\n            event.stopPropagation();", '            event.preventDefault();'],
+            'a drag that follows the plate link it ended over' => ['camera-gestures.js', "        event.preventDefault();\n        event.stopPropagation();", '        event.stopPropagation();'],
+            'a drag that selects the desk it ended over' => ['camera-gestures.js', "        event.preventDefault();\n        event.stopPropagation();", '        event.preventDefault();'],
             // card#7343 r2-3: a pan started on a plate's link is no native drag of it, and a pan selects no text.
-            'a pan that drags the link it started on out' => ['camera-gestures.js', "    element.addEventListener('dragstart', (event) => {\n        event.preventDefault();\n    });\n", ''],
+            'a pan that drags the link it started on out' => ['camera-gestures.js', "        event.preventDefault();\n    });\n\n    element.addEventListener('wheel'", "    });\n\n    element.addEventListener('wheel'"],
             'a pan that selects the text it crosses' => ['camera-gestures.js', "        element.style.userSelect = 'none';\n", ''],
             'a press that leaves the text unselectable for good' => ['camera-gestures.js', "        element.style.userSelect = '';\n", ''],
             // card#7343 r3: the prefixed property WebKit engines read, set and reset beside the standard one.
@@ -136,29 +136,96 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
     {
         $dir = $this->mutatedModules([$file, $anchor, $replacement]);
 
-        $this->assertNotSame([], [...$this->gestureDefects($dir), ...$this->unframedWheelDefects($dir)], 'the planted gesture defect did not bite');
+        $this->assertNotSame([], $this->gestureDefects($dir), 'the planted gesture defect did not bite');
+    }
+
+    // ── The framing gate ───────────────────────────────────────────────────────────────────────
+
+    /**
+     * card#7343 r4b (the seat's ruling): a camera that frames nothing leaves every event to the browser.
+     * The framed half — a framed drawing keeping every behaviour — is `gestureDefects()` and `keyDefects()`.
+     */
+    public function test_green_over_a_drawing_that_frames_nothing_every_event_is_the_browsers(): void
+    {
+        $this->assertSame([], $this->unframedDefects());
     }
 
     /**
-     * card#7343 r3b (the seat's ruling): a camera that frames nothing — the uncomposed lobby, whose list
-     * flows in the page — leaves the wheel to the browser: no act, no show, and its default untouched, so
-     * the page scrolls. The framed half is `gestureDefects()`'s first step, the wheel every drawn page takes.
+     * Each gate, by the comment that heads it in the shipped module, and the step of `unframedDefects()` its
+     * absence must red on.
+     *
+     * @return array<string, array{0: string, 1: string, 2: string, 3: string}>
      */
-    public function test_green_a_wheel_over_a_drawing_that_frames_nothing_is_the_pages_scroll(): void
+    public static function gates(): array
     {
-        $this->assertSame([], $this->unframedWheelDefects());
+        return [
+            'the wheel' => ['camera-gestures.js', "        // Gate: nothing framed — the wheel is the page's scroll.\n", 'if (unframed()) {', 'wheel'],
+            'the dragstart' => ['camera-gestures.js', "        // Gate: nothing framed — a link in the flowing list drags as any link does.\n", 'if (unframed()) {', 'dragstart'],
+            'the press' => ['camera-gestures.js', "        // Gate: nothing framed — a press selects text as ever, and no drag starts.\n", 'if (unframed()) {', 'press'],
+            'the move' => ['camera-gestures.js', "        // Gate: nothing framed any more — the press ends here, uncaptured, and pans nothing.\n", 'if (unframed()) {', 'move'],
+            'the click after a drag' => ['camera-gestures.js', "        // Gate: nothing framed any more — the click is the browser's, and follows the link it is on.\n", 'if (unframed()) {', 'click'],
+            'the keys' => ['camera-keys.js', "        // Gate: nothing framed — every key is the browser's (see the header).\n", 'if (framesNothing(acts.camera())) {', 'keys'],
+        ];
     }
 
-    /** Each half of the ruling planted alone, each watched red on its own half. */
-    public function test_red_each_half_of_the_framed_wheel_bites_on_its_own_check(): void
+    /** A gate planted OUT: that event is taken over a drawing that frames nothing — red on its own step, and only there. */
+    #[DataProvider('gates')]
+    public function test_red_each_gate_planted_out_takes_its_event_from_an_unframed_page(string $file, string $comment, string $guard, string $step): void
     {
-        $taken = $this->mutatedModules(['camera-gestures.js', "        if (acts.camera().bounds === null) {\n            return;\n        }\n\n", '']);
-        $this->assertNotSame([], $this->unframedWheelDefects($taken), 'CONTROL (a wheel taken from an uncomposed page) did not bite');
-        $this->assertSame([], $this->gestureDefects($taken), 'the unguarded wheel changed a framed drawing\'s gestures too — the plant is not the one half');
+        $dir = $this->mutatedModules([$file, $this->gateBlock($file, $comment, $guard), '']);
+        $defects = $this->unframedDefects($dir);
 
-        $left = $this->mutatedModules(['camera-gestures.js', 'if (acts.camera().bounds === null) {', 'if (true) {']);
-        $this->assertNotSame([], $this->gestureDefects($left), 'CONTROL (a framed drawing whose wheel is left to the page) did not bite');
-        $this->assertSame([], $this->unframedWheelDefects($left), 'the never-handled wheel changed the uncomposed page\'s wheel — the plant is not the one half');
+        $this->assertNotSame([], $defects, "CONTROL (the {$step} gate planted out) did not bite");
+        $this->assertSame([], array_filter($defects, static fn (string $d): bool => ! str_starts_with($d, "[{$step}]")),
+            "the {$step} gate planted out bit a step not its own: ".json_encode($defects));
+        $this->assertSame([], [...$this->gestureDefects($dir), ...$this->keyDefects($dir)], "the {$step} gate planted out changed a framed drawing too");
+    }
+
+    /** A gate planted SHUT: the framed drawing loses that event to the browser — the framed checks, as controls, red. */
+    #[DataProvider('gates')]
+    public function test_red_each_gate_planted_shut_leaves_a_framed_drawings_event_to_the_page(string $file, string $comment, string $guard, string $step): void
+    {
+        $dir = $this->mutatedModules([$file, $comment.'        '.$guard, $comment.'        if (true) {']);
+
+        $this->assertNotSame([], [...$this->gestureDefects($dir), ...$this->keyDefects($dir)], "CONTROL (the {$step} gate planted shut) did not bite");
+    }
+
+    /** The one predicate, read backwards either way: every framed check reds, or every unframed one does. */
+    public function test_red_the_one_predicate_planted_either_way(): void
+    {
+        $never = $this->mutatedModules(['camera.js', "    return camera.bounds === null;\n}", "    return false;\n}"]);
+        $this->assertNotSame([], $this->unframedDefects($never), 'CONTROL (a camera that never frames nothing) did not bite');
+
+        $always = $this->mutatedModules(['camera.js', "    return camera.bounds === null;\n}", "    return true;\n}"]);
+        $this->assertNotSame([], [...$this->gestureDefects($always), ...$this->keyDefects($always)], 'CONTROL (a camera that always frames nothing) did not bite');
+    }
+
+    /** card#7343 r4b: the zoom buttons and `aria-keyshortcuts` are offered while the camera frames something, and only then. */
+    public function test_green_the_keys_are_offered_only_while_the_camera_frames_something(): void
+    {
+        $this->assertSame([], $this->offerDefects());
+    }
+
+    /** @return array<string, array{0: string, 1: string}> */
+    public static function offerPlants(): array
+    {
+        return [
+            'a zoom-in button never shown' => ["    buttons.zoomIn.hidden = !offered;\n", ''],
+            'a zoom-out button never hidden again' => ['    buttons.zoomOut.hidden = !offered;', '    buttons.zoomOut.hidden = false;'],
+            'keys never named' => ["        element.setAttribute('aria-keyshortcuts', KEY_SHORTCUTS);\n", ''],
+            'keys named after the camera stopped framing' => ["        element.removeAttribute('aria-keyshortcuts');\n", ''],
+            'an arrow key the drawing does not name' => ["['+', '-', ...Object.keys(KEY_PAN)]", "['+', '-', 'ArrowLeft']"],
+            'a key named that no handler takes' => ["['+', '-', ...Object.keys(KEY_PAN)]", "['+', '-', 'Home', ...Object.keys(KEY_PAN)]"],
+            'offered backwards' => ['    const offered = !framesNothing(camera);', '    const offered = framesNothing(camera);'],
+        ];
+    }
+
+    #[DataProvider('offerPlants')]
+    public function test_red_each_offer_defect(string $anchor, string $replacement): void
+    {
+        $dir = $this->mutatedModules(['camera-keys.js', $anchor, $replacement]);
+
+        $this->assertNotSame([], $this->offerDefects($dir), 'the planted offer defect did not bite');
     }
 
     // ── The keys and the zoom buttons ───────────────────────────────────────────────────────────
@@ -300,20 +367,124 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
     }
 
     /**
-     * The wheel over a camera that frames nothing (`"framed": false`): no act shown, the default not
-     * prevented and the propagation not stopped — the page's scroll, untouched.
+     * Every event over a camera that frames nothing, each step labelled with the gate it proves: no act,
+     * show or capture, the default not prevented, the propagation not stopped and the text selectable —
+     * the browser's event, untouched. From the start (`"framed": false`): the wheel; a `dragstart` (a room
+     * link's native drag); a press on a room's link that moves the slop and more and is released, whose
+     * click is the browser's, so the link is followed; and the arrow and zoom keys. And mid-press, the camera ceasing to
+     * frame between two events: a press that has not yet panned pans nothing more (the move's gate), and
+     * one that has panned is no veto on its click (the click's gate).
      *
      * @return list<string>
      */
-    private function unframedWheelDefects(?string $dir = null): array
+    private function unframedDefects(?string $dir = null): array
     {
-        $log = $this->probe(['framed' => false, 'gestures' => [
-            ['type' => 'wheel', 'clientX' => 110, 'clientY' => 220, 'deltaY' => 100, 'deltaMode' => 0, 'ctrlKey' => false],
-        ]], $dir)['log'];
+        $down = static fn (int $x): array => ['type' => 'pointerdown', 'isPrimary' => true, 'button' => 0, 'clientX' => $x, 'clientY' => 0];
+        $move = static fn (int $x): array => ['type' => 'pointermove', 'buttons' => 1, 'clientX' => $x, 'clientY' => 0, 'pointerId' => 7];
+        $untouched = static fn (string $type, string $select = ''): array => ['event' => $type, 'default_prevented' => false, 'propagation_stopped' => false, 'user_select' => $select, 'webkit_user_select' => $select];
+        $this->assertSame(1, preg_match('/export const DRAG_SLOP_PX = (\d+);/', (string) file_get_contents(($dir ?? $this->moduleDir()).'/camera-gestures.js'), $m),
+            "camera-gestures.js's DRAG_SLOP_PX did not parse");
+        $slop = (int) $m[1];
 
-        return $this->logDefects($log, [
-            ['event' => 'wheel', 'default_prevented' => false, 'propagation_stopped' => false, 'user_select' => '', 'webkit_user_select' => ''],
-        ], 'unframed wheel');
+        $checks = [
+            'wheel' => ['gestures', false, [
+                [['type' => 'wheel', 'clientX' => 110, 'clientY' => 220, 'deltaY' => 100, 'deltaMode' => 0, 'ctrlKey' => false], [$untouched('wheel')]],
+            ]],
+            'dragstart' => ['gestures', false, [
+                [['type' => 'dragstart'], [$untouched('dragstart')]],
+            ]],
+            // A press on a room's link that moves the slop, then further, and is released: the link is followed.
+            'press' => ['gestures', false, [
+                [$down(0), [$untouched('pointerdown')]],
+                [$move($slop), [$untouched('pointermove')]],
+                [$move($slop + 10), [$untouched('pointermove')]],
+                [['type' => 'pointerup'], [$untouched('pointerup')]],
+                [['type' => 'click'], [$untouched('click')]],
+            ]],
+            // A framed press, and then nothing framed before it has panned: it pans nothing, and is not captured.
+            'move' => ['gestures', true, [
+                [$down(0), [$untouched('pointerdown', 'none')]],
+                [['type' => 'reframe', 'framed' => false], [['reframed' => false]]],
+                [$move(10), [$untouched('pointermove')]],
+                [$move(20), [$untouched('pointermove')]],
+                [['type' => 'pointerup'], [$untouched('pointerup')]],
+            ]],
+            // A framed press that panned, and then nothing framed before its click: the click is the browser's.
+            'click' => ['gestures', true, [
+                [$down(0), [$untouched('pointerdown', 'none')]],
+                [$move(10), [['capture' => 7], ['show' => ['act' => 'drag', 'dx' => 10, 'dy' => 0]], $untouched('pointermove', 'none')]],
+                [['type' => 'reframe', 'framed' => false], [['reframed' => false]]],
+                [['type' => 'pointerup'], [$untouched('pointerup')]],
+                [['type' => 'click'], [$untouched('click')]],
+            ]],
+            'keys' => ['keys', false, array_map(static fn (string $key): array => [['type' => 'keydown', 'key' => $key], [$untouched('keydown')]],
+                ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', '+', '=', '-', '_'])],
+        ];
+
+        $defects = [];
+
+        foreach ($checks as $step => [$mode, $framed, $steps]) {
+            $expected = array_merge(...array_column($steps, 1));
+            $log = $this->probe([$mode => array_column($steps, 0), 'framed' => $framed], $dir)['log'];
+
+            foreach ($this->logDefects($log, $expected, "unframed {$step}") as $defect) {
+                $defects[] = "[{$step}] {$defect}";
+            }
+        }
+
+        return $defects;
+    }
+
+    /**
+     * `offerKeys()` over a camera that frames nothing, then something, then nothing, then something: the zoom
+     * buttons hidden exactly while nothing is framed, and `aria-keyshortcuts` absent then — and, while framed,
+     * naming the arrow keys and `+` and `-`, and no key `keyDefects()` does not show being taken.
+     *
+     * @return list<string>
+     */
+    private function offerDefects(?string $dir = null): array
+    {
+        $log = $this->probe(['offer' => [false, true, false, true]], $dir)['log'];
+        $taken = ['+', '=', '-', '_', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+        $defects = [];
+
+        foreach ($log as $i => $entry) {
+            $framed = $entry['framed'];
+
+            if ($entry['zoom_in_hidden'] === $framed || $entry['zoom_out_hidden'] === $framed) {
+                $defects[] = sprintf('offer %d (%s): a zoom button is %s', $i, $framed ? 'framed' : 'nothing framed', $framed ? 'hidden' : 'shown');
+            }
+
+            if (! $framed && $entry['keyshortcuts'] !== null) {
+                $defects[] = "offer {$i} (nothing framed): the drawing names keys that do nothing: {$entry['keyshortcuts']}";
+            }
+
+            if ($framed) {
+                $named = explode(' ', (string) $entry['keyshortcuts']);
+
+                foreach (array_diff(['+', '-', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'], $named) as $missing) {
+                    $defects[] = "offer {$i} (framed): the drawing does not name {$missing}";
+                }
+
+                foreach (array_diff($named, $taken) as $extra) {
+                    $defects[] = "offer {$i} (framed): the drawing names {$extra}, which no key handler takes";
+                }
+            }
+        }
+
+        return count($log) === 4 ? $defects : [...$defects, 'the offer log has '.count($log).' entries, not 4'];
+    }
+
+    /** A gate's whole block in the shipped module — its comment, its guard, and its body up to the blank line after it. */
+    private function gateBlock(string $file, string $comment, string $guard): string
+    {
+        $source = (string) file_get_contents($this->moduleDir().'/'.$file);
+        $start = strpos($source, $comment.'        '.$guard);
+        $this->assertNotFalse($start, "the gate {$comment} is not in {$file}");
+        $end = strpos($source, "        }\n\n", $start);
+        $this->assertNotFalse($end, "the gate {$comment} has no end in {$file}");
+
+        return substr($source, $start, $end + strlen("        }\n\n") - $start);
     }
 
     /**

@@ -289,6 +289,16 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $this->assertNotSame([], $this->ridingDefects($this->replay(self::RUN, $dir)), 'CONTROL (a frame hiding the ride in flight) did not bite');
     }
 
+    /** card#7343 r4b: the page's in-flight accessor blind to the ride — the plate links it holds are never held. */
+    public function test_red_a_riding_accessor_that_never_sees_the_ride(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, 'riding: () => screen.riding,', 'riding: () => false,']);
+
+        $this->assertNotSame([], array_filter($this->ridingDefects($this->replay(self::RUN, $dir)),
+            static fn (string $d): bool => str_contains($d, 'the accessor disagrees with the frame')),
+            'CONTROL (a riding() accessor that never sees the ride) did not bite for its reason');
+    }
+
     /** A ride that stays in flight after its glide arrived — the lobby's controls dead for good (r2-4). */
     public function test_red_a_ride_that_never_ends_when_its_glide_arrives(): void
     {
@@ -635,6 +645,25 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
         if (! $seen[true] || ! $seen[false]) {
             $defects[] = 'the run draws no frame both in and out of a ride — the clause read one side only';
+        }
+
+        // The screen's `riding()` accessor — what the page's `ride-hold.js` holds plate links on — agrees
+        // with the frame at every ride step (card#7343 r4b): the frame disables the ride control, and the
+        // accessor holds the links, so the two must never say different things about one ride.
+        $steps = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => array_key_exists('riding', $a)));
+        $accessorSeen = [true => false, false => false];
+
+        foreach ($steps as $a) {
+            $accessorSeen[$a['riding']['accessor'] === true] = true;
+
+            if ($a['riding']['accessor'] !== $a['riding']['frame']) {
+                $defects[] = sprintf("after the %s at %d ms the screen's riding() says %s and the frame says %s — the accessor disagrees with the frame",
+                    $a['act']['act'], $a['at'], json_encode($a['riding']['accessor']), json_encode($a['riding']['frame']));
+            }
+        }
+
+        if (! $accessorSeen[true] || ! $accessorSeen[false]) {
+            $defects[] = "no ride step read the screen's riding() both in and out of a ride — the accessor clause read one side only";
         }
 
         return $defects;

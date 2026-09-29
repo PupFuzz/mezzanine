@@ -99,6 +99,16 @@ export function unframe(camera) {
     return settle({ ...camera, bounds: null, fitted: false });
 }
 
+/**
+ * Whether the camera frames nothing — no scene extent handed over yet, or `unframe()`d since. The one
+ * predicate a page's camera wire asks before it takes an event from the browser (card#7343 r4b, the
+ * seat's ruling): `camera-gestures.js`'s and `camera-keys.js`'s every gate, and whether the keys and the
+ * zoom buttons are offered at all (`camera-keys.js`'s `offerKeys()`).
+ */
+export function framesNothing(camera) {
+    return camera.bounds === null;
+}
+
 /** The fit: the framed rect whole in the surface, centred, at the zoom that just holds it. */
 export function fit(camera) {
     if (camera.bounds === null) {

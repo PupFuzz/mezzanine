@@ -88,16 +88,18 @@
             does is state. ⛔ It carries no size or clip of its own: it is a fixed-height, clipping drawing
             only while there is a building to draw (`building-scene.js`'s `surfaceStyle()`, which
             `lobby/main.js` applies on every render), and with none — no snapshot yet, or § 9 F17's
-            rooms with no floor claimed — the list flows in the page, and the wheel scrolls it.
+            rooms with no floor claimed — the list flows in the page, and the wheel, the keys and a press
+            are the browser's; the zoom buttons are hidden and the building names no `aria-keyshortcuts`
+            until a camera frames it (`camera-keys.js`'s `offerKeys()`, card#7343 r4b).
         --}}
-        <div id="lobby-building" role="group" aria-label="the building drawing" tabindex="0" aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight">
+        <div id="lobby-building" role="group" aria-label="the building drawing" tabindex="0">
             <ul id="lobby-floors" aria-labelledby="lobby-floors-heading" style="margin: 0; transform-origin: 0 0">
                 <li>waiting for the fleet snapshot</li>
             </ul>
         </div>
         <nav aria-label="the camera">
-            <button type="button" id="lobby-zoom-in">Zoom in</button>
-            <button type="button" id="lobby-zoom-out">Zoom out</button>
+            <button type="button" id="lobby-zoom-in" hidden>Zoom in</button>
+            <button type="button" id="lobby-zoom-out" hidden>Zoom out</button>
             <button type="button" id="lobby-whole-building">Whole building</button>
         </nav>
 

@@ -19,14 +19,17 @@
  * a fixed height that clips the plates, which the camera alone moves; with none — no snapshot yet, § 9
  * F17's cold start with no layout (its rooms listed with no floor claimed), or no install — it is no
  * style at all, and the list flows in the page as the lobby's list always did, every row reachable by
- * the page's own scroll — the wheel's included, which `wire/camera-gestures.js` leaves to the page while
- * the camera frames nothing (card#7343 r3b).
+ * the page's own scroll — the wheel's and the arrow keys' included, which `wire/camera-gestures.js` and
+ * `wire/camera-keys.js` leave to the browser, with every other camera event, while the camera frames
+ * nothing (card#7343 r3b, r4b).
  *
  * ⛔ THE NUMBERS ARE THE DRAWING's (§ 10.4's last bullet): a plate's size carries no fact. The plate is
  * a storey's proportion — the reference's storey has about the proportions of § 12's viewport
  * floor — so a zoom to one plate fills the surface rather than panning a strip across it. Slice B,
  * which draws the plate as the reference's section, owns these numbers from then on.
  */
+
+import { framesNothing } from '../wire/camera.js';
 
 /** A plate's width in scene px. */
 export const PLATE_W = 1600;
@@ -61,6 +64,42 @@ export const LABEL_FONT = '1rem';
  */
 export function labelScale(camera) {
     return 1 / camera.zoom;
+}
+
+/**
+ * The narrowest a plate's label is ever wrapped to, in CSS px: 320, the width WCAG 2.1's Reflow criterion
+ * (SC 1.4.10) requires content to read at without scrolling in two dimensions — "a width equivalent to
+ * 320 CSS pixels" (w3.org/WAI/WCAG21/Understanding/reflow.html, read 2026-09-29) — so a label wrapped
+ * this narrow is still text laid out at a width the web's own reflow rule treats as readable. A figure
+ * of the drawing's, carrying no fact.
+ */
+export const LABEL_MIN_PX = 320;
+
+/**
+ * The width a plate's label wraps within, in CSS px on the screen — `lobby/main.js`'s `--label-max` (the
+ * seat's r4b ruling on card#7343, refining r3's "the surface's width"): what is VISIBLE of the surface to
+ * the right of the plates' on-screen left edge, so at whole-building fit — where a height-bound fit insets
+ * the building from the surface's left edge — a label reads to its end without a pan wherever at least
+ * `LABEL_MIN_PX` is visible to the right of the plates. Clamped: never wider than the surface, so a pan
+ * can always bring the whole label into view (a plate whose left edge is off the surface's left), and
+ * never narrower than `LABEL_MIN_PX` (a plate panned towards the surface's right edge), unless the
+ * surface itself is narrower still. Every plate stands at the building's left edge
+ * (`buildingScene()`), which is the camera's framed `bounds.x`; a camera that frames nothing has no
+ * plate, and its labels — none — wrap within the surface.
+ *
+ * @param {{surface: {width: number}, bounds: {x: number}|null, zoom: number, x: number}} camera a
+ *        `wire/camera.js` camera — the one the plates are shown under
+ */
+export function labelMax(camera) {
+    const width = camera.surface.width;
+
+    if (framesNothing(camera)) {
+        return width;
+    }
+
+    const left = (camera.bounds.x - camera.x) * camera.zoom;
+
+    return Math.min(width, Math.max(LABEL_MIN_PX, width - left));
 }
 
 /**

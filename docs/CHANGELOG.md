@@ -39,24 +39,28 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   until the camera has reached the floor, and a wheel, a key, a zoom button, a drag, a window resize
   or the *Whole building* control during the ride takes the viewer straight to the floor instead of
   stopping it halfway; tabbing to a plate during the ride leaves it gliding, and clicking a floor plate
-  during the ride — or pressing Enter on one — does not open that floor, so the ride arrives where it
-  was going. Once the page has asked for the floor the controls work again, so a navigation
+  while the ride is gliding — or pressing Enter on one — does not open that floor, so a ride whose
+  glide is under way arrives where it was going. Once the page has asked for the floor the controls work again, so a navigation
   the browser cancels does not leave the lobby stuck; coming back with the browser's Back button
   works too. Under `prefers-reduced-motion` every camera move cuts rather than glides. None of it is
   fleet state: no ride, zoom or pan writes an animation-log row, and a render leaves the camera where
   the viewer put it. Each plate's name, and under it its status line — the seat counts, the rooms and
   *the elevator is here* — is drawn over the plate at the page's own body text size and keeps that
   size at every zoom, so a plate can be read with the whole building in view. The label wraps within
-  the width of the building's drawing, so on a narrow or browser-zoomed window a long status line takes
-  more lines rather than running out of sight. Each label starts at the top of its plate and grows
-  down, so the top floor's name is always inside the drawing with the whole building in view. On a
+  what is visible of the building's drawing to the right of its plate's left edge — never wider than
+  the drawing, and never narrower than a readable minimum unless the drawing is — so with the whole
+  building in view a label reads to its end without panning on any drawing wide enough to show that
+  minimum beside the plates, and on a narrow or browser-zoomed window a long status line takes more
+  lines rather than running out of sight. Each label starts at the top of its plate and grows down, so the top floor's name is always inside the drawing with the whole building in view. On a
   building tall enough that a plate on the screen is shorter than its label's lines, neighbouring
   plates' labels overlap at that view, and the bottom floor's last status lines can run past the
   drawing's bottom edge until the viewer zooms in. With no floor layout loaded, the lobby's list of
   rooms flows in the page as it did before, rather than in the building's fixed-height drawing, and
-  the mouse wheel scrolls it as it did before: on either page the wheel zooms only a drawing with
-  something on it to frame, and otherwise scrolls the page. Drawing each plate as the reference's section, with the roof sign, ground
-  lobby and sky, is slice B. A press on either drawing starts no native drag and selects no text.
+  the mouse wheel, the arrow keys, text selection and a press on a room's link all work on it as they
+  did before, with the zoom buttons hidden: on either page the camera takes a wheel, a key, a press or
+  a drag only while it frames something, and otherwise leaves the event to the browser. A press on a
+  framed drawing starts no native drag and selects no text. Drawing each plate as the reference's
+  section, with the roof sign, ground lobby and sky, is slice B.
   The shared camera (`wire/camera.js`) gained `focusOn()`, a zoom to one rect inside what is framed,
   and the floor page and the lobby share one glide through `wire/camera-view.js`, one wheel-and-drag
   wiring through `wire/camera-gestures.js` and one keyboard-and-zoom-button wiring through

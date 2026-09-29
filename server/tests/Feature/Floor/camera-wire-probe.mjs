@@ -18,10 +18,16 @@
  *  · `{ "gestures": [event, …], "framed"? }` — `cameraGestures()` on a stand-in element whose box is
  *    at (10, 20), with acts that record their arguments and a camera that frames a scene — or, with
  *    `"framed": false`, frames nothing (`bounds: null`, the uncomposed lobby's). Each event is
- *    `{ "type", …the event's own members }`, dispatched cancelable.
- *  · `{ "keys": [event, …] }` — `cameraKeys()` on a stand-in drawing and two stand-in buttons, with
- *    acts that record their arguments. Each event is `{ "type", …members }`, dispatched cancelable on
- *    the drawing — or, with `"on": "zoom_in"` / `"zoom_out"`, on that button.
+ *    `{ "type", …the event's own members }`, dispatched cancelable — except `{ "type": "reframe",
+ *    "framed": bool }`, which dispatches nothing: the camera frames a scene, or nothing, from then on
+ *    (a building arriving or going away between two events), logged as `{ "reframed": bool }`.
+ *  · `{ "keys": [event, …], "framed"? }` — `cameraKeys()` on a stand-in drawing and two stand-in
+ *    buttons, with acts that record their arguments and the same camera. Each event is `{ "type",
+ *    …members }`, dispatched cancelable on the drawing — or, with `"on": "zoom_in"` / `"zoom_out"`, on
+ *    that button; `reframe` as above.
+ *  · `{ "offer": [bool, …] }` — `offerKeys()` on a stand-in drawing and two stand-in buttons, once per
+ *    entry with a camera that frames a scene (`true`) or nothing (`false`), logging after each whether
+ *    each button is hidden and the drawing's `aria-keyshortcuts` (`null` when it has none).
  * stdout — JSON: `{ "log": [ … ] }` — for `view`, each camera applied, named `from` / `to` / `other`
  * or `between`, and each `done` run, in order; for `gestures` and `keys`, each act, show and pointer
  * capture, and for each event whether it was `default_prevented`, had its propagation stopped, and the
@@ -60,7 +66,7 @@ Object.defineProperty(globalThis, 'performance', { value: { now: () => clock }, 
 
 const { cameraView } = await import(pathToFileURL(join(dir, 'camera-view.js')).href);
 const { cameraGestures } = await import(pathToFileURL(join(dir, 'camera-gestures.js')).href);
-const { cameraKeys } = await import(pathToFileURL(join(dir, 'camera-keys.js')).href);
+const { cameraKeys, offerKeys } = await import(pathToFileURL(join(dir, 'camera-keys.js')).href);
 const { createCamera, focusOn, frameOn } = await import(pathToFileURL(join(dir, 'camera.js')).href);
 
 const payload = JSON.parse(readFileSync(0, 'utf8'));
@@ -103,6 +109,24 @@ if (payload.view !== undefined) {
                 throw new Error(`unknown view op ${op.op}`);
         }
     }
+} else if (payload.offer !== undefined) {
+    const attributes = new Map();
+    const element = {
+        setAttribute: (name, value) => attributes.set(name, String(value)),
+        removeAttribute: (name) => attributes.delete(name),
+    };
+    // A button the page's markup starts hidden, as both pages' do.
+    const buttons = { zoomIn: { hidden: true }, zoomOut: { hidden: true } };
+
+    for (const framed of payload.offer) {
+        offerKeys(element, buttons, { bounds: framed ? { x: 0, y: 0, w: 1600, h: 2000 } : null });
+        log.push({
+            framed,
+            zoom_in_hidden: buttons.zoomIn.hidden,
+            zoom_out_hidden: buttons.zoomOut.hidden,
+            keyshortcuts: attributes.get('aria-keyshortcuts') ?? null,
+        });
+    }
 } else if (payload.gestures !== undefined || payload.keys !== undefined) {
     const element = new EventTarget();
     const targets = { drawing: element, zoom_in: new EventTarget(), zoom_out: new EventTarget() };
@@ -117,17 +141,25 @@ if (payload.view !== undefined) {
         drag: (dx, dy) => ({ act: 'drag', dx, dy }),
     };
     const show = (camera) => log.push({ show: camera });
+    const scene = { x: 0, y: 0, w: 1600, h: 2000 };
+    let bounds = payload.framed === false ? null : scene;
+    const camera = () => ({ bounds });
 
     if (payload.gestures !== undefined) {
-        const bounds = payload.framed === false ? null : { x: 0, y: 0, w: 1600, h: 2000 };
-
-        cameraGestures(element, { wheel: acts.wheel, drag: acts.drag, camera: () => ({ bounds }) }, show);
+        cameraGestures(element, { wheel: acts.wheel, drag: acts.drag, camera }, show);
     } else {
-        cameraKeys(element, { zoomIn: targets.zoom_in, zoomOut: targets.zoom_out }, { zoomStep: acts.zoomStep, drag: acts.drag }, show);
+        cameraKeys(element, { zoomIn: targets.zoom_in, zoomOut: targets.zoom_out }, { zoomStep: acts.zoomStep, drag: acts.drag, camera }, show);
     }
 
     for (const spec of payload.gestures ?? payload.keys) {
         const { type, on = 'drawing', ...members } = spec;
+
+        if (type === 'reframe') {
+            bounds = members.framed ? scene : null;
+            log.push({ reframed: members.framed });
+
+            continue;
+        }
         const event = Object.assign(new Event(type, { cancelable: true }), members);
 
         targets[on].dispatchEvent(event);
@@ -141,7 +173,7 @@ if (payload.view !== undefined) {
         });
     }
 } else {
-    throw new Error('the payload names none of `view`, `gestures` and `keys`');
+    throw new Error('the payload names none of `view`, `gestures`, `keys` and `offer`');
 }
 
 process.stdout.write(JSON.stringify({ log }));

@@ -59,7 +59,7 @@ import { renderDrillDown } from '../drilldown/main.js';
 import { createPainter, loadArt, measurer } from './painter.js';
 import { cameraView } from '../wire/camera-view.js';
 import { cameraGestures } from '../wire/camera-gestures.js';
-import { cameraKeys } from '../wire/camera-keys.js';
+import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
 import { deskListRow } from '../desk/desk-list.js';
 
 /** § 12's *The floor page's animation-log retention* — the page's bound, and no one else's. */
@@ -104,6 +104,9 @@ function list(id, lines) {
 }
 
 const root = el('floor');
+
+/** The drawing's zoom buttons — handed to `wire/camera-keys.js` to wire, and offered by it on every render. */
+const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out') };
 
 let lastFrame = null;
 
@@ -274,6 +277,9 @@ function paint(frame) {
     el('floor-drawing').dataset.dimmed = String(frame.failure.sign_in !== null);
     el('floor-camera').hidden = !drawn || frame.scene === null;
     el('floor-desks-heading').hidden = drawn;
+    // The keys and the zoom buttons are offered only while the camera frames the floor (card#7343 r4b):
+    // with nothing framed they do nothing, so the buttons are hidden and the drawing names no keys.
+    offerKeys(el('floor-drawing'), zoomButtons, frame.camera);
 
     if (drawn) {
         // A render never moves the viewer: a glide in flight keeps its step, and otherwise the drawing
@@ -356,11 +362,12 @@ el('floor-panel-more').addEventListener('click', () => {
 // `PINCH_GAIN` — through the same path) and a drag with the primary button pans, both wired by
 // `wire/camera-gestures.js`; the keyboard and the zoom buttons zoom about the drawing's centre and pan
 // by a step, wired by `wire/camera-keys.js` — both modules the lobby's too. None renders — each sets
-// the drawing's view from the camera the screen hands back.
+// the drawing's view from the camera the screen hands back, and each leaves its event to the browser
+// while the camera frames nothing (card#7343 r4b).
 const drawing = el('floor-drawing');
 
 cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);
-cameraKeys(drawing, { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out') }, { zoomStep: screen.zoomStep, drag: screen.drag }, show);
+cameraKeys(drawing, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);
 el('floor-fit').addEventListener('click', () => {
     const { from, to, glide_ms: ms } = screen.fitFloor();
 

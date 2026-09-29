@@ -102,10 +102,13 @@
  *      the lobby, each act also carrying `label: {after, mid}`, and a ride's `ride: {cab, route, resolves_to}`
  *      — `resolves_to` the floor the floor page's `resolveRoute()` finds for the route over the building the
  *      lobby drew — or `null` when the ride was refused. A `label` is the transform a plate's label is
- *      shown under, `{zoom, scale}` — the camera's zoom (the plates' `scale(zoom)`) and its
- *      `lobby/building-scene.js` `labelScale()` (the label's own counter-scale) — under the frame's camera,
+ *      shown under, `{zoom, scale, max}` — the camera's zoom (the plates' `scale(zoom)`), its
+ *      `lobby/building-scene.js` `labelScale()` (the label's own counter-scale) and `labelMax()` (the width
+ *      in screen px it wraps within, `lobby/main.js`'s `--label-max`) — under the frame's camera,
  *      the camera an act leaves, and (`mid`, `null` for an act that does not glide) the camera the page
- *      shows halfway through the act's glide —
+ *      shows halfway through the act's glide; and each ride step's (`ride`, `arrive`, `return`) `riding:
+ *      {accessor, frame}` — the screen's `riding()` after the step, beside the `riding` of the last frame
+ *      drawn —
  *      "animation_log": [ <§ 11 rows> ] }`
  *   and each record
  *   `{ "at", "label", "outcome", "seats", "event_log", "requests", "phase", "clock_offset_ms",
@@ -218,16 +221,17 @@ const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'sta
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
 const { healthCounters } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-model.js')).href);
-const { labelScale } = await import(pathToFileURL(join(dir, '..', 'lobby', 'building-scene.js')).href);
+const { labelMax, labelScale } = await import(pathToFileURL(join(dir, '..', 'lobby', 'building-scene.js')).href);
 const { between } = await import(pathToFileURL(join(dir, 'camera.js')).href);
 
 /**
  * The transform a plate's label is shown under on a lobby camera, as `lobby/main.js` shows it (Appendix
  * B row 16, the operator's rulings): the camera's zoom the plates are shown at, and the label's own
- * counter-scale. The label's font and what sits inside it are `lobby/plate-row.js`'s, read off the row.
+ * counter-scale — and the width it wraps within, `--label-max` (card#7343 r4b). The label's font and what
+ * sits inside it are `lobby/plate-row.js`'s, read off the row.
  */
 function plateLabel(camera) {
-    return { zoom: camera.zoom, scale: labelScale(camera) };
+    return { zoom: camera.zoom, scale: labelScale(camera), max: labelMax(camera) };
 }
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
@@ -743,7 +747,13 @@ async function replay(scenario) {
             // shows halfway through it (`wire/camera-view.js` steps a glide through `camera.js`'s `between()`).
             const label = { after: plateLabel(shown), mid: glide > 0 ? plateLabel(between(before, shown, 0.5)) : null };
 
-            cameraActs.push({ at: now, act, before, after: shown, glide_ms: glide, label, ...(act.act === 'ride' ? { ride } : {}) });
+            // A ride step's in-flight state as the page reads it — the screen's `riding()`, which `ride-hold.js`
+            // holds plate links on — beside the frame the step leaves, whose `riding` disables the ride control.
+            const riding = ['ride', 'arrive', 'return'].includes(act.act)
+                ? { riding: { accessor: lobby.riding(), frame: lobbyRenders[lobbyRenders.length - 1].frame.riding } }
+                : {};
+
+            cameraActs.push({ at: now, act, before, after: shown, glide_ms: glide, label, ...(act.act === 'ride' ? { ride } : {}), ...riding });
 
             return act.act;
         });

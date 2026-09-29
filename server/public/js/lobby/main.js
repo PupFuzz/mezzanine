@@ -26,7 +26,7 @@
  * screen's scene gives it (`plate-row.js`'s row), shows the screen's camera on the plates as one
  * transform — each plate's text, its name and its status line, counter-scaled from that same camera,
  * so it is read at the page's body text size at every zoom (the operator's rulings, `building-scene.js`'s
- * `LABEL_FONT`), and wrapped within the surface's width — and wires the wheel, the drag, the keys, the zoom buttons, the keyboard's focus on a
+ * `LABEL_FONT`), and wrapped within what is visible of the surface (`building-scene.js`'s `labelMax()`) — and wires the wheel, the drag, the keys, the zoom buttons, the keyboard's focus on a
  * plate, the whole-building control and the ride to the screen's camera acts — none of which renders.
  * A ride's click moves the cab — the page's `cab`, set to the stop `ride()` names — glides the camera to
  * the plate (or cuts, under `prefers-reduced-motion`) and then ARRIVES: the page goes to the route the
@@ -40,9 +40,10 @@
 import { livePage } from '../wire/live-page.js';
 import { cameraView } from '../wire/camera-view.js';
 import { cameraGestures } from '../wire/camera-gestures.js';
-import { cameraKeys } from '../wire/camera-keys.js';
+import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
+import { framesNothing } from '../wire/camera.js';
 import { startLobbyScreen } from './lobby-screen.js';
-import { labelScale, surfaceStyle } from './building-scene.js';
+import { labelMax, labelScale, surfaceStyle } from './building-scene.js';
 import { plateRow } from './plate-row.js';
 import { holdPlateLinks } from './ride-hold.js';
 
@@ -105,6 +106,9 @@ function unscroll() {
     node.scrollLeft = 0;
 }
 
+/** The building's zoom buttons — handed to `wire/camera-keys.js` to wire, and offered by it on every camera shown. */
+const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out') };
+
 /**
  * One camera on the plates: the scene point at the camera's `x`, `y` at the surface's top-left, at its
  * zoom — `wire/camera.js`'s `view`, as a CSS transform. Nothing framed is no transform at all: the list
@@ -116,23 +120,32 @@ function unscroll() {
  * never scaled by it, at fit, after a wheel, a key or a drag, on every step of a glide and after a
  * resize, because each of them is shown through this function.
  *
- * ⛔ AND THE SURFACE'S WIDTH IS THE LABELS' WIDTH (card#7343 r3, the seat's ruling): `--label-max`, the
- * width each plate label wraps within (`plate-row.js`). A label's px are screen px under its
- * counter-scale, so a label no wider than the surface is one a pan can always bring wholly into view —
- * where a label that ran on in one line past the surface's edge would be clipped beyond any pan.
+ * ⛔ AND WHAT IS VISIBLE IS THE LABELS' WIDTH (card#7343 r4b, the seat's ruling, refining r3's surface
+ * width): `--label-max`, the width each plate label wraps within (`plate-row.js`), is `building-scene.js`'s
+ * `labelMax()` of the same camera — the surface to the right of the plates' on-screen left edge, never
+ * wider than the surface and never narrower than its `LABEL_MIN_PX`. A label's px are screen px under its
+ * counter-scale, so at whole-building fit a label reads to its end without a pan wherever at least that
+ * minimum is visible beside the plates, and a label no wider than the surface is one a pan can always
+ * bring wholly into view.
+ *
+ * ⛔ AND THE KEYS AND THE ZOOM BUTTONS ARE OFFERED ONLY WHILE THE CAMERA FRAMES SOMETHING (card#7343 r4b,
+ * the seat's ruling): `wire/camera-keys.js`'s `offerKeys()`, from the same camera.
  */
 function view(camera) {
-    if (camera.bounds !== null) {
+    const framed = !framesNothing(camera);
+
+    if (framed) {
         unscroll();
     }
 
     const floors = el('lobby-floors');
 
-    floors.style.transform = camera.bounds === null
-        ? ''
-        : `scale(${camera.zoom}) translate(${-camera.x}px, ${-camera.y}px)`;
+    floors.style.transform = framed
+        ? `scale(${camera.zoom}) translate(${-camera.x}px, ${-camera.y}px)`
+        : '';
     floors.style.setProperty('--label-scale', String(labelScale(camera)));
-    floors.style.setProperty('--label-max', `${camera.surface.width}px`);
+    floors.style.setProperty('--label-max', `${labelMax(camera)}px`);
+    offerKeys(el('lobby-building'), zoomButtons, camera);
 }
 
 const { show, glideTo, current } = cameraView(view);
@@ -347,15 +360,15 @@ el('lobby-whole-building').addEventListener('click', () => {
 // The wheel zooms about the cursor in proportion to its scroll, and a drag with the primary button pans,
 // wired by `wire/camera-gestures.js`; the keys zoom about the centre and pan by a step, and so do the
 // zoom buttons, wired by `wire/camera-keys.js` — row 15's acts at building scale, each module the
-// floor's too. None renders; each shows the camera the screen hands back — and the wheel is the page's
-// own scroll while the camera frames nothing, the uncomposed list flowing in the page. A drag that moved
-// is no click on the plate — the link — it ended over.
+// floor's too. None renders; each shows the camera the screen hands back — and each leaves its event to
+// the browser while the camera frames nothing, the uncomposed list flowing in the page (card#7343 r4b).
+// A drag that moved is no click on the plate — the link — it ended over.
 const building = el('lobby-building');
 
 cameraGestures(building, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);
 // The committed ride wins (card#7343 r3b): a plate link clicked while a ride is in flight does not navigate.
 holdPlateLinks(building, screen.riding);
-cameraKeys(building, { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out') }, { zoomStep: screen.zoomStep, drag: screen.drag }, show);
+cameraKeys(building, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);
 // Focus can scroll the clipping surface; the camera alone moves the view (`unscroll()`).
 building.addEventListener('scroll', unscroll);
 // Focus-into-view (card#7343 r2-2): the keyboard's focus on a plate outside the view brings the camera

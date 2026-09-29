@@ -10,17 +10,23 @@
  * ⛔ THIS FILE DECIDES NOTHING ABOUT THE CAMERA. Where a wheel zooms to and how far a drag pans are the
  * screen's acts (`wheel(point, delta)`, `drag(dx, dy)`, each over `camera.js`); what comes back is
  * handed to `show` — `camera-view.js`'s — which renders nothing. What IS decided here is the gesture:
+ *  · ⛔ NOTHING FRAMED, NOTHING TAKEN (card#7343 r4b, the seat's ruling, widening its r3b ruling on the
+ *    wheel to the whole wire). Every gesture is the camera's only while the camera frames something —
+ *    `camera.js`'s one `framesNothing()` over the screen's `camera()`, asked afresh by every handler below,
+ *    because a building can arrive or go away between two events. A camera with no `bounds` has no scene
+ *    to move, and the drawing is then no box of its own: the lobby's uncomposed list flows in the page
+ *    (`lobby/building-scene.js`'s `surfaceStyle()`), so each event over it is the browser's, as it was
+ *    before the lobby had a camera — the wheel scrolls the page, a `dragstart` drags a room's link, a press
+ *    selects text and is never captured, and a press that moves on a room's link and is released there
+ *    follows it. The gates: the wheel, the `dragstart`, the press (its `user-select`, and so every drag and
+ *    capture after it), the move (a press that began framed stops panning the moment nothing is — no
+ *    capture and no drag) and the click-after-drag veto. On the floor the camera frames the floor's extent
+ *    from the first frame that has one, so a drawn floor's every gesture is handled as before; its camera
+ *    frames nothing before that frame, under the list view (where the drawing is hidden), and on a floor
+ *    with nothing measurable on it (no map held and no desk — `floor-screen.js`), and there the events,
+ *    which moved nothing, are the browser's too;
  *  · the wheel zooms about the cursor, carrying the event's `deltaMode` and `ctrlKey` (a pinch) with
- *    its `deltaY`, and takes the event from the page's own scroll — WHILE THE CAMERA FRAMES SOMETHING
- *    (card#7343 r3b, the seat's ruling). A camera with no `bounds` has no scene to zoom, and the drawing
- *    is then no box of its own: the lobby's uncomposed list flows in the page (`lobby/building-scene.js`'s
- *    `surfaceStyle()`), so a wheel over it is the page's scroll and is left to the browser, as it was
- *    before the lobby had a camera. The screen's `camera()` is asked on every wheel, because a building
- *    can arrive or go away between two. On the floor the camera frames the floor's extent from the first
- *    frame that has one, so a drawn floor's wheel is handled as before; its camera frames nothing before
- *    that frame, under the list view (where the drawing is hidden), and on a floor with nothing measurable
- *    on it (no map held and no desk — `floor-screen.js`), and there a wheel, which zoomed nothing, is now
- *    the page's scroll too;
+ *    its `deltaY`, and takes the event from the page's own scroll;
  *  · only the primary pointer's primary button drags — a right-click's menu or a second finger never
  *    starts a pan no `pointerup` of its own would end — and a press is a click until it has moved
  *    `DRAG_SLOP_PX`, when the pointer is captured;
@@ -34,10 +40,10 @@
  *    with click handlers, `floor/painter.js`); taking the default action too changes nothing on the
  *    floor and closes the case on the lobby, so the two pages share the whole policy rather than a
  *    parameter that keeps them apart;
- *  · A PRESS NEVER SELECTS TEXT AND NEVER DRAGS AN ELEMENT OUT (card#7343 r2-3). A pan started on a
- *    plate's link was the browser's native link drag, and a pan across the plates selected their text.
- *    So a `dragstart` inside the drawing is refused — a drag here pans, and nothing in either drawing
- *    is meant to be dragged out of it — and from a primary press until the drag ends the drawing is
+ *  · A PRESS ON A FRAMED DRAWING NEVER SELECTS TEXT AND NEVER DRAGS AN ELEMENT OUT (card#7343 r2-3). A
+ *    pan started on a plate's link was the browser's native link drag, and a pan across the plates
+ *    selected their text. So a `dragstart` inside the drawing is refused — a drag here pans, and nothing
+ *    in either drawing is meant to be dragged out of it — and from a primary press until the drag ends the drawing is
  *    `user-select: none`. That property, rather than cancelling the `pointerdown`: `user-select` is the
  *    one control whose whole meaning is *no selection starts here*, where cancelling a `pointerdown` is
  *    specified to suppress the compatibility mouse events and would also cancel the press's focus on
@@ -49,6 +55,8 @@
  *
  * Driven under `node` with a stand-in element by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.
  */
+
+import { framesNothing } from './camera.js';
 
 /** How far a press must move, in CSS px, before it is a drag and no longer a click. */
 export const DRAG_SLOP_PX = 4;
@@ -65,6 +73,9 @@ export function cameraGestures(element, acts, show) {
     let drag = null;
     let dragged = false;
 
+    /** The one gate: the screen's camera frames nothing, so the event is the browser's (see the header). */
+    const unframed = () => framesNothing(acts.camera());
+
     /** The press is over, however it ended: the drawing's text is selectable again. */
     function release() {
         drag = null;
@@ -73,12 +84,17 @@ export function cameraGestures(element, acts, show) {
     }
 
     element.addEventListener('dragstart', (event) => {
+        // Gate: nothing framed — a link in the flowing list drags as any link does.
+        if (unframed()) {
+            return;
+        }
+
         event.preventDefault();
     });
 
     element.addEventListener('wheel', (event) => {
-        // Nothing framed: the wheel is the page's scroll, and the event is left to the browser.
-        if (acts.camera().bounds === null) {
+        // Gate: nothing framed — the wheel is the page's scroll.
+        if (unframed()) {
             return;
         }
 
@@ -94,6 +110,11 @@ export function cameraGestures(element, acts, show) {
             return;
         }
 
+        // Gate: nothing framed — a press selects text as ever, and no drag starts.
+        if (unframed()) {
+            return;
+        }
+
         dragged = false;
         drag = { x: event.clientX, y: event.clientY, moved: false };
         element.style.userSelect = 'none';
@@ -102,6 +123,13 @@ export function cameraGestures(element, acts, show) {
 
     element.addEventListener('pointermove', (event) => {
         if (drag === null || (event.buttons & 1) === 0) {
+            release();
+
+            return;
+        }
+
+        // Gate: nothing framed any more — the press ends here, uncaptured, and pans nothing.
+        if (unframed()) {
             release();
 
             return;
@@ -135,10 +163,18 @@ export function cameraGestures(element, acts, show) {
     });
 
     element.addEventListener('click', (event) => {
-        if (dragged) {
-            event.preventDefault();
-            event.stopPropagation();
-            dragged = false;
+        if (!dragged) {
+            return;
         }
+
+        dragged = false;
+
+        // Gate: nothing framed any more — the click is the browser's, and follows the link it is on.
+        if (unframed()) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
     }, { capture: true });
 }
