@@ -849,6 +849,53 @@ class FeedSurfaceTest extends FeedTestCase
     }
 
     /**
+     * ⛔ `detail.counters` IS A NAME → VALUE MAP, SO IT IS A JSON OBJECT WHETHER OR NOT IT HAS ROWS.
+     * It is this plane's own `seat_counters` rows keyed by `name` — a map the server builds, never
+     * a wire value passed through — and PHP's encoder spells an EMPTY associative array as `[]`.
+     * Until card#7342 a seat with no `seat_counters` rows was therefore served `"counters": []`
+     * while every other seat got `{…}`: one member, two JSON types, chosen by the row count.
+     *
+     * Decoded WITHOUT the associative flag, because an associative decode maps `{}` and `[]` onto
+     * the one PHP value and could not see the defect at all.
+     */
+    public function test_the_seat_detail_counters_is_an_object_even_with_no_rows(): void
+    {
+        $this->deliver($this->blockedPair(requestOnly: true));
+        $this->fold();
+        $this->sweep();
+
+        $seatRef = (int) DB::table('seats')
+            ->join('installs', 'installs.id', '=', 'seats.install_ref')
+            ->where('installs.install_id', self::INSTALL)->where('seats.seat_id', self::SEAT)
+            ->value('seats.id');
+
+        $served = function (): object {
+            $response = $this->asMachine($this->readToken(),
+                '/api/fleet/seats/'.self::INSTALL.'/'.self::SEAT)->assertOk();
+
+            return json_decode($response->getContent(), false, 512, JSON_THROW_ON_ERROR)->detail;
+        };
+
+        DB::table('seat_counters')->where('seat_ref', $seatRef)->delete();
+        $this->assertSame(0, DB::table('seat_counters')->where('seat_ref', $seatRef)->count(),
+            'the zero-counter seat this test exists for was not produced');
+
+        $counters = $served()->counters;
+        $this->assertInstanceOf(\stdClass::class, $counters,
+            'a seat with no `seat_counters` rows was served `counters` as a JSON array, not an object');
+        $this->assertSame([], get_object_vars($counters));
+
+        // The populated case keeps its members and their integer values through the same emit.
+        DB::table('seat_counters')->insert([
+            'seat_ref' => $seatRef, 'name' => 'fold_error', 'value' => 3, 'updated_at' => Clock::sql(now()),
+        ]);
+
+        $counters = $served()->counters;
+        $this->assertInstanceOf(\stdClass::class, $counters);
+        $this->assertSame(['fold_error' => 3], get_object_vars($counters));
+    }
+
+    /**
      * Every `…_at` / `…_since` member of `$node`, at any depth, keyed by its path.
      *
      * ⚠ `heartbeat_counters` and `heartbeat_predicates` are SKIPPED, and the reason is a

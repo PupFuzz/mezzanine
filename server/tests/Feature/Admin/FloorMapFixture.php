@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Floor\FurnitureBox;
+
 /**
  * Tiled map documents for the floors module's tests — one valid map, and one deliberate defect
  * per refusal `App\Floor\FloorMap` owns.
@@ -26,21 +28,7 @@ final class FloorMapFixture
     /** @return array<string, mixed> */
     public static function decoded(int $slots = 12): array
     {
-        $objects = [];
-
-        for ($i = 1; $i <= $slots; $i++) {
-            $objects[] = [
-                'id' => $i,
-                'name' => '',
-                'type' => '',
-                'x' => 32 * $i,
-                'y' => 64,
-                'width' => 24,
-                'height' => 16,
-                'rotation' => 0,
-                'visible' => true,
-            ];
-        }
+        $objects = self::slots($slots);
 
         return [
             'type' => 'map',
@@ -51,12 +39,12 @@ final class FloorMapFixture
             // ⚠ THE GRID IS DERIVED FROM THE SLOT COUNT, AND THAT IS card#9292 rather than a
             // convenience: every desk object below must be WHOLLY INSIDE the grid (§ 10.3),
             // because the grid is the room's footprint on a planned floor and a desk past it
-            // would overhang a neighbour the footprint check had passed. The slots are laid at
-            // `x = 32 · i`, so the `$slots`th reaches `32 · $slots + 24` — a fixed width would
-            // make `valid(20)` an INVALID map while `valid(12)` passed, which is the shape that
-            // turns a fixture into a trap for whoever next asks it for one more desk.
+            // would overhang a neighbour the footprint check had passed. The slots are laid side
+            // by side at the furniture box, so the `$slots`th ends at `$slots` boxes — a fixed
+            // width would make `valid(20)` an INVALID map while `valid(12)` passed, which is the
+            // shape that turns a fixture into a trap for whoever next asks it for one more desk.
             'width' => self::tilesWide($slots),
-            'height' => 8,
+            'height' => self::tilesHigh(),
             'tilewidth' => 32,
             'tileheight' => 32,
             'infinite' => false,
@@ -78,10 +66,10 @@ final class FloorMapFixture
                     'x' => 0,
                     'y' => 0,
                     'width' => self::tilesWide($slots),
-                    'height' => 8,
+                    'height' => self::tilesHigh(),
                     'opacity' => 1,
                     'visible' => true,
-                    'data' => array_fill(0, self::tilesWide($slots) * 8, 1),
+                    'data' => array_fill(0, self::tilesWide($slots) * self::tilesHigh(), 1),
                 ],
                 [
                     'id' => 2,
@@ -99,13 +87,62 @@ final class FloorMapFixture
     }
 
     /**
-     * Wide enough in 32 px tiles to hold `$slots` desks laid at `x = 32 · i`, and never narrower
-     * than the 20 tiles the control map has always declared — so a fixture asked for more desks
-     * grows rather than earning card#9292's outside-the-grid refusal.
+     * ⭐ `$count` desk objects AT THE FURNITURE BOX, side by side along the top of the room and
+     * sharing edges — § 14 item 28(1), Appendix B row 14's slice C: the console refuses a slot
+     * smaller than the box and two slots that share a pixel, so a VALID map's slots are each
+     * exactly the box and pairwise disjoint on the half-open test (an edge shared, never a pixel).
+     * The box is read from its one source, never copied here, so a box that moves moves this map
+     * with it rather than turning every test that saves it into a refusal.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function slots(int $count): array
+    {
+        $box = self::box();
+        $objects = [];
+
+        for ($i = 1; $i <= $count; $i++) {
+            $objects[] = [
+                'id' => $i,
+                'name' => '',
+                'type' => '',
+                'x' => $box->width * ($i - 1),
+                'y' => 0,
+                'width' => $box->width,
+                'height' => $box->height,
+                'rotation' => 0,
+                'visible' => true,
+            ];
+        }
+
+        return $objects;
+    }
+
+    /**
+     * The furniture box, parsed from its one source by `FurnitureBox`'s own strict reader. Read
+     * from the file's path under the repository rather than through `FurnitureBox::current()`,
+     * because this fixture also feeds DATA PROVIDERS, which PHPUnit runs before the application
+     * exists — and `current()` resolves the tree through `base_path()`.
+     */
+    private static function box(): FurnitureBox
+    {
+        return FurnitureBox::parse((string) file_get_contents(dirname(__DIR__, 4).'/resources/floor/'.FurnitureBox::FILE));
+    }
+
+    /**
+     * Wide enough in 32 px tiles to hold `$slots` desks laid side by side at the furniture box,
+     * and never narrower than the 20 tiles the control map has always declared — so a fixture
+     * asked for more desks grows rather than earning card#9292's outside-the-grid refusal.
      */
     private static function tilesWide(int $slots): int
     {
-        return max(20, $slots + 2);
+        return max(20, (int) ceil($slots * self::box()->width / 32));
+    }
+
+    /** Tall enough in 32 px tiles to hold one row of desks at the furniture box. */
+    private static function tilesHigh(): int
+    {
+        return max(8, (int) ceil(self::box()->height / 32));
     }
 
     /**
@@ -128,8 +165,10 @@ final class FloorMapFixture
     /**
      * A valid map of a chosen GRID — which since card#9292 is the room's FOOTPRINT on a planned
      * floor (`docs/design/FLOOR.md § 4.6`), so this is how a test says *this room is this big*.
-     * The desk slots are drawn at the origin, one pixel each, so they are inside any grid and the
-     * size under test is the only thing that varies.
+     * Its desk slots are `slots()`'s, at the furniture box from the room's corner, so the grid
+     * must hold `$slots` boxes side by side: since § 14 item 28(1) no room smaller than one box
+     * can be saved, and a grid asked for below that is refused by `FloorMap`'s outside-the-grid
+     * rule, by name, rather than quietly shrinking the desks.
      */
     public static function sized(int $tilesWide, int $tilesHigh, int $slots = 1): string
     {
@@ -140,10 +179,6 @@ final class FloorMapFixture
         $map['layers'][0]['width'] = $tilesWide;
         $map['layers'][0]['height'] = $tilesHigh;
         $map['layers'][0]['data'] = array_fill(0, $tilesWide * $tilesHigh, 1);
-        $map['layers'][1]['objects'] = array_map(
-            fn (int $id) => ['id' => $id, 'x' => 0, 'y' => 0, 'width' => 1, 'height' => 1],
-            range(1, $slots),
-        );
 
         return self::encode($map);
     }
@@ -276,6 +311,28 @@ final class FloorMapFixture
     {
         $map = self::decoded();
         $map['layers'][1]['objects'][0]['x'] = ($map['width'] * $map['tilewidth']) - 4;
+
+        return self::encode($map);
+    }
+
+    /**
+     * § 14 item 28(1)(i): two desk slots whose half-open rects share a pixel column — `id 2`
+     * moved one pixel left, onto `id 1`'s right edge. Exactly that pair intersects: `id 2` still
+     * ends a pixel short of `id 3`, so the refusal has one pair to name and names it.
+     */
+    public static function intersectingDesks(): string
+    {
+        $map = self::decoded();
+        $map['layers'][1]['objects'][1]['x'] -= 1;
+
+        return self::encode($map);
+    }
+
+    /** § 14 item 28(1)(ii): `id 1` one pixel narrower than the furniture box, and nothing else. */
+    public static function undersizedDesk(): string
+    {
+        $map = self::decoded();
+        $map['layers'][1]['objects'][0]['width'] -= 1;
 
         return self::encode($map);
     }

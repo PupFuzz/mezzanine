@@ -6,12 +6,11 @@
  * ⛔ EVERY DECISION THE BUBBLE MAKES IS IN THIS FILE. Whether one is drawn at all, what text it
  * holds, where the text is cut, and where a bubble sits when two of them would collide are all
  * decided here and are exercised under `node` by `tests/Feature/Desk`. What is NOT here is a DOM
- * half, and that is deliberate rather than unfinished: THERE IS NO FLOOR PAGE YET — § 4.4's
- * `/floor/{install_id}` route is card#9208-blocked on a D2 read surface for an authored map, and
- * `drilldown/main.js` records the same gap for the same reason ("the element contract is the
- * floor page's to declare and the floor page's test to hold"). A `main.js` written now would
- * invent element ids nobody will serve. What the floor page needs from this module is a model it
- * can draw and a MEASURER it must supply — see `bubbleLayout` below.
+ * half, and that is deliberate rather than unfinished: the drawing layer is Appendix B row 14's —
+ * `floor/scene.js` lays each desk's bubble out through `bubbleLayout` below, and `floor/painter.js`
+ * draws it and supplies the MEASURER (`measurer()`), in the harness the fixture's. A DOM half
+ * written here would be a second drawing of the one bubble. What the floor page needs from this
+ * module is a model it can draw and a measurer it must supply — see `bubbleLayout` below.
  *
  * ⛔ THE BUBBLE REPLACES THE TEXT CHIP; IT DOES NOT JOIN IT (§ 5.1, rule 1). "A chip surviving
  * beside a bubble would be one fact drawn twice", which § 2.4's one-rendered-form-per-fact rule
@@ -146,12 +145,12 @@ export function bubbleText(facts) {
  * instant drawn beside a title is read as the title's freshness, and those are different claims.
  * The member is rendered at full fidelity in the drill-down (§ 5.2).
  */
-export function taskBubble(seat, options = {}) {
+export function taskBubble(seat) {
     if (!deskDrawsCharacter(seat?.render_state)) {
         return null;
     }
 
-    const facts = taskFacts(seat?.task ?? null, options.ref_bases);
+    const facts = taskFacts(seat?.task ?? null);
 
     if (facts === null) {
         return null;
@@ -184,7 +183,8 @@ export const SEPARATION_GAP_PX = 6;
  *                 anchor is the character's own point, in the floor's coordinates, and the box
  *                 is raised from it. Input ORDER is not read: the pass runs in § 3.1's identity
  *                 order, `(install_id, seat_id)`, which is the only fixed order this page has.
- * @param measure  the page's own text measurement, `(text) => ({ w, h })`.
+ * @param measure  the page's own text measurement, `(text, bubble) => ({ w, h })` — the bubble is
+ *                 passed too, so a measurer may size a box of more than one line.
  *
  * ⛔ THE MEASURER IS REQUIRED AND IS NEVER DEFAULTED. Rule 4: "the box is never sized from a
  * guess at the text's width", because "a box of fixed width would meet [the bound] by SILENTLY
@@ -206,7 +206,10 @@ export function bubbleLayout(bubbles, measure) {
     const ordered = [...bubbles].sort((a, b) => (identity(a) < identity(b) ? -1 : 1));
 
     const base = ordered.map((bubble) => {
-        const { w, h } = measure(bubble.text);
+        // The measurer is handed the bubble as well as its text, so a caller whose bubble carries
+        // more than one line (the scene's, Appendix B row 14: the text, then the tier that answered)
+        // measures the box it will draw rather than the first line of it.
+        const { w, h } = measure(bubble.text, bubble);
 
         return {
             install_id: bubble.install_id,

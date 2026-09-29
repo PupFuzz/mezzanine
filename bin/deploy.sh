@@ -70,6 +70,21 @@
 # does not create databases, does not mint an APP_KEY, and never rolls anything back. It refuses
 # to start when the host is not in the state those acts leave behind.
 #
+# ⚑ WHAT THIS HOST'S TOOLS MUST BE (card#9616). Each refused BY NAME in phase A, before anything
+#   is touched — the host is never discovered to be too old inside the window:
+#     bash   `BASH_FLOOR` below, and the floor the RELEASE BEING DEPLOYED declares on its own copy
+#            of that line (A1, A6b). The value is MEASURED, not read off the constructs; the block
+#            that declares it says how, and what each measurement answered.
+#     git    accepts `:(literal)` pathspec magic — PROBED on this checkout, no version parsed
+#            (A3b). Every read of the release out of the object database passes a path that way.
+#     npm    at least what the RELEASE's `server/package-lock.json` `lockfileVersion` implies, per
+#            npm's own documentation (A1c reads the host's, A12 makes the comparison).
+#     PHP    satisfies the RELEASE's `server/composer.json` `require.php` (A6), and FPM's opcache
+#            will re-read changed code (A14).
+#   Every one of them but git's is read out of the TARGET tree rather than out of this checkout,
+#   because the deploy that RAISES a floor is exactly the deploy whose own checkout does not show
+#   the new one. git's is a property of the host binary alone, so it is probed here.
+#
 # EXIT CODES — deliberately distinct, because "refused" and "broke" are different events:
 #   0  deployed, smoke-checked, app up
 #   1  REFUSED in the precondition phase. Nothing was touched; the app is still serving the
@@ -77,13 +92,28 @@
 #   2  FAILED INSIDE THE MAINTENANCE WINDOW. The app is DOWN and stays down for operator review.
 #      A failure marker is left and a bare re-run REFUSES until an operator clears it.
 #   3  the app came back up but the post-window smoke check did not pass. Marker left.
+#   ⛔ ANY OTHER CODE — and a 1 with no ⛔ banner — is this script DYING on a command it ran without
+#      reading that command's status, not a verdict it reached (card#9646). Read it that way, and
+#      read the two lines that tell them apart rather than the number: a REFUSAL prints
+#      `⛔ REFUSED — <cause>` and ends `Nothing was changed. The previous release is still serving.`,
+#      and an IN-WINDOW failure prints `▶ Maintenance window: OPEN` and leaves the marker named
+#      above. A death prints neither, and the command's own error is the last thing on screen.
+#      NOTHING WAS TOUCHED when neither the window line nor the marker is there: every phase-A
+#      command runs before `php artisan down`. Each such site found is fixed — this note exists
+#      because the class is not closed by inspection, not because the shape is acceptable.
 #
 # USAGE
 #   bin/deploy.sh [--ref <ref>] [--dry-run] [--redeploy] [--allow-unreleased]
 #
 # CONFIG (environment; every default is derived, none is guessed):
 #   MEZZ_DEPLOY_ROOT      the checkout to deploy        [default: the repo this script lives in]
-#   MEZZ_REMOTE           git remote to fetch from      [default: origin]
+#   MEZZ_REMOTE           the NAME of a remote of the checkout being deployed, to fetch from
+#                         [default: origin]. ⛔ A NAME, NEVER A URL: `git fetch` would take a URL,
+#                         and a URL can carry a credential that this script's own messages print
+#                         and that git redacts in its own errors for some transports and not
+#                         others. A3c refuses a value that is not among `git remote`'s names, in
+#                         phase A, without echoing it (card#9832) — and one that is, when that name
+#                         contains ':', which no name `git remote add` creates can (card#9991).
 #   MEZZ_FPM_BIN          the PHP-FPM binary whose opcache settings A14 reads [default:
 #                         php-fpm<this host's CLI PHP minor>, e.g. php-fpm8.5 — derived; see below]
 #   MEZZ_DAEMON_STOP_TIMEOUT_S  seconds the previous daemons get to exit after SIGTERM [default: 30]
@@ -113,11 +143,121 @@
 # `§ 6.9` (migrations on a live `events` table), `§ 8.3` (the heartbeat) · `docs/PLAN.md § 5`.
 
 set -Eeuo pipefail
+# ── THE BASH FLOOR (card#9616) ────────────────────────────────────────────────────────────────
+# The oldest bash this script is known to run on. ⚠ THIS LINE IS ITS ONE HOME. A1 holds the bash
+# running phase A to it; A6b holds that same bash to the floor the RELEASE BEING DEPLOYED declares
+# on its own copy of this line, because that copy is what runs the maintenance window after the
+# re-exec; and `.github/workflows/deploy-selftest.yml` READS the value from here rather than
+# carrying one of its own.
+#
+# ⛔ IT IS MEASURED, AND A CONSTRUCT SCAN IS NOT HOW IT WAS FOUND. Scanning this file for
+# version-gated SYNTAX finds `mapfile` (bash 4.0) and `exec {fd}<` (4.1) and stops — and both are a
+# whole minor below the truth, because the binding construct is not syntax at all. `"${a[@]}"` over
+# an array with NO elements, under `set -u`, is an `unbound variable` DEATH on bash before 4.4 —
+# `"${a[*]}"` exactly as much as `"${a[@]}"` (measured, 4.3.0 vs 4.4.0; `"${!a[@]}"` is SAFE on both,
+# which is why the `${!…[@]}` loops here are not in this class) — and this script has such
+# expansions. The two the self-test is known to REACH with the array empty, each reded on 4.3 by a
+# case of its own — which is how they are known to be reached, rather than by inspection:
+#   · `"${ref_note[@]}"`   A7's refusal, empty for any ordinary ref name. The shell DIES, and the
+#     refusal it was in the middle of printing never appears: exit 1, no banner, no promise.
+#   · `"${files[@]}"`      checkout_lock_holders, empty on a FIRST deploy, when no daemon lock file
+#     exists yet. MEASURED: this one does NOT kill the deploy. The call site is inside a `$( )`, so
+#     the SUBSHELL dies, the parent reads an empty answer and carries on reporting that nothing was
+#     running — which happens to be true on a first deploy. Only the self-test's `no_shell_death`
+#     tripwire can see it.
+#     `restart_daemons` reads that same array again in its own body, where an empty one WOULD kill
+#     the run. REASONED, then measured, and the two are marked apart because they were established
+#     differently: the reasoning is that the relaunch above it has created the lock files by then,
+#     so no path reaches it empty; the measurement is the below-floor CI run, where the FIRST-DEPLOY
+#     case's `exit 0` assertion passes on bash 4.3 — that run drives restart_daemons to completion
+#     on the very interpreter the empty expansion would die on. ⇒ That assertion is also what would
+#     CATCH the reasoning being wrong: were some path to reach it empty, it would stop being an
+#     `exit 0` on 4.3 and the control would red on a third site instead of the two it names.
+#
+# ⛔ WHETHER A GIVEN EXPANSION CAN BE EMPTY IS A WHOLE-PROGRAM PROPERTY, NOT A SYNTACTIC ONE, which
+# is the second half of why a scan cannot answer this. `bad`, `missing`, `stale`, `present`, `hs`
+# and the rest are the same SYNTAX, and are guarded by a `${#…[@]} -gt 0` or initialised non-empty.
+# `ENV_LINES` reads like the clearest case of all and is NOT one: `env_lines_load` splits with `<<<`,
+# which appends a terminator, so even a ZERO-BYTE `.env` yields one (empty) element — measured — and
+# the only paths that leave the array `()` set ENV_LINES_UNREADABLE or ENV_LINES_READ_FAILED, which
+# both loops test before they run.
+#
+# ⚠ SO THE LIST ABOVE IS NOT A UNIVERSAL, AND NOTHING RE-DERIVES IT. It is a hand audit, and two
+# hand audits of exactly this question have already been wrong. THE FIRST (card#9616's design
+# review, F2) named three sites — `ref_note`, `ENV_LINES` and `why`. `ref_note` was right; the other
+# two are not hazards at all (`why` is initialised non-empty at both of its assignments, and see
+# `ENV_LINES` above); and it missed `files`. THE SECOND (this file's own header at 03a46b4) kept
+# `ENV_LINES`, dropped `why` — naming it correctly among the guarded — and still missed `files`,
+# which the review at `f2ee3d0` found (card#9616 comment 5831) and the measurement above then
+# settled both ways. ⚠ The RECORD is named, not the round: this card has carried two numbering
+# schemes at once — build rounds and review rounds — and they do not line up. Do not read the
+# list as the population. What IS mechanical is the pair of CI runs
+# below — they exercise whatever sites the suite reaches, enumerated or not, and `no_shell_death`
+# in the self-test is what makes a site visible when it degrades instead of dying. So nothing here
+# scans: the floor is where the SUITE was seen to pass and the minor below it is where it FAILED.
+# ⛔ AND NO TRIPWIRE TABLE SHIPS EITHER, deliberately. A construct table is a list, every list of
+# this kind measured so far has been incomplete, and an incomplete one is worse than none: it reds
+# on the constructs somebody remembered and stays SILENT on the one that actually moves the floor,
+# while reading like coverage. The pair of CI runs below is a check that can fail on a construct
+# nobody has thought of, which is the property a table cannot have.
+#
+# MEASURED 2026-09-19, on the tree that introduced this line, against bash built from the GNU
+# release tarballs (gcc 15.2.0, `./configure --without-bash-malloc --disable-nls`), each first on
+# PATH so that the re-exec runs the same interpreter. ⚠ No figure is written down here, because the
+# `bash-floor` job RE-RUNS this pair on every PR and its log is the live reading; what is recorded
+# is what each run answered and why:
+#   · bash 4.4  — `bin/deploy.selftest.sh` passed in full.
+#   · bash 4.3  — the same suite on the same tree FAILED, on the two independent sites above: A7's
+#     `'<ref>' does not resolve to a commit` refusal DYING on `"${ref_note[@]}"` instead of refusing
+#     — no `⛔ REFUSED` banner, no "Nothing was changed" promise, exiting 1, which is the exact code
+#     the table above says means *refused, nothing was touched* — and the FIRST-DEPLOY case's
+#     tripwire, on checkout_lock_holders. That first shape is the failure this floor exists to move
+#     to before anything runs; the second is the one no verdict-shaped assertion could have seen.
+# The mechanism on its own, same two binaries: `set -u; a=(); for x in "${a[@]}"; do :; done`
+# prints `a[@]: unbound variable` on 4.3 and completes on 4.4.
+#
+# ⚠ WHAT IS NOT MEASURED: anything below 4.3. A bash old enough to reject this file's SYNTAX never
+# reaches A1 to be refused by it, so the gate can only speak for a shell that got that far.
+#
+# ⚠ READ AS TEXT — by A6b out of the release being deployed, and by CI. Keep it
+# `BASH_FLOOR=<major>.<minor>`, alone on its line, at column 0, unquoted or quoted. A new construct
+# stays at or below this floor, or the floor MOVES — and it moves by re-running the pair above,
+# never by retyping this number.
+BASH_FLOOR=4.4
+# ── library mode (card#9644) ──────────────────────────────────────────────────────────────────
+# RUN, or SOURCED? Phase A's target-tree gates are callable one at a time (§ PHASE A's TARGET-TREE
+# GATES), and a checker reaches them by sourcing this file — which, while the bottom of it read
+# `main "$@"` unguarded, ran a DEPLOY instead. `$0` is the sourcing script's name when this file is
+# sourced and this file's own when it is run, so the two are equal exactly when it is being run.
+# That is what the argument parsing below and `main` at the bottom are gated on, and nothing else.
+#
+# ⚠ SOURCING THIS FILE IS NOT FREE, and the effects are named here rather than left to be found:
+# `set -Eeuo pipefail` above is set in the SOURCING shell, bin/supervision.sh is sourced beside this
+# file, and DEPLOY_ROOT, HOST_PHP_VERSION and FPM_BIN are resolved below — the last two by running
+# `php`. And the `set --` below CLEARS THE SOURCING SHELL'S positional parameters when it sources this
+# file with no arguments, because bash then shares them with it: a caller that means to use "$@" after
+# the `.` keeps a copy first (measured, card#9745 — a test helper that did not ran nothing). A caller
+# that does not want any of that sources this file in a shell of its own.
+DEPLOY_IS_RUN=0
+[ "${BASH_SOURCE[0]}" != "$0" ] || DEPLOY_IS_RUN=1
 
 # ── output ────────────────────────────────────────────────────────────────────────────────────
 say()  { printf '%s\n' "$*"; }
 step() { printf '\n▶ %s\n' "$*"; }
 warn() { printf '⚠ %s\n' "$*" >&2; }
+
+# A DEPLOY IGNORES THE READ LEDGER (card#9745, § git_read_ledger_note). MEZZ_GIT_READ_LEDGER is a
+# checker's switch, honoured only by a checker that SOURCES this file; a run is a deploy, and what a
+# deploy decides must not depend on a debugging variable left in an operator's shell. Honoured, it made
+# every git call of the run also write that file — and a path that could not be written ended phase A
+# with bash's own redirection error and exit 1, no ⛔ banner (measured, card#9745 review of e0a409d),
+# or, inside the window, sent the run down in_window_failure for a reason that is not the release's.
+# So a run says once that it was set, and removes it — from this process and from everything it
+# starts, the phase-B re-exec included — before any git_at call can read it.
+if [ "$DEPLOY_IS_RUN" -eq 1 ] && [ -n "${MEZZ_GIT_READ_LEDGER:-}" ]; then
+  warn "MEZZ_GIT_READ_LEDGER is set in this shell and was IGNORED: it is a checker's switch (bin/deploy-gate-inputs.sh), and a deploy writes no read ledger"
+  unset MEZZ_GIT_READ_LEDGER
+fi
 
 # refuse — precondition phase only. Nothing has been touched, and the message says so, because an
 # operator who cannot tell "refused" from "half-deployed" will go looking for damage that is not
@@ -152,6 +292,20 @@ REMOTE="${MEZZ_REMOTE:-origin}"
 HOST_PHP_VERSION="$(php -r 'echo PHP_VERSION;' 2>/dev/null || true)"
 FPM_BIN="${MEZZ_FPM_BIN:-php-fpm$(printf '%s' "$HOST_PHP_VERSION" | cut -d. -f1,2)}"
 
+# The bash running THIS PROCESS, as <major>.<minor> — what A1 and A6b hold to a BASH_FLOOR. Read from
+# the interpreter itself rather than from `bash --version`, because the interpreter is the thing that
+# will die.
+# ⇒ IT SPEAKS FOR EVERY BASH THIS SCRIPT STARTS, AND THAT IS THE WHOLE LIST: the MAINTENANCE WINDOW
+# (`exec "$BASH" …` in phase_b_open_window) and A13's read of the release's bin/supervision.sh
+# (`env -u BASH_ENV "$BASH" -c …` in gate_a13_target_plan). Both hand THIS interpreter over by name,
+# so the floors checked here are the floors those run under — a property of the two call sites, not
+# a hope about PATH. Neither was so before card#9616: the re-exec went through the target's
+# `#!/usr/bin/env bash` and A13 through a bare `bash -c`, both of which are whatever `bash` PATH
+# happens to resolve to, which nothing here reads. The supervised daemons are not on this list at
+# all — they start `/bin/sh -c` under `env -i`. `bin/deploy.selftest.sh`'s `window_interpreter`
+# case is what holds the two to it; reverting either call site reds exactly that case.
+HOST_BASH_VERSION="${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
+
 # The supervised daemons, their locks and the exact command cron runs for each — stated ONCE, in
 # bin/supervision.sh, sourced from beside THIS file. In phase A that is the SERVING release's copy, and
 # A13 evaluates the target's, read out of git, in a bash process of its own; after the re-exec it is the
@@ -167,15 +321,29 @@ MARKER="$DEPLOY_ROOT/.deploy-failed"   # git-ignored; see .gitignore
 
 REF="main"; DRY_RUN=0; REDEPLOY=0; ALLOW_UNRELEASED=0; POST_CHECKOUT_SHA=""; TARGET_DAEMONS=""
 
+# Sourced, `$@` is the SOURCING script's argument list, which is not this deploy's and must not be
+# parsed as one — `--ref` would be taken from it, and anything else refused outright.
+[ "$DEPLOY_IS_RUN" -eq 1 ] || set --
+# ⛔ AN OPTION WITH NO VALUE IS REFUSED THROUGH `refuse`, LIKE EVERY OTHER PHASE-A EXIT (card#9646).
+# `${2:?…}` was the shape here, and it is the same defect this card ends one line up from the deploy:
+# bash prints `bash: line N: 2: --ref needs a value` and exits 1 ITSELF, so the operator gets the status
+# that MEANS "refused, nothing was touched" (the exit table above) with no ⛔ banner and no "Nothing was
+# changed" promise — the two lines that say which of those it is. `--internal-post-checkout`'s bare
+# `${2:?}` was worse still: bash's message is then just the parameter's name. Both go through `refuse`.
+# The test is `-n "${2:-}"` rather than `$# -ge 2` so that an EMPTY value is refused exactly as a missing
+# one is, which is what `${2:?…}` did: `--ref ''` would otherwise resolve `refs/remotes/origin/` at A7.
 while [ $# -gt 0 ]; do
   case "$1" in
-    --ref)               REF="${2:?--ref needs a value}"; shift 2 ;;
+    --ref)               [ -n "${2:-}" ] || refuse "--ref needs a value" "run \`$0 --help\`"
+                         REF="$2"; shift 2 ;;
     --dry-run)           DRY_RUN=1; shift ;;
     --redeploy)          REDEPLOY=1; shift ;;
     --allow-unreleased)  ALLOW_UNRELEASED=1; shift ;;
     # Internal. Phase B re-enters here after the checkout — see § re-exec. Never run by hand:
     # it assumes the maintenance window is already open.
-    --internal-post-checkout) POST_CHECKOUT_SHA="${2:?}"; shift 2 ;;
+    --internal-post-checkout) [ -n "${2:-}" ] || refuse "--internal-post-checkout needs a value" \
+                           "It is internal: phase B passes the commit it checked out. Run \`$0 --help\`."
+                         POST_CHECKOUT_SHA="$2"; shift 2 ;;
     -h|--help)           usage ;;
     *) refuse "unknown argument: $1" "run \`$0 --help\`" ;;
   esac
@@ -196,10 +364,38 @@ done
 # that outlives the deploy.
 #
 # env_lines_load — $ENV_FILE as the LINES Laravel's own parser reads it as, in ENV_LINES; ENV_LINES_NUL is 1
-# when the read STOPPED at a NUL byte rather than reaching EOF, and ENV_LINES_UNREADABLE is 1 when the file
-# could not be OPENED at all, in which case ENV_LINES is empty because nothing was read. This is the ONE
-# place in this script that turns the file into lines, and both readers below iterate ENV_LINES, so
-# "a line" is a single thing here.
+# when the read STOPPED at a NUL byte rather than reaching EOF, ENV_LINES_UNREADABLE is 1 when the file
+# could not be OPENED at all, and ENV_LINES_READ_FAILED is 1 when the file was NOT READ — in either of
+# those last two ENV_LINES is empty, because nothing this deploy will use was read. This is the ONE place
+# in this script that turns the file into lines, and both readers below iterate ENV_LINES, so "a line" is
+# a single thing here.
+#   · ⚠ ENV_LINES_READ_FAILED IS ONE FLAG OVER TWO DIFFERENT FAILURES, and ENV_LINES_READ_FAILED_KIND is
+#     which one (card#9933): `read` for a read that RAN and stopped short, `scratch` for a read that never
+#     ran at all, because no usable scratch file could be had for the diagnostic that would judge it. Every
+#     caller asking only "is what this file sets established?" reads the FLAG and needs no more — env_get
+#     answers 3 for both, which is the whole of what those callers act on.
+#   · THE KIND IS FOR THE CALLERS THAT TELL AN OPERATOR WHICH FAULT IT IS, AND THERE ARE TWO — A5's
+#     `env_file_scan`, which refuses, and phase B's smoke check, which cannot refuse and warns. Both said
+#     the read's thing about a read that was never made: A5 told a host whose $TMPDIR was unwritable that
+#     its open had succeeded and its read had stopped short, and sent it to `dmesg` and the mount; phase B
+#     told a host whose scratch file failed AFTER THE WINDOW CLOSED that its `server/.env` had stopped
+#     being readable, on a deploy that finished, exit 0, with the file readable the whole time.
+#   · WHICH OF THOSE TWO EVER SEES THE `scratch` KIND is decided by WHERE each process makes its FIRST load,
+#     and the reason is narrower than "only the first load can take that branch". ENV_READ_ERR_FD is opened
+#     once and reused — but a load that succeeds inside a `$( )` sets the descriptor in the SUBSHELL only,
+#     so the parent's next load finds it empty and re-attempts `mktemp`. bin/env-mirror-diff.mirror.sh, which gives
+#     every cell its own subshell, does re-open per cell. What holds in THIS script is that each process's
+#     first load is a MAIN-SHELL one — A5's `env_file_scan` in phase A, and in phase B (a re-exec, so a new
+#     process and a new descriptor) the load the smoke check makes before its read of APP_URL — and a `$( )`
+#     INHERITS an already-open descriptor, so every later load, inside a command substitution or not, finds
+#     one and cannot reach the scratch branch. That is why `env_unread_refuse` and A10b, which run after
+#     A5's scan, never see this kind and are not written for it.
+#     ⛔ SO DO NOT MOVE A `$( env_get … )` AHEAD OF A5's `env_file_scan`. A5's scan is both the first load
+#     and the caller that owns the scratch REFUSAL; a load placed before it is the first one instead, and
+#     nothing there refuses — an `env_read` turns its status 3 into `env_unread_refuse`, whose body says
+#     the file "has stopped being readable since" A5 scanned it and names ownership, mode, a disk or a
+#     mount (§ env_unread_refuse). A5 would not have scanned yet and none of those is the cause, which is
+#     the defect card#9933 exists to end, reached from the one direction this comment's rule leaves open.
 # It has to be, and card#9561 r4's BLOCKER is why: while `env_file_scan` split on `\r\n`, `\n` and `\r` alike
 # and `env_get` shelled to `grep`, whose terminator is `\n` ONLY, a `.env` ending `# note\rDB_HOST=db.internal`
 # was TWO lines to Dotenv and ONE to the reader that decides — so Laravel went to db.internal over TCP in
@@ -208,11 +404,21 @@ done
 # unreadable for EVERY key. Both are the same defect — two notions of "a line" — and both end here rather
 # than in a refusal, because a file Laravel reads is one this script should read the same way.
 #   · the split is Dotenv\Parser\Parser::parse's `Regex::split("/(\r\n|\n|\r)/")`, mirrored (v5.7.0);
-#   · `read -d ''` returns status 1 at EOF **and** on a read ERROR, so status 1 alone does not mean the read
-#     completed. Splitting the OPEN out below discriminates the open's failure; the read's own two meanings
-#     stay fused, so a path that yields no bytes (a mid-read EIO) still reads here as an empty file — the
-#     residual is card#9610, and A5's `-f` at the call site closes the directory case for phase A. Status 0
-#     is the other thing: it STOPPED, at a NUL, and everything past that byte is unread — so the NUL flag.
+#   · `read -d ''` returns status 1 at EOF **and** on a read ERROR, so THE STATUS CANNOT DISCRIMINATE —
+#     and bash's DIAGNOSTIC can, which is the same "status + silence" rule git_ref_oid reads git by
+#     (§ git_ref_oid). Measured here, bash 5.3.9, 2026-09-18: `/dev/null` → status 1, stderr EMPTY; a
+#     directory → status 1, `read: N: read error: Is a directory`; `/proc/self/mem` → status 1,
+#     `read: N: read error: Input/output error`. So status 1 with bash SILENT is end-of-file, and status 1
+#     with bash SPEAKING is a read that stopped short. Status 0 is the third thing: it STOPPED, at a NUL,
+#     and everything past that byte is unread — so the NUL flag. Anything else is neither, and says so.
+#     ⛔ NOT A SIZE OR LENGTH TEST (card#9610 weighed and rejected it): `${#content}` against `stat -c %s`
+#     counts CHARACTERS against BYTES under a UTF-8 locale, asks the filesystem a second question whose
+#     answer can have changed since the first, and reads every /proc-style file — which reports size 0 —
+#     as empty. The one no-root EIO fixture there is on this host is exactly such a file.
+#   · ⚠ THE RESIDUAL, stated rather than assumed away: an I/O error the kernel reports to the read as an
+#     end-of-file — 0 bytes rather than −1 — is invisible to EVERY userland reader, bash included, and
+#     nothing below can see it. And bash's diagnostic is gettext-translated, so only its PRESENCE is read
+#     here, never its words: a host running in another language refuses in that language and is not misread.
 #   · the OPEN is a step of its own, with a status of its own, because `read`'s statuses cannot carry its
 #     failure and a silenced open is indistinguishable from an empty file (card#9605). Until this, the open
 #     rode on the read: `read … 2>/dev/null < "$ENV_FILE"` applies its redirections LEFT TO RIGHT, so stderr
@@ -224,15 +430,150 @@ done
 ENV_LINES=()
 ENV_LINES_NUL=0
 ENV_LINES_UNREADABLE=0
+ENV_LINES_READ_FAILED=0
+ENV_LINES_READ_FAILED_KIND=""
+ENV_LINES_READ_FAILED_WHY=""
+
+# ENV_READ_ERR_FD — the scratch `read`'s stderr goes to, and the only reason this loader needs one: bash's
+# read ERROR is a message and its EOF is SILENCE, so the diagnostic has to be kept somewhere to be looked
+# at, and a builtin that must set a variable in THIS shell cannot be wrapped in a `$(…)`. It is created
+# once per process, on the first read, and UNLINKED the instant it exists: the fd holds the inode open, so
+# there is no path left for anything to race on and nothing to clean up — it dies with this shell.
+# `/dev/fd/N` re-opens that same inode from offset 0, which is what makes each write TRUNCATE what the
+# previous read left and each read-back start at the top.
+#
+# ⚠ WHAT IT COSTS, stated rather than left to be found: bash does not set close-on-exec on a descriptor
+# opened this way, so every child this script runs inherits it, and phase B's re-exec — which replaces the
+# process, losing the variable but not the descriptor — makes the new process open a second. That is two
+# empty, unlinked, unreferenced inodes at the very most, for the life of one deploy; it carries no content
+# to leak, and no reader in this script or any child looks at a descriptor it was not given.
+#
+# ⚠ ONE PER PROCESS IS LOAD-BEARING, NOT TIDINESS, and the number that says so is a measurement rather
+# than a preference. `bin/env-mirror-diff.sh` reads its whole key list through this loader once per cell —
+# its own header states that NOTHING on the scan path forks, and why — so a scratch file per LOAD would be
+# a fork per key per cell. Measured on this host, 2026-09-18, bash 5.3.9: a `mktemp`-and-`rm` per load
+# costs 6.3 ms and this costs 0.08 ms, and what that lane actually pays for the shape below is one `mktemp`
+# per CELL (each cell is a subshell of its own, so it opens its own): 1m41s before this change, 2m19s after.
+# Re-derive both sides before changing the shape rather than trusting those figures:
+#   time bash bin/env-mirror-diff.sh   ·   its own footer prints the cell count the timing is over
+ENV_READ_ERR_FD=
+
+# env_read_err_open — opens ENV_READ_ERR_FD, once. It is the one failure the loader answers for itself: it
+# runs in BOTH phases and inside bin/env-mirror-diff.mirror.sh, where neither `refuse` nor `not_established` is the
+# right answer, so it sets the flag — with a KIND of its own, so the callers that tell an OPERATOR can name
+# THIS cause rather than the read's — and lets the caller decide.
+# ⚠ IT HAS THREE FAILURE RETURNS AND THEY ARE NOT THE SAME FAULT (card#9933 review, card#9932), which
+# matters because each sends the operator somewhere different:
+#   · 1 — `mktemp` failed. NOTHING was created, and the directory it writes into is where the fix is.
+#   · 2 — a scratch file WAS created and this shell could not OPEN it. `mktemp` succeeded, so $TMPDIR is
+#     not the finding; the realistic cause is how many files this deploy may have open at once.
+#   · 3 — a scratch file was created AND opened, and a byte written into it did not read back
+#     (`scratch_writable`, the probe `_scratch` uses too). The usual cause is a filesystem out of free
+#     BLOCKS: `mktemp` makes an EMPTY file, which costs none, so it succeeds there and the open does too —
+#     measured on a real block-full tmpfs (card#9932). Without this return that file is handed to the
+#     loader, bash's read diagnostic is lost writing into it, and an EMPTY diagnostic is exactly what the
+#     loader reads as end of file — so a read of `.env` that genuinely failed at the same time would be certified as a complete
+#     read of an empty file (card#9932 comment 6034). The descriptor is CLOSED and emptied on this return,
+#     as on status 2, so a later load re-attempts rather than inheriting a file nothing can be kept in —
+#     which also keeps the phase B skip's premise true (§ the smoke check): a load that FAILED at the
+#     scratch step leaves no descriptor behind.
+# All three errors are silenced, so the STATUS is the only thing that tells them apart — and the loader
+# writes its reason FROM that status rather than attributing all of them to `mktemp`, which is the same
+# defect card#9933 was about, one layer down. ⛔ A status-1 reason on a status-2 failure sends an operator
+# to inspect a $TMPDIR that is working, and a status-2 reason on a status-3 one sends them to `ulimit -n`.
+# ⚠ THE PROBE RUNS ONCE, WHEN THE DESCRIPTOR IS OPENED, NOT PER LOAD — deliberately, and the gap it leaves
+# is named here rather than assumed away. A filesystem that fills AFTER this process's first load is not
+# seen by it, and a read of `.env` that genuinely fails in that window would still be certified empty:
+# that needs two faults coinciding after A5 (or after phase B's own first load). A probe per load would
+# close it at the price of the invariant the callers are written on — that only a process's FIRST load
+# can come back with the `scratch` kind (§ env_lines_load) — so a later load inside a `$( env_get … )`
+# could then answer status 3 for a scratch file, and `env_unread_refuse` and A10b would tell the operator
+# the `.env` stopped being readable, which is the false cause card#9933 ended.
+# scratch_writable <path> — 0 when a byte written to <path> reads back, leaving <path> an EMPTY file;
+# 1 otherwise. THE scratch probe (card#9932), for `_scratch` and the .env loader's `env_read_err_open`
+# alike: `mktemp` succeeding says a file exists, and only a write says bytes can land in it — on a
+# filesystem out of BLOCKS the first does and the second does not (measured on a real full tmpfs).
+# Builtins only, no fork: the loader is on the scan path `bin/env-mirror-diff.sh` holds fork-free.
+# ⚠ Errors are NOT silenced here — the caller decides: `_scratch` shows bash's write error, which names
+# the errno, and the loader silences it as it silences its other scratch errors.
+# `read`'s STATUS is not the test: the probe carries no newline, so `read` answers 1 (end of file) on the
+# byte it did read. The VALUE is the test, and a read that could not open the path leaves it empty.
+# ⛔ DEFINED INSIDE THE `.env reading` BLOCK, ABOVE `env_read_err_open`, even though `_scratch` (outside the
+# block, defined later) is its other caller: `bin/env-mirror-diff.mirror.sh` extracts and sources only the
+# text from `# ── .env reading` to `git_at() {`, and `env_read_err_open` — inside that range — calls this.
+# Left where a plain read of deploy.sh top-to-bottom would put it (after `_scratch`), the mirror would
+# source `env_read_err_open` without it: an undefined command, status 127, silenced by `2>/dev/null` into
+# `|| return 3` — "not writable" for a probe that never ran (card#9932 review, B-1). `_scratch` calling a
+# function defined earlier in the file is fine either way: bash resolves a function by name at CALL time,
+# once the whole script has been sourced, not by its textual position.
+scratch_writable() {
+  local __sw_back=""
+  printf 'x' > "$1" || return 1
+  IFS= read -r -n 1 __sw_back < "$1" || :
+  [ "$__sw_back" = x ] || return 1
+  : > "$1"
+}
+
+env_read_err_open() {
+  local t
+  t="$(mktemp 2>/dev/null)" || return 1
+  { exec {ENV_READ_ERR_FD}<> "$t"; } 2>/dev/null || { rm -f "$t"; ENV_READ_ERR_FD=; return 2; }
+  rm -f "$t"
+  scratch_writable "/dev/fd/$ENV_READ_ERR_FD" 2>/dev/null || { exec {ENV_READ_ERR_FD}>&-; ENV_READ_ERR_FD=; return 3; }
+}
+
 env_lines_load() {
-  local content="" line fd=
+  local content="" line rc=0 msg="" scratch_rc=0 fd=
   ENV_LINES=(); ENV_LINES_NUL=0; ENV_LINES_UNREADABLE=0
+  ENV_LINES_READ_FAILED=0; ENV_LINES_READ_FAILED_KIND=""; ENV_LINES_READ_FAILED_WHY=""
   # The group's `2>/dev/null` is established before the open inside it runs, which is the ordering the old
   # one-liner got wrong; the open's own status is what sets the flag, and nothing below runs on a file that
   # was never opened.
   if ! { exec {fd}< "$ENV_FILE"; } 2>/dev/null; then ENV_LINES_UNREADABLE=1; return 0; fi
-  if IFS= read -r -d '' content <&"$fd"; then ENV_LINES_NUL=1; fi
+  if [ -z "$ENV_READ_ERR_FD" ]; then env_read_err_open || scratch_rc=$?; fi
+  if [ "$scratch_rc" -ne 0 ]; then
+    exec {fd}<&-
+    ENV_LINES_READ_FAILED=1
+    ENV_LINES_READ_FAILED_KIND='scratch'
+    # ⚠ NO PATH IS NAMED HERE, and that is a correctness point rather than a style one: `${TMPDIR:-/tmp}`
+    # would read this SHELL's variable, while `mktemp` reads the one in its ENVIRONMENT, and the two are
+    # the same only while TMPDIR is exported. Naming the mechanism is true either way; naming a path would
+    # be a specific cause nothing here established (measured 2026-09-18: an unexported TMPDIR is invisible
+    # to mktemp, which then writes under /tmp and succeeds).
+    # ⛔ WHICH REASON IS READ OFF THE STATUS, never assumed (§ env_read_err_open): each failure sends an
+    # operator to a different place, and the fix for one is not the fix for another.
+    if [ "$scratch_rc" -eq 1 ]; then
+      ENV_LINES_READ_FAILED_WHY="No scratch file could be created for bash's read diagnostic (\`mktemp\` failed), and that diagnostic is the only thing that tells a read error from an end of file here — so the read was never made and no byte of the file was taken. mktemp writes under \$TMPDIR, or /tmp when that is unset: check that whichever applies exists, that it names a directory this deploy can write to, and that its filesystem has free INODES (\`df -i\`). A \`df\` at 100% is not on its own the finding here: \`mktemp\` creates an EMPTY file, and a filesystem out of free BLOCKS can still give it one."
+    elif [ "$scratch_rc" -eq 3 ]; then
+      ENV_LINES_READ_FAILED_WHY="A scratch file for bash's read diagnostic WAS created and opened, and a byte written into it did not read back — so that diagnostic, the only thing that tells a read error from an end of file here, could not have been kept, and the read was never made and no byte of the file was taken. The usual cause is the filesystem behind \$TMPDIR (or /tmp when that is unset) out of free BLOCKS: read \`df\` on it. \`mktemp\` and the open both succeed on such a filesystem, because an empty file costs no block — it is the first byte written that fails."
+    else
+      ENV_LINES_READ_FAILED_WHY="A scratch file for bash's read diagnostic WAS created and this shell could not OPEN it, and that diagnostic is the only thing that tells a read error from an end of file here — so the read was never made and no byte of the file was taken. \`mktemp\` itself succeeded, so this is not about \$TMPDIR: the usual cause is how many files this deploy may have open at once (\`ulimit -n\`)."
+    fi
+    return 0
+  fi
+  IFS= read -r -d '' content <&"$fd" 2>"/dev/fd/$ENV_READ_ERR_FD" || rc=$?
   exec {fd}<&-
+  msg="$(< "/dev/fd/$ENV_READ_ERR_FD")"
+  if [ "$rc" -eq 0 ]; then
+    ENV_LINES_NUL=1
+  elif [ "$rc" -ne 1 ] || [ -n "$msg" ]; then
+    # A READ THAT STOPPED SHORT. bash's line is printed back in full and nothing is decided before it is —
+    # the rule every reader in this script follows — and it is safe to print BY CONSTRUCTION, not by
+    # inspection: `read`'s diagnostic names the file DESCRIPTOR and the errno string, and carries no byte
+    # of what was read. ENV_LINES is left EMPTY on purpose: a file read partway is not a file this deploy
+    # will certify, so there is nothing here for the readers below to hand back.
+    [ -z "$msg" ] || printf '%s\n' "$msg" >&2
+    ENV_LINES_READ_FAILED=1
+    # Quoted because the word is `read`: bare, ShellCheck reads it as a command name (SC2209), and the
+    # value here is the name of a KIND, never a command to run.
+    ENV_LINES_READ_FAILED_KIND='read'
+    if [ -n "$msg" ]; then
+      ENV_LINES_READ_FAILED_WHY="bash's own read error is printed above this refusal. It names the file descriptor it was reading and the errno the kernel answered with, and no byte of what the file holds."
+    else
+      ENV_LINES_READ_FAILED_WHY="bash's \`read\` exited $rc and printed NOTHING. Status 0 is a NUL byte and status 1 is end-of-file or a read error; this is neither of those, so what the read did is not established here and nothing it may have returned is used."
+    fi
+    return 0
+  fi
   content="${content//$'\r\n'/$'\n'}"
   content="${content//$'\r'/$'\n'}"
   # `<<<` appends exactly the terminator the last line needs, so ${#ENV_LINES[@]} is the number of lines
@@ -240,10 +581,28 @@ env_lines_load() {
   while IFS= read -r line; do ENV_LINES+=("$line"); done <<< "$content"
 }
 
+# env_file_unread — TRUE when the flags the LAST `env_lines_load` set say $ENV_FILE was not read: it could
+# not be opened at all, or it was opened and no read of it completed. One place, because there are now two
+# callers and a second copy would be a second contract (card#9933): `env_get`, which turns it into status 3,
+# and phase B's smoke check, which asks it of a load IT made so that the status it reports and the KIND it
+# reads come from one load rather than from two events (§ the smoke check).
+# ⚠ IT IS ABOUT THE LOAD IN HAND. It reads globals, so a caller asks it directly after its own
+# `env_lines_load` and never about somebody else's — which is exactly the distinction that makes phase B's
+# use of it sound.
+env_file_unread() { [ "$ENV_LINES_UNREADABLE" = 1 ] || [ "$ENV_LINES_READ_FAILED" = 1 ]; }
+
 # env_get KEY — prints KEY's value and returns 0; returns 1 when no line defines KEY; returns 2, printing nothing,
 # when a line defining KEY is in a form this reader does not read EXACTLY as Laravel does (vlucas/phpdotenv's
 # Dotenv\Parser, then Illuminate\Support\Env::get). Status 2 is never "unset": a check that took an unread value
 # as absent would pass the value Laravel then uses.
+#
+# ⛔ AND STATUS 3, printing nothing, when THE FILE ITSELF WAS NOT READ — it could not be opened, or it was
+# opened and the read did not reach its end (§ env_lines_load). STATUS 3 IS NEVER "UNSET" EITHER, and it is a
+# STATUS rather than a flag for one reason: every caller that wants a value calls this inside a `$(…)`, so the
+# flags env_lines_load sets die with that subshell and the status is the only thing that crosses back. A reader
+# that let a 3 fall into the status-1 branch would report every key of an unread file as one this host does not
+# set — which is the wrong cause in the safe direction for A5 (it refuses, naming the wrong thing) and in the
+# DANGEROUS one for phase B and A10b, where "unset" is a fact those two act on.
 #
 # PRECONDITION: `env_file_scan` has passed on $ENV_FILE. `env_lines_load` decides where a line ENDS; the
 # scan is what makes one of those lines a SETTING — Dotenv reads a `KEY="` value its own line does not close
@@ -268,6 +627,9 @@ env_lines_load() {
 env_get() {
   local key="$1" lines="" line value re
   env_lines_load
+  # Asked of the LOADER's flags, above every question about content: ENV_LINES is empty in both of these
+  # cases, and an empty ENV_LINES is exactly what a file that really sets nothing looks like from here.
+  if env_file_unread; then return 3; fi
   # The pattern is the one this reader has always used; what changed in card#9561 r5 is what it runs over.
   # bash's `=~` is ERE, so the text is unchanged — but it matches the lines ENV_LINES holds, which are the
   # lines Dotenv reads, rather than the ones a `\n`-only splitter would have found. The matches are joined
@@ -298,11 +660,34 @@ env_get() {
   printf '%s' "$value"
 }
 
+# env_unread_refuse KEY — the refusal for env_get status 3, in one place because TWO callers make it (env_read
+# below, and A10b) and a second wording would be a second contract. It lives inside the .env reading block so
+# that bin/env-mirror-diff.mirror.sh, which sources this block with `refuse` stubbed, gets it with the readers.
+#
+# It says less than env_file_scan's two refusals do, and deliberately: this is reached AFTER that scan has
+# already passed on this file in this run, so what it knows is that the file has STOPPED being readable since —
+# not which of the two ways. bash's own error, when the read was the half that failed, is on screen above it.
+env_unread_refuse() {
+  refuse "$ENV_FILE could not be read, so what Laravel reads for $1 is not established" \
+    "It was read once already in this run — A5 scans it before its first key — so this is not a .env that was" \
+    "never readable: it has stopped being readable since, either at the OPEN (ownership or mode changed under" \
+    "this deploy) or during the READ (a disk, filesystem or network-mount fault, in which case bash's own error" \
+    "is above this refusal)." \
+    "Nothing was read out of it here, so no key's value is established — not this one, and not the ones already" \
+    "checked, which were read from a file that has since changed under this run." \
+    "Fix what made it unreadable and run \`$0 --dry-run\`, which reaches this file at A5 and names the cause there." \
+    "Its content is not printed here — it may carry a credential."
+}
+
 # env_read VAR KEY — env_get KEY into VAR, in THIS shell: returns 1 with VAR empty when KEY is unset, and REFUSES
 # when env_get cannot read KEY. The refusal names the key and never the line, which may carry a credential.
+# It refuses on status 3 as well as on status 2, and that is the whole reason A5's `env_read … || true` call
+# sites are safe: `|| true` swallows a status, and a 3 swallowed into A5's status-1 path would be read as
+# "APP_ENV is 'unset'" — a deploy refused, loudly, on a cause nothing established (card#9610).
 env_read() {
   local _env_value _env_rc=0
   _env_value="$(env_get "$2")" || _env_rc=$?
+  [ "$_env_rc" -ne 3 ] || env_unread_refuse "$2"
   [ "$_env_rc" -ne 2 ] || refuse ".env defines $2 in a form this deploy does not read, so what Laravel reads for it is not established" \
     "$ENV_FILE sets $2 with an export prefix, whitespace around =, a quoted name, a \$ outside '…' (Dotenv" \
     "interpolates \${…}), an inline comment, trailing whitespace, a \\ inside \"…\", a doubly quoted value, a bare" \
@@ -412,6 +797,53 @@ env_file_scan() {
       "and give it to the user this deploy runs as, keeping mode 640." \
       "Nothing was read out of it. Without this refusal every key comes back 'unset' and the deploy stops" \
       "on the first key A5 checks, naming a cause that is not the real one." \
+      "Its content is not printed here — it may carry a credential."
+  fi
+  # The I/O refusal's sibling one step further in, and the one the open check above cannot make: the file
+  # OPENED and the read of it did not reach the end. Splitting the open out gave that failure a status of
+  # its own; this gives the READ one, which `read`'s own status cannot carry (§ env_lines_load).
+  #
+  # ⛔ TWO REFUSALS, BECAUSE ONE FLAG CARRIES TWO FAILURES AND ONLY ONE OF THEM IS ABOUT THE FILE
+  # (card#9933). The loader sets ENV_LINES_READ_FAILED for a read that stopped short AND for a read it
+  # never made, and this used to refuse both under the read's headline and the read's body — so a host
+  # whose $TMPDIR was unwritable was told the open had succeeded and the read had stopped short, and was
+  # pointed at `dmesg`, the mount and the media, for a scratch file. The OPEN had in fact succeeded — this
+  # refusal is reached only after it — but every sentence of the ADVICE pointed away from the cause, which
+  # sat one line down in $ENV_LINES_READ_FAILED_WHY.
+  # `refuse` never returns, so the scratch kind exits at its own refusal and the one below it is the
+  # read's. What both still share is the FLAG, which is what keeps every caller that only needs to know
+  # whether a key's value is established — env_get's status 3, and through it A10b — reading one fact:
+  # the file was not read. Phase B's smoke check is the other caller that speaks to an OPERATOR, so it
+  # reads the kind as well, and it warns where this refuses (§ env_lines_load).
+  if [ "$ENV_LINES_READ_FAILED" = 1 ] && [ "$ENV_LINES_READ_FAILED_KIND" = 'scratch' ]; then
+    refuse "$ENV_FILE could not be read: no usable scratch file for bash's read diagnostic" \
+      "$ENV_LINES_READ_FAILED_WHY" \
+      "THIS IS NOT A FINDING ABOUT $ENV_FILE. The file opened, the descriptor was closed again, and the" \
+      "read was never made — so nothing here says that file is unreadable, damaged or short, or that the" \
+      "disk, the filesystem or the mount it sits on failed a read. What failed is a scratch file THIS" \
+      "DEPLOY makes for itself, and the line above says at which step, because the fix is not the same" \
+      "one: the directory \`mktemp\` writes into, where none could be created; how many files this deploy" \
+      "may have open at once, where one was created and could not be opened; and the free space of the" \
+      "filesystem behind \$TMPDIR, where one was opened and a byte written into it did not read back." \
+      "NOTHING WAS READ. Without this refusal the file comes back as an EMPTY one and the deploy stops on" \
+      "the first key A5 checks, naming a cause that is not the real one." \
+      "No byte of its content was read, and none is printed here — it may carry a credential."
+  fi
+  if [ "$ENV_LINES_READ_FAILED" = 1 ]; then
+    refuse "$ENV_FILE was opened but could not be read to its end" \
+      "$ENV_LINES_READ_FAILED_WHY" \
+      "The open SUCCEEDED, so this is neither a permission nor an ownership — those are what the two checks" \
+      "above it and the refusal above this one are about, and all of them passed. WHICH fault it is, the" \
+      "errno in bash's line says and this deploy does not guess past it: a read that fails on a file already" \
+      "open is usually a disk or filesystem one — failing media, a filesystem remounted read-only or unmounted" \
+      "under this host, a network mount that stopped answering — and \`dmesg\` and the mount this file sits on" \
+      "are where that family is visible. An errno about the KIND of file instead, on a path A5 has already" \
+      "tested with \`-f\`, says $ENV_FILE changed shape under this run." \
+      "NOTHING THAT WAS READ IS USED. A file read partway is not certified here: every line below the point" \
+      "it stopped is unread, and a partial read is indistinguishable from a shorter file once the bytes are" \
+      "in hand — so the read is discarded whole rather than scanned. Without this refusal that partial read" \
+      "comes back as an EMPTY file and the deploy stops on the first key A5 checks, naming a cause that is" \
+      "not the real one." \
       "Its content is not printed here — it may carry a credential."
   fi
   if [ "$ENV_LINES_NUL" = 1 ]; then
@@ -588,7 +1020,129 @@ store_locality() {
   return 0
 }
 
-git_at() { git -C "$DEPLOY_ROOT" "$@"; }
+# git_at <git argument…> — EVERY git process this script starts, and the one place a checker sees them.
+# ⛔ A BARE `git` ELSEWHERE IN THIS FILE IS A DEFECT, NOT A STYLE: bin/deploy-gate-inputs.sh counts the git
+# processes a run of the target-tree gates starts, and a count that differs from the ledger below is its
+# exit 2 (card#9745).
+git_at() {
+  [ -z "${MEZZ_GIT_READ_LEDGER:-}" ] || git_read_ledger_note "$@"
+  git -C "$DEPLOY_ROOT" "$@"
+}
+
+# ── the READ LEDGER (card#9745) ───────────────────────────────────────────────────────────────
+# OFF unless MEZZ_GIT_READ_LEDGER names a file, and then every git_at call appends to it. A checker sets
+# it, having SOURCED this file, to learn what a run of these functions READ rather than what its source
+# text looks like it reads. A RUN of this file never writes it: the top of this file unsets it in run mode
+# (§ A DEPLOY IGNORES THE READ LEDGER), so a checker that wants a whole phase A ledgered calls `main` in
+# library mode, as bin/deploy.selftest.sh § card#9745 does.
+# The read set is a function of the TREE as well as of this file — A10 reads each
+# migration its listing names, A14 a file whose name comes from the host's phpinfo — so a run over a real
+# commit is the one surface on which "what it reads" and "what it does" are the same fact.
+#   call<TAB><caller><TAB><argv>        one per git_at call: the git process it starts, with <argv>
+#                                       exactly as git receives it, each word `%q`-quoted. A checker's
+#                                       `git` shim writes the same words, which is how a git process
+#                                       that did NOT go through git_at is named rather than guessed at.
+#   read<TAB><caller><TAB><rev><TAB><path>
+#                                       one per PATH that call names inside a tree. git's CLI names one
+#                                       in two ways, and both are read here: a pathspec after `--`
+#                                       (`ls-tree <rev> -- :(literal)<path>`, the magic dropped), and a
+#                                       `<rev>:<path>` argument (`show <rev>:<path>`). That is a property
+#                                       of git, not a list of this file's call sites, so a read made
+#                                       through git_at is recorded by the call it makes, however the
+#                                       line that makes it is written.
+# <caller> is the innermost frame that is NOT one of git_reader_frame's: the gate that asked, never the
+# reader it asked through.
+# ⚠ WHAT IT CANNOT RECORD: a git process this file starts without git_at, and a path handed to git some
+# third way (stdin, a file of pathspecs). None exists in this file; the first is what the checker's
+# process count exists to catch, and the second is not caught by anything here.
+git_read_ledger_note() {
+  local __lg_i __lg_caller="(top level)" __lg_a __lg_rev="" __lg_sub="" __lg_after=0 __lg_skip=0 __lg_argv
+  local -a __lg_paths=() __lg_revs=()
+  for ((__lg_i = 2; __lg_i < ${#FUNCNAME[@]}; __lg_i++)); do
+    git_reader_frame "${FUNCNAME[__lg_i]}" || { __lg_caller="${FUNCNAME[__lg_i]}"; break; }
+  done
+  printf -v __lg_argv '%q ' -C "$DEPLOY_ROOT" "$@"
+  printf 'call\t%s\t%s\n' "$__lg_caller" "${__lg_argv% }" >> "$MEZZ_GIT_READ_LEDGER"
+  for __lg_a in "$@"; do
+    if [ "$__lg_skip" -eq 1 ]; then
+      __lg_skip=0                                   # the value of a `-c`/`-C` before the subcommand
+    elif [ "$__lg_after" -eq 1 ]; then
+      __lg_revs+=("${__lg_rev:--}"); __lg_paths+=("${__lg_a#:(*)}")
+    elif [ "$__lg_a" = -- ]; then
+      __lg_after=1
+    else
+      case "$__lg_sub:$__lg_a" in
+        :-c | :-C) __lg_skip=1 ;;
+        *:-*) ;;
+        :*) __lg_sub="$__lg_a" ;;
+        *:?*:?*) __lg_revs+=("${__lg_a%%:*}"); __lg_paths+=("${__lg_a#*:}") ;;
+        *) __lg_rev="$__lg_a" ;;
+      esac
+    fi
+  done
+  for __lg_i in "${!__lg_paths[@]}"; do
+    printf 'read\t%s\t%s\t%s\n' "$__lg_caller" "${__lg_revs[__lg_i]}" "${__lg_paths[__lg_i]}" >> "$MEZZ_GIT_READ_LEDGER"
+  done
+}
+
+# ── remote NAMES that are not printed (card#9991) ─────────────────────────────────────────────
+# remote_name_unprintable <name> — 0 when a remote NAME carries a `:`. THE ONE RULE, used twice by
+# A3c: it refuses a MEZZ_REMOTE that matches it, and it marks, rather than prints, every entry of
+# the remote list that matches it. One predicate, so the value A3c refuses and the entries it will
+# not print cannot drift apart.
+#   · WHY THE COLON: no name `git remote add` or `git remote rename` creates can carry one —
+#     measured, git 2.53.0: `git remote add a:b <url>` and `git remote rename x a:b` both answer
+#     `'a:b' is not a valid remote name` and write nothing — while every URL form with a place for
+#     a credential in it carries one (`scheme://user:secret@host/…`, and scp-style
+#     `user@host:path`; git-fetch(1) § GIT URLS). A name with a colon was therefore written into .git/config some other way
+#     (`git config 'remote.<url>.url' …` exits 0, measured), and it can be a URL, credential and all.
+#   · A COLON, NEVER `://` OR `@`: the rule is the property `git remote add` enforces on the names it
+#     creates, not a guess at what a URL looks like. `backup@nas` is a legal name and is printed;
+#     A3c's comment states why a pattern is the wrong test.
+#   · WHAT IT DOES NOT CATCH: a name with no colon is printed as the name it is, whatever its
+#     characters. A colon-free string is not a URL git fetches from (the bare filesystem path is
+#     disposed of at A3c), but it is still whatever someone typed as a name.
+remote_name_unprintable() { case "$1" in *:*) return 0 ;; esac; return 1; }
+
+# remote_names_listing <var> <`git remote`'s output> — the list A3c's refusals print, into <var>:
+# one `  · <name>` line per remote, except that a name remote_name_unprintable matches is replaced by
+# a MARKER that says where it is in `git remote`'s list and carries no character of the name. When
+# any entry is marked, the lines that tell the operator how to rename it without printing it follow.
+# The position is what makes a marked entry findable: `git remote` prints its names sorted (measured,
+# git 2.53.0 — config order is not kept), so `sed -n '<N>p'` over the same command selects it.
+# ⛔ NO HERE-STRING AND NO SUBSHELL, for the reason A3c's membership test states: this runs before the
+# `.env` loader, and bash before 5.1 backs a here-string with a temporary file. The loop walks the
+# string by parameter expansion instead. Locals are `__rl_`-prefixed, so <var> cannot be shadowed.
+remote_names_listing() {
+  local __rl_rest="$2" __rl_name __rl_n=0 __rl_marked=0 __rl_list=""
+  while [ -n "$__rl_rest" ]; do
+    __rl_name="${__rl_rest%%$'\n'*}"
+    if [ "$__rl_name" = "$__rl_rest" ]; then __rl_rest=""; else __rl_rest="${__rl_rest#*$'\n'}"; fi
+    __rl_n=$((__rl_n + 1))
+    if remote_name_unprintable "$__rl_name"; then
+      __rl_marked=$((__rl_marked + 1))
+      __rl_list+="  · [name $__rl_n of \`git remote\`'s list — NOT PRINTED: it contains ':', so it can be a"$'\n'
+      __rl_list+="     URL carrying a credential]"$'\n'
+    else
+      __rl_list+="  · $__rl_name"$'\n'
+    fi
+  done
+  if [ "$__rl_marked" -gt 0 ]; then
+    __rl_list+=""$'\n'
+    __rl_list+="\`git remote add\` and \`git remote rename\` both refuse a name with a ':' in it, so a marked"$'\n'
+    __rl_list+="name was written into .git/config directly. A URL belongs in remote.<name>.url, never in the"$'\n'
+    __rl_list+="name. Rename each marked remote, by its number N above, without printing it:"$'\n'
+    __rl_list+="  git -C $DEPLOY_ROOT remote rename \"\$(git -C $DEPLOY_ROOT remote | sed -n '<N>p')\" <a name>"$'\n'
+    __rl_list+="A rename re-sorts the list, so rename one at a time and take each next number from"$'\n'
+    __rl_list+="\`git -C $DEPLOY_ROOT remote | grep -n : | cut -d: -f1\`, which prints numbers and no names."$'\n'
+    __rl_list+="The rename keeps the remote's URL. A remote written in as just its \`.url\` has no fetch"$'\n'
+    __rl_list+="refspec, and without one the deploy finds no <a name>/main after the fetch. If"$'\n'
+    __rl_list+="\`git -C $DEPLOY_ROOT config --get remote.<a name>.fetch\` prints nothing, add the one"$'\n'
+    __rl_list+="\`git remote add\` writes:"$'\n'
+    __rl_list+="  git -C $DEPLOY_ROOT config remote.<a name>.fetch '+refs/heads/*:refs/remotes/<a name>/*'"$'\n'
+  fi
+  printf -v "$1" '%s' "${__rl_list%$'\n'}"
+}
 
 # ── reading the TARGET RELEASE out of git ─────────────────────────────────────────────────────
 # Phase A judges the release being deployed BEFORE it is checked out, so every precondition that
@@ -609,12 +1163,13 @@ git_at() { git -C "$DEPLOY_ROOT" "$@"; }
 #     half of how this class survives: the refusal below names the read, git names the cause, and they
 #     are read together. The absent case prints nothing, because ls-tree is silent about it.
 #   · A FAILED READ IS TERMINAL HERE, rather than handing back a status a caller could drop — and
-#     WHICH terminal it takes is decided by git_read_unusable, from the PHASE, rather than asserted in
-#     this comment. The assertion it replaces ("every caller is in phase A") was true, and what kept it
-#     true was one `[ -z "$POST_CHECKOUT_SHA" ] &&` at the single caller that runs on both sides of the
-#     window (fpm_code_reload_ready) — a guard these readers cannot see, that reads like a phase-A
-#     optimisation, and whose removal would have made `refuse` a one-way door: "Nothing was changed.
-#     The previous release is still serving." printed with the checkout landed and the app down.
+#     WHICH terminal it takes is decided by not_established (through git_read_unusable), from the
+#     PHASE, rather than asserted in this comment. The assertion it replaces ("every caller is in
+#     phase A") was true, and what kept it true was one `[ -z "$POST_CHECKOUT_SHA" ] &&` at the single
+#     caller that runs on both sides of the window (fpm_code_reload_ready) — a guard these readers
+#     cannot see, that reads like a phase-A optimisation, and whose removal would have made `refuse` a
+#     one-way door: "Nothing was changed. The previous release is still serving." printed with the
+#     checkout landed and the app down.
 
 # git_read_call_site <var> — the line THE CALLER of these readers is on, into <var>. The frame depth
 # is DERIVED rather than assumed, because git_read_unusable is reached at three different depths:
@@ -623,44 +1178,182 @@ git_at() { git -C "$DEPLOY_ROOT" "$@"; }
 # three in the window, because presence is established before content is ever read). A fixed
 # BASH_LINENO index is therefore right for ONE path and names THIS FILE for the other two: measured
 # on the shape this replaces (bash 5.3.9, git 2.53.0), BASH_LINENO[1] gave the line INSIDE _git_ls_at
-# that calls git_read_failed, and the one INSIDE git_read_at — so `failed_line:` in the marker and in
-# the banner pointed an operator recovering a down app at the primitive instead of at the precondition
-# that was running. (The line NUMBERS of that measurement are on card#9608, not restated here, where
-# every edit to this file would move them.) When one of these
+# that calls git_read_failed, and the one INSIDE git_read_at — so `failed_line:` in the marker pointed
+# an operator recovering a down app at the primitive instead of at the precondition that was running.
+# (The line NUMBERS of that measurement are on card#9608, not restated here, where every edit to this
+# file would move them.) When one of these
 # readers fails they are the innermost CONTIGUOUS frames, so the OUTERMOST of them is the frame the
 # caller itself invoked and BASH_LINENO at that index is the caller's own line, at every depth. The
 # family is named below rather than matched by prefix, so that a CALLER whose name happens to look
 # like a reader's cannot be walked past; a reader added here and not named falls back to reporting
-# its own call site — what the fixed index did — never some further caller's.
+# its own call site — what the fixed index did — never some further caller's. The phase-reading exit
+# and the scratch helpers below are in the family for the same reason: each is a frame BETWEEN the
+# failure and the caller, and an unnamed one is where `failed_line:` would point (card#9816).
 git_read_call_site() {
   local __i __outer=0
   for __i in "${!FUNCNAME[@]}"; do
-    case "${FUNCNAME[__i]}" in
-      git_read_call_site | git_read_unusable | git_read_failed | git_read_at | git_ls_at | _git_ls_at)
-        __outer="$__i" ;;
-      *) break ;;
-    esac
+    git_reader_frame "${FUNCNAME[__i]}" || break
+    __outer="$__i"
   done
   printf -v "$1" '%s' "${BASH_LINENO[__outer]:-0}"
 }
 
-# git_read_unusable <headline> <detail line…> — the ONE exit these readers take, and the ONE place
-# the phase is read. Phase A REFUSES: nothing has been touched, and the refusal says exactly that.
-# Phase B cannot say it — the window is open and the checkout has landed — so it takes the in-window
-# failure path, which writes the marker and says the app is down and stays down. POST_CHECKOUT_SHA is
-# what phase B re-enters with, so no caller has to remember which side of the window it is on.
-git_read_unusable() {
+# git_reader_frame <function name> — 0 when <function name> is one of the frames named above: a frame
+# BETWEEN a read of git and the caller that asked for it. ONE list, with two readers: the frame walk
+# above, and git_read_ledger_note's, which attributes each git call to the function that asked for it
+# (card#9745). A reader added to one and not the other would name one caller in `failed_line:` and
+# another in the ledger, so there is one list.
+git_reader_frame() {
+  case "$1" in
+    git_read_call_site | not_established | git_read_unusable | git_read_failed | git_read_at | \
+    git_ls_at | _git_ls_at | git_rev_read_failed | git_peel_mismatch | git_commit_of | git_ref_oid | \
+    scratch_file | scratch_dir | _scratch | git_diagnostic_unread)
+      return 0 ;;
+  esac
+  return 1
+}
+
+# not_established <headline> <detail line…> — THE ONE phase-reading exit, for any failure that means a
+# precondition could not be ESTABLISHED and that can happen on either side of the window: a read of
+# the release out of git, a scratch file this script could not create (card#9816). Phase A REFUSES:
+# nothing has been touched, and the refusal says exactly that. Phase B cannot say it — the window is
+# open and the checkout has landed — so it takes the in-window failure path, which writes the marker
+# and says the app is down and stays down; the step it names is the step in progress (FAILED_STEP)
+# with the headline after it. POST_CHECKOUT_SHA is what phase B re-enters with, so no caller has to
+# remember which side of the window it is on.
+not_established() {
   local __line
   if [ -n "$POST_CHECKOUT_SHA" ]; then
     git_read_call_site __line
     printf '%s\n' "${@:2}" >&2
-    FAILED_STEP="reading the release out of git — $1"
+    FAILED_STEP="$FAILED_STEP — $1"
     # `false ||` so the banner reports a failing status, as it does for every other in-window failure
     # (in_window_failure reads `$?`) — which is also why the line is resolved into $__line ABOVE and
     # not in the argument: a command substitution there would run between the `false` and the call.
     false || in_window_failure "$__line"
   fi
   refuse "$@"
+}
+
+# git_read_unusable <headline> <detail line…> — the ONE exit the git readers below take: not_established,
+# with the step named as the read of the release. It never returns, so naming the step unconditionally
+# is safe on both sides of the window.
+git_read_unusable() {
+  FAILED_STEP="reading the release out of git"
+  not_established "$@"
+}
+
+# scratch_file <var> <what it is for> · scratch_dir <var> <what it is for> — a new temporary file (or
+# directory) into <var>, or not_established, NAMING THE SCRATCH FILE (card#9816). A bare `x="$(mktemp)"`
+# failed two ways here, both measured with TMPDIR pointing at a directory that does not exist:
+#   · where `set -e` applies (A13), it ended phase A with mktemp's status 1 — the code the exit table
+#     says means REFUSED — with no ⛔ banner and no promise;
+#   · inside a function called from an `if` or a `||` (git_ref_oid, git_commit_of — A7 and A8 call them
+#     that way), `set -e` does not apply at all, so the run carried on with an EMPTY path and refused on
+#     a cause nothing established: "'main' does not resolve to a commit on origin" for a ref that is
+#     there, and "git could not resolve the tag …" for a tag git never got to peel.
+# ⚠ A filesystem out of BLOCKS and a filesystem out of INODES are DIFFERENT failures, and for a scratch
+# FILE only the second one reaches the `mktemp` exit below. `mktemp` creates an EMPTY file, which costs an
+# inode and no block: on a 100%-full filesystem it SUCCEEDS (measured on a real full tmpfs — card#9932 —
+# exit 0, a real path). Out of INODES `mktemp` FAILS (measured — card#9933's round-4 review — rc 1, with
+# `df` showing free space and `df -i` showing none), and that is the "full" the `mktemp` advice below is
+# written for: it names `df -i`, and it denies `df` at 100% for the FILE kind ONLY. A scratch DIRECTORY
+# is not covered by that denial: on a block-full TMPFS `mktemp -d` succeeded too (measured, card#9932),
+# but a filesystem that allocates a data block for a directory can fail it on blocks — unmeasured here —
+# so the directory's advice names both numbers.
+# ⛔ A FULL-BY-BLOCKS FILESYSTEM IS THE SECOND EXIT, AND IT IS WHY `mktemp`'s STATUS IS NOT TRUSTED ALONE
+# (card#9932). What fails on one is the first byte WRITTEN into what `mktemp` made — and every caller
+# that asks `_scratch` for a scratch FILE (git_ref_oid, git_commit_of — the .env loader's own scratch
+# file is NOT one of these calls, § the ⛔ below) writes a DIAGNOSTIC there and reads an EMPTY one back
+# as "the tool printed nothing", which is the discriminator each of them decides on. Measured on a real
+# block-full tmpfs (card#9932): `mktemp` 0, the
+# write of git's stderr lost, `cat` 0 with an empty string, and A7 refusing "'<ref>' does not resolve to a
+# commit on origin" for a rev whose walk git had reported failing. So the scratch space is PROVED before it
+# is handed back — `scratch_writable` writes a byte into it and reads it back — and a space that fails that
+# is refused as what the run established: created, and not writable. bash's own write error is on screen
+# above that refusal, and it names the errno; an ENOSPC there is the block-full case and `df` is its number.
+# ⚠ THE RESIDUAL, named rather than assumed away: the probe proves ONE byte at the moment it runs. For a
+# scratch FILE, a filesystem that fills between the probe and the write it guards, or that has room for
+# the probe and not for the whole message, still loses the write — git's diagnostics are a line or two,
+# well under one block, so the second needs a filesystem within a block of full, and neither is
+# reproduced by any case. A scratch DIRECTORY's payload is not bounded the same way: A13's is a whole
+# release's bin/supervision.sh, kilobytes rather than one byte, for which this probe is no guarantee at
+# all — gate_a13_target_plan checks THAT write's own status rather than trusting the directory probe for
+# it (card#9932 review, SF-5).
+# ⚠ AND THE BOUND ITSELF IS MEASURED FOR ORDINARY BLOCK ALLOCATION, NOT EVERY LAYOUT (card#9932 review,
+# N-2): a filesystem that stores a short file INLINE in the inode — ext4's `inline_data` (not a default
+# mount option), btrfs's inline extents — can let this one byte land with no data block spent at all,
+# which is a different mechanism from "within a block of full" and not bounded by it the same way.
+# Unmeasured here, on either side.
+# mktemp's own error is NOT silenced: it names the path it tried, which is the TMPDIR mktemp actually
+# read (its ENVIRONMENT's, not necessarily this shell's — § env_lines_load).
+#   · <var> is written with `printf -v`, never returned through `$(…)`: a refusal inside a command
+#     substitution would exit only the subshell and the caller would carry on with an empty path. That
+#     also keeps each call to the one fork mktemp itself costs.
+#   · Its locals are `__sc_`-prefixed, for the shadowing hazard _git_ls_at states: git_ref_oid passes
+#     `__ro_err` and git_commit_of `__err`.
+# ⛔ NOT the .env loader's scratch file (env_read_err_open): the loader runs in both phases and inside
+# bin/env-mirror-diff.mirror.sh, where neither `refuse` nor this exit is the right answer, so it answers
+# for that failure itself.
+scratch_file() { _scratch "$1" "$2" file; }
+scratch_dir()  { _scratch "$1" "$2" directory -d; }
+_scratch() { # _scratch <var> <what it is for> <file|directory> [mktemp option…]
+  local __sc_var="$1" __sc_for="$2" __sc_kind="$3" __sc_out __sc_rc=0 __sc_probe
+  local -a __sc_space
+  shift 3
+  __sc_out="$(mktemp "$@")" || __sc_rc=$?
+  if [ "$__sc_rc" -ne 0 ]; then
+    # ⛔ WHICH `df` DECIDES IT IS THE KIND'S QUESTION, not one answer for both (§ the ⚠ above): the denial of `df` at
+    # 100% is measured for an EMPTY FILE, which costs an inode and no block. A DIRECTORY can cost a block
+    # too, on a filesystem that allocates one for it — unmeasured here — so the directory advice rules out
+    # neither number rather than telling A13's operator to discount the one that may be the finding.
+    __sc_space=(
+      "can write to, and that its filesystem has free INODES (\`df -i\`). A \`df\` at 100% is not on its own"
+      "the finding here: mktemp creates an EMPTY file, and a filesystem out of BLOCKS can still give it one."
+    )
+    [ "$__sc_kind" != directory ] || __sc_space=(
+      "can write to, and that its filesystem has free INODES (\`df -i\`) AND free BLOCKS (\`df\`). Both are"
+      "worth reading for a DIRECTORY: it needs an inode, and on a filesystem that allocates a data block for"
+      "a directory, a block as well — so neither number is ruled out here."
+    )
+    not_established "no scratch $__sc_kind could be created for $__sc_for (\`mktemp\` exited $__sc_rc)" \
+      "mktemp's own error is above this line and names the path it tried. mktemp writes under \$TMPDIR, or" \
+      "/tmp when that is unset: check that whichever applies exists, that it names a directory this deploy" \
+      "${__sc_space[@]}" \
+      "Nothing was read in its place, so what it was for is not established — this is not a finding about" \
+      "the release."
+  fi
+  # The probe (§ ⛔ FULL-BY-BLOCKS above). A directory is probed through a file inside it, because what its
+  # caller does with it is write files there; that file is removed again, and a file is left EMPTY.
+  __sc_probe="$__sc_out"
+  [ "$__sc_kind" != directory ] || __sc_probe="$__sc_out/.scratch-probe"
+  if ! scratch_writable "$__sc_probe"; then
+    rm -rf "$__sc_out"
+    not_established "the scratch $__sc_kind for $__sc_for was created and could not be written" \
+      "\`mktemp\` created it, and a byte written into it did not read back — so anything written there would" \
+      "be lost, and an EMPTY read of it would pass for a tool that printed nothing. bash's own error is above" \
+      "this line and names why: \"No space left on device\" is the filesystem behind \$TMPDIR (or /tmp when" \
+      "that is unset) out of free BLOCKS — read \`df\` on it; \`mktemp\` still succeeds there, because an" \
+      "empty file costs no block. Nothing was read in its place, so what it was for is not established —" \
+      "this is not a finding about the release."
+  fi
+  [ "$__sc_kind" != directory ] || rm -f "$__sc_probe"
+  printf -v "$__sc_var" '%s' "$__sc_out"
+}
+
+# git_diagnostic_unread <what> <git subcommand> <status> <cat status> — git answered <status>, and the
+# stderr it was given to read could NOT BE READ BACK (card#9932). git_ref_oid and git_commit_of decide a
+# failing status on git's own words — whether it spoke, and what it said — so without them neither "there
+# is no ref of that name" nor "a read failed" is established, and this says exactly that. Before this,
+# `cat`'s status was dropped, and its empty output was read as git's silence: a failed read of git's
+# message became the absence of the ref.
+git_diagnostic_unread() {
+  git_read_unusable "git's error output could not be read back while trying to $1 (\`git $2\` exited $3, \`cat\` exited $4)" \
+    "\`cat\`'s own error is above this line and names the scratch file it could not read. This deploy" \
+    "tells a ref that is not there from a read that failed by what git PRINTED, and that is exactly what" \
+    "could not be read — so neither is claimed. Nothing was resolved, so nothing about what was asked is" \
+    "known, and this is not a finding about the release: it is the scratch space under \$TMPDIR (or /tmp" \
+    "when that is unset) that failed."
 }
 
 git_read_failed() { # git_read_failed <git subcommand> <rev> <path> <status>
@@ -736,6 +1429,262 @@ git_read_at() {
   printf -v "$__var" '%s' "$__content"
 }
 
+# ── resolving a REF, and reading the COMMIT GRAPH ─────────────────────────────────────────────
+# A7 and A8's reads. The SAME status discipline as the readers above — the status is the
+# discriminator, never the emptiness — arrived at differently, because `rev-parse` cannot be asked
+# the question ls-tree can. card#9611.
+#
+# ⛔ THE STATUS OF THE CALL A7 WAS MAKING CANNOT DISCRIMINATE, AT ALL. Measured, git 2.53.0, on a
+# checkout whose objects are PACKED — which is how they arrive from `fetch`, so on a real host an
+# object-store failure is all-or-nothing and takes the REFS' reads down with everything else:
+#
+#   .pack chmod 000 · .idx chmod 000 · .pack deleted · one byte flipped mid-pack
+#     git rev-parse --verify --quiet <ref>^{commit}  → 1, silent      ← THE STATUS "NO SUCH REF" HAS
+#     git rev-parse --verify        <ref>^{commit}   → 128, "fatal: Needed a single revision"
+#                                                                    ← and a NO SUCH REF gives 128 and
+#                                                                      that same sentence, too
+#     git cat-file -t <oid>                          → 128, "could not get object info"
+#     git merge-base --is-ancestor <oid> <ref>       → 128, "Not a valid commit name <oid>"
+#
+# `--quiet` folds "git could not read the object" onto 1, the status that MEANS the ref is absent;
+# dropping it folds both onto 128 with one sentence. So `rev-parse … || true` then `[ -n "$SHA" ] ||
+# refuse "'<ref>' does not resolve to a commit on origin"` said the ref was bad about a host whose
+# object store was unreadable — and said it FIRST, before any of card#9608's readers is reached,
+# which makes it the first thing an operator meets when a real object store goes bad.
+#
+# WHAT SEPARATES THEM IS THE QUESTION, NOT THE STATUS. Resolving a ref NAME to an object id reads
+# the refs alone and never opens the object store — measured on that same broken checkout,
+# `rev-parse --verify --quiet refs/remotes/origin/main` still answers with the id — so THERE a
+# status 1 is the name being absent, and a LOUD 128 (unreadable `packed-refs`, not a repository) is
+# a failed read. Whether the object that id names is a readable commit is a SECOND question, asked
+# of `cat-file -t`, where a non-zero status can only be a failed read.
+#
+# ⚠ "AND CAN MEAN NOTHING ELSE" IS WHAT THIS PARAGRAPH USED TO SAY, AND IT IS FALSE — recorded here
+# rather than left as a premise the code leans on (card#9611 r3). Measured, git 2.53.0, on a store
+# where every object reads: ONE ref file at mode 000 → `rev-parse --verify --quiet refs/heads/<it>`
+# → 1, stderr EMPTY. A REFS-level read that failed, wearing the status and the silence that mean
+# absence, which no discriminator in this file can see. Two things follow, both stated rather than
+# assumed:
+#   · IT IS NOT REACHABLE THROUGH THIS SCRIPT TODAY. A7 fetches before it resolves anything, and a
+#     ref it cannot read fails THAT first — measured: `fatal: bad object refs/remotes/origin/main`,
+#     exit 1, so the deploy REFUSES at the fetch, by name, with git's error above the refusal
+#     (card#9646 landed the fetch's own status reading; a fix for this belongs there).
+#   · IF IT EVER BECOMES REACHABLE, THE COUPLING IS A8's. An unreadable `refs/remotes/$REMOTE/main`
+#     would answer git_ref_oid with 1-silent, A8 would read that as "there is no release branch",
+#     and the run would conclude that nothing is released — so `--allow-unreleased` would apply —
+#     out of a read that failed. That is the card#9608 direction (an empty answer read as a
+#     finding), which is why it is written down here and not only measured.
+# Peeling with `^{commit}` asks both at once, which is what collapsed them. They are asked apart.
+#
+# ⚠ AND A CANDIDATE IS NOT ALWAYS A NAME (card#9611 r2). Everything above holds for a ref NAME;
+# `$REF` is the operator's own string, so `main~2`, `v1^{}`, `:/subject` and an abbreviated id are
+# candidates too, and resolving one of THOSE walks into the object store after all. git_ref_oid is
+# where that is met: at status 1 it reads git's own SILENCE, which is what a name that is simply
+# absent answers with, and the one shape it still cannot see is named there rather than assumed
+# away — A7's refusal says so instead of calling it an absence.
+
+# git_rev_read_failed <what could not be done> <git subcommand> <status> <detail line…> — the
+# ref/graph counterpart of git_read_failed, through the SAME one exit, so the PHASE is read here too
+# rather than asserted (git_read_unusable).
+git_rev_read_failed() {
+  git_read_unusable "git could not $1 (\`git $2\` exited $3)" \
+    "git's own error is above this refusal and names what it could not read." \
+    "${@:4}"
+}
+
+# git_peel_mismatch <subject> <git's stderr> — THE ONE PLACE that tells a peel git ANSWERED apart
+# from a read that failed, because git's own wording is the only thing that carries the difference.
+#
+# ⛔ A PEEL TO A TYPE THE OBJECT IS NOT IS NOT A FAILED READ (card#9611 r4). Every object behind the
+# name was read; git is reporting what they ARE. Measured, git 2.53.0, on stores where `fsck` exits
+# 0 — every object readable:
+#   rev-parse --verify --quiet --end-of-options refs/remotes/origin/main^{blob} → 1, LOUD,
+#     `error: …: expected blob type, but the object dereferences to tree type`  (`--ref main^{blob}`)
+#   rev-parse --verify --end-of-options <annotated tag over a tree>^{commit}    → 128, LOUD,
+#     `error: …: expected commit type, but the object dereferences to tree type` + `fatal: Needed a
+#     single revision`                                                          (`--ref <that tag>`)
+# Both reached git_rev_read_failed, whose fixed second line states that git's error "names what it
+# could not read" — a failure that never happened, which is this card's own defect one branch in.
+# THE DISCRIMINATOR IS THE MESSAGE AND NOT THE STATUS, which is why this is one function and not a
+# clause in each caller: the same wording arrives at 1 from the --quiet call site and at 128 from the
+# one without it, so a status rule would have to be re-derived per caller and would be wrong at the
+# next one. It refuses and does not return when git said the objects dereference somewhere else, and
+# returns 1 otherwise so the caller goes on to its own read-failure refusal.
+git_peel_mismatch() {
+  case "$2" in *"dereferences to"*) ;; *) return 1 ;; esac
+  git_read_unusable "$1 does not name what it was asked to peel to" \
+    "git's message above is not a failed read: every object behind $1 WAS read, and git is saying" \
+    "what they are. The peel asked for a type they do not dereference to." \
+    "Nothing here says anything about the state of this checkout's object store." \
+    "This deploy checks out a commit. It will not check out, or reason about, anything else."
+}
+
+# git_ref_oid <var> <candidate> — the object id <candidate> names, into <var>. THE name question,
+# in ONE place: git_commit_of asks it of each of A7's candidates and A8 asks it of the release
+# branch, and both need the same answers rather than two readings of "non-zero".
+#
+# ITS DECLARED ANSWERS ARE THE STATUS AND GIT'S SILENCE TOGETHER, and there are five of them:
+#   0                   — <var> is a full object id.
+#   1, git SILENT       — nothing of that name, and <var> is empty. The caller must say what that
+#                         means. THIS IS THE ONLY ANSWER THAT RETURNS 1.
+#   1, git LOUD         — does not return. git printed while reaching the status that means absence,
+#                         so it is not that; what it met is what git named — AND WHAT IT NAMES IS
+#                         NOT ALWAYS A FAILED READ (card#9611 r4): a peel to a type the object is
+#                         not is loud here on a healthy store, and the branch says so by git's own
+#                         wording rather than calling every loud 1 a read that failed.
+#   ∉ {0,1}, git LOUD   — does not return. A read that failed, named by git's own error.
+#   ∉ {0,1}, git SILENT — does not return, AND THE REFUSAL CLAIMS NO FAILURE (card#9611 r3): git
+#                         answered without printing anything, so nothing establishes a failed read.
+# ⚠ THOSE FIVE ARE THE COVERAGE UNIT, and that is this round's lesson rather than a note: r2 added
+# cases for the 1 half of this function and NONE for the ∉ {0,1} half — so the branch nothing
+# exercised was the branch still over-reading, and it reached an operator through `--ref HEAD@{1}`
+# on a completely healthy host. bin/deploy.selftest.sh now carries a case per ANSWER above, which is
+# coverage over this contract rather than over the failures someone thought of.
+#
+# ⛔ STATUS 1 ALONE DOES NOT MEAN ABSENCE — THE SILENCE IS THE OTHER HALF (card#9611 r2). A
+# candidate is not always a ref NAME, so resolving one can walk into the object store, and a read
+# that fails there comes back as 1 — the status a name that is not there gives. Measured, git
+# 2.53.0, one loose object at mode 000, one variable apart:
+#   git rev-parse --verify --quiet no-such-branch      → 1, stderr EMPTY   ← the ref is not there
+#   git rev-parse --verify --quiet origin/main~2       → 1, stderr `error: unable to open loose
+#                                                         object …: Permission denied`
+#   git rev-parse --verify --quiet refs/remotes/origin/main → 0 + the id   ← a NAME, on that same
+#                                                                            broken checkout
+# So the discriminator at status 1 is git's own stderr: an absence answers SILENTLY. It is captured
+# in order to be READ, never to be hidden — every byte of it is printed back before anything is
+# decided, because git's message is what names the object (the rule stated for the readers above).
+#
+# ⚠ THE SHAPE THIS CANNOT SEE, named rather than assumed away: a checkout whose PACK is unreadable
+# answers with 1 and says nothing, because git never opened an object to fail on — the index it
+# needed to FIND one is what it could not read. That is not one candidate shape but every candidate
+# whose resolution needs the pack, which is the shape a real host is in (objects arrive packed from
+# `fetch`) — measured, git 2.53.0, `.pack` chmod 000, stderr EMPTY at each: an abbreviated id → 1,
+# `main~1` → 1, `:/subject` → 1. A FULL 40-character id cannot reach that: it resolves to itself at
+# status 0 with the store untouched (measured on that same broken checkout, and on a healthy one for
+# an id naming no object at all), so the object question is asked of `cat-file -t` below, where a
+# failure is loud. A7's refusal tells an operator that, rather than calling that silence the ref's
+# absence.
+#
+# Its locals are `__ro_`-prefixed rather than `__`: git_commit_of calls it WITH `__oid` as <var>,
+# and a local of that name here would swallow the write — the shadowing hazard _git_ls_at states.
+git_ref_oid() {
+  local __ro_var="$1" __ro_cand="$2" __ro_err __ro_msg __ro_out __ro_rc=0 __ro_cat=0
+  printf -v "$__ro_var" '%s' ""
+  scratch_file __ro_err "git's error output while resolving '$__ro_cand'"
+  # --end-of-options because the candidate can be `$REF` as the operator typed it: a leading `-` is
+  # a ref name here and must not be read as an option. NO `^{commit}`: that peel is what drags the
+  # object store into this question and collapses its failure onto status 1 (above).
+  __ro_out="$(git_at rev-parse --verify --quiet --end-of-options "$__ro_cand" 2>"$__ro_err")" || __ro_rc=$?
+  __ro_msg="$(cat "$__ro_err")" || __ro_cat=$?; rm -f "$__ro_err"
+  [ -z "$__ro_msg" ] || printf '%s\n' "$__ro_msg" >&2
+  if [ "$__ro_rc" -eq 0 ]; then printf -v "$__ro_var" '%s' "$__ro_out"; return 0; fi
+  # Every branch below decides on whether git SPOKE, so a diagnostic that could not be read back is not
+  # git's silence and is refused as what it is (card#9932). At status 0 nothing decides on it: stdout is
+  # the answer, and `cat`'s own error is on screen.
+  [ "$__ro_cat" -eq 0 ] || git_diagnostic_unread "resolve '$__ro_cand'" "rev-parse --verify" "$__ro_rc" "$__ro_cat"
+  # ⛔ AND A LOUD ANSWER IS NOT ALWAYS A FAILED READ — THERE IS A THIRD SHAPE AT STATUS 1, AND EVERY
+  # READ IN IT SUCCEEDED (card#9611 r4). `--ref 'main^{blob}'` reaches it on a COMPLETELY HEALTHY
+  # store. It is asked here, ABOVE the status split rather than inside the status-1 branch, because
+  # the discriminator is git's wording and not the status — git_peel_mismatch carries the
+  # measurements and states why. The answer that MEANS absence (status 1, git SILENT) is settled
+  # below and cannot reach git_peel_mismatch: it has no message to ask the question of.
+  [ -z "$__ro_msg" ] || git_peel_mismatch "'$__ro_cand'" "$__ro_msg" || :
+  if [ "$__ro_rc" -eq 1 ]; then
+    [ -n "$__ro_msg" ] || return 1
+    git_rev_read_failed "resolve '$__ro_cand'" "rev-parse --verify" "$__ro_rc" \
+      "Exit 1 is \"there is no ref of that name\" — and that answer is SILENT. This one printed the" \
+      "message above, so it is not that, and GIT'S OWN MESSAGE IS WHAT SAYS WHICH READ THIS WAS:" \
+      "resolving '$__ro_cand' goes past the refs and into the object store when it is an abbreviated" \
+      "id or rev syntax (~, ^, @{}, :/), which is the common case here — and a ref the refs" \
+      "themselves cannot follow is loud at this status too (measured: a dangling symref, on a" \
+      "completely healthy object store)." \
+      "Nothing was resolved, so nothing about what '$__ro_cand' names is known."
+  fi
+  if [ -n "$__ro_msg" ]; then
+    git_rev_read_failed "resolve '$__ro_cand'" "rev-parse --verify" "$__ro_rc" \
+      "Exit 1 is \"there is no ref of that name\" and $__ro_rc is not that, and git printed the error" \
+      "above on the way there: the read failed, and git's own message names what it could not read." \
+      "Nothing was resolved, so nothing about what '$__ro_cand' names is known."
+  fi
+  # ∉ {0,1} AND GIT SAID NOTHING. The same over-read this card exists to end, one branch further in
+  # (card#9611 r3): the text here used to be "the REFS could not be read", which is a positive claim
+  # about a failure that nothing above establishes — and `--ref HEAD@{1}` reaches it on a healthy
+  # host, permanently, because refs/remotes/origin/HEAD is in every clone and its reflog gets one
+  # entry at clone time and never grows on a deploy root. A8 splits --is-ancestor's 128 apart for
+  # exactly this reason three screens below; this is that same split, at the same discriminator the
+  # status-1 branch above uses — git's own silence.
+  git_read_unusable "git could not resolve '$__ro_cand' (\`git rev-parse --verify\` exited $__ro_rc)" \
+    "NOTHING WAS PRINTED ABOVE THIS REFUSAL, so it does not claim a read that failed — there is no" \
+    "error above it to name one, and --quiet silences only rev-parse's own diagnostic for this" \
+    "status. Measured, git 2.53.0: a COMPLETELY HEALTHY store answers exactly this way for @{…}" \
+    "reflog syntax whose reflog does not go back that far, and so does a reflog this checkout could" \
+    "not read. Which of those this is, is NOT established here." \
+    "Nothing was resolved, so nothing about what '$__ro_cand' names is known." \
+    "Deploy from a branch, a tag, or the full 40-character commit id: a reflog is this host's own" \
+    "local history of where a ref has pointed, not something $REMOTE can be asked for."
+}
+
+# git_commit_of <var> <candidate…> — the commit id the FIRST candidate that NAMES an object peels
+# to, into <var>.
+#   0 — <var> is a full commit id.
+#   1 — no candidate names anything, and <var> is empty. That is the refs' own answer, read from
+#       refs that were read (git_ref_oid): the caller must say what it means.
+# A read git could not complete does not return, and neither does a name that is not a commit.
+# Every local is `__`-prefixed, for the reason stated at _git_ls_at: <var> is written with
+# `printf -v` and a caller naming one of these would have its own variable shadowed.
+git_commit_of() {
+  local __var="$1" __cand="" __oid="" __peeled __type __rc=0 __err __msg __cat=0
+  shift
+  printf -v "$__var" '%s' ""
+  for __cand in "$@"; do
+    if git_ref_oid __oid "$__cand"; then break; fi
+  done
+  [ -n "$__oid" ] || return 1
+  __type="$(git_at cat-file -t "$__oid")" || __rc=$?
+  [ "$__rc" -eq 0 ] || git_rev_read_failed "read the object $__oid" "cat-file -t" "$__rc" \
+    "The REFS were read; the object behind them did not come back." \
+    "'$__cand' is the name that resolved to it. A FULL commit id resolves to itself without the" \
+    "object store being read at all, so a mistyped id, an id from another repository and an id that" \
+    "was never pushed all arrive here — and so does a store this checkout could not read. GIT'S" \
+    "ERROR ABOVE TELLS THEM APART: \"could not get object info\" is an object that is not here," \
+    "\"unable to open …\" is one that could not be read. Check the id, and that the commit is pushed."
+  case "$__type" in
+    commit) printf -v "$__var" '%s' "$__oid" ;;
+    tag)    # An annotated tag: the object is readable, so peeling reads FURTHER objects, and a
+            # failure here is that read failing or a tag that dereferences to something else. git's
+            # own error says which; this refusal does not guess — and does not head itself "could
+            # not peel" either, because one of those two cases is git peeling the tag perfectly well
+            # and arriving somewhere this deploy cannot use (measured: a tag over a tree gives
+            # `expected commit type, but the object dereferences to tree type`). card#9611 r2.
+            #
+            # ⛔ AND SAYING SO IN THE BODY WAS NOT ENOUGH — THE WRAPPER'S OWN FIXED LINE CLAIMED THE
+            # FAILED READ THAT HAD NOT HAPPENED (card#9611 r4, the sibling of the same defect at
+            # git_ref_oid). git_rev_read_failed always states that git's error "names what it could
+            # not read", so an annotated tag over a TREE refused under that line on a store where
+            # `fsck` exits 0 — measured, git 2.53.0: 128, `error: <oid>^{commit}: expected commit
+            # type, but the object dereferences to tree type`, `fatal: Needed a single revision`.
+            # git's stderr is captured and re-printed here, as git_ref_oid does, because the
+            # discriminator IS that message and this call site used to let it go straight past.
+            __rc=0
+            scratch_file __err "git's error output while peeling the tag '$__cand' ($__oid)"
+            __peeled="$(git_at rev-parse --verify --end-of-options "$__oid^{commit}" 2>"$__err")" || __rc=$?
+            __msg="$(cat "$__err")" || __cat=$?; rm -f "$__err"
+            [ -z "$__msg" ] || printf '%s\n' "$__msg" >&2
+            # git's wording is the discriminator below, so an unread one is refused as unread (card#9932).
+            [ "$__rc" -eq 0 ] || [ "$__cat" -eq 0 ] || git_diagnostic_unread \
+              "resolve the tag '$__cand' ($__oid) to a commit" "rev-parse --verify" "$__rc" "$__cat"
+            [ "$__rc" -eq 0 ] || git_peel_mismatch "the tag '$__cand' ($__oid)" "$__msg" || :
+            [ "$__rc" -eq 0 ] || git_rev_read_failed "resolve the tag '$__cand' ($__oid) to a commit" \
+              "rev-parse --verify" "$__rc" \
+              "A tag object was read at that name; what it dereferences to did not come back as a" \
+              "commit, and git's message above is a read that failed — a tag that simply peels to" \
+              "something else is refused above this line, by what git called it."
+            printf -v "$__var" '%s' "$__peeled" ;;
+    *)      git_read_unusable "'$__cand' names a $__type at $__oid, not a commit" \
+              "This deploy checks out a commit. It will not check out, or reason about, anything else." ;;
+  esac
+}
+
 # whole_seconds <value> — a whole number of seconds read from OUTSIDE this script (an ini, a pool, the environment,
 # the serving release's hand-over), printed in base 10; fails, printing nothing, on anything but digits. Every such
 # number is parsed through here, because bash arithmetic reads a leading zero as octal: `08` aborts the script with
@@ -804,19 +1753,211 @@ php_require_constraint() {
 # A non-numeric suffix (`8.5.0RC1`, `8.4.1-dev`) is truncated at the first non-digit, which
 # treats a release candidate as its release — the permissive direction, and the one composer
 # itself takes with a host PHP.
+#
+# ⛔ AN OPERAND IT CANNOT COMPARE IS REFUSED, NEVER ANSWERED (card#9984). It used to fall through to
+# zeros: an operand that is not a version left every field 0, 0 is neither greater nor less than 0
+# at any field, and the function returned 0 — "A is at least B". MEASURED, by the cases in
+# bin/deploy.selftest.sh that drive this predicate: with the body at `9c4d67f` restored verbatim,
+# a floor operand that is EMPTY and one reading `banana` each answered MEETS. Nothing died on the way,
+# because every call site invokes it where `set -e` does not apply (left of a `||`, or inside an
+# `if`), so A1 certified a `BASH_FLOOR` it had not read and the deploy carried on with no bash floor
+# enforced at all — a check that cannot fail on the population it guards (canon #9), failing OPEN,
+# and the asymmetry is that A6b has always refused exactly that value in the TARGET release's
+# declaration while this copy's own went unread.
+# A comparison that could not be performed is not a comparison that passed, and there is no third
+# RETURN VALUE a caller could read: every call site is `… || refuse` or `if ! …`, so a non-zero
+# status means "below the floor" there and the NEXT caller added would inherit that same two-valued
+# reading. The answer therefore does not come back at all — it exits through `refuse`, by name, the
+# way A1c refuses an `npm --version` that is not a version rather than reading it as a version of
+# nothing. `refuse`, not `not_established`: every caller runs only from `phase_a` (A3b's note states
+# that rule and why).
+# ⇒ THIS PREDICATE IS NOT TOTAL. A future caller that wants a soft answer for a string that may not
+# be a version establishes that itself first, as A1c, A6 and A6b each already do for their floors.
+#
+# ⛔ AND NO HERE-STRING, WHICH IS WHAT THE SPLIT BELOW IS FOR. Both operands used to be read with
+# `IFS=. read -r -a a <<< "$1"`, and a here-string is a TEMPORARY FILE on every bash below 5.1 —
+# which is above the BASH_FLOOR declared at the top of this file, so on a SUPPORTED host that is
+# what it is (bash 4.4 `redir.c`, `r_reading_string` → `here_document_to_fd` →
+# `sh_mktmpfd("sh-thd", MT_USERANDOM|MT_USETMPDIR, …)`; read in the 4.4 release tarball,
+# 2026-09-20). A read that fails there leaves the array empty, which is the fall-through above,
+# reached with no bad input at all.
+# ⚠ WHAT IT TAKES TO MAKE THAT READ FAIL IS NARROWER THAN IT LOOKS, and it is written down here
+# because the obvious fixture does NOT produce it: bash validates `$TMPDIR` with `stat` + `W_OK` and
+# falls back to `/tmp`, `/var/tmp`, `/usr/tmp` and then `.` (4.4 `lib/sh/tmpfile.c`, `get_tmpdir` →
+# `file_iswdir`). MEASURED on bash 4.4 built from the GNU tarball: with `TMPDIR=/nonexistent` and a
+# working directory this user cannot write to, the here-string still SUCCEEDS — it lands in `/tmp`,
+# which on that host was writable. So the failing host is one where no directory in that chain is
+# usable at all — a full `/tmp`, or a locked-down account — which no fixture here can produce
+# without root. ⇒ The construct is removed rather than tested around, and what IS tested is the
+# property above: an operand this function did not read is never answered as a floor that was met,
+# whatever left it unread.
+#   · The replacement is PARAMETER EXPANSION, which is not a redirection at all: no temporary file,
+#     no pipe, no fork and no subshell, so there is nothing left for a temp directory to break and
+#     the split stays in this function's own scope. Nothing in it is newer than bash 2.
+#   · NOT a pipe into `read` (`printf … | IFS=. read -r -a a`): the read would run in a SUBSHELL and
+#     the fields would never reach the caller — the same silently-empty answer by another route.
+#   · NOT process substitution (`< <(printf …)`): where `/dev/fd` is unavailable bash falls back to
+#     a NAMED FIFO under `$TMPDIR`, which is this same hazard on the hosts least likely to be tested.
+#   · NOT an unquoted expansion split on IFS (`set -- $1`): that re-opens globbing on the operand.
 ver_ge() {
-  local i x y
-  local -a a b
-  IFS=. read -r -a a <<< "$1"
-  IFS=. read -r -a b <<< "$2"
-  for i in 0 1 2; do
-    x="${a[i]:-0}"; y="${b[i]:-0}"
+  local a="$1" b="$2" bad="" i x y
+  # `$bad` carries TEXT, not the operand, so an operand that is itself EMPTY still trips the test
+  # below — which is the case that matters: an unread operand is the empty one.
+  case "$a" in [0-9]*) ;; *) bad="the first, '$a'" ;; esac
+  case "$b" in [0-9]*) ;; *) bad="${bad:+$bad; }the second, '$b'" ;; esac
+  # `"${FUNCNAME[*]}"` is NOT in the empty-array class the top of this file warns about: it is
+  # expanded inside a function, where FUNCNAME always holds at least this frame.
+  [ -z "$bad" ] || refuse \
+    "a version comparison this deploy cannot perform: '$1' against '$2'" \
+    "\`ver_ge\` compares dotted versions numerically, field by field, and an operand that does not" \
+    "begin with a digit is not one it can read." \
+    "NOT A VERSION: $bad" \
+    "It does NOT read such an operand as 0 and does NOT fall through to \"at least\": every caller" \
+    "of this predicate is a FLOOR gate, and a false answer there reads as \"the floor is met\"," \
+    "which lets a host the gate exists to refuse deploy anyway." \
+    "" \
+    "Called through: ${FUNCNAME[*]}." \
+    "" \
+    "The operands are this host's own versions (\`\$BASH_VERSINFO\`, \`php -r 'echo PHP_VERSION;'\`," \
+    "\`npm --version\`) and a floor declared by a release (\`BASH_FLOOR=\` at the top of" \
+    "bin/deploy.sh, \`require.php\` in server/composer.json, \`lockfileVersion\` in" \
+    "server/package-lock.json). Whichever of the two above is not a version is what to fix."
+  # The fields, consumed from the front — as many as the loop below names, which is the same
+  # depth the indexed read it replaces compared. A field an operand does not have leaves the
+  # remainder empty, which reads as 0 below, exactly as the old `${a[i]:-0}` did.
+  for i in 1 2 3; do
+    x="${a%%.*}"; y="${b%%.*}"
+    case "$a" in *.*) a="${a#*.}" ;; *) a="" ;; esac
+    case "$b" in *.*) b="${b#*.}" ;; *) b="" ;; esac
     x="${x%%[!0-9]*}"; y="${y%%[!0-9]*}"
     x="${x:-0}"; y="${y:-0}"
     [ "$((10#$x))" -gt "$((10#$y))" ] && return 0
     [ "$((10#$x))" -lt "$((10#$y))" ] && return 1
   done
   return 0
+}
+
+# ── the bash and npm floors (card#9616) ───────────────────────────────────────────────────────
+
+# bash_meets_floor <major.minor> <floor> — THE comparison A1 and A6b both make, and a predicate of
+# its own for one reason: `BASH_VERSINFO` cannot be faked inside a running bash, so a selftest
+# cannot drive A1 by lying about the host. It drives THIS with the versions either side of the
+# floor, and drives the two gates end to end by moving the FLOOR instead.
+# ⚠ IT INHERITS `ver_ge`'s THIRD ANSWER (card#9984) and is therefore not two-valued either: an
+# operand that is not a version ends the run through `refuse` rather than returning a verdict, so
+# `bash_meets_floor … || refuse` below cannot report "below the floor" for a floor it never read.
+bash_meets_floor() { ver_ge "$1" "$2"; }
+
+# bash_floor_declared — the BASH_FLOOR a copy of this script declares, read from its TEXT on stdin:
+# the first line beginning `BASH_FLOOR=`, with quotes and any trailing comment removed. It prints
+# NOTHING when there is no such line, which is every release cut before card#9616.
+# ⛔ ONE READER, on purpose: A6b reads the TARGET release with this and deploy-selftest.yml reads
+# THIS file with it, so CI cannot measure a floor A6b would not see. A second pattern in the
+# workflow is the restatement that drifts.
+bash_floor_declared() {
+  awk '/^BASH_FLOOR=/ && !seen { v = substr($0, 12); sub(/[ \t]*#.*$/, "", v); gsub(/["\047]/, "", v)
+                                 sub(/[ \t]+$/, "", v); print v; seen = 1 }'
+}
+
+# bash_floor_is_version <value> — true when <value> is a BASH_FLOOR a floor gate may act on:
+# `<digits>.<digits>`, exactly two fields, nothing else. A PREDICATE only — it prints nothing and
+# refuses nothing, because each caller speaks about a DIFFERENT copy of the declaration (this
+# script's, the release's, the tree CI is measuring) and owes its own words.
+#
+# ⛔ ONE TEST, for the same reason `bash_floor_declared` above is one reader (card#9984). A1, A6b
+# and `.github/workflows/deploy-selftest.yml`'s floor step each held this value to a test of their
+# own, and A1's was the weakest — `ver_ge`'s leading-digit check, which is right for THAT predicate
+# (A6 hands it three-field PHP versions and A12 a bare `7`) and far too loose for a bash floor.
+# MEASURED by DELETING A1's `bash_floor_is_version "$BASH_FLOOR" || refuse` guard, which puts a
+# tree back in the state that guard fixed. Library-mode, host bash 4.0, against a serving copy
+# whose floor line was meant to read `4.4`: `4,4`, `4.x`, `4-4`, `4x`, `4` and `"4 4"` each
+# begin with a digit, so the
+# comparison RAN, truncated the floor at the first non-digit, read it as 4.0.0 and answered MEETS —
+# bash 4.0 deploying past a 4.4 floor. A mistyped separator is the likelier typo than `banana`, and
+# a partly-read floor passing is the same defect as an unread one passing.
+# (The last of those is only a DECLARATION when quoted: `BASH_FLOOR=4 4` unquoted is an assignment
+# followed by the command `4`, so that copy dies at 127 before `main` and no gate ever sees it.)
+#
+# ⛔ IT IS STRICTER THAN THE `[0-9]*.[0-9]*` GLOB IT REPLACES IN A6b, deliberately. That glob also
+# admitted `4.4x` and `4.x.5`, and the second is not the harmless case it looks: MEASURED, a release
+# declaring `BASH_FLOOR=4.x.5` was enforced as the floor 4.0.5 — a floor nobody wrote, met by a host
+# bash 4.4 — so the gate was not failing closed, it was silently substituting a floor for the one
+# declared. Which way that substitution errs is unknowable, which is exactly why it is refused
+# rather than guessed at: A6 refuses a PHP constraint it cannot evaluate in the same direction, and
+# for the same reason. A three-field value is refused here too, so it cannot reach `ver_ge` and be
+# compared with a patch field that `<major>.<minor>` does not have.
+bash_floor_is_version() {
+  case "$1" in
+    *[!0-9.]* | *.*.* | .* | *.) return 1 ;;  # a non-digit, a third field, an empty field at an end
+    *.*)                         return 0 ;;  # …leaving exactly <digits>.<digits>
+    *)                           return 1 ;;  # no separator at all — a bare major is not a floor
+  esac
+}
+
+# ver_is_comparable <value> — true when EVERY dot-separated field of <value> begins with a digit,
+# and there are two or more of them. That is the rule, stated as the code has it.
+#
+# ⚠ IT IS STRICTER THAN `ver_ge` NEEDS, AND THE SURPLUS IS DELIBERATE (card#9984 r5). `ver_ge`
+# reads three fields, so a fourth that does not begin with a digit could not have been misread —
+# it is never read at all. This predicate refuses it anyway. Drive it to see: `1.0.0-alpha.beta`
+# and `9.2.0+build.abc` are legal semver, are REFUSED here, and `ver_ge` would have compared
+# them as `1.0.0` and `9.2.0`, exactly as written. The cases in bin/deploy.selftest.sh pin both.
+#   · Refusing them costs nothing that is real: npm's prerelease convention is `-<tag>.<number>`,
+#     so `9.2.0-pre.1` and `7.0.0-beta.0` have a digit-led fourth field and ARE accepted. This
+#     card's independent verification swept npm's published versions from the registry and
+#     found none that A1c's old glob accepted and this predicate refuses — not measured here.
+#   · It fails CLOSED, in phase A, with the banner and the offending string — a legible refusal an
+#     operator can act on, never a silent misread.
+#   · And the alternative is worse: stopping the walk at the third field would hard-code `ver_ge`'s
+#     depth in a SECOND place, so a later change to that depth would make this predicate wrong in
+#     the PERMISSIVE direction — the exact failure class this card exists to close. Being stricter
+#     than necessary degrades safely; being coupled to a constant elsewhere does not.
+# ⇒ DO NOT "fix" the mismatch by loosening this to the first three fields. If a real tool is ever
+# refused here, the fix is a case naming that tool's output, decided deliberately.
+#
+# ⛔ THE OTHER PREDICATE, AND NOT A LOOSER SPELLING OF THE ONE ABOVE (card#9984 r4).
+# They answer different questions and the difference is deliberate:
+#   · `bash_floor_is_version` — what a BASH_FLOOR DECLARATION may be. Exactly two fields, all
+#     digits, no suffix, because that is the shape this file's header declares and the shape A1,
+#     A6b and the `bash-floor` job all compare.
+#   · `ver_is_comparable`     — what a HOST VERSION reported by a tool may be. Two fields or more,
+#     and a non-numeric SUFFIX on a field is fine.
+# A suffix is fine because `ver_ge` truncating it is DOCUMENTED and deliberate — `8.5.0RC1` is
+# treated as its release — and MEASURED to be the permissive direction that matters here: a real
+# prerelease npm prints one, and holding A1c to "all fields numeric" would refuse a host that is
+# perfectly able to install the lockfile. A field that STARTS with a non-digit is the opposite
+# case: among the three `ver_ge` reads, it becomes a 0 nobody reported — which is the defect —
+# and beyond them it is refused by the surplus strictness stated above.
+# MEASURED by restoring A1c's old `[0-9]*.[0-9]*` glob in place of the call it now makes:
+# `9.x.5` passed it and `ver_ge` read it as 9.0.5; `6.x.9` passed and read as 6.0.9. Both are
+# the partly-parseable shape this card refuses everywhere else — a version read as far as it
+# parses and then acted on.
+# ⚠ THE VERDICT DID NOT CHANGE at the floors A12 can currently produce, because its
+# `lockfileVersion` case yields the bare major `7` or nothing, so only the FIRST field decides and
+# the glob already guaranteed that one is a digit. That is luck, not design: it holds only while no
+# floor here has a minor, nothing re-checks it, and the next floor with one would make the
+# substitution decide a gate. Closed at the predicate rather than left as a note that decays.
+# ⛔ NOT USED BY A6, deliberately: it is handed `${HOST_PHP_VERSION:-0}`, whose `0` sentinel is a
+# single field and means "php could not be read", which `ver_ge` already refuses to compare.
+ver_is_comparable() {
+  local v="$1" f
+  case "$v" in *.*) ;; *) return 1 ;; esac   # a single field is not a host version here
+  while :; do
+    f="${v%%.*}"
+    case "$f" in [0-9]*) ;; *) return 1 ;; esac
+    case "$v" in *.*) v="${v#*.}" ;; *) return 0 ;; esac
+  done
+}
+
+# npm_lockfile_version — the TOP-LEVEL `lockfileVersion` of a package-lock.json on stdin, or nothing
+# if it has none. npm writes that key once, at the top level, and in no package entry, so the first
+# match is the file's. It reads to the END rather than exiting at the first hit: exiting early makes
+# a writer feeding it a large lockfile through a pipe take a SIGPIPE, which under `pipefail` is a
+# failure of the caller's whole pipeline.
+npm_lockfile_version() {
+  awk '!seen && match($0, /"lockfileVersion"[ \t]*:[ \t]*[^,} \t]+/) {
+         v = substr($0, RSTART, RLENGTH); sub(/^"lockfileVersion"[ \t]*:[ \t]*/, "", v); seen = 1 }
+       END { printf "%s", v }'
 }
 
 # ── PHP-FPM: new code without a reload ────────────────────────────────────────────────────────
@@ -835,7 +1976,9 @@ ver_ge() {
 #   · opcache.preload set               → REFUSED. Preloaded code is fixed for the master's life.
 # Read from the FPM SAPI (`php-fpm -i`; the CLI reads a different php.ini) and then from every pool
 # that runs as THIS user, because a pool's php_value / php_admin_value beats the ini and Virtualmin
-# writes a domain's PHP options exactly there. The worst case across those pools wins.
+# writes a domain's PHP options exactly there. The worst case across those pools wins. Every pool file the
+# FPM config's includes match is READ or REFUSED by name (`cannot read <file>`), never skipped — which pools
+# run as this user is only known after reading them all (card#9815, fpm_readable).
 # And then from every `.user.ini` that sits over the app's scripts — in the vhost's document root
 # (MEZZ_DOCROOT) and in the release's server/public/ — because opcache.enable, validate_timestamps and
 # revalidate_freq are all PHP_INI_ALL, so such a file beats the pool for every request under it
@@ -880,6 +2023,34 @@ ver_ge() {
 # Sets FPM_POSTURE, FPM_REVALIDATE_S, STREAM_POSTURE and STREAM_STATUS_LISTEN on success; on failure
 # FPM_NOT_READY — a refusal title, then its lines. Phase A refuses on it; phase B, which re-reads it, fails
 # the window on it.
+# ⚠ THE HERE-STRING SHAPE card#9984 REMOVED FROM `ver_ge` SURVIVES HERE, AND IS NAMED RATHER THAN
+# FIXED (canon #7 — the sibling audit owes the NAME; whether it earns work is #18's question, and
+# the answer below is why this round did not take it).
+# ⛔ THE POPULATION IS "EVERY HERE-STRING `fpm_code_reload_ready` REACHES" — stated that way, and
+# DERIVED, because the top of this file records hand audits of exactly this question having been
+# wrong before, in both directions:
+#     start at fpm_code_reload_ready, follow calls to functions defined in this file
+#     transitively, and report every `<<<` in the reached set
+# Run that (2026-09-20) and it reaches `phpinfo_value`, `pool_ini` and `ini_file_value`, plus
+# inline sites in `fpm_code_reload_ready` itself and in `stream_pool_ready` — wider than the two
+# functions the eye lands on. No figure is written here: re-derive it, the sites move.
+# The ruling below is uniform over all of them, so the wider population does not change it —
+# which is why the population had to be derived rather than guessed, not a reason to skip it.
+#   · Every one splits with `<<<`, a TEMPORARY FILE on every bash below 5.1 and so on a supported
+#     host (the citations are at `ver_ge`). A failed read leaves the substitution EMPTY.
+#   · Empty is read PERMISSIVELY downstream: `fpm_judge`'s first line is
+#     `if ! ini_on "${2:-0}"; then return 0; fi`, and an empty `opcache.enable` therefore means
+#     "opcache is off, every request reads the disk, this deploy needs no reload" — the same
+#     fail-open direction, on a host whose real opcache may be on with timestamps off.
+#   · And `set -e` is off for the whole dynamic extent: `fpm_code_reload_ready` is invoked left of
+#     a `||` at both of its call sites, exactly as `bash_meets_floor` was.
+# ⇒ SO THE SHAPE IS THE SAME. What differs, and is why it is not the same defect: the FIRST
+# here-string `fpm_code_reload_ready` reaches is the `Server API` read, and an empty answer there
+# is `"" != "FPM/FastCGI"`, which REFUSES. A host condition that breaks here-strings at all breaks
+# that one too, so it refuses before any opcache value is read. Reaching the permissive read needs
+# a failure that begins PARTWAY THROUGH the function — a filesystem that fills between the two —
+# which is narrower still than the condition `ver_ge`'s header already calls unreproducible here
+# without root. No fixture can produce it, so no case is shipped for it and none is claimed.
 phpinfo_value() { awk -F' => ' -v k="$2" '$1 == k { print $2; exit }' <<< "$1"; }
 pool_ini() { awk -F'\t' -v p="$2" -v k="$3" '$1 == p && $2 == k { v = $3 } END { printf "%s", v }' <<< "$1"; }
 ini_on() { case "${1,,}" in 1 | on | yes | true) return 0 ;; esac; return 1; }
@@ -918,12 +2089,28 @@ fpm_judge() {
   if [ "$freq" -gt "$max_f" ]; then max_f="$freq"; fi
 }
 
+# fpm_readable <path> <why…> — fpm_code_reload_ready's one read-permission refusal (card#9815): true when this user can
+# read <path>, and — for a directory — both LIST it (-r) and SEARCH it (-x); otherwise FPM_NOT_READY is "cannot read
+# <path>" and <why>, and it fails. Both bits, because they answer different questions (measured, bash 5.3.9): a
+# directory at 644 can be LISTED, so a glob over it still returns the names, but nothing in it can be stat'ed or opened
+# — so a LITERAL include naming a file in it reads as absent (`-e` false), which is the false cause this card ends.
+# The CALLER decides that <path> is there before asking, because what "there" means differs per file: php-fpm.conf
+# must be, a .user.ini may be absent, and a pool file is whatever the include matched. ⛔ `-r` alone is never read as
+# "absent" in this function: it is false for a file that is there and unreadable too, and a pool file dropped that
+# way refused on a FALSE cause — "no PHP-FPM pool runs as <me>" when one does — or, beside another pool of this
+# user's, refused on nothing at all and certified an opcache posture without reading the app's own pool.
+fpm_readable() {
+  if [ -r "$1" ] && { [ ! -d "$1" ] || [ -x "$1" ]; }; then return 0; fi
+  FPM_NOT_READY=("cannot read $1" "${@:2}")
+  return 1
+}
+
 # R1's ini directives, read wherever opcache's are: the ini baseline, a pool's php_(admin_)value/flag, a .user.ini.
 R1_KEYS='output_buffering|output_handler|zlib\\.output_compression|ignore_user_abort'
 
 fpm_code_reload_ready() {
   FPM_NOT_READY=(); FPM_POSTURE=""; FPM_REVALIDATE_S=0; STREAM_POSTURE=""; STREAM_STATUS_LISTEN=""; STREAM_NOT_READY=()
-  local me info ini_file fpm_conf inc f rows
+  local me info ini_file fpm_conf inc f rows fpm_err fpm_said
   me="$(id -un)"
   if ! command -v "$FPM_BIN" >/dev/null 2>&1; then
     FPM_NOT_READY=("PHP-FPM binary '$FPM_BIN' was not found"
@@ -931,25 +2118,59 @@ fpm_code_reload_ready() {
       "different minor, name its binary with MEZZ_FPM_BIN.")
     return 1
   fi
-  info="$("$FPM_BIN" -i 2>/dev/null || true)"
+  # FPM's stderr is KEPT and printed only if this read fails (card#9815): a healthy FPM prints warnings there as a
+  # matter of course, so on the success path it is noise — and on the failure path it is FPM's own reason.
+  # ⚠ WHAT IT CAN CARRY, MEASURED rather than assumed (card#9815 round 2, canon #20 — real php-fpm8.5, dummy
+  # sentinel values only): `-i` does NOT parse php-fpm.conf or any pool file — a pool with broken env[…] and
+  # php_admin_value[…] lines carrying sentinels left `-i` at exit 0 with EMPTY stderr (only `-t` parses pools, and
+  # its errors name file:line, not the value). What `-i` does read is php.ini: thirteen malformed php.ini shapes
+  # carrying sentinels each printed file:line and a parser token, never the value — and each still printed an FPM
+  # phpinfo, so none reached the branch below that prints this. Other PHP builds were not measured.
+  scratch_file fpm_err "\`$FPM_BIN -i\`'s error output"
+  info="$("$FPM_BIN" -i 2>"$fpm_err" || true)"
   if [ "$(phpinfo_value "$info" 'Server API')" != "FPM/FastCGI" ]; then
     FPM_NOT_READY=("\`$FPM_BIN -i\` did not print an FPM phpinfo"
       "Without it nothing here can say what the workers' opcache does with a changed file.")
+    # Nothing is decided on it, so a read-back that fails costs only the diagnostic — and is said to, never
+    # reported as an FPM that was silent.
+    if ! fpm_said="$(cat "$fpm_err")"; then
+      FPM_NOT_READY+=("What it printed on stderr could not be read back; \`cat\`'s error above names the scratch file.")
+    elif [ -n "$fpm_said" ]; then
+      FPM_NOT_READY+=("What it printed on stderr:" "$fpm_said")
+    else
+      FPM_NOT_READY+=("It printed nothing on stderr.")
+    fi
+    rm -f "$fpm_err"
     return 1
   fi
+  rm -f "$fpm_err"
   ini_file="$(phpinfo_value "$info" 'Loaded Configuration File')"
   fpm_conf="$(dirname "$ini_file")/php-fpm.conf"
-  if [ ! -r "$fpm_conf" ]; then
-    FPM_NOT_READY=("cannot read $fpm_conf"
-      "It is looked for beside the FPM SAPI's php.ini ($ini_file); the pools that serve the app"
-      "are defined from it.")
-    return 1
-  fi
+  fpm_readable "$fpm_conf" \
+    "It is looked for beside the FPM SAPI's php.ini ($ini_file); the pools that serve the app" \
+    "are defined from it." || return 1
   local -a pool_files=("$fpm_conf")
   while IFS= read -r inc; do
     # An include is a glob (Debian: pool.d/*.conf), expanded here on purpose.
     # shellcheck disable=SC2086
-    for f in $inc; do if [ -r "$f" ]; then pool_files+=("$f"); fi; done
+    for f in $inc; do
+      # A glob that matched nothing comes back as its own text, and so does a literal include that names no file.
+      # Either is a host with no such pool file — unless the directory it names cannot be listed or searched by this
+      # user, which ALSO comes back that way, and then whether it defines a pool is not known (card#9815).
+      if [ "$f" = "$inc" ] && [ ! -e "$f" ]; then
+        if [ -d "$(dirname "$f")" ]; then
+          fpm_readable "$(dirname "$f")" \
+            "The include '$inc' in $fpm_conf points into it, and nothing there can be opened from here — so" \
+            "whether a pool it defines runs as $me is not known." || return 1
+        fi
+        continue
+      fi
+      # Matched by the glob, or named by the include and there: a pool file this deploy must read.
+      fpm_readable "$f" \
+        "The include '$inc' in $fpm_conf matches it, so the pools it defines are ones PHP-FPM runs." \
+        "Which of them run as $me, and what they set for opcache, is not known without it." || return 1
+      pool_files+=("$f")
+    done
   done < <(awk -F= '/^[[:space:]]*include[[:space:]]*=/ { v = $2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); print v }' "$fpm_conf")
 
   # One row per pool running as this user ("<pool> - -"), then one per opcache or R1 override in it, and one per
@@ -997,11 +2218,8 @@ fpm_code_reload_ready() {
     fi
     for f in "$docroot/$uif" "$APP_DIR/public/$uif"; do
       [ -e "$f" ] || continue
-      if [ ! -r "$f" ]; then
-        FPM_NOT_READY=("cannot read $f"
-          "A $uif can override opcache for every request under it, so it is read, never skipped.")
-        return 1
-      fi
+      fpm_readable "$f" "A $uif can override opcache for every request under it, so it is read, never skipped." \
+        || return 1
       ui_src+=("$f"); ui_text+=("$(cat "$f")")
     done
     # Phase A reads the RELEASE's copy as well, which the checkout has not written yet; phase B, run after
@@ -1183,11 +2401,100 @@ phase_a() {
   # without ps no holder of a lock can be proven to have started after the restart. cgi-fcgi and timeout
   # are the stream pool's: A14 reads the pool's status over FastCGI, and phase B's drain lists the
   # streams still open with it (fpm_status).
+  #
+  # ⛔ AND FIRST, THE BASH RUNNING IT (card#9616). Below BASH_FLOOR — declared at the top of this
+  # file, which says how the number was measured — this script does not refuse: it DIES, partway
+  # through, on its own constructs, and the first such death is at A7's refusal, which arrives as a
+  # bare exit 1 with neither the ⛔ banner nor the "Nothing was changed" promise. That is the exit
+  # code the table above reserves for "refused, nothing was touched", reached by a death. So the
+  # bash is refused here, by name, before anything else this script does can depend on a newer one.
+  #
+  # ⚠ `set -e` DOES NOT APPLY TO THE LEFT OF THE `||` BELOW, which is why the comparison must be
+  # incapable of answering wrongly rather than merely incapable of lying (card#9984): a failure
+  # inside `bash_meets_floor` there does not end the run, it just looks like a verdict.
+  #
+  # ⛔ SO THE FLOOR IS ESTABLISHED TO BE A VERSION FIRST, HERE, AND NOT BY THE COMPARISON.
+  # `ver_ge` refuses an operand it cannot read AT ALL, which is the right test for a predicate A6
+  # hands three-field PHP versions and A12 a bare `7` — and it is far too loose for this one: it
+  # passes `4,4` and `4.x`, which begin with a digit, and the floor then silently becomes 4.0.
+  # `ver_ge`'s own header says that predicate is not total and that a caller wanting a stricter
+  # reading establishes its operand itself. A1 is such a caller, and this is where it does it,
+  # through the SAME `bash_floor_is_version` A6b holds the release's declaration to — so the two
+  # gates cannot disagree about what a floor is. Only then are there two things left that reach the
+  # comparison: the floor being MET and the floor being MISSED.
+  # ⛔ AND THE LINE BEING GONE IS REFUSED AS ITSELF, FIRST — which until card#9984 r2 was the one
+  # shape in this class that still reached the operator as a DEATH. MEASURED at `9c4d67f`, and
+  # reproducible here by deleting this guard: remove the `BASH_FLOOR=` line from a copy and the
+  # first expansion of `$BASH_FLOOR` dies under `set -u` with `BASH_FLOOR: unbound variable`,
+  # exit 1, NO ⛔ banner and NO "Nothing was changed" promise — the exit code the table at the top
+  # of this file reserves for *refused, nothing was touched*, reached by a death, which is the
+  # exact confusion `refuse` exists to prevent. `${BASH_FLOOR-}` is what lets it be answered
+  # instead, and an empty declaration (`BASH_FLOOR=`) takes the same refusal: the remedy for both
+  # is to write the line, so they are not split the way A6b splits absent from empty.
+  # ⚠ NOT SYMMETRIC WITH A6b, deliberately. A RELEASE that declares no floor is the survivable
+  # predates-card#9616 path, because it could not have declared one. THIS copy is the script
+  # running now, its own header calls that line its one home, and a copy of it with the line
+  # removed is edited, not old.
+  [ -n "${BASH_FLOOR-}" ] || refuse \
+    "this copy of bin/deploy.sh declares no BASH_FLOOR" \
+    "That line is the oldest bash this script is known to run on, and A1 holds the bash running" \
+    "this deploy to it. Without it there is no floor to enforce, and this refusal is deliberately" \
+    "not the silence a missing declaration used to produce." \
+    "" \
+    "Restore it at the top of this file — \`BASH_FLOOR=<major>.<minor>\`, alone on its line, at" \
+    "column 0 — and read the comment above it, which says how the number is arrived at. A release" \
+    "that declares none is a different matter and still deploys: it predates card#9616 (A6b)."
+  bash_floor_is_version "$BASH_FLOOR" || refuse \
+    "this copy of bin/deploy.sh declares BASH_FLOOR='$BASH_FLOOR', which is not a version" \
+    "BASH_FLOOR is the oldest bash this script is known to run on, and A1 holds the bash running" \
+    "this deploy to it. A declaration this cannot read is not a floor, and it is refused rather" \
+    "than read as far as it parses: a value like '4,4' or '4.x' would otherwise be taken as 4.0," \
+    "which is a floor nobody wrote and which almost any bash meets." \
+    "" \
+    "The line is \`BASH_FLOOR=<major>.<minor>\`, alone on its line, at column 0, unquoted or" \
+    "quoted — exactly two numeric fields. The comment at the top of this file says how the number" \
+    "is arrived at, and that it moves by re-running the measurement rather than by being retyped." \
+    "A6b holds the release being deployed to this same test, so nothing was read about it either."
+  bash_meets_floor "$HOST_BASH_VERSION" "$BASH_FLOOR" || refuse \
+    "bash $BASH_VERSION is below this script's floor, BASH_FLOOR=$BASH_FLOOR" \
+    "bin/deploy.sh is MEASURED to pass its own selftest on bash $BASH_FLOOR and to FAIL it on the" \
+    "minor below (.github/workflows/deploy-selftest.yml runs both on every PR, and the top of this" \
+    "file records what each run answered). On an older bash it dies on its own constructs partway" \
+    "through, and phase B's are inside the maintenance window, with the app down." \
+    "" \
+    "Run this deploy with bash $BASH_FLOOR or later. Whichever interpreter you run it with is the one" \
+    "measured here, the one the re-exec hands the maintenance window to, and the one A13 reads the" \
+    "release's bin/supervision.sh under — every bash this deploy starts. So there is one bash to fix," \
+    "and the \`bash\` that happens to be first on PATH is not consulted by any of the three."
   local missing=()
   for c in git php composer npm curl crontab flock fuser setsid ps cgi-fcgi timeout; do
     command -v "$c" >/dev/null 2>&1 || missing+=("$c")
   done
   [ ${#missing[@]} -eq 0 ] || refuse "missing required command(s): ${missing[*]}"
+
+  # A1c — npm's VERSION, read here beside npm's presence and handed to A12, which holds it to the
+  # floor the RELEASE's lockfile implies. Read here so that gate stays host-free (§ PHASE A's
+  # TARGET-TREE GATES), exactly as A6 is handed $HOST_PHP_VERSION.
+  # ⛔ AND ITS STATUS IS READ (card#9646): an npm that cannot answer `--version` is refused as THAT,
+  # never read as a version of nothing — and what it printed has to BE a version, or there is
+  # nothing for A12 to compare and a `[ -z … ]` on it would certify an npm it never asked.
+  local npm_version="" npm_rc=0
+  npm_version="$(npm --version)" || npm_rc=$?
+  [ "$npm_rc" -eq 0 ] || refuse "\`npm --version\` exited $npm_rc" \
+    "What npm printed is above this refusal. Which npm this host runs is NOT established, so" \
+    "whether it can install the release's lockfile (A12) is not established either — and \`npm ci\`" \
+    "runs in phase B, inside the maintenance window, with the app already down."
+  # ⛔ `ver_is_comparable`, NOT AN INLINE GLOB (card#9984 r4). This was the FOURTH copy of
+  # `[0-9]*.[0-9]*`, left behind when r2 consolidated the other three, and it admitted the same
+  # partly-parseable shape the rest of this card refuses: `9.x.5` passed it and A12 then compared
+  # it as 9.0.5 — restore the glob here to measure that. The predicate is the HOST-VERSION one,
+  # not the bash-floor one: a floor is exactly two numeric fields, while an npm may legitimately
+  # print a prerelease suffix `ver_ge` truncates on purpose. Its header states the difference.
+  ver_is_comparable "$npm_version" || refuse \
+    "\`npm --version\` printed '$npm_version', which is not a version" \
+    "A12 compares this host's npm against the floor the release's lockfile implies. It will not" \
+    "make that comparison against something it cannot read as a version, nor against one it can" \
+    "read only as far as it parses — which would compare a number this host never reported."
 
   # A1b — the restart's timings. restart_daemons does arithmetic on them inside the window, where a value it
   # cannot read would stop the deploy with the app down.
@@ -1212,12 +2519,321 @@ phase_a() {
   fi
 
   # A3 — this really is a Mezzanine checkout, and a git one.
-  git_at rev-parse --git-dir >/dev/null 2>&1 || refuse "$DEPLOY_ROOT is not a git checkout"
+  #
+  # ⛔ ONE CAUSE WAS ASSERTED FOR A STATUS THAT CARRIES SEVERAL (card#9646). `rev-parse --git-dir`
+  # exits 128 for every way it cannot open a repository, and `2>&1 >/dev/null || refuse "… is not a
+  # git checkout"` threw git's own message away and named the one cause the operator is LEAST likely
+  # to be in: a prod checkout that has been deploying for months does not stop being a git checkout.
+  # Measured, git 2.53.0, all 128 with the message dropped: `detected dubious ownership` (a checkout
+  # restored from backup, rsynced, or chowned — git prints the exact repair line itself), `bad config
+  # line 1 in file .git/config`, and a file under `.git` it could not read. An operator told "not a
+  # git checkout" about any of those goes looking for a checkout that is right there.
+  #
+  # THE DISCRIMINATOR IS GIT'S OWN WORDING, not the status — the status is 128 for all of them. git
+  # says `not a git repository` in those words for the four shapes that really are not a checkout
+  # (a plain directory; `.git` at mode 000, which git discovers PAST rather than fails on; a `.git`
+  # file pointing nowhere; a `.git` directory that is not a repository), and `cannot change to '…':
+  # Not a directory` for a root that is a file. Anything else lands in the generic branch — which is
+  # honest about an unrecognised wording rather than false about it. `LC_ALL=C` is pinned on this
+  # call so the wording is the one measured; it is pinned on the NEW call only (card#9646 § 5 S9).
+  # git's message is PRINTED before either refusal, because it is what names the cause.
+  #
+  # ⚠ AND NONE OF THE THREE REFUSALS card#9646 ADDS (here, A4, A7) SAYS "git's error is above this
+  # refusal". They say what git PRINTED is above it, which is true whether or not git printed
+  # anything. A fixed line asserting a message git may not have given is card#9611 r3's own defect
+  # — git_ref_oid's `∉ {0,1}, git SILENT` answer is exactly that state, met on a healthy host — and
+  # a silent non-zero from these three commands is not something this suite can produce, so a
+  # branch on it would be a check that cannot fail (canon #9) guarding a state nothing establishes
+  # is reachable (canon #6). The wording carries the uncertainty instead, and costs nothing.
+  local repo_msg="" repo_rc=0
+  repo_msg="$(LC_ALL=C git_at rev-parse --git-dir 2>&1 >/dev/null)" || repo_rc=$?
+  if [ "$repo_rc" -ne 0 ]; then
+    [ -z "$repo_msg" ] || printf '%s\n' "$repo_msg" >&2
+    case "$repo_msg" in
+      *"not a git repository"* | *"cannot change to"*)
+        refuse "$DEPLOY_ROOT is not a git checkout" \
+          "git's message above says what it found there instead." ;;
+      *)
+        refuse "git could not open $DEPLOY_ROOT as a repository (\`git rev-parse --git-dir\` exited $repo_rc)" \
+          "What git printed is above this refusal. That, and the status, are the whole of what was" \
+          "established, and this deploy does not guess past them." \
+          "IT IS NOT \"not a git checkout\" — git says that in those words, and that answer has its" \
+          "own refusal. What reaches here is a checkout git can see and could not OPEN. Measured," \
+          "git 2.53.0:" \
+          "  · \`detected dubious ownership in repository at …\` — the checkout is owned by another" \
+          "    user, which is what a restore from backup, an rsync or a chown leaves behind. git" \
+          "    prints the \`git config --global --add safe.directory <path>\` line for it itself;" \
+          "    chowning the checkout to the deploy user is the other fix, and the better one on a" \
+          "    host where this user is the only one that should be writing here." \
+          "  · a \`.git/config\` git cannot parse — \`bad config line N in file …\`." \
+          "  · a file under \`.git\` it could not read." \
+          "Nothing was read out of the checkout, so nothing here says anything about the release or" \
+          "about what is being served." ;;
+    esac
+  fi
   [ -f "$APP_DIR/artisan" ] || refuse "$APP_DIR/artisan not found — MEZZ_DEPLOY_ROOT is not a Mezzanine checkout"
+
+  # A3b — this host's git accepts `:(literal)` PATHSPEC MAGIC (card#9616). Every read this deploy
+  # makes of the release out of the object database goes through _git_ls_at, which passes its path
+  # as `:(literal)<path>`. A git that does not know the magic fails, or mis-answers, EVERY one of
+  # them — and the first would arrive as "git could not read server/composer.json at <sha>", a
+  # statement about the RELEASE that is not the real cause. One probe here names the cause once.
+  #
+  # ⛔ PROBED, NOT PARSED. `git --version` is a claim about which build does what, and a distro
+  # backport makes that claim wrong in both directions; the probe asks THIS build. So no version
+  # number is compared here and none is declared. (The history is settled and recorded on card#9616
+  # — `:(literal)` entered git at 5c6933d201fab183a9779dca0fe43bf2f1eca098, first stable tag
+  # v1.8.5 — and it is history, not what decides this line.)
+  #
+  # AFTER A3, NEVER BEFORE IT. A3 has established that git can OPEN this repository; without that,
+  # a probe that failed would be read as "this git lacks the magic" when the real cause is a
+  # checkout git cannot open at all. And the PLAIN form runs first, for the same reason one step
+  # further in: it establishes that this git can list HEAD's tree, so that a failure of the MAGIC
+  # form differs from it by exactly one thing — the magic.
+  #
+  # ⚠ AND IT EXITS THROUGH `refuse`, NOT `not_established` (card#9816), which is a deliberate call
+  # and not an oversight: `not_established` exists for a precondition that can fail on EITHER side
+  # of the maintenance window, and reads POST_CHECKOUT_SHA to pick its terminal. Every gate this
+  # card adds — this one, A1's bash floor, A1c's npm read, A6b and A12's comparison — runs only
+  # from `phase_a`, which `main` calls only when POST_CHECKOUT_SHA is empty. Routing them through
+  # it would buy nothing and would tell the next reader they are reachable in-window, which they
+  # are not. A6 and A10–A13 refuse the same way for the same reason.
+  #
+  # ⭐ BOTH OF A MAGIC-LESS GIT'S ANSWERS ARE REFUSED, and the second is why the probe asserts the
+  # OUTPUT and not the status: such a git can also exit 0 having listed NOTHING, taking the whole
+  # string `:(literal)VERSION` for a literal path that is not in the tree. That is status 0 with an
+  # empty answer — indistinguishable, to every reader downstream, from "the release does not carry
+  # this path". So what is required is the exact line, not the exit code.
+  local probe="" probe_rc=0
+  probe="$(git_at ls-tree --name-only HEAD -- VERSION)" || probe_rc=$?
+  [ "$probe_rc" -eq 0 ] || refuse \
+    "git could not list HEAD's tree in $DEPLOY_ROOT (\`git ls-tree HEAD -- VERSION\` exited $probe_rc)" \
+    "What git printed is above this refusal. A3 passed — git opened the repository — and what" \
+    "failed is the read of a TREE, which is what every precondition that judges the release makes." \
+    "Until that works, whether this git accepts the pathspec those reads use (\`:(literal)\`) cannot" \
+    "be probed either, so this is not a statement about the release or about git's pathspec support."
+  [ "$probe" = VERSION ] || refuse \
+    "HEAD's tree in $DEPLOY_ROOT does not list VERSION (git printed '$probe')" \
+    "A Mezzanine checkout carries VERSION at its root. This precondition probes git's pathspec" \
+    "magic against that path, and a path that is not there cannot tell a git which accepts the" \
+    "magic from one which does not — both would print nothing."
+  probe_rc=0
+  probe="$(git_at ls-tree --name-only HEAD -- ':(literal)VERSION')" || probe_rc=$?
+  if [ "$probe_rc" -ne 0 ] || [ "$probe" != VERSION ]; then
+    refuse "this host's git does not accept \`:(literal)\` pathspec magic" \
+      "\`git ls-tree HEAD -- VERSION\` listed VERSION on this same checkout, one line ago." \
+      "\`git ls-tree HEAD -- ':(literal)VERSION'\` exited $probe_rc and printed '$probe', where it" \
+      "must print exactly VERSION. What git printed on stderr, if anything, is above this refusal." \
+      "Every read this deploy makes of the release out of git passes its path that way (_git_ls_at)," \
+      "so on this git each of them would fail, or list nothing and be read as a release that does" \
+      "not carry the file. Upgrade git on this host: \`:(literal)\` has been in git since v1.8.5." \
+      "" \
+      "$(git --version 2>/dev/null || echo 'git --version printed nothing')"
+  fi
+
+  # A3c — MEZZ_REMOTE NAMES A REMOTE OF THIS CHECKOUT (card#9832). `git fetch` takes a URL as
+  # happily as a name, and a URL can carry a credential — so `MEZZ_REMOTE=https://user:token@host/…`
+  # is a configuration git accepts and an operator deploying a private checkout may reasonably
+  # reach for, while the header above documents the variable as a NAME. Every later mention of
+  # `$REMOTE` then puts that credential on the operator's screen and in this deploy's log: A7's
+  # step line prints it before anything can fail, and A7's and A8's refusals print it — measured
+  # against the tree before this gate, one refused run put the whole URL on screen five times over,
+  # in A7's step line and in four lines of the fetch refusal that followed it. ⇒ Per canon #20 the
+  # question is not which file was read but whether a secret VALUE can reach an output stream, and
+  # through a supported configuration it can.
+  #
+  # ⛔ AND GIT'S OWN REDACTION IS NOT A BACKSTOP: it is PER-TRANSPORT, and it is not this script's
+  # to rely on. Measured, git 2.53.0, fetching a URL that carries a fake credential —
+  #     https://…  `fatal: unable to access 'https://host/o/r.git/': …`  — the credential STRIPPED
+  #     git://…    `fatal: unable to look up user:secret@host:1 …`       — VERBATIM
+  #     a path     `fatal: '/no/such/path' does not appear to be a …`    — VERBATIM
+  # So for one transport git redacts and for another it does not, and either way its message is on
+  # the operator's screen before this script sees it. ⇒ REDACTION IS THE WEAKER HALF AND IS NOT THE
+  # FIX: the value is refused HERE instead, before the first line that could carry it.
+  #
+  # ⛔ BY MEMBERSHIP IN `git remote`, NEVER BY PATTERN-MATCHING THE STRING FOR `://` OR `@`. A
+  # pattern is a guess about what a URL looks like, and it is wrong in the direction that costs an
+  # operator a correctly configured deploy: `backup@nas`, `git@github` and a bare `@` are all LEGAL
+  # remote names (measured, git 2.53.0 — a remote name is a refname component, and `@` is allowed
+  # in one), so a rule keyed on `@` refuses a host that is set up exactly right.
+  #
+  # ⛔ WHAT MEMBERSHIP DOES NOT CLOSE, STATED AT THE SIZE IT WAS MEASURED (review round 2). The
+  # claim here WAS that no URL can be a configured remote's name, on the strength of `git remote
+  # add a:b <url>` answering `'a:b' is not a valid remote name`. ⚠ THAT CONTROL ONLY COVERS NAMES
+  # GIT CREATES. `git config` writes a section name straight into `.git/config` with no such
+  # check — measured, git 2.53.0:
+  #     git config 'remote.https://user:secret@host/o/r.git.url' https://host/o/r.git   # exit 0
+  # `git remote` then LISTS that URL as a name, and the membership test PASSES it (verdict
+  # measured against the construct below). ⇒ THE HONEST STATEMENT IS THE NARROW ONE: no name
+  # `git remote add` will CREATE can be a URL — a refname may not contain `:`, and every URL form
+  # with a place for a credential carries one (`https://user:secret@host/…`, `git://…`, scp-style
+  # `user@host:path`) — BUT a name written directly with `git config` can be, and it IS a
+  # configured remote of this checkout.
+  # ⇒ CLOSED BY A SECOND TEST, NOT BY MEMBERSHIP (card#9991, the operator's decision): after
+  # membership passes, a MEZZ_REMOTE whose name contains `:` is refused — see the refusal after the
+  # membership test, and remote_name_unprintable for why the colon is the rule.
+  #
+  # ⚠ AND THE LIST THIS GATE PRINTS DOES NOT CARRY SUCH A NAME EITHER (card#9991). Before that card
+  # the list was `git remote`'s output verbatim, so a credential someone wrote into `.git/config` AS
+  # A REMOTE NAME appeared under a headline saying the value is not printed — on every run the
+  # membership test refused, whatever value it refused. remote_names_listing now replaces each name containing `:` with
+  # a marker giving its position in `git remote`'s list, by the same predicate the refusal uses.
+  # ⚠ WHAT THAT DOES NOT REACH: `git remote` itself, run by hand, still prints the name as it is.
+  # A credential does not belong in a remote NAME on any host — `remote.<name>.url` is where a URL
+  # goes — and the refusal tells the operator how to rename it.
+  #
+  # ⚠ THE ONE FETCH TARGET WITH NO `:` IS A BARE FILESYSTEM PATH, disposed of rather than left
+  # unexamined: it carries no credential, and it reaches the fetch only where somebody has
+  # configured a remote whose NAME is that path — which is a configured remote, and is exactly
+  # what this gate asks for.
+  #
+  # ⛔ AND THE REFUSAL DOES NOT ECHO THE VALUE, which is the whole of the point: a refusal that
+  # quoted the rejected MEZZ_REMOTE to explain itself would emit the credential it exists to keep
+  # out of the log. It names the VARIABLE and lists the remotes this checkout HAS, and those are
+  # NAMES: `git remote` with no options prints one name per line and no `remote.<name>.url`
+  # (measured, git 2.53.0; `git remote -v` is the form that prints URLs, and is deliberately not
+  # the form called here). ⚠ A NAME written into `.git/config` with `git config` can itself be a
+  # URL, and `git remote` prints the names it is given — so the list is printed through
+  # remote_names_listing, which marks any name containing `:` instead of printing it (card#9991,
+  # the block above). A name with no `:` is printed as the name it is.
+  # ⚠ THE COST IS PAID KNOWINGLY: an operator who merely mistyped a remote NAME does not get their
+  # typo echoed back. Echoing "only when the value looks safe" would be the same pattern-matching
+  # guess by another route, one more rule to keep true, and wrong the first time a value that looks
+  # safe is not. The list of names that WOULD have worked is what makes the typo findable instead.
+  #
+  # AFTER A3, NEVER BEFORE IT, for A3b's reason one step along: without A3 a failed `git remote`
+  # would be read as "MEZZ_REMOTE is wrong" when the real cause is a checkout git cannot open at
+  # all. And BEFORE A7, which is where `$REMOTE` is first printed — that ordering is what makes
+  # this a gate rather than a second opinion. It refuses through `refuse`, like every other gate
+  # reachable only from `phase_a` (A3b states why).
+  #
+  # ⛔ AND `git remote`'s OWN STATUS IS READ (card#9646's class). Unguarded under `set -Eeuo
+  # pipefail` a failure here would end phase A with git's status and no banner and no promise. THE
+  # EMPTINESS IS NOT THE ANSWER EITHER: a `git remote` that failed hands back the same empty string
+  # a checkout with no remotes hands back, so a membership test alone would refuse on the wrong
+  # cause. What is NOT established is whether MEZZ_REMOTE names a remote — not that it does not.
+  local remotes="" remotes_rc=0
+  remotes="$(git_at remote)" || remotes_rc=$?
+  [ "$remotes_rc" -eq 0 ] || refuse \
+    "git could not list the remotes of $DEPLOY_ROOT (\`git remote\` exited $remotes_rc)" \
+    "What git printed is above this refusal. A3 passed — git opened the repository — and what" \
+    "failed is the read of its remote configuration." \
+    "Whether MEZZ_REMOTE names a remote of this checkout is NOT established; this is not \"it does" \
+    "not\". Nothing was fetched and no ref was resolved." \
+    "MEZZ_REMOTE's value is not printed here, by this refusal or by any other: it may be a URL" \
+    "carrying a credential, which is the configuration A3c exists to refuse (card#9832)."
+  # ⛔ MATCHED IN THE SHELL, WITH NO HERE-STRING AND NO SUBSHELL. `while read … <<< "$remotes"` is
+  # the obvious spelling and it is the wrong one HERE: bash before 5.1 backs a here-string with a
+  # TEMPORARY FILE, and this gate runs BEFORE the `.env` loader — so on a host with nowhere to put
+  # one it would die on `cannot create temp file for here-document`, with no banner and no promise,
+  # and take the loader's refusal — which names that cause correctly — with it.
+  # ⚠ CORRECTED (card#9984): this used to name card#9816's own fixture, a TMPDIR pointing at a
+  # directory that is not there, as the host condition that produces that death. It does not.
+  # `mktemp` is an external command and fails on such a TMPDIR, which is why that fixture works for
+  # the scratch-file refusals — but BASH validates `$TMPDIR` itself (`stat` + `W_OK`) and silently
+  # falls back to `/tmp`, `/var/tmp`, `/usr/tmp` and then `.` (4.4 `lib/sh/tmpfile.c`, `get_tmpdir`
+  # → `file_iswdir`; MEASURED on bash 4.4 built from the GNU tarball, from a working directory this
+  # user cannot write to, where the here-string still succeeds). The death needs the WHOLE chain
+  # unusable — a full `/tmp`, a locked-down account — which no fixture here can produce without
+  # root. ⇒ The construct choice below stands and the reasoning for it is unchanged; what is
+  # withdrawn is the claim that a named fixture would demonstrate it. Nothing on the runner this
+  # suite usually runs on would show it either: bash 5.1 and later use a pipe.
+  # A `case` over the list bracketed by newlines needs no file and no child, and `$REMOTE` is
+  # quoted inside the pattern, so it is matched LITERALLY and not as a glob — `*`, `o*`, `origi?`
+  # and `[o]rigin` are each refused against a list holding `origin`, and so are `orig`, `rigin`
+  # and `origin ` (measured, with this exact construct).
+  #
+  # ⛔ AND A VALUE CARRYING A NEWLINE IS REFUSED BEFORE THAT TEST, because the test is applied to
+  # the VALUE and the value is not a name (review round 2). A list bracketed by newlines makes
+  # ADJACENT entries joinable: against `origin\nupstream\nbackup@nas\nprod-mirror`, the value
+  # `$'origin\nupstream'` MATCHES and the gate passes it — measured with this construct. Nothing
+  # secret gets through that way, since every line of such a value has to be a real remote name,
+  # but A7 would then state that A3c "established that it does name a remote" about a value that
+  # names none, the fetch would fail, and the multi-line value would be echoed across that
+  # refusal — the five echoes this gate exists to end, reached by the back door.
+  # ⇒ It costs nothing to close, and the routes into the config are ENUMERATED rather than counted
+  # — "either route" was this comment's own short enumeration until review round 3 named a third
+  # (measured, git 2.53.0):
+  #   · `git remote add $'two\nlines' <url>`       — `is not a valid remote name`, nothing written
+  #   · `git config "remote.$'two\nlines'.url" …`  — `invalid key (newline)`, nothing written
+  #   · hand-editing `.git/config`                 — the file then does not PARSE: `fatal: bad
+  #     config line N in file .git/config`, exit 128 from `git remote`, `git config --list` and
+  #     `git status` alike, so A3 refuses that checkout (its generic branch names that very
+  #     wording) long before this gate is reached.
+  # No route leaves a remote whose NAME carries a newline, so this rejects no value that could
+  # ever have been a name. It takes the SAME refusal below rather than one of its own: a value
+  # that is not a name does not name a remote, and a second near-identical message would be a
+  # second thing to keep true.
+  local remote_is_configured=0
+  case "$REMOTE" in
+    *$'\n'*) ;;
+    *) case $'\n'"$remotes"$'\n' in
+         *$'\n'"$REMOTE"$'\n'*) remote_is_configured=1 ;;
+       esac ;;
+  esac
+  local remote_names="  (none — this checkout has no remotes configured at all)"
+  [ -z "$remotes" ] || remote_names_listing remote_names "$remotes"
+  if [ "$remote_is_configured" -ne 1 ]; then
+    refuse "MEZZ_REMOTE does not name a remote of $DEPLOY_ROOT" \
+      "ITS VALUE IS NOT PRINTED, AND THAT IS THIS REFUSAL'S POINT. \`git fetch\` accepts a URL as" \
+      "well as a remote name, and a URL can carry a credential — so MEZZ_REMOTE may BE a secret," \
+      "and a refusal that quoted it to explain itself would put that secret on this screen and in" \
+      "this deploy's log. Read the value where you set it, not here (card#9832)." \
+      "" \
+      "MEZZ_REMOTE must be the NAME of a remote of this checkout. The names it has are:" \
+      "$remote_names" \
+      "" \
+      "Set MEZZ_REMOTE to one of the names printed there, or add the remote you mean and pass its" \
+      "NAME:" \
+      "  git -C $DEPLOY_ROOT remote add <name> <url>" \
+      "A URL is refused even when it carries no credential: nothing here can tell one that does" \
+      "from one that does not without inspecting it, and whether git redacts a URL in its OWN fetch" \
+      "error depends on the transport — measured, git 2.53.0: an https URL is reported with the" \
+      "credential stripped and a git:// one verbatim — which is not this script's to rely on."
+  fi
+  # ⛔ AND A CONFIGURED REMOTE WHOSE NAME CONTAINS A COLON IS REFUSED TOO (card#9991), after the
+  # membership test and never instead of it, so the refusal a host sees names its real problem.
+  # The predicate is remote_name_unprintable, the same one that marks the list, so there is one
+  # rule here and not two. Such a name passes membership — it IS a configured remote — and without
+  # this the run went on to print it: measured through bin/deploy.selftest.sh against the tree
+  # before this rule, with a remote named `https://selftest:<fake token>@example.invalid/…` written
+  # in by `git config`, A7's step line printed it and git resolved it as a remote and fetched.
+  # ⚠ THE COST IS THE OPERATOR'S DECISION, ACCEPTED ON card#9991: a checkout that deliberately named
+  # a remote with a URL stops deploying until that remote is renamed. There is no escape hatch.
+  if remote_name_unprintable "$REMOTE"; then
+    refuse "MEZZ_REMOTE names a remote of $DEPLOY_ROOT whose NAME contains ':'" \
+      "ITS VALUE IS NOT PRINTED, AND THAT IS THIS REFUSAL'S POINT. No name \`git remote add\` creates" \
+      "can contain ':', while every URL form with a place for a credential in it does — so a remote" \
+      "named with one was written into .git/config directly, and its name can be a URL carrying a" \
+      "credential. This deploy prints MEZZ_REMOTE when it fetches, so it stops here instead" \
+      "(card#9991)." \
+      "" \
+      "The remotes of this checkout — MEZZ_REMOTE is one of the marked names:" \
+      "$remote_names" \
+      "" \
+      "Then set MEZZ_REMOTE to the name you gave it."
+  fi
 
   # A4 — a clean tree. A modified file on the prod checkout IS the hand-deploy D-13 forbids, and
   # the checkout below would either clobber it or fail. Either way the operator must see it now.
-  local dirty; dirty="$(git_at status --porcelain)"
+  #
+  # ⛔ AND ITS STATUS IS READ, because A3 does not cover it (card#9646 S2, measured rather than
+  # assumed). `git status` opens `.git/index`; `rev-parse --git-dir` never does — measured, git
+  # 2.53.0, on a checkout whose `.git/index` is mode 000: A3 exits 0 and this exits 128 with
+  # `fatal: .git/index: index file open failed: Permission denied`. Unguarded under `set -Eeuo`
+  # that ended phase A at exit 128, a code the exit table does not list, with no banner and no
+  # promise. THE EMPTINESS IS NOT THE ANSWER HERE EITHER: a failed `status` hands back the same
+  # empty string a clean tree does, so a `[ -z "$dirty" ]` on it certifies a tree it never read.
+  local dirty="" dirty_rc=0
+  dirty="$(git_at status --porcelain)" || dirty_rc=$?
+  [ "$dirty_rc" -eq 0 ] || refuse \
+    "git could not read the state of $DEPLOY_ROOT (\`git status --porcelain\` exited $dirty_rc)" \
+    "What git printed is above this refusal, and is what names the file it could not read." \
+    "Whether this checkout carries local modifications is NOT established — this is not \"the tree is clean\"." \
+    "A deploy that carried on here would check out over an edit it never saw, which is the hand-deploy" \
+    "D-13 forbids, applied by this script instead of by a person." \
+    "A3 above passed: git opened the repository. What failed is the read of the working tree's" \
+    "state, and \`.git/index\` is the file that read needs (measured, git 2.53.0)."
   [ -z "$dirty" ] || refuse "the prod checkout has local modifications" \
     "$(printf '%s' "$dirty" | sed 's/^/  | /')" \
     "Prod moves only by this script (D-13). Nothing may be edited on the host."
@@ -1345,22 +2961,206 @@ phase_a() {
   # what is being served (it moves remote-tracking refs, nothing in the worktree), so --dry-run
   # runs it too: a ref check that did not fetch would be checking yesterday's answer.
   step "Fetching $REMOTE"
-  git_at fetch --prune --tags "$REMOTE"
+  # ⛔ THE FETCH'S OWN STATUS IS READ, and it is the first phase-A command that could not say so
+  # (card#9646). Unguarded under `set -Eeuo pipefail`, a fetch that failed ended the script with
+  # git's status — 1 for a ref of this checkout it could not read, 128 for a remote it could not
+  # reach — and NO ⛔ banner and no "Nothing was changed" promise. At 1 that is indistinguishable
+  # from a refusal (the exit table above says 1 MEANS refused); at 128 it is a code the table does
+  # not list at all. The only discriminator an operator had was the absence of two lines nothing
+  # told them to look for.
+  #
+  # ⛔ STATUS ONLY — git's stderr IS NOT CAPTURED, and that is load-bearing rather than incidental.
+  # A SUCCESSFUL fetch prints to stderr as a matter of course (ref-update lines), and it prints
+  # git's own `error:` lines while still exiting 0 when an object it does not need is unreadable —
+  # the shape `three_releases` produces in bin/deploy.selftest.sh, where a middle commit is blinded
+  # and the fetch completes. A rule keyed on stderr would refuse those healthy runs. The status is
+  # the whole answer here; git's message goes straight to the operator's terminal, unsilenced, which
+  # is the same rule the readers below state (§ reading the TARGET RELEASE out of git).
+  #
+  # The headline names no cause on purpose: the status does not carry one, so it does not claim one.
+  local fetch_rc=0
+  git_at fetch --prune --tags "$REMOTE" || fetch_rc=$?
+  [ "$fetch_rc" -eq 0 ] || git_read_unusable \
+    "git could not fetch $REMOTE (\`git fetch\` exited $fetch_rc)" \
+    "What git printed is above this refusal. WHICH of these it is, git says and this deploy does" \
+    "not guess:" \
+    "  · $REMOTE could not be reached, or refused this host's credential, or its configured URL" \
+    "    names nothing git can fetch from — git says \`does not appear to be a git repository\` or" \
+    "    \`Could not read from remote repository\` (measured, git 2.53.0: exit 128 for both)." \
+    "    It is NOT \"MEZZ_REMOTE names no remote of this checkout\": A3c established that it does," \
+    "    by membership in \`git remote\`, before this fetch ran (card#9832)." \
+    "  · a ref of THIS CHECKOUT that git could not read — \`bad object refs/…\`, exit 1. A fetch" \
+    "    reads this checkout's own tips to tell $REMOTE what it already has, so that failure is in" \
+    "    the object store HERE and not at $REMOTE. It is the store A8's refusal names the repair" \
+    "    for, and \`git fetch\` is not that repair — it is the thing that failed." \
+    "  · a store git could not write what it fetched into." \
+    "Nothing about the release was read: no ref was resolved and no gate ran. Remote-tracking refs" \
+    "may have moved partway; the worktree, HEAD and what is being served did not."
 
-  SHA="$(git_at rev-parse --verify --quiet "refs/remotes/$REMOTE/$REF^{commit}" \
-      || git_at rev-parse --verify --quiet "refs/tags/$REF^{commit}" \
-      || git_at rev-parse --verify --quiet "$REF^{commit}" || true)"
-  [ -n "$SHA" ] || refuse "'$REF' does not resolve to a commit on $REMOTE"
+  # The candidates, in the order they have always been tried. git_commit_of (card#9611) asks the
+  # refs and the object store separately, so "there is no ref of that name" and "git could not read
+  # it" cannot arrive as the same answer: the refusal below is reached ONLY when the refs were read
+  # and none of the three names anything. A failed read refuses above it, naming the object.
+  # ⚠ THE INPUTS THE LINE BELOW CANNOT PROMISE THAT ABOUT, named for the operator rather than
+  # assumed away (card#9611 r2): `$REF` is not always a ref NAME. Rev syntax (`~`, `^`, `@{}`, `:/`)
+  # resolves by WALKING THE COMMIT GRAPH and an abbreviated id is a lookup IN the object store, and
+  # a store too damaged to search answers either with the SAME SILENCE an absent name does (measured
+  # — git_ref_oid states it). The rev-syntax metacharacters are what separate rev syntax from a
+  # name; check-ref-format then separates a VALID name from one git refuses outright. Its stderr is
+  # dropped because it reads NOTHING — it parses a string, and its status is the whole answer, which
+  # is the opposite of the silenced reads this card is about.
+  # ⚠ AND `$REF` IS ASKED OF check-ref-format WITH ITS LEADING DASHES OFF (card#9611 r3). That
+  # command has no `--end-of-options` and no `--`: BOTH are parsed as the refname and exit 129 with
+  # the usage message for EVERY ref, valid or not (measured, git 2.53.0 — `--allow-onelevel
+  # --end-of-options main` → 129, `-- main` → 129, `main` → 0), so the guard git_ref_oid uses cannot
+  # be used here. Without one, `--ref -foo` was read as an OPTION: exit 129, usage swallowed by
+  # 2>/dev/null, and the note below then told the operator "'-foo' is not a ref name: it carries rev
+  # syntax" — which is false, and false in the one direction this whole card is about. git_ref_oid
+  # resolves `$REF` with --end-of-options, so it IS asked as a name; the dashes are stripped for the
+  # classification only, which leaves `-foo` classified as the name it is.
+  #
+  # ⛔ AND THE REV-SYNTAX TEST IS POSITIVE, BECAUSE A check-ref-format FAILURE IS NOT EVIDENCE OF REV
+  # SYNTAX (card#9611 r4). r3 fixed the `-foo` input; the CLASS is that `--allow-onelevel` exits 1
+  # for around a dozen rules and rev syntax is only some of them. Measured, git 2.53.0, all exit 1
+  # and NONE is rev syntax: `a b`, `main..dev`, `foo.lock`, `ab[c`, `.foo`, `foo//bar`, `foo/`,
+  # `ab*c`, `ab?c`, `ab\c`, a tab. An ordinary typo — `--ref 'release 1.2'` — was therefore told
+  # "it carries rev syntax, so resolving it walked the commit graph", THREE false statements in one
+  # line, on a completely healthy host: measured, `rev-parse --verify --quiet --end-of-options
+  # 'refs/remotes/origin/release 1.2'` exits 1 with EMPTY stderr, a lookup in the refs that never
+  # touches the object store. So rev syntax is now detected by the metacharacters that ARE it —
+  # `~`, `^`, `:`, `@{` — each cross-checked against what rev-parse does with it, and a name git
+  # simply refuses gets the note that is TRUE of it, which is the more useful answer anyway.
+  local ref_note=() ref_probe="$REF" store_read_tail=(
+    "a question that READS THE OBJECT STORE, where a store too damaged to search answers with the" \
+    "same silence. Pass the full 40-character commit id if you have one: that resolves without the" \
+    "store being read, so a failure behind it is named as the failed read it is." )
+  case "$REF" in -*) ref_probe="${REF#"${REF%%[!-]*}"}" ;; esac
+  case "$REF" in
+    *[~^:]* | *"@{"*)
+      ref_note=( "⚠ '$REF' carries rev syntax (~, ^, :, @{), so resolving it walked the commit graph —" \
+        "${store_read_tail[@]}" ) ;;
+    *)
+      if [ -n "$ref_probe" ] && ! git_at check-ref-format --allow-onelevel "$ref_probe" >/dev/null 2>&1; then
+        ref_note=( "⚠ '$REF' is not a valid ref NAME — git refuses it (check-ref-format), so no ref of" \
+          "that name can exist to be found. A space, '..', a trailing '.lock', a leading '.' and the" \
+          "characters git reserves are the usual causes; check the spelling of what you typed." \
+          "THIS SAYS NOTHING ABOUT THIS CHECKOUT'S OBJECT STORE, which was never read: an invalid" \
+          "name is answered out of the refs alone, silently (measured, git 2.53.0)." )
+      else
+        case "$REF" in
+          '' | ? | ?? | ??? | *[!0-9a-fA-F]*) ;;
+          *) ref_note=( "⚠ '$REF' is hex, so git also looked for it as an ABBREVIATED commit id —" \
+               "${store_read_tail[@]}" ) ;;
+        esac
+      fi ;;
+  esac
+  git_commit_of SHA "refs/remotes/$REMOTE/$REF" "refs/tags/$REF" "$REF" \
+    || refuse "'$REF' does not resolve to a commit on $REMOTE" \
+      "The refs were read and carry no such name, and git printed nothing while reading them." \
+      "Check the spelling, and that the branch or tag is pushed." "${ref_note[@]}"
 
   # A8 — prod runs RELEASED code. `main` is the release branch (README § Branch model), so a
   # commit that is not an ancestor of $REMOTE/main has not been through the release PR, the
   # release-pr-guard or the tagger. The escape hatch is explicit and named in the log, never
   # implicit: a hotfix an operator has decided to deploy is a decision, not a default.
-  if ! git_at merge-base --is-ancestor "$SHA" "refs/remotes/$REMOTE/main" 2>/dev/null; then
-    [ "$ALLOW_UNRELEASED" -eq 1 ] || refuse "$(git_at rev-parse --short "$SHA") is not contained in $REMOTE/main" \
+  #
+  # ⛔ AND THE ANSWER IS THE STATUS, NOT "non-zero" (card#9611). `--is-ancestor` exits 1 for "it is
+  # not one" and 128 for everything it could not answer (the block below splits THAT apart in turn).
+  # `2>/dev/null` on an `if !` read the second as the first, so the
+  # deploy refused with a statement about the commit graph that was never established, and hid git's
+  # own error while doing it. Nothing is silenced now: exit 1 is silent anyway (measured, git
+  # 2.53.0), so what reaches the operator is exactly what git had to say.
+  #
+  # ⛔ AND 128 IS NOT ONE CONDITION EITHER (card#9611 r2). `--is-ancestor` exits 128 for a TARGET REF
+  # THAT IS NOT THERE exactly as for a graph it could not read — measured on a COMPLETELY HEALTHY
+  # store: with `refs/remotes/origin/main` pruned away, `fatal: Not a valid object name
+  # refs/remotes/origin/main`, exit 128. Reading that as "git could not read the graph" states a
+  # failure that never happened AND takes the escape hatch away in the one place it is most needed,
+  # because where there is no release branch THE QUESTION IS ANSWERED: nothing has been released, so
+  # this commit is not released — which is exactly the finding --allow-unreleased waives. So the
+  # NAME question is asked first, through the same git_ref_oid A7 resolves with, and it is
+  # answerable on a broken store (measured: that name still resolves while every object read fails).
+  # What reaches --is-ancestor is then the ID it resolved to, so a 128 from it can only be the graph.
+  local main_oid="" ancestry=0 short_sha
+  # THE ONE UNGUARDED READ HERE, and why it needs no guard (card#9611 r3, recorded rather than
+  # wrapped): $SHA is a full commit id that git_commit_of proved readable with `cat-file -t` one
+  # call earlier, and abbreviating it reads that same object. A store that could fail this fails
+  # A7's `git fetch` long before — and that fetch now REFUSES on it by name (card#9646), so the
+  # state this would meet is one the run has already ended in.
+  # ⚠ THAT IS A V1 THIS SCRIPT CANNOT REACH, NOT A SHAPE THAT IS ACCEPTABLE HERE — and the
+  # difference is card#9646's whole point, so the old wording is corrected rather than kept.
+  # A `set -e` death IS NOT "the safe direction": it exits with git's status, which at 1 is the
+  # code the exit table above says MEANS "refused, nothing was touched", with no ⛔ banner and no
+  # "Nothing was changed" promise to tell the operator which of the two they are looking at. What
+  # makes this line a comment instead of a refusal path is that it is UNREACHABLE — canon #6, an
+  # analysis finding no live precondition concludes no work — and nothing else.
+  short_sha="$(git_at rev-parse --short "$SHA")"
+  if git_ref_oid main_oid "refs/remotes/$REMOTE/main"; then
+    git_at merge-base --is-ancestor "$SHA" "$main_oid" || ancestry=$?
+    [ "$ancestry" -le 1 ] || git_rev_read_failed \
+      "tell whether $short_sha is contained in $REMOTE/main" \
+      "merge-base --is-ancestor" "$ancestry" \
+      "Exit 1 is \"it is not an ancestor\" and $ancestry is not that. $REMOTE/main IS there — it" \
+      "resolved to $main_oid — so what could not be read is the graph between the two." \
+      "--allow-unreleased does NOT apply here. It waives a commit that is not released, which is a" \
+      "finding; this run has no finding to waive, because the question was never answered." \
+      "NEXT STEP — THIS IS THE STORE, NOT THE RELEASE, so the same refusal meets the recovery" \
+      "deploy the in-window banner names (--ref <sha> --allow-unreleased). Repair the read, then" \
+      "run the same command again. Every step below works inside $DEPLOY_ROOT/.git and leaves this" \
+      "host's own files alone." \
+      "  1. NAME THE OBJECT, and learn which of the two states it is in:" \
+      "       git -C $DEPLOY_ROOT fsck" \
+      "     \"unable to mmap … Permission denied\" is a file that is THERE and cannot be read;" \
+      "     \"broken link from … to …\" with nothing else about it is a file that is GONE." \
+      "  2. IF IT IS UNREADABLE, restore that one file's mode and this checkout is whole again:" \
+      "       chmod 444 $DEPLOY_ROOT/.git/objects/<first 2 characters>/<the other 38>" \
+      "  3. IF IT IS GONE, replace the OBJECT STORE ONLY — never the deploy root:" \
+      "       git clone --no-checkout <this repo's URL> /tmp/mezz-fresh" \
+      "       mv $DEPLOY_ROOT/.git $DEPLOY_ROOT/.git.broken" \
+      "       mv /tmp/mezz-fresh/.git $DEPLOY_ROOT/.git" \
+      "       git -C $DEPLOY_ROOT checkout --force <the commit you are deploying>" \
+      "     Only .git is replaced, so server/.env, server/storage/ and .deploy-failed — this host's" \
+      "     own files, in no commit — are still there afterwards. There is no list to get right." \
+      "  4. CONFIRM the store is whole before re-running the deploy:" \
+      "       git -C $DEPLOY_ROOT repack -a -d" \
+      "     It rebuilds the packs and refuses outright if anything reachable cannot be read, so a" \
+      "     clean run is the answer you want. It repairs nothing — it reports." \
+      "⛔ git fetch CANNOT bring that object back. fetch negotiates from REFS, and the refs of this" \
+      "checkout ALREADY claim that commit, so $REMOTE is never asked for the objects behind it —" \
+      "measured, git 2.53.0: with the object unreadable \`fetch --prune\` exits 0 having transferred" \
+      "nothing and the file is still unreadable, and with the object DELETED it exits 0 too and the" \
+      "object is still gone. A clean fetch here is not a repair that worked." \
+      "⛔ DO NOT RE-CLONE $DEPLOY_ROOT ITSELF. server/.env is created on this host and is in no" \
+      "commit, so its APP_KEY and DB_PASSWORD exist nowhere else; a fresh clone of the whole root" \
+      "also takes server/storage/ — the logs — and .deploy-failed, the marker a failed window" \
+      "leaves to be read, with it. Step 3 replaces the objects without touching any of them."
+  else
+    # No release branch on $REMOTE at all. The fetch above ran --prune, so this is what $REMOTE
+    # carries NOW, read from refs that were read — an ANSWER, and the answer is that nothing has
+    # been released, so neither is this commit. That is the finding the hatch waives, and the hatch
+    # therefore still works here: the gate below is reached with the flag's meaning intact.
+    ancestry=1
+  fi
+  if [ "$ancestry" -ne 0 ]; then
+    # ONE gate, two texts. What an operator is told differs — a commit off the release branch and a
+    # release branch that is not there are not the same news — what the flag DOES does not.
+    local head_line="$short_sha is not contained in $REMOTE/main" warn_line="$short_sha is not on $REMOTE/main"
+    local why=(
       "Prod deploys released code. Cut the release PR, or — deliberately —" \
-      "re-run with --allow-unreleased."
-    warn "DEPLOYING UNRELEASED CODE: $(git_at rev-parse --short "$SHA") is not on $REMOTE/main (--allow-unreleased)"
+      "re-run with --allow-unreleased." )
+    if [ -z "$main_oid" ]; then
+      head_line="there is no $REMOTE/main for $short_sha to be contained in"
+      warn_line="there is no $REMOTE/main to contain $short_sha"
+      why=(
+        "The fetch above ran --prune, so this is what $REMOTE carries now: no release branch, and" \
+        "therefore nothing released. The refs were read and carry no such name — this is an ANSWER," \
+        "not a read that failed, and it is the same finding --allow-unreleased waives, so the flag" \
+        "applies here as it does to any other unreleased commit." \
+        "Check that MEZZ_REMOTE names the remote you mean and that the release branch is pushed," \
+        "cut the release PR, or — deliberately — re-run with --allow-unreleased." )
+    fi
+    [ "$ALLOW_UNRELEASED" -eq 1 ] || refuse "$head_line" "${why[@]}"
+    warn "DEPLOYING UNRELEASED CODE: $warn_line (--allow-unreleased)"
   fi
 
   CURRENT_SHA="$(git_at rev-parse HEAD)"
@@ -1374,6 +3174,93 @@ phase_a() {
       "  $0 --ref $REF --redeploy"
   fi
 
+  # ── THE TARGET-TREE GATES, called in the order they refuse in (card#9644) ────────────────────
+  # A6, A6b and A10–A13 decide about the RELEASE BEING DEPLOYED rather than about this host: each reads
+  # the tree at $SHA out of the object database and refuses before the checkout. They are functions
+  # of their own — § PHASE A's TARGET-TREE GATES, below — so that a checker can run one over a real
+  # commit with no host to run it against. Inline, the only ways to reach a content predicate were
+  # to fabricate a host, which is a second copy of deploy.selftest.sh's stub (canon #5), or to
+  # restate the predicate in the checker, which is the drift card#9203 filed.
+  #
+  # THE ORDER OF THESE CALLS IS THE REFUSAL ORDER, and it is the whole of what this sequence
+  # decides: a gate refuses out of the process, so the first refusal any of them reaches is the
+  # first one a deploy meets. Each gate's own header says whether it touches anything but git.
+  gate_a6_php_floor "$SHA" "${HOST_PHP_VERSION:-0}"
+  gate_a6b_bash_floor "$SHA" "$HOST_BASH_VERSION"
+  gate_a10_migration_algorithm "$SHA"
+  gate_a10b_config_drift "$SHA"
+  gate_a11_trusted_proxies "$SHA"
+  gate_a12_asset_lockfile "$SHA" "$npm_version"
+  gate_a13_supervision "$SHA"
+
+  # A14 — PHP-FPM will serve the new code without a reload. The reasoning and the measurement are at
+  # fpm_code_reload_ready; phase B re-reads the same posture before it waits.
+  step "Checking that PHP-FPM picks up new code without a reload, and can serve and drain the feed's streams"
+  fpm_code_reload_ready || refuse "${FPM_NOT_READY[@]}"
+  say "  ok — $FPM_BIN, pool(s) running as $(id -un): $FPM_POSTURE"
+  say "  ok — $STREAM_POSTURE"
+
+  say ""
+  say "Ready:"
+  say "  from     $(git_at rev-parse --short "$CURRENT_SHA")"
+  say "  to       $(git_at rev-parse --short "$SHA")  ($REF)"
+  say "  daemons  $TARGET_DAEMONS — the deployed release's: its crontab block installed, every holder of this checkout's daemon lock files sent SIGTERM, relaunched with cron's command"
+  say "  php-fpm  not reloaded — $FPM_POSTURE"
+  say "  streams  fleet.reload written before the opcache wait; streams still open after ${FEED_DRAIN_CEILING_S} s ended with SIGTERM ([${MEZZ_STREAM_POOL:-}])"
+}
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# PHASE A's TARGET-TREE GATES — callable one at a time, on a commit, with no host (card#9644)
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# Each takes the commit being deployed as its FIRST argument, bound to a local named SHA, the deploy's
+# own name for the rev. phase_a calls them in order (§ THE TARGET-TREE GATES); a checker calls one.
+#
+# HOST-FREE is stated per function and it is a promise about the FUNCTION, not about this file:
+# sourcing bin/deploy.sh has its own effects (§ library mode). A function marked host-free reads the
+# object database of $DEPLOY_ROOT and its arguments, and nothing else. A gate that also compares the
+# release against THIS HOST — A6, A6b and A12 against a version they are handed, A10b against the
+# host's `.env`, A13 against its crontab and the SERVING release's locks — is carved into a TARGET-TREE
+# half, `gate_<id>_target_…`, which reads the release and refuses on what the release alone decides,
+# and the gate phase_a calls, which runs that half and then makes the comparison. A half publishes what
+# it read in upper-case globals (A6_FLOOR_…, A6B_FLOOR, A10B_KEYS, A12_…, A13_TARGET_SUP), as A13 already
+# published TARGET_DAEMONS: a refusal exits the process, so nothing needs handing back but the values.
+
+# GATE_TREE_READERS — THE DECLARATION of every function phase A reads a PATH out of a tree through
+# (card#9745). "Reads through" is what the read ledger (§ git_read_ledger_note) attributes a read to: the
+# innermost frame that is not one of git_read_at's family. One row per function — `<function> <how a
+# checker treats it>`, where the second field is either
+#   host-free   bin/deploy-gate-inputs.sh RUNS it, as `<function> <commit>`, over the commit under test,
+#               with the ledger on, and it must pass there as it must pass here; or
+#   anything else, which is the reason no checker runs it, printed by that checker in these words.
+# ⛔ THIS LIST IS HELD TRUE BY A RUN, NOT BY A READING. bin/deploy.selftest.sh § card#9745 runs a full
+# `--dry-run` with the ledger on (in library mode: a RUN ignores the ledger) and reds unless the
+# functions it attributes a read to are exactly these, naming any other with the path it read; and it
+# runs every host-free row on its own, over the same
+# commit, and reds unless it reads what the gate phase_a called read. A function that starts reading the
+# release belongs here in the change that makes it read.
+# shellcheck disable=SC2034  # read by its consumers, which source this file: the two named above
+GATE_TREE_READERS=(
+  'gate_a6_target_php_floor host-free'
+  'gate_a6b_target_bash_floor host-free'
+  'gate_a10_migration_algorithm host-free'
+  'gate_a10b_target_keys host-free'
+  'gate_a11_trusted_proxies host-free'
+  'gate_a12_target_lockfile host-free'
+  'gate_a13_target_source host-free'
+  "fpm_code_reload_ready A14 — the .user.ini it reads out of the release is NAMED by this host's PHP-FPM (user_ini.filename), so with no FPM there is no path to read"
+  "phase_a A3b — its \`:(literal)\` probe lists VERSION in the SERVING checkout's HEAD, which is this host's tree and not the release's"
+)
+A6_FLOOR_CONSTRAINT=""; A6_FLOOR_MIN=""; A6_FLOOR_MAX=""; A6B_FLOOR=""; A10B_KEYS=""
+A12_LOCK_VERSION=""; A12_NPM_FLOOR=""; A13_TARGET_SUP=""
+
+# gate_a6_target_php_floor <sha> — A6's TARGET-TREE half. HOST-FREE: it derives the PHP floor from
+# server/composer.json at <sha> and publishes it (A6_FLOOR_CONSTRAINT, A6_FLOOR_MIN, A6_FLOOR_MAX — MAX empty
+# for `>=`, which is unbounded) for gate_a6_php_floor to compare. Every refusal it makes is a property of
+# the target tree ALONE — the file missing or empty, no `require.php`, a constraint this cannot evaluate —
+# so a release that meets one is refused by every deploy of it, and no lane over fixtures can see it
+# (card#9644's comment 5498). That is why a checker runs this half over the real tree (card#9745).
+gate_a6_target_php_floor() {
+  local SHA="$1"
   # A6 — THE PHP FLOOR, read from the RELEASE BEING DEPLOYED. Out of letter order on purpose: it
   # needs $SHA (A7), and the floor that matters is the TARGET tree's, not this host's checkout.
   # Those two differ on exactly one deploy — the one that RAISES the floor — and that is the deploy
@@ -1384,7 +3271,7 @@ phase_a() {
   # marker on disk, nothing rolled back and a bare re-run refused (card#7459). This check is that
   # same failure, moved to before anything is touched — and it is DERIVED from composer.json rather
   # than restated, because a restated copy of it is what card#9203 was.
-  local composer_json="" floor_constraint floor_op floor_min floor_max phpver
+  local composer_json="" floor_constraint floor_op floor_min
   # The `|| true` drops ONE status — "no such file at $SHA" — and the line below disposes of it by name,
   # together with a file that is there and empty. A git read that FAILED never reaches either.
   git_read_at composer_json "$SHA" server/composer.json || true
@@ -1414,21 +3301,118 @@ phase_a() {
     "It understands \`^X.Y.Z\` and \`>=X.Y.Z\`, and refuses everything else rather than read" \
     "part of it. Widen \`php_require_constraint\` and this case deliberately, or simplify the" \
     "constraint."
+  A6_FLOOR_CONSTRAINT="$floor_constraint"; A6_FLOOR_MIN="$floor_min"
   # `^X.…` is bounded above at the next major; `>=X.…` is not bounded at all.
-  floor_max=""
-  if [ "$floor_op" = '^' ]; then floor_max="$(( 10#${floor_min%%.*} + 1 )).0.0"; fi
-  phpver="${HOST_PHP_VERSION:-0}"
-  if ! ver_ge "$phpver" "$floor_min" || { [ -n "$floor_max" ] && ver_ge "$phpver" "$floor_max"; }; then
-    refuse "PHP $phpver does not satisfy server/composer.json's $floor_constraint at $(git_at rev-parse --short "$SHA")" \
+  A6_FLOOR_MAX=""
+  if [ "$floor_op" = '^' ]; then A6_FLOOR_MAX="$(( 10#${floor_min%%.*} + 1 )).0.0"; fi
+}
+
+# gate_a6_php_floor <sha> <host PHP version> — A6: the target tree's floor (gate_a6_target_php_floor,
+# above), compared against the version it is HANDED, so a checker names the host version instead of
+# having one.
+gate_a6_php_floor() {
+  local SHA="$1" phpver="$2"
+  gate_a6_target_php_floor "$SHA"
+  if ! ver_ge "$phpver" "$A6_FLOOR_MIN" || { [ -n "$A6_FLOOR_MAX" ] && ver_ge "$phpver" "$A6_FLOOR_MAX"; }; then
+    refuse "PHP $phpver does not satisfy server/composer.json's $A6_FLOOR_CONSTRAINT at $(git_at rev-parse --short "$SHA")" \
       "\`composer install\` reads that same constraint and would refuse — but it runs in the" \
       "maintenance window, with the app already down. This refusal is that failure, moved to" \
       "before anything is touched." \
       "" \
-      "Either raise this host's PHP to satisfy $floor_constraint, or deploy a release whose" \
+      "Either raise this host's PHP to satisfy $A6_FLOOR_CONSTRAINT, or deploy a release whose" \
       "floor it already meets."
   fi
-  say "  ok — PHP $phpver satisfies $floor_constraint, declared by server/composer.json at $(git_at rev-parse --short "$SHA")"
+  say "  ok — PHP $phpver satisfies $A6_FLOOR_CONSTRAINT, declared by server/composer.json at $(git_at rev-parse --short "$SHA")"
+}
 
+# gate_a6b_target_bash_floor <sha> — A6b's TARGET-TREE half. HOST-FREE: it reads the BASH_FLOOR that
+# bin/deploy.sh at <sha> declares and publishes it as A6B_FLOOR — EMPTY for a release that declares none
+# (it predates card#9616), which gate_a6b_bash_floor says rather than refuses. It refuses a release with
+# no bin/deploy.sh, an empty one, and a floor that is not a version: each a property of the tree alone.
+gate_a6b_target_bash_floor() {
+  local SHA="$1"
+  # A6b — THE BASH FLOOR OF THE RELEASE BEING DEPLOYED (card#9616). A1 held this bash to THIS
+  # copy's floor. But this copy does not run the maintenance window: after `artisan down` and the
+  # checkout, phase B re-execs the DEPLOYED release's bin/deploy.sh (--internal-post-checkout), and
+  # that copy never runs A1. So a release which RAISES the floor passes A1 here and then meets its
+  # own floor the only other way there is — as a death on its own constructs, with the app down.
+  # Reading the target's declaration refuses that before anything is touched. Same reasoning, same
+  # place in the order, as A6's PHP floor: the two differ on exactly the deploy that moves a floor.
+  local src="" floor="" short
+  short="$(git_at rev-parse --short "$SHA")"
+  # Absent is a refusal of its own and not "no floor": bin/deploy.sh at <sha> is the file the
+  # re-exec RUNS, so a release without it cannot run its own window at all. A13 refuses a release
+  # with no bin/supervision.sh for the same reason and in the same words.
+  git_read_at src "$SHA" bin/deploy.sh || refuse \
+    "bin/deploy.sh is missing from $short" \
+    "After the checkout, phase B re-execs the deployed release's own bin/deploy.sh to run the" \
+    "maintenance window. A release without it would be checked out with the app down and then have" \
+    "nothing left to run."
+  # …and an EMPTY one is refused as itself, not read as a release that declares no floor. The two
+  # are different facts about the release and only the second is survivable: a file with no bytes
+  # in it cannot run the window either. A6 refuses an empty server/composer.json for the same reason.
+  [ -n "$src" ] || refuse \
+    "bin/deploy.sh at $short is empty" \
+    "It is the file phase B re-execs to run the maintenance window, so an empty one is a release" \
+    "that cannot deploy itself. This is NOT \"it declares no bash floor\" — a release that predates" \
+    "card#9616 declares none and deploys; this one has nothing in it at all."
+  floor="$(printf '%s\n' "$src" | bash_floor_declared)"
+  A6B_FLOOR="$floor"
+  [ -n "$floor" ] || return 0     # declares none: gate_a6b_bash_floor says so, and why that is not a refusal
+  # ⛔ THE SAME TEST A1 HOLDS THIS COPY'S OWN DECLARATION TO (card#9984). It used to be an inline
+  # `[0-9]*.[0-9]*` here — a third copy of the pattern, beside A1's looser one and the workflow's —
+  # and it admitted `4.4x` and `4.x.5`; the second was enforced as the floor 4.0.5, which is not
+  # the floor that release declared. `bash_floor_is_version` states what a floor is, once.
+  # ⚠ TIGHTENING THIS GATE STRANDS NO RELEASE, and that was checked rather than assumed, because
+  # refusing a release nobody can re-cut is the failure the empty-floor branch exists to avoid. Every
+  # tag this repository has published was read (`git show <tag>:bin/deploy.sh`) and NONE declares
+  # a BASH_FLOOR, so this predicate rejects nothing that is out there — but they do not all reach
+  # it by the same route, and the earlier wording said they did:
+  #   · the tags that CARRY bin/deploy.sh declare no floor and take the survivable path (the
+  #     `return 0` above, then gate_a6b_bash_floor's empty-floor branch);
+  #   · the earliest tags carry no bin/deploy.sh at all, so A6b refuses them at the `git_read_at`
+  #     branch further up — which it already did before this card, and for a different reason.
+  # Re-derive rather than trusting either sentence: for each tag, `git cat-file -e <tag>:bin/
+  # deploy.sh` says which group it is in. A rollback to a tag that HAS the file is unaffected.
+  bash_floor_is_version "$floor" || refuse \
+    "bin/deploy.sh at $short declares BASH_FLOOR='$floor', which is not a version" \
+    "A6b compares this host's bash against the floor that release declares, and will not guess" \
+    "one it cannot read — nor read it as far as it parses, which would enforce a floor the release" \
+    "did not declare. The line is \`BASH_FLOOR=<major>.<minor>\`, alone on its line: exactly two" \
+    "numeric fields."
+}
+
+# gate_a6b_bash_floor <sha> <host bash major.minor> — A6b: the floor the release at <sha> declares
+# (gate_a6b_target_bash_floor, above), compared against the version it is HANDED, exactly as A6 does
+# the PHP one, so a checker names the host version instead of having one.
+gate_a6b_bash_floor() {
+  local SHA="$1" bashver="$2" short floor
+  gate_a6b_target_bash_floor "$SHA"
+  short="$(git_at rev-parse --short "$SHA")"; floor="$A6B_FLOOR"
+  if [ -z "$floor" ]; then
+    # ⛔ NOT A REFUSAL, and this is the deliberate part. Every release cut before card#9616 declares
+    # no BASH_FLOOR, and that is a fact about WHEN it was written, not a claim that it runs on any
+    # bash. What is enforced for such a release is what exists: A1's floor, on the copy running now.
+    # Refusing instead would make every older release undeployable by this one — a ROLLBACK
+    # included, which is the deploy most likely to be run under pressure — for want of a
+    # declaration it could not have made.
+    say "  ok — bin/deploy.sh at $short declares no BASH_FLOOR (it predates card#9616); only this copy's floor, $BASH_FLOOR, was enforced (A1)"
+    return 0
+  fi
+  bash_meets_floor "$bashver" "$floor" || refuse \
+    "bash $bashver is below the floor the release being deployed declares: BASH_FLOOR=$floor in bin/deploy.sh at $short" \
+    "This copy's own floor ($BASH_FLOOR) was met — A1 checked it. But after \`artisan down\` and the" \
+    "checkout, phase B re-execs THAT release's bin/deploy.sh, and on a bash below its floor it dies" \
+    "on its own constructs inside the maintenance window, with the app already down. This refusal" \
+    "is that failure, moved to before anything is touched." \
+    "" \
+    "Either run this deploy with bash $floor or later, or deploy a release whose floor this bash meets."
+  say "  ok — bash $bashver meets BASH_FLOOR=$floor, declared by bin/deploy.sh at $short"
+}
+
+# gate_a10_migration_algorithm <sha> — A10. HOST-FREE: the migrations at <sha> and their text.
+gate_a10_migration_algorithm() {
+  local SHA="$1"
   # A10 — FLEET-STATE.md § 6.9 rule 1: "Every migration on `events` states its algorithm in a
   # comment AND THE DEPLOY CHECKS IT". This is that check, and it reads the TARGET tree out of the
   # object database (git show) rather than the working copy, so it can refuse BEFORE the checkout
@@ -1467,7 +3451,31 @@ phase_a() {
     # THAT, rather than saying it read a list of migrations and found them all declared.
     say "  ok — $(git_at rev-parse --short "$SHA") ships no migrations: nothing under server/database/migrations"
   fi
+}
 
+# gate_a10b_target_keys <sha> — A10b's TARGET-TREE half. HOST-FREE: the keys server/.env.example at <sha>
+# names, published as A10B_KEYS (one per line) for gate_a10b_config_drift to ask this host's .env about.
+# A release with no server/.env.example WARNS here — no key of it can be compared — and is not refused.
+gate_a10b_target_keys() {
+  local SHA="$1" example
+  A10B_KEYS=""
+  # "no key of .env.example is unset on this host" and "that file was not read" are the same silence
+  # from here, so the read that produced the key list has to be the one that can tell them apart.
+  if git_read_at example "$SHA" server/.env.example; then
+    A10B_KEYS="$(printf '%s\n' "$example" | grep -Eo '^[A-Z][A-Z0-9_]*=' | tr -d '=' || true)"
+  else
+    warn "the target release has no server/.env.example at $(git_at rev-parse --short "$SHA"), so no key of it was compared against this host's .env"
+  fi
+}
+
+# gate_a10b_config_drift <sha> — A10b. NOT host-free: it takes the keys the release's server/.env.example
+# names (gate_a10b_target_keys, above) and asks env_get what THIS HOST's $ENV_FILE sets, which is the
+# comparison it exists to make. It warns and never refuses ON A FINDING — a key the host does not set, or sets in a form this
+# deploy does not read, is a warning and nothing more. It DOES refuse when the file it is comparing
+# against stopped being readable mid-run (env_get status 3), which is not a finding about config drift
+# but the disappearance of the evidence this gate and every check above it were reading.
+gate_a10b_config_drift() {
+  local SHA="$1"
   # A10b — config drift between the release and the host. A release that introduces a setting ships
   # it in `server/.env.example`; the host's `.env` was written by hand when the host was stood up
   # and NOTHING ever updates it again. The failure this catches is the quiet one: the deploy is
@@ -1477,30 +3485,36 @@ phase_a() {
   # ever mention it.
   # Whether this host sets a key is asked through env_get, the one reader that answers it the way Laravel
   # would: a hand-rolled `^[[:space:]]*KEY=` line-grep reported `export FOO=…` and `"FOO"=…` — both of them
-  # Dotenv's FOO — as a key the host does not set. Its third answer is kept apart: status 2 is a key written
+  # Dotenv's FOO — as a key the host does not set. Its other three answers are each kept apart: status 2 is a key written
   # in a form this deploy does not read, which is not "missing" and not "set" but "not established", and
-  # saying "does not set" of it sends the operator to add a line that is already there. (A5 has run
-  # env_file_scan on this file, which is what makes a LINE a unit here at all — env_get's precondition.)
-  local want="" example missing_keys=() unread_keys=() k k_rc
-  # "no key of .env.example is unset on this host" and "that file was not read" are the same silence
-  # from here, so the read that produced the key list has to be the one that can tell them apart.
-  if git_read_at example "$SHA" server/.env.example; then
-    want="$(printf '%s\n' "$example" | grep -Eo '^[A-Z][A-Z0-9_]*=' | tr -d '=' || true)"
-  else
-    warn "the target release has no server/.env.example at $(git_at rev-parse --short "$SHA"), so no key of it was compared against this host's .env"
-  fi
-  for k in $want; do
+  # saying "does not set" of it sends the operator to add a line that is already there; status 3 is the file
+  # itself not being read, which would put EVERY key of .env.example into that same list and is refused
+  # rather than warned about (card#9610). (A5 has run env_file_scan on this file, which is what makes a LINE
+  # a unit here at all — env_get's precondition, and the thing a status 3 here says has stopped holding.)
+  local missing_keys=() unread_keys=() k k_rc
+  gate_a10b_target_keys "$SHA"
+  for k in $A10B_KEYS; do
     k_rc=0; env_get "$k" >/dev/null || k_rc=$?
     case "$k_rc" in
       1) missing_keys+=("$k") ;;
       2) unread_keys+=("$k") ;;
+      # ⛔ NOT A WARNING, and not a key this host "does not set". A5 read this same file through this same
+      # loader earlier in this run, so a 3 here means it stopped being readable in between — and every key
+      # already collected above was read from a file that is no longer the one on disk. Warning would put
+      # EVERY key the release's .env.example names into a "does not set" list that nothing established,
+      # and the operator would go and re-add settings that are already there (card#9610).
+      3) env_unread_refuse "$k" ;;
     esac
   done
   [ ${#missing_keys[@]} -eq 0 ] \
     || warn "the target release's .env.example names keys this host's .env does not set: ${missing_keys[*]}"
   [ ${#unread_keys[@]} -eq 0 ] \
     || warn "the target release's .env.example names keys this host's .env writes in a form this deploy does not read, so whether the release's default or the host's value is in force is not established: ${unread_keys[*]}"
+}
 
+# gate_a11_trusted_proxies <sha> — A11. HOST-FREE: server/bootstrap/app.php at <sha> and its text.
+gate_a11_trusted_proxies() {
+  local SHA="$1"
   # A11 — trusted proxies (docs/PLAN.md § 5). Checked against the TARGET tree for the same reason
   # as A10. `trustProxies('*')` lets any client forge X-Forwarded-For, which defeats the key that
   # D1 § 12.3's failed-authentication limit is built on and turns that limit into the decoration
@@ -1536,20 +3550,171 @@ phase_a() {
       "It is also where docs/PLAN.md § 5's trusted proxies are declared, and which proxies that" \
       "release trusts cannot be read either."
   fi
+}
 
+# gate_a12_target_lockfile <sha> — A12's TARGET-TREE half. HOST-FREE: server/package-lock.json at <sha>,
+# and the npm floor its lockfileVersion implies, published as A12_LOCK_VERSION and A12_NPM_FLOOR (EMPTY
+# where npm's documentation states no floor) for gate_a12_asset_lockfile to compare. It refuses a release
+# with no lockfile, an empty one, and a lockfileVersion it cannot map: each a property of the tree alone.
+gate_a12_target_lockfile() {
+  local SHA="$1"
   # A12 — a lockfile for the asset build. `npm ci` is used below and requires one; more to the
   # point, package.json floats (vite ^8, tailwind ^4), so a lockfile-less prod build can ship
   # different JavaScript from the same commit on two consecutive days, and nothing in the repo
   # would record which. Refusing here is not this script being strict — it is the only place the
   # question is still cheap.
-  local lock_at=""
-  git_ls_at lock_at "$SHA" server/package-lock.json
-  [ -n "$lock_at" ] || refuse \
-    "server/package-lock.json is missing from $(git_at rev-parse --short "$SHA")" \
+  local lock="" lock_version="" npm_floor="" short
+  short="$(git_at rev-parse --short "$SHA")"
+  # The CONTENT, not just the presence (card#9616): the lockfile's own `lockfileVersion` is what
+  # says which npm can install it. `git_read_at`'s 1 is "no such path at this commit" — a git read
+  # that FAILED never returns here at all (§ reading the TARGET RELEASE out of git).
+  git_read_at lock "$SHA" server/package-lock.json || refuse \
+    "server/package-lock.json is missing from $short" \
     "The prod asset build must be reproducible: package.json floats (vite ^8, tailwind ^4)," \
     "so without a lockfile the same commit can build different assets on different days." \
     "Commit the lockfile (\`npm install\` in server/, commit server/package-lock.json)."
+  # …and an EMPTY one is refused as itself, not folded into "a lockfileVersion this gate cannot map"
+  # (the review at `f2ee3d0`, card#9616 comment 5831). The mapping refusal tells the operator to teach A12 a new lockfile version
+  # from npm's docs, which is the wrong instruction for a file that declares nothing because it holds
+  # nothing: what they have is a truncated or half-written lockfile, and `npm ci` would refuse it too.
+  # A6b makes the same distinction about bin/deploy.sh, for the same reason.
+  [ -n "$lock" ] || refuse \
+    "server/package-lock.json at $short is empty" \
+    "\`npm ci\` reads that file in phase B, inside the maintenance window, and an empty one is not a" \
+    "lockfile it can install from — nor does it declare the lockfileVersion this gate reads to decide" \
+    "which npm the release needs. This is NOT \"a lockfileVersion A12 does not know\": there is no" \
+    "version in it to know, and nothing to teach this gate." \
+    "Regenerate it (\`npm install\` in server/) and commit the result."
+  # …AND AN NPM THAT CAN INSTALL IT. `npm ci` runs in phase B, inside the window: an npm too old
+  # for the release's lockfile fails there with the app already down. The floor is read from the
+  # TARGET tree, because a release that MOVES to a newer lockfile format is exactly the one whose
+  # floor the serving checkout's own lockfile does not show — the same reasoning as A6 and A6b.
+  #
+  # ⚠ THE MAPPING IS DOCUMENTED, NOT MEASURED — and it is npm's own documentation, quoted rather
+  # than summarised. docs.npmjs.com, "package-lock.json", § lockfileVersion (the v11 page, read
+  # 2026-09-19): "1: The lockfile version used by npm v5 and v6. … 2: The lockfile version used by
+  # npm v7 and v8. Backwards compatible to v1 lockfiles. 3: The lockfile version used by npm v9 and
+  # above. Backwards compatible to npm v7." So 3 implies npm >= 7, and that is the only floor those
+  # words state: 2 carries the v1 `dependencies` section precisely so npm v6 can read it, and 1 is
+  # v5/v6's own format. No npm below 7 was RUN against any of them by this repository, and nothing
+  # here invents a floor for 1 or 2. A lockfileVersion this mapping does not name — none, a
+  # non-number, a 4 — is REFUSED rather than guessed at, in the same direction A6 refuses a PHP
+  # constraint it cannot evaluate: a guess that is wrong is discovered inside the window.
+  lock_version="$(printf '%s\n' "$lock" | npm_lockfile_version)"
+  case "$lock_version" in
+    3)     npm_floor=7 ;;
+    1 | 2) npm_floor="" ;;
+    *) refuse "server/package-lock.json at $short declares lockfileVersion '${lock_version:-(none)}', which A12 cannot map to an npm floor" \
+         "A12 knows lockfileVersion 1, 2 and 3, from npm's own documentation (this gate's comment" \
+         "quotes it), and refuses any other rather than guess which npm \`npm ci\` would need — a" \
+         "guess that is wrong is found inside the maintenance window, with the app down." \
+         "Teach A12 the new lockfile version from npm's docs, deliberately, and re-read this gate." ;;
+  esac
+  A12_LOCK_VERSION="$lock_version"; A12_NPM_FLOOR="$npm_floor"
+}
 
+# gate_a12_asset_lockfile <sha> <host npm version> — A12: the release's lockfile and the npm floor it
+# implies (gate_a12_target_lockfile, above), compared against the npm version it is HANDED (A1c read it),
+# as A6 is handed the host's PHP.
+gate_a12_asset_lockfile() {
+  local SHA="$1" npmver="$2" short lock_version npm_floor
+  gate_a12_target_lockfile "$SHA"
+  short="$(git_at rev-parse --short "$SHA")"; lock_version="$A12_LOCK_VERSION"; npm_floor="$A12_NPM_FLOOR"
+  if [ -n "$npm_floor" ]; then
+    ver_ge "$npmver" "$npm_floor" || refuse \
+      "npm $npmver is below npm $npm_floor, which lockfileVersion $lock_version in server/package-lock.json at $short needs" \
+      "npm's own documentation says lockfileVersion 3 is \"backwards compatible to npm v7\" and no" \
+      "further. \`npm ci\` reads that lockfile in phase B, inside the" \
+      "maintenance window, with the app already down. This refusal is that failure, moved to" \
+      "before anything is touched." \
+      "" \
+      "Upgrade this host's npm to $npm_floor or later (\`npm --version\` is what was read)."
+    say "  ok — npm $npmver meets npm $npm_floor, which lockfileVersion $lock_version in server/package-lock.json at $short needs"
+  else
+    say "  ok — server/package-lock.json at $short is lockfileVersion $lock_version, for which npm's docs state no floor; npm $npmver was not compared"
+  fi
+}
+
+# gate_a13_target_source <sha> — A13's TARGET-TREE half. HOST-FREE: the TARGET release's bin/supervision.sh,
+# read out of git and published as A13_TARGET_SUP for gate_a13_target_plan. A release without one, or with
+# an empty one, is refused here — a property of the tree alone.
+gate_a13_target_source() {
+  local SHA="$1" target_sup=""
+  git_read_at target_sup "$SHA" bin/supervision.sh || true
+  [ -n "$target_sup" ] || refuse "bin/supervision.sh is missing or empty at $(git_at rev-parse --short "$SHA")" \
+    "The window installs the deployed release's crontab block from it and restarts the daemons it names." \
+    "A release without it cannot be supervised by this deploy."
+  A13_TARGET_SUP="$target_sup"
+}
+
+# gate_a13_target_plan <sha> <workdir> <deploy root> <php binary> — runs the install plan of the
+# bin/supervision.sh gate_a13_target_source read (A13_TARGET_SUP — call that first) in a bash process of
+# its own, writing <workdir>/plan, <workdir>/locks and <workdir>/daemons. Every refusal that install makes
+# is made here — including "it defines no supervision_install_plan", which is an unconditional every-deploy
+# refusal of the target tree (card#9644's comment 5498) — and the caller compares the result against the
+# host. ⛔ NOT HOST-FREE, whatever it used to be labelled: that install plan runs `crontab -l`
+# (bin/supervision.sh § supervision_install_plan), so it reads THIS HOST's crontab — no crontab binary
+# refuses about the crontab, and an empty one passes by luck (card#9745).
+# <workdir> is the caller's, and this function removes it on the paths that refuse out of the
+# process, since a refusal never returns for the caller to clean up after.
+gate_a13_target_plan() {
+  local SHA="$1" work="$2" root="$3" php_bin="$4"
+  local short target_sup="$A13_TARGET_SUP" eval_err
+  short="$(git_at rev-parse --short "$SHA")"
+  # ⛔ THE ONE-BYTE PROBE THAT MADE $work PROVES A BYTE LANDS, NOT THAT A RELEASE'S WHOLE
+  # bin/supervision.sh DOES (card#9932 review, SF-5). With a handful of blocks free, `scratch_dir`'s
+  # probe passes and THIS write — the checkout's real payload, kilobytes rather than one byte — can
+  # still run the filesystem out mid-write: measured (§ the probe test above `_scratch`), `printf`
+  # returns non-zero with `write error: No space left on device` on its own line above, and
+  # `$work/supervision.sh` is left truncated. Checked here rather than left to `set -e`: A13 runs
+  # before phase A installs any ERR trap (those are phase B's, at `in_window_failure`), so an
+  # unchecked failure here would exit the process on bash's own diagnostic alone — no ⛔ banner, no
+  # "Nothing was changed" — the exact no-refusal shape card#9816 already ended for `mktemp` itself.
+  printf '%s\n' "$target_sup" > "$work/supervision.sh" || {
+    local rc=$?
+    rm -rf "$work"
+    refuse "the scratch file for $short's bin/supervision.sh (A13) was created and could not be fully written (exit $rc)" \
+      "bash's own write error is above this line and names why: \"No space left on device\" is the" \
+      "filesystem behind \$TMPDIR (or /tmp when that is unset) out of free BLOCKS — read \`df\` on it." \
+      "A single byte written into this scratch directory DID read back before this write started; what" \
+      "ran out is room for the release's own bin/supervision.sh, which a one-byte probe cannot see coming." \
+      "Nothing was read in its place, so what it was for is not established — this is not a finding" \
+      "about the release."
+  }
+  # ⛔ `"$BASH"`, THIS PROCESS'S OWN INTERPRETER, NOT PATH'S (the review at `0de8857`, card#9616
+  # comment 5846). This used to be a
+  # bare `bash -c`, which is the same defect the re-exec had and is worse HERE, because of what this
+  # gate says when the subprocess fails: "the crontab block of bin/supervision.sh at <sha> could not
+  # be installed here" — a statement about THE RELEASE. A1 and A6b hold THIS bash to the two floors
+  # and say nothing about PATH's, so on a host where those differ an old PATH bash would fail this
+  # subprocess on its own constructs and the deploy would blame the release being deployed for it.
+  # That misattribution is the class this card exists to end, and one of its own gates was making it.
+  # Running the target's supervision.sh under the interpreter the floors were checked against is
+  # also what makes A13's judgement about the RELEASE rather than about which bash came first.
+  # shellcheck disable=SC2016 # expanded by the bash it is handed to, not by this one
+  eval_err="$(env -u BASH_ENV "$BASH" -c '
+      set -Eeuo pipefail
+      . "$1/supervision.sh"
+      for f in supervision_install_plan supervision_lock; do
+        declare -F "$f" >/dev/null || { echo "it defines no $f, which this deploy runs from it" >&2; exit 1; }
+      done
+      supervision_install_plan "$2" "$3" > "$1/plan"
+      supervision_lock "$2" "mezzanine:*" > "$1/locks"
+      printf "%s " "${SUPERVISED_DAEMONS[@]}" > "$1/daemons"
+    ' a13 "$work" "$root" "$php_bin" 2>&1)" || {
+    rm -rf "$work"
+    refuse "the crontab block of bin/supervision.sh at $short could not be installed here" \
+      "$(printf '%s\n' "$eval_err" | sed 's/^/  | /')" \
+      "" \
+      "The maintenance window installs it; this is that install's refusal, made before anything is touched."
+  }
+}
+
+# gate_a13_supervision <sha> — A13. NOT host-free: it compares the target release's crontab block
+# against THIS HOST's installed crontab, and the lock files that release would use against the
+# SERVING release's. Its target-tree half is gate_a13_target_source, above, which a checker calls.
+gate_a13_supervision() {
+  local SHA="$1"
   # A13 — supervision: the DEPLOYED release's crontab block, judged by that release's own bin/supervision.sh.
   # The long-lived daemons of FLEET-STATE.md § 2.1 have no systemd unit (the header's NO ROOT note): this
   # user's crontab supervises them, and the window installs the deployed release's block (restart_daemons).
@@ -1572,33 +3737,12 @@ phase_a() {
   # the serving copy's is refused: its window would stop nothing the serving release started, and those
   # daemons would run the previous code beside the new ones for as long as they lived.
   step "Checking cron supervision (bin/supervision.sh)"
-  local php_bin short target_sup work eval_err installed added removed serving_locks target_locks
+  local php_bin short work installed added removed serving_locks target_locks
   short="$(git_at rev-parse --short "$SHA")"
   php_bin="$(supervision_default_php)"
-  target_sup=""
-  git_read_at target_sup "$SHA" bin/supervision.sh || true
-  [ -n "$target_sup" ] || refuse "bin/supervision.sh is missing or empty at $short" \
-    "The window installs the deployed release's crontab block from it and restarts the daemons it names." \
-    "A release without it cannot be supervised by this deploy."
-  work="$(mktemp -d)"
-  printf '%s\n' "$target_sup" > "$work/supervision.sh"
-  # shellcheck disable=SC2016 # expanded by the bash it is handed to, not by this one
-  eval_err="$(env -u BASH_ENV bash -c '
-      set -Eeuo pipefail
-      . "$1/supervision.sh"
-      for f in supervision_install_plan supervision_lock; do
-        declare -F "$f" >/dev/null || { echo "it defines no $f, which this deploy runs from it" >&2; exit 1; }
-      done
-      supervision_install_plan "$2" "$3" > "$1/plan"
-      supervision_lock "$2" "mezzanine:*" > "$1/locks"
-      printf "%s " "${SUPERVISED_DAEMONS[@]}" > "$1/daemons"
-    ' a13 "$work" "$DEPLOY_ROOT" "$php_bin" 2>&1)" || {
-    rm -rf "$work"
-    refuse "the crontab block of bin/supervision.sh at $short could not be installed here" \
-      "$(printf '%s\n' "$eval_err" | sed 's/^/  | /')" \
-      "" \
-      "The maintenance window installs it; this is that install's refusal, made before anything is touched."
-  }
+  gate_a13_target_source "$SHA"
+  scratch_dir work "A13's reading of $short's crontab block"
+  gate_a13_target_plan "$SHA" "$work" "$DEPLOY_ROOT" "$php_bin"
   TARGET_DAEMONS="$(cat "$work/daemons")"; TARGET_DAEMONS="${TARGET_DAEMONS% }"
   target_locks="$(cat "$work/locks")"
   installed="$(crontab -l 2>/dev/null || true)"
@@ -1623,21 +3767,6 @@ phase_a() {
     if [ -n "$added" ]; then printf '%s\n' "$added" | sed 's/^/    + /'; fi
     if [ -n "$removed" ]; then printf '%s\n' "$removed" | sed 's/^/    - /'; fi
   fi
-
-  # A14 — PHP-FPM will serve the new code without a reload. The reasoning and the measurement are at
-  # fpm_code_reload_ready; phase B re-reads the same posture before it waits.
-  step "Checking that PHP-FPM picks up new code without a reload, and can serve and drain the feed's streams"
-  fpm_code_reload_ready || refuse "${FPM_NOT_READY[@]}"
-  say "  ok — $FPM_BIN, pool(s) running as $(id -un): $FPM_POSTURE"
-  say "  ok — $STREAM_POSTURE"
-
-  say ""
-  say "Ready:"
-  say "  from     $(git_at rev-parse --short "$CURRENT_SHA")"
-  say "  to       $(git_at rev-parse --short "$SHA")  ($REF)"
-  say "  daemons  $TARGET_DAEMONS — the deployed release's: its crontab block installed, every holder of this checkout's daemon lock files sent SIGTERM, relaunched with cron's command"
-  say "  php-fpm  not reloaded — $FPM_POSTURE"
-  say "  streams  fleet.reload written before the opcache wait; streams still open after ${FEED_DRAIN_CEILING_S} s ended with SIGTERM ([${MEZZ_STREAM_POOL:-}])"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -1733,7 +3862,14 @@ MARKER_END
   # NOT handed over: which daemons to stop. The lock files say that (restart_daemons).
   trap - ERR
   export MEZZ_DEPLOY_IN_WINDOW=1 MEZZ_DEPLOY_ROOT="$DEPLOY_ROOT" MEZZ_DEPLOY_REVALIDATE_FLOOR_S="$FPM_REVALIDATE_S"
-  exec "$DEPLOY_ROOT/bin/deploy.sh" --internal-post-checkout "$SHA"
+  # ⛔ THROUGH `$BASH` — THIS PROCESS'S OWN INTERPRETER — NOT THE SHEBANG (card#9616). It used to be
+  # `exec "$DEPLOY_ROOT/bin/deploy.sh" …`, which runs the target's `#!/usr/bin/env bash`: the bash on
+  # PATH, which need not be the one phase A ran under. A1 and A6b hold THIS process's bash to the two
+  # floors, so on `somebash bin/deploy.sh`, with an older bash first on PATH, both gates would pass and
+  # the window would then run on the bash neither of them measured — and die on the constructs the
+  # floors exist to keep out, with the app down. Handing the interpreter over makes the thing the gates
+  # measured the thing that runs, rather than adding a third gate to check the difference.
+  exec "$BASH" "$DEPLOY_ROOT/bin/deploy.sh" --internal-post-checkout "$SHA"
 }
 
 # ── the daemons: a restart without systemd ─────────────────────────────────────────────────────
@@ -2092,15 +4228,61 @@ phase_b_post_checkout() {
   # refuses and an operator has to look. `/up` is Laravel's health route (server/bootstrap/app.php
   # `health: '/up'`); it needs no credential and it is the one endpoint that answers before MFA.
   # APP_URL is read with env_get rather than env_read: a refusal promises nothing was changed, and here the new
-  # release is already serving. A value env_get cannot read gets the unset case's warning, named.
-  local url code url_rc=0
-  url="$(env_get APP_URL)" || url_rc=$?
+  # release is already serving. Every answer env_get cannot turn into a URL gets a warning of its OWN, NAMED —
+  # a form this reader does not read (status 2), a file that was not read at all (status 3, which is TWO facts
+  # and takes two warnings — § env_lines_load's KIND), and a key the file genuinely does not set are different
+  # facts about this host, and only the last of them is "unset".
+  # ⛔ NO `refuse` ON ANY OF THEM: the window is closed and the new release is serving, so the one promise a
+  # refusal makes would be false. The deploy is UNVERIFIED and says so, which is what exit 0 means here.
+  # ⚠ `url` IS INITIALISED HERE, and under `set -u` that is load-bearing rather than tidy: the skip
+  # below reaches the falsy test without assigning it, and a bare `local url` leaves it UNSET, which
+  # kills phase B at `"$url"` — after the window, with the release serving and no warning printed.
+  # Measured: this suite's three in-window cases red at exit 1 with no smoke line at all.
+  local url="" code url_rc=0
+  # ⛔ THE LOADER IS RUN HERE, IN THIS SHELL, BEFORE THE READ BELOW PUTS IT INSIDE A `$( )` (card#9933).
+  # `env_get` has to be called in a command substitution — that is the only way a value comes back — and
+  # a subshell's variables die with it, so the STATUS was all that crossed and every status 3 looked the
+  # same from here. MEASURED on the tree before this line, with the loader's own scratch file made the one
+  # `mktemp` that fails: a deploy that FINISHED — exit 0, `✔ DEPLOYED`, the marker removed — whose single
+  # warning told the operator that the open or the read of `server/.env` had failed, that the file had
+  # stopped being readable inside the window, and that bash's reason was above. The file was readable
+  # throughout, no read was ever made, no such diagnostic exists — and the scratch file this warning is
+  # about is made HERE, after `php artisan up` has already closed the window.
+  #
+  # ⛔ ONE LOAD ANSWERS, AND IT IS THE LOAD WHOSE FLAGS ARE READ — that is what the skip below is for, and
+  # it is a mechanism rather than a hope (card#9933 review round 3). Reading this load's KIND beside a
+  # status that came from the OTHER load is only sound in one direction:
+  #   · this load gets its scratch file ⇒ ENV_READ_ERR_FD is set and the subshell INHERITS it, so the
+  #     inner load cannot fail at the scratch step and any 3 it answers is an open or a read — which is
+  #     what the generic warning below says. Sound.
+  #   · this load FAILS at the scratch step ⇒ the descriptor is still empty, so an inner load would
+  #     RE-ATTEMPT `mktemp`: two separate events. The inner one can succeed where this one failed and
+  #     then stop short in the READ, and the scratch warning — "the read was never made" — would print
+  #     directly beneath bash's own read-error diagnostic from that inner read. Two coincident faults,
+  #     and precisely the contradictory report this card exists to end.
+  # So the inner load is not run in that case at all: the file was not read, no key of it has a value,
+  # and this load is both the one that establishes that and the one whose kind is reported. Nothing is
+  # re-derived here — `env_file_unread` is the one place that turns these flags into "not read", and
+  # `env_get` answers its status 3 from the same predicate.
+  # ⚠ NOT SILENCED, and that follows from the skip: on a read that stops short exactly ONE load runs and
+  # its diagnostic is the one the warning means by "bash's reason … is above" (§ the suite's H4b, which
+  # asserts the count). Silencing it here would leave that warning pointing at nothing.
+  env_lines_load
+  if env_file_unread; then
+    url_rc=3
+  else
+    url="$(env_get APP_URL)" || url_rc=$?
+  fi
   # The same rule as every A5 check: what the app has is the value it RECEIVES. An APP_URL Laravel
   # resolves to a falsy value is no URL — `config('app.url')` is null or '' — so it takes the unset
   # case's warning rather than a smoke request to a host named `null` and a failure report naming it.
   ! env_app_falsy "$url" || url=""
   if [ "$url_rc" -eq 2 ]; then
     warn "APP_URL is in a form this script does not read (env_get, bin/deploy.sh) — no smoke check was made. The deploy is UNVERIFIED."
+  elif [ "$url_rc" -eq 3 ] && [ "$ENV_LINES_READ_FAILED_KIND" = 'scratch' ]; then
+    warn "server/.env was NOT READ — no usable scratch file could be had for bash's read diagnostic, so the read was never made — and no smoke check was made. The deploy is UNVERIFIED. This is not 'APP_URL is unset', and it is NOT a finding about server/.env, which may be perfectly readable: what failed is a scratch file this deploy makes for itself, after the maintenance window closed. $ENV_LINES_READ_FAILED_WHY The release IS deployed and serving; what was not done is the check on it. Fix that and re-run \`bin/deploy.sh --dry-run\`, which reaches the same loader at A5 — and note it can only name this cause while the cause is still there: a \$TMPDIR that was missing, unwritable, out of inodes or out of space during this deploy and has been put right since leaves a clean dry run and this line as the only record."
+  elif [ "$url_rc" -eq 3 ]; then
+    warn "server/.env could not be read (its open or its read failed; bash's reason, if any, is above) — no smoke check was made. The deploy is UNVERIFIED. This is not 'APP_URL is unset': the file was readable in phase A and stopped being so between phase A and this check. \`bin/deploy.sh --dry-run\` names the cause the way A5 does."
   elif [ -z "$url" ]; then
     warn "APP_URL is unset — no smoke check was made. The deploy is UNVERIFIED."
   else
@@ -2168,4 +4350,8 @@ PLAN
   phase_b_open_window   # never returns: it execs
 }
 
-main "$@"
+# Run, not sourced — § library mode. Sourced, this file defines its functions and returns,
+# which is what lets a checker call one gate (§ PHASE A's TARGET-TREE GATES) without deploying.
+if [ "$DEPLOY_IS_RUN" -eq 1 ]; then
+  main "$@"
+fi

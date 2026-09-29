@@ -1,8 +1,53 @@
-# card-token-lint.yml — reject card-token spellings the correlators cannot parse, at PR time.
+# card-token-lint.yml — the PR-metadata checks: two jobs that read what a PR SAYS about itself.
+# Both need no credential and no network, and both judge through a VENDORED authority rather than a
+# pattern retyped here. Each fails its job on a finding; the index below says what each one reads.
 #
-# IT ALSO GUARDS THE TWO VENDORED FILES' DECLARED PROVENANCE (`bin/vendor-pin-check.sh`, first
-# step below) — the mover this gate extracts its grammar from declares in its header exactly
-# what its body is, and until PupFuzz/agent-roundtable#463 nothing checked that declaration.
+#   job `card-token-lint`  — the PR's TITLE and HEAD BRANCH, against the card-token grammar the
+#                            kanban correlators use. A bad token FAILS this job, so a branch
+#                            requiring this context cannot merge past it. Whether a branch
+#                            requires it is a repository setting, read with the command below —
+#                            never from this file. The file keeps its name from this job.
+#   job `pr-body-lint`     — the PR's BODY, against the FLEET's PR-body standard (card#9767). A
+#                            body with findings FAILS this job (card#9801), and so does a linter
+#                            run that could not judge the body. Its other steps judge the CHECKOUT
+#                            (vendored bytes, the linter's own controls, this repo's body
+#                            generator) and red it too, so the step that failed says which of the
+#                            two a red is about. Its own block below carries the reasoning.
+#
+# ⚠ WHY ONE FILE AND NOT A TWELFTH WORKFLOW. These two are one primitive family: PR metadata, no
+# credential, no network, a vendored authority, and a verdict addressed to the author while the
+# fix is still free. They also share `bin/vendor-pin-check.sh`, which both jobs run FIRST because
+# both judge through a vendored file. A separate workflow would duplicate the trigger block, the
+# pin step and the reasoning, and put the same class of check in two places to keep in sync.
+# ⛔ THEY ARE SEPARATE JOBS, NOT STEPS IN ONE, AND THERE IS NO `needs:` BETWEEN THEM. A ruleset
+# matches each job's own check run (the ⚠ paragraph below states how that name is decided), so two
+# jobs are two independently requirable contexts and a red on one names which check failed. Two jobs also means
+# the body job is structurally incapable of touching the token job: with no `needs:` edge
+# they are separate runners with separate results, so nothing `pr-body-lint` does — a finding, a
+# crash, a timeout — can fail or skip `card-token-lint`. ⚠ This repository has ZERO `needs:` edges
+# in ANY workflow, and that is the property that makes the previous sentence true rather than
+# hopeful; a future edit that adds one here owes a re-read of this paragraph.
+#
+# ⚠ THE WORKFLOW'S DISPLAY NAME CHANGED WITH THAT SECOND JOB, AND THE JOB IDS DID NOT. A ruleset
+# matches the CHECK-RUN name, never the workflow's display name, and here that name is the job id
+# because no job in this repository declares a `name:` — `docs/VERSIONING.md § Branch model` states
+# that and carries the command that reads what each branch requires. So `card-token-lint` keeps the
+# context id it always had and `pr-body-lint` arrived as a new one.
+# ⛔ WHICH of them a branch REQUIRES is not stated here, and it is not stated there either: it is a
+# repository setting, and a copy of it in a workflow header is exactly what went stale in this repo
+# before (`asset-provenance.yml` told reviewers a red did not block a merge while it did). Read it:
+#   gh api repos/PupFuzz/mezzanine/rules/branches/dev --jq \
+#     '[.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context]|sort'
+# What IS this file's to state is each job's OWN BEHAVIOUR — which of its STEPS can red and which
+# cannot, a distinction the index above and each job's own block make in the one place each. This
+# paragraph deliberately carries no third copy of it: the unscoped form of that sentence was never
+# true of `pr-body-lint` (its pin and selftest steps red on the checkout), and a copy is how the
+# corrected version and the wrong one end up living side by side.
+#
+# IT ALSO GUARDS EVERY VENDORED FILE'S DECLARED PROVENANCE (`bin/vendor-pin-check.sh`, the first
+# step of each job; its MANIFEST is the list) — the mover the card-token gate extracts its grammar
+# from declares in its header exactly what its body is, and until PupFuzz/agent-roundtable#463
+# nothing checked that declaration.
 #
 # WHAT IT DOES. Reads this PR's TITLE and HEAD BRANCH — the two surfaces the kanban webhook
 # bridge parses — and fails if either carries something that LOOKS like a card reference but
@@ -25,12 +70,15 @@
 # which push-driven test workflows do not subscribe to. A retitle that introduces `cards #N`
 # would otherwise never be re-checked.
 
-name: Card-token lint
+name: PR metadata gates
 
 on:
   pull_request:
     # `edited` is load-bearing: the title is half the linted surface, and it is edited after
-    # the fact far more often than a branch is renamed.
+    # the fact far more often than a branch is renamed. It is load-bearing TWICE OVER since
+    # `pr-body-lint` landed — `edited` is the ONLY event that fires on a body change, and the
+    # body is that job's entire subject. A PR opened with its audit fields and later regenerated
+    # without them is exactly the defect card#9767 measured, and this is the event that reports it.
     types: [opened, edited, reopened, synchronize]
     # NO `branches:` FILTER, DELIBERATELY. `branches:` and `types:` are INDEPENDENT filters
     # and the event runs only if BOTH match, so a base-branch allowlist would drop every
@@ -85,3 +133,142 @@ jobs:
         # argparse usage error that names nothing the author did wrong. Measured, not
         # theorised. The `=` form takes everything after the first `=` as the value.
         run: python3 bin/card-token-lint.py --branch="$HEAD_REF" --title="$PR_TITLE"
+
+  # ── pr-body-lint (card#9767, blocking since card#9801) ───────────────────────────────────────
+  # WHAT IT DOES. Reads this PR's BODY, judges it against the fleet's PR-body standard with
+  # upstream's own linter, prints the whole verdict — and FAILS THE JOB when the body has findings,
+  # or when the linter could not judge the body at all. The pin and selftest steps below judge the
+  # CHECKOUT and red it as well, so a red here is about the body only when the body step is the one
+  # that failed. `bin/pr-body-lint.py`'s docstring is the contract; the standard itself is
+  # `skills/release-pr/SKILL.md § PR body` in a coord install, and neither is restated here.
+  #
+  # WHY IT STARTED REPORT-ONLY, AND WHAT ENDED THAT (card#9767 comments 5680, 5688; card#9801).
+  # When this lane landed, most of this repository's recent merged bodies failed the standard, and
+  # those reds were correct: the house sections it wrote are none of them in the standard's closed
+  # `ALLOWED_H2` set. A gate wired to block on that day would have redded ordinary work, which is
+  # how a gate teaches the people it governs to route around it, so the body verdict reported and
+  # exited 0. That window closed on two things: the shape a change PR takes here is decided and
+  # written down — `CLAUDE.md § PR bodies are judged against the fleet standard`, including the
+  # `change-pr-body:house-map` block that says where each former house section goes — and
+  # `bin/change-pr-body.py` emits it; and the open PR bodies were measured passing before the flip,
+  # per the operator's 2026-09-21 ruling. The measured population was the OPEN PRs because this job
+  # only ever judges an open PR (the `if:` below).
+  # ⚠ MERGED HISTORY STILL REDS, AND THAT BLOCKS NOTHING. A merged body is the historical record and
+  # is left as written, so the merged-body derivation in `CLAUDE.md` reports old failures for as long
+  # as they sit in the window it reads. They are not judged here: a merged PR is not open.
+  # Whether a branch REQUIRES this context is a repository setting, read with the command in this
+  # file's header, never from this block.
+  #
+  # THE VERDICT IS UPSTREAM'S, VENDORED, NEVER A RULE RETYPED HERE. `bin/pr-body-lint.py` is the
+  # framework's own linter — the same program every install's CI runs and the review path spawns —
+  # copied in byte-for-byte under a `#` provenance header, because the upstream repository is
+  # private and a public runner cannot clone it. It replaced a mezzanine-local two-field presence
+  # guard that had been written against a function which has since MOVED upstream; keeping the local
+  # one would have been a second divergent implementation of a capability the framework already
+  # owns, and upstream's is a strict superset of it (card#9767 comment 5664).
+  pr-body-lint:
+    # ONLY A PR THAT CAN STILL BE JUDGED AS A MERGE CANDIDATE IS JUDGED, for the reason
+    # `release-pr-guard.yml` measured on card#9732: `edited` keeps firing on a CLOSED PR for as
+    # long as anyone touches its body, and a verdict on a PR whose merge button is gone is noise
+    # aimed at nobody who can act on it.
+    if: github.event.pull_request.state == 'open'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # ⚠ THE PIN AND SELFTEST STEPS BELOW JUDGE THE CHECKOUT, NEVER THE BODY. What each judges is
+      # whether this repository's vendored copies are still the bytes their headers declare,
+      # whether the vendored linter's own controls still discriminate, and whether this
+      # repository's body GENERATOR still emits a body that linter passes. So a body, compliant or
+      # not, does not red them: what reds them is a PR that edits a vendored file or breaks
+      # `bin/change-pr-body.py`, each a defect in this repo that must be loud. The step that judges
+      # the BODY is the third one, and its name says so.
+      - name: Vendored-body pins (selftest reds on a body mutation, then the real check)
+        run: |
+          bash bin/vendor-pin-check.sh --selftest
+          bash bin/vendor-pin-check.sh
+
+      # Upstream's own controls, run HERE against THIS checkout — the same bytes about to judge
+      # somebody's PR. It is a red-then-green suite: every rule is driven RED by a deliberately
+      # broken copy of itself before its green is believed, because a lint that has stopped reding
+      # is byte-indistinguishable from a body that complies. It also re-asserts a pinned sha256 for
+      # each fixture, which is what pins `bin/pr-body-lint-fixtures/` (there is no manifest row for
+      # those — `bin/vendor-pin-check.sh`'s own header says why, and why this pin is the better one).
+      - name: Self-test (upstream's red-then-green controls for every rule)
+        run: python3 bin/pr-body-lint.selftest.py
+
+      # THE BODY IS READ FROM `env:`, NEVER `${{ }}` INSIDE `run:`, which is a script-injection
+      # sink and a PR body is the most attacker-controlled text on the whole event. `--env` is the
+      # linter's own injection-safe route and is preferred to a pipe: it keeps the body off argv,
+      # where it would show in process listings and in anything argparse echoes back.
+      #
+      # ⛔ THIS STEP FAILS THE JOB ON FINDINGS (card#9801). The linter's rc is CAPTURED and NAMED
+      # rather than passed straight through, so the log's last lines say which of three outcomes
+      # happened: rc 0, the body meets the standard and the step passes; rc 1, the body has
+      # findings and the step fails; rc 2 or higher, the linter could not judge the body — a usage
+      # or input fault, which in this step is a WIRING defect (a bad flag, an unset variable, a
+      # missing interpreter) and says nothing about the body. That also fails the step, with its
+      # own message: a check that could not judge is not a pass. ⚠ An uncaught Python exception
+      # exits 1 as well, so an rc 1 whose log shows a traceback instead of findings is a crash in
+      # the linter, not a verdict; the rc-1 line below says to look.
+      #
+      # ⭐ HOW AN AUTHOR CLEARS A RED HERE: edit the PR body. The workflow's `on:` block subscribes
+      # to `edited`, and editing a pull request's body fires that event, so the job re-runs on the
+      # edited body and needs no new push. Observed, not assumed: on #209 a body edit at
+      # 2026-09-22T00:27:56Z started a second run of this workflow on the SAME head SHA two seconds
+      # later, with no push, retitle or reopen between them. Judge a body before pushing it with
+      # `python3 bin/pr-body-lint.py --body-file=<file>`, the same program this step runs.
+      - name: Judge this PR's body against the fleet standard (fails the job on findings)
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          rc=0
+          python3 bin/pr-body-lint.py --env=PR_BODY --label="PR #$PR_NUMBER" || rc=$?
+          echo
+          case "$rc" in
+            0) echo "pr-body-lint · rc=0 — this body meets the standard." ;;
+            1) echo "pr-body-lint · rc=1 — this job fails. If the log above lists findings, this body"
+               echo "does not meet the standard. Fix: edit the PR body to clear them; the edit re-runs"
+               echo "this check. Re-running this job does not help: it judges the body as it was."
+               echo "If the log above shows a Python traceback instead of findings, the linter"
+               echo "crashed: that is a defect in this repository, and editing the body does not fix it." ;;
+            *) echo "pr-body-lint · rc=$rc — the linter could not judge this body (usage/input"
+               echo "fault). No verdict was produced. This is a WIRING defect in this step, not a"
+               echo "finding about the body, and a check that could not judge fails rather than"
+               echo "passes. Editing the body does not fix it; the workflow or the linter does." ;;
+          esac
+          exit "$rc"
+
+      # ⭐ THE ROUTE TO A COMPLIANT BODY, HELD TO THE SAME JUDGE THE STEP ABOVE USES (card#9801).
+      # `bin/change-pr-body.py` is this repository's generator for a NON-release PR body — the
+      # class `release-pr-body` structurally cannot produce, which is why the standing "generate
+      # it, never hand-write it" rule had no mechanical route here. Its whole claim is that the
+      # SKELETON it emits PASSES the linter, and a generator that has quietly stopped complying is
+      # indistinguishable from one that never did, so the claim is measured here rather than
+      # asserted in its header: the suite pipes the real generator's real output into the real
+      # vendored linter, then mutates that output once per rule to show the green discriminates —
+      # over a rule set READ OUT of the linter's source, so a re-vendor that adds a rule reds here
+      # for under-coverage instead of leaving a stale "one per rule" claim standing.
+      # ⚠ The claim is about the SKELETON, not about any body built from it: `--agent` and
+      # `--session-url` are pass-through and unjudged (the suite pins two values that red), and
+      # the author's own prose is wider still — which is why the step above exists.
+      # It also grades `CLAUDE.md`'s `change-pr-body:house-map` against the linter's own
+      # `ALLOWED_H2`, so the map an author reads cannot drift from the judge that grades them.
+      # It stages its own git repository per case and needs no network and no credential — a CI
+      # checkout of a PR is a DETACHED HEAD, and a suite run against it would exercise a refusal
+      # path here and the ordinary path on a workstation.
+      #
+      # ⛔ IT RUNS AFTER THE BODY STEP, AND UNDER `!cancelled()`, AND BOTH ARE THE POINT. Placed
+      # before the body step, a broken generator would SUPPRESS the body verdict — the one output of
+      # this job addressed to the author. Now that the body step can red, the default `success()`
+      # condition would skip this step whenever a body has findings, hiding the generator's verdict
+      # behind the author's; `!cancelled()` runs it after a red above too, the same condition
+      # `design-doc-verifiers.yml` uses for independent verdicts. It changes what gets REPORTED,
+      # never what passes: the job still fails if any step does. The pin and the vendored-linter
+      # selftest stay ABOVE the body step, unconditioned, for the opposite reason: they judge the
+      # JUDGE, and a verdict printed by an unverified copy of the linter is worth nothing.
+      - name: Self-test (this repo's change-PR body generator, judged by the linter above)
+        if: ${{ !cancelled() }}
+        run: python3 bin/change-pr-body.selftest.py

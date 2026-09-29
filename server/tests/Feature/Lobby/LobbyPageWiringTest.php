@@ -27,6 +27,11 @@ use Tests\TestCase;
  * keys (through `node`) instead of hand-listing four ids that would then be a fifth copy of the
  * indicator set. CONTROL 11 adds an indicator to the model and requires this to red.
  *
+ * ⛔ AND, SINCE card#7341 STEP 9, THE ONE THING ABOUT THE LOBBY'S CLIENT NOTHING ELSE CAN CHECK: that
+ * the page constructs the client protocol WITH its stream recovery — through `wire/live-page.js`, the
+ * floor page's own construction (Appendix B row 8's ⛔, which binds every page holding a real
+ * `EventSource`).
+ *
  * ⚠ WHAT A GREEN HERE IS NOT: evidence that anything renders, lays out, or is legible. It is
  * evidence that every fact the model produces has an element with its name on it.
  */
@@ -67,6 +72,12 @@ class LobbyPageWiringTest extends TestCase
     {
         $this->assertStringContainsString('counts the seats this client holds', $this->lobbyPage(),
             'the per-floor summary carries no label saying whose count it is');
+    }
+
+    /** Appendix B row 8's ⛔, on the lobby: the protocol comes from `wire/live-page.js`, with its scheduler. */
+    public function test_the_page_constructs_the_protocol_with_its_stream_recovery(): void
+    {
+        $this->assertSame([], $this->livePageDefects($this->mainJs()));
     }
 
     public function test_the_page_serves_the_module_and_every_import_resolves(): void
@@ -124,6 +135,13 @@ class LobbyPageWiringTest extends TestCase
             .'so the ids are not derived from the model');
         $this->assertNotSame([], array_diff($grown, $this->declaredIds($html)),
             'CONTROL 11 did not bite: a fifth indicator with no cell on the page left the wiring clean');
+
+        // CONTROL 12 — the lobby holding a protocol of its own, which inherits the browser's reconnect
+        // (Appendix B row 8's ⛔) and is the page walking around the one construction both pages share.
+        $bypassed = str_replace('livePage(() => screen.render(cab))', 'new FleetClient(fetch, EventSource, { now: Date.now }) && livePage(() => screen.render(cab))', $js);
+        $this->assertNotSame($bypassed, $js, "CONTROL 12's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('recovery', $this->livePageDefects($bypassed),
+            'CONTROL 12 did not bite: the page constructed its own protocol and the recovery check stayed clean');
     }
 
     /** The rendered page, as an MFA-satisfied session actually receives it. */
@@ -156,14 +174,14 @@ class LobbyPageWiringTest extends TestCase
     }
 
     /**
-     * Every `lobby-*` id `main.js` addresses — the literal ones it names, plus the family it
-     * builds from the model's indicator keys.
+     * Every `lobby-*` id `main.js` addresses — the literal ones its three helpers name, plus the
+     * family it builds from the model's indicator keys.
      *
      * @return list<string>
      */
     private function addressedIds(string $js, ?string $moduleDir = null): array
     {
-        preg_match_all("/(?:el|getElementById)\(\s*'(lobby-[a-z-]+)'\s*\)/", $js, $m);
+        preg_match_all("/(?:el|say|list|getElementById)\(\s*'(lobby-[a-z-]+)'/", $js, $m);
         $ids = $m[1];
 
         // The computed family. Its ONE site is asserted, because a second template site this

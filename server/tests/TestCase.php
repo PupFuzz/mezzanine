@@ -56,7 +56,9 @@ abstract class TestCase extends BaseTestCase
                 throw new RuntimeException(sprintf(
                     'Store isolation guard: config(%s) resolved to %s, expected %s. '.
                     'Aborting before any migration — see docs/design/FLEET-STATE.md § 6.2. '.
-                    'The usual cause is an exported environment variable beating the pin in phpunit.xml.',
+                    'The usual cause is an exported environment variable beating the pin in phpunit.xml — '.
+                    'or a pin in phpunit.xml disagreeing with § 6.2, which owns these values. Check BOTH '.
+                    'before editing either: PINS here is not automatically the stale copy.',
                     $key,
                     var_export($actual, true),
                     var_export($expected, true),
@@ -77,7 +79,8 @@ abstract class TestCase extends BaseTestCase
             throw new RuntimeException(sprintf(
                 'Store isolation guard: the default connection resolves to database %s, expected %s. '.
                 'Aborting before any migration — see docs/design/FLEET-STATE.md § 6.2. '.
-                'The usual cause is a DB_URL whose path names another database.',
+                'The usual cause is a DB_URL whose path names another database — set by an export, or '.
+                'pinned in phpunit.xml to match a drifted § 6.2. Check BOTH before editing either.',
                 var_export($resolved, true),
                 var_export($expected, true),
             ));

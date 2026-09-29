@@ -20,12 +20,12 @@
  * fetch, what to reuse, what a failure leaves — is driven under `node` against a scripted `fetch`
  * (`tests/Feature/Lobby/lobby-probe.mjs`) over bodies the real routes served.
  *
- * ⚠ WHO CALLS WHAT, TODAY. The lobby (`lobby/lobby-entry.js`) fetches the layout. NOTHING YET CALLS
- * `enterRooms()` OR THE TWO MESSAGE APPLIES: rooms are entered by § 4.4's floor route, which is
- * Appendix B step 7 (card#7341) and unbuilt, and messages arrive on § 2.2's stream, which the
- * client protocol opens — `wire/fleet-client.js`, built at step 3, which NO PAGE CONSTRUCTS before
- * step 8, so the lobby still opens no stream. They are here because row 13 is the cache, and are
- * exercised by `Tests\Feature\Building\TheClientHoldsRoomMapsByVersionTest`.
+ * ⚠ WHO CALLS WHAT. The lobby screen (`lobby/lobby-screen.js`, Appendix B step 9) fetches the layout
+ * once the client protocol's snapshot has applied, and applies `building.layout` off its own stream.
+ * `enterRooms()` and both message applies are called by the floor screen (`floor/floor-screen.js`,
+ * Appendix B step 7), which the floor page (`floor/main.js`, step 8) runs over the client protocol's
+ * stream. They are exercised by `Tests\Feature\Building\TheClientHoldsRoomMapsByVersionTest`, the
+ * lobby suite and the floor suite.
  */
 
 /** § 8.7's layout endpoint. */
@@ -92,8 +92,8 @@ function isMapAnswer(body, installId) {
  * `map_version: null` — "the room is back on the shipped default" (D2 § 8.3's row) — and is named as
  * that rather than as a revision numbered `null`.
  *
- * ⚠ THE WORDING IS NOT RATIFIED. § 2.5 states what the line names and publishes no string for it; this
- * is written from those two members and nothing else. The line is RETURNED, not written: the client's
+ * The wording is § 2.5's, ratified by the operator (card#7342, 2026-09-25): the two members and
+ * nothing else. The line is RETURNED, not written: the client's
  * event record is § 5.5's, built at Appendix B step 3 in `wire/fleet-client.js`; step 7 is what
  * delivers a `room.map` to this apply and writes the line it returns into that record.
  */

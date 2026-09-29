@@ -13,9 +13,15 @@
  * first, and the desk is exactly where a disagreement would be least visible.
  *
  * ⛔ WHAT IT DECIDES IS WHAT IS TRUE OF THE MEMBER, NOT WHAT A SURFACE DRAWS. The null case, the
- * link rule and the degraded wording are the same on both surfaces and live here. Which of these
+ * reference and the degraded wording are the same on both surfaces and live here. Which of these
  * facts a given element renders, and in what form, is that surface's section of D3 and stays in
  * that surface's module — § 5.2's row for the panel, § 5.1's bubble rules for the desk.
+ *
+ * ⛔ THE REFERENCE IS PLAIN TEXT AND NEVER A LINK (§ 5.2; operator ruling 2026-09-13, § 14 item 3):
+ * "no link base URL is configured, because the board is private. A guessed URL is a link that goes
+ * somewhere wrong, which is worse than no link." This module resolved a `card#N` or `<repo>#N` into
+ * a URL under a configured base until card#7342 step 10 removed it — nothing configured one, the
+ * ruling means nothing will, and `<repo>#N` was tier 2's shape, retired with it on card#9234.
  */
 
 import { clockTime } from './clock.js';
@@ -30,46 +36,6 @@ import { clockTime } from './clock.js';
 export const STALE_TITLE_DROPPED = 'stale title dropped';
 
 /**
- * § 5.2's task-reference rule: a link "**only** when a base URL is configured for that reference
- * shape … with no configured base it renders as plain text. A guessed URL is a link that goes
- * somewhere wrong, which is worse than no link".
- *
- * The two shapes are `card#N` — D2 § 4.9's tier 1 — and `<repo>#N`, which was tier 2's and
- * OUTLIVED it: card#9234 retired tier 2, and D3 § 5.2's rule is written over the shape a `ref`
- * has rather than over the tier that minted it, so this keeps resolving `<repo>#N` under a
- * configured base. A `ref` of any other shape gets no link at all rather than being forced into
- * the nearer of the two.
- *
- * ⚠ NOTHING IN THIS DEPLOYMENT CONFIGURES A BASE, so today this returns `null` for every ref it
- * is given. § 14 item 3 is the open question that would supply one; until it answers, the
- * absence of a base is the reason there is no link, and it is not a defect in this function.
- */
-export function taskRefLink(ref, bases) {
-    if (typeof ref !== 'string') {
-        return null;
-    }
-
-    const configured = bases ?? {};
-    const card = ref.match(/^card#(\d+)$/);
-
-    if (card !== null) {
-        return typeof configured.card === 'string'
-            ? configured.card.replace('{id}', card[1])
-            : null;
-    }
-
-    const repo = ref.match(/^([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)?)#(\d+)$/);
-
-    if (repo !== null) {
-        return typeof configured.repo === 'string'
-            ? configured.repo.replace('{repo}', repo[1]).replace('{id}', repo[2])
-            : null;
-    }
-
-    return null;
-}
-
-/**
  * The `task` member, decided once: `null` when the seat reports no task at all, and otherwise
  * the members D3 § 5.1's `task` row names, each already put through its own rule.
  *
@@ -78,15 +44,13 @@ export function taskRefLink(ref, bases) {
  * two renders of one absence, which is why this returns the absence rather than a string for it.
  * Never a placeholder title, never the last title the client held.
  *
- * ⚠ `task.ref` IS NULL ON EVERY SEAT THIS DEPLOYMENT SERVES, and that is D2's state rather than
- * this function's: D2 § 4.9 builds tier 3 (telemetry, `ref = null`), tier 1's producer is
- * DESIGNED and deliberately not built (`docs/design/BOARD-TASK.md`, card#7582), and tier 2 — the
- * other source of a non-null `ref` — was retired outright (card#9234). So the reference and the
- * link are code that runs on a value nothing currently mints, which is why `task.source` is
- * carried beside the title: "a floor showing tier 3 everywhere is visibly a floor whose board
- * integration is dark" (D2 § 4.9, D3 § 14 item 4).
+ * ⚠ `task.ref` IS NULL ON EVERY SEAT A TIER-3 ANSWER SERVES: D2 § 4.9's tier 3 (telemetry) carries
+ * `ref = null`, and the one tier that mints a non-null `ref` is tier 1 — the board-poll producer
+ * `docs/design/BOARD-TASK.md` designs (card#7582); tier 2 was retired outright (card#9234). That is
+ * why `task.source` is carried beside the title: "a floor showing tier 3 everywhere is visibly a
+ * floor whose board integration is dark" (D2 § 4.9, D3 § 14 item 4).
  */
-export function taskFacts(task, refBases) {
+export function taskFacts(task) {
     if ((task ?? null) === null) {
         return null;
     }
@@ -96,10 +60,9 @@ export function taskFacts(task, refBases) {
     return {
         title: task.title ?? null,
         source: task.source ?? null,
-        // § 5.6, `task.ref`: "the title renders with NO LINK AND NO REFERENCE TEXT — not an
-        // empty link, not *(no reference)*".
+        // § 5.6, `task.ref`: "the title renders with NO REFERENCE TEXT — not an empty reference,
+        // not *(no reference)*"; a non-null one is plain text (§ 5.2).
         ref,
-        ref_href: taskRefLink(ref, refBases),
         as_of: clockTime(task.as_of ?? null),
         degraded_note: task.degraded === true ? STALE_TITLE_DROPPED : null,
     };

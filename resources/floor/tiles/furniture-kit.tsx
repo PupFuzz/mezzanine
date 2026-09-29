@@ -66,20 +66,35 @@
  <tile id="19">
   <image source="furniture-kit/pottedPlant.png" width="28" height="97"/>
  </tile>
- <!-- lamps -->
+ <!-- lamps — each carries `decoration: glow`, the scene's decorative glow (FLOOR.md § 6.3, Appendix B row 14) -->
  <tile id="20">
+  <properties>
+   <property name="decoration" value="glow"/>
+  </properties>
   <image source="furniture-kit/lampSquareTable.png" width="24" height="44"/>
  </tile>
  <tile id="21">
+  <properties>
+   <property name="decoration" value="glow"/>
+  </properties>
   <image source="furniture-kit/lampRoundTable.png" width="24" height="47"/>
  </tile>
  <tile id="22">
+  <properties>
+   <property name="decoration" value="glow"/>
+  </properties>
   <image source="furniture-kit/lampSquareFloor.png" width="24" height="127"/>
  </tile>
  <tile id="23">
+  <properties>
+   <property name="decoration" value="glow"/>
+  </properties>
   <image source="furniture-kit/lampRoundFloor.png" width="24" height="127"/>
  </tile>
  <tile id="24">
+  <properties>
+   <property name="decoration" value="glow"/>
+  </properties>
   <image source="furniture-kit/lampWall.png" width="31" height="15"/>
  </tile>
  <!-- walls and windows -->

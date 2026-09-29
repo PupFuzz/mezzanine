@@ -105,6 +105,8 @@ final class FleetClientPlants
         [
             <<<'JS'
                     if (d.state_version <= held.state_version) {
+                        this.#noteDelta(d, 'discarded');
+            
                         return;
                     }
             
@@ -165,10 +167,10 @@ final class FleetClientPlants
     public const KEEPDETAIL = [
         [
             <<<'JS'
-            const { api_version, server_time, detail, ...row } = res.body;
+            const { api_version, server_time, detail, ...row } = body;
             JS,
             <<<'JS'
-            const { api_version, server_time, ...row } = res.body;
+            const { api_version, server_time, ...row } = body;
             JS,
         ],
     ];
@@ -177,10 +179,10 @@ final class FleetClientPlants
     public const ENVELOPE = [
         [
             <<<'JS'
-            const { api_version, server_time, detail, ...row } = res.body;
+            const { api_version, server_time, detail, ...row } = body;
             JS,
             <<<'JS'
-            const { detail, ...row } = res.body;
+            const { detail, ...row } = body;
             JS,
         ],
     ];
@@ -215,19 +217,21 @@ final class FleetClientPlants
         ],
     ];
 
-    /** P13 — AT-D3-9 GREEN: the key’s buffer is DELETED instead of released, so the drain never happens. */
+    /**
+     * P13 — AT-D3-9 GREEN: the key’s buffer is DELETED instead of released, so the drain never happens.
+     * ⚠ Re-anchored at card#7341 step 9, when the arrival line moved out of `#fetchSeat` into
+     * `#replaceIfHigher` (the one insert); the edit is the same one line.
+     */
     public const NODRAIN = [
         [
             <<<'JS'
-                    if (inserted) {
-                        this.#line(`seat added to the floor: ${k}`);
+                        this.#confirm(k);
                     }
             
                     this.#release(k);
             JS,
             <<<'JS'
-                    if (inserted) {
-                        this.#line(`seat added to the floor: ${k}`);
+                        this.#confirm(k);
                     }
             
                     this.#buffers.delete(k);
@@ -235,18 +239,61 @@ final class FleetClientPlants
         ],
     ];
 
-    /** P10 / P26b — a snapshot row replaces the held object unconditionally, lowering a version the stream already advanced. */
+    /**
+     * card#7341 step 6 — THE APPLIED SNAPSHOT DRESSED AS A DELTA, and an unheld seat defaulted to
+     * `offline`. Both halves are one realistic client defect: a client that routes every row a REST
+     * surface delivers through the delta journal, and that reads *this seat was absent* as *this seat
+     * was `offline`*. `wire/animation-set.js` then animates a snapshot (AT-D3-9's third RED) and plays
+     * an arrival on an inserted desk (AT-D3-17's second RED) with the SET UNMUTATED — which is what
+     * makes those two REDs statements about the set's own § 6.5 guard rather than about a plant.
+     */
+    public const SNAPSHOT_AS_DELTA = [
+        [
+            <<<'JS'
+                        this.#noteRow(source, row, serverTime, 'applied');
+            JS,
+            <<<'JS'
+                        this.#noteDelta({ ...row, server_time: serverTime }, 'applied', {
+                            changed: Object.keys(row),
+                            before: held ?? { render_state: 'offline' },
+                            after: row,
+                        });
+            JS,
+        ],
+    ];
+
+    /**
+     * P10 / P26b — a snapshot row replaces the held object unconditionally, lowering a version the stream already advanced.
+     * ⚠ Re-anchored at card#7341 step 9 on the version guard ALONE, when the membership narration
+     * joined the replacing branch: the plant removes the guard and nothing else, as it always did.
+     */
     public const STALE = [
         [
             <<<'JS'
-                    if (held === undefined || row.state_version > held.state_version) {
-                        this.#seats.set(k, row);
-                        this.#confirm(k);
-                    }
+                    if (!this.#retired.has(k) && (held === undefined || row.state_version > held.state_version)) {
+                        const arrived
             JS,
             <<<'JS'
-                    this.#seats.set(k, row);
-                    this.#confirm(k);
+                    if (!this.#retired.has(k)) {
+                        const arrived
+            JS,
+        ],
+    ];
+
+    /** card#7341 step 9 — AT-D3-15 / Appendix B row 9: the membership lines a snapshot's inserts write are never written. */
+    public const NOMEMBERSHIPLINE = [
+        [
+            <<<'JS'
+                        if (newRoom) {
+                            this.#line(`room added to the building: ${row.install_id}`);
+                        }
+            
+                        if (arrived) {
+                            this.#line(`seat added to the floor: ${k}`);
+                        }
+            JS,
+            <<<'JS'
+                        // control: the membership narration removed
             JS,
         ],
     ];
@@ -380,12 +427,12 @@ final class FleetClientPlants
                     if (failed(res)) {
                         this.#budget.refund(held, total);
                     } else {
-                        this.#applySnapshot(res.body);
+                        this.#applySnapshot(res.body, issued);
                     }
             JS,
             <<<'JS'
                     if (!failed(res)) {
-                        this.#applySnapshot(res.body);
+                        this.#applySnapshot(res.body, issued);
                     }
             JS,
         ],
@@ -441,7 +488,7 @@ final class FleetClientPlants
         [
             <<<'JS'
                     } else {
-                        this.#applySnapshot(res.body);
+                        this.#applySnapshot(res.body, issued);
                     }
             JS,
             <<<'JS'
@@ -485,8 +532,7 @@ final class FleetClientPlants
                             }
             
                             if (d.state_version === h.state_version + 1) {
-                                this.#seats.set(k, { ...h, ...d.patch, state_version: d.state_version });
-                                this.#confirm(k);
+                                this.#merge(k, h, d);
                             }
                         }
             

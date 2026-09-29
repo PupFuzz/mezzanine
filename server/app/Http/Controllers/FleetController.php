@@ -284,7 +284,12 @@ class FleetController extends Controller
             // `stdClass` is what keeps the spelling the seat sent.
             'heartbeat_counters' => json_decode((string) ($state->heartbeat_counters ?? 'null'), false),
             'heartbeat_predicates' => json_decode((string) ($state->heartbeat_predicates ?? 'null'), false),
-            'counters' => DB::table('seat_counters')->where('seat_ref', $seatRef)
+            // ⛔ A NAME → VALUE MAP THIS PLANE BUILDS FROM ITS OWN ROWS, SO IT IS ALWAYS A JSON
+            // OBJECT. PHP encodes an EMPTY associative array as `[]`, so without the cast a seat
+            // with no `seat_counters` rows was served `[]` and every other seat `{…}` (card#7342).
+            // The cast is right HERE and wrong for the two members above: those are the
+            // reporter's values passed through, whose spelling is the seat's; this one is ours.
+            'counters' => (object) DB::table('seat_counters')->where('seat_ref', $seatRef)
                 ->orderBy('name')->pluck('value', 'name')->map(fn ($v) => (int) $v)->all(),
             'predicates' => DB::table('seat_predicates')
                 ->whereIn('seat_ref', [$seatRef, Predicates::FLEET])

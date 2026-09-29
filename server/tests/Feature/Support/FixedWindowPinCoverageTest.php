@@ -118,7 +118,7 @@ class FixedWindowPinCoverageTest extends TestCase
      */
     private function classPinsItsClock(string $class): bool
     {
-        $case = new $class('test_dummy');
+        $case = new $class($this->aTestMethodOf($class));
 
         $reflection = new \ReflectionMethod($case, 'setUp');
 
@@ -136,5 +136,47 @@ class FixedWindowPinCoverageTest extends TestCase
         }
 
         return $pinned;
+    }
+
+    /**
+     * The name of a test method that REALLY EXISTS on `$class`, for the `TestCase` constructor.
+     *
+     * ⛔ THE CONSTRUCTOR ARGUMENT IS NOT A LABEL — card#9687. PHPUnit's constructor takes the name
+     * of the test method the instance represents, and `PHPUnit\Runner\ErrorHandler` resolves that
+     * name by REFLECTION at a moment this probe does not choose: the handler is global, so ANY PHP
+     * diagnostic raised while the probe's instance sits on the call stack goes to
+     * `Event\Code\TestMethodBuilder::fromCallStack()`, which takes the nearest `TestCase` — ours,
+     * not the running one — and prettifies its name through `new ReflectionMethod($class,
+     * $case->name())`. A placeholder there throws `ReflectionException: Method ...::<placeholder>()
+     * does not exist`, and it names whichever class the directory iterator reached first, so the
+     * message points nowhere near this line.
+     *
+     * MEASURED, not imagined. The diagnostic that fires is the probed class's own `setUp()` booting
+     * the application: with no `server/.env` on disk, phpdotenv reads the absent file through
+     * `@file_get_contents()`, and a SUPPRESSED warning still reaches PHPUnit's handler. CI copies
+     * `.env.example` to `.env` before it runs the suite, so CI never raises it and stayed green
+     * while every checkout without an `.env` — which is every fresh worktree — reddened on a class
+     * that had nothing to do with it.
+     *
+     * The prefix rule is PHPUnit's own first test for a test method. Its other branch, the `#[Test]`
+     * attribute, is deliberately not implemented: no test in this repository uses it, and a branch
+     * that cannot be exercised here is a decoration. A class that arrives with only attributed test
+     * methods fails LOUDLY below rather than re-minting the placeholder.
+     */
+    private function aTestMethodOf(string $class): string
+    {
+        foreach ((new \ReflectionClass($class))->getMethods(\ReflectionMethod::IS_PUBLIC) as $method) {
+            if (! $method->isStatic() && str_starts_with($method->getName(), 'test')) {
+                return $method->getName();
+            }
+        }
+
+        self::fail(sprintf(
+            '%s asserts a 429 but has no public test-prefixed method, so this probe cannot name one '.
+            'for the TestCase constructor. If the class names its tests with the #[Test] attribute '.
+            'instead, teach aTestMethodOf() that branch — never pass a name that does not resolve '.
+            '(card#9687).',
+            $class,
+        ));
     }
 }

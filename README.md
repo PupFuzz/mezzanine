@@ -32,7 +32,7 @@ the test that tells the two apart, and the bound on the warmth.
 |---|---|---|
 | **Telemetry** | `fleet-reporter`, a Claude Code hook bundle, POSTs turn/tool/session events | every agent machine (Linux + Windows) |
 | **Aggregation** | fleet-state store + live feed, merged with coordination and board events | this repo (D-10) |
-| **Presentation** | Laravel app serving a Pixi.js office floor over websockets, behind MFA | this repo |
+| **Presentation** | Laravel app serving an SVG office floor fed by Server-Sent Events, behind MFA | this repo |
 
 Telemetry is **programmatic end to end** — the harness fires the hooks and the reporter
 posts the JSON. No model is asked to describe itself.
@@ -41,11 +41,12 @@ posts the JSON. No model is asked to describe itself.
 
 ```
 server/                     the Laravel host + MFA-gated shell   ← exists
-server/resources/js/floor/  Pixi.js office floor (scene, characters, camera)
+server/public/js/            the pages' ES modules — floor/, lobby/, desk/, wire/ (the camera: wire/camera.js)
 resources/characters/       the procedural character generator + LINEAGE.md ← exists
 resources/floor/            the CC0 tileset (interim) + LINEAGE.md ← exists; Tiled map: card #7341
 fleet-reporter/             cross-platform hook bundle + by-hand Linux install runbook
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
+docs/changelog/             archived releases, one file per tag (v0.2.0.md, …)
 bin/, tools/                prod deploy (bin/deploy.sh), kanban + design-doc
                             automation, CI gates, harnesses          ← exists
 ```
@@ -72,8 +73,26 @@ application uses, and **`mezzanine_test`**, which the test suite is pinned to (�
 to keep.
 
 Create both, and one account for them, once — at the `mariadb` client's prompt as an administrative
-user (`sudo mariadb`). Type it at the prompt rather than passing it with `-e`, so the password never
-lands in argv or shell history:
+user, with the client's own history turned off:
+
+```sh
+sudo env MYSQL_HISTFILE=/dev/null mariadb
+```
+
+Typing the statements at that prompt, rather than passing them with `-e`, keeps the password out of
+argv and out of your shell's history. `MYSQL_HISTFILE=/dev/null` keeps it out of the **client's**
+history, which is a separate file: without it, the `CREATE USER` below is written, password
+included and in plaintext, to `~/.mariadb_history` — or to `~/.mysql_history` instead, when that
+file already exists and `~/.mariadb_history` does not — under whichever `HOME` the client ran with.
+Under `sudo`, look in root's as well as your own. If you created the account without the variable,
+delete both files wherever they exist.
+
+⛔ **A mistyped `CREATE USER` can print the password you chose in its error message.** Read any
+error it returns on the screen and paste it nowhere, and choose a different password before you
+retype the statement — nothing uses it until you put it in `.env` below, so that costs nothing.
+Why: the ⛔ on statements that fail on their syntax, at the top of
+[`docs/CREDENTIAL-ROTATION.md`](docs/CREDENTIAL-ROTATION.md), which states the mechanism once. The
+mechanism is the server's rather than that document's, and this statement trips it the same way.
 
 ```sql
 CREATE DATABASE mezzanine;
@@ -91,6 +110,15 @@ the app reaches MariaDB); the one key left to you is **`DB_PASSWORD`**. The suit
 account and swaps only the database, to `mezzanine_test` — and `Tests\TestCase` aborts the run
 before it touches anything if the connection resolves to any other connection or database.
 
+⚠ **[`docs/CREDENTIAL-ROTATION.md`](docs/CREDENTIAL-ROTATION.md) governs that password from the
+moment you choose it: its top matter says how a statement that carries it can leak it, and
+before you ever CHANGE it, read the whole document.** `server/.env` is not the only thing
+holding it: on a host that also runs the agent webhook bridge, that account serves both, and a
+rotation that updates `server/.env` alone leaves the bridge authenticating with a value the server
+no longer accepts — silently, for as long as nobody happens to look. It went unnoticed for 38 hours
+once. That document names every consumer, carries the command that re-derives the list on the host
+you are actually on, and gives the order that fails safe when a step is refused.
+
 ```
 cd server
 composer install                                    # ← local only; a HOST installs --no-dev (below)
@@ -100,9 +128,25 @@ php artisan mezzanine:user:create                   # ← the first account; not
 php artisan test                                    # ← rebuilds mezzanine_test, never DB_DATABASE
 ```
 
-`server/vendor` must be a real directory inside the tree under test, installed there by
-`composer install`: the suite's bootstrap (`server/tests/bootstrap.php`) exits before any test runs
-when `App\` autoloads from another checkout, which is what a symlinked `vendor` does.
+**The suite refuses to start rather than report a result it cannot stand behind, and it names the
+precondition that is missing** — both refusals are in its bootstrap (`server/tests/bootstrap.php`),
+before any test runs, so the message is the whole output:
+
+* `server/vendor` must be a real directory inside the tree under test, installed there by
+  `composer install`. A symlinked `vendor` autoloads another checkout's `App\`, and every result is
+  then a statement about code this tree does not hold.
+* `server/.env` must be there **and readable by the user running the suite**. It is where the
+  `DB_PASSWORD` above lives, it is never committed, and with nothing read out of it the credentials
+  fall back to `root` with an empty password — so the run would fill with an access-denied that
+  points at MariaDB grants instead of at the file. Each state gets its own message: `cp .env.example
+  .env` is the whole remedy for the first, and for the second — a `.env` written by another user and
+  left mode 640 is the usual cause — give it to the user that runs the suite, keeping mode 640.
+  Exported `DB_*` variables are not a substitute for the file, and CI runs the suite with no `.env`
+  on every run and requires the refusal.
+
+  What the bootstrap cannot tell you is that a readable `.env` carries a **wrong** credential: a
+  template copied with `DB_PASSWORD` left unset reaches the same access-denied, and no check before
+  the suite connects can see it.
 
 Every page requires a second factor, so a freshly created account is sent to the enrolment
 screen and reaches nothing else until it finishes there.

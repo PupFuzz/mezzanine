@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# vendor-pin-check.sh — the two VENDORED files' headers declare what their bodies are; this
-# pins that declaration to a sha256 so it cannot quietly stop being true.
+# vendor-pin-check.sh — every VENDORED file's header declares what its body is; this pins that
+# declaration to a sha256 so it cannot quietly stop being true. The MANIFEST below is the list —
+# it is the only census, and no prose here counts its rows.
 #
 # WHY IT EXISTS. `bin/promote-cards-by-token` declared its whole body a BYTE-FOR-BYTE copy of
 # upstream at pin e2f131f and called that "a one-diff check". Nothing ran the diff. PR #51 had
@@ -40,7 +41,17 @@
 # WHY NOT `git diff` AGAINST UPSTREAM. Upstream is a private repo; a public CI runner cannot
 # clone it. The sha is the offline stand-in — it cannot tell you WHAT changed, only that
 # something did, which is the signal that was missing. The pin commit in each manifest row is
-# provenance for a human, not something this script fetches. No network, no git, stdlib only.
+# provenance for a human, not something this script fetches. No network, no git, stdlib only.#
+#
+# ⭐ ONE VENDORED SET HAS A PIN THIS SCRIPT DOES NOT WRITE, AND IT IS THE BETTER ONE.
+# `bin/pr-body-lint-fixtures/*` has NO row here and needs none. Those files are captured PR bodies
+# — no shebang, no header — so the body rule this script derives has nothing to anchor on and the
+# `--selftest` control arm (line 2 must be a `#` comment) cannot be built over a markdown document.
+# What pins them instead is `bin/pr-body-lint.selftest.py`'s own `FIXTURES` table, which carries a
+# sha256 per fixture and reds by name when one does not match. Those figures are UPSTREAM'S OWN, so
+# unlike a locally-minted pin they check the copy against the SOURCE rather than against this
+# repo's last declaration — the comparison this script explains it has to do without. The CI job
+# runs that selftest, so the check is real rather than available.
 #
 # Usage: bash bin/vendor-pin-check.sh              # check every manifest row (exit 1 on drift)
 #        bash bin/vendor-pin-check.sh --selftest   # prove the check CAN fail, then that a
@@ -56,9 +67,21 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # FRAGMENTS entry must be present in the body. A header entry with no FRAGMENTS twin is NOT
 # detected here — the header's list is read by humans, the table by this script, and a review
 # of any change to either owes a glance at the other.
+#
+# ⚠ THE PIN COLUMN IS A PROVENANCE STRING, NOT ALWAYS A BARE COMMIT. The mover rows were vendored
+# from a commit and name it. The `pr-body-lint` rows name BOTH the plugin version and the
+# marketplace commit, because those answer different questions: the version is how a reader says
+# which release this install runs, the commit is what `git show <commit>:<upstream path>` needs to
+# reproduce the bytes. Each of those files' own header carries the same pair plus the WHOLE-FILE
+# sha256 upstream's copy has, which is deliberately NOT the figure in this table — this table pins
+# the BODY, header excluded. This script reads the column and never uses it, so its spelling changes
+# no behaviour; it is spelled out because a column that silently holds two kinds of thing is how a
+# reader gets a wrong answer confidently.
 MANIFEST=(
   "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|8ce23f47b6761e6f2f712e0fce52a66ab2fd4ed1bf97c86671ff26598ad63657"
   "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|e9f6f87704f14541c2e194c926d0b0a44399f858b31cbdf607605648fcc53cf5"
+  "bin/pr-body-lint.py|coord 0.54.0 @ 2d6f7f0e549381184709c7ea7f3036f753f37fc6|7bcc6612fba86837e9ead44be9d44f8263bb7c145e415f5466c116dfbfe565ee"
+  "bin/pr-body-lint.selftest.py|coord 0.54.0 @ 2d6f7f0e549381184709c7ea7f3036f753f37fc6|73e3f5bd695280d7e7557e37b18e4a88a7e91fa2caf16c447362cca79239fa07"
 )
 
 # --- The declared local edits: <repo-relative path>|<what the site is>|<unbroken fragment>

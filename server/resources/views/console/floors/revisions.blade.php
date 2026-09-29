@@ -107,11 +107,14 @@
         <code>docs/ATTRIBUTION.md</code> row the asset gates require.
     </p>
 
+    {{-- The floor's renderer is docs/design/FLOOR.md Appendix B rows 7 and 14; the on-screen text
+         carries no design-doc citation (operator ruling 2026-09-25, card#7341 comment 6585). --}}
     <p>
-        ⚠ There is <strong>no preview</strong> yet: it draws with the floor's own renderer, which
-        is not built (<code>docs/design/FLOOR.md</code> Appendix B step 7). Until it is, a restore
-        from this page is the only thing between a bad save and every viewer — which is why it is
-        here.
+        ⚠ There is <strong>no preview</strong> yet: the floor's own renderer is built and this
+        console does not draw with it yet. Until it does, a restore from this page is the only
+        thing between a bad save and every viewer — which is why it is here. A restore is held to
+        the same desk-slot rules as a save: a revision whose slots overlap, or are smaller than
+        the furniture box, is refused by name.
     </p>
 
     <p><a href="{{ route('admin.floors.index') }}">Back to the floors</a></p>

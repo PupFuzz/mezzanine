@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ArtController;
 use App\Http\Controllers\Auth\TwoFactorMoveController;
 use App\Http\Controllers\Auth\TwoFactorRecoveryCodeController;
 use App\Http\Controllers\Auth\TwoFactorResetController;
@@ -127,6 +128,34 @@ Route::middleware(['auth', 'mfa'])->group(function () {
     // request, when the stored document no longer passes the reader — is that surface.
     Route::get('/dashboard', fn () => view('dashboard'))
         ->name('dashboard');
+
+    // THE FLOOR PAGE — `docs/design/FLOOR.md` Appendix B row 8, § 4.4's `/floor/{floor}`. The
+    // segment is a floor's KEY (card#9273), handed to the page as data and resolved by the client
+    // against the composed floors it fetches; a segment naming a room that is not its floor's key
+    // is redirected BY THE CLIENT (§ 4.4 row 3), because only the fetched layout knows which floor
+    // holds the room. Like the lobby it carries no layout and no fleet data — both are fetched.
+    Route::get('/floor/{floor}', fn (string $floor) => view('floor', ['floor' => $floor, 'seat' => null]))
+        ->name('floor');
+
+    // § 4.4's `/floor/{floor}/{seat_id}` — the drill-down open (Appendix B row 10). The SAME page: "the
+    // drill-down is a panel over the floor rather than a route of its own, because closing it must not
+    // cost a reconnect" (§ 4), so the seat segment is handed over as data exactly as the floor's is,
+    // and the client resolves it against the floor's own desks once it holds them.
+    Route::get('/floor/{floor}/{seat}', fn (string $floor, string $seat) => view('floor', ['floor' => $floor, 'seat' => $seat]))
+        ->name('floor.seat');
+
+    // THE ASSET ROUTE — `docs/design/FLOOR.md` Appendix B row 14: the one HTTP surface for the art,
+    // inside the floor's own gate because the art is the floor's. A prefix no other route claims,
+    // and deliberately not under `/floor/`, where `/floor/{floor}` would read `art` as a floor key.
+    // ⛔ `{path}` ADMITS `/` — Laravel's parameter matches none without a `where()`, and the
+    // tileset's images sit in subdirectories — and nothing wider than this character class:
+    // containment is `App\Floor\FloorAssets::served()`'s, never the pattern's.
+    Route::get('/art/floor/{path}', [ArtController::class, 'floor'])
+        ->where('path', '[A-Za-z0-9._/-]+')
+        ->name('art.floor');
+    Route::get('/art/characters/{path}', [ArtController::class, 'characters'])
+        ->where('path', '[A-Za-z0-9._/-]+')
+        ->name('art.characters');
 });
 
 /*

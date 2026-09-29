@@ -17,8 +17,9 @@ use Tests\TestCase;
  * say the same thing in different words — "**no thought bubble at all**, never an empty bubble
  * and never a placeholder title" — and AT-D3-14's desk half asserts it as a GREEN: "there is
  * **no thought bubble**, and `nulls-a`'s desk **draws a character** … so that absence is
- * `task`'s and not the empty chair's". That test needs a floor to run on and there is no floor;
- * what runs today is the MODEL's half of it, which is the half that decides.
+ * `task`'s and not the empty chair's". What runs here is the MODEL's half of it, which is the half
+ * that decides; the drawn half is Appendix B row 14's scene and painter, gated by AT-D3-20
+ * (`Tests\Feature\Floor\SeatFurnitureNeverOverlapsTest`).
  */
 class DeskDrawsTheThoughtBubbleTest extends TestCase
 {
@@ -28,12 +29,11 @@ class DeskDrawsTheThoughtBubbleTest extends TestCase
      * The module's wiring — that it is there, that every relative import in it resolves, and
      * that it reaches for the SHARED copy of each thing it shares rather than growing its own.
      *
-     * ⚠ NO PAGE SERVES THIS MODULE YET, and this says so rather than asserting one does. § 4.4's
-     * floor route is card#9208-blocked on a D2 read surface for an authored map, so the element
-     * contract is the floor page's to declare and the floor page's test to hold — the same
-     * position `public/js/drilldown` and `public/js/coord` are in, for the same reason. What is
-     * checkable today is that the module is internally coherent and will not fail to LOAD when
-     * that route lands.
+     * ⚠ THE BUBBLE IS DRAWN BY ROW 14's LAYER, NOT BY THIS MODULE. `floor/scene.js` lays it out
+     * through `bubbleLayout()` and `floor/painter.js` draws it, so the bubble's drawn contract is
+     * AT-D3-20's (`SeatFurnitureNeverOverlapsTest`) and the painter's elements are
+     * `FloorPageWiringTest`'s. What this asserts is that the module is internally coherent, and
+     * `FloorPageWiringTest`'s import resolution that it loads.
      */
     public function test_the_module_is_wired_to_the_shared_copies_it_shares(): void
     {
@@ -195,8 +195,8 @@ class DeskDrawsTheThoughtBubbleTest extends TestCase
             ['seat' => $this->seatBody(['task' => null])],
             $this->mutatedModules([
                 'task-bubble.js',
-                'const facts = taskFacts(seat?.task ?? null, options.ref_bases);',
-                "const facts = taskFacts(seat?.task ?? { title: 'untitled' }, options.ref_bases);",
+                'const facts = taskFacts(seat?.task ?? null);',
+                "const facts = taskFacts(seat?.task ?? { title: 'untitled' });",
             ]),
         )['bubble'];
 
@@ -277,8 +277,8 @@ class DeskDrawsTheThoughtBubbleTest extends TestCase
         // THE CONTROL — the exact machine § 5.1 refuses, planted in the shipped file.
         $withLinger = $this->mutatedModules([
             'task-bubble.js',
-            'export function taskBubble(seat, options = {}) {',
-            "export function taskBubble(seat, options = {}) {\n    setTimeout(() => {}, 1200);",
+            'export function taskBubble(seat) {',
+            "export function taskBubble(seat) {\n    setTimeout(() => {}, 1200);",
         ]);
 
         $this->assertSame(['setTimeout'], $this->motionIn((string) file_get_contents($withLinger.'/task-bubble.js')),

@@ -15,8 +15,8 @@ use Tests\TestCase;
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ STEP 3 SHIPS THE SIGNAL AND DRAWS NOTHING. `readStatus()` and `discrepancyState()` are data;
- * the empty chair, the *no data since …* line and the lobby's notice are the renderer's, at
- * Appendix B step 10. Every assertion here is on what the protocol REPORTS.
+ * the empty chair and the *no data since …* line are the desk render's (Appendix B step 5) and the
+ * lobby's notice is the lobby's (step 9). Every assertion here is on what the protocol REPORTS.
  *
  * ⛔ A FAILED READ UNDER AN IN-FLIGHT DISCOVERY COUNTS LIKE ANY OTHER (operator, 2026-09-15). The
  * floor may say a seat is missing while a discovery that could still repair it is running, and a

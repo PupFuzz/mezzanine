@@ -1,0 +1,601 @@
+/**
+ * The ANIMATION SET — `docs/design/FLOOR.md § 6.2`'s CLOSED SET, A1 through A20, as the renderer's
+ * own artifact, and the one place a § 6.2 row is started. Appendix B row 6, card#7341 step 6.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * ⛔ THE SET IS CLOSED, AND `FIRED_BY` BELOW IS WHAT MAKES THAT CHECKABLE. Every row of § 6.2 has
+ * an entry there naming WHAT starts it in the shipped client. A row § 6.2 carries and this file
+ * does not is a row nobody draws; a row this file carries and § 6.2 does not is claim-bearing
+ * motion with no driving fact, which is the defect the honesty principle exists to refuse.
+ * `Tests\Feature\Floor\TheAnimationSetIsTheDocumentsClosedSetTest` set-differences both directions.
+ *
+ * ⛔ THE TWO CLASSES ARE NOT DECORATION (§ 6.2). An `edge` row HAS a causing message and is an
+ * INSTANT — one `edge()` call, one row, no exit. A `held` row has NO causing message, is entered
+ * whenever the object the client holds says so, and may be entered more than once on one seat —
+ * so it is `enterHeld()`/`leaveHeld()`, its entry's `cause` is a `state_version` rather than a
+ * message, and its exit's is the one § 11's precedence gives (`exitCause()` below).
+ * Which call a row goes through follows from `ANIMATION_SET[id].class` and is never decided at the
+ * call site, because § 11's log records `class` from the entry point it is called through.
+ *
+ * ⛔ § 6.5: A SNAPSHOT, A RESYNC, A PER-SEAT FETCH AND A RECONNECT FIRE NO `edge` ROW, AND THAT
+ * RULE LIVES HERE RATHER THAN IN THE PROTOCOL. `wire/fleet-client.js`'s journal says truthfully
+ * what the client DID with each message — it carries the snapshot's rows and the fetch's beside
+ * the deltas — and this file is what decides which of them may be animated. A renderer reading
+ * that journal without the `seat.delta` test plays an arrival at every desk on every reconnect,
+ * which is AT-D3-9's third RED; keeping the test here is what makes that RED reach the artifact
+ * the claim is about.
+ *
+ * ⛔ THE STRINGS BELOW RESTATE § 6.2's Animation AND Reduced-motion form CELLS AND ARE GUARDED,
+ * NOT TRUSTED — the same rule `desk/desk-render.js` carries for § 7.1's sentences: a browser
+ * cannot read FLOOR.md, so a restatement a consumer cannot follow a pointer to is DELETED or
+ * GUARDED, and the test above re-derives every cell from the document on each run.
+ *
+ * ⛔ WHICH HELD ROWS LOOP IS DERIVED FROM THOSE CELLS AND IS NOT A SECOND LIST. § 11's *two states
+ * with no motion by design* are the held rows whose Animation cell names no loop, so `loops()`
+ * below reads the cell this file already holds under guard rather than a hand-kept pair of ids
+ * that would be free to disagree with it — which is what `desk/desk-render.js` held until this
+ * step, unguarded.
+ *
+ * ⚠ NO CLOCK AND NO TIMER. Every `at` is the caller's corrected server-clock instant, as the
+ * animation log's is, and the frames a loop runs at are a drawing layer's to schedule — this file
+ * says WHICH render is held, WHAT form it takes and how far apart its frames are, never when one
+ * is drawn.
+ */
+
+/**
+ * § 6.2's table: each row's class, the Animation cell's words, and the Reduced-motion form cell's
+ * (§ 6.4 — a first-class rendering, never a degradation). Both cells are the document's, plain:
+ * links followed to their own text, emphasis and backticks dropped, whitespace collapsed.
+ */
+export const ANIMATION_SET = Object.freeze({
+    A1: Object.freeze({ class: 'edge', animation: 'arrive — the character walks in and sits', reduced: 'the character is simply present' }),
+    A2: Object.freeze({ class: 'edge', animation: 'depart — the character stands and walks out, leaving the chair empty', reduced: 'the chair is empty and labelled' }),
+    A3: Object.freeze({ class: 'held', animation: 'work — typing at the keyboard, with the eye blink and the gentle in-place wiggle, 4 fps loop', reduced: 'a working pose, static, with the glyph' }),
+    A4: Object.freeze({ class: 'held', animation: 'think — leaning back, watching the monitor, with the same blink and wiggle, 4 fps loop', reduced: 'a thinking pose, static' }),
+    A5: Object.freeze({ class: 'edge', animation: "tool-swap — the monitor's glyph changes, one 250 ms cross-fade", reduced: 'the glyph changes with no fade' }),
+    A6: Object.freeze({ class: 'held', animation: "idle — the character is slumped asleep on the desk, the monitor dimmed, with drifting z's, 4 fps loop", reduced: "the static slumped pose, z's drawn once and still" }),
+    A7: Object.freeze({ class: 'held', animation: 'attention — a raised hand and a marker above the desk, 4 fps loop', reduced: 'a static raised-hand pose and the marker' }),
+    A8: Object.freeze({ class: 'held', animation: 'stalled — head in hands, static, with the api_error_type line', reduced: 'identical' }),
+    A9: Object.freeze({ class: 'held', animation: 'unknown — a question marker over an occupied desk', reduced: 'identical' }),
+    A10: Object.freeze({ class: 'edge', animation: 'intern-arrive / intern-leave — a stool at the side table fills or empties', reduced: 'the stool is simply occupied or empty' }),
+    A11: Object.freeze({ class: 'edge', animation: 'badge-raise — a badge appears with a single 250 ms fade', reduced: 'the badge is simply present' }),
+    A12: Object.freeze({ class: 'edge', animation: 'gauge — the context bar eases to its new value over 250 ms', reduced: 'the bar jumps to the value' }),
+    A13: Object.freeze({ class: 'edge', animation: 'retire — the character stands, leaves, and the desk is removed from the floor (§ 3.5, card#9078: it used to clear the desk and stamp a plate)', reduced: 'the desk is simply absent on the next render' }),
+    A14: Object.freeze({ class: 'edge', animation: 'feed-pulse — a one-frame pulse on the feed indicator', reduced: 'a last message HH:MM:SS readout that updates instead' }),
+    A15: Object.freeze({ class: 'held', animation: 'catching-up — a replay marker sweeps the monitor, 4 fps loop', reduced: 'a static replay marker and the replaying label' }),
+    A16: Object.freeze({ class: 'edge', animation: 'desk-move — a displaced character walks to its new desk', reduced: 'the desk appears in its new slot on the next render' }),
+    A17: Object.freeze({ class: 'edge', animation: "room-tick — the wall clock's hands step to the viewer's current minute and the windows' sky is re-evaluated for that time", reduced: 'the hands jump to position and the sky steps to its new value with no cross-fade — the same fact, without the transition (§ 6.4)' }),
+    A18: Object.freeze({ class: 'held', animation: "thread-line — a line drawn between the desks a thread's participants resolve to, held for as long as the thread is open (§ 5.7)", reduced: 'the line is drawn static — same line, same endpoints, no travel along it' }),
+    A19: Object.freeze({ class: 'edge', animation: 'envelope — an envelope travels the line once, from the origin desk to each destination desk', reduced: 'the bead is simply present at the destination end, with no travel' }),
+    A20: Object.freeze({ class: 'edge', animation: 'broadcast-pulse — one ring expands from the origin desk across the floor', reduced: 'the origin desk carries a static broadcast marker for that post' }),
+});
+
+/**
+ * Every § 6.2 row and WHAT starts it in the shipped client — the partition that makes the set's
+ * coverage legible rather than a thing a reader counts by hand.
+ *
+ *   · `delta`     — an `edge` row fired by a `seat.delta` this client APPLIED (`DELTA_ROWS`). A13
+ *                   is fired by the `seat.retired` message too, which § 6.2 names beside the delta
+ *                   as its Driving fact (`edges()`, Appendix B step 10).
+ *   · `heartbeat` — an `edge` row fired by each `feed.heartbeat` RECEIVED.
+ *   · `desk`      — a `held` render `desk/desk-render.js` selects for the state it draws, entered
+ *                   and left by `held()` against the object that holds it.
+ *   · `slot`      — A16, whose trigger is § 3.3's displacement and therefore a fact about the
+ *                   SLOT FUNCTION, Appendix B row 7's artifact. `displaced()` is the entry that
+ *                   row calls, and `floor/floor-screen.js` calls it (card#7341 step 7); the log row
+ *                   it writes was fully specified here before there was a caller (§ 11 names A16's
+ *                   own `cause`), so what row 7 owed was the trigger and not a second decision.
+ *   · `coord`     — A18/A19/A20, whose triggers are `coord/coord-model.js`'s `threadAnimations()`
+ *                   and `roundAnimations()` over the rendered `coord.thread` / `coord.round`
+ *                   objects (card#8300) and are NOT this file's to re-mint. What this file owns is
+ *                   the LOG ROW, and § 11's forward contract for it landed with step 6: `seat_id`
+ *                   is `null` on all three (they are drawn BETWEEN desks and claim nothing about
+ *                   any one desk), `install_id` is the message's own (§ 5.7 clause 3's room), and
+ *                   `cause` is the identity of the causing message — `post_ref` for A19 and A20,
+ *                   `thread_ref` for A18 on the way in and again on the way out — save the exit
+ *                   of a line § 9 F6 stilled, which is § 11's literal `stilled` (`lines()`). ⭐ card#7341
+ *                   step 7 is the first consumer that applies those messages, so the rows are
+ *                   written now and AT-D3-1's causing-message set gains `coord.round` and
+ *                   `coord.thread` in the same change, with AT-D3-18 as the discriminating test
+ *                   that fires one — which is exactly the condition § 11 published.
+ */
+export const FIRED_BY = Object.freeze({
+    A1: 'delta',
+    A2: 'delta',
+    A3: 'desk',
+    A4: 'desk',
+    A5: 'delta',
+    A6: 'desk',
+    A7: 'desk',
+    A8: 'desk',
+    A9: 'desk',
+    A10: 'delta',
+    A11: 'delta',
+    A12: 'delta',
+    A13: 'delta',
+    A14: 'heartbeat',
+    A15: 'desk',
+    A16: 'slot',
+    A17: 'heartbeat',
+    A18: 'coord',
+    A19: 'coord',
+    A20: 'coord',
+});
+
+/**
+ * § 6.1 rule 2 and § 12's *Loop frame rate* row: **fixed** for every claim-bearing loop on the
+ * floor and every seat, at one frame per D2 § 8.3's 250 ms stream tick — the fastest rate at which
+ * the wire can inform this client of anything, so no loop can appear more informative than the
+ * feed. A rate that varied with `open_calls`, tokens or throughput would render a quantity nothing
+ * sent (§ 6.3's third forbidden form), which is AT-D3-1's second RED.
+ */
+export const LOOP_FPS = 4;
+
+/** § 11's `cause` for the two rows the heartbeat fires: the message itself, which carries no id. */
+export const HEARTBEAT = 'feed.heartbeat';
+
+/** § 11's `cause` for A13 fired by the retirement MESSAGE (§ 6.2: "or the `seat.retired` message"). */
+export const RETIRED = 'seat.retired';
+
+/** The two rows § 11 says belong to no seat — `seat_id` and `install_id` are both `null` on them. */
+export const HEARTBEAT_ROWS = Object.freeze(Object.keys(FIRED_BY).filter((id) => FIRED_BY[id] === 'heartbeat'));
+
+/**
+ * Whether a row LOOPS, read off its own § 6.2 Animation cell — the `N fps loop` the cell ends
+ * with, at the one rate above. A held row that names no loop is one of § 11's *states with no
+ * motion by design*, and that is where the pair comes from rather than a list beside this one.
+ */
+export function loops(animationId) {
+    return (ANIMATION_SET[animationId]?.animation ?? '').includes(`${LOOP_FPS} fps loop`);
+}
+
+/**
+ * One row's class, or `null` for an id this set does not carry.
+ *
+ * ⛔ THE SET IS CLOSED, SO EVERY READER OF IT ANSWERS THE SAME WAY FOR AN ID THAT IS NOT IN IT:
+ * `loops()` answers `false`, `animationForm()` answers `null`, and `motionOf()` below answers *no
+ * motion* — never a plausible form, a rate nothing is using, or a throw from one reader while its
+ * neighbours answer. A caller passing an out-of-table id has a bug either way; what this keeps is
+ * that the bug looks the same wherever it lands.
+ */
+function classOf(animationId) {
+    return ANIMATION_SET[animationId]?.class ?? null;
+}
+
+/** The frame interval of a row that loops, or `null` for a row that does not. */
+export function frameIntervalMs(animationId) {
+    return loops(animationId) ? 1000 / LOOP_FPS : null;
+}
+
+/**
+ * § 6.4's rendering for one row: its ordinary form, or its reduced-motion form under
+ * `prefers-reduced-motion: reduce`. The reduced form carries the SAME FACT — it is the row's other
+ * rendering, never its absence — so a row this set does not carry has no form at all and answers
+ * `null` rather than a plausible one.
+ */
+export function animationForm(animationId, reduce = false) {
+    const row = ANIMATION_SET[animationId];
+
+    if (row === undefined) {
+        return null;
+    }
+
+    return reduce ? row.reduced : row.animation;
+}
+
+/**
+ * § 6.4's *identical* — the reduced-motion form of a row that has NO motion to replace, which is
+ * the whole of what makes a held row static by design. § 11 names that population in words (*the
+ * two states with no motion by design*) and this is where it is DERIVED: a row whose reduced form
+ * is its ordinary one is a row nothing was removed from.
+ *
+ * ⛔ IT IS NOT `loops()`, AND THE DIFFERENCE IS A18. `loops()` answers *does this row run frames at
+ * § 12's rate*, which decides a frame interval; this answers *does this row move at all*. Every
+ * held row of § 6.2 was a 4 fps loop or one of those two states until A18 — a line whose reduced
+ * cell says *drawn static … no travel along it*, so its ordinary form DOES move and it runs no
+ * frame loop. Deriving motion from `loops()` drew that line with `motion: false`, which is § 11's
+ * claim that one of its reasons applied when none did (card#7341 step 7, the step that first
+ * fires the row).
+ */
+function staticByDesign(animationId) {
+    return (ANIMATION_SET[animationId]?.reduced ?? null) === 'identical';
+}
+
+/**
+ * ⛔ THE ONE PLACE § 6.4's CONDITION DECIDES `motion`, for every row of either class. § 11's
+ * `motion` column names the reasons a row is drawn without it, and they meet here as three
+ * inputs — a held render static by design (this set's own answer), the caller's `permitted`, and
+ * reduced motion — so a second caller cannot answer the question differently.
+ *
+ * `permitted` is the CALLER's half and nothing more: for a held desk render it is the desk
+ * render's verdict (`desk/desk-render.js` owns it — § 7.3's currency treatment of a `fold_lag`
+ * badge or a `config_invalid` reporter, a value § 9 F9 does not recognise, and a floor § 9 F6
+ * stilled), and for an `edge` row there is no treatment to consult and it is simply true.
+ */
+function motionOf(animationId, permitted, reduce) {
+    const cls = classOf(animationId);
+
+    // An id this closed set does not carry answers *no motion*, as every other reader of the set
+    // answers for one: a caller passing one has a bug either way, and what this keeps is that the
+    // bug looks the same wherever it lands.
+    if (cls === null || !permitted || reduce) {
+        return false;
+    }
+
+    return cls === 'edge' || !staticByDesign(animationId);
+}
+
+/**
+ * One `held` row's RENDERING, for `desk/desk-render.js` to put on the desk it draws: which § 6.2
+ * row is held, whether motion is drawn, § 6.4's form, and the interval a running loop's frames sit
+ * at. `frame_interval_ms` is on the frame only where a loop is actually running — a render drawn
+ * static has no frames to space, and a number there would be a rate nothing is using.
+ */
+export function heldRendering(animationId, permitted, reduce = false) {
+    const motion = motionOf(animationId, permitted, reduce);
+
+    return {
+        animation_id: animationId,
+        motion,
+        form: animationForm(animationId, reduce),
+        frame_interval_ms: motion ? frameIntervalMs(animationId) : null,
+    };
+}
+
+const toolName = (seat) => seat.action?.tool_name ?? null;
+const callIds = (seat) => new Set((Array.isArray(seat.subagents) ? seat.subagents : []).map((s) => s.call_id));
+const badges = (seat) => new Set(Array.isArray(seat.badges) ? seat.badges : []);
+const sameMembers = (a, b) => a.size === b.size && [...a].every((v) => b.has(v));
+const gained = (a, b) => [...b].some((v) => !a.has(v));
+
+/**
+ * The `edge` rows a `seat.delta` can fire, each with the `changed[]` member its § 6.2 row names
+ * and the rest of that row's condition over the objects before and after the merge.
+ *
+ * ⛔ `changed[]` IS THE GATE ON EVERY ONE OF THEM, and it is the delta's own patch keys
+ * (D2 § 8.3.1) rather than a diff this file computes. A diff cannot tell a member the wire re-sent
+ * unchanged from one it never sent, and § 2.5 is explicit that re-sending a held value still
+ * counts as a change — which is what `changed[]` is for.
+ *
+ * ⚠ EACH ROW IS ITS OWN PREDICATE, exactly as § 6.2 writes them: the table states one exclusion
+ * (A3 against A4, which `desk/desk-render.js` owns) and no other, so no row here suppresses
+ * another and one delta satisfying two conditions writes two rows.
+ *
+ * ⛔ A1 READS THE OBJECT BEFORE THE MERGE, BECAUSE *LEAVES `offline`* IS A TRANSITION AND NOT A
+ * VALUE. Read as *the new value is not `offline`* it would fire an arrival on every state change
+ * a desk ever makes; § 3.4's table and this row's own *its absence means* — **the seat has not
+ * left `offline`** — both make it the transition out of that state.
+ *
+ * ⛔ AND A1 EXCLUDES A13's CONDITION, THROUGH A13's OWN PREDICATE RATHER THAN A COPY OF IT. An
+ * `offline → retired` delta leaves `offline` and is not an arrival: A13 removes the desk, and a
+ * client that fired both played a character walking in to a desk it was deleting. § 6.2 hosts the
+ * exclusion on A1 — the row that yields — exactly as it hosts A3's exclusion of A4 (card#7341
+ * step 6), and `retiring` below is the one definition both rows read.
+ */
+const retiring = (before, after) => after.render_state === 'retired';
+
+const DELTA_ROWS = Object.freeze([
+    Object.freeze({ id: 'A1', changed: 'render_state', fires: (before, after) => before.render_state === 'offline' && after.render_state !== 'offline' && !retiring(before, after) }),
+    Object.freeze({ id: 'A2', changed: 'render_state', fires: (before, after) => after.render_state === 'offline' }),
+    Object.freeze({ id: 'A5', changed: 'action', fires: (before, after) => toolName(before) !== toolName(after) }),
+    Object.freeze({ id: 'A10', changed: 'subagents', fires: (before, after) => !sameMembers(callIds(before), callIds(after)) }),
+    Object.freeze({ id: 'A11', changed: 'badges', fires: (before, after) => gained(badges(before), badges(after)) }),
+    Object.freeze({ id: 'A12', changed: 'context', fires: () => true }),
+    Object.freeze({ id: 'A13', changed: 'render_state', fires: retiring }),
+]);
+
+/** The `changed[]` member each delta-driven row is gated on — read by the closed-set assertions. */
+export const DELTA_ROW_DRIVERS = Object.freeze(Object.fromEntries(DELTA_ROWS.map((r) => [r.id, r.changed])));
+
+/** § 11's literal `cause` for exit (3): § 2.3 row 5's condition drew the empty chair. */
+export const UNCONFIRMED = 'unconfirmed';
+
+/** § 11's literal `cause` for exit (4) and for an A18 line's (`lines()`): § 9 F6/F7 stilled the floor. */
+export const STILLED = 'stilled';
+
+/**
+ * The `cause` of one desk episode's `left` row — `docs/design/FLOOR.md § 11`'s precedence, which
+ * owns the rule, asked in its order: (1), (2a), (3), (2b), (4). `open` is the episode being left;
+ * `conditions` is `held()`'s parameter of that name.
+ *
+ * ⛔ THE OBJECT IS ASKED ABOUT UNDER THE PREVIOUS RENDER'S CONDITIONS, which is what `prior` is. An
+ * object held unchanged since that render draws exactly what that render drew — the episode, still
+ * open — so (2a) and (2b) never fire on it and a literal names the exit; an object applied since
+ * then that draws another row (or none) is (2a) even where a literal also changed, and one that
+ * changes only `motion` yields to (3) and is named ahead of (4).
+ *
+ * ⚠ THE LAST `null` IS NO STEP APPLYING — a render § 11 says ends no episode. Nothing reaches it
+ * while the held rendering is a function of the object, row 5's condition, the stilled floor and
+ * reduced motion; `null` is the log's mark of a row with nothing behind it, which AT-D3-1 reds on.
+ */
+function exitCause(k, open, seats, removed, conditions) {
+    if (!seats.has(k)) {
+        // (1): the removal's answer — the retired object's version, which both announcements carry
+        // (§ 3.5), or § 2.3 row 4's `snapshot`, which the protocol journals as the removal's cause.
+        return removed.get(k) ?? null;
+    }
+
+    const version = seats.get(k).state_version;
+    const { prior, unconfirmed, stilled } = conditions.get(k);
+
+    if (prior === null || prior.animation_id !== open.animation_id) {
+        return version; // (2a)
+    }
+
+    if (unconfirmed) {
+        return UNCONFIRMED; // (3)
+    }
+
+    if (prior.motion !== open.motion) {
+        return version; // (2b)
+    }
+
+    if (stilled) {
+        return STILLED; // (4)
+    }
+
+    return null;
+}
+
+export class AnimationSet {
+    #log;
+
+    #reduce;
+
+    /** key → the open `held` episode: `{ episode_id, animation_id, motion }`. */
+    #episodes = new Map();
+
+    /**
+     * `install_id/thread_ref` → the open A18 episode: `{ episode_id, thread_ref, motion }`. § 5.7
+     * makes the ref the thread's identity; `lines()` says why the install is in the key.
+     */
+    #lines = new Map();
+
+    /**
+     * @param {object} log  `wire/animation-log.js`'s `createAnimationLog()` — the one instrument
+     *                      every row below is written through
+     * @param {{reduce?: boolean}} [options]  § 6.4's condition, as a page reads it from
+     *                      `prefers-reduced-motion`: a rendering, never a degradation
+     */
+    constructor(log, options = {}) {
+        this.#log = log;
+        this.#reduce = options.reduce === true;
+    }
+
+    /** Whether this set draws § 6.4's reduced-motion form of every row. */
+    get reduce() {
+        return this.#reduce;
+    }
+
+    /**
+     * § 6.1 consequence 3: the `edge` rows the wire messages the client has just handled fire.
+     *
+     * @param {Iterable<object>} journal `FleetClient#takeWire()`'s entries, in handling order
+     * @param {number} at § 2.4's corrected server-clock instant these rows are written at
+     */
+    edges(journal, at) {
+        for (const entry of journal) {
+            if (entry.t === HEARTBEAT) {
+                this.#heartbeat(at);
+
+                continue;
+            }
+
+            // § 6.2 A13's Driving fact names TWO messages — "`render_state == "retired"`, or the
+            // `seat.retired` message" — and the client may receive either first (§ 2.5). The delta is
+            // `DELTA_ROWS`' below; this is the message, and § 11's `cause` for it is the message type,
+            // as it is for the heartbeat's two rows. The protocol journals the SECOND announcement of
+            // one retirement as `discarded`, so one removal fires A13 once, in either arrival order.
+            if (entry.t === RETIRED) {
+                if (entry.outcome === 'applied') {
+                    this.#edge('A13', RETIRED, entry.install_id, entry.seat_id, at);
+                }
+
+                continue;
+            }
+
+            // § 6.5, and the whole of it: a row the client took from a snapshot, a resync or a
+            // per-seat fetch animates NOTHING, and neither does a delta it buffered or discarded
+            // — nor any message it did not apply, which is where a `room.map` falls (§ 2.5: "a
+            // map is a layout act and not a fleet event, so no § 6.2 row fires").
+            if (entry.t !== 'seat.delta' || entry.outcome !== 'applied') {
+                continue;
+            }
+
+            const changed = new Set(entry.changed);
+
+            for (const row of DELTA_ROWS) {
+                if (changed.has(row.changed) && row.fires(entry.before, entry.after)) {
+                    this.#edge(row.id, entry.state_version, entry.install_id, entry.seat_id, at);
+                }
+            }
+        }
+    }
+
+    /**
+     * § 11: A14 and A17 belong to no seat, so `install_id` and `seat_id` are both `null` on them
+     * and `cause` — the heartbeat itself — is the whole provenance of a row that claims nothing
+     * about any desk. One row per firing row per message RECEIVED, whatever the client did with
+     * the `fleet{}` that message carried: a heartbeat overtaken by a newer one still arrived, and
+     * a clock stopped on it would claim § 9 F1's feed-down condition on a live feed.
+     */
+    #heartbeat(at) {
+        for (const id of HEARTBEAT_ROWS) {
+            this.#edge(id, HEARTBEAT, null, null, at);
+        }
+    }
+
+    /**
+     * § 3.3's displacement: an arriving seat took an incumbent's slot, so the incumbent walks to
+     * its new one. `cause` is § 11's own answer for this row — the seat-set change, recorded as
+     * the ARRIVING seat's key — while the row itself names the desk that MOVED.
+     *
+     * ⚠ THE CALLER IS `floor/floor-screen.js` (card#7341 step 7), and it is the slot function's
+     * own answer rather than a diff of two renders: the screen re-assigns § 3.2's slots over the
+     * new seat set and compares each incumbent's slot with the one it held. This entry existed
+     * before that caller so that the step read § 6.4's form and § 11's `cause` off this set rather
+     * than minting a second answer.
+     */
+    displaced(installId, seatId, arrivingKey, at) {
+        this.#edge('A16', arrivingKey, installId, seatId, at);
+    }
+
+    /**
+     * § 6.2 A19: one envelope leaves the origin desk for EACH destination desk, so the caller calls
+     * this once per resolved destination — "a destination that does not resolve gets no envelope and
+     * no line, and the ones that do still get theirs". `cause` is § 11's forward contract for this
+     * row: the post's own `post_ref`.
+     */
+    envelope(installId, postRef, at) {
+        this.#edge('A19', postRef, installId, null, at);
+    }
+
+    /** § 6.2 A20: ONE ring per broadcast post, expanding from the origin desk it resolved to. */
+    broadcast(installId, postRef, at) {
+        this.#edge('A20', postRef, installId, null, at);
+    }
+
+    /**
+     * § 6.2 A18 over one room's rendered threads — the `held` class, entered and left exactly as a
+     * desk's held render is, and for the same reason: a line is held for as long as the thread the
+     * client holds says it is open with two endpoints that resolve.
+     *
+     * ⛔ THE EPISODE IS KEYED ON `thread_ref`, WHICH IS THE THREAD'S IDENTITY (§ 5.7): "two messages
+     * carrying it are one thread and not two", so a reopen replaces a close rather than opening a
+     * second line. The desk episodes above are keyed on a seat key and the two spaces never meet.
+     *
+     * ⛔ A LINE THAT STOPS RESOLVING ENDS ITS EPISODE, not only a closed one. § 6.2 A18's *Ends*
+     * cell names both — "when a `coord.thread` arrives whose lifecycle is `closed`, or when the
+     * resolved endpoints fall below two" — and a renderer that watched only the lifecycle would
+     * keep a line drawn between desks one of which no longer resolves.
+     *
+     * ⛔ AND A LINE WHOSE `motion` CHANGES IS LEFT AND ENTERED AGAIN, exactly as a desk's held render
+     * is (§ 11: an episode is one continuous run of one render). The rendering is the line's `held`,
+     * decided by the caller through `heldRendering()` as a desk's is by its desk render, so the row
+     * logged here and the line the scene draws are one answer. A line's `motion` depends on nothing
+     * but reduced motion, which is fixed for the page's life, and the stilled floor, which stays
+     * stilled once it is (§ 9 F6's recovery is a new page load) — so a line still drawn whose
+     * `motion` changed was stilled, and its exit is § 11's literal `stilled`: no `coord.thread` ended
+     * that hold. A line no longer drawn is asked first, as (2a) is asked before (4) for a desk: a
+     * thread that closed, or whose endpoints fell below two, ended the hold whatever else the render
+     * did, and its exit names the `thread_ref`.
+     *
+     * @param {list<{thread_ref: string, install_id: string, animations: list<string>, held: ?object}>}
+     *        threads one room's rendered threads, as `coord/coord-model.js` returns them, each with
+     *        the `held` rendering `heldRendering('A18', …)` gave it (`null` where it draws no A18)
+     * @param {number} at § 2.4's corrected server-clock instant
+     */
+    lines(threads, at) {
+        // ⛔ THE EPISODE KEY IS `(install_id, thread_ref)` AND THE `cause` IS THE REF ALONE. A
+        // thread_ref is a coordination repository's own issue reference (§ 5.7), so two installs
+        // posting into one thread deliver two objects carrying one ref — and each is drawn in its
+        // own room (clause 3), which is two lines and not one. § 11 fixes what the ROW carries and
+        // says nothing about what an implementation keys its own bookkeeping on.
+        const drawn = new Map(threads
+            .filter((thread) => thread.animations.includes('A18'))
+            .map((thread) => [`${thread.install_id}/${thread.thread_ref}`, thread]));
+
+        for (const [key, open] of this.#lines) {
+            const want = drawn.get(key) ?? null;
+
+            if (want === null) {
+                // § 11: the exit row carries the `thread_ref` of the `coord.thread` that ENDED the
+                // hold — which is this thread's own, because a thread is its `thread_ref`.
+                this.#log.leaveHeld(open.episode_id, { cause: open.thread_ref, at });
+                this.#lines.delete(key);
+            } else if (want.held.motion !== open.motion) {
+                this.#log.leaveHeld(open.episode_id, { cause: STILLED, at });
+                this.#lines.delete(key);
+            }
+        }
+
+        for (const [key, thread] of drawn) {
+            if (this.#lines.has(key)) {
+                continue;
+            }
+
+            const episodeId = this.#log.enterHeld({
+                animation_id: 'A18',
+                cause: thread.thread_ref,
+                install_id: thread.install_id,
+                seat_id: null,
+                motion: thread.held.motion,
+                at,
+            });
+
+            this.#lines.set(key, { episode_id: episodeId, thread_ref: thread.thread_ref, motion: thread.held.motion });
+        }
+    }
+
+    /** Every `edge` row goes through here, so `motion` has one answer for the whole class. */
+    #edge(animationId, cause, installId, seatId, at) {
+        this.#log.edge({
+            animation_id: animationId,
+            cause,
+            install_id: installId,
+            seat_id: seatId,
+            motion: motionOf(animationId, true, this.#reduce),
+            at,
+        });
+    }
+
+    /**
+     * § 6.2's `held` class over one frame: enter every desk's held render against the object that
+     * holds it, and leave the ones whose hold has ended with the `cause` § 11's precedence gives.
+     *
+     * ⛔ AN EPISODE IS ONE CONTINUOUS RUN OF ONE RENDER ON ONE SEAT (§ 11). A change of the held
+     * row OR of whether motion is drawn leaves one episode and enters another, because two rows
+     * identical in every field cannot say which states a desk held or for how long — AT-D3-5 reads
+     * exactly that to see a lagged desk entered and drawn static.
+     *
+     * ⚠ THIS MOVED HERE FROM `desk/desk-floor.js` AT STEP 6 AND IS NOT A SECOND COPY OF IT. Step 5
+     * entered and left each desk's held render in the log because the desk floor was the only
+     * renderer there was; the set is what owns a § 6.2 row, so the floor now delegates and holds
+     * no episode state of its own.
+     *
+     * @param {Record<string, object>} desks the frame's desks, keyed as the client keys its seats
+     * @param {Map<string, object>} seats the held seat objects the frame was derived from
+     * @param {number} at § 2.4's corrected server-clock instant
+     * @param {Map<string, *>} removed key → the `cause` the protocol journalled when it REMOVED the
+     *        seat (`seat.removed`, Appendix B step 10): a removed seat has no held object left to read
+     *        a version off, so the version that ended its hold travels with the removal instead
+     * @param {Map<string, {prior: ?object, unconfirmed: boolean, stilled: boolean}>} conditions
+     *        key → what § 11's precedence compares with the render before this one, for each seat
+     *        held now: `prior`, the held rendering the object held NOW draws with every client
+     *        condition at the value it had in the previous render (the desk floor derives it, because
+     *        the desk render is its module and not this one); `unconfirmed`, whether § 2.3 row 5's
+     *        condition holds in this render and did not in the previous one; and `stilled`, the same
+     *        for § 9 F6's stilled floor
+     */
+    held(desks, seats, at, removed, conditions) {
+        for (const [k, open] of this.#episodes) {
+            const want = desks[k]?.held ?? null;
+
+            if (want === null || want.animation_id !== open.animation_id || want.motion !== open.motion) {
+                this.#log.leaveHeld(open.episode_id, { cause: exitCause(k, open, seats, removed, conditions), at });
+                this.#episodes.delete(k);
+            }
+        }
+
+        for (const [k, desk] of Object.entries(desks)) {
+            if (desk.held === null || this.#episodes.has(k)) {
+                continue;
+            }
+
+            const episodeId = this.#log.enterHeld({
+                animation_id: desk.held.animation_id,
+                cause: seats.get(k).state_version,
+                install_id: desk.install_id,
+                seat_id: desk.seat_id,
+                motion: desk.held.motion,
+                at,
+            });
+
+            this.#episodes.set(k, {
+                episode_id: episodeId,
+                animation_id: desk.held.animation_id,
+                motion: desk.held.motion,
+            });
+        }
+    }
+}

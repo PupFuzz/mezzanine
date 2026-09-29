@@ -36,8 +36,11 @@ THE DATABASE IS MARIADB — § 6.2'S TEST DATABASE, REBUILT ON EVERY RUN. SQLite
 configuration (`docs/PLAN.md` D-15; card#9328), so this harness runs on the store the PHPUnit suite
 runs on: Laravel's `mysql` connection, pointed at `mezzanine_test` (`docs/design/FLEET-STATE.md
 § 6.2`). Host, port, user and password are NOT chosen here — they come from the caller's
-environment or from `server/.env`, exactly as they do for `php artisan test`, so the account needs
-the rights on `mezzanine_test` the suite already needs.
+environment or from `server/.env`, resolved exactly as Laravel resolves them for `php artisan test`,
+so the account needs the rights on `mezzanine_test` the suite already needs. What this harness does
+NOT share is the PHPUnit suite's refusal to start at all unless that file is there AND readable by
+the user running it (card#9754): that guard lives in `server/tests/bootstrap.php`, which only PHPUnit
+loads, so exported credentials alone carry a run of this harness.
 ⛔ `migrate:fresh` DROPS EVERY TABLE in that database at the start of each run, so never run this
 while `composer test` is running against the same server. Before that step the harness reads the
 RESOLVED connection back and refuses unless it is `mysql` → `mezzanine_test` on a server whose

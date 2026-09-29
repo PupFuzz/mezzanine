@@ -1,0 +1,440 @@
+{
+  "snapshot": {
+    "api_version": 1,
+    "server_time": "2026-08-23T14:23:14.400Z",
+    "fleet": {
+      "db": "ok",
+      "fold": "ok",
+      "sweep": "ok",
+      "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+      "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+      "max_fold_lag_ms": 117,
+      "seats_total": 2,
+      "seats_live": 1
+    },
+    "installs": [
+      {
+        "install_id": "aimla",
+        "seats": [
+          {
+            "install_id": "aimla",
+            "seat_id": "nulls-a",
+            "state_version": 11,
+            "render_state": "idle",
+            "link_state": "live",
+            "activity_state": "idle",
+            "unknown_reason": null,
+            "api_error_type": null,
+            "blocked_since": null,
+            "action": null,
+            "open_calls": 0,
+            "open_turn": false,
+            "subagents": [],
+            "subagents_open": 0,
+            "task": null,
+            "context": null,
+            "model_label": null,
+            "session": null,
+            "activity": {
+              "last_event_time": "2026-08-23T14:21:47.300Z",
+              "last_received_at": "2026-08-23T14:21:51.010Z",
+              "last_kind": "turn.end"
+            },
+            "delivery": {
+              "last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "last_heartbeat_at": null,
+              "no_data_since": null,
+              "clock_skew_ms": 412,
+              "spool_lag_events": 0,
+              "oldest_unsent_age_s": null,
+              "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+              "last_seq": 48211
+            },
+            "badges": [],
+            "badges_since": null,
+            "enabled": null,
+            "protocol_agent_name": null,
+            "protocol_agent_name_check": null,
+            "reporter": {
+              "version": "0.1.0",
+              "platform": "linux",
+              "uptime_s": 401150,
+              "selftest_failed": []
+            },
+            "retired": null,
+            "derivation": {
+              "computed_at": "2026-08-23T14:23:14.318Z",
+              "fold_lag_ms": 117,
+              "cursor_event_id": 9912837
+            }
+          },
+          {
+            "install_id": "aimla",
+            "seat_id": "nulls-b",
+            "state_version": 1,
+            "render_state": "offline",
+            "link_state": "offline",
+            "activity_state": "unknown",
+            "unknown_reason": "no_data_yet",
+            "api_error_type": null,
+            "blocked_since": null,
+            "action": {
+              "call_id": "01K3TC1A2B3C4D5E6F7G8H9J0K",
+              "tool_name": "Bash",
+              "descriptor": null,
+              "started_at": "2026-08-23T14:22:50.000Z",
+              "started_received_at": "2026-08-23T14:22:54.100Z",
+              "agent_scope": null,
+              "parent_call_id": null
+            },
+            "open_calls": 1,
+            "open_turn": true,
+            "subagents": [
+              {
+                "call_id": "01K3TC2B3C4D5E6F7G8H9J0K1M",
+                "title": null,
+                "subagent_type": null,
+                "started_at": "2026-08-23T14:22:51.000Z"
+              }
+            ],
+            "subagents_open": 1,
+            "task": {
+              "title": "ingest endpoint",
+              "source": "telemetry",
+              "ref": null,
+              "as_of": "2026-08-23T14:05:00.000Z",
+              "degraded": false
+            },
+            "context": {
+              "used_pct": 12.5,
+              "used_tokens": null,
+              "total_tokens": null,
+              "source": "computed",
+              "sampled_at": "2026-08-23T14:20:00.310Z",
+              "sampled_received_at": "2026-08-23T14:20:04.880Z"
+            },
+            "model_label": "claude-opus-5",
+            "session": {
+              "session_id": "7d8e9f0a-1b2c-4d3e-4f5a-6b7c8d9e0f1a",
+              "started_at": null,
+              "source": null,
+              "project_label": null,
+              "harness_label": null
+            },
+            "activity": {
+              "last_event_time": null,
+              "last_received_at": null,
+              "last_kind": null
+            },
+            "delivery": {
+              "last_receipt_at": null,
+              "last_heartbeat_at": null,
+              "no_data_since": null,
+              "clock_skew_ms": null,
+              "spool_lag_events": null,
+              "oldest_unsent_age_s": null,
+              "seq_epoch": null,
+              "last_seq": null
+            },
+            "badges": [],
+            "badges_since": null,
+            "enabled": null,
+            "protocol_agent_name": null,
+            "protocol_agent_name_check": null,
+            "reporter": {
+              "version": null,
+              "platform": null,
+              "uptime_s": null,
+              "selftest_failed": []
+            },
+            "retired": null,
+            "derivation": {
+              "computed_at": "2026-08-23T14:23:14.318Z",
+              "fold_lag_ms": 117,
+              "cursor_event_id": 9912837
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "runs": {
+    "nulls": {
+      "note": "FLOOR § 11's fx-nulls: nulls-a (live, idle — a desk that draws a character) with every nullable container null, and nulls-b (the provisioned-never-reported seat, offline) with every container present and every nullable member under it null. Together they cover the 39 members D2 § 8.2.1 marks nullable; neither covers them alone.",
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 2,
+                "seats_live": 1
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "nulls-a",
+                      "state_version": 11,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": null,
+                      "context": null,
+                      "model_label": null,
+                      "session": null,
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": null,
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": null,
+                      "protocol_agent_name": null,
+                      "protocol_agent_name_check": null,
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "nulls-b",
+                      "state_version": 1,
+                      "render_state": "offline",
+                      "link_state": "offline",
+                      "activity_state": "unknown",
+                      "unknown_reason": "no_data_yet",
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TC1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Bash",
+                        "descriptor": null,
+                        "started_at": "2026-08-23T14:22:50.000Z",
+                        "started_received_at": "2026-08-23T14:22:54.100Z",
+                        "agent_scope": null,
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [
+                        {
+                          "call_id": "01K3TC2B3C4D5E6F7G8H9J0K1M",
+                          "title": null,
+                          "subagent_type": null,
+                          "started_at": "2026-08-23T14:22:51.000Z"
+                        }
+                      ],
+                      "subagents_open": 1,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "telemetry",
+                        "ref": null,
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 12.5,
+                        "used_tokens": null,
+                        "total_tokens": null,
+                        "source": "computed",
+                        "sampled_at": "2026-08-23T14:20:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:20:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "7d8e9f0a-1b2c-4d3e-4f5a-6b7c8d9e0f1a",
+                        "started_at": null,
+                        "source": null,
+                        "project_label": null,
+                        "harness_label": null
+                      },
+                      "activity": {
+                        "last_event_time": null,
+                        "last_received_at": null,
+                        "last_kind": null
+                      },
+                      "delivery": {
+                        "last_receipt_at": null,
+                        "last_heartbeat_at": null,
+                        "no_data_since": null,
+                        "clock_skew_ms": null,
+                        "spool_lag_events": null,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": null,
+                        "last_seq": null
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": null,
+                      "protocol_agent_name": null,
+                      "protocol_agent_name_check": null,
+                      "reporter": {
+                        "version": null,
+                        "platform": null,
+                        "uptime_s": null,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "messages": [],
+      "until_ms": 2000,
+      "desk_floor": true
+    },
+    "real_zero": {
+      "note": "AT-D3-14's discriminating control: a seat whose context sample MEASURED 0.0 % — a real zero, which renders a bar at 0 % where a null renders none.",
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 1,
+                "seats_live": 1
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "real-zero",
+                      "state_version": 21,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 0.0,
+                        "used_tokens": 0,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:20:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:20:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "8e9f0a1b-2c3d-4e4f-5a6b-7c8d9e0f1a2b",
+                        "started_at": "2026-08-23T11:00:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "zero",
+                      "protocol_agent_name_check": "checked",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "messages": [],
+      "until_ms": 1000,
+      "desk_floor": true
+    }
+  }
+}

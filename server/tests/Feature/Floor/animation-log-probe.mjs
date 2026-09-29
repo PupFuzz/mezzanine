@@ -39,7 +39,9 @@ const exported = await import(pathToFileURL(join(dir, 'animation-log.js')).href)
 const { createAnimationLog } = exported;
 
 const payload = JSON.parse(readFileSync(0, 'utf8') || '{}');
-const log = createAnimationLog();
+// `retention` is § 11's optional bound, passed only when a scenario names one — every other
+// scenario constructs the log exactly as the harness and the acceptance tests do, with none.
+const log = 'retention' in payload ? createAnimationLog(payload.retention) : createAnimationLog();
 const results = [];
 
 for (const step of payload.ops ?? []) {

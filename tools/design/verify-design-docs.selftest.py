@@ -21,7 +21,12 @@ question this file is asking -- does the verdict RESPOND to this defect -- and k
 while the document is broken.
 
 WHAT IT DELIBERATELY DOES NOT ASSERT.  Not coverage: the plants below prove the guards they target
-live -- never that the rest of the guard classes those verifiers carry do.  How many plants, over
+live -- never that the rest of the guard classes those verifiers carry do.  And not the GUARD: the
+differential attributes a red to the plant, never to the leg the plant's comment names -- a plant
+that a broader leg of the same verifier refuses anyway reds whether or not the narrower leg works,
+so it is the author's job to plant where only the named leg can catch it, and the harness cannot
+tell when that was not done (PR #232 round 3, F1: `nonascii-digit` on a `[1-9]` digit red with and
+without the `re.ASCII` it stood for).  How many plants, over
 how many verifiers, in which kinds, is counted at run time and printed on the last line rather than
 written here, so the sentence cannot drift from the list.  Two plants can share one guard class
 (both G3 equalities do) without either being redundant: they discriminate opposite
@@ -99,6 +104,35 @@ because a gate can only be proven on a defect of its own class:
                replayed a fixture and left the harness out of its `Reads:` clause stood below the
                step that builds the harness, and G5 could not see it.  The span is read out of the
                document, so this kind carries nothing it deletes.
+  `overlap` -- move the anchored rect's `x` onto the span of the rect before it (`x + width - 1`
+               of that rect, both read out of the file), which is the class "two map objects the
+               gate holds pairwise disjoint share a pixel".  PR #227 round 2 (card#7341 rows
+               14-16) is why this exists: G8's plant was a `bump` of the first object's width,
+               which reds only while the two objects touch, and the shipped default already
+               carries a gutter between two of its objects -- so a re-authored default with a
+               gutter everywhere would have failed this harness on a correct map.  Moving the
+               neighbour onto the span reds at any gutter, and the plant still stores no figure.
+  `shrink`  -- -1 to a figure the verifier holds AT LEAST some other figure, which is the class "a
+               stored size fell under the bound the gate reads it against".  card#7341 row 14's
+               slice B is why this exists: G8 holds every `desks` object of the shipped default at
+               least the furniture box, and a `bump` there would widen an object that is already
+               large enough — the defect is the object getting SMALLER, by one pixel, which is the
+               boundary the check states.
+  `nonascii-digit`
+            -- replace the anchored figure's LAST digit with its Arabic-Indic form (U+0660 + d), which
+               is the class "a figure the gate reads with `\\d` is not the ASCII digit its other reader
+               requires".  PR #232 round 2 (MINOR-B) is why this exists: G8 compiled `FurnitureBox`'s
+               PCRE with Python's Unicode `\\d`, so `4٤0` matched, int()'d to 440 and passed the gate
+               while PHP's ASCII `\\d` refused the same file.  The LAST digit, because the shape's
+               first is `[1-9]`, ASCII-only in both engines: a plant there reds with or without the
+               binding and discriminates nothing (round 3, F1).
+  `php-escape`
+            -- insert `\\\\` (a PHP single-quoted literal's escape for one backslash) into the anchored
+               PCRE, which is the class "the literal's bytes are not the pattern's, and a translation
+               that reads the literal compiles a pattern PHP never ran".  PR #232 round 3 (F2) is why
+               this exists: G8 reads `FurnitureBox::DECLARATION` out of the PHP source and refuses the
+               two escapes it cannot pass through byte-for-byte, and until this plant nothing had seen
+               that control fire.
   `instrument`
             -- replace the bold artifact name in the anchored span with the first gate Appendix B's
                Artifact cells name (a bold name whose head noun is `gate` / `gates`), which is the
@@ -114,6 +148,13 @@ because a gate can only be proven on a defect of its own class:
             -- replace the first hyphen of the anchored name with an underscore, which is the class
                "a name was malformed into a shape the gate's token does not read".  Also #164 round 1:
                G5's undeclared-fixture control read only `fx-` names, so `fx_gap` was invisible to it.
+  `embolden`
+            -- wrap the anchored span in `**`, which is the class "a status marker was written in
+               the form a parse reads as a name".  card#7341 Q9 is why this exists: G5 registers
+               every bold span in an Appendix B Artifact cell as an artifact, so three bold
+               `✅ LANDED` markers each minted a phantom artifact, and a fourth row was written
+               unbolded to dodge it -- two forms of one marker.  The plant emboldens a marker
+               already in the one form, so what reds is the emphasis alone.
 
 TWO VERDICTS.  `PLANTS` must RED, as described above.  `HOLDS` must NOT: the mutant must carry no
 line containing the named substring that the control lacks -- the same differential, pointed the
@@ -533,6 +574,202 @@ PLANTS = [
         "an instrument covers only a test that the Appendix B row building it also gates",
     ),
     (
+        # card#7341 Q9, G5's marker leg.  Step 3's row carries its landed marker in the one form
+        # (unbolded, at the head of the Artifact cell); emboldening it is the shape rows 11-13 had,
+        # which G5 read as three artifacts named after a date.  The anchor pins the row number and
+        # the marker's shape, never its date or card, so a later marker edit moves the plant with it.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\n\| 3 \| )(✅ landed \d{4}-\d{2}-\d{2} \(card#\d+[^()\n]*\))( — )",
+        "embolden",
+        "step 3's landed marker in Appendix B, written bold, which G5 must refuse as a phantom "
+        "artifact rather than parse into the artifact map (card#7341 Q9)",
+        "carries a BOLD status marker",
+    ),
+    (
+        # card#7341's rows 14-16 round (PR #227 round 1, F11), G5's Order-cell leg.  A suffixed row
+        # (`8a`) is one the ordering rule cannot compare, and before this leg the parse skipped it
+        # silently -- its artifacts unregistered, its gates unenforced, the run reporting clean.
+        # The plant suffixes row 14's step.  The substring is the leg's own message: the mutant
+        # also reds the ordinary "gated by no Appendix B row" path for the tests row 14 gates, and
+        # a red from that path alone would not satisfy it.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        # Anchored past the row's landing marker (slice C, 2026-09-25), which now heads the cell.
+        r"(\n\| )(14)( \| ✅ landed [^|]*? — the \*\*room drawing\*\*)",
+        "rename",
+        "Appendix B row 14's Order cell suffixed to a non-integer, which G5 must refuse as a row the "
+        "ordering rule cannot see rather than skip (card#7341 rows 14-16, PR #227 round 1 F11)",
+        "has an Order cell that is not an integer step",
+    ),
+    (
+        # card#7341's rows 14-16 round (PR #227 round 1, F1), G8's disjoint-slots leg.  Section 10.3
+        # makes each `desks` object the furniture box and row 14 draws every desk inside it, so the
+        # operator's no-overlap ruling rests on the map's objects being pairwise disjoint; this leg
+        # holds the shipped default to that.  The plant moves the SECOND object's `x` onto the
+        # first's span -- to `x + width - 1` of the first, both read out of the file -- so the two
+        # share exactly one pixel column, which is the half-open boundary the check states.
+        # ⚠ It is an `overlap` plant and not a `bump` of the first object's width (PR #227 round 2,
+        # N5): a one-pixel widening reds only while the two objects TOUCH, and the shipped default
+        # already carries a gutter between its sixth and seventh objects, so a re-authoring that
+        # parted the first two would have turned that plant into a harness failure on a correct
+        # map.  Moving the neighbour onto the span reds at any gutter.  The anchor pins the second
+        # `x` after the layer's name and not its value, so a re-authored default moves the plant.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"desks\"[\s\S]*?\"x\":\d+[\s\S]*?\"x\":)(\d+)(,)",
+        "overlap",
+        "the shipped default's second `desks` object moved onto the first's span so that the two "
+        "share a pixel column, which G8 must refuse as two slots sharing a pixel (card#7341 rows "
+        "14-16, PR #227 round 1 F1, round 2 N5)",
+        "share a pixel",
+    ),
+    (
+        # card#7341 row 14, slice B — G8's furniture-box leg (G8e).  Section 10.3 states the box at
+        # the cap as a sentence and `resources/floor/furniture-box.js` declares it as data; G4 binds
+        # section 12's row to the sentence, and this leg binds the sentence to the file.  Bumping the
+        # sentence's width is the class "the document's copy drifted from the one source".
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(The furniture box at the cap is )(\d+)( px wide)",
+        "bump",
+        "§ 10.3's stated furniture-box width, which G8 holds against the one declaration line of "
+        "`resources/floor/furniture-box.js` (card#7341 row 14, slice B)",
+        "states the furniture box at the cap is",
+    ),
+    (
+        # The same leg's second sentence: the shipped default's pixel size, which section 12's
+        # viewport arithmetic is restated on.  Bumping it is the class "the map was re-authored and
+        # the prose was not" — the class the 1,608 px figure sat in for a revision.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(The shipped default's grid is )([\d,]+)( px wide)",
+        "bump",
+        "§ 10.3's stated pixel width of the shipped default, which G8 holds against `width × "
+        "tilewidth` read out of `resources/floor/default.tmj` (card#7341 row 14, slice B)",
+        "states the shipped default's grid is",
+    ),
+    (
+        # The same leg over the FILE: every `desks` object of the shipped default at least the box.
+        # The first object's width is shrunk by one pixel — the boundary the check states — which is
+        # the state every object of the default shipped in until slice B, here planted on one.  The
+        # anchor pins the first `width` after the layer's name and not its value, so a re-authored
+        # default moves the plant.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"desks\"[\s\S]*?\"width\":)(\d+)(,)",
+        "shrink",
+        "the shipped default's first `desks` object one pixel narrower than the furniture box, which "
+        "G8 must refuse as an object smaller than the box (card#7341 row 14, slice B)",
+        "smaller than the furniture box at the cap",
+    ),
+    (
+        # The same check's OTHER axis (PR #232 round 1, MINOR-7): a `≥ box` test is two comparisons,
+        # and a plant on the width alone would pass a check that had dropped the height.  The first
+        # `height` after the layer's name is the first object's, in Tiled's own key order.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"desks\"[\s\S]*?\"height\":)(\d+)(,)",
+        "shrink",
+        "the shipped default's first `desks` object one pixel shorter than the furniture box, which "
+        "G8 must refuse as an object smaller than the box on its height (PR #232 round 1, MINOR-7)",
+        "smaller than the furniture box at the cap",
+    ),
+    (
+        # PR #232 round 2, MINOR-B — G8e reads the box with the DECLARATION's `\d` bound to ASCII, as
+        # PHP's is.  The plant's digit is the width's LAST one, and the position is the whole plant
+        # (round 3, F1): the DECLARATION's first digit is `[1-9]`, an ASCII-only range in either
+        # engine, so a plant on it reds with or without `re.ASCII` and proves nothing about the
+        # binding — while a trailing Arabic-Indic digit is matched by Python's Unicode `\d`, int()'d
+        # to the ASCII figure and passed, and is refused only under `re.ASCII`.  Seen both ways in
+        # round 4: with `re.ASCII` removed from G8e this plant runs GREEN and the harness reds on it.
+        "verify-floor.py",
+        "resources/floor/furniture-box.js",
+        r"(export const FURNITURE_BOX = Object\.freeze\(\{ width: )(\d+)(, height:)",
+        "nonascii-digit",
+        "the furniture box's width written with an Arabic-Indic digit, which G8 must refuse as a box "
+        "declared in no admitted shape rather than read as the ASCII figure (PR #232 round 2, MINOR-B)",
+        "times in the one shape",
+    ),
+    (
+        # PR #232 round 3, F2 — G8e's control over the shape it TRANSLATES.  The DECLARATION is a PHP
+        # single-quoted literal, and `\\` is one of the two escapes whose bytes are not the pattern's;
+        # the control refuses it by name rather than compile a pattern that is not PHP's.  The anchor
+        # pins the constant's name and the pattern's first token, so a re-authored pattern moves it.
+        "verify-floor.py",
+        "server/app/Floor/FurnitureBox.php",
+        r"(private const DECLARATION = '/\^export const FURNITURE_BOX = )(Object)(\\\.freeze)",
+        "php-escape",
+        "the `\\\\` escape written into `FurnitureBox::DECLARATION`, which G8's control must refuse as a "
+        "literal whose bytes are not the PCRE's rather than translate (PR #232 round 3, F2)",
+        "G8 CONTROL: `FurnitureBox::DECLARATION` is",
+    ),
+    (
+        # PR #232 round 1, MAJOR-2 — G8f, section 12's viewport arithmetic.  Three figures the cell
+        # states are each recomputed from the map, the box and the viewport floor; each plant bumps
+        # one so the other two cannot cover for it.  The row count first.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| Floor viewport floor \|[^\n]*?\*\*)(\d+)( rows? of \d+ furniture boxes:)",
+        "bump",
+        "the row count the viewport cell states, which G8 re-derives from the shipped default's `desks` "
+        "objects grouped by `y` (PR #232 round 1, MAJOR-2)",
+        "viewport cell states rows =",
+    ),
+    (
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| Floor viewport floor \|[^\n]*?furniture boxes: \d+ × [\d,]+ px = )([\d,]+)( px)",
+        "bump",
+        "the desk-across product the viewport cell states, which G8 re-derives as boxes per row × the "
+        "furniture box's width (PR #232 round 1, MAJOR-2)",
+        "viewport cell states desk across =",
+    ),
+    (
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| Floor viewport floor \|[^\n]*?fit zoom is \*\*[\d,]+ ÷ [\d,]+ ≈ 0\.)(\d+)(\*\*)",
+        "bump",
+        "the fit zoom the viewport cell states, which G8 re-derives as the viewport floor over the shipped "
+        "default's grid width (PR #232 round 1, MAJOR-2)",
+        "states a fit zoom of",
+    ),
+    (
+        # PR #234 round 1, F4 — G8g, the worked floors laid at the furniture box.  § 4.6's office row
+        # restates section 12's box; bumping its height is the class "the box moved and a worked
+        # example's copy of it did not".  The anchor pins the words around the figure, never its value.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\)'s furniture box, [\d,]+ × )([\d,]+)( px \(a room holds)",
+        "bump",
+        "the furniture box's height as § 4.6's office row restates it, which G8g holds to the box G8e "
+        "reads out of its file (PR #234 round 1, F4)",
+        "G8g: section 4.6's office floor states the office's box",
+    ),
+    (
+        # PR #234 round 1, F2 — the same leg over D2 § 8.7's worked room map: its `desks` object one
+        # pixel shorter than the box, the boundary the check states, which is the class the 116 × 64
+        # object sat in until round 1 re-derived it.
+        "verify-floor.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\"objects\": \[ \{ \"id\": 1, [^}]*?\"height\": )(\d+)( \})",
+        "shrink",
+        "D2 § 8.7's worked room map's `desks` object one pixel shorter than the furniture box, which G8g "
+        "must refuse as a document the console would refuse (PR #234 round 1, F2)",
+        "G8g: D2 § 8.7's worked room map has",
+    ),
+    (
+        # The same leg's spacing claim: § 8.7 says why its planned rooms may sit D px apart, and the
+        # worked layout places them; the prose drifting from the JSON is the class.
+        "verify-floor.py",
+        "docs/design/FLEET-STATE.md",
+        r"(which is why they may sit )([\d,]+)( px apart)",
+        "bump",
+        "the spacing D2 § 8.7 states for its worked floor's authored rooms, which G8g holds to the "
+        "origins its worked `GET /api/building` document places them at (PR #234 round 1, F4)",
+        "G8g: D2 § 8.7 says its planned rooms sit",
+    ),
+    (
         # card#7341 step 3, G13.  § 2.3 row 5 makes a HELD seat the client cannot confirm render the
         # empty chair, and `idle`'s Never cell forbade exactly that in absolute terms.  The drop
         # takes the QUALIFICATION and leaves the explanation that follows it — which is the shape a
@@ -625,6 +862,9 @@ HOLDS = [
 # Each reads group(2) out of the document and transforms it; none carries a value of its own.
 MUTATIONS = {
     "bump": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) + 1) + m.group(3),
+    "shrink": lambda m: m.group(1) + str(int(m.group(2).replace(",", "")) - 1) + m.group(3),
+    "nonascii-digit": lambda m: m.group(1) + m.group(2)[:-1] + chr(0x0660 + int(m.group(2)[-1])) + m.group(3),
+    "php-escape": lambda m: m.group(1) + "\\\\" + m.group(2) + m.group(3),
     "bold-bump": lambda m: (m.group(1) + "**"
                             + re.sub(r"^\d+", lambda d: str(int(d.group(0)) + 1), m.group(2)) + "**"
                             + m.group(3)),
@@ -639,6 +879,12 @@ MUTATIONS = {
     "noun": lambda m: (m.group(1) + m.group(2) + ", and keeps a count of "
                        + re.search(r"`[a-z_]+`", m.group(2)).group(0) + m.group(3)),
     "drop": lambda m: m.group(1) + m.group(3),
+    # The previous object's `x` and `width` are the first of each after the layer's name in
+    # group(1); `x + width - 1` is the last pixel column of its half-open span.
+    "overlap": lambda m: (m.group(1)
+                          + str(int(re.search(r'"x":(\d+)', m.group(1)).group(1))
+                                + int(re.search(r'"width":(\d+)', m.group(1)).group(1)) - 1)
+                          + m.group(3)),
     "instrument": lambda m: (m.group(1)
                              + re.sub(r"\*\*[^*]+\*\*", lambda _: "the **" + re.search(
                                  r"^\| \d+ \|[^|\n]*?\*\*([^*\n]*\bgates?)\*\*",
@@ -646,6 +892,7 @@ MUTATIONS = {
                                  re.M).group(1) + "**", m.group(2), count=1)
                              + m.group(3)),
     "separator": lambda m: m.group(1) + m.group(2).replace("-", "_", 1) + m.group(3),
+    "embolden": lambda m: m.group(1) + "**" + m.group(2) + "**" + m.group(3),
 }
 
 # The spawning kinds.  Each reads the column, its width and its table out of the anchored migration
@@ -888,7 +1135,8 @@ if failures:
     sys.exit(1)
 
 print(f"ALL PLANTS CAUGHT — {len(PLANTS)} plants over {len({p[0] for p in PLANTS})} verifiers, "
-       f"each seen to red on a defect of the class its guard exists for "
-       f"({', '.join(sorted({p[3] for p in PLANTS}))}), each red attributable to its plant; "
+       f"each seen to red on a defect of a named class "
+       f"({', '.join(sorted({p[3] for p in PLANTS}))}), each red attributable to its plant and "
+       f"to the guard it names only where the plant is that guard's own discriminant; "
        f"{len(HOLDS)} holds ({', '.join(sorted({p[3] for p in HOLDS}))}), each correct form "
        f"planted and seen NOT to red")

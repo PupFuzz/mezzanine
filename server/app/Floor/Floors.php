@@ -71,6 +71,25 @@ final class Floors
         return DB::table('floors')->orderBy('install_id')->get(['install_id', 'map_version', 'updated_at']);
     }
 
+    /**
+     * § 14 item 28(1)(iii): every authored room's CURRENT revision's recorded box — the
+     * `FurnitureBox::signature()` it was validated against, or `null` for a revision stored before
+     * the console recorded one (validated against no recorded box, so never assumed passing).
+     *
+     * @return Collection<string, string|null> keyed by `install_id`
+     */
+    public static function validatedAgainst(): Collection
+    {
+        return DB::table('floors')
+            ->join('authored_revisions', function ($join) {
+                $join->on('authored_revisions.subject', '=', 'floors.install_id')
+                    ->on('authored_revisions.revision', '=', 'floors.map_version')
+                    ->where('authored_revisions.kind', '=', Revisions::ROOM_MAP);
+            })
+            ->orderBy('floors.install_id')
+            ->pluck('authored_revisions.furniture_box', 'floors.install_id');
+    }
+
     public static function forInstall(string $installId): ?object
     {
         return DB::table('floors')->where('install_id', $installId)->first();
@@ -79,7 +98,7 @@ final class Floors
     /**
      * Author or replace one room's map. Answers the new `map_version`.
      *
-     * @throws InvalidFloorMap on a byte-identical no-op
+     * @throws InvalidFloorMap on a byte-identical no-op, or on desk slots § 14 item 28(1) refuses
      * @throws InvalidBuildingLayout when the room's new extent would overlap a neighbour
      */
     public static function save(string $installId, FloorMap $map, string $by): int
@@ -99,9 +118,14 @@ final class Floors
                 ));
             }
 
+            // § 14 item 28(1)(i)/(ii): the slots against each other and against the box, at the
+            // write — `App\Floor\DeskSlots` says why it is the write's rule and not the parser's.
+            $box = app(FurnitureBox::class);
+            DeskSlots::refuse($map, $box);
+
             Layouts::refuseOverlaps(Layouts::layout(), [$installId => $map]);
 
-            return self::writeCurrent($installId, $map->document, null, $by);
+            return self::writeCurrent($installId, $map->document, null, $by, $box);
         });
 
         return $written['version'];
@@ -117,7 +141,7 @@ final class Floors
      * write like any other: `App\Floor\FloorInventory` already surfaces a stored map this parser
      * refuses, and restoring one would be storing it again as current.
      *
-     * @throws InvalidFloorMap when revision K is not there, is a no-op, or is a document this store no longer holds
+     * @throws InvalidFloorMap when revision K is not there, is a no-op, is a document this store no longer holds, or holds desk slots § 14 item 28(1) refuses against today's box
      * @throws InvalidBuildingLayout when the restored extent would overlap a neighbour
      */
     public static function restore(string $installId, int $revision, string $by): ?int
@@ -158,9 +182,15 @@ final class Floors
 
             $map = FloorMap::parse((string) $row->document);
 
+            // ⛔ § 14 item 28(1): "at a save AND at a restore". A restore is how a revision stored
+            // before the refusal existed — or validated against an earlier box — would become
+            // current again, so it is held to TODAY's box exactly as a save is.
+            $box = app(FurnitureBox::class);
+            DeskSlots::refuse($map, $box);
+
             Layouts::refuseOverlaps(Layouts::layout(), [$installId => $map]);
 
-            return self::writeCurrent($installId, $map->document, $revision, $by);
+            return self::writeCurrent($installId, $map->document, $revision, $by, $box);
         });
 
         return $written['version'];
@@ -201,11 +231,13 @@ final class Floors
      *                                         the same value the row and the message carry, read
      *                                         once so the three cannot disagree
      */
-    private static function writeCurrent(string $installId, string $document, ?int $restoredFrom, string $by): array
+    private static function writeCurrent(string $installId, string $document, ?int $restoredFrom, string $by, FurnitureBox $validatedAgainst): array
     {
         $at = Clock::sql(now());
 
-        $revision = Revisions::insert(Revisions::ROOM_MAP, $installId, $document, $restoredFrom, $by, $at);
+        // § 14 item 28(1)(iii): the box this document was just validated against, recorded beside
+        // it — the room index re-validates a current map only when the box has moved since.
+        $revision = Revisions::insert(Revisions::ROOM_MAP, $installId, $document, $restoredFrom, $by, $at, $validatedAgainst->signature());
 
         // The document as authored. Storing the document rather than a re-encoding of the parsed
         // structure is what makes the bytes the renderer reads the bytes Tiled wrote — a re-encode

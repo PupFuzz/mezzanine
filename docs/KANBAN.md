@@ -36,13 +36,13 @@ member.
 
 | File | What it is |
 |---|---|
-| `.github/workflows/card-token-lint.yml` | PR gate. Rejects a card-token spelling the correlators cannot parse. **Needs no credential — live as soon as it lands.** |
+| `.github/workflows/card-token-lint.yml` | PR checks — **two jobs, and only the first is kanban's.** `card-token-lint` REJECTS a card-token spelling the correlators cannot parse; `pr-body-lint` (card#9767) judges the PR BODY against the fleet standard with a vendored copy of upstream's linter; what it fails on is owned by its own block in that workflow and is not restated here. The file keeps its name from the kanban job; its display name does not. **Neither needs a credential — both are live as soon as they land.** |
 | `.github/workflows/release-promote-cards.yml` | On a push to `main` (a release landing) or a manual dispatch, promotes the board cards named in the released range. **Inert until the secret and variables below exist — it fails loudly, it does not skip.** |
 | `bin/promote-cards-by-token` | The mover the release workflow runs. **Vendored** from `PupFuzz/agent-board-framework`; its header carries the provenance and the re-vendor recipe. `--help` prints the full contract, including the exit table. |
 | `bin/promote-cards-by-token.selftest.sh` | The mover's hermetic acceptance suite — stubbed `curl`, fixture git repo, no network, no board. Runs in the release workflow before any write. |
 | `bin/card-token-lint.py` | The lint the PR gate runs. Extracts the accept grammar from the mover at run time; it does not carry its own copy. |
-| `bin/card-token-lint.selftest.py` | The lint's RED fixtures plus a meta-control. Runs in the PR gate. |
-| `.release-pr.json` | Board id, the released stage, and the shipped-stage source set. Read by the mover — and, for `tag_format` only, by `bin/release-pr-guard.py` (card#8174), so that key has two readers and this table is not the whole list. Its own `_note` is. |
+| `bin/card-token-lint.selftest.py` | The lint's RED fixtures plus a meta-control — and, since card#9707, the check that `.release-pr.json`'s `card_token_regex` still EQUALS the mover's `CARD_RE`. Runs in the PR gate. |
+| `.release-pr.json` | Board id, the released stage, the shipped-stage source set, and `card_token_regex` — the card grammar `release-pr-body` correlates a release's shipped cards with (card#9707; it reads JSON and cannot extract the mover's bash, which is why this one key is a COPY and why the selftest above pins it to the original). Read by the mover — and, for `tag_format` only, by `bin/release-pr-guard.py` (card#8174), so that key has two readers and this table is not the whole list. Its own `_note` is. |
 
 ---
 
@@ -254,6 +254,20 @@ happen.
 If the bridge is down when a PR event fires, that move is **lost** and nothing re-drives it.
 The backstop is the bridge's `reconcile` command, which recomputes the expected stage from
 GitHub ground truth. Nothing in this repo can detect the loss.
+
+### Rotating the database password can take the bridge down, silently
+On a host that runs both this application and the bridge, **they authenticate to MariaDB as the
+same login** — separate schemas, one account — and neither checkout says so. A rotation that
+updates `server/.env` and not the bridge's leaves the bridge 500ing every delivery, which is the
+gotcha above compounded: every move that fires while it is down is lost as well. That is not a
+worked example — it happened on 2026-09-14 and ran for 38 hours, and the cards stranded in the
+window were then skipped by the release promote (`card#9660`).
+
+**The procedure, the full consumer list and the command that re-derives it live in
+[`CREDENTIAL-ROTATION.md`](CREDENTIAL-ROTATION.md).** Read it *before* the rotation: the order is
+load-bearing, and the half that can be refused goes first. The bridge's side is watched every 15
+minutes by `~/.local/bin/bridge-db-watch.sh` — which covers the bridge's database reachability and
+nothing else, and which speaks only to a file until someone reads it.
 
 ---
 

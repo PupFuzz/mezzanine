@@ -180,11 +180,13 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
                 ."            }\n\n"
                 ."            write('leaveHeld', {\n",
                 'orderingDefects', 'ordering'],
-            'switch (factory option)' => ['export function createAnimationLog() {',
-                'export function createAnimationLog({ swallowRefusals = false } = {}) {', 'switchDefects', 'factory-parameters'],
-            'switch (exported flag)' => ["export function createAnimationLog() {\n",
+            'switch (factory option)' => ['export function createAnimationLog(retention) {',
+                'export function createAnimationLog(retention, { swallowRefusals = false } = {}) {', 'switchDefects', 'factory-parameters'],
+            'switch (factory option in place of the bound)' => ['export function createAnimationLog(retention) {',
+                'export function createAnimationLog({ swallowRefusals = false } = {}, retention) {', 'switchDefects', 'factory-parameters'],
+            'switch (exported flag)' => ["export function createAnimationLog(retention) {\n",
                 "export const settings = { lenient: false };\n\n"
-                ."export function createAnimationLog() {\n"
+                ."export function createAnimationLog(retention) {\n"
                 ."    if (settings.lenient) {\n"
                 ."        return { edge() {}, enterHeld() {}, leaveHeld() {}, get rows() { return []; } };\n"
                 ."    }\n",
@@ -412,8 +414,11 @@ class TheAnimationLogRecordsEveryClaimBearingEpisodeTest extends TestCase
         $source = $this->animationLogSource($moduleDir);
         $defects = [];
 
-        if (preg_match('/export function createAnimationLog\(\s*\)/', $source) !== 1) {
-            $defects['factory-parameters'] = 'createAnimationLog takes an argument — an option is a switch a caller sets';
+        // § 11 (card#7341 step 8, § 14 item 26): the factory takes ONE optional argument, the
+        // retention bound, and nothing else — a row count is not a switch, and any other parameter
+        // (an options object, a flag) is one a caller sets.
+        if (preg_match('/export function createAnimationLog\(\s*(retention\s*)?\)/', $source) !== 1) {
+            $defects['factory-parameters'] = 'createAnimationLog takes an argument other than its retention bound — an option is a switch a caller sets';
         }
 
         foreach (['environment' => self::ENVIRONMENT, 'clock' => self::CLOCKS] as $kind => $names) {

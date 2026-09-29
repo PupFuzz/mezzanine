@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A small rug on the floor plane — FIRST-PARTY vector art under docs/design/FLOOR.md § 10.4
+     (warm, whimsical, cute; resolution-independent), Appendix B row 14 slice B. Scenery: it carries
+     no fact and takes no motion (§ 4.2). The teal is the ratified reference's own rug hue
+     (docs/design/floor-preview, the `aimla` theme). No raster, no embedded data (§ 10.1 Gate 2). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="40" viewBox="0 0 128 40">
+  <rect x="1" y="1" width="126" height="38" rx="10" fill="#6a9a8a"/>
+  <rect x="4" y="4" width="120" height="32" rx="8" fill="#7fae9e"/>
+  <rect x="9" y="9" width="110" height="22" rx="6" fill="none" stroke="#f3e6d4" stroke-opacity="0.7" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <g fill="#f3e6d4" fill-opacity="0.85">
+    <circle cx="24" cy="20" r="2.4"/>
+    <circle cx="44" cy="20" r="2.4"/>
+    <circle cx="64" cy="20" r="2.4"/>
+    <circle cx="84" cy="20" r="2.4"/>
+    <circle cx="104" cy="20" r="2.4"/>
+  </g>
+  <g fill="#ffcf7d" fill-opacity="0.9">
+    <path d="M34 15l1.2 2.4 2.6.4-1.9 1.8.5 2.6-2.4-1.3-2.4 1.3.5-2.6-1.9-1.8 2.6-.4z"/>
+    <path d="M94 15l1.2 2.4 2.6.4-1.9 1.8.5 2.6-2.4-1.3-2.4 1.3.5-2.6-1.9-1.8 2.6-.4z"/>
+  </g>
+  <g stroke="#6a9a8a" stroke-width="1.5" stroke-linecap="round">
+    <path d="M6 3v-2M14 3v-2M22 3v-2M30 3v-2M38 3v-2M46 3v-2M54 3v-2M62 3v-2M70 3v-2M78 3v-2M86 3v-2M94 3v-2M102 3v-2M110 3v-2M118 3v-2"/>
+    <path d="M6 37v2M14 37v2M22 37v2M30 37v2M38 37v2M46 37v2M54 37v2M62 37v2M70 37v2M78 37v2M86 37v2M94 37v2M102 37v2M110 37v2M118 37v2"/>
+  </g>
+</svg>

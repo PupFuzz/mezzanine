@@ -12,12 +12,1709 @@ owe nothing are a PR into `main` (the release retitles this section) and a PR th
 card's bullet (a revert of unreleased work); both are argued in that file's docstring. **R5**
 holds this file's SIZE under `1 MiB − the bytes it grew in the last 14 days`, so it reds while
 there is still time to archive released sections rather than after the contents API has begun
-returning it empty.
+returning it empty. **R6** (card#9707) gives this section a third reader: on a release PR it
+compares the cards bulleted here on `dev` against the head's changelog, so a release cannot
+quietly ship with fewer cards than `dev` holds. **R7** (card#9814) refuses a release PR whose
+copy of this file carries more than two released sections, and so enforces the archiving below.
 
 Sections are newest-first: `[Unreleased]` collects what has landed on `dev` since the last
 release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4).
 
+This file holds `[Unreleased]` and the latest released section only. Every older release is one
+file per tag under [`docs/changelog/`](changelog/) — `ls docs/changelog/` lists them — moved there
+verbatim by release flow step 13 (`docs/VERSIONING.md`), which R7 enforces. R5 gates this file's
+size; `docs/PLAN.md § 4` says why the archive files need no gate of their own beyond R7's backstop.
+
 ## [Unreleased]
+
+## [0.6.0] — 2026-09-29
+
+- **card#7341** — **Appendix B row 15 has landed, so the release gate on the room drawing is met.** Every
+  exit of a held desk render in the animation log now records the cause FLOOR.md § 11's precedence
+  gives it: a desk that turns into the empty chair because its reads keep being refused records
+  `unconfirmed`, and a desk whose loop stops because the session ended and the floor went still records
+  `stilled`, where each used to record the version of the seat it was already showing. AT-D3-1 checks
+  every desk exit against the precedence, from a per-render record the test harness now writes, and
+  now also replays the signed-out floor run and the unconfirmed desk run, and every run of
+  `fx-snapshot-4` and `fx-degraded`. A direct case for each pair of adjacent steps that can apply in
+  one render checks that the client asks the steps in the ruled order. The unconfirmed desk's fixture
+  answers each refused read with the server time it was answered at. The floor page's focus test also
+  checks that a repaint moves the keyboard's focus only when it was inside the drawing. § 14 item 29's
+  build half is done. Promoting `dev` to `main` is the operator's act.
+
+- **card#7341** — **FLOOR.md § 14 item 29 is answered: every exit of a held desk render in the
+  animation log records one named cause.** The rule is a precedence in § 11, under the animation-log
+  schema table, and the order of its steps is an operator ruling. It also names the two causes the
+  client holds itself, the literals `unconfirmed` (§ 2.3 row 5's empty chair) and `stilled` (§ 9
+  F6/F7's signed-out floor), and says how *for how long* is read from the log. § 6.2's `held` class,
+  the `cause` column, AT-D3-1's GREEN, § 7.3's F9 paragraph and item 29 point at § 11 instead of
+  restating it. § 6.4 now states that `prefers-reduced-motion` is read once when the floor page loads
+  and is fixed for its life, § 9 F6 states that recovery from a signed-out floor is a new page load,
+  and § 2.3 row 5 states which refused reads count toward the empty chair and what clears the count.
+  The coordination thread line (A18) is outside the precedence, and two behaviours of it, a line on a
+  stilled floor logging motion and a line ended by a seat's removal naming its thread, are named and
+  routed to Appendix B row 14. AT-D3-1's GREEN holds every exit of a desk episode to the one predicate
+  and the `stilled` re-entry check it states. The design only is done here: the client, test, probe
+  and fixture work it needs is FLOOR.md Appendix B row 15's build list, and row 15 (e) names what
+  each replayed run rests on.
+
+- **card#7341** — **The floor page has a camera, and a viewport floor (Appendix B row 15, slice B).** At a
+  browser viewport of at least 1,280 × 800 CSS px the room drawing fills the page's width and the viewport's
+  height and opens framed on the whole floor, the overflow row below it included: the mouse wheel, a
+  trackpad scroll or a pinch zooms about the cursor in proportion to how far it scrolls (a pinch's much
+  smaller movements scaled up to match, as d3-zoom does), dragging with the primary button pans (the floor
+  always stays in view, and a drag ends when the button is released, even outside the drawing), *Zoom in*
+  and *Zoom out* — or `+` and `-` with the drawing focused — zoom about its centre, the arrow keys pan,
+  *Fit the floor* frames it again — gliding there, or cutting straight to it when the system asks for
+  reduced motion — and *Whole building* goes to the lobby. The desks inside the drawing are exposed to
+  screen readers as buttons, open with Enter or Space, and keep the keyboard's focus when the drawing
+  updates. Known limit: the keyboard's focus is put back onto a freshly drawn desk at every repaint, so a
+  screen reader may announce the focused desk again after each update; this is untested with a screen
+  reader. A floor with nothing on it yet to measure (no room map and no seat) still draws, status line
+  included. Zooming and panning are the viewer's own and survive every update, resync and reconnect. The
+  desk list below the drawing is no longer shown at that size; below it, in either dimension, the drawing
+  and its controls are hidden and the page shows the desks as that text list instead — the list view
+  described in the slice A entry below. No configuration, migration or deploy step is needed.
+
+- **card#7341** — **Every desk in the floor page's list below the drawing now shows every fact the desk
+  model carries (Appendix B row 15, slice A).** Before, each desk was one line with the nameplate, the state
+  glyph, the label, the quiet age and the badge ids. Each desk is now a short block of lines: the room it is
+  in, its pose and light, the currency label, the *this state is N behind — as of …* line on a lagged seat,
+  *sending nothing* on a seat whose reporter config is invalid, the monitor, the action's start and running
+  time, the open-call count, the last event, the context gauge, the model, the badges, *oldest badge since*,
+  each intern's stool and *+N more*, and the thought bubble with its tier and degraded note. A seat the page
+  can no longer confirm reads *unconfirmed*. The nameplate line still opens the drill-down. With slice B's
+  camera (the entry above) this list is shown only below the viewport floor. ⚠ These words on the rows are
+  not yet ratified: *unconfirmed*, *monitor*, and *a subagent's call*.
+
+- **card#7341** — **The revisions page's *no preview* notice says a revision whose desk slots *overlap* is
+  refused (operator ruling 2026-09-26),** matching the word the refusal itself uses; it said *intersect*.
+- **card#7341** — **The console's desk-slot refusals and notices are ratified, and name no design document
+  on screen (operator ruling 2026-09-25, card#7341 comment 6585).** A refused save or restore of two
+  overlapping slots now reads, for example, *Desk slots id 3 and id 7 overlap: id 3 spans 64–504 × 96–324
+  and id 7 spans 480–920 × 96–324. Every desk is drawn inside its own slot, so two slots that share a
+  pixel draw one desk over another; two desks may share an edge but never a pixel. Move one of them and
+  save again.* The
+  undersized-slot refusal, the `/admin/floors` paragraph over the rooms whose map fails the furniture box,
+  the revisions page's *no preview* notice and the layout editor's revision notice keep their wording
+  with the `docs/design/` references removed (the *no preview* notice's word *intersect* later became
+  *overlap*, above); those references now live in the code's comments.
+
+- **card#7341** — **The console refuses desk slots that overlap or are smaller than the furniture box,
+  and lists the rooms whose stored map fails it (Appendix B row 14, slice C).** Saving a room map, and
+  restoring a revision of one, is now refused when two of its `desks` objects share a pixel (sharing an
+  edge is fine) — the refusal names both by their Tiled `id` — or when an object is smaller than the
+  furniture box, 440 × 228 px. The room index at `/admin/floors` lists every room whose current map fails
+  the box it is held to today, with each failing slot named; such a room is **not** refused or blanked: it
+  stays on the floor, drawn with the floor's notice, until its author saves a map that passes. A migration
+  adds `authored_revisions.furniture_box`, recording the box each revision was checked against, so a later
+  change of the box re-checks every room. Art served from `/art/…` as SVG or XML now carries a sandboxing
+  `Content-Security-Policy`, so a file opened directly in the browser runs no script; JavaScript and PNG
+  art is served as before. **Upgrade effect:** every map authored before this release was checked against
+  no box, so it is re-checked on the room index — a map with a slot smaller than 440 × 228 px (a slot
+  sized to the desk sprite, as the old shipped default's were, is one) is listed there, keeps drawing, and
+  cannot be saved again or restored until its slots are at least the box and disjoint. Run
+  `php artisan migrate` as part of the deploy (`bin/deploy.sh` does).
+
+- **card#7342** — **The drill-down's intern list is the seat's dispatch calls, and the floor's on-screen
+  wordings are ratified (operator rulings 2026-09-25).** `docs/design/FLOOR.md` § 5.2's selection sentence
+  and § 8's *the full list* row now select the intern list on D2 § 6.4's `calls.is_dispatch` — the rule the
+  panel already rendered; `agent_scope` / `parent_call_id` attribute an intern's own calls back to it (§ 5.1,
+  § 5.6, § 14 item 1 and Appendix A T35 follow). D3 publishes each wording the operator ratified at the
+  section that required it: the overflow row's label (§ 3.2), the seat segment's two notices (§ 4.4), *N open
+  calls* (§ 5.1), the clock-skew note (§ 5.2), the retirement and room-map record lines (§ 5.5, § 2.5), the
+  drill-down's *waiting for the seat detail* lines (§ 5.5), the `epoch_reset` observer lines (§ 7.2) and F11's
+  intern-list fallback (§ 9). **One visible change:** when the seat detail cannot be read, the intern list now
+  reads *unavailable — seat detail could not be read; showing the first 8 interns only*, the 8 taken from the
+  seat object's cap. `DrillDownRendersTheInternsTest` reads that line out of F11's row and no longer carries
+  the superseded selection.
+
+- **card#7341** — **The shipped default map is re-authored to the furniture box, in two rows on a drawn
+  floor plane (Appendix B row 14, slice B).** `resources/floor/default.tmj`, the room every unauthored
+  install renders, now lays its desk slots in two rows of six, each slot at least the furniture box (440 ×
+  228 px), on a grid of 3,024 × 496 px (it was 1,836 × 200 px with sprite-sized slots in one row). The floor
+  plane the Kenney bridge kit lacks is first-party vector art — `resources/floor/tiles/floor-plane.tsx` with
+  a seamless plank tile and a rug, drawn to FLOOR.md § 10.4's direction and under § 10.1's two asset gates —
+  by the operator's ruling of 2026-09-25 (card#7341 comment 6517). Every desk of an unauthored room is drawn
+  inside its own slot — the side table at § 8's cap of stools, the badge cluster, and every string cut to
+  fit — and the floor no longer carries § 9 F21's *desk object is smaller than the furniture box* line for
+  the default. `docs/design/FLOOR.md` § 12 gains two Measured rows, the furniture box at the cap and the
+  shipped default's grid, each read out of its file by `tools/design/verify-floor.py` on every run and held
+  against § 10.3's sentence, with every slot held at least the box; the viewport row's arithmetic — rows,
+  boxes per row, desk across, grid width and fit zoom 1,280 ÷ 3,024 ≈ 0.42 — is recomputed by the same gate.
+  AT-D3-20 (`Tests\Feature\Floor\SeatFurnitureNeverOverlapsTest`) runs its GREEN clauses on the shipped map
+  and carries § 11's positive control — the shipped map passes every clause with no F21 line, each drawn
+  desk's slot held equal to the file's own object — in place of the sprite-sized control that was designed
+  to red here. **Upgrade effect on a building planned against the old footprint:** an unauthored room's
+  footprint is now 3,024 × 496 px from its origin, so any room — authored or not — that shares a pixel with
+  it overlaps it. While any two rooms overlap, the console refuses every room map save, restore or removal
+  that leaves an overlap standing (`App\Floor\Floors` → `App\Building\Layouts::refuseOverlaps`, over the map
+  being written — a save whose map clears the overlap is accepted), refuses re-saving the layout unchanged,
+  and the floor draws the rooms overlapping under F18's notice. To recover, either move the rooms apart in
+  the layout editor and save the layout, or save a smaller map for one of the overlapping rooms. **Release
+  gate:** the room drawing stays as built until Appendix B row 15's camera lands, and `dev` is not promoted
+  to `main` before row 15 lands (operator ruling 2026-09-25). The console's refusals of intersecting or
+  undersized slots and its re-validation listing (slice C) follow.
+
+- **card#7341** — **The floor page draws the room (Appendix B row 14, slice A).** The floor page now paints
+  one SVG drawing of the room from its tilesets: each desk inside its furniture box with up to eight stools
+  and a `+N more` count, badges, placeholders for art that failed to load, the overflow strip below the floor,
+  speech bubbles, and the communication band, lines and rings drawn only from what the page's log recorded.
+  Art that fails to load leaves every fact on the desk in place and adds "some art failed to load" to the
+  status strip. The floor and character art is served from `/art/floor/…` and `/art/characters/…`, behind
+  the floor's own login and second factor, limited to FLOOR.md § 10.1's file types and to files inside those
+  two trees. `resources/floor/furniture-box.js` is the one source of the furniture box, and the server reads
+  the same file. The text desk list stays until row 15; the default map's re-authoring to the box (slice B)
+  and the console's refusals (slice C) follow.
+
+- **card#7342** — **The drill-down opens from the floor, and a retired seat's desk goes (Appendix B step
+  10).** Selecting a desk on the floor page opens its panel in place and puts `/floor/{floor}/{seat_id}` in
+  the address bar; that URL is served (the same floor page, behind the same login and second factor) and
+  opens the panel on arrival, and closing it returns to the floor without re-opening the stream. The panel
+  fetches the seat detail and its recent activity through the page's one live client, patches the seat's
+  state live from the stream, and shows every section of FLOOR.md § 4.3: the header with the desk's own
+  state line, the task with its reference as plain text (the link resolver for a configured base is gone,
+  per the operator's 2026-09-13 ruling), the action, the context gauge, the uncapped intern list, the
+  activity window with an *Older activity* control, and the transport, derivation, reporter, badge,
+  session, counter and raw blocks, each `fetch-fresh` block under its own *as of* stamp that each poll
+  renews. A failed detail request shows the seat's capped intern array and says it is capped; a failed
+  activity request says *could not load recent activity — HTTP N*; both offer a retry. The client now
+  applies `seat.retired`: the desk is removed on the first of the two announcements, once, with one event
+  log line naming the seat, the reason and the time and no operator, and a desk that had been displaced
+  by it moves back. A full snapshot that no longer lists a held seat removes it too, with a line, unless
+  the seat arrived after that snapshot was requested. The seat-detail response's `detail.counters` is a
+  JSON object for every seat, including one with no counter rows, which it had served as `[]`
+  (`Tests\Feature\Feed\FeedSurfaceTest`). Gated by AT-D3-4
+  (`Tests\Feature\Floor\TheInternListIsUncappedWhereTheSideTableIsCappedTest`), AT-D3-16
+  (`RetirementRemovesTheDeskAndExplainsTheRemovalTest`) and the panel halves of AT-D3-6
+  (`TheDrillDownIsRestampedByEachPollTest`), AT-D3-10 (`TheDrillDownReadsItsAgesFromTheServerClockTest`)
+  and AT-D3-14 (`TheDrillDownNeverDrawsANullAsAZeroTest`), each RED watched to fail.
+- **card#7341** — **`docs/design/FLOOR.md` Appendix B gains the rows that paint a room and move the camera
+  (rows 14–16), ahead of their build.** Rows 0–13 built every model and no row drew a room or a camera, so the
+  step-8 floor page draws each desk as a line of text, § 9 F14 was unreachable, and the card's own title had
+  no row delivering it. **Row 14, the room drawing**: the scene — a headless model emitting what is drawn
+  where, from step 7's frame and the held map, every desk laid out INSIDE its slot rect, which § 10.3 now
+  defines as the desk's furniture box — everything drawn for a desk at rest except the bubble: stools at § 8's
+  cap and never hidden, the badge cluster at D2's bound with a *+N more* mark, and every string truncated to
+  the box with a visible mark through one truncation primitive, its full value on the list view and in the
+  drill-down — so that the operator's no-overlap ruling holds by construction at the slot function however
+  long a seat's strings run (the shipped default's objects are
+  re-authored to that box as this row's build obligation) — the tileset reader (`.tsx` and `.tsj`, both
+  spellings § 10.1 admits), the painter (the DOM half, one scaled space for tiles, desks, nameplates, bubbles
+  and the thread line, importing the character tree by the asset route's absolute URL), the asset route (the
+  one HTTP surface for `resources/floor/` and `resources/characters/`, mounted at `/art/floor/` and
+  `/art/characters/`, through `FloorAssets`, § 10.1 clause 1's extensions only, behind the floor route's own
+  gate including its second factor, without root), § 9 F21 with its § 5.5 line (the scene names a room's
+  intersecting or undersized desk slots on the floor, for any map the client holds — stored and restored
+  revisions included — while still drawing every desk, which is what stands until § 14 item 28(1)'s console
+  refusal is ruled), and F14's placeholder, with the strip's *some art failed to load* line. **Row 15, the
+  camera**: wheel-zoom to the cursor, drag-pan, fit-floor including the overflow strip, whole-building;
+  navigation that writes no animation-log row and survives every re-render; and the capability floor, below
+  which § 4.5's list view is served — a headless model over every fact the desk model emits, guarded so that
+  every model member is rendered or excluded by name, which `floor/main.js` only paints — so a degraded seat
+  below the floor carries § 7's marks and not its raw badge id alone. **Row 16, the ride's arrival**: the
+  cross-section and the cab are PR #96's (card#7343 part 1), so this row builds only what that PR named as
+  unbuilt — the ride ending at `/floor/{key}`, row 15's camera at building scale and the reduced-motion cut —
+  and the document settles the split: row 16 is card#7343's destination half. New acceptance tests gate them
+  — AT-D3-19 (F14), AT-D3-20 (the no-overlap check the card asks the build to keep: cap-width seats carrying
+  the fixture's bounded strings, truncated with a mark and inside the box, a RED planted at the one
+  truncation primitive, and F21's notice on a stubbed crowded map and a stubbed undersized one) and AT-D3-21
+  (the camera: a floor half with an `fx-degraded` leg read from the list view's model, and a building half;
+  the list view's guard holds one property — every leaf of the desk model's output rendered or excluded by
+  path, every rendered leaf seen off its default on some run — which is why `fx-degraded` gains a
+  `config_invalid` seat and the fixture table declares step 3's `fx-confirm`, whose unconfirmed run AT-D3-1
+  does not replay). Rows 0 and 2 now carry the landed
+  markers they lacked (PR #15, 2026-08-25; PR #157, 2026-09-14). § 4.1, § 4.4, § 4.5, § 9 F14, § 10.3's
+  `desks` row and § 12's viewport row point at the rows; § 14 item 28 records what stays open (the
+  unscheduled vector art; the viewport measurement row 15 owes) and what the operator ruled on 2026-09-25
+  (card#7341 comment 6488): the console refuses intersecting or undersized `desks` objects at a save and at a
+  restore, and re-validates every stored map at each change of § 12's box, listing the failing rooms — all
+  three now row 14's build obligations, with F21's notice as what stands for every revision the refusals
+  never saw. § 14 item 29 records the gap the round found and does not answer: an exit caused by a failed
+  read has no object that ended the hold, so § 6.2 and § 11 owe what its `cause` records (row 15's build). `tools/design/verify-floor.py` G5 now reds
+  on an Appendix B Order cell that is not an integer instead of skipping the row, which is why the rows are
+  numbered rather than suffixed, and G8 holds the shipped default's `desks` objects pairwise disjoint on
+  half-open rects; each leg carries a plant in `verify-design-docs.selftest.py`, G8's moving the second object
+  onto the first's span so that it reds whatever gutter the default carries. § 11's fixture count in words is
+  replaced by the derivation the gate already runs.
+- **card#7341** — **The lobby's wording is ratified.** The discrepancy line spells its count in words up to nine and in digits past it, every *desk* agrees with its number, and the event log's membership lines read *room added to the building: X* and *seat added to the floor: k*; `docs/design/FLOOR.md` § 4.1 and § 5.5 state them as the operator's wording.
+- **card#7341** — **The lobby runs the client protocol (Appendix B step 9).** The lobby page now opens the
+  live stream through the same construction the floor page uses (`public/js/wire/live-page.js`, hoisted
+  out of `public/js/floor/main.js`), and draws the population the protocol holds
+  (`public/js/lobby/lobby-screen.js`). § 4.1's discrepancy check has one trigger, the protocol's: the lobby
+  no longer fetches a snapshot of its own for a disagreement between the desks it holds and the building's
+  `seats_total`, so that disagreement costs the one request the protocol makes. The disagreement is worded in the operator's ratified sentences — *showing 4 of 5
+  desks — one desk could not be read*, the ending's count agreeing with the shortfall (*two desks could not
+  be read*), and *showing 5 desks — the building lists 4* — and says nothing while the page has no snapshot
+  to compare. The lobby also shows the feed status with its resync count, the page's own event log, and
+  the failure renders the floor carries (the store statement, the sign-in prompt, the reload banner). The
+  protocol now writes *room added to the building* and *seat added to the floor* for every seat or room a
+  discovery, a recovery poll or the Refresh control adds, where only a seat fetch wrote one before, and it
+  holds a snapshot whose `fleet{}` says `db: "down"` as the store statement on both pages. Refresh reads one
+  snapshot through the protocol and then the layout; a `building.layout` on the lobby's stream re-fetches
+  the layout. `public/js/lobby/lobby-entry.js` is removed. Gated by AT-D3-15
+  (`Tests\Feature\Floor\TheLobbyNeverInventsACountTest`), each RED watched to fail.
+- **card#10423** — **the deploy selftest names a fixture object git packed as NOT VERIFIED HERE and
+  carries on.** `bin/deploy.selftest.sh`'s `blind_object` makes one loose object of a fixture's store
+  unreadable for the cases that need a failed git read; when git's own housekeeping has stored that
+  object in a pack, or a root runner still reads it at mode 000, it now prints `⚠ NOT VERIFIED HERE`
+  naming the object, the cause and the cases that did not run, and each caller skips exactly those
+  cases while every other assertion runs. The object it blinds comes from a checked
+  `rev-parse --verify`, so a rev that does not resolve is a FAIL of its own rather than a missing loose
+  file, and F1's control reads the blinded path from `blind_object` instead of computing it a second
+  time. Watched both ways with the fixture repacked before blinding: the previous script FAILs, this one
+  reports each affected case as not verified and exits 0, and a planted real failure alongside still
+  exits 1.
+- **card#7341** — **The floor page and its stream recovery (Appendix B step 8).** `/floor/{floor}` is served
+  behind login and the second factor (`resources/views/floor.blade.php`, `public/js/floor/main.js`), and it
+  constructs the client protocol with its **stream recovery** (`public/js/wire/fleet-client.js`, § 2.2 steps
+  7–9): after 45 s with no message the floor says **feed down — polling** and polls and re-opens every 10 s;
+  a store outage retries on 10, 20, 40, 80 s; a deploy that keeps the `feed_version` reconnects silently
+  inside a 60 s grace, and one that changes it raises **a new version was deployed — reload to continue**
+  and stops applying deltas; any read answered `401` closes the stream and draws the sign-in prompt over the
+  dimmed floor labelled *not live since HH:MM:SS*; an errored stream is closed by the client, never left to
+  the browser's own reconnect. The **failure renders** (`public/js/wire/failure-render.js`, the lobby's
+  refusal words moved in rather than copied), the **status strip** (`public/js/floor/status-strip.js`) and
+  § 5.4's membership tests for all six published sets (`public/js/wire/member-sets.js`) land with it, and
+  the wall clock is set by a live feed and never by a poll. The page applies the two bounds the rulings
+  above set: 1,000 held coordination envelopes, evicted by whole threads with an *N+* bead count on the one
+  oversize thread, and 2,000 animation-log rows. Gated by AT-D3-6 (floor half), AT-D3-8, AT-D3-11, AT-D3-7
+  (strip half) and `FloorPageWiringTest`, each RED watched to fail; A11 (badge-raise) is exercised for the
+  first time. The lobby's refusal statement now reads the same words, and on a cold start whose request never
+  reached the server it now also says it has no earlier floor to keep.
+- **card#7341** — **`docs/design/FLOOR.md` records the maintainer's rulings for Appendix B step 8, ahead
+  of that step's build.** (1) **The floor page is step 8's artifact**: row 8 bolds it — the `/floor/{floor}`
+  web route inside the `auth`+`mfa` middleware group, its Blade view, and a DOM entry that constructs
+  `FleetClient` with a real `EventSource`, `startFloorScreen` and the status strip — and gates it with
+  `Tests\Feature\Floor\FloorPageWiringTest`, shaped like `LobbyPageWiringTest`; § 4.4, § 4.6 and § 12's
+  viewport row now say the route is row 8's artifact. (2) **The held coordination envelopes are bounded**
+  (§ 14 item 25): at most 1,000 `coord.thread` + `coord.round` envelopes, evicted by whole threads, least
+  recently received first, so an evicted thread renders as one a just-connected client has not seen; a
+  single thread that alone exceeds the cap keeps its `coord.thread`, drops its oldest rounds and renders
+  its bead count as *N+*; the floor screen's set of animated `post_ref`s is trimmed to those still held.
+  (3) **The page's animation log is bounded and the harness's is not** (§ 14 item 26): the module takes
+  an optional retention bound from the caller that constructs it, the floor page passes § 12's 2,000
+  rows, and the harness and every acceptance test pass none, so AT-D3-1 and AT-D3-2 still read a
+  complete log. `DiscrepancyBudget#spent` is recorded as the audited sibling, accepted unbounded because
+  it grows with membership churn rather than with time. (4) **A16's animation-log cause now names the seat
+  that actually displaced the moved desk** (§ 14 item 27): the arriving seat that holds the displaced
+  seat's former slot. In a cascade, where that slot's new holder did not arrive, the cause is the
+  render's lowest-order arrival in § 3.2's `order`, a stated approximation. `floor/floor-screen.js`
+  implements this and replaces step 7's rule, which named the lowest-order arrival for every displaced
+  desk and so could name a seat that displaced nobody. § 11 states the rule. AT-D3-3 gains a GREEN for
+  each clause and a Third and Fourth RED in `IdentityIsStableAcrossARestartTest`, over two new
+  `fx-collision` runs, `two_arrivals` and `cascade`. The comment in `wire/fleet-client.js` that said
+  the document published no cap for (2) now points at the ruling. `tools/design/verify-floor.py` and its selftest are green.
+
+- **card#10368** — **the deploy-gate-inputs selftest no longer fails a pull request because git packed
+  a fixture object.** Its failed-read case makes the loose object behind the fixture's
+  `server/composer.json` unreadable, and git's own housekeeping (`gc --auto`, a clone arriving as a
+  pack) sometimes stores that blob packed instead, leaving no per-object file to change. That runner
+  now prints `⚠ NOT VERIFIED HERE` naming the packed blob, exactly as a runner where root reads every
+  mode already did, and the run continues with every other assertion; the summary repeats how many
+  cases could not be built. The lane's exit status reflects the assertions that ran, so the same commit
+  gets the same verdict on every re-run. `bin/deploy-gate-inputs.selftest.sh` was watched both ways
+  with the blob repacked in the fixture: the previous script FAILs, this one reports the case as not
+  verified and passes, and a planted real failure alongside it still exits 1.
+- **card#7341** — **a room whose map could not be loaded is now inside the building it is on.** The
+  floor's extent is the union of EVERY room the layout places on it, the room whose map request failed
+  included, so the back-wall band that carries the wall clock and the windows spans that room too and
+  its placeholder desks are drawn against the building's backdrop like every other desk. Before this
+  change the extent was the union of the rooms that carry a footprint alone: a room whose map fetch
+  failed has none, so during a room-map outage that room's desks were drawn outside the backdrop and
+  read as a rendering defect rather than as the map failure they are — the moment a viewer most needs
+  the floor to still read as one place. A room with no map enters the union as the point its origin is,
+  which is the corner its placeholder grid is drawn at, and it takes no size from anywhere: the room is
+  placed where the layout says it is rather than relocated inside the old extent, it still has no
+  footprint of its own, and the read-time overlap notice still leaves it out. A floor whose every map
+  arrived composes exactly as it did, which the suite asserts as an equality against the previous
+  arithmetic over the default, planned and overlapping floors. `docs/design/FLOOR.md` § 4.6 carries the
+  rule as its fifth, with the operator's reasoning and with the one case it leaves to a drawing layer
+  named in place; § 4.2 and § 9 F16 state it where they state the extent, and F16's row says which half
+  of its old wording is reversed. `Tests\Feature\Floor\TheFloorComposesItsRoomsTest` gates it with a
+  green, a planted red that reverts the union and watches the mapless room fall outside the band, and a
+  control that ties the two together.
+- **card#7341** — **the floor renders: every desk is in a slot that is a function of its identity, the
+  rooms of a floor are composed where the operator put them, and a coordination thread is drawn between
+  the two desks it resolves to.** `docs/design/FLOOR.md` Appendix B step 7. A floor is now drawn from the
+  documents a client already holds: `server/public/js/floor/floor-layout.js` assigns each seat to a desk
+  slot by § 3.2's published hash of `(install_id, seat_id)`, so two browsers, two reloads and two server
+  restarts agree without any stored position and without a new wire field, and seats past a map's slot
+  count are rendered in a labelled overflow row instead of disappearing. It composes a floor's rooms at
+  the origins the building layout authored, over that floor's hallway, or side by side at § 12's published
+  gap where no plan exists, takes the floor's extent as their union, and draws one wall clock and one band
+  of windows across the whole of it at minute resolution from the viewer's own clock. Two rooms whose
+  footprints share a pixel are both drawn and named rather than one being hidden, a room whose map request
+  failed renders every desk it holds under *room map could not be loaded — HTTP N*, a layout request that
+  failed composes no building at all and says so, and an applied `room.map` re-renders that one room and
+  writes one line into the client's event record. `floor/coord-join.js` builds the
+  `protocol_agent_name` → `seat_id` join `docs/design/FLEET-STATE.md` § 8.3.3 specifies and which nothing
+  had built: a name exactly one seat of the room declares resolves to that desk, a name two seats declare
+  resolves to nothing and renders *declared by more than one seat*, a resolved endpoint whose declaration
+  no roster checked carries the word *unchecked*, and a name that merely equals a `seat_id` resolves to
+  nothing at all. `floor/floor-screen.js` runs all of it over the client protocol and writes § 6.2's A16,
+  A18, A19 and A20 rows into the animation log through step 6's animation set. ⚠ Nothing on a page calls
+  it yet: no page constructs the client protocol before Appendix B step 8, so this is the floor route's
+  renderer and not yet a route a viewer can open. Gated by
+  `Tests\Feature\Floor\IdentityIsStableAcrossARestartTest` (AT-D3-3),
+  `Tests\Feature\Floor\TheCoordinationLineResolvesOrRendersUnresolvedTest` (AT-D3-18) and
+  `Tests\Feature\Floor\TheFloorComposesItsRoomsTest`, each leg with a planted defect seen to fail it.
+- **card#7341** — **a broadcast ring was drawn from a desk the post never resolved to.**
+  `server/public/js/coord/coord-model.js` fired § 6.2's A20 on a post whose address carried the literal
+  `all`, without also requiring that the post's origin resolve to a desk — which is the clause that row's
+  trigger cell gained when the amendment landed, and which the code half never took. A `coord.round` whose
+  author resolved to nothing therefore expanded a ring an operator reads as *this desk broadcast* from
+  whichever desk the renderer could reach. The condition is now read from both members, and AT-D3-18's
+  third planted defect re-mints exactly the line that shipped.
+- **card#7341** — **a layout act carried no version into the apply that needed one.**
+  `server/public/js/wire/fleet-client.js` journalled a `room.map` and a `building.layout` with the message
+  type and its `server_time` alone, so the surface that applies them was left comparing a version it had
+  never been told: a `building.layout` announcing the version already held was re-fetched for nothing, and
+  a `room.map` was not applied at all. Both journal lines now carry `install_id`, `map_version` and
+  `layout_version`.
+- **card#7341** — **a held animation that moves was logged as one drawn static.** Whether a § 6.2 row
+  carries motion was derived from whether its Animation cell names a frame loop, which answers a different
+  question: A18's thread line moves along its length without running frames at a fixed rate, so it was
+  recorded with `motion: false` — a claim that one of the three reasons `docs/design/FLOOR.md` § 11 gives
+  for a still render applied, when none did. `server/public/js/wire/animation-set.js` now derives it from
+  the row's own reduced-motion form, which is *identical* for exactly the rows that have no motion to
+  replace.
+
+- **card#10227** — **`coord.round.targets` had its derivation SHOWN by a worked example and stated in no
+  field spec, so `docs/design/FLOOR.md` § 11's `fx-coord` asserted four fan-out values no reader could
+  reproduce. D1 states the rule now, and the fixture re-derives from it.** `docs/design/EVENT-SCHEMA.md`
+  § 18.7's `targets` Bounds cell carries the whole derivation — `to` in its own order, the literal `all`
+  replaced by § 18.3.1's `roster[]`, the author removed, the first occurrence of each name kept — and the
+  prose beneath it states the three clauses that were implied: the roster is consulted **only** to expand
+  `all`, which is why `null` belongs to the broadcast case alone and a `to` naming seats always resolves; a
+  named addressee is never filtered against that roster, because `coord_roster_unknown_name` already alarms
+  a name the copy does not know and filtering it would delete the guard's own evidence; and the author is
+  removed, so `[]` is the ordinary result of a post addressed only to its own author. § 18.7's first worked
+  example is re-derivable from the field spec as a result, rather than a second specification standing
+  beside it — the defect that example's own `participants` note names one field over — and § 15 row 49
+  records the decision with the two readings it rejects. `fx-coord` states the install-facts roster it runs
+  under, `["pm", "coder", "helper"]`, and every round's fan-out follows from it: R1's `null` (the input
+  unreadable there) and R4's `[]` are unchanged, R2 is `["pm", "coder"]` and R3 is `["pm", "helper"]` —
+  one address from two authors, and different fan-outs because the rule removes each post's own author.
+  AT-D3-18's GREEN moves with them and gains an assertion this document had nowhere else: R3's `targets`
+  names one desk that resolves and one that does not, so § 6.2's A19 clause *a destination that does not
+  resolve gets no envelope and no line, and the ones that do still get theirs* is gated on a rendered
+  floor, by this test alone.
+- **card#10227** — **D2's `coord_round.targets` row stops half-restating D1 § 18.7's derivation and points at it instead, and § 18.7's removal clause now names every occurrence of `from` rather than one.** The clarifications close ambiguities: the author is removed from the fan-out in EVERY mention, not at the implementer's discretion, and the derivation is stated once in the field spec where an agent can reach it.
+- **card#7341** — **the ANIMATION SET lands (`docs/design/FLOOR.md` Appendix B step 6): § 6.2's closed
+  set A1–A20 as the renderer's own artifact, and the two hard gates on trusting the floor at all are
+  green.** `server/public/js/wire/animation-set.js` holds each row's class, its § 6.4 reduced-motion form
+  and whether it loops — the last derived from the row's own Animation cell rather than from a second
+  list — and is the one entry every § 6.2 row is started through, writing step 2's animation log.
+  `wire/fleet-client.js` gains a WIRE JOURNAL: what the protocol did with each message it handled, with
+  the `changed[]`, `before` and `after` every `edge` condition is written over, drained by the renderer at
+  each apply. § 6.5's rule that a snapshot, a resync and a per-seat fetch animate nothing therefore lives
+  in the renderer, which is what lets AT-D3-9's own RED reach it. `desk/desk-floor.js`'s held-render path
+  MOVED into the set rather than being copied, and `desk/desk-render.js`'s unguarded
+  `STATIC_BY_DESIGN = ['A8', 'A9']` is gone: which rows carry motion by design is now re-derived from the
+  document. Gated by **AT-D3-1** (both halves, unqualified), **AT-D3-2**, **AT-D3-13**, and the render
+  halves of **AT-D3-9** and **AT-D3-17**, each with the plant its RED names observed to fail first; and by
+  Appendix B row 13's half that was owed to step 6 alone — a `room.map` apply fires no § 6.2 row, asserted
+  over a `building.layout` too, because § 2.5 gives the two one rule. Four new fixtures: `fx-clear-trace`
+  (every figure re-derived from § 14 item 21's closure and from `fx-snapshot-4`'s own published snapshot,
+  and the replay reproduces § 11's *five held episodes, nine held rows* walk exactly), `fx-interns`, and
+  two carrying seats and messages § 11's nine do not.
+- **card#7341** — **one wrong render on a real wire transition, found while building the set and fixed
+  with it: an `offline → retired` delta played an arrival at a desk being removed.** A1 fires on a delta
+  that LEAVES `offline` and A13 on one whose new `render_state` is `retired`, and § 6.2 stated no
+  exclusion between them, so a retirement was also an arrival. A1's condition now states *and not A13's
+  condition* — hosted on the row that yields, exactly as A3 states its exclusion of A4 — and the shipped
+  predicate reads A13's own definition rather than a copy of it. A2 is unaffected and no exclusion is
+  stated on it: `offline → retired` never makes the new value `offline`.
+- **card#7341** — **three § 11 claims this build made false, corrected in the same change.** AT-D3-2's
+  *the animation log contains no `idle` row* read as total over the log while its own base fixture
+  delivers an `idle` seat, so as written it would have reddened a correct client; it is now scoped to the
+  seat the trace is about, with the reason. Bound (v) said a table is never hand-copied into *the module*
+  when there was one module, and is now stated over the property — a copy a renderer cannot avoid is
+  GUARDED, in both directions. Appendix B row 5's cell said `desk-floor.js` enters and leaves each held
+  render, which step 6 moved. § 11 also gains a FORWARD CONTRACT for A18/A19/A20's log rows: they belong
+  to no seat, `cause` is the message's own `post_ref` or `thread_ref`, and AT-D3-1's causing-message set
+  stays FOUR until the first consumer that applies a `coord.*` message arrives with a test that fires one.
+- **card#7341** — **`docs/design/FLOOR.md` § 14 item 21 (`fx-clear-trace`'s base, patches and
+  hook-order difference) and Q8 (no Appendix B row built § 5.7's coordination line) are both closed.**
+  Design and documentation only; no code changed. Item 21: the fixture's version base is
+  `fx-snapshot-4`'s own `state_version` (48219), continued; `aimla-pm`'s still-open `Bash: composer
+  test` call and its `coder` subagent close in the same delta that opens D2 § 10's trace, named rather
+  than inferred; the clock advances 1 s per delta; and the fixture ships one hook order, because D2 § 10
+  states the wire is identical either way. `§ 11`'s `fx-clear-trace` row and the AT-D3-1 episode walk
+  are amended to state it, and `fx-clear-trace` is now fully determined — step 6's build (Appendix B
+  order 6 → 7) can proceed. Q8: Appendix B step 7 builds the coordination thread line, gated by a new
+  acceptance test, AT-D3-18, and a new fixture, `fx-coord`, covering the join's resolve, no-declarer,
+  duplicate-declaration and cross-install cases. The fixture resolves **two** names, so the line has the
+  two endpoints it is drawn between, and carries the duplicate case on a third name that is nobody's
+  endpoint — a duplicated name resolves to nothing, so a fixture duplicating an endpoint name cannot
+  draw the render it gates. Its two endpoints are in **different check states**, so § 5.7's *a resolved
+  endpoint whose declaration was never checked is rendered as one* row is gated by a resolving
+  `unchecked` declaration with the `checked` endpoint beside it as the control, rather than by the
+  duplicate arm where the check state changes no outcome; and the fixture's `targets: null` sits on a
+  broadcast address, the one wire state D1 § 18.7 assigns `null` to, rather than beside a `to` naming a
+  single seat, which the producer cannot emit. A20's trigger now states the origin precondition its
+  render always assumed: a broadcast whose origin resolves to no desk draws no ring, rather than one on
+  a guessed desk.
+  `tools/design/verify-floor.py` and its selftest are green on both closures.
+
+- **card#9815** — **The deploy names a PHP-FPM pool file it cannot read as `cannot read <file>`, and
+  prints FPM's own stderr when `php-fpm -i` fails.** A pool file the FPM config includes and the deploy
+  user cannot read (a `pool.d` file at 640 root:root is the ordinary shape) was dropped as if absent:
+  the deploy then refused on a false cause — `no PHP-FPM pool runs as <user>`, or `no pool of that name
+  is defined` for the stream pool — or, when another pool of that user's was still readable, passed A14
+  having judged opcache without reading the app's own pool. `bin/deploy.sh`'s `fpm_code_reload_ready`
+  now reads every matched pool file or refuses by name through one primitive, `fpm_readable`, which
+  `php-fpm.conf` and the `.user.ini` files use too; a pool directory the include points into and the
+  user cannot list or search is refused the same way, and an include glob that matches nothing keeps its own report.
+  Phase B fails the window on it, as for an unreadable `php-fpm.conf`. On the `did not print an FPM
+  phpinfo` refusal, FPM's stderr is now printed beneath it and stays out of a healthy run.
+  `bin/deploy.selftest.sh` covers each case with a fixture whose permissions are asserted first — mode 000,
+  and a `pool.d` at 644 that can be listed and not searched, behind a glob and behind a literal include —
+  beside its readable twin, and pins a file literally named `*.conf` as the pool file it is.
+
+- **card#7341** — **Every desk on the floor now has its render: the ten states, the degraded
+  treatments, the null renders and the side table** (`docs/design/FLOOR.md` Appendix B step 5, gated
+  by AT-D3-5 and AT-D3-14's desk half). New `server/public/js/desk/desk-render.js` turns one held
+  seat into one desk, switched on `render_state` alone: the pose and glyph per § 7.1, the state's
+  label line, the *was: … (last event …, seat clock)* currency label on `catching_up` and
+  `disabled`, the empty chair with *no data since HH:MM:SS — no data for …* on `stale` and
+  `offline` (*no data yet* for a seat that never reported), the hatched overlay and *this state is
+  1m 57s behind — as of HH:MM:SS* on a `fold_lag` seat with its loop stopped, the monitor, the
+  gauge, the thought bubble and the side table's stools with *+N more* from `subagents_open`. New
+  `server/public/js/desk/desk-floor.js` runs it over every held seat, re-renders the ages on step
+  4's 1 s tick (`startAgeTicker`'s first shipped caller) and enters and leaves each desk's `held`
+  render in the animation log. The client protocol now holds, per seat member, the `server_time`
+  that delivered it, which is what the lag line's *as of* stamp reads. Every seat-clock claim reads
+  `HH:MM:SS (seat clock)`, the one precision FLOOR publishes as a rule for a timestamp. Shared
+  pieces moved to `wire/` at their next caller: the gauge and its *not reported* null render
+  (`context-gauge.js`, from the drill-down) and the words *not reported*, *untitled* and *no data
+  yet* (`null-render.js`, from the drill-down and the lobby). `fx-degraded` and `fx-nulls` ship.
+  `Tests\Feature\Floor\TheDeskRenderShowsADegradedSeatAsDegradedTest` replays `fx-degraded` for
+  60 s: every desk is distinct from every other by picture and by label line, each dark age moves while
+  its timestamp does not, the lag line and its stamp do not move across a later heartbeat, the
+  lagged desk's held episode is entered with `motion: false`, and the dark desks are the empty chair
+  beside a live sleeper. Planted and seen red: the desk switched on `activity_state` (both dark
+  desks drawn asleep), the `fold_lag` treatment dropped, the sleeping pose on the dark desks with
+  every label kept, and the stamp taken from the newest message; the control is `fx-snapshot-4`'s
+  live working desk, full colour and entered with motion.
+  `Tests\Feature\Floor\TheDeskRenderNeverDrawsANullAsAZeroTest` walks every member `fx-nulls`'s
+  `nulls-b` sets null, read from the fixture, against its § 5.6 cell; planted and seen red: a null
+  gauge drawn at 0 % and a null quiet age drawn *nothing done for 0s*, with a measured 0.0 % as the
+  control. `Tests\Feature\Desk\TheDeskSpeaksTheDocumentsWordsTest` holds every string the desk
+  restates to § 7.1, § 7.6, § 7.2 and § 7.3.
+  **§ 14 item 23 is closed**: `derivation.fold_lag_ms` = 117,000 lives on `fx-degraded`'s `fold_lag`
+  seat and no longer on AT-D3-16's retirement announcement, and the item records that D2's worked
+  `117` is 117 ms, a different, healthy seat. `fx-degraded` also carries a `live` `idle` seat, the
+  sleeper AT-D3-5 compares the dark desks against, which is the desk AT-D3-5's *all six desks* counts.
+
+- **card#7341** — **Every age on the floor is measured from the server's clock, re-rendered every
+  second, and a seat's own clock is shown as its labelled claim and never subtracted into an age**
+  (`docs/design/FLOOR.md` Appendix B step 4, gated by AT-D3-10's floor half). New
+  `server/public/js/wire/age-readout.js`: each desk's quiet age (*nothing done for …*), action
+  elapsed (*running for …*), `dark-only` receipt age (*no data for …*, on a `stale` or `offline`
+  desk only) and gauge age, computed from `browser_now + clock_offset_ms` over the offset the
+  client protocol holds, plus every seat-clock instant as `HH:MM:SS (seat clock)`; and
+  `startAgeTicker`, the 1 s re-render, on a timer and clock it is handed. A viewer whose machine
+  clock is hours off reads the same ages as one whose clock is right. The drill-down now takes
+  those two wordings, the seat-clock label and the corrected clock from `wire/` instead of its own
+  copies, and with no server clock it draws no quiet age rather than *nothing done yet*, which
+  claims the seat never reported. `Tests\Feature\Floor\TheAgeReadoutReadsTheServerClockTest`
+  replays `fx-snapshot-4` through the harness with the browser three hours fast, over three runs:
+  the fixture itself, one with a +10-minute seat clock, and one with a `stale` and an `offline`
+  desk and gauge samples received before `server_time`. On each, all four ages (quiet, action
+  elapsed, receipt, gauge) equal the server clock minus their own instant, with each wording
+  re-read from § 2.4's table, and a `live` desk draws no receipt age; a correct browser clock
+  renders identical output. Planted and seen red: ages from `Date.now()` (every desk reads
+  *nothing done for 3h…*), an elapsed time from a +10-minute seat's `started_at` (*running for
+  0s*), the gauge age dropped, the receipt age corrupted, and the `dark-only` gate removed. The harness's probe gains a browser clock and
+  runs the shipped ticker on its scenario timer.
+  **Appendix B's landed marker has one form** (Q9): `✅ landed YYYY-MM-DD (card#N …) — `, unbolded,
+  at the head of the Artifact cell. `tools/design/verify-floor.py`'s G5 read every bold span in an
+  Artifact cell as an artifact, so rows 11 to 13's bold markers each registered as a phantom
+  artifact (G5's summary line prints the artifact count it derives), row 3 was written plain to
+  avoid another, and row 1 carried its marker in the Gate cell. All five rows now use the one form, and G5 reds on a bold marker, a
+  marker anywhere else in the cell and a marker in a Gate cell; `verify-design-docs.selftest.py`
+  plants a bold marker (`embolden`) and requires the red.
+- **card#9745** — **the `deploy-gate-inputs` check now RUNS the deploy's own target-tree gates over
+  the PR, so it rejects a commit a real deploy would refuse at phase A, not only one missing a file.**
+  What a PR author meets that the check did not reject before — each depends on the commit alone,
+  so `bin/deploy.sh --ref <that commit>` refuses it at phase A whatever host runs it, before
+  anything is touched:
+  a migration that alters `events` without declaring `ALGORITHM=INSTANT`/`INPLACE` (A10);
+  `trustProxies('*')` in `server/bootstrap/app.php` (A11); a `require.php` in `server/composer.json`
+  that A6 cannot evaluate, or none (A6); a `server/package-lock.json` whose `lockfileVersion` A12
+  cannot map (A12); a `BASH_FLOOR` in `bin/deploy.sh` that is not a version (A6b). Missing or empty
+  files, and a symlink where a file belongs, are rejected as before. A red names the gate function
+  that refused and prints the deploy's own reason; fix what it names, or change the gate
+  deliberately. The check runs the gates of the `bin/deploy.sh` in the commit under test, so a PR
+  that changes a gate is judged by the changed gate. Operator ruling, card#9745 comment 5701.
+  **How it knows what the gates read:** `git_at` — the one function through which `bin/deploy.sh`
+  starts git — appends each call to a read ledger when `MEZZ_GIT_READ_LEDGER` names a file and the
+  script has been SOURCED by a checker. **A deploy ignores that variable:** `bin/deploy.sh --ref …`
+  run with it set in your shell prints one `⚠ MEZZ_GIT_READ_LEDGER is set in this shell and was
+  IGNORED` line, unsets it and writes no ledger; `bin/deploy.selftest.sh` holds a `--dry-run` to the
+  same exit status and the same output either way, with the variable naming a writable path and an
+  unwritable one. `bin/deploy.sh` declares in `GATE_TREE_READERS` the functions phase A reads a path
+  of the release through, and which of them need no host. The check runs those,
+  and its report of what was read comes from the ledger. It replaces the parsing of
+  `bin/deploy.sh`'s source text that card#9637, card#9693 and card#9644 each had to repair; the
+  hand-typed classification table and its disposition digests are gone. A git process a gate starts
+  without `git_at` stops the check (exit 2): a `git` shim counts them against the ledger on every
+  run. `bin/deploy.selftest.sh` holds the declaration to a full `--dry-run` (the functions it reads
+  through are exactly the declared ones) and runs each host-free one on its own, over the same
+  commit, against what it read inside phase A. What a green does not establish is printed by the
+  check itself, under `NOT PROVED BY A GREEN`.
+  **For an installer, a deploy decides what it decided before.** A6, A6b, A10b, A12 and A13 are each
+  split into a target-tree half (`gate_<id>_target_…`) and the comparison with the host, and phase A
+  calls them in the same order. One order moved: a release with no `bin/supervision.sh` is now
+  refused before A13 makes its scratch directory, so on a host where that directory cannot be made
+  either, the missing file is the refusal you see first. ⚠ **A correction to card#9644's entry below:**
+  it calls `gate_a13_target_plan` A13's host-free half. It is not host-free — the release's install
+  plan it runs calls `crontab -l`, so it reads the crontab of the user running it — and it is now
+  labelled so; A13's host-free half is `gate_a13_target_source`.
+
+- **card#9932** — **a scratch file on a filesystem out of free BLOCKS is now refused as unwritable,
+  never read as the tool's silence.** `mktemp` creates an EMPTY file, which costs an inode and no
+  block, so on a filesystem with no space left it still succeeds — measured on a real block-full
+  tmpfs: `mktemp` exit 0, a real path, and the first byte written into it lost to ENOSPC. Every
+  reader of such a file (`_scratch`, used by A7's `git_ref_oid` and by `git_commit_of`'s tag peel;
+  the `.env` loader's own `env_read_err_open`) took that empty read for "the tool printed nothing" —
+  git's silence, or bash's — rather than for a write that never landed, so a rev whose walk git
+  genuinely reported FAILING could be told apart from one that does not exist only by a message that
+  a full `$TMPDIR` had just lost.
+  **The fix is a probe, not a guess:** `scratch_writable` writes a byte into a scratch file or
+  directory and reads it back before the caller is handed it; one that fails is refused as *"created
+  and could not be written,"* naming free BLOCKS (`df`) as the number to read, distinct from a
+  `mktemp` that failed outright (free INODES, card#9816) and from a scratch file `mktemp` made that
+  this shell could not open (the open-file limit, `ulimit -n`, card#9933). `env_read_err_open` gains
+  this as a third, distinct failure return, and the `.env` loader's refusal (at A5) and its phase-B
+  warning both name it under their own reason rather than `mktemp`'s.
+  **git's own stderr is read back with its status checked too:** a `cat` of the scratch file that
+  captured `git rev-parse --verify`'s diagnostic can itself fail after git has written a real answer
+  into it, and `git_ref_oid` and `git_commit_of` now refuse *"git's error output could not be read
+  back"* rather than treating that failed read as git's silence.
+  **A13's OWN write into its scratch directory is checked too, not left to the directory's one-byte
+  probe:** that probe proves a byte lands, not that a whole release's `bin/supervision.sh` — kilobytes,
+  several blocks — does; on a filesystem down to a handful of free blocks the probe passed and the
+  larger write died under `set -e` with no ⛔ banner, before phase A installs any ERR trap. It is now
+  checked on its own status and refused by name.
+  **This new check is verified by reproduction, not by a dedicated fixture in the shipped suite** —
+  named rather than left implied. tmpfs allocates a full page even for a one-byte file (no `inline_data`
+  the way ext4 can have), so the existing block-full fixture drives free space to literally zero and the
+  DIRECTORY's own one-byte probe catches A13's case first, the same way it already did before this
+  change; the new write-status check sits behind a probe that a fully-full filesystem never gets past.
+  Reproduced directly instead (a tmpfs left with a handful of pages free, not zero: the probe passes, the
+  12 KB write does not, `printf` exits non-zero with `write error: No space left on device`) and
+  confirmed against the real code by disabling `_scratch`'s directory probe under mutation, which lets
+  a fully-full run reach this check and refuse through it, banner and all. A fixture that leaves the
+  filesystem at a handful of free pages rather than zero would exercise it directly; building one is
+  future work, not done here.
+  `bin/deploy.selftest.sh` gains a § card#9932 section built on a REAL block-full filesystem — a
+  private tmpfs in an unprivileged user + mount namespace (`unshare -Ur -m`, `unshare --map-user`,
+  no root), filled with `dd` immediately before the scratch call under test — covering the `.env`
+  loader, `git_ref_oid` over a healthy and a broken store, A13's work directory, and
+  `git_commit_of`'s annotated-tag peel, plus TWO `cat`-can't-read-git's-stderr cases (a `git` stub
+  that makes the diagnostic file unreadable the instant the real `git` has written it): one on
+  `git_ref_oid`'s own candidate resolution, over a broken store, and one on `git_commit_of`'s own tag
+  peel, over a healthy one. A runner that cannot make the namespaces this needs, or cannot make an
+  unreadable file as root, reports NOT VERIFIED by name rather than passing silently.
+  Mutation-tested: reverting the write probe reds each of the block-full cases on its own headline;
+  a separate mutation reds each `cat`-status case on its own.
+  **Found in review and fixed in the same change:** `bin/env-mirror-diff.mirror.sh` sources only the
+  `# ── .env reading` block of `bin/deploy.sh`, and `scratch_writable` was defined outside it — inside
+  the mirror it was an undefined command, status 127, silenced by `|| return 3` into "not writable" for
+  every fixture, so the differential that holds this reader against Laravel's own parser measured
+  nothing (CI: `env-mirror-differential`, 9 FAILURES). It is now defined inside that block, and named
+  in the mirror's own required-function list so a future move dies loudly instead of refusing
+  silently.
+  **CI could not run the block-full section at all** (`unshare: write failed /proc/self/uid_map:
+  Operation not permitted` — Ubuntu 24.04 restricts unprivileged user namespaces by AppArmor by
+  default): `deploy-selftest.yml`'s `deploy-selftest` and `bash-floor` jobs now attempt
+  `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` before the suite and fail the job
+  outright if the section still reports NOT VERIFIED afterward, so a later revert of the probe cannot
+  stay green by way of a section that silently never runs. **The sysctl is a candidate lever for this
+  restriction, recalled rather than sourced, and it is UNVERIFIED in this change** — reproducing an
+  AppArmor-restricted runner was not possible in the environment this was built in, so whether it
+  actually lifts the restriction on GitHub's runner is what this PR's own CI run establishes, not this
+  text; if it does not, the new failure names exactly that rather than the section going quiet.
+- **card#9801** — **A PR body that does not meet the fleet PR-body standard now fails the
+  `pr-body-lint` check**, so on a branch that requires that check the red blocks the merge until the
+  body is fixed. Which branches require it is a repository setting; `docs/VERSIONING.md § Branch model`
+  carries the command that reads it. **To clear the red, edit the PR body**: the check re-runs on the
+  edit, with no new push. The failed step's log lists each finding, where it is and which rule it
+  breaks, then a closing block whose first line names the outcome. **Re-running the failed job
+  does not clear it**: a re-run judges the body the original event carried, so edit the body
+  instead. To check a body before you open the PR, run
+  `python3 bin/pr-body-lint.py --body-file=<file>` and look for exit 0; `bin/change-pr-body.py`
+  writes a skeleton that passes it (`CLAUDE.md § PR bodies are judged against the fleet standard`).
+  **A red that says the linter could not judge the body is a wiring defect, not a finding**, and
+  editing the body does not clear it; it fails the check so that a verdict that never happened does
+  not read as a pass. The job's other steps, which check this repository's own files, are
+  unchanged, and the generator's selftest now also runs after a red body verdict, so one run shows
+  both results. A merged PR is not re-checked, so the bodies of PRs merged before this change stay
+  as they were written.
+- **card#9991** — **`bin/deploy.sh` refuses a `MEZZ_REMOTE` that names a remote whose NAME contains
+  `:`, and no A3c refusal prints such a name any more.** `git config` will write a remote whose NAME
+  is a URL (`git config 'remote.https://user:token@host/o/r.git.url' <url>` exits 0), `git remote`
+  then lists it, and card#9832's membership test passes it because it IS a configured remote.
+  Measured against the previous tree with an obviously fake credential: setting `MEZZ_REMOTE` to
+  such a name printed the credential three times in one run — the *"Fetching …"* step line and two
+  lines of the refusal that followed a successful fetch — and on a checkout carrying such a remote,
+  the refusal for a `MEZZ_REMOTE` that names no remote printed it in its list of remote names.
+  **The rule is the colon, never a pattern match for `://` or `@`:** `git remote add` and `git
+  remote rename` both refuse a name containing `:` (measured, git 2.53.0: `'a:b' is not a valid
+  remote name`), and every URL form with a place for a credential carries one, so the rule turns
+  away no remote those two commands created. One predicate does both jobs: it refuses the value, and it marks
+  a matching entry in the printed list as ``[name N of `git remote`'s list — NOT PRINTED …]``, by its
+  position, instead of printing it.
+  **What to do if a deploy refuses with *"whose NAME contains ':'"*:** rename the marked remote
+  without printing it, with the command the refusal prints —
+  `git -C <deploy root> remote rename "$(git -C <deploy root> remote | sed -n '<N>p')" <a name>` —
+  and, if `git -C <deploy root> config --get remote.<a name>.fetch` prints nothing, add the refspec
+  `git remote add` writes: `git -C <deploy root> config remote.<a name>.fetch
+  '+refs/heads/*:refs/remotes/<a name>/*'`. Then set `MEZZ_REMOTE` to the new name. A checkout that
+  deliberately named a remote with a URL stops deploying until it does this; that cost was accepted
+  when the rule was decided. Hosts whose `MEZZ_REMOTE` is unset, or is a name with no `:`, deploy as
+  before, including a checkout that carries a colon-named remote it does not deploy from.
+  `bin/deploy.selftest.sh` gains a § card#9991 section: the colon-named `MEZZ_REMOTE` refused with
+  the credential absent from the output and from every file of the checkout outside `.git/`, the
+  printed rename advice run and the renamed remote deploying, a refusal on such a checkout with the
+  entry marked, a twin in which the same token as a legal name IS listed (so the absences are
+  measurements), a legal name carrying `/`, `@`, `.` and `-` deploying, and a checkout carrying a
+  colon-named remote deploying from `origin`.
+
+- **card#10074** — **README's install step now keeps the new database password out of the
+  `mariadb` client's own history file, and warns at the `CREATE USER` that a typo can print it.**
+  § Running the server locally told an installer to use `sudo mariadb` "so the password never lands
+  in argv or shell history". That held for argv and for the shell's history, and not for the
+  client's: without `MYSQL_HISTFILE=/dev/null` the `CREATE USER` statement, password included, was
+  written in plaintext to `~/.mariadb_history`, or to `~/.mysql_history` when that file already
+  existed and `~/.mariadb_history` did not, under the `HOME` the client ran with; neither of the
+  rotation document's sweeps can find either file. The step now runs
+  `sudo env MYSQL_HISTFILE=/dev/null mariadb`, the same command `docs/CREDENTIAL-ROTATION.md` step 1
+  uses, and tells an installer who created the account without it to delete both files, as
+  that document's step 7 does. A mistyped
+  `CREATE USER` can return the password inside its syntax-error text; README now says so beside
+  the statement and points at the rotation document's top matter, which states that mechanism once.
+  The README's pointer to that document was scoped to changing the password and now covers choosing
+  it too. Measured on a throwaway 11.8.6 server with fixture values: slips at several points ahead
+  of the value printed it, the one slip measured after the value printed none of it, and the
+  correct statement and a mistyped statement carrying no value printed no value; without the variable
+  the value went to `.mariadb_history` in a fresh `HOME` and to `.mysql_history` in a `HOME` that
+  already held only that file, and with the variable neither file received it.
+
+- **card#9684** — **`python3 bin/release-facts.py` prints what a seat cutting a release of this
+  repository needs to know, in one read, and names what it could not verify.** From the tree it
+  lists every CI lane and marks each one whose `pull_request` trigger is filtered, or absent, as
+  never requirable, and it quotes the bash, npm and PHP floors as the readers that enforce them
+  print them. It carries no number of its own. From the GitHub API, with GET requests only, it
+  prints every rule instance on `dev` and `main` verbatim, the bypass actors of each ruleset they
+  come from, and a per-lane `gates` column. A failed read, a non-200 or an empty `[]` prints `NOT VERIFIED`, and
+  that branch's column reads `UNKNOWN`. It then names the facts no script here can establish: the
+  ask-first policy for opening a release PR (cited from `CLAUDE.md` as it reads it), organisation
+  rulesets, whether a target host meets the floors, and bypass actors this credential cannot see.
+  It names the credential it read with and never prints its value. It exits 1 when a job declares
+  a key that makes its status context differ from its job id, which turns "context equals job id"
+  into a checked fact, and it blocks nothing else. The new `release-facts` lane runs its hermetic
+  selftest, in which every case is re-run against a mutated script and must red there, and then
+  the reporter itself, with the report in the step summary. `docs/VERSIONING.md § Release flow`
+  step 7 now says opening the release PR is ask-first and points at the declaration, and step 8
+  points at the reporter.
+- **card#9660** — **The database password now has a rotation procedure that names every consumer
+  of it, because the last rotation killed a consumer nobody had written down.** On a host that runs
+  this application beside the agent webhook bridge, both authenticate as the **same** MariaDB login
+  — separate schemas, one account — and neither checkout declared it. On 2026-09-14 the password
+  was rotated, `server/.env` was updated, the bridge's was not, and **the bridge returned HTTP 500
+  to every GitHub webhook delivery for 38 hours**: cards stopped advancing on PR events, a merge
+  event was dropped, and the cards stranded in the window were then skipped by the next release
+  promote. Separating the identities is the fix nobody can apply here — there is one login on that
+  host and no route to a second (operator ruling) — so the coupling stays and is made **loud**.
+  **`docs/CREDENTIAL-ROTATION.md` is the new home**, pointed at from `README.md` § Running the
+  server locally (where `DB_PASSWORD` is introduced) and from `docs/KANBAN.md` § Gotchas (the
+  bridge end), because the consumer set spans this repository and one that is not in it, and half
+  a checklist in each end's doc is worse than none.
+  **The consumer list is derived rather than remembered, and it derives by CONTENT.** A sweep for
+  `.env*` is the pattern anyone writes and it is not enough: writing this found a file named
+  `env.bak` holding a non-empty password that no name-based pattern would have reached. The
+  document carries a `DB_PASSWORD=` content population and a classifier that answers `LIVE` or
+  `OTHER` per path — **and prints no value, because the comparison's pattern arrives on a file
+  descriptor rather than in `argv`**. Seen to discriminate before it was written down: the
+  application's, the bridge's and a worktree's `.env` answer `LIVE`, and a retired `.bak` beside
+  the bridge's answers `OTHER`.
+  ⛔ **It walks the tree with `find`, and the reason is a trap worth knowing outside this
+  document: a recursive `grep` may honour `.gitignore`, and `.env` is gitignored in every one of
+  these checkouts.** Measured 2026-09-20 — `grep -rl` from an agent session returns none of the
+  `.env` files on this host, because that session's `grep` is `ugrep` invoked with
+  `--ignore-files`, while `/usr/bin/grep` is GNU grep and does not do it. A credential sweep built
+  on `grep -r` therefore reports a clean host by skipping exactly the files that hold the
+  credential. The document's classifier also refuses rather than running when its reference file
+  holds no password, because an empty pattern file matches every line under one of those two
+  greps — which would answer `LIVE` for every path in a sweep that measured nothing.
+  **The order is reasoned for this install rather than asserted.** The server-side change needs an
+  administrative credential this account does not have; the `.env` writes need nothing. So the
+  server side is the part that can be refused, and it goes **first**: the other order takes every
+  consumer down for the duration of a gate that has not been passed yet, and if that gate is then
+  refused, the only route back is a backup whose sufficiency has never been tested. Going
+  server-first proves you hold the access a rollback needs before anything is overwritten.
+  **And the outage that order implies turns out to be avoidable, which is measured rather than
+  hoped.** MariaDB accepts more than one authentication rule per account, each with its own
+  password — documented in the MariaDB Knowledge Base and then exercised on a throwaway server at
+  the version this fleet pins, `11.8.6`: two `mysql_native_password` rules are accepted, **both**
+  values authenticate, a third is refused, and this stack's own PHP PDO client reaches the second
+  rule as readily as the `mariadb` CLI. So the procedure adds the new password beside the old, moves
+  every consumer across while both work, and retires the old one afterwards — the same
+  add-before-retire shape `docs/design/EVENT-SCHEMA.md § 3.3` already prescribes for the fleet token,
+  which now points at this document and is pointed back at, so the two statements of one doctrine can
+  be read against each other rather than drifting apart unnoticed. Mutual pointers make a divergence
+  **findable**; nothing checks that the two still agree. The single-value path with its real outage
+  stays documented for the case the overlap is unavailable — a hosting panel offers one password box,
+  not a SQL prompt.
+  ⚠ **The overlap is not free, and the document says so rather than selling it.** It keeps the old
+  value **accepted by the server** until the retire step, so the procedure asks first *why* you are
+  rotating: a scheduled rotation can take as long as it likes, a rotation triggered by exposure
+  cannot, because until the retire step the possibly-compromised value still works. The retire step is
+  therefore gated on positive evidence rather than on an absence of complaints — every daemon started
+  after the file edits, and the Laravel config cache cleared in both checkouts — because a daemon's
+  in-memory copy and a `bootstrap/cache/config.php` are the two consumers no file sweep can see, and
+  both survive the whole overlap and break at the retire. **And the statement that carries both
+  plaintexts now runs with the `mariadb` client's own history turned off**: measured 2026-09-20 both
+  ways, that client filters nothing, and the file it writes is not a `DB_PASSWORD=` line — and, under
+  `sudo`'s usual `env_reset`, lands in root's home rather than this account's — so neither of the
+  document's own sweeps could ever have found it, on the line shape alone.
+  **What is NOT checked is named rather than omitted**, which is the failure this card is really
+  about: a declaration with nothing asserting it is a comment, and the next reader gets confidence
+  where they should get a question. The application's own store reachability is watched by nothing;
+  the bridge watcher's verdict reaches a human only when someone runs the reader; all copies can
+  agree and all be wrong. The document proposes a scheduled sync check with those limits stated,
+  and deliberately does not build it here.
+  **Four of its own claims are narrowed to what was measured, one of them about a secret**
+  (2026-09-21, the same card's follow-up). The hash shortcut is described as removing the retyping
+  of the old value rather than as a form that cannot be mistyped: rule 1 written
+  `USING PASSWORD('<hash>')` — one token from the `USING PASSWORD('<the new password>')` that rule 2
+  legitimately carries, on the line below it — is **accepted by the server**, and afterwards every
+  consumer's stored value is refused `ERROR 1045` while `SHOW CREATE USER` still prints two rules.
+  The mandatory check below the form catches exactly that, and the form and the check now both say
+  so. ⚠ **The `ERROR 1064` the document presents as the harmless outcome quotes your new password
+  back in plaintext** — the server composes that message, so it appears at an interactive prompt and
+  not only in batch output, though it does not reach the server's error log. The document's own rule
+  about failure text now covers a secret value rather than the database user and host alone, and the
+  warning sits where the refusal is met. **An account already carrying more than one authentication
+  rule gets told to write its own statement**: the published one silently drops every rule it does
+  not restate — socket authentication refused `ERROR 1045` after it — and the "two rules are present"
+  confirmation passes either way, because it was already two. And § Verifying's daemon-log check
+  resolves its filenames through `bin/supervision.sh`'s own `supervision_daemon_name`, where it had
+  asked for a name that subcommand prints and so named three files that do not exist. Every engine
+  claim above was measured on a throwaway server at the pinned version, each with a control run
+  alongside it; the filename rows were run on this host, the broken form first and failing.
+  `docs/design/EVENT-SCHEMA.md` stops glossing that procedure's retire gate as two of its
+  conditions in the same act, a partial gloss of a gate being a way to read a gate as met.
+  **The rule about failure text is now a rule about the MECHANISM rather than a note at the sites
+  somebody remembered** (2026-09-21, the same card, after a review found the warning covering one
+  site and silent at the others — the same shape each previous round of this document produced, an
+  instance fixed and the class re-minted one site along). The document had said it warned "where
+  it is used", and it did not: the statement on the **default** path, the one every operator runs,
+  can quote the **old** password — the value every consumer is holding, that step 0 backs up and
+  step 7 exists to delete — while the document warned about the new one where it happened to warn
+  at all. What replaces it is the server's actual behaviour, stated once near the top and needing
+  no per-site upkeep: a failing statement is quoted back **from the point of the error**, so
+  whichever value sits in that span is printed, and any statement here carrying a value can
+  therefore print it. A failure text that has been redirected or pasted is now named as an
+  **exposure**, a trigger § "The outage window is avoidable" already has a rule for. The second
+  leg is named too: **feed these statements to the client through a redirect and the client echoes
+  the whole statement first**, every value in it, ahead of the server's message. The commands that
+  merely *connect* are stated as their own class — account and host, no value, holding for both
+  things this document connects with and withheld from a stack trace by the driver's own
+  sensitive-parameter marking — and the classifier that reads the live value was measured across
+  its failure modes and reproduces no value in any of them. The population was derived over the
+  merged document rather than taken from the review, and every candidate inspection could not
+  clear was measured on a throwaway server at the pinned version under a pty, each against a
+  control seen to produce no value — the correctly-spelled statement returns no message at all,
+  and the detector fires on a stream that does carry one, so an empty result is a measurement.
+  Step 1's fence also carries a pointer to the caveats below it, so the operator who pastes first
+  meets the silent multi-rule failure before running it rather than after.
+- **card#9933** — **a `server/.env` the deploy never read, because it could not open the scratch
+  file it reads with, is refused as that — instead of as a read that stopped short, under advice
+  pointing at your disks.** Point `TMPDIR` at a directory `mktemp` cannot make a file in — one that is
+  missing, one this deploy cannot write to, or one whose filesystem is out of inodes — and run
+  `bin/deploy.sh`: A5 used to stop with *"`<path>` was opened but could not be read to its end"*, and
+  the lines under it said the open had succeeded so this was neither a permission nor an ownership fault,
+  that a read failing on an already-open file is usually a disk or filesystem one — failing media, a
+  filesystem remounted read-only, a network mount that stopped answering — and that `dmesg` and the mount
+  the file sits on are where that family is visible. **None of that advice applied to your host** — and
+  the one sentence of it that was TRUE, that the open had succeeded, is true on every path that reaches
+  this refusal and so told you nothing. The file had been opened and closed again without a byte being
+  read: what failed was `mktemp`, for a scratch file the loader needs because bash's `read` reports an
+  end-of-file and a read ERROR with the same status and
+  tells them apart only by its diagnostic. The cause was already in the refusal, one line further down,
+  contradicted by everything around it. **What you see now:** *"`<path>` could not be read: no scratch
+  file could be opened for bash's read diagnostic"*, and a body that says the finding is about neither the
+  file nor the disk it sits on and sends you to the directory `mktemp` writes into — `$TMPDIR`, or `/tmp`
+  when that is unset. **What to do about it is unchanged**: give this deploy a temporary directory it can
+  create a file in. (The advice now sends you to free INODES, `df -i`, and says that a `df` at 100% is not
+  on its own the finding: `mktemp` creates an EMPTY file, and a filesystem out of free blocks can still
+  give it one — measured on a 100%-full tmpfs. The old *"…and that it is not full"* pointed at free space, and
+  it was pointing at the wrong number before this change too, here and on every other scratch file the
+  deploy makes; both messages are corrected in this change. The denial of `df` is made for a scratch
+  FILE only: the one scratch DIRECTORY this deploy makes — A13's, for reading your crontab block — is
+  sent to both numbers instead, because a directory can need a data block where an empty file needs
+  none, and that case was not measured.) A read that really does stop short — failing
+  media, a mount that went away — keeps the old headline, the errno bash reported, and the
+  disk-and-`dmesg` advice, which is correct for it.
+  **The same failure in PHASE B is now named too, and that one reached you on a deploy that SUCCEEDED.**
+  Phase B re-executes, so it makes a scratch file of its own — after `php artisan up` has closed the
+  maintenance window and the release is already serving — and when that one failed you were told, on an
+  `✔ DEPLOYED` run that exited 0, that `server/.env`'s open or read had failed, that the file had stopped
+  being readable inside the window, and that bash's reason
+  was printed above. The file was readable throughout, no read was ever made, and there was no such
+  diagnostic; the offered remedy (re-run `--dry-run`, which names the cause at A5) only works while the
+  cause is still there, so a `$TMPDIR` that was missing, unwritable or out of inodes during the deploy and
+  was put right before you re-ran left you a clean
+  dry run and nothing else. That warning now names the scratch file, says `server/.env` may be perfectly
+  readable, says the release IS deployed and serving so that what is missing is the CHECK on it, and says
+  what the `--dry-run` remedy is and is not worth. The deploy still finishes and is still reported
+  UNVERIFIED — this is a warning, not a new failure, and no deploy that used to succeed now stops.
+  **The warning beside it — for a `server/.env` whose open or read really did fail — now names the span
+  it can establish**: the file was readable in phase A and stopped being so *between phase A and this
+  check*, rather than *inside the window*. That load runs after `php artisan up` has closed the window,
+  so a file that went unreadable once the window had closed reached you under a message that sent you
+  looking inside it; the cause it names and the run it sends you to are unchanged.
+  **And the scratch failure that is NOT about `$TMPDIR` is told apart from the one that is**: a scratch
+  file `mktemp` created and this deploy could not OPEN (the realistic cause is how many files it may have
+  open at once) no longer reports `mktemp` as having failed and no longer sends you to check a `$TMPDIR`
+  that is working. Every other reader is unchanged: both failures still set one flag, `env_get` still
+  answers **3** for either, and A10b still acts on the one fact it needs, that the file was not read.
+  The suite is why this survived as long as it did, and that is fixed in the same change: the case for
+  this failure asserted the exit code, the banner and the reason, and the case beside it pinned the shared
+  headline — so the wrong headline was asserted CORRECT and a fully green run reported nothing. The
+  headline is now asserted for this case, the read's is asserted absent from it, and so are the three
+  sentences of disk-and-`dmesg` advice; the in-window failure and the unopenable scratch file each gain a
+  case of their own, the in-window one driven through a whole deploy at the very scratch file phase B
+  makes; and the mutation that reds each of them is named in the case, and was run.
+- **card#9684** — **`docs/VERSIONING.md § Branch model` no longer keeps a copy of this
+  repository's settings, so the copy can no longer be wrong.** The section carried a stack of
+  dated re-readings — which contexts each branch required on which day, which merge method each
+  branch allowed, what classic branch protection held — every one of them added because the
+  reading before it had gone stale, and every one stale again before the next reader arrived.
+  **Nothing re-derived them, so they were prose ageing into false statements about what would
+  block your merge.** They are deleted. What stays is the part no API call can tell you — why
+  `dev` carries an admin bypass and what it exists for, why the tag ruleset must never gain a
+  `creation` rule, why the review ruleset does not close the actor gap, and the pending trap that
+  makes a filtered workflow unsafe to require — and, where the readings were, **the commands that
+  print the live answer**. A pointer cannot drift.
+  **Statements that had already gone false are corrected in the same act.** The section said that
+  no ruleset had replaced `main`'s `strict: true`; a ruleset has, and the published command prints
+  it for either branch. It said the required status checks also lived in classic protection with
+  `enforce_admins` on, and reasoned from *"Classic protection on `dev` does not require linear
+  history"* — classic protection has been retired from both branches since card#9746, and
+  `gh api repos/PupFuzz/mezzanine/branches/dev/protection` answers `404 Branch not protected` for
+  `dev` and for `main`. And `§ Release flow` step 8 said *"Nothing enforces this mechanically
+  here"*, which stopped being true with the first required context.
+  **`§ Release flow` steps 5 and 8 now carry commands rather than facts**, and the procedure is
+  written down once, there. Step 5 derives the host floors by RUNNING the gates that enforce them
+  instead of asking you to copy a number, so a release note quotes a floor it has just read; step
+  8 derives which contexts GitHub will actually hold the merge on, because the lanes outside that
+  set run and block nothing and a wall of green ticks is evidence only where a red was possible.
+  ⚠ **If you write release notes, read `§ Release flow` step 5 before the next one** — how to run
+  it, which rev each line speaks for, why the npm floor is the one A12 prints rather than the
+  `lockfileVersion` beside it, and how to tell the block failed. **This entry deliberately does
+  not repeat the procedure**: the same instructions in two places is the defect this card is
+  about, and one round of review was enough to make the copies disagree.
+- **card#9801** — **A PR into `dev` now has a body generator, and the shape it emits is the fleet
+  standard's.** `bin/change-pr-body.py` writes the scope line, `## Highlights`, optionally
+  `## Upgrade warnings`, the `Built:` / `**Coordinated in:**` machine lines and the attribution
+  trailer, and leaves the judgement sections as `<!-- AUTHOR: … -->` markers. Until it existed the
+  author of a non-release PR had two options and both broke a rule: hand-write the body against the
+  standing "generate it" rule, or force `--version` onto `release-pr-body` — which exits 2 with
+  `could not resolve version` on a `dev` PR because it is structurally a RELEASE generator — and
+  emit a body asserting a release that is not happening. The fleet helper is unchanged: it is
+  owned outside this repository and a `--change` mode there is a fleet proposal, not a local edit.
+  **The shape question the generator answers is now written down too.** `skills/release-pr/SKILL.md
+  § PR body` governs *every* PR body an agent writes, not only a release one — two of the four
+  sections it admits carry `Release PRs only` in its own IN table, and the set is an allowlist
+  rather than a required list — so `CLAUDE.md § PR bodies are judged against the fleet standard`
+  now carries what a change PR looks like and a `change-pr-body:house-map` block saying where each
+  of this repository's former house sections goes instead. **That map is graded, not asserted:**
+  `bin/change-pr-body.selftest.py` drives every left-hand heading through `bin/pr-body-lint.py` and
+  requires it to still red, requires every `## X` destination to be one that linter admits AND
+  passes, and pipes the generator's real output into it — then mutates that output once per rule
+  so the green is shown to discriminate. **Once per rule is itself derived, not counted:** the
+  rule ids are read out of the linter's own source and the mutation set is required to cover
+  them, so re-vendoring a linter that adds a rule reds the suite for under-coverage instead of
+  leaving a coverage sentence that has quietly stopped being true. The suite runs in the
+  `pr-body-lint` job and can fail it.
+  **This change left what the repository rejects as it was.** The lane's verdict on a PR body
+  stayed report-only here; the flip to blocking came later in this release, in the card#9801 bullet
+  at the top of this section.
+  **A false claim about that lane is corrected, and the sweep that finds it is written down
+  instead of being asserted complete.** Every surface describing the `pr-body-lint` job said the
+  JOB prints its verdict and exits 0 — in the words "nothing in this job can fail a pull request",
+  and in "the contract this job makes is that it exits 0". That was never true: the job's
+  vendored-byte pin and the vendored linter's own selftest shipped in its first commit and both
+  red on a bad checkout. ⚠ "Corrected everywhere" is exactly the claim that goes stale at the next
+  copy and that nothing re-checks, so the SWEEP is recorded rather than the verdict. Re-run it
+  before adding a sentence about this lane; each round of this change found a copy the previous
+  round's narrower sweep had not:
+
+  ```
+  for f in $(git grep -l "pr-body-lint" \
+             | grep -v -e '^bin/pr-body-lint-fixtures/.*\.md\.txt$' -e '^docs/changelog/v0'); do
+    git grep -n -i -E "exits? 0|can fail|cannot fail|never block|never fails|report-only" -- "$f"
+  done
+  ```
+
+  ⛔ **SELECT THE FILES, THEN READ EVERY MATCH IN THEM — DO NOT ADD A SECOND LINE-FILTER.** The
+  obvious tightening (`| grep -i "body\|this job"`) is what this command replaced, and it was
+  measured to MISS its own known positive: these sentences are hard-wrapped, so the predicate and
+  the subject word land on different lines and a line-oriented second stage drops the pair. At
+  the base commit it silently omitted `docs/VERSIONING.md:256`, which carried the claim verbatim.
+  Dropping `bin/` from the pathspec hid the last copy of all, inside `bin/pr-body-lint.py`'s own
+  header. The selector now carries no pathspec at all and excludes the captured PR bodies by file
+  name rather than the fixtures directory by path (card#9801's blocking change): a listed pathspec
+  stays complete only until somebody adds a directory, and excluding the whole directory also hid
+  the directory's README, which is prose about this lane's fixtures and belongs in the sweep.
+  `report-only` joined the predicate in the same change, because once the verdict blocks, a copy
+  still calling it report-only is the claim that goes stale.
+  ⇒ The cost of the version above is NOISE — it returns every "exit 0" in the changelog's
+  history, and you discard those by eye. That is the right trade: a reader who skims a screenful of
+  irrelevant lines still finds the wrong sentence, and a filtered sweep that returns a clean-looking
+  set hands the next author CONFIDENCE instead of a question, which is worse than the universal it
+  replaced. The promise was about the BODY: under this change no PR body could fail this job,
+  until the blocking change at the top of this section. The generator's selftest now runs in the
+  same job and can red it too, and it is ordered AFTER the body step so that a broken generator
+  does not suppress the body verdict the author reads.
+- **card#9984** — **`bin/deploy.sh`'s version comparison refuses operands it cannot read, so a
+  `BASH_FLOOR` that is not a version is refused by name instead of certified.** Until this change
+  the comparison behind every one of phase A's version floors — A1's bash floor, A6's PHP floor,
+  A6b's floor for the release being deployed, A12's npm floor — fell through to zeros on an operand
+  that was not a version: every field read 0, 0 is neither greater nor less than 0, and the answer
+  was *"at least"*. None of them asks it under `set -e`, so nothing stopped. **What that cost:
+  edit `BASH_FLOOR=` at the top of your serving copy of `bin/deploy.sh` to anything that is not a
+  `<major>.<minor>` — blank it, or write `v4.4` — and the next `bin/deploy.sh` run printed no
+  complaint about it, enforced no bash floor at all, and went on to open the maintenance
+  window.** It now stops in phase A, before anything is touched.
+  **A mistyped SEPARATOR is caught too, and it is the likelier typo.** `BASH_FLOOR=4,4`, `4.x`,
+  `4-4`, `4x`, `4` and `"4 4"` all begin with a digit, so the comparison used to run, read as far
+  as it parsed, take the floor to be `4.0` and report it met — a host running bash 4.0 deploying
+  past a floor of 4.4. What a floor IS is now one test — `<digits>.<digits>`, exactly two fields —
+  and A1 holds your copy's declaration to it, A6b holds the release's to it, and the `bash-floor`
+  CI job holds the tree it measures to it. **That test is stricter than the one A6b used to
+  apply:** a release declaring `BASH_FLOOR=4.x.5` or `4.4x` used to pass, and the first was
+  enforced as the floor `4.0.5`, which is not the floor that release declared. Both are refused
+  now. **And a copy whose `BASH_FLOOR=` line has been DELETED is refused as that** — it used to
+  end the run with `BASH_FLOOR: unbound variable` and exit 1, with none of the `⛔ REFUSED`
+  banner or the *"Nothing was changed. The previous release is still serving."* promise that
+  tells you a deploy stopped on purpose rather than broke. A blank `BASH_FLOOR=` takes the same
+  refusal.
+  **The same tightening reaches the host's own `npm --version`.** A1c validated it with the
+  same loose pattern, so an npm reporting something like `9.x.5` was compared as `9.0.5` — a
+  number your host never reported. It is refused now. **A prerelease npm still deploys**:
+  `9.2.0-pre.1` is read as its release, which is long-standing deliberate behaviour and is
+  covered by a case so it stays that way. What is refused is a version with any dot-field that
+  does not start with a digit. Among the first three fields — the ones the comparison reads —
+  that is the shape that was being silently read as `0`; beyond them the check is deliberately
+  stricter than the comparison needs — npm's published versions were swept for this, and none
+  of them is affected.
+  **Every comparison between two well-formed versions answers exactly as it did before** —
+  measured field by field against the previous implementation. What changed is only what
+  happens to an operand that is not one.
+  **If a deploy of yours starts refusing with *"declares BASH_FLOOR='…', which is not a
+  version"*, the fix is the line at the top of `bin/deploy.sh`:** it reads
+  `BASH_FLOOR=<major>.<minor>`, alone on its line, at column 0, unquoted or quoted, and the
+  comment above it says how the number is arrived at and that it moves by re-running the
+  measurement rather than by being retyped.
+  **If instead it refuses with *"a version comparison this deploy cannot perform"*, read the two
+  operands it prints** — one is this host's own version (`$BASH_VERSINFO`, `php -r 'echo
+  PHP_VERSION;'`, `npm --version`) and the other is a floor declared by a release (`require.php`
+  in `server/composer.json`, `lockfileVersion` in `server/package-lock.json`), and whichever of
+  them is not a version is what to fix. The commonest way to reach it is a host `php` that answers
+  `php -r 'echo PHP_VERSION;'` with something other than a version: each floor gate validates the
+  FLOOR it read out of the release, and the HOST value it is handed is not validated anywhere
+  else.
+  The same change drops the here-strings that split those operands. A here-string is a temporary
+  file on every bash below 5.1, which is above the floor `BASH_FLOOR` declares, so on a supported
+  host a temp-file failure reached that same fall-through with no bad input at all; the split is
+  now parameter expansion, which needs no file, no pipe and no subshell.
+
+- **card#9803** — **`docs/design/FLEET-STATE.md` § 6.2 owns the suite's store-isolation pin values
+  and carries them as a verbatim XML block; the suite now checks that block against
+  `server/phpunit.xml`.** Nothing compared the two, so the document that OWNS the pins could
+  disagree with the file that implements them, in either direction, with every check green. The cost
+  is in the correction rather than in the disagreement: someone who finds the file contradicting the
+  section that owns the values edits the FILE to match it, and those pins decide which database the
+  suite rebuilds destructively on every run and which Redis index it flushes — on a shared host,
+  someone else's.
+  **`Tests\Feature\DatabasePinTest` reads § 6.2's block through the same reader it already used for
+  `phpunit.xml`** — one implementation of what a pin is, rather than a second parser inside a check
+  whose whole subject is two copies disagreeing — and reds naming the key and what each side
+  declares.
+  **It compares every pin, and its population is the pin set rather than a list anyone maintains** —
+  the key sets are read from the two files and compared in both directions, and then, over
+  `phpunit.xml`'s own set read at run time, each pin's `<env>` value, its `force="true"` and its
+  `<server>` value are compared. A pin added to `phpunit.xml` is compared on the run that adds it,
+  with no second decision for anyone to remember. `force` is compared because § 6.2 finding 1 makes
+  it as load-bearing as the value: a block whose `force="true"` has been dropped isolates nothing
+  once copied into the file, and an exported variable then beats the pin.
+  **What the check is worth differs by key, and that was established key by key.** A drifted
+  `DB_DATABASE`, `REDIS_DB` or `REDIS_CACHE_DB` copied into `phpunit.xml` also moves a resolved value
+  `Tests\TestCase` asserts by name and ABORTS the run on, so for those the new check is the earlier
+  and clearer red rather than the only one. `REDIS_URL` is asserted by nothing else:
+  Laravel's `RedisManager` takes the index from the URL's path when it BUILDS a connection, so
+  `config('database.redis.default.database')` goes on reporting the pinned index and no check sees
+  the difference. And `DB_URL`'s existing guard compares the database NAME alone, while the URL also
+  replaces the driver, host, port, username and password — measured with a `DB_URL` of
+  `mysql://127.0.0.1:3399/mezzanine_test` pinned in `phpunit.xml`, where every `config()` pin passed,
+  the connection-name guard passed, and the run went on to open a connection to that port.
+  **The bootstrap guard's abort message was corrected in the same change.** It named an exported
+  environment variable as the usual cause, and in this card's sequence that sends the reader to
+  update the guard's own expected values — making the drift green and the store somebody else's. It
+  now names the drifted-pin cause beside the export and says to check both copies before editing
+  either.
+  **Which red you get depends on which copy moved, and it is worth knowing before you read one.** A
+  drift in § 6.2 — of any pin, in a value or in `force` — reaches this check and nothing else, and
+  you get its message naming the key and both copies. A drift in `phpunit.xml` reaches this check
+  for `DB_URL` and `REDIS_URL`, whose values no other check reads. For `DB_DATABASE`, `REDIS_DB` and
+  `REDIS_CACHE_DB` a file-side drift moves a resolved value, so every test errors in the bootstrap
+  guard before this check runs and you get that abort instead — safe, and pointed at the right copy
+  by the clause below.
+  The check was watched failing in each of those shapes before it was trusted, and each red was read
+  rather than counted.
+  **There is nothing to do on any host.** No application code, no configuration and no deploy path
+  changes, and the check runs with the rest of the PHP suite. It matters when you EDIT either copy:
+  move the pins in `server/phpunit.xml` and § 6.2's block in the same commit, and read that section's
+  guard bullets before deciding which copy drifted.
+
+- **card#9832** — **`bin/deploy.sh` refuses a `MEZZ_REMOTE` that is not the NAME of a remote of the
+  checkout, in phase A, before anything is touched — and without printing the value.** The variable
+  has always been documented as a git remote NAME, but `git fetch` takes a URL just as readily, and
+  a URL can carry a credential: `MEZZ_REMOTE=https://user:token@host/org/repo` is an ordinary thing
+  for an operator deploying a private checkout to set, and git accepts it. Every later mention of
+  the value then put that credential on the operator's screen and in the deploy log — measured on
+  the previous tree, five times over in one refused run, in the *"Fetching …"* step line and in four
+  lines of the fetch refusal that followed. **git's own redaction is not a backstop:** measured, git
+  2.53.0, an `https://` URL is reported with the credential stripped and a `git://` one verbatim, so
+  it is per-transport, it is not this script's to rely on, and either message is on screen before the
+  script sees it. Refusing the value at the boundary is therefore the fix and redaction is the weaker
+  half.
+  **The test is MEMBERSHIP in `git remote`, never a pattern match for `://` or `@`.** `backup@nas`
+  and a bare `@` are legal remote names — a remote name is a refname component — so a pattern would
+  refuse a host that is configured exactly right.
+  **What membership does NOT close, said at the size it was measured.** No name `git remote add`
+  will CREATE can be a URL: a refname may not contain `:`, and every URL form with a place for a
+  credential carries one. But `git config` writes a section name straight into `.git/config` with no
+  such check — measured, git 2.53.0, `git config 'remote.https://user:secret@host/o/r.git.url' <url>`
+  exits 0, `git remote` then lists that URL as a NAME, and membership passes it. That is a configured
+  remote of the checkout, so the claim is the narrow one and not "no URL can be a remote's name".
+  **card#9991 closes that leg** — such a `MEZZ_REMOTE` is refused, and the list this gate prints
+  marks such a name instead of printing it; its bullet says what to do.
+  A multi-line `MEZZ_REMOTE` equal to two or more ADJACENT names joined by newlines is refused
+  before the list test, since that test is applied to the value and the value is not a name.
+  **The refusal does not echo what it rejected**, which is the whole of its point: it names the
+  VARIABLE, says outright that the value is withheld, and lists the remotes this checkout HAS, which
+  are names — `git remote` with no options prints no `remote.<name>.url` (a name containing `:` is
+  marked rather than printed, card#9991). The cost is paid
+  knowingly: an operator who
+  merely mistyped a name does not get the typo echoed back, and the list of names that would have
+  worked is what makes it findable. `git remote`'s own status is read too, so a `git remote` that
+  FAILED is refused as *"whether `MEZZ_REMOTE` names a remote is NOT established"* rather than as a
+  value that names nothing.
+  **What to do if you set `MEZZ_REMOTE` to a URL:** add the remote to the deploy checkout once
+  (`git -C <deploy root> remote add <name> <url>`) and set `MEZZ_REMOTE` to that NAME. Hosts that
+  leave `MEZZ_REMOTE` unset are unaffected — `origin` is a remote of any checkout this deploy runs
+  on — and a host that had set it to a configured remote's name is unaffected as well.
+  `bin/deploy.selftest.sh` gains the credential-bearing URL refused with the value absent from the
+  output, a positive twin that observes the same string PRESENT so the absence is a measurement
+  rather than a needle that could never appear, `backup@nas` deploying (which is what reds the
+  pattern match), a configured non-default remote deploying, the default `origin` path unchanged, a
+  checkout with no remotes at all, a value joining two adjacent remote names with a newline beside
+  each half deploying alone, and a `git remote` made to fail by the suite's git shim — a
+  status nothing can make a fixture produce, since a config git cannot read fails A3 first.
+
+- **card#9616** — **`bin/deploy.sh` refuses a host whose `bash`, `git` or `npm` is too old — by name,
+  in phase A, before anything is touched.** Until now A1 asked only whether those binaries were
+  PRESENT; PHP alone had a version gate. So a host that was too old got partway in: `npm ci` failed in
+  phase B with the site already down, a git without `:(literal)` pathspec magic failed every read of
+  the release and was reported as a release missing its files, and a bash below the floor did not
+  refuse at all — it DIED, at A7's refusal, on an empty array expanded under `set -u`, exiting 1 with
+  no `⛔ REFUSED` banner and no *"Nothing was changed"* promise, which is exactly the code the exit
+  table reserves for "refused, nothing was touched".
+  **The bash floor is MEASURED, and `BASH_FLOOR` at the top of `bin/deploy.sh` is its one home.** A
+  construct scan cannot find it — it sees `mapfile` (4.0) and `exec {fd}<` (4.1) and stops a full minor
+  short of the truth — so nothing scans: `.github/workflows/deploy-selftest.yml` gains a `bash-floor`
+  job that builds GNU bash at the declared floor and at the minor below it, from the release tarballs
+  pinned by sha256, and runs the whole self-test under each. The floor must PASS **and the minor below
+  must FAIL**; the below-floor run lowers `BASH_FLOOR` in its own copy of the tree so that the gate is
+  not what stops it, and the job reds if that run passes, because a floor whose control cannot fail is
+  a version that works rather than a floor. It reads the floor through `bin/deploy.sh`'s own reader, so
+  CI cannot measure a floor the gate would not see.
+  **Both copies of the script are held to a floor.** After `artisan down` the deploy re-execs the
+  TARGET release's `bin/deploy.sh`, which never runs A1 — so A6b reads that release's own `BASH_FLOOR`
+  out of git and holds this host's bash to it, beside the gates that already read the release (A6,
+  A10–A13). A release that declares none predates this card: that is said out loud and is not a
+  refusal, since refusing would make every rollback undeployable for want of a line it could not have
+  carried.
+  **git is PROBED, never version-parsed** (A3b, after A3 has established that git can open the
+  repository): `git ls-tree HEAD -- VERSION` first, so that a failure of the magic form differs from it
+  by one thing, then the same read with `:(literal)`, which must print exactly `VERSION`. The OUTPUT is
+  required and not the status, because a magic-less git can also exit 0 having listed nothing — which
+  downstream is indistinguishable from a release that does not carry the file.
+  **npm is compared against the TARGET tree's `lockfileVersion`** (A12), the release that moves to a
+  newer lockfile format being exactly the one the serving checkout says nothing about. The mapping is
+  npm's own documentation, quoted at the gate and marked documented-not-measured; a lockfile version
+  the gate cannot map is refused rather than guessed at.
+  `bin/deploy.selftest.sh` carries a case for each refusal, every one asserting the banner and the
+  promise as well as the exit code — in this class an exit-code assertion catches nothing, because the
+  death being refused already exits 1 — plus the controls one variable away: the release's floor set to
+  this host's bash, npm exactly at the lockfile's floor, and a git that fails the PLAIN probe, which
+  must not be blamed on the pathspec magic it never reached. `BASH_VERSINFO` cannot be faked inside a
+  running bash, so the comparison is a predicate of its own, driven at the floor and at the floor minus
+  one.
+  `bin/deploy-gate-inputs.sh`'s classification table moves with the gates, as it is built to: A12's
+  read of `server/package-lock.json` becomes a CONTENT read rather than a presence one, and
+  `bin/deploy.sh` joins the table as A6b's input — each row's function and disposition digest DERIVED
+  by that check and pasted from its own output, never hand-computed. `bin/shell-lint.baseline.tsv`
+  grows by a typed `--accept-new`, in two classes this file already carries as debt: SC2317 on the
+  new fixture mutators, which ShellCheck cannot see `mkfix` invoke, and one SC2016 on a
+  single-quoted `$BASH_FLOOR` that must reach the sourced shell unexpanded. Annotating only the new
+  ones while their siblings stay unannotated would put two conventions in one file; discharging the
+  whole class is its own round.
+  **Review round 2 found the backstop had a denominator of one, and that is the substantive fix in
+  it.** Only ONE empty-array site — A7's `ref_note` — was reached by any fixture, so guarding that
+  one site would have turned the below-floor control green and had the job report that the floor
+  could be lowered, while a first deploy on an older host still met `checkout_lock_holders` in the
+  window. The suite gains two scenarios it had never covered: a **FIRST deploy** (D-08 — the prod
+  host has never been deployed to, so it is the one run certain to happen), which is where that
+  array is empty, and a **`server/.env` with no lines**. A `no_shell_death` tripwire rides on those
+  and on the widest existing runs, because the first-deploy site does not change what the deploy
+  DECIDES — its expansion is inside a `$( )`, so on an old bash the subshell dies and the parent
+  reads an empty answer — and no verdict-shaped assertion can see that. The declared population of
+  such sites is now stated as a HAND AUDIT that nothing re-derives, with both of its past errors
+  recorded: one direction called three guarded sites hazards, the other added `ENV_LINES`, which
+  measurement removed (`env_lines_load` splits with `<<<`, so a zero-byte `.env` is one empty line
+  and the array is never `()` where the loops read it). The control's own assertions were two
+  decorations: it now asserts that the `sed` lowering `BASH_FLOOR` in the below-tree actually
+  applied — without it both gates refuse every fixture and the suite reds for the gate's reason,
+  which is what lowering the floor exists to prevent — and it requires the suite's own
+  `N assertions, M FAILED` line rather than accepting any non-zero exit, so a run that broke for an
+  unrelated reason cannot pass for a measurement. **The maintenance window now runs the interpreter
+  the gates measured**: the re-exec hands over `$BASH` rather than going through the deployed
+  release's `#!/usr/bin/env bash`, which closes the gap where `somebash bin/deploy.sh` passed both
+  floors and then died in the window on PATH's older shell.
+  **Review round 3 gave that behaviour change the control it was missing, and found its sibling.**
+  Every ordinary case starts the deploy through its shebang, so the invoking shell and PATH's shell
+  are one process and reverting the hand-over reds nothing — the claim was wider than anything in
+  the suite could support, which is a lower bar than this change applies everywhere else in itself.
+  The self-test now starts one deploy through an EXPLICIT interpreter with a recording pass-through
+  standing in for PATH's `bash`, and requires that neither the maintenance window nor A13 appears in
+  its log; a positive twin asserts the recorder was really on PATH first, so the two absence
+  assertions cannot pass having observed nothing. The sibling: `gate_a13_target_plan` ran the target
+  release's `bin/supervision.sh` under a bare `bash -c` — PATH's shell again, the one no gate reads —
+  and its refusal says the crontab block *"could not be installed here"*, blaming the RELEASE for
+  this host's PATH `bash`. That is the misattribution class this card exists to end, being committed
+  by one of its own gates; it now uses `$BASH` too, and has its own assertion in the same case.
+
+- **card#9814** — **`release-pr-guard` R7 refuses a release PR that skipped archiving the previous
+  release (release flow step 13), so the red lands on the release that owes the step.** Before it,
+  a skipped step 13 surfaced only as R5's size red on some later feature PR by an author who could
+  not fix it, and not at all in the fortnight after an archive, when R5's threshold is the whole
+  cliff. On a PR into `main`, `docs/CHANGELOG.md` at the head may carry at most two released
+  sections — the one the release mints and the previous latest — and the refusal names the
+  `docs/changelog/<tag>.md` file each excess section belongs in, with the fix routed through `dev`
+  as step 13 says. The same rule refuses any `docs/changelog/*.md` past R5's own contents-API cliff,
+  the backstop for a post-hoc edit to a released section. Off the release path both clauses warn
+  and never refuse, and R7 opens no authority file there, so the archive file is named from the
+  version instead of composed from `tag_format`, and the one state that can still stop a feature
+  PR through R7 is git failing to list `docs/changelog/` — which the guard's earlier read of
+  `docs/CHANGELOG.md` already exits 2 on, and which stays the only one after this round's decode
+  fix. The archive listing recurses and asks git not to quote the paths, so a file in a
+  `docs/changelog/` subdirectory, or one named outside plain ASCII, is counted rather than
+  reported as none; an archive filename that is not valid UTF-8 at all is read and printed
+  lossily rather than refused, because a filename is not this repo's to validate and every git
+  read now survives undecodable bytes. R7 counts released sections with R3's own reading of the
+  headings, so a `###` heading is not one. The self-test adds a control, the third-section plant,
+  the demoted-heading control, an archive plant with its at-the-cliff control, and the controls
+  that a feature PR meets no authority file in R7, that a nested archive is seen, that a
+  non-ASCII archive name is seen, and that a version-less heading is named with an instruction
+  that can be followed; each red was seen to fail before the code that answers it, and raising
+  the limit to three or doubling the archive limit reds the plants.
+
+- **card#9816** — **`bin/deploy.sh`'s three phase-A scratch-file failures are now refused as
+  themselves, with the `⛔ REFUSED` banner and the "Nothing was changed. The previous release is
+  still serving." promise.** Three places this script creates a temporary file inside phase A had no
+  unified error path: A13's work directory for its isolation check, and git_ref_oid's and
+  git_commit_of's stderr files for capturing git's diagnostics on a failed read. When `mktemp`
+  failed — measured with TMPDIR pointing at a directory that does not exist, the one condition the
+  fixtures produce; a filesystem out of BLOCKS is UNTESTED and is a DIFFERENT failure, because `mktemp`
+  can SUCCEED on one and what then fails is the write of git's stderr into the file it made, while a
+  filesystem out of INODES fails `mktemp` and is this failure rather than that one — two of
+  them refused with a WRONG CAUSE because the failure went undetected: git_ref_oid and git_commit_of
+  are called from inside an `if` or `||`, where `set -e` does not apply, so the script carried on
+  with an empty path and refused on a cause it never established ("'main' does not resolve to a
+  commit on origin" for a ref that is in the checkout, "git could not resolve the tag …" for a tag
+  git never got to peel). A13's failure was worse: `mktemp`'s failure exits the phase with status 1
+  — the code the exit table reserves for a REFUSED — but no banner fired, so the operator saw only
+  the exit code with no description. All three now route through `not_established`, the one exit
+  that reads the phase (A REFUSES with the banner and promise, B takes the in-window failure path
+  and warns with the cause named); `scratch_file` and `scratch_dir` wrap `mktemp` and call
+  `not_established` on failure, naming the scratch file and its purpose rather than the git step
+  that would have run with an empty path. `not_established` and the scratch helpers join
+  `git_read_call_site`'s family, so `failed_line:` in the in-window marker still names the caller.
+  **Each change was seen to red on the old code** — the three fixtures exercise a real-mktemp
+  pass-through that fails after N calls, and the whole run with TMPDIR gone to a missing directory,
+  generating the three refused headlines and the empty-path false causes that the old code carried
+  through.
+
+- **card#9831** — **`bin/deploy-gate-inputs.sh` answers a mistyped command line with exit 2 and its
+  `⛔` banner, which is its word for "this check could not run".** `--ref` with no value, or with an
+  empty one, used to fail inside bash's own `${2:?}` expansion: a shell error that the script's ERR
+  trap never sees, so the shell printed one line of its own and exited 1 — the code the script's exit
+  table reserves for "a required input is MISSING", a verdict about the release. The option's value is
+  now tested before it is used and the failure leaves through `die`, and an unknown argument leaves the
+  same way instead of through a banner-less `printf`. The exit table names the command line among the
+  causes of exit 2, and `bin/deploy-gate-inputs.selftest.sh` asserts the banner as well as the code for
+  each case, because the shell's message carries the same words as the banner's.
+
+- **card#9610** — **a `server/.env` that OPENS and cannot be read to its end is now refused as itself,
+  and after the maintenance window it leaves the deploy UNVERIFIED by name rather than reported as an
+  unset key.** bash's `read` returns the same status at end-of-file and on a read ERROR, so the loader
+  could not tell a file the kernel refused mid-read from an empty one: `env_file_scan` certified a file
+  nothing had read, and A5 refused on `APP_ENV is 'unset'` — a deploy stopped on a cause nothing
+  established, with a `.env` that was right there and correct. What discriminates is bash's own
+  DIAGNOSTIC, not its status and not the file's size: a read error prints and an end-of-file is silent,
+  which is the rule the git reads in this script already use. A size or length test was measured and
+  rejected — it counts characters against bytes under a UTF-8 locale, asks the filesystem a second
+  question whose answer can have changed since the first, and reads every `/proc`-style file as empty.
+  The read's stderr is captured to be READ rather than hidden: every byte of it is printed back before
+  anything is decided, and it is safe to print by construction — `read`'s diagnostic names a file
+  descriptor and an errno and carries no byte of what the file holds. Nothing read partway is used.
+  The shape no userland reader can see is stated in the script instead of assumed away: an I/O error the
+  kernel reports AS an end-of-file. **The status is what crosses the subshell.** Both readers that want a
+  value call `env_get` inside a `$(…)`, so a flag set by the loader dies with that subshell — `env_get`
+  answers **3** for a file that was not read, printing nothing, and 3 is never "unset". `env_read`
+  refuses on it, which is what stops A5's `env_read … || true` from swallowing it back into `APP_ENV is
+  'unset'`; A10b refuses on it rather than listing 53 keys the host "does not set"; and phase B, where
+  no refusal is allowed because the new release is already serving, **warns with the cause named** and
+  says the deploy is UNVERIFIED. The suite gains the fixtures that discriminate: an EIO on a regular
+  file with no root (`/proc/self/mem` — the only one that reds on all three wrong fixes, including the
+  `[ -d ]` one a directory fixture would pass and the size one that reads it as empty), the directory
+  beside it, `env_get`'s status read through a subshell, a `.env` made unreadable after A5's scan, and
+  one made unreadable inside the window. Each was seen to red against the previous `bin/deploy.sh`
+  first. One condition is named rather than fixtured: a phase-A or phase-B READ failure on a real
+  `server/.env` needs a filesystem that answers EIO on demand, which this runner cannot produce — a
+  symlink to `/proc/self/mem` is refused earlier by A5's mode check, which reads the LINK's mode.
+- **card#9646** — **every exit `bin/deploy.sh` takes in its precondition phase is now a refusal that
+  says so, and names only the cause the run established.** Four commands ran without their status
+  being read, so the script died on them instead of refusing: `--ref` with no value (bash's own
+  `${2:?}`), `git fetch`, `git status --porcelain`, and — for its cause rather than its status —
+  `git rev-parse --git-dir`. Under `set -Eeuo pipefail` a death exits with THAT command's status,
+  which is exit 1 for a ref this checkout cannot read and 128 for a remote it cannot reach: 1 is the
+  code the script's own exit table says means *refused, nothing was touched*, and 128 is a code the
+  table does not list at all. The operator's only discriminator was the absence of the `⛔ REFUSED`
+  banner and the `Nothing was changed. The previous release is still serving.` promise — two lines
+  nothing told them to look for, and the exit table now says so. A3's refusal also asserted one cause
+  for a status that carries several: `rev-parse --git-dir` exits 128 for every way it cannot open a
+  repository, and `$DEPLOY_ROOT is not a git checkout` was stated for all of them with git's own
+  message thrown away, so a prod checkout restored from backup or rsynced — `detected dubious
+  ownership`, which git prints its own `safe.directory` repair line for — sent its operator looking
+  for a checkout that was right there. git's wording is the discriminator now, git's message is
+  printed, and an unrecognised wording gets an honest generic refusal rather than a false specific
+  one. **The suite could not see any of it, which is the finding under the finding**:
+  `bin/deploy.selftest.sh`'s `run_refusal` asserted an exit code and a needle, and a banner-less
+  death satisfies both, so it now asserts the banner and the promise as well — one edit that upgrades
+  every call site it has rather than one case at a time. The new cases each name the mutant they
+  catch, and the two asymmetric ones are marked: a fetch fix that handles git's exit 1 and lets its
+  128 escape passes every fetch case but the one run with the remote gone, and an A3 fix that matches
+  `dubious ownership` and defaults everything else back to *not a git checkout* passes all five
+  preserved shapes and reds only on a `.git/config` git cannot parse. `git status`'s status is read
+  because the precondition is live and was measured to be: on a checkout whose `.git/index` is mode
+  000, A3 exits 0 — it never opens the index — and A4 exits 128, and the empty result a failed
+  `status` hands back reads exactly like a clean tree. **And a condition the runner cannot produce is
+  now named rather than skipped**: every fixture that manufactures a state — a file this user cannot
+  open, an object at mode 000, a checkout git treats as another user's — asserts that state before it
+  asserts anything about the refusal, and where the state depends on the runner's own git build or
+  configuration the suite prints `⚠ NOT VERIFIED HERE` with what that runner answered and what would
+  have to be true, repeats the count in its summary, and does not fail. That is not hypothetical: the
+  dubious-ownership fixture was green locally and red in CI, because `GIT_TEST_ASSUME_DIFFERENT_OWNER`
+  only forces git past the uid check and `ensure_valid_ownership` then consults `safe.directory` — so
+  a `safe.directory = *` in the system or global gitconfig turns its 128 back into a 0. The fixture is
+  hermetic against both now, and it reported the absence by name rather than certifying a refusal that
+  never happened.
+
+- **card#9813** — **every released section but the latest now lives in its own file, so the
+  changelog the contents API returns stays a fraction of the truncation cliff.** `[0.2.0]`,
+  `[0.3.0]` and `[0.4.0]` moved verbatim to `docs/changelog/v0.2.0.md`, `v0.3.0.md` and
+  `v0.4.0.md`; this file keeps `[Unreleased]` and `[0.5.0]`. Archiving is release flow **step
+  13** (`docs/VERSIONING.md`) rather than a periodic act, and the archive files carry no size
+  gate of their own because R5 already bounded every byte in them before it was archived —
+  `docs/PLAN.md § 4` states that invariant and the immutability of a released section that
+  rests on it.
+
+- **card#9707** — **`release-pr-guard` R6 refuses a release that ships less than `dev` holds unless
+  the PR body says exactly what it leaves out.** Nothing compared a release head to the integration
+  branch, and the cost was measured rather than imagined: PR #176 (v0.5.0) sat open for roughly a day
+  at head `e5c1d9e` while four PRs merged to `dev` behind it, every check green the whole time, and
+  merging it in that state would have shipped a release omitting four cards with no automated surface
+  saying so — the tag, the changelog section and the green wall all describe the BRANCH, while the harm
+  is the gap between the branch and `dev`. A human reading the branch caught it, which is not a
+  mechanism. **Two measurements compose into one verdict.** R6a is content: every path where the head
+  differs from `origin/dev` outside the release's own two edits (`VERSION`, `docs/CHANGELOG.md`) is
+  residue — symmetric on purpose, since a non-artifact difference is either `dev` moving after the cut
+  or a feature edit riding the release branch, and neither is a release. R6b is cards: R6a excuses the
+  changelog, which is precisely where "four fewer cards than `dev` held" hides, so every card bulleted
+  under `dev`'s `## [Unreleased]` must appear bulleted somewhere in the head's changelog — not scoped to
+  `[Unreleased]` at the head, because release flow step 4 has just retitled that section and a scoped
+  rule would red every correct release. **The hatch is a declaration, not an opt-out:** a line-initial
+  `Release-excludes: <paths and/or card#NNNN> — <reason>` in the PR body, read through a new
+  `--body`/`--body-file` pair, and it must EQUAL the measured residue — a hatch satisfied by any
+  non-empty acknowledgement would be a checkbox, and a declaration written for yesterday's exclusion
+  must not silently cover drift that arrived after it, so a partial declaration reds naming both sides.
+  **⛔ It is a TREE comparison and may never become an ancestry test.** `git merge-base --is-ancestor`
+  answers FALSE on this repo's correctly back-merged v0.5.0 — PR #180 was squashed, so the release line
+  is not an ancestor of `dev` and never will be, while `git diff --stat origin/main origin/dev` is
+  empty. An ancestry R6 would have been born false here, and the natural response to a false red is to
+  weaken the rule. **Ancestry is wrong in BOTH directions and the selftest pins both**: a head that
+  reaches `dev`'s content through unrelated history must PASS (the false-RED direction), and a head
+  that is a true DESCENDANT of `dev` — which is what the normal release path produces, since the
+  branch is cut FROM `dev` — must still RED when it carries a feature edit of its own (the false-PASS
+  direction, and R6a's second half). Only the first was pinned when this was first written, and a
+  hybrid that short-circuited on ancestry everywhere except the unrelated-history case passed the
+  whole suite while asserting nothing on the common path; the descendant fixture is what closed it.
+  **Fail-closed where it
+  cannot measure:** an unresolvable `origin/dev` is exit 2 rather than a green (the workflow gained the
+  integration-branch fetch, with no `--depth` for the measured reason the base fetch carries, and the
+  selftest now asserts that of EVERY fetch line rather than the first), and a run never given the PR
+  body exits 2 rather than refusing a PR for a declaration it was not shown — an empty body is a real
+  state and reds. **Every arm was seen to fail first**, each mutation below producing a targeted red
+  with none uncaught: R6 replaced by an ancestry test, R6 *short-circuited* on ancestry with the tree
+  diff kept only for unrelated history (the one that reached review passing, and the reason the
+  descendant fixture exists), the hatch reduced to non-empty, R6b dropped, R6a's residue emptied, an
+  unresolvable `dev` passing, the integration fetch deleted, the body no longer passed, and a
+  `--depth` restored on a fetch line.
+  **The same card's second finding, fixed in the same PR: `.release-pr.json` now declares
+  `card_token_regex`, so `release-pr-body`'s shipped-cards manifest is no longer empty.** With the key
+  absent the generic helper could correlate nothing and
+  emitted a `## Correlation gaps` section on every release body; card promotion was unaffected (the
+  mover carries its own `CARD_RE`), but the one cross-check on the mover could never run. Measured over
+  `v0.4.0..v0.5.0`: absent, `--card-manifest` printed nothing; declared, it prints exactly the id set
+  the mover's own sweep of that range prints, and the gaps section is gone. The value is the mover's
+  `CARD_RE` verbatim rather than the obvious `card#[0-9]+`, which would silently drop the `card-NNNN`
+  and glued `cardNN` spellings the correlators accept — and because the helper reads JSON and cannot
+  extract the mover's bash, the copy is GUARDED: `bin/card-token-lint.selftest.py` now asserts the two
+  are byte-identical and reds if either moves. `ref_token_regex` stays undeclared deliberately: its
+  numeric part correlates against a card's `payload.dl_number` and this repo has no decision-log id
+  space.
+- **card#9742** — **`DatabasePinTest` asserts the key set it guards against the key set `phpunit.xml`
+  declares, so a pin the file gains and the test does not is reported as UNGUARDED instead of skipped.**
+  The test iterates a hand-written constant, and nothing asserted that constant still described the file:
+  a forced pin added to `phpunit.xml` and not to `PAIRED_KEYS` was simply never visited, and the
+  suite stayed green reporting on a subset it no longer defined — with the NEWEST pin, the one most
+  likely to be wrong, the one it could silently omit. The sets agreed when this landed, so this closes a
+  LATENT gap rather than a live divergence; what it protects is store isolation on a shared host, where
+  `mezzanine_test` is rebuilt destructively by `RefreshDatabase` on every run and a neighbouring tenant's
+  data is what a silent shrink eventually costs. The shape is kanban-solo's, published on rt#506 after
+  they hit the identical defect in their own copy of this guard, and taken as offered rather than
+  re-derived. **Set equality, in both directions**: a key the file pins and `PAIRED_KEYS` does not name
+  reds as `UNGUARDED`, a key `PAIRED_KEYS` names and the file no longer pins reds as `GUARDED BUT
+  ABSENT` — the second is the same defect pointed the other way, a pairing asserted for a pin that
+  isolates nothing. A key claimed by EITHER half of the pair — a forced `<env>` or a `<server>` — enters
+  the file's set, because a half-written pin is exactly what the pairing assertion exists to catch and
+  must be judged rather than fall out of the population; the unforced `<env>` entries (`DB_CONNECTION`
+  and the defaults above it) claim nothing, since an exported value beats them. **Seen to fail in both
+  directions on a FIXTURE COPY of `phpunit.xml`** — staging the control in the real file would change
+  the isolation of the run performing it — reporting `UNGUARDED: phpunit.xml pins REDIS_SESSION_DB,
+  which PAIRED_KEYS does not name` and `GUARDED BUT ABSENT: PAIRED_KEYS names REDIS_URL, which
+  phpunit.xml no longer pins`. `docs/design/FLEET-STATE.md` § 6.2 records the leg and AT-D2-14 carries
+  the fixture control as its fourth RED.
+- **card#9767** — **this repository now runs the FLEET's PR-body linter on every open PR, and its
+  verdict on a body REPORTS rather than blocks.** ⚠ Later in this release the verdict was made to
+  block: see the card#9801 bullet at the top of this section. `bin/pr-body-lint.py` is upstream's
+  own program — the one every coord
+  install's CI runs and the review path spawns — vendored byte-for-byte under a `#` provenance header
+  that records the source commit and plugin version, because the upstream repository is private and a
+  public runner cannot clone it. The new **`pr-body-lint` job** in
+  `.github/workflows/card-token-lint.yml` prints its whole verdict and **the step that judges the
+  body exits 0 whatever it finds**. ⚠ The JOB is not thereby incapable of failing — its pin and
+  selftest steps judge the CHECKOUT and do red — and it never was: those steps shipped with it.
+  ⛔ **THE REPORT-ONLY WIRING IS THE DECISION, NOT AN UNFINISHED STAGING STEP.** Run over this
+  repository's recent merged bodies, most of them FAIL the standard — and **those reds are correct**:
+  the standard governs every PR body an agent writes and is ratified twice, and this repo is genuinely
+  non-compliant with it, principally because its house sections (`## What is in it`, `## What you must
+  do`, `## What you will see change`, `## Evidence`) are none of them in the standard's closed allowed
+  set. A gate that reds ordinary correct-looking work on its first day teaches the people it governs
+  to route around it, so this lane makes the findings visible without minting that habit. ⚠ **It is a
+  WINDOW, not a destination** — adopting the body shape, and then a dated flip to blocking, are
+  tracked on card#9767 and are the operator's calls; requiring the job as a ruleset context is
+  likewise the operator's, and **would not by itself make the BODY VERDICT block**, because that step
+  exits 0 — though it would make the job's pin and selftest steps blocking, which is the intent.
+  **The lane existing is not the class being handled.** ⭐ **WHAT IT REPLACED, AND WHY THAT IS THE POINT**
+  — `bin/pr-body-fields.py` and `bin/coord_audit_field.py`, a mezzanine-local two-field presence guard
+  built around `review-prep.py`'s `_audit_field`, are **deleted**. That function has MOVED upstream and
+  now lives inside this very linter, so the local pair was a copy of something that was no longer
+  where it had been copied from, and keeping it would have shipped a second divergent implementation
+  of a capability the framework already owns. Upstream's is a strict superset of it: the same two
+  presence rules, plus the installer-POV narration rules, plus `attribution-line` — the rule that
+  refuses the `FROM:` line the 2026-09-17 operator directive removed from PR bodies fleet-wide.
+  **BOTH VENDORED FILES ARE PINNED** in `bin/vendor-pin-check.sh`, whose `--selftest` control arm
+  needed the `#` provenance header to exist at all (it requires line 2 of a manifest file to be a
+  comment and upstream's line 2 is the docstring; a comment before a module's first string statement
+  does not displace `__doc__`). The vendored fixtures carry no manifest row and need none —
+  **upstream's own selftest pins each of them by sha256**, which checks the copy against the SOURCE
+  rather than against this repo's last declaration, and that selftest runs in the job.
+- **card#9754** — **the suite refuses by name unless it can READ `server/.env`, and `php-tests` runs it
+  with no `.env` on every PR.** No CI lane had ever run the suite without a `.env`: `php-tests.yml` copies
+  `.env.example` to `.env` before the only step that executes it, and `server/.env` is gitignored — so the
+  tree CI tested always had one and the tree every fresh worktree and every first contributor has never
+  did. A defect that manifests only in that configuration was therefore invisible to the green wall BY
+  CONSTRUCTION, and card#9687 is the instance already paid for: the suite errored with
+  `ReflectionException: Method ...::test_dummy() does not exist`, naming whichever class the directory
+  iterator reached first, while CI stayed green throughout. THE BEHAVIOUR WAS DECIDED BEFORE THE LANE WAS
+  BUILT, because a lane built first would only have pinned whatever happened to occur: the suite cannot run
+  without an `.env` — `phpunit.xml` pins the test database and deliberately no credentials, since
+  credentials are per-host and a committed file must never carry them — so with no file
+  `config/database.php` falls back to `env('DB_USERNAME', 'root')` with an empty password, and the run
+  reports a cause that is TRUE AND NOT ACTIONABLE. Measured on this host at `dev` `90f9663`: 612 of 977
+  tests error with `Access denied for user 'root'@'localhost' (using password: NO)`, which sends a first
+  contributor to fix MariaDB grants when the remedy is to copy `.env.example`. `server/tests/bootstrap.php`
+  now refuses on READABILITY, with a named message on STDERR and `exit(1)` — **two states, two messages**,
+  because one sentence cannot honestly say both *there is no file* and *there is a file you cannot open*,
+  and their remedies differ. **The second is the one a presence check would have waved through, and waving
+  it through would have re-minted the class this card exists to close:** `file_exists()` is true for a
+  `.env` this process cannot open, phpdotenv reads it through `@file_get_contents()`, and
+  `Dotenv::safeLoad()` SWALLOWS the `InvalidPathException` that follows — so an unreadable file reaches the
+  suite exactly as an absent one does, on the same fall-back credentials, having raised the suppressed
+  bootstrap warning that is card#9687's whole mechanism. Measured on this host as a non-root user: on a
+  mode-000 `.env`, `file_exists()` is true while `is_readable()`, `fopen()` and `@file_get_contents()` are
+  all false, and the pre-guard tree RAN the suite against it and errored with the access-denied. `bin/deploy.sh`
+  already refuses both states one layer up, in two refusals with two messages — A5's `does not exist` and
+  `env_file_scan`'s `exists but cannot be read by the user this deploy runs as`, which card#9605 named
+  "the I/O sibling of the two cases above, and the one that was missing" — and the suite's guard is now
+  that same shape. It EXTENDS the card#9499 autoload guard already in that file rather than siblinging it,
+  and it is there rather than in `Tests\TestCase` because that guard runs per test and after the framework
+  has booted — and booting is what raises the diagnostic card#9687 traced. There is deliberately NO *unless
+  the credentials are exported* branch: nothing in this repository runs the suite that way, and in the new
+  lane, where the job exports `DB_*`, such a branch would make the lane pass on variables the configuration
+  under test does not have. **What no bootstrap-time guard covers is named in the guard's own comment
+  rather than left to be inferred:** a readable `.env` carrying a WRONG credential — the template copied
+  with `DB_PASSWORD` left unset — reaches the same access-denied, and seeing that requires opening a
+  connection, which is not bootstrap's job. **The lane asserts the MESSAGE, never the exit code**, in the genuine no-`.env` window between
+  `Install dependencies` and `Create .env` — no extra runner, no second `composer install`. Both states of
+  that window exit non-zero (pre-guard 2, post-guard 1) and it has no `APP_KEY` either, so an exit-code
+  assertion would pass on all of them and discriminate between none. **Seen to fail, so the green is
+  evidence:** the lane's own command, re-extracted from the workflow file and run on this tree with
+  `bootstrap.php` restored to its `90f9663` content, exits 1 and prints the access-denied output it got
+  instead; with the guard it exits 0 on the refusal. The unreadable state was watched both ways too, on a
+  mode-000 `.env` asserted to be genuinely unopenable by this non-root user: the pre-guard tree ran the
+  test and errored on access-denied (exit 2), and this one refuses by name before any test runs (exit 1).
+  The lane pins the first line of the no-file refusal — the guard's label and the clause naming the state,
+  and no path, so the pin does not silently depend on the server directory being named `server`; rewording
+  that line reds the lane by design. `README.md` § Running the server locally states both refusals and the
+  state neither covers. The full suite passes 977 of 977 with 11268 assertions on PHP 8.5 against the host
+  MariaDB with a readable `.env` in place, which is the run this guard leaves untouched.
+
+- **card#9687** — **the full-suite gate no longer errors on a checkout that has no `server/.env`, naming a
+  class that has nothing to do with it.** `FixedWindowPinCoverageTest` probes each class that asserts a
+  `429` by constructing it and invoking its `setUp()`, and it passed the constructor a placeholder name
+  rather than the name of a test method that exists. PHPUnit's constructor argument is not a label: the
+  runner's global error handler resolves it by REFLECTION, at a moment the probe does not choose. Any PHP
+  diagnostic raised while the probe's instance is on the call stack reaches
+  `Event\Code\TestMethodBuilder::fromCallStack()`, which takes the nearest `TestCase` — the probe's, not
+  the running one — and prettifies its name through `new ReflectionMethod($class, $case->name())`. A
+  placeholder therefore throws `ReflectionException: Method ...::<placeholder>() does not exist`, and it
+  names whichever class the directory iterator reached first, so the message points nowhere near the line
+  that caused it. THE DIAGNOSTIC THAT FIRES IS THE MISSING `.env`: the probed class's `setUp()` boots the
+  application, phpdotenv reads the absent file through `@file_get_contents()`, and a SUPPRESSED warning
+  still reaches PHPUnit's handler. `.github/workflows/php-tests.yml` copies `.env.example` to `.env`
+  before it runs the suite, which is why the wall stayed green while a fresh worktree — which has no
+  `.env` — reddened, and why the PHP version the lane pins is not the discriminator it was first read as:
+  measured on this host on PHP 8.5, the same tree errors without an `.env` and passes with one. The probe
+  now derives the name by reflection from the class's own public test-prefixed methods, and a covered
+  class with none fails LOUDLY by name instead of re-minting a placeholder.
+
+- **card#9644** — **`bin/deploy.sh`'s phase-A gates that judge the RELEASE are callable one at a time, and
+  the file can be sourced without running a deploy.** A6, A10, A10b, A11, A12 and A13 were written inline in
+  `phase_a` — one straight-line function with no per-gate entry point — and the bottom of the file read
+  `main "$@"` unguarded, so the only way to reach a gate's CONTENT predicate was to run a whole deploy, and
+  that refuses at A5 without a production `server/.env`. Three of the refusals behind that wall are
+  unconditional properties of the target tree and fire on every deploy: a `server/composer.json` with no
+  `require.php`, a PHP constraint the floor check will not evaluate, and a target `bin/supervision.sh` that
+  defines no `supervision_install_plan`. That is the shape which let a missing `server/package-lock.json`
+  refuse every deploy for days while the suite stayed green against fixtures that carried one (card#9631,
+  card#9637). Each gate is now a top-level function taking the commit being deployed —
+  `gate_a6_php_floor`, `gate_a10_migration_algorithm`, `gate_a10b_config_drift`,
+  `gate_a11_trusted_proxies`, `gate_a12_asset_lockfile`, `gate_a13_target_plan` and
+  `gate_a13_supervision` — called by `phase_a` in the order they refuse in, and callable one at a time by
+  anything else. Each header states what the gate touches besides git: four read the object database and
+  the arguments they are handed and nothing else, and the two whose whole job is a comparison with THIS
+  host say so — A10b against its `.env`, A13 against its crontab and the serving release's lock paths —
+  which is why A13's host-free half, reading the target's `bin/supervision.sh` and running that release's
+  own install plan in a bash process of its own, is `gate_a13_target_plan`. `main "$@"` runs when the file
+  is RUN; sourcing it defines the functions and returns, and what sourcing DOES do is named at the guard
+  (`set -Eeuo pipefail` in the caller's shell, `bin/supervision.sh` sourced beside it, `php` run for the
+  host version, and the caller's `$@` cleared so it is never parsed as this deploy's arguments).
+
+  **The behaviour is unchanged, and that is the whole of the claim.** `bin/deploy.selftest.sh` passes every
+  assertion before and after, and the two runs' output agrees line for line except for the fixture COMMIT
+  IDS the harness prints when it blinds an object: those fixture trees carry `bin/deploy.sh` itself and
+  their commits pin no date, so those ids move between any two runs of any tree — measured against a second
+  run of the unchanged one.
+
+  **`bin/deploy-gate-inputs.sh` derives three of its classification fields out of `bin/deploy.sh`'s source
+  text, so moving the reads moved them.** Its `fn` column now names each gate instead of `phase_a`, and
+  A13's disposition digest changed because that read no longer sits last in `phase_a`, where its region ran
+  on through A14's refusal and the `Ready:` block; every other digest is unchanged. Both rows are the ones
+  that check derived and printed for pasting. Its own selftest passes unchanged.
+
+  **The seam is the half that landed.** The reads are still DERIVED from `bin/deploy.sh`'s source text
+  rather than enumerated by it, so every escape shape in that lane's `NOT PROVED BY A GREEN` block is as
+  wide as it was, and the lane calls no gate yet. Both are stated where those claims are made.
+
+- **card#9732** — **`release-pr-guard` judges a pull request only while it is still OPEN, so a release
+  that shipped correctly no longer collects a permanent red check.** `edited` fires on a pull request
+  that has already MERGED: editing PR #176's body after v0.5.0 went out re-ran the gate and failed it on
+  R2 — *"VERSION is '0.5.0' at the head and '0.5.0' on main — UNCHANGED"* (run 35186872206). The rule
+  was right and the context was wrong. R2 asks whether a release is about to merge WITHOUT a bump, so
+  head == base is a missing bump while that release is pending and the CORRECT terminal state once it
+  has landed — `main` carries 0.5.0 precisely because the release went out — and nothing in the two
+  trees the rule reads tells those apart. The difference is whether the PR is still open, so the test
+  lives where that difference is: the job now carries `if: github.event.pull_request.state == 'open'`
+  and **no rule changed**. R2 still refuses an open release PR whose `VERSION` has not moved, which is
+  the 2026-08-30 defect — the merge lands, `auto-tag-version` then finds the tag on another commit, and
+  the only remedy is a second release PR — that this gate was built to stop. Being a required status
+  check is unaffected, and that is why the test is a job condition rather than a `branches:` or `types:`
+  narrowing: every PR that can still merge is open, so an open PR produces the same completed run under
+  the same job id, where a filtered-away run would read as pending forever
+  (`docs/VERSIONING.md § Branch model`). What is removed is only the run on a PR whose merge button is
+  already gone. `bin/release-pr-guard.selftest.py § 12` holds both halves — the condition read
+  structurally off the JOB, so a condition on a step, on another job, or on a field that does not exist
+  all read as absent, and the very tree run 35186872206 judged still going red on R2 and on R2 alone
+  when the PR is open. What that section cannot exercise is named in it: GitHub evaluates the `if:` and
+  produces the skip, so the end-to-end behaviour was measured on the real surface instead.
+
+- **card#9611** — **`bin/deploy.sh`'s ref resolve (A7) and release check (A8) name the cause they
+  actually established.** Both refused correctly and then stated a cause that had never been
+  established, which is canon #10's wrong-but-specific cause and costs an operator the debugging
+  path rather than the deploy: A7 said *"'<ref>' does not resolve to a commit on origin"* and A8
+  *"<sha> is not contained in origin/main"* on a checkout whose OBJECT STORE was what had failed.
+  **The status of the call A7 was making cannot discriminate**, and that is measured rather than
+  argued (git 2.53.0, packed and loose): `rev-parse --verify --quiet <ref>^{commit}` exits **1** for
+  a ref that is not there AND for every object-store failure tried — pack chmod 000, idx chmod 000,
+  pack deleted, one byte flipped mid-pack, loose object chmod 000 — and dropping `--quiet` gives
+  both **128** with the same `fatal: Needed a single revision`. So the fix is not a status threshold
+  on that call: resolving a NAME reads the refs alone and never opens the object store (measured on
+  a broken checkout, `rev-parse --verify --quiet refs/remotes/origin/main` still answers), and
+  whether the object it names is a readable commit is a SECOND question, asked of `cat-file -t`,
+  where a non-zero status can only be a failed read. `git_commit_of` asks them apart, peels an
+  annotated tag in a third step, and hands a failed read to card#9608's existing refusal helper
+  (`git_read_unusable`), which is the one place the PHASE decides whether a refusal may say
+  *"nothing was changed"*. A8 keeps `--is-ancestor`'s statuses apart the same way — 1 is *"it is not
+  an ancestor"* — and drops the `2>/dev/null` that hid git's own error. **And neither the status 1
+  nor the status 128 is ONE condition**, which is the second half of the same defect: `--ref` is the
+  operator's own string, so rev syntax (`main~2`) or an abbreviated id makes the resolve walk into
+  the object store, where a failed read also comes back as 1 — told apart now by git's own SILENCE,
+  which an absent name answers with (and the shapes that silence CANNOT see are named to the
+  operator rather than assumed away: on a checkout whose pack is unreadable, every candidate that
+  needs the pack answers silently); and
+  `--is-ancestor` exits 128 for a `origin/main` THAT IS NOT THERE on a completely healthy store,
+  exactly as for a graph it could not read, so the release branch is resolved by NAME first.
+  **Three behaviour changes beyond the wording**: a git failure at either site now prints git's
+  error above the refusal; `--allow-unreleased` no longer carries a deploy past an ancestry that
+  could not be read — it waives the FINDING that a commit is unreleased, and this run has no finding
+  to waive — while it DOES still waive a `origin/main` that does not exist, where the question is
+  answered (nothing is released, so neither is this commit) and where the old reading had left the
+  in-window recovery deploy (`--ref <sha> --allow-unreleased`) with no override and no next step;
+  and an ancestry that genuinely could not be read is refused with the repair named. Every assertion
+  this card adds to `bin/deploy.selftest.sh` was seen to fail against the commit before it and pass
+  with the fix, each paired with the other direction over the SAME broken store (a ref that is
+  genuinely absent still refuses as absent) and with a control one variable away on a readable one.
+  **The `NEXT STEP` an unreadable ancestry prints is a repair INSIDE the deploy root's own `.git`,
+  and it is one that WORKS** (r4): `fsck` names the object and says whether it is unreadable or gone;
+  an unreadable one is restored in place with `chmod`; one that is GONE is replaced by swapping
+  `.git` alone out of a `git clone --no-checkout` and running `checkout --force`; `repack -a -d`
+  CONFIRMS afterwards, because it refuses outright if anything reachable cannot be read. ⛔ **It also
+  says what does NOT work, because the advice it replaces looked like it had**: `git fetch`
+  negotiates from REFS, and this refusal is only reached after the refs resolved and `$SHA` was read,
+  so the object that cannot be read is an INTERIOR one this checkout's refs already claim and the
+  remote is never asked for it — measured, git 2.53.0: with the object unreadable `fetch --prune`
+  exits 0 having transferred nothing and the object is still unreadable, and with it DELETED it exits
+  0 too and the object is still gone. The prescribed step therefore returned exit 0 and no output to
+  an operator with the app down, who read that as the repair having run and met the identical
+  refusal. It still says outright not to re-clone the deploy root: `server/.env` is created on the
+  host and is in no commit, so its `APP_KEY` and `DB_PASSWORD` exist nowhere else, and a fresh clone
+  also takes `server/storage/` and the `.deploy-failed` marker — the logs and the marker the failure
+  banner sends that same operator to. The `.git`-only swap reaches the same place with no
+  preservation list to get wrong under pressure, which is why it is the last resort named.
+  **And a status that is neither 0 nor 1 is split by that same silence**: `rev-parse`
+  exits 128 having printed NOTHING for `@{…}` reflog syntax on a completely healthy store, and
+  `refs/remotes/origin/HEAD` exists in every clone with a reflog that gets one entry and never grows
+  on a deploy root — so `--ref HEAD@{1}` refused with *"the REFS could not be read"*, under a line
+  saying git's error was above it, on a host where nothing was wrong. That refusal now states the
+  status, claims no failed read where git printed none, and says what to deploy from instead; a LOUD
+  non-zero is still named as the failed read it is. The coverage that missed it is fixed at the
+  contract rather than at the case: `bin/deploy.selftest.sh` carries one case per ANSWER
+  `git_ref_oid` declares — `0`, `1`-silent, `1`-loud, other-silent, other-loud — four of them DRIVEN
+  through the script, and the fifth (`other-loud`) named UNREACHABLE through it, with both halves of
+  that asserted rather than skipped: git really does answer that way with `packed-refs` unreadable,
+  and A7's own `git fetch` really does meet it first. The branch no case exercised was the branch
+  still over-reading. Also: a `--ref` beginning with `-` is
+  classified as the NAME it is (`check-ref-format` parsed it as an option and the note then called
+  it rev syntax; that command accepts neither `--end-of-options` nor `--`, measured, so the leading
+  dashes are stripped for the classification instead). **And the rev-syntax test is POSITIVE now,
+  because a `check-ref-format` failure was never evidence of rev syntax** (r4, the class the dash
+  fix was one input of): `--allow-onelevel` exits 1 for around a dozen rules, measured exit 1 and NOT
+  rev syntax for `a b`, `main..dev`, `foo.lock`, `ab[c`, `.foo`, `foo//bar`, `ab*c`. So an ordinary
+  typo — `--ref 'release 1.2'` — was told *"it carries rev syntax, so resolving it walked the commit
+  graph"* and pointed at a possibly-damaged object store: three false statements in one note, on a
+  completely healthy host, where the fault is a space. Measured for that same input, resolving the
+  name exits 1 with EMPTY stderr — a lookup in the refs that never opens an object. Rev syntax is
+  detected now by the metacharacters that ARE it (`~`, `^`, `:`, `@{`), and a name git simply refuses
+  gets the note that is TRUE of it, which is the more useful answer anyway. **And `1`-loud is not one
+  condition either**: a peel to a type the object is not is LOUD at status 1 on a COMPLETELY HEALTHY
+  store — `--ref 'main^{blob}'` gives `error: …: expected blob type, but the object dereferences to
+  tree type` — so that branch told an operator git's error named what it could not read while every
+  read had succeeded. **And the same claim was live at a SECOND site, found by grepping the tree for
+  this round's own false claim rather than by the review that named the first one**:
+  `git_commit_of`'s tag branch has said since r2 that one of its two cases is git peeling the tag
+  perfectly well and arriving somewhere this deploy cannot use — and it still refused through the
+  wrapper whose fixed line states that git's error names what it could not read, so an annotated tag
+  over a TREE was called a failed read on a store where `git fsck` exits 0 (measured, git 2.53.0:
+  128, `error: …: expected commit type, but the object dereferences to tree type`). Both sites now
+  ask ONE function, `git_peel_mismatch`, and it keys on git's MESSAGE and not on its status, because
+  the same wording arrives at 1 from the `--quiet` call site and at 128 from the one without it — a
+  status rule would have had to be re-derived per caller and would have been wrong at the next one.
+  That call site captures git's stderr now instead of letting it go straight past, because the
+  message IS the discriminator.
+- **card#9693** — **`bin/deploy-gate-inputs.sh` rules on each name in `bin/deploy.sh`'s reader family by
+  what that function's own body does, instead of reading the family list as the population.** The lane
+  stopped at exit 2 over a healthy `bin/deploy.sh` and blocked PR #178, and it was RIGHT to stop: it
+  refuses to report green over a read it cannot classify, which is the defect card#9637 built it to end.
+  What it could not classify was the deploy's own family DEFINITION. `git_read_call_site`'s `case` list
+  is the deploy's frame-walking family — a different population from "functions that read a path out of
+  the release" — and card#9611 grew it past one line, where this derivation only ever read a case label
+  written on one. From that single cause the lane failed in both directions at once: the reader names it
+  lost stopped being exempt, so the readers' own plumbing and the case list that defines them read as
+  calls to a reader; and `git_ls_at` fell out of the LOOSE half of the derivation while the STRICT half
+  went on matching it, so a read written exactly as the lane's own remedy prescribes — `git_ls_at <var>
+  "$SHA" <path>`, on one line — was reported as a shape the derivation does not match, over advice
+  telling its author to write it the way it already was. A gate whose advice does not apply to the lines
+  it fires on trains people to ignore it, so that text is fixed in the same change: it names both shapes
+  `READ_RE` matches and prints `READ_RE` itself beside them, and `bin/deploy-gate-inputs.selftest.sh`
+  matches the shapes it prints against that pattern, so the advice cannot drift from what is accepted.
+  A case label is now joined across its `\` continuations and is never read as a call site; the family is
+  derived from that list, from every function whose body reads a path, and from every function that
+  DELEGATES to one (`git_ls_at`'s whole body is a call to `_git_ls_at`, so it was in the family only
+  because the list happened to name it). **Being in that family is no longer being a reader of the
+  release tree.** Each candidate is ruled from its own body and the ruling is PRINTED on every run beside
+  the name: a git invocation naming a path (a `--` pathspec or a `rev:path` argument — how git's CLI
+  names a path inside a tree, which is a property of git rather than a restatement of the deploy) is a
+  read the gate is about; `cat-file -t "$oid"` reads an object by bare id and `rev-parse` resolves a ref,
+  neither of which can hand a caller a file out of the tree; a refusal helper runs no git at all.
+  Ambiguity resolves toward READER, so the error the rule can make is a stop and never a pass — and a
+  family member running a subcommand this check has no reading for (`archive` puts paths on disk), or a
+  name in the list this file defines no function for, stops the check rather than being assumed
+  harmless. Both of those exited 0 before this change. What a green here still does not prove is
+  enumerated, as it has been since card#9637, in the `NOT PROVED BY A GREEN` block the check PRINTS on
+  every run — including the one shape this ruling adds, a reader whose path arrives already assembled
+  inside a variable — rather than in a copy here that would go stale.
 
 ## [0.5.0] — 2026-09-16
 
@@ -930,4062 +2627,4 @@ release, and a release retitles it (`docs/VERSIONING.md § Release flow` step 4)
   silently dropped that member and the gate would have reported the DOCUMENT as missing a member it
   plainly states — it now reads the column its locator names, which is also stricter.
 
-## [0.4.0] — 2026-09-14
-
-- **card#9300** — **THE LIVE FEED IS BUILT: Server-Sent Events on `GET /api/fleet/stream`, fed by a
-  `feed_outbox` table** (`docs/design/FLEET-STATE.md` Appendix B step 9). ⛔ **Installer action, before the
-  next deploy — the deploy now REFUSES a host that cannot serve or drain the stream:** provision a
-  DEDICATED PHP-FPM pool for `/api/fleet/stream` running as the application user, with
-  `request_terminate_timeout = 0`, `pm.status_path` and `pm.status_listen` set; route that path to it in the
-  vhost with `ProxySet flushpackets=on` on its socket (without it this host's Virtualmin vhost shape was
-  measured holding the whole stream, and every browser renders *feed down*); and export
-  `MEZZ_STREAM_POOL=<pool name>` to `bin/deploy.sh`. `cgi-fcgi` and `timeout` are now required on the host.
-  (The deploy that first ships this runs its preconditions in the previous release's script, so it only
-  warns about a missing pool, in the window, and skips the drain; the one after it refuses.)
-  After a deploy that changed the stream path, the proxy or the pool, run `bin/feed-stream-check.sh
-  https://<origin> <cookie file>` as an operator (`docs/PLAN.md § 5` has the steps). What ships:
-  `App\Feed\Outbox` writes every feed message as its writer's LAST statement before COMMIT (the fold, the
-  sweeper, the retirement act, the heartbeat daemon, the console's room-map and layout saves — the
-  heartbeat and `fleet.health` are now ONE fleet-wide row each, not one per install); `App\Feed\FeedStream`
-  is D2 § 8.3's handler (first frame `fleet.health`, cursor behind the 2 s lag, stall check before the read,
-  15 s session + MFA re-check, `fleet.reload` → `feed.close{reason:"reload"}`); `mezzanine:feed-reload`
-  runs in the deploy immediately before the opcache wait, and the deploy then SIGTERMs the streams that
-  missed it after `MEZZ_FEED_DRAIN_CEILING_S` (30 s) — D2 § 14 item 17, closed by measurement;
-  `mezzanine:purge` keeps outbox rows 60 s. The deploy refuses `zlib.output_compression`,
-  `output_handler` or `ignore_user_abort` on the stream pool; `output_buffering` is measured harmless
-  (the handler's flush defeats 4096) and only reported. **Retired:** `/broadcasting/auth`,
-  `routes/channels.php`, `->withBroadcasting()`, the `ShouldBroadcastNow` markers and
-  `BROADCAST_CONNECTION` (delete it from a host's `.env` at leisure; nothing reads it) — the session + MFA
-  gate moved to the stream route with its tests. `App\Events\SeatRetired` is now `App\Feed\SeatRetired`.
-  Gates: AT-D2-7 and AT-D2-8 consume the route's stream; AT-D2-15, AT-D2-19's stream legs, AT-D2-12's
-  connect leg and AT-D2-25 (a real race on four MariaDB connections) are new — AT-D2-15's worker return
-  by the proxy and its RSS leg need a real deployment and say so.
-
-- **card#9300** — **D3 follows operator ruling A4: a deploy that does not change `feed_version` shows
-  the floor's viewer nothing.** Docs, plus one COMMENT in `bin/deploy.sh`; no behaviour changes.
-  - **D3 § 14 item 20, closed.** § 2.5's `fleet.reload` row and § 9 F8 raise the reload banner only on
-    a `feed_version` the client does not know. F3's `reload` cells render nothing. A stream the
-    deploy's drain ends with SIGTERM carries no `feed.close`, so it takes F1's path.
-  - **§ 2.2 now owns a 60 s reload grace.** After `feed.close{reason:"reload"}` the client re-opens on
-    its 10 s cadence and renders nothing while the deploy's maintenance window refuses it. § 12 derives
-    the figure from D2 § 2.1's feed-reload row, `bin/deploy.sh`'s drain and `docs/PLAN.md § 5`'s
-    opcache wait. Past the grace the client renders the failure, so a deploy that failed with the app
-    down is not drawn as a healthy floor. AT-D3-8 and `fx-refusals` gain the legs for both sides.
-  - **D3 no longer describes the retired per-install channel.** § 3.1, § 4.3, § 4.6, § 6.2's A17 row,
-    AT-D3-9 and Appendix B step 3 now describe the one fleet-wide stream.
-  - **D2, corrected:** § 8.3 no longer says a per-install ACL attaches "when item 7 is ruled", because
-    item 7 was ruled and recorded. § 8.7 and § 13 row 42 no longer describe per-install channels or say
-    every `fleet.reload` demands a reload.
-  - **Review round 2.** § 2.2's protocol block, step 8, now carries the exception the prose, F3 and F8
-    already carried: after F8's banner nothing is re-opened. § 2.2's grace paragraph gains a fourth
-    clause — the grace also suppresses F6 for the reads the client issues on its own, because an
-    `EventSource` open failure carries no status code and the client issues no poll of its own inside
-    it, so a session that expires there waits for the grace's end; F6's
-    **Detected by** column and AT-D3-8 point at it. And **the drain ceiling's consumer is now named at
-    both ends**: `bin/deploy.sh`'s env-var block and D2 § 2.1's feed-reload row say that raising
-    `MEZZ_FEED_DRAIN_CEILING_S` can push the window past the client's grace, which no client can read.
-  - **Review round 3.** The 45 s silence path — § 2.2 step 7, § 9 F1 and D2 § 2.2's Stream row — carries
-    the reload-grace exception: inside the grace, clause (2) applies in place of the *feed down —
-    polling* render and its poll. Clause (4), F6 and AT-D3-8 now claim only that the client issues no
-    read **of its own** inside the grace; a read the user causes (§ 4.3's drill-down, § 4.4's
-    navigation, F10/F11's retry) is suppressed by nothing, and a `401` from it fires F6 as usual.
-    Appendix A's T14 and T15 carry the same exception.
-  **Installer action:** none — the `bin/deploy.sh` change is a comment.
-
-- **Operator rulings recorded (no card)** — **The operator's rulings of 2026-09-13 close open design
-  questions, and two false claims are corrected.** Docs only; no code changes.
-  - **D2 § 14 item 7, closed:** fleet-read is all-or-nothing, for now. Any MFA user and any
-    `fleet_read` token sees every install. It reopens before a second organisation's install
-    reports in. D2 § 9 and D3 § 1.2 say so.
-  - **D2 § 14 item 15, closed:** a machine consumer may not hold the stream, for now. The known one
-    polls REST at a cadence of minutes. D2 § 9's surface table and § 13 row 10 rest the refusal on
-    the ruling.
-  - **D2 § 14 item 16, deferred:** a floor left open still re-authenticates every
-    `SESSION_LIFETIME`. The operator will revisit it once the floor exists, likely as a kiosk
-    credential. D2 § 9 and D3 § 9 say so.
-  - **D3 § 14 item 3, closed:** `card#N` renders as plain text, because the board is private and no
-    link base URL is configured. § 4.3 and § 5.2 no longer describe a configured link.
-  - **D3 § 14 item 18, closed:** no in-browser room editor. Tiled stays the editor; § 10.3 and
-    § 13 row 28 say so.
-  - **`docs/VERSIONING.md`, corrected:** card#9328 step 2's *"FALSE AS MEASURED"* notes are removed
-    from § Branch model and core rule 5. `dev` is squash-only for everyone, and ruleset `21953633`'s
-    admin bypass (mode `always`) exists so the `main` → `dev` back-merge lands as a merge commit. The
-    admin identity merges it with `gh pr merge <N> --merge`, not `solo-self-merge`, which squashes.
-    Release-flow step 11 and card#9328's entry below say so too.
-  - **D1, corrected:** § 6.0 said the reporter config's `harness_label` is *"written by the
-    installer"*. There is no installer, and `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves the key
-    unset on purpose. § 6.0 and § 6.1 now say the field is `null` on such a seat.
-  **Installer action:** none.
-
-- **card#9368** — **A Linux agent seat can report without an installer and without root.** The new
-  `fleet-reporter/INSTALL-LINUX.md` is a by-hand runbook, performed on the sandbox host to connect
-  `mezzanine` / `mezzanine-solo` as the first reporting seat. Its steps: issue the seat token straight
-  into a `0600` config, wire the hooks, supervise the flusher, run selftest, verify, and roll back.
-  **The flusher's supervised start on Linux is now the user crontab**, an `@reboot` entry plus a
-  minutely `flock -n` entry that carries `COORD_CONFIG=` on its own command line. It is no longer a
-  `systemd --user` unit, which without lingering neither starts at boot nor outlives logout. D1 § 2.3,
-  § 3.1's `$COORD_CONFIG` delivery contract, AT-27 case F and § 18.13 row 6 now say so. The fleet-reporter
-  README and `docs/PLAN.md § 3` record the installer, card #7336, as won't-do. **Installer action:**
-  nothing on the server. To connect a Linux seat, follow the runbook. Its closing section names what
-  it does not give you: `selftest` exits 1 on every seat because this build never probes
-  `schema_version_accepted` there; a fresh seat starts badged `epoch_reset`; and the reporter does not
-  yet send `protocol_agent_name`.
-  **Review round 2.** The runbook stages every file in its own `0700` attempt directory, never the
-  shared `/tmp`, and runs each stage-then-use pair under `set -euo pipefail`. Before this, another
-  account on the host could have pre-created the script that receives the token, or the crontab that
-  gets installed. Step 5 now replaces its crontab block instead of appending a second one, and a second
-  identical run changes nothing. On a changed value it stops the running flusher, and it checks that
-  cron, and not a hook, started the flusher. `node` and `$COORD_CONFIG` are resolved when the step
-  runs, with `settings.local.json` over `settings.json`. Step 4 derives the hook set from the vendored
-  fixtures, and it gives two procedures: (a) hooks only, which is what is live on the sandbox seat, and
-  (b) with the statusLine wrap, which is optional and deferred. D1 § 2.3 scopes the crontab to seats
-  without root or lingering, and it corrects the lock's touch cadence to every flush pass. § 3.1 now
-  requires a rewrite *and restart*. By operator ruling, § 16's Windows validation is owed when the
-  Windows agent seat onboards and is not required now. § 18.13 row 6 separates the built server half
-  from the unbuilt reporter half, card#9375. **Installer action:** none on a seat that is already
-  running. To change a value in the start line, re-run Step 5.
-
-- **card#9326** — **The feed stream's two bounds each have ONE statement, every other site points
-  at it, and the copies that cannot point are held to it by `verify-fleet-state.py` — design documents
-  and their verifiers only; nothing an installer runs changes.** card#9287's stall bound
-  (`docs/design/FLEET-STATE.md` § 8.5) and enforcement bound (§ 9) were stated in full at six or more
-  sites across D2 and `docs/design/FLOOR.md` (D3) with nothing checking that the copies agreed, and
-  the duplication minted the same ~4×-short defect in two consecutive review rounds. **DELETE, the
-  default:** every D3 site now points at D2 and carries no figure for either bound — § 9 F7, § 12's
-  session re-check row and § 13 decision 36 (§ 9's note and § 14 item 5 already pointed; § 2.5 and
-  `docs/PLAN.md` state neither) — and inside D2 each bound is stated once, at § 8.5 and § 9 case (a),
-  with § 2.2's backpressure row, § 6.7's `feed_outbox` row, § 8.3's `feed.close` row, § 9's case (b)
-  and tick note, § 12's two basis cells, AT-D2-15 and AT-D2-19 pointing at it. **That deletion is what
-  prevents a drifted copy; no tool searches the documents for one.** **GUARD, exactly, for the two
-  copies that cannot point:** **G3**, which already held § 8.5's stall bound to § 8.3's dead-feed
-  figure and § 6.7's retention, now also holds it to the `tick_started > N s` comparison in § 8.3's
-  handler fence and to § 12's `Stream stall bound` row — its figure read bolded or not — and reds by
-  CONTROL when either copy cannot be found or read. **G14** re-derives § 9 case (a)'s two figures —
-  *under* as the handler's re-check interval plus the stall bound, the draining figure as that interval
-  plus one tick — and reds when either disagrees. **G12b** no longer holds one close reason by name:
-  the member set is read off § 8.3's `feed.close` row and held to the size the row states, every member
-  must be written by a pseudocode fence *inside § 8.3* (any fence in the document used to satisfy it),
-  and G12's ruling token is read off that row by its member's description — so a new reason declared
-  in the row and used only in prose, which ran green before, reds. D2 § 12's status table gains G14's
-  row and names G3's stall-bound checks, § 14 item 8 moves to G1–G14 under the verifier's own count
-  guard, and `verify-design-docs.selftest.py` gains plants for a drifted fence figure, a drifted § 12
-  row figure bolded and unbolded, a renamed § 12 row, and each drifted § 9 case (a) figure. **Not built
-  here:** a quoted-sentence drift guard over `server/**` and `tools/**` comments (the card's comments
-  4852 and 4876), whose instances were fixed on card#9296; it is returned to the card as a proposal.
-
-- **deploy-no-root (no card)** — **`bin/deploy.sh` needs no root, no sudo and no systemd, on prod
-  as on the sandbox** (operator ruling 2026-09-13: *"the web app should not need root access"*;
-  prod *"is set up the same way as sandbox"*). ⛔ **Installer action, before the next deploy: a host
-  whose crontab runs the daemons outside `bin/supervision.sh`'s managed block must move off it** — the
-  deploy refuses that crontab — in the order that script's header gives (remove those lines, stop the
-  daemons they started by their own lock files, then `bin/supervision.sh install` as the application
-  user), which never runs two copies of a daemon. Otherwise nothing: each deploy installs its own
-  release's crontab block inside the maintenance window — a missing entry included, named by the dry
-  run — so a release that adds or drops a daemon brings its crontab with it. `MEZZ_SYSTEMCTL`,
-  `MEZZ_DAEMON_SERVICES`, `MEZZ_REVERB_SERVICE` and `MEZZ_FPM_SERVICE` are gone; `MEZZ_FPM_BIN`,
-  `MEZZ_DAEMON_STOP_TIMEOUT_S`, `MEZZ_DAEMON_SETTLE_S` (whole seconds, refused before the window
-  otherwise) and `MEZZ_DOCROOT` (the vhost's document root,
-  default `$HOME/public_html`) replace them. Supervision is cron +
-  `flock -n` (new `bin/supervision.sh`, the one list of supervised daemons, held equal to
-  `FLEET-STATE.md § 2.1` by the selftest). A restart is SIGTERM to the holders of any of the
-  checkout's daemon lock files — a path the deploy refuses to let a release move, so a re-run after a
-  deploy that failed in the window stops the previous release's daemons too — plus cron's own command,
-  proven by each lock being held by new processes after a settle (`ps` is now required) and every
-  other lock file being held by nothing. PHP-FPM is not reloaded: the
-  deploy refuses an FPM whose opcache would not revalidate changed files — a `.user.ini` in the
-  document root or in the release's `server/public/` included — and waits out the longer of the
-  previous and the deployed release's `revalidate_freq` before `up` (a leading zero read in base 10,
-  never shorter than PHP reads it) — measured on the sandbox host, new code was served 3.1 s after an
-  in-place checkout at PHP's defaults, and stale code 8 s after it with `validate_timestamps=0`.
-  The Reverb unit derivation is retired. `docs/PLAN.md § 5` owns the description.
-  `docs/design/FLEET-STATE.md` (D2) follows it: § 2.1's daemon rows name the crontab;
-  `mezzanine:feed-reload` runs before the opcache wait rather than an FPM reload (§ 2.1, § 8.3,
-  Appendix B step 9); R2 drops `process_control_timeout`, whose one purpose was that reload, and keeps
-  `pm.status_path`; and what ends a stream that misses `fleet.reload` — FPM's reload escalation did —
-  is now an owed decision, D2 § 14 item 17, its candidate (SIGTERM to the residual stream workers)
-  unmeasured. ⚠ Not run
-  against any real host; `mezzanine:feed-reload` stays a named gap there.
-
-- **card#9296** — **BUILT `card#7957`'s ruling (d): a seat DECLARES its own protocol agent name,
-  and a disagreement between the two identity surfaces now FAILS AN ACT.** `card#7957` established
-  that nothing joined a protocol agent name (`pm`, `magento`) to a `seat_id`, ruled option (d) —
-  the seat declares its own — and left the CHECK leg open with the finding that **no act would
-  fail today**. This lands both. **D1:** [§ 3.1](docs/design/EVENT-SCHEMA.md) gains one optional
-  seat-config row, `protocol_agent_name`, with its four states and the roster check; the
-  declaration and `protocol_agent_name_check` ride `reporter.heartbeat` (§ 6.14) — the only event
-  a seat is guaranteed to emit, so an **idle** seat still declares; § 9.3 gains two counters, § 6.14
-  a seventh `selftest` member `protocol_agent_name_in_roster`, and § 13 the acceptance test AT-27.
-  **D2:** two nullable columns on `seat_state`, two members on the seat object, and
-  [§ 8.3.3](docs/design/FLEET-STATE.md) rewritten — the mapping EXISTS, it is DECLARED, it lives
-  on the seat object, and the coordination objects still carry **no desk reference**. **D3:**
-  § 5.7's resolve arm resolves.
-  ⛔ **Three refusals survive unchanged, and they are the point of the change rather than caveats
-  on it.** *(1)* An unresolved participant is still first-class and permanent — no line to a
-  guessed desk, no line to nothing, reported as unresolved — which is the honest render for every
-  seat that declares nothing. *(2)* Equality with a `seat_id` is still **not** a join: only a
-  declaration resolves, and AT-D2-24's byte-identical control stays discriminating. *(3)* A
-  `disagreed` or `undeclared` declaration resolves to nothing.
-  ⚠ **The act that fails:** `fleet-reporter selftest` exits non-zero naming
-  `protocol_agent_name_in_roster` when the declared name is absent from a roster readable on that
-  box, and the failure rides every heartbeat in `selftest` → `reporter.selftest_failed`. Where no
-  roster is readable the reporter **says so** (`unchecked`) rather than omitting the field — the
-  name-what-you-cannot-verify leg, and an omitted field would be byte-identical to a seat that
-  declares nothing.
-  ⚠ **This supersedes the standing claims that no join exists** — D3 § 5.7's *"No join exists
-  today … no line is drawn on any floor"*, D1 § 18.13 row 6's UNVERIFIED, D2 § 8.3.3's *"this
-  plane publishes no mapping"*, and D3's *"all three are unreachable today"* for A18/A19/A20. Each
-  is rewritten in this change; earlier changelog entries stating them are historical records and
-  are left standing, superseded by this one.
-  ⚠ **NOT built here, and named rather than left to be discovered:** no CODE constructs the join
-  yet. `server/public/js/coord/main.js` still passes no `options.join` and
-  `CoordDrawsNoLineWithoutAJoinTest` still pins that — both assert what the code does, which this
-  change does not move, and both now say what the follow-up build slice owes (build the map from
-  the seats of the floor's `install_id` whose check is `checked` or `unchecked`, and split the
-  test's subject in two). **Gates:** `tools/design/verify-fleet-state.py` gains **G13**, which
-  re-derives the check's value set from all three of its homes across two documents and reds when
-  they disagree, and holds the coordination objects to declaring no seat→desk member; the plant
-  harness gains a rename plant against it, watched red before it was trusted.
-  ⭐ **Round 2 — an independent review found the fix had re-minted `card#7957`'s own finding, twice.**
-  *(1)* **The roster path made `disagreed` unreachable on the install shape (d) exists for.** § 3.1
-  read the roster from `~/.config/coord/coordination.config.json` and *"no environment variable"*,
-  but the coordination framework resolves its config from `$COORD_CONFIG` alone, and on a
-  multi-agent install that points into the coordination repository; the home path is the solo
-  shape. A pm/impl fleet would find no roster, emit `unchecked`, pass `protocol_agent_name_in_roster`
-  and exit `selftest` zero with the roster readable on the box. § 3.1 now resolves `$COORD_CONFIG`
-  first — set, it is the whole answer — and the home path only when it is unset, says why § 3.4
-  rule 1 does not forbid that, and withdraws the unsourced `%APPDATA%` Windows location. AT-27 gains
-  case E (the roster only where `$COORD_CONFIG` points) with a ⛔ RED for a home-path-only reporter,
-  and case B a set-but-missing variant. Canon #7's legs: DECLARED at § 3.1; CHECKED by a new
-  `verify-event-schema.py` check that re-derives the resolution order from § 3.1 and holds AT-27,
-  § 18.13 row 6 and every roster-location mention in D1 to it; NAMED on § 18.13 row 6, whose
-  closing act — carrying the contract to the framework's owner — is recorded as not yet performed.
-  *(2)* ⭐ **OPERATOR RULING: a protocol agent name is UNIQUE per install.** Surfaces that legalised a
-  set-valued resolution while A18 and `resolve()` are singular made the map a builder was told to
-  build last-writer-wins over an unordered seat population. A duplicate is now a misconfiguration:
-  resolution is 0 or 1 desks, a name more than one resolving seat carries resolves to nothing *(that
-  scope is superseded in round 3 (3): every DECLARING seat counts, `disagreed` included)*, the
-  consumer never picks, and the name is reported with its own reason (`duplicate_declaration`, beside
-  `no_declaring_seat`). No seat can detect it — both duplicates pass their own check — so D2 declares
-  the invariant, says why no `UNIQUE KEY` enforces it, and the consumer enforces it; AT-D2-24 gains
-  a RED for the pick. A18 and A19 needed no change. **Also:** D1 § 6.14 now says the heartbeat
-  carrier is CHOSEN, and names and prices the batch envelope, which its three facts do not rule out;
-  the 2,852 B composition states that the declared-name pair is taken at its reachable joint maximum
-  and why D2's independently composed worked block is also right; D1 prose quoted with a stale
-  ordinal is deleted from D2 § 8.2.1, `KindRegistry.php` and `At18UnknownEnumTest.php`, the class
-  member being recorded on `card#9326`; D3 § 2.1's heading and lede say what the closed list is closed
-  over; and D1 § 3.1's *"every other shape"* is narrowed to the shapes `card#7957` weighed.
-  **Gates:** G13's no-desk-reference leg was a name-equality test that a `coord_thread.desk`, a
-  `coord_round.from_seat` or a nested `…[].seat_ref` each passed; it now also matches the seat/desk
-  shape over every segment of every field name, reads nested rows, and takes its under-read
-  control's denominator from the tables' own row counts instead of a written figure. Every new or
-  changed leg was watched red on a hand mutant, with the control clean.
-  ⭐ **Round 3 — a second independent review.** *(1)* **`KindRegistry.php` had not taken the two new
-  heartbeat fields**, so `EventSchemaDriftTest` was red and a D1-conformant reporter would have had
-  both counted as `ignored_unknown_fields` on every heartbeat. The registry now carries both and the
-  reporter-minted `protocol_agent_name_check` enum; and D1 § 6.14's name row states its bound as a
-  `≤ 48 B` figure rather than a pointer, because the ingest refuses only a stated figure and an
-  over-long name would otherwise have passed it and failed at the fold — `verify-event-schema.py`
-  check 12 holds that figure equal to § 18.6's. *(2)* **The OS-supervised flusher never received
-  `$COORD_CONFIG`**, and it is the flusher that heartbeats on a healthy seat, so `disagreed` was still
-  unreachable on a multi-agent install through the start path. § 3.1's delivery contract now reaches
-  the supervised start (the installer writes the variable into the unit's or task's environment,
-  mechanics on `card#7336`), the flusher is barred from gating emission on its absence, AT-27 gains
-  case F and its RED, § 18.13 row 6 names the installer half as not established, and check 11 reds
-  when the contract or AT-27 stops naming one of § 2.3's start paths. *(3)* ⭐ **OPERATOR RULING:
-  every seat that declares a name counts toward a duplicate, whatever its check state** — a `checked`
-  and a `disagreed` seat declaring one name resolve to nothing as `duplicate_declaration`. D2 § 8.3.3
-  rule 1 states that scope once and decides the duplicate before rule 2's filter; the other surfaces
-  point at it, and AT-D2-24 gains a seventh RED for the pair. **Also:** two hand-written counts in D1
-  are replaced by the command that prints them or dropped; stale D1 figures and check counts quoted
-  in the reporter's self-test, comments and README and in the plant harness are removed, the
-  remaining members recorded on `card#9326`; and D1 § 3.1's home-path site is scoped to Linux.
-  ⭐ **Round 4 — the CODE half of the two seat-object members**, without which CI was red:
-  `SeatObjectMatchesTheDocumentTest` re-derives § 8.2.1's field list and `App\Read\SeatObject`
-  carried neither member. A migration adds § 6.4's two nullable `seat_state` columns;
-  `Projector::heartbeat` stores both as the last heartbeat's value verbatim, so a heartbeat that
-  omits a key stores `null` (D1 § 6.0: missing is null), exactly as `enabled` does; the object
-  publishes both. Both are VERSION-BEARING (§ 6.5's heartbeat-exceptions table), so
-  `SeatFacts::versionBearing()` and `SeatDelta::WIRE_MEMBER` take them together, and
-  `mezzanine:rebuild` resets them with the rest of the heartbeat group. The consumer join is still
-  not built. **Also, from round 3's independent review:** the protocol agent name's byte bound is
-  one guarded population — `verify-event-schema.py` check 12 holds D2 § 6.4's column, D2 § 8.2.1's
-  row and the width the last migration's `up()` gives the column to § 18.6's figure beside § 6.14's,
-  with a plant per new home, and refuses any migration whose `up()` touches the column in a form it
-  cannot read (raw SQL, a rename, a drop, a width-less `string()`) rather than passing it, and the
-  fold reads the bound from `KindRegistry` instead of restating it; D1 § 3.1's contract sentence and
-  § 18.13 row 6 scope the home path to Linux; the supervised start's contract says its LAUNCH
-  delivers the value, with the route left to `card#7336`, rather than promising a per-start
-  environment, and it names the staleness when the coordination config moves (rewrite-on-change in
-  the contract, the residual on row 6, a moved variant of AT-27 case F); and D2 § 8.3.3's empty arm
-  is renamed *no seat may resolve it*, because a lone `disagreed` seat does declare the name — the
-  `no_declaring_seat` token is unchanged, and D3 § 5.7 and `coord-model.js` follow.
-  ⭐ **Round 4 review's minors.** *(1)* **A `null` declaration pair has a third reading**: the fold
-  writes `null` for a heartbeat that carries neither member, and the shipped reporter sends neither,
-  so D2 § 6.4's column comments, D2 § 8.2.1's rows and D3 § 5.6's and § 5.7's rows now name it
-  beside *no heartbeat yet* and *declares none*; `EventValidator`'s comment states that an absent
-  enum is skipped whatever its row's `Null?` says, `protocol_agent_name_check` included. *(2)*
-  **Check 12 read `down()`'s width**: it took the last width match in the last file, so a later
-  narrowing that restored the width in `down()`, and a raw-SQL narrowing, both passed. It now reads
-  `up()` alone and refuses a form it cannot read, and the plant harness gains a `narrow-up` and a
-  `narrow-sql` plant that add such a migration. *(3)* D3 § 5.7's last copy of *an absent
-  declaration* reads *no seat may resolve it*, as the rest of round 4 does.
-  ⭐ **Round 5 — D1 § 6.14 no longer declares the check non-null.** It marked
-  `protocol_agent_name_check` `Null? no` on a field added at the same schema version, which
-  `docs/VERSIONING.md` rule 3 allows only for an optional field, while the ingest accepted and the
-  fold stored its absence. D1 was the side in the wrong. Both rows now read as the ingest behaves,
-  and a new paragraph under the table separates the ingest contract from the obligation on a
-  current reporter; the worst-case composition, `EventValidator`'s comment and `FoldTestCase`'s
-  fixture comment now point at that obligation rather than at a non-null row.
-
-
-- **card#9328** — **MARIADB IS THE ONLY ENGINE: SQLite is retired from the suite, CI and local
-  development, and is not a supported configuration anywhere.** Operator ruling, 2026-09-13, recorded
-  as `docs/PLAN.md` D-15's new amendment, and it **reverses card#9250's** "an additional lane, not a
-  changed one". `server/phpunit.xml` now declares `DB_CONNECTION=mysql` — still unforced, and its
-  comment re-argues why for one engine — and drops `DB_SQLITE_DATABASE`; `config/database.php` and
-  `config/queue.php` default to `mysql`, and the app's customised `sqlite` connection block is gone.
-  ⚠ **Laravel still merges the framework's stock `sqlite` connection back in** (measured on this
-  tree), so nothing relies on its absence and the comment left in its place says so.
-  `server/.env.example` selects `mysql` with placeholder `DB_HOST`/`DB_PORT`/`DB_DATABASE`/
-  `DB_USERNAME` values and an empty `DB_PASSWORD`; `README.md` § Running the server locally now
-  creates the MariaDB databases and account and says outright that SQLite is unsupported.
-  `server/tests/roundtrip/ingest-roundtrip.py` runs on `mezzanine_test` and refuses to rebuild it
-  unless the RESOLVED connection is `mysql` → `mezzanine_test` on a server naming MariaDB, and
-  `server/composer.json`'s create-project hook no longer creates a `database.sqlite`.
-  ⭐ **`php-tests` IS NOW THE MARIADB LANE** — the same pinned service container, exports,
-  store-probe control pairs and `pdo_mysql`-only PHP that `php-tests-mariadb` runs. The step that
-  asserted `.env.example` sets `DB_CONNECTION=sqlite` is **moved, not deleted**: it now asserts
-  `mysql`, because the lane's own export hides a template flip from everything the lane runs.
-  ⚠ **`php-tests-mariadb` stays for now, as a temporary duplicate.** Its context is required, and
-  removing the job before the ruleset stops requiring it would block every PR on a check that never
-  reports; the job and that requirement go together in this card's next step. Its body is
-  untouched, and a header above it marks its inline two-engine comments as superseded.
-  ⭐ **The store guard got stronger, not weaker.** `Tests\TestCase` now also pins
-  `database.default` to `mysql`: the database pin alone proved only that the `mysql` connection
-  pointed at `mezzanine_test`, while the suite writes through the DEFAULT connection — which could
-  not be pinned while that was SQLite. ⛔ **Re-deriving the guard also found its resolved-value
-  premise false for `DB_URL`:** `config()` keeps reporting the pinned database because Laravel
-  applies a URL's path only when it builds the connection, so with both `DB_URL` pin entries removed
-  and a `DB_URL` exported the guard stayed GREEN while the connection pointed at another database —
-  the pin was the only thing standing there. The guard now also asks the connection itself which
-  database it resolves to (lazily, opening nothing). `Tests\Feature\DatabasePinTest` asserts the DECLARED value
-  as well, because CI's export would hide a flip of it from the resolved guard, and its SQLite-only
-  test goes with the connection it guarded. Each changed guard was seen red under the defect it
-  exists to catch before being trusted green.
-  Present-tense claims that the suite runs on SQLite are corrected in comments under `server/app`,
-  `server/tests`, `server/database/migrations` and in `tools/ci-store-probe.php`; statements that are
-  history — what card#9250's first MariaDB run measured — stay as history.
-  **D2 doc-sync:** `docs/design/FLEET-STATE.md § 6.2` now describes one engine, pointing at D-15's
-  amendment, and names the guard's two reads and what each catches, including that `REDIS_URL` has
-  no connection-level read and is refused by nothing (unreached today). AT-D2-14's Second RED was
-  false: an intact `DB_URL` pin defeats the export, so it cannot abort. It is rewritten to delete
-  the `DB_URL` pin and export a URL naming a nonexistent database, which the connection read aborts.
-  The Third RED no longer claims the shape test runs under an export.
-  ⚠ **Not done here, by name:** application code still branches for stores other than
-  MySQL/MariaDB — `App\Support\Ddl::ascii()` and `::index()`, `App\Fold\Fold::claim()`,
-  `App\Ingest\Counters::upsert()` and the building-store migration's CHECK constraint. Those arms
-  are unreachable in any supported configuration and are left in place.
-  ⭐ **Step 2: `php-tests-mariadb` is gone; `php-tests` is the one PHP lane.** The duplicate job, its
-  temporary-duplicate header and every comment that existed only because there were two jobs are
-  removed from `.github/workflows/php-tests.yml`. The context was taken out of both rulesets'
-  required checks first (2026-09-13), and the job was removed only after reading both rulesets and
-  classic protection on `dev` and `main` and finding it required nowhere.
-  `docs/VERSIONING.md § Branch model` claimed the rulesets required *"the SAME FIVE contexts"*;
-  that count had gone false, and the section's only word on classic branch protection was a
-  superseded 2026-08-23 reading that there was none. It now states no count: it names both layers,
-  says both apply and that their lists differ (`php-tests` is required by the rulesets and not by
-  classic protection), and gives one command that prints both layers for both branches. The
-  contexts it lists are marked as measured on 2026-09-13. Two historical mentions of the old job in
-  `Tests\TestCase` and `SeatConsoleTest` stay as they are: they record card#9250's first MariaDB
-  run. ⚠ **Corrected 2026-09-13 (operator ruling):** this step also read ruleset `21953633`
-  (`dev` squash-only) as making rule 5's merge-commit back-merge unsatisfiable, and marked
-  § Branch model and core rule 5 *"FALSE AS MEASURED"*. That reading was wrong: the ruleset has an
-  admin bypass in mode `always`, which exists so the back-merge lands as a merge commit. The marks
-  are removed; see the *Operator rulings recorded* entry above.
-
-- **2FA issuer (no card)** — **an authenticator app now names this site's entry after the
-  site's own hostname instead of `Mezzanine` on every host.** The operator asked for the sandbox's
-  entry to read `sandboxmezzanine` rather than the hardcoded name. Fortify's stock
-  `twoFactorQrCodeUrl()` passes `config('app.name')` as the otpauth issuer.
-  `App\Models\User` now overrides it to call `App\Auth\TwoFactorIssuer::resolve()`, the one
-  derivation. It returns `TWO_FACTOR_ISSUER` (new, optional, `config/fortify.php`) if set;
-  otherwise the first DNS label of `APP_URL`'s host, lowercased, with an IPv4 address kept whole;
-  otherwise `APP_NAME`. `:` is removed from the free-form values, because it is the otpauth label
-  separator. ⛔ `APP_NAME` itself was left alone: it derives the session cookie name and the cache
-  prefix, so renaming it per host would sign everybody out. ⚠ Existing enrolments keep their old
-  label (the secret is unchanged, so codes still work). README § The authenticator entry's name
-  says how to relabel. Tests: `tests/Feature/TwoFactorIssuerTest.php`.
-
-
-- **card#9299** — **closed WON'T-DO: there are TWO `isJsonObject` predicates because the two sides
-  are asked two different questions, and the comments that promised to fold them into one are
-  removed.** The card proposed hoisting a shared predicate out of `App\Ingest\Wire` so `App\Floor`
-  and `App\Building` could reach it. ⛔ **The requirement difference is what keeps them two.** The
-  ingest must end `{}` and `[]` DIFFERENTLY — `{}` is D1 § 6.0's legal all-null event and is
-  ACCEPTED, `[]` is REFUSED — so the distinction has to survive the decode, which FORCES object
-  mode (card#9295's fix, one entry below). The console refuses BOTH spellings, because an empty
-  document is neither a Tiled map nor a layout and all that differed was the WORDING — one
-  outcome, so the distinction buys it nothing and associative mode is exact there. A single shared
-  predicate could span that only through a per-caller mode flag: the duplication wearing a
-  parameter, not its removal.
-  ⚠ **This supersedes the card#9295 entry's closing sentence**, which said the four object/array
-  checks needed the predicate hoisted "because `App\Floor` cannot depend on that namespace, and
-  that is card#9299". Both halves are false. Nothing blocks the reach — `App\Floor\FloorMap`
-  already calls `App\Building\AuthoredDocument::isJsonObject` — and the layering is a **convention
-  nothing in this repo enforces**: measured at this branch point, there is no deptrac, no
-  static-analysis config, no architecture test under `server/tests/`, no lint script in
-  `server/composer.json`, and PSR-4 maps `App\` flat onto `app/`. It is worth keeping; it is not a
-  mechanism, and "cannot" read as a constraint that had already refused the option.
-  ⛔ **COMMENT-ONLY — no executable line changed.** `BodyReader`'s note claimed a hand-kept
-  call-site count that `grep -rn isJsonObject server/app/` refutes; the grep replaces it rather
-  than a freshly-counted number, which is what would go stale next. `AuthoredDocument`'s and
-  `BuildingLayout`'s pointers at the now-closed card are replaced by the requirement difference
-  and, where a console reader genuinely needs the two spellings to end differently, by the answer
-  that would apply then — a decode change on the console side, mirroring the ingest's, not a
-  borrowed predicate and not a wider clause. `BuildingLayout`'s `"floors": {}`/`"floors": []`
-  conflation is UNCHANGED and still named where it sits; only its pointer moved.
-- **card#9303** — **G7's population is what D2 DOES with a token, not how it spells one.**
-  `verify-fleet-state.py`'s G7 held D2's feed-message types against § 8.3's table but its population
-  was **delimiter-bound** — it saw a message type only inside backticks, so a use inside one of the
-  document's own fenced protocol blocks was invisible to it and an undeclared message could sit in a
-  fence with the gate green. The population is now decided by two classifiers that each read a fact a
-  section already owns: **TOKEN BOUNDARY** (a message type is a whole token, so `building.php` and
-  `private-fleet.aimla-win` are excluded by the characters against them rather than by an exception,
-  and a `.member` chain is a path whose *root* is the message) and **FIELD FORM** (a token given a
-  **scalar** — `= "lagging"`, `: "degraded"` — is a field, § 8.2.4's subject; a token carrying a
-  payload **object**, `fleet.health{db:"up"}`, is a message).
-  ⭐ **The polarity is the point:** every token in a namespace **§ 8.3's own table declares** is a
-  message type **unless** the document demonstrably uses it otherwise, so an unseen spelling fails
-  **loud** instead of leaving the gate. The namespace set is the ROOTS of that table's types,
-  re-derived per run and printed — never a list stored in the checker, which is what it was until
-  the review round below.
-  ⚠ **Why not a wider regex:** § 8.2.4's `` `fleet.status: "degraded"` `` is a deliberately REJECTED
-  alternative with no § 8.3 row by construction, and § 2.3 writes `` `fleet.fold = "stalled"` ``. Any
-  alternation that reaches the fences also reaches those and reds on correct prose.
-  The plant is seen to red with the pre-change verifier **green on the same bytes** — that
-  differential is what attributes the red to the population rather than to the plant — and a new
-  `G7 CONTROL` fails if no undelimited use is found at all. Coverage is monotone: the uses the gate
-  gained are exactly the fenced bare ones, and the field-form exclusions were never in it.
-  ⛔ **One reachable sibling is reported and NOT fixed here:** G8's forward leg (`WRITER_RE`) is blind
-  to `count feed_resync_required; return` on both of its legs. Its verb leg is binding, so that is a
-  change to G8's own population and its own round — filed on the card rather than folded in.
-  `tools/design/README.md` and the verifier workflow's plant-harness comment move with it, and the
-  workflow's `"527 checks, 30 planted controls"` — the one bare count those two surfaces carried
-  that this change had in hand — gave way to the derivation the artifact gate prints itself.
-  🔎 **Review round (PupFuzz/mezzanine#116), two blocking findings, both about a CLAIM that outran
-  the code:**
-  **(1) the polarity claim was false.** The checker hard-coded six namespace prefixes, so the real
-  rule was "everything with one of six stored prefixes" while this entry, the code comment and
-  `tools/design/README.md` all stated the polarity above verbatim. A maintainer who added a
-  namespace to § 8.3 and read any of the three would believe G7 covered its uses; it did not, and
-  the code's own comment recorded it biting twice (card#9212 added `coord`, card#9208 added `room`
-  and `building`). The prefixes are now derived from the declared-types table G7 already parses —
-  a **no-op** against today's document, which is the point: the claim becomes true as written
-  without the verdict moving. ⚠ The residue is now **stated** on every surface instead of claimed
-  away: a namespace with no declared row at all is still invisible, and the obvious widening to
-  every `word.word` token is the worse gate (it reaches D1's event names, D2's SQL column paths and
-  its object member paths).
-  **(2) the declared `name: scalar` hole had no observability and escaped on the protected
-  surface.** The skip was a bare `continue` — the occurrence was not merely forgiven but
-  **uncounted** — and the comment closed on "no such site exists in this document", a claim nothing
-  evaluated and nothing printed. Reproduced: that spelling planted **inside § 8.4's fence** yielded
-  `ALL D2 CHECKS PASS` at rc=0 with the population unmoved. Skips are now **counted and printed**
-  beside the population, and a skip **inside a fenced block is a failure** — the fence/prose split
-  the comment already argued for and did not use, which bounds the hole to prose without touching
-  the operator that would red on § 8.2.4's rejected aggregate. Both halves of the widening now have
-  a decay control; the asymmetry was the finding.
-  Seen to fail, each against a scratch copy of the whole tree with the **pre-change verifier green
-  on the same bytes**: the fence escape, an undeclared member of a newly declared namespace, and
-  both new `G7 CONTROL`s (no fenced block; an unclosed fence). Two controls that must NOT red were
-  held green: the same field-form spelling in prose, and the declared residue.
-  Doc-sync owed by this round: § 12's guard row (which still claimed "every `t` value named
-  anywhere", with no hole marker), the workflow **step name** that shows in the CI UI (it read "a
-  planted defect per verifier" against four plants over three verifiers), and the two bare guard-
-  class counts this diff had in hand — `tools/design/README.md`'s and the verifier docstring's
-  "eleven" — each replaced by the derivation that re-prints it rather than by a fresh figure.
-
-- **card#9269** — **the shipped default map is a FILE**: `resources/floor/default.tmj`, an office
-  interior drawn with the vendored Kenney tileset, its `desks` layer carrying the slot count
-  `docs/design/FLOOR.md § 12` declares (the gate now counts the file rather than reading the row).
-  ⭐ **Its content is an office by operator ruling (2026-09-12), and that ruling closed
-  `docs/design/FLOOR.md § 13` row 33's open question by refusing a SECOND shipped default**: the
-  `office` form selects no file of its own, `docs/design/FLEET-STATE.md § 13` row 44's one-default
-  rule stands unamended, and an unauthored room of either form now renders a plausible office
-  rather than a bare grid. The map is an ELEVATION — the tileset's `Side/` renders, § 4.1's
-  cross-section — so its desks are one row along the floor in two banks with an aisle, its walls
-  are the back plane with a doorway onto the floor's hallway (card#9292's, not drawn here), and
-  every sprite lands inside the grid, because the grid is the room's footprint on a planned floor
-  and art drawn past it would cover a neighbour no check refused.
-  ⛔ **The file's landing turned two live states over, and both moved in this PR rather than
-  later.** (1) `verify-floor.py`'s G8 was already written for both arms and switched itself: `S` is
-  now COUNTED from the map's `desks` objects instead of being asserted by the prose that cites it,
-  so § 12's row for it reads **Measured** — a perturbed map reds the gate by name. (2)
-  `App\Building\RoomExtents` no longer refuses a plan that places an unauthored room: there is a
-  grid to read, so the check card#9292 built is the one that runs, and the three tests that
-  encoded the absence now assert the geometry instead — each with its control, and each bound to
-  the shipped file's own pixel width rather than to a constant typed beside it.
-  ⚠ **The refusal naming the missing file is KEPT rather than deleted with its cause**: the default
-  is a file, and a deployment that ships without one is a real state whose honest answer is still a
-  named refusal instead of an invented size.
-  Re-points `default.tmj`'s authorship from card#7341 to card#9269 on every surface that named that
-  card as its author — § 10.3, § 3.2, § 4.6 and § 14's D-07 closure item, which is what a grep for
-  the claim returns rather than a list kept by hand —
-  the operator ruling that made this card's subject that file's content landed after the text that
-  said otherwise — which is also what discharges card#7341's orphaned deliverable. `ATTRIBUTION.md`
-  carries the map's `first-party` row, and `resources/floor/LINEAGE.md` says what its provenance is
-  NOT: the tileset's vendoring vouches for the tiles, never for the room drawn with them.
-
-- **card#9297** — **A heartbeat's `counters: {}` is stored and served as `{}` rather than as the
-  JSON array `[]`** — the READ half of card#9295, one plane downstream.
-  `docs/design/FLEET-STATE.md § 6.4` declares `seat_state.heartbeat_counters` and
-  `heartbeat_predicates` "last heartbeat's … object, verbatim", and **two** associative decodes
-  were erasing that, one per plane: `FoldEvent::fromRow` — so `Projector::heartbeat` re-encoded a
-  stored `{}` into the column as `[]` — and `FleetController::detail`, which decoded the column
-  associatively AGAIN and re-encoded it into § 8.2.3's response, so fixing the fold alone would
-  still have served an array to every consumer. An object went in and an array came out, on a
-  published surface.
-  ⛔ **Fixed at both DECODES and at neither encode site.** After an associative decode `{}` and
-  `[]` are one PHP value and no predicate downstream can recover the difference (`App\Ingest\Wire`
-  measures it), while an `(object)` cast at an encode site converts a genuine wire ARRAY with
-  equal enthusiasm — which is what the two controls in the new test pin: `reporter_degraded`,
-  § 6.4's "D1's 12-member array, verbatim", and a `counters` a seat really sent as `[]` both still
-  serve `[]`. `FoldEvent::$data` is now the `stdClass` tree the wire sent, and all twelve reads of
-  it go through `App\Ingest\Wire::field()` — the SAME primitive card#9295 put the ingest's twenty
-  § 12.1 field reads behind, rather than a second divergent one. Pre-card#9295 rows, which hold
-  `[]` where the wire sent `{}`, still fold: `field()` answers for both shapes.
-  ⭐ **This is also what makes card#9295's `events.data` guarantee observable at all** — until now
-  the column's only reader destroyed the distinction on read, so nothing in the repo could tell
-  whether the guarantee held.
-  ⚠ **One behaviour change beyond the spelling: a heartbeat carrying `"enabled": null` no longer
-  renders the seat *disabled*.** The old line tested `array_key_exists`, so an explicit `null`
-  took the `(bool)` cast to `false` while a missing key stored `null` — and D1 § 6.0 ("a missing
-  key and an explicit `null` are the same thing") was therefore false of this column in the one
-  direction that mints a state, since § 8.2.1 reads `null` as "null before the first heartbeat"
-  and § 4.5 rule 4 renders a stored `false` as *disabled*. Both spellings now store `null`.
-  `heartbeat.selftest` keeps today's behaviour exactly, by an `(array)` cast whose result is never
-  re-encoded — only the failing NAMES leave it, which is the list `selftest_failed` declares.
-- **card#9208** — **THE AUTHORED BUILDING STORE IS BUILT, AND THE BUILDING LAYOUT HAS LEFT THE
-  DEPLOY** (`docs/design/FLOOR.md` Appendix B row 11, build slice 1). Two tables and a column
-  behind `docs/design/FLEET-STATE.md § 6.11`: `authored_revisions` (append-only, one row per save,
-  per `(kind, subject)`), `building_layout` (the layout that is current) and `floors.map_version`
-  (the revision the room's current map IS). Every save is a revision, a **restore** is a forward revision copying an
-  old one, a **removal** is a revision with a `document NULL` — so a removed map is as retrievable
-  as an edited one — and a byte-identical save is **refused** rather than recorded, so a revision
-  always records a change. `server/config/building.php` is **deleted**: the console's new
-  **building layout** module owns the document, and the migration seeds it from that file where a
-  deployment still declares one, validated first and failing the deploy loudly rather than seeding
-  a document the reader would refuse on every request. One `room_map` revision 1 is seeded per
-  existing `floors` row from that row's own map, author and time, so § 6.11's *no current row
-  without a revision behind it* holds from the first migration.
-  ⭐ **Operator ruling, 2026-09-12 — *"keep it in the console"*:** D3 § 4.6 flagged the layout's
-  move as this design's INFERENCE rather than a clause of the reversal, and it is now ratified; the
-  note says so, so a later reader does not re-raise a settled call.
-  ⭐ **card#9292's floor plan lands with it**: a room's value in `rooms` is a RECORD carrying its
-  `form` and, on a planned floor, its `origin`; a floor may carry a `hallway`, read by § 10.3's
-  table with the `desks` row inverted; and **two rooms whose footprints would intersect are refused
-  by name, naming both** — at the layout's save **and restore**, and at a room map's save, restore
-  **and removal**, which § 6.11 calls the write site an implementer misses. Both paths take the
-  `building_layout` current row `FOR UPDATE` first, in one place, so the two writes serialise. A
-  restore is re-checked against **today's** room maps, so *undo* cannot re-create an overlap a
-  later map made. § 10.3's table gained the refusals it states and the code did not have: the
-  grid (which is the room's footprint), a desk object wholly inside it, a desk object carrying
-  **any** property (card#9071's ruling, enforced at the write), and a `tilesets[]` `source` that
-  resolves to a tileset this repository ships — the residue the reversal said it closed.
-  ⚠ **One refusal is a BUILD-ORDER fact rather than a rule, and it is stated in § 4.6 rather than
-  worked around:** a plan that places a room with **no authored map** needs the shipped default's
-  grid for its extent, and Appendix B step 7's `resources/floor/default.tmj` is not in the tree —
-  step 11 landed first. That save is refused **by name**, naming the room and the file, rather than
-  measured against a size invented in the reader.
-  ⛔ **Not in this slice, and each exclusion has a reason:** the console's **preview** (it draws
-  with step 7's renderer, which does not exist — so restore is the only thing between a bad save
-  and every viewer, which § 6.11's review row already says); `GET /api/building` and
-  `GET /api/building/rooms/{install_id}/map` (row 12); and the `room.map` / `building.layout` feed
-  messages — row 12's, and additionally blocked on card#9287's open transport ruling, so what
-  lands is **one named seam**, `App\Building\BuildingChanged`, called on commit with the payload
-  § 8.7 publishes and no publisher behind it.
-- **card#9295** — **An event whose `data` is `{}` is now ACCEPTED, and the fix is at the DECODE
-  rather than at the check.** D1 § 6.0 — "a missing key and an explicit `null` are the same thing"
-  — makes `{}` the legal spelling of an event every one of whose `data` fields is null, and the
-  ingest refused it `422 invalid_event`, taking the batch's ≤ 199 valid neighbours with it (§ 12.4)
-  permanently (§ 11.5). The cause was not a rule anyone wrote: `json_decode($raw, true)` maps **both
-  `{}` and `[]` onto the same PHP value**, `[]`, for which `array_is_list()` is `true`, so § 12.1
-  step 9's "`data` an object" test had nothing left to test.
-  ⛔ **The one-clause repair is wrong, and was measured being wrong** — `$data !== [] &&
-  array_is_list($data)` accepts `{}` and accepts `"data": []` with it, because after an associative
-  decode the two documents are one value and no predicate downstream can recover the difference. So
-  `BodyReader` stopped erasing it: the body is decoded with PHP's associative mode **off**, objects
-  arrive as `stdClass`, and `Wire::isJsonObject()` answers the question wherever an event or a
-  `data` is tested. **Two of the four object/array checks call that predicate** (`EventValidator`'s
-  event and its `data`); the other two are hand-rolled where they sit — `BodyReader`'s
-  `instanceof \stdClass` on the envelope and `BatchValidator`'s `is_array`/`array_is_list` on
-  `events`, which asks the opposite question. Putting all four behind one predicate needs it
-  hoisted out of `App\Ingest` first, because `App\Floor` cannot depend on that namespace, and that
-  is **card#9299**.
-  `Wire::field()` reads both shapes, which is what kept the change from becoming an `(array)` cast
-  at each of § 12.1's twenty field reads — each of which would have re-erased the distinction.
-  ⭐ **Three more copies of the same conflation went with it, found by the card's sibling audit.**
-  `"events": {}` was refused as an EMPTY array rather than as a non-array; an event of `{}` was
-  refused for "not being a JSON object" rather than for the `event_id` it actually lacks; and a
-  body of `{}` took `400 malformed_body` instead of reaching step 6's version answer, which
-  § 12.1's own closing note requires be "reachable even for a batch that is wrong in other ways".
-  All three are the same `422`/`400` as before with a diagnosis a reporter's operator can act on;
-  the body case additionally moves that refusal's attribution from `unattributed_refusals` to the
-  seat the token binds, which is § 12.1's attribution table applied rather than amended.
-  ⚠ **The wire's spelling now survives into the store**: `events.data` holds `{}` where an
-  associative decode wrote `[]` (D2 § 6.4). ⚠ **`EventValidator`'s byte-bound loop measures
-  `is_object` as well as `is_array`** — § 6.14's three open-keyed objects arrive as `stdClass`
-  now, and without that arm card#9283's bound would have stopped being enforced on exactly those
-  three fields while `Tests\Unit\Ingest\EventFieldByteBoundsTest`, which drove the validator with
-  hand-built PHP arrays, stayed green. Those fixtures are now `(object)` casts — the shape the
-  decode actually produces — so the Unit suite reds on a missing `is_object` arm too (seen to fail,
-  three reds), and `Wire::isJsonObject()` dropped the associative-array arm it had been carrying
-  for them: `json_decode(…, false, …)` emits `stdClass`, lists and scalars only, so that arm was
-  true of nothing reachable from the wire. The HTTP-surface guard stays, because it is the one that
-  measures through the real decode.
-  ⚠ **`{"events": {"0": e0, "1": e1}}` was ACCEPTED before this change and is now `422
-  invalid_batch`** — permanent under § 11.5. An associative decode turned numeric-string keys into
-  a PHP list (`array_is_list(json_decode('{"0":1,"1":2}', true))` is `true`, measured), so an
-  `events` **object** walked through the array test. It is a JSON object, § 12.1 step 8 requires an
-  array, and the new answer is the one the document always specified. `fleet-reporter.js` builds a
-  real JS array and cannot emit that shape, so no conforming producer is affected — stated because
-  it is a batch that used to be stored and no longer is.
-  ⚠ **D1 gained two rules it had always enforced but never written** — § 12.1 step 3 now reads
-  "body parses as JSON **and is a JSON object**" and § 12.2's `malformed_body` row now reads
-  "unparseable **or non-object** body", because `[]`, `"x"`, `1`, `true` and `null` all parse and
-  are all refused, and this change relies on that distinction to accept `{}` while keeping `[]`
-  refused. The **VERSIONING-compliance table's rule-1 row** was corrected with them: it said a
-  batch with no `schema_version` is `400 malformed_body`, and `{}` was the last body that made that
-  true — no batch envelope reaches `malformed_body` for a missing version any more. It is
-  `400 unsupported_schema_version`, naming the accepted set. D1 § 6.0 and
-  § 12.1 step 9 were already right and the code was the wrong party; D2 § 6.4's `events.data`
-  column gained the spelling guarantee the fix mints.
-  ⚠ **The § 12.1 step 3 amendment had an un-audited SIBLING, and it is now amended too.** The
-  coordination-webhook receipt (§ 18.8) states its validation order in the same construct and its
-  step 5 still read the unamended "body parses as JSON → else `400`" — the same under-specification
-  in the same document, missed because the audit that found the amendment searched the INGEST's
-  steps rather than the claim's shape. It now reads "parses as JSON **and is a JSON object**",
-  with step 6's `repository.full_name` read named as the thing that already presupposed it.
-  ⭐ **No code changed and none was owed**: that endpoint is unbuilt (no `X-Hub-Signature-256`
-  anywhere in `server/`), so this is an under-specified spec being closed BEFORE it is built,
-  not a false claim about shipped code. It was deliberately not minted as its own card — there is
-  no user-visible harm to reach while nothing serves the route (canon #18's gate), and the surface
-  that owns the subject is the document itself.
-- **card#9287** — **THE FEED'S TRANSPORT IS RE-PINNED TO NATIVE SERVER-SENT EVENTS — design only, no
-  application code.** The card priced four ways to keep a Pusher-protocol daemon (`laravel/reverb`
-  pins `guzzlehttp/psr7 ^2.6` against this tree's 3.1.0) and never asked whether the daemon was
-  needed; the operator's challenge was right: **the feed is one-way** — every row of D2 § 8.3's
-  message table is `server → client`, § 8.5 refuses a client→server channel, § 9 refuses the feed to
-  machines — so a bidirectional daemon was surplus and its dependency pin the price of it. D2 § 8.3
-  now pins `GET /api/fleet/stream` served by PHP-FPM through the framework's own `eventStream()`
-  (verified in this tree), **one stream fleet-wide** with the handler filtering per subscriber —
-  which retires the per-install channel, the browser's six-connection limit it would have hit, and
-  FLOOR.md § 14 item 14's cold-start window (closed). Fan-in is a **`feed_outbox` table** (§ 6.4)
-  polled at the design's own 250 ms tick behind § 6.5's 2 s visibility lag — transient, retained
-  60 s (§ 6.7), **never resumed from**: no `id:`/`Last-Event-ID`, a cursor that starts at the head,
-  and a row nobody consumed is purged unread. **Two host conditions are written as named, checked
-  deploy requirements with observables, not assumptions** — R1 the proxy must not buffer the stream
-  (its signature: *feed down* against a green fleet with REST fine; FLOOR § 9 F19), R2 the FPM pool
-  must hold a worker per browser and release a dead one (its signature: the console, not the feed,
-  goes dark; F20). **Two things SSE unlocks are built in:** the on-connect `fleet.health` is the
-  handler's first yield (`FleetHealthMessage`'s *cannot be built* claim retired), and § 9 re-checks
-  the session **from the store** every 15 s, closing FLOOR § 14 item 5 and F7's residual — with the
-  consequence stated rather than discovered: an open stream refreshes no session, so a floor left open
-  is signed out at `SESSION_LIFETIME` (120 min here) and F7/F6 render it, with the ruling filed as D2
-  § 14 item 16 — ⚠ without opening
-  the feed to machine consumers, which is filed as D2 § 14 item 15 and not taken. **F1 answered:**
-  the 256-message / 512 KiB bound has no referent under SSE (a draining client is never behind; a
-  non-draining one blocks the handler), so the bound is a **45 s stall bound on the tick**, measured
-  from the tick's START and tested BEFORE the read — both placements load-bearing: stamped at the
-  tick's end the bound never fires, and tested after the read a blocked stream advances its cursor
-  over rows the purge took. It ends a **slow** consumer on the server's clock and a **frozen** one at
-  the moment its write returns, which is the host's to bring about (R2's teardown clause) and is
-  stated as a requirement rather than promised; memory stays flat structurally; what is not provided
-  is stated. The card's F1 sentence *provided by no candidate transport* is corrected on
-  D2 § 13 row 46 (Centrifugo and Mercure bound it; the sentence exists nowhere in this repo — grep
-  audited). `coalescing` withdrawn from § 8.3 as never legal under § 8.5's plus-one rule. D2 § 13
-  rows 46–48, FLOOR § 13 rows 34–36; AT-D2-15 rewritten, AT-D2-25 added; `verify-fleet-state.py`
-  G3's retired queue check replaced by the stall/retention equalities, seen red on two plants and
-  wired into the selftest harness. Round-1 adversarial review (two fresh reviewers, mechanism and coherence) returned 4 BLOCKER-class
-  findings between them, all fixed here and all with a test: the stall bound's two placements
-  (AT-D2-15 gains a slow-consumer leg, a frozen-consumer leg and REDs for both wrong placements), the
-  connect cursor's missing visibility lag (AT-D2-25 gains the connect arm — a tick-only test passes
-  over it), `eventStream()`'s `endStreamWith` default appending `event: update`/`data: </stream>`
-  after every `feed.close` (pinned to `null`), and R2's sizing unit (per open **stream/tab**, not per
-  browser; the dedicated pool is now required, since `request_terminate_timeout: 0` on a shared pool
-  removes the runaway kill for every request). ⛔ **R1's shell commands were then REMOVED
-  altogether in round 2, and that reversal is the single most important thing in this entry.** Two
-  independent reviews found that all three commands — added by round 1 to make the check *able to
-  fail* — were written from reading the primitive rather than from running anything: `php -i` reads
-  the CLI SAPI, which force-overrides `output_buffering` to `0` and so could not fail for the setting
-  it named; `grep -c` asserts an equality against a figure that is phase-dependent — 125 s ÷ 15 s =
-  8.33, so a correct 125-second window holds 8 **or** 9 heartbeats; `head -c 400` is exhausted by
-  the response headers before any body byte. A check that cannot fail is a decoration and one that cannot
-  pass gets weakened until it does — so R1 is now a **condition, an instrument and an observable**,
-  and card#9300 owns writing the commands on a host where they can be run and **seen to fail once**.
-  R1/R2 ownership also split: the credential-free config checks gate `bin/deploy.sh`; R1's wire half
-  needs a signed-in MFA session no unattended deploy can hold, so it is an operator runbook step.
-  Round 2 also fixed three mechanism errors: a store outage under an **open** stream had no specified
-  behaviour and would have ended every stream silently (the primitive swallows the exception),
-  putting the whole fleet on a 10 s reconnect cadence and taking the console down by F20 — the tick
-  read now holds its cursor and the stream becomes the messenger, and a failed **connect** read ends
-  with a new third `feed.close{reason:"unavailable"}`; the frozen-consumer story was false in two
-  sections, because the primitive's `break` abandons a suspended generator, so no `feed.close` and no
-  `feed_resync_required` ever fire on that path; and `eventStream()` writes an `event:` line on every
-  message, which means `EventSource.onmessage` can **never** fire — a builder writing `es.onmessage`
-  would have got zero messages on a healthy stream — so `event:` is pinned to the literal `mezzanine`
-  and FLOOR § 2.2 now names the single listener and the unknown-`t` branch. ⚠ **Left for the sweep after
-  card#9208 lands** (its sections are off-limits to this PR): D2 § 8.7's *every install's channel*
-  prose, FLOOR § 4.6's subscription language and Appendix B step 3's *subscribe*; **§ 13 decision row 42**,
-  whose *Alternatives* and *Cost if wrong* cells are written entirely in the retired channel model — a
-  `private-building` channel, both messages fanning out to every channel, N publishes per save — in a
-  table this amendment added rows to, and deferred with the § 8.7 prose it describes rather than
-  half-rewritten here, because the row's subject is that section's (added to this list in the card#9287
-  maintainer round, which found the list short by it); § 8.3's heading anchor keeps the word *WebSocket*
-  until a one-commit rename can land without conflicting. `bin/deploy.sh`'s Reverb unit, the
-  `mezzanine:feed-reload` step and the R1/R2 checks are deploy-script work, filed as **card#9300**
-  (Backlog) together with the build of D2 Appendix B step 9 and the retirement of the broadcast
-  wiring — a card this PR created, because reviewing it found the work had no open home (#7459 is
-  released, #7827 shipped) and a "filed" claim naming no card is an abandoned finding. ⭐ **This
-  amendment also discharges card#7838's first two items** — settle the coalescing contradiction, and
-  restate AT-D2-15 in terms something can drive — and the coalescing withdrawal reconciles the
-  document to code that already shipped (`server/app/Feed/SeatDelta.php` emits one delta per version
-  increment), so a doc-vs-code divergence closes here rather than opening. #7838's remaining items are
-  untouched and it is not reopened.
-  ⛔ **Round 3 (two fresh reviewers again) found that round 2's own fix had left the document
-  contradicting itself, and four independent defects are fixed here.** **(1)** § 8.3 stated the
-  framing rule twice and incompatibly — `event:` carries `t`, and then `event:` carries the fixed
-  literal `mezzanine` — so the wrong half is **deleted** rather than reworded, leaving the ruling as
-  the only statement of it; the round-2 entry above said the same wrong thing and is corrected with
-  it, which is the only sibling the claim had (FLOOR § 2.2 and D2 § 8.3's primitive sentence were
-  audited and are correct). **(2)** That fix did not reach the **buildable** surface: § 8.3's
-  pseudocode yields bare values, and `eventStream()` names the event `update` unless the yield is a
-  `StreamedEvent` — so a builder following the block ships `event: update` on every message and the
-  client's one listener never fires. Every yield is now stated as
-  `new StreamedEvent('mezzanine', $json)`, in the block and under it. **(3)** R1's instrument was
-  named from reading for the **second** time: `php-fpm -tt` exits `failed to open error_log …
-  Permission denied` before printing anything, and dumps FPM's configuration rather than ini
-  directives. Replaced by **`php-fpm -i`**, which was RUN — `output_buffering => 4096 => 4096`,
-  `Loaded Configuration File => /etc/php/8.5/fpm/php.ini`, with nothing under `pool.d/` setting it —
-  and the rule restated as baseline-then-pool-override. **(4)** Appendix B step 9's list of tests to
-  re-point before `CapturingBroadcaster` is deleted was **provably short**: the row's own
-  `-i broadcast` grep cannot see a test that drives `$this->wire` without spelling the word, so the
-  population is now stated as the grep that re-derives it, and `FeedTestCase::setUp()`'s inherited
-  breakage is named. That exposed an **ordering** defect: AT-D2-23 is in that set and is step 11's
-  gate, while step 11 runs after step 9 — so step 9 would delete the class its own successor's gate
-  is built on. Stated at both steps. ⚠ **The store-outage mechanism round 3 also questioned was NOT
-  touched by those four fixes** — it was separate design work, and round 4 below is where it is settled.
-  ⛔ **ROUND 4 IS SUPERSEDED BY ROUND 6 BELOW and is kept as the record of what was tried, not as a
-  statement of the design.** Every posture the next paragraph settles — the already-open row, the third
-  auth outcome, the frozen cursor, AT-D2-19's *still open at 60 s* leg — was WITHDRAWN by the operator
-  on 2026-09-12. Read it for why the reversal was needed; read round 6 for what the design says.
-  ⛔ **Round 4 settled it as a CONTRADICTION BETWEEN TWO SECTIONS rather than an open
-  product question.** § 2.2's *feed stream, ALREADY OPEN* row rules that a store outage under an open
-  stream keeps it **open as the messenger** — `fleet.health{db:"down"}`, no cursor advance, no end —
-  while § 9 re-checked the session every **15 s by re-reading the user record from that same store**
-  and gave that check only **two** outcomes. A read that *failed* therefore landed on *invalid* and
-  fired `feed.close{reason:"session"}`, and 15 s beats § 8.5's 45 s stall bound, **so § 2.2's ruling
-  was unreachable in practice**: every viewer on the fleet was sent to a sign-in page within 15 s of a
-  store outage — one that **cannot be completed, because authenticating reads the same tables the check
-  just failed on**. § 9's re-check now has **THREE outcomes — valid, invalid, and *unverifiable***,
-  where *unverifiable* is *the check could not reach the store* and is explicitly **not a verdict about
-  the session**: it takes § 2.2's messenger path, the stream stays **open**, and no `feed.close` of any
-  reason is sent. ⭐ **The closed set of three `feed.close` reasons is UNCHANGED** — *unverifiable* is
-  not a fourth member, because nothing is being ended — and `session` keeps exactly its meaning, now
-  said in those words on § 8.3's `feed.close` row, in § 2.1's process-table row, on R2's *declared*
-  sentence and at FLOOR § 9 F3 and § 14 item 5: **the store answered, and said the session or its MFA
-  is gone**. FLOOR § 9 gains **F21** for the mid-stream case it did not carry — F5 covers the
-  **connect**-time one — which **points at F5 for its render rather than restating it** (a restatement
-  drifts) and is **appended, not inserted**, so no existing F-id moves under the cross-references to it.
-  ⚠ **What is NOT resolvable is named rather than engineered around:** while the store is down an
-  *expired* session and an *unverifiable* one are indistinguishable, and an outage outlasting
-  `SESSION_LIFETIME` (120 min here) leaves every open stream in that state. No timer, no heuristic and
-  no client-side guess is specified, because each would be a verdict invented from an absence of
-  evidence — the very defect the third outcome removes. The first re-check after the store answers again
-  resolves it truthfully and ends the stream with `feed.close{reason:"session"}` if the session really
-  had expired: late by the length of the outage, and correct. § 9's *15 s + one 250 ms tick*
-  enforcement bound is therefore now stated as holding **on a re-check that can reach the store**, which
-  is the one existing sentence this change made false. ⭐ **AT-D2-19 gains the leg that keeps the defect
-  out** — the store made unreadable under an already-open stream, `fleet.health{db:"down"}` inside one
-  auth interval, **no `feed.close` of ANY reason** (asserted against the reason SET, so a fourth member
-  invented for this posture reds too), the stream still open at 60 s past the 45 s stall bound, and
-  `db: "up"` with delivery resumed on restore; its REDs are the two-outcome re-check itself and that
-  fourth reason, and its discriminating control is the existing expiry leg, which must still close with
-  `session` against a READABLE store — without it the absence assertion could pass over a test that
-  watched nothing. ⚠ **One thing this change does NOT carry, and it is deliberate:** `verify-fleet-state.py`
-  G7's message-type closure only sees BACKTICK-DELIMITED tokens, so § 8.3's pseudocode fence and every
-  braced prose token sit outside its population — a real gap, filed as its own card rather than bundled
-  into this design change, where it would inherit this entry's review.
-  ⭐⭐ **ROUND 6 — OPERATOR RULING, 2026-09-12: the premise under rounds 1-5 is WITHDRAWN. When the
-  store is unreachable the stream ENDS and the client says so.** Five review rounds circled one
-  assumption — *the fleet dashboard should stay useful while the store is unreachable* — and the fifth
-  round's own stopping criterion fired (a fix re-minting the class it existed to prevent, twice) rather
-  than converging. The operator took it as a product question and answered it: with the store gone
-  there is nothing to show, nothing to advance a cursor past and nothing a session re-check can be
-  checked against, so the design stops and says so instead of building a recovery path back to a place
-  with no value. **`feed.close{reason:"unavailable"}` · FLOOR renders *fleet data unavailable* · the
-  client retries on a BACKED-OFF cadence.**
-  **What this DELETED rather than answered — each one removed, not qualified beside its replacement:**
-  **(1)** D2 § 2.2's *feed stream, ALREADY OPEN* row and its whole posture; the row is now
-  **Feed stream, MID-STREAM**, posture **CLOSED**. **(2)** § 9's *unverifiable* outcome as a state that
-  keeps a stream alive — the re-check now continues the stream on ONE outcome and ends it on every
-  other, and § 8.3's loop writes the non-answer branch as `default` so that no exception escapes the
-  switch into the primitive's `catch (Throwable)` and ends the response with no `feed.close` at all.
-  **(3)** The frozen cursor, everywhere it was stated: nothing holds a cursor across an outage, so
-  recovery is a reconnect and a fresh snapshot. **(4)** § 6.7's 60 s retention arithmetic **did not
-  move and did not need to**: 45 + 15 was always derived from § 8.5's stall bound — a SLOW consumer
-  blocked in a write — and never from a stream outliving a store outage; what the frozen cursor did was
-  falsify it, and deleting the cursor restores § 8.5's *no row is ever skipped for any client* rather
-  than amending either. **(5)** AT-D2-19's *still open at 60 s* leg and its two runs, rewritten against
-  the close.
-  **Which reason a failed session re-check sends is now a stated RENDER decision, not an implementer's
-  guess:** `unavailable`, never `session` — a sign-in cannot be completed while the store is
-  unreadable, because authenticating reads the tables the check just failed on, and *your session is
-  gone* is the wrong sentence when what is true is *the store is down*. The closed set of three
-  `feed.close` reasons is unchanged and this mints no fourth member.
-  **The cost the operator is buying, stated so nobody re-litigates it:** F20's reconnect stampede is
-  real, and the answer is **client backoff**, which D3 § 2.2 now owns — after a
-  `feed.close{reason:"unavailable"}` the retry interval doubles from the 10 s cadence to an **80 s**
-  ceiling, that being the first interval at which a browser makes fewer than one request a minute
-  against a store refusing all of them, with the ceiling derived from the cadence rather than minted.
-  ⛔ **F1's 10 s poll is NOT backed off**: that path is a dead stream over a READABLE store, where the
-  polled floor is the product working.
-  **Also in this round, the four review findings the ruling left standing as ordinary work.** **F3** —
-  AT-D2-19's restore assertion was unproducible in its run 2 and the leg claimed *"the assertions below
-  hold in both"*; recovery is now its own leg, producible in both runs, and what differs between them is
-  stated as the BOUND (one tick where the tick read fails, one auth interval where only the re-check
-  does) rather than as the cursor. **F4** — `db: "up"` is not a member of § 8.2.4's `db` enum; every
-  site that introduced it is deleted by the ruling except AT-D2-19's, which now **cites § 8.2.4 for the
-  value instead of restating it**, because a vocabulary with two homes is one that drifts. **F7** —
-  `routes/channels.php` and `.env.example` each claimed `BROADCAST_CONNECTION`'s *"only occurrences"*
-  were those two, and `server/phpunit.xml` carries one they missed. Two hand-kept copies of one
-  enumeration are two copies free to drift, and D2 Appendix B step 9's retirement is exactly the act
-  that reads one and orphans the rest — so **both are replaced by the derivation**
-  (`git grep -n BROADCAST_CONNECTION`, **unscoped** — the `-- server` pathspec this round first wrote
-  excludes `bin/deploy.sh`, which D2 Appendix B step 9 requires editing, and `bin/deploy.selftest.sh`
-  with it, so the replacement derivation was itself scoped past the files it commands) rather than by
-  a corrected list. **F8** — Appendix B
-  step 8 gated on AT-D2-19 while step 9 builds the handler its stream legs drive, and step 9's gate
-  named it nowhere: step 8's citation is scoped to the REST, token and MFA legs and step 9 gains the
-  stream legs.
-  **And one carried doc-sync debt (canon #16), held out of `PupFuzz/mezzanine#115` because this branch
-  is live in the file:** D2 § 13 row 44's *Cost if wrong* cell said card#7341's floor-v1 map was *still
-  that card's to author* and its tileset pull *vendored no map*. Both were false once card#9269
-  authored `resources/floor/default.tmj` (#115). The row's RULE is untouched; the cell no longer
-  restates the tree's state at all — it points at `git ls-files resources/floor` and at
-  `verify-floor.py`'s two-directional hold on § 10.3, because a state written into a cell is a state
-  free to drift from the tree.
-  ⚠ **One deviation from the ruling's letter, named rather than absorbed:** the ruling said D2 § 2.1's
-  heartbeat-daemon row *stays as it is*. Its *"told … by the heartbeat's ABSENCE … the one case where
-  silence is the message"* clause was written for an outage the stream survived, and under the close it
-  is false — the close is the messenger within one 250 ms tick. That one clause is corrected; the row's
-  ruling (a daemon writing to the same store is not the messenger of that store's outage) is untouched,
-  and silence keeps its one remaining meaning: a stream that ended without saying so.
-  ⭐ **ROUND 7 — the first INDEPENDENT review of this amendment (maintainer round, 2026-09-12), and the
-  yield is why five self-reviews are not one outside read.** Two blockers, and both were the same
-  shape: **a rule stated in prose and CONTRADICTED by the artifact that gates it.** *(1)* The two
-  acceptance tests that decide whether the store-down ruling shipped — AT-D3-8 and AT-D2-12 — both
-  certified the held-open stream the ruling withdrew, AT-D3-8 in the words *"while the connection
-  indicator stays connected"* on the line directly below one this diff edited, and FLOOR § 9 F5's
-  **Never** column forbids that render by name. Both fixed, `fx-refusals` carries the stream's end,
-  and each gained a RED for the held-open stream. **The root defect was G12's population, not the
-  tests:** the guard held the three PROSE sites and neither test, so it could only ever agree with the
-  prose it read — its population is now the RULING's sites, AT-D3-8 included, which is the one check
-  in this file that reads `docs/design/FLOOR.md`; both new legs seen red on a plant and reverted
-  byte-identically, with a CONTROL that reds by name on an anchor that stops resolving. *(2)* The
-  handler returned on `fleet.reload` writing no `feed.close`, which F3 reads as *"a reason the server
-  did not choose"* — so **every routine deploy rendered *feed down — polling* against a healthy
-  fleet**. `reload` is now the fourth member of the close set — which **supersedes the two *closed set
-  of three … UNCHANGED* sentences earlier in this bullet**, and supersedes only their arithmetic: what
-  those rounds ruled is that the *unverifiable* outcome mints no member, and that still stands, because
-  it sends `unavailable` and ends nothing new. ⛔ **What is NOT ruled here and went to
-  the operator: whether a viewer sees a banner on a deploy that does not change `feed_version`.** D2
-  says the wire did not move so nothing should interrupt; FLOOR § 2.5, F8 and AT-D3-8's reload leg say
-  banner, unconditionally. Both are written up with their costs and the sites each answer moves at
-  **FLOOR § 14 item 20**, and neither document was edited toward the other — picking whichever is
-  easier to edit IS the ruling. The stream's END was fixed without waiting on it, because under both
-  answers an unexplained end renders *feed down* first. **Security:** § 9's revocation bound was
-  ~4× short — the re-check fires on a loop PASS and a pass contains the write loop, which § 8.5 lets
-  block for 45 s, so the bound is the auth interval plus that, under 60 s rather than 15.25 s; a
-  revoked session that drains slowly buys the difference. FLOOR F7 and **decision 36 — an acceptance
-  taken on the record at a figure 4× short** — moved with it, and the hoist that would have made
-  250 ms true is refused on the record with its reason, so the next round does not re-propose it. Step
-  9's hand-listed `/broadcasting/auth` tests were short by one (`git grep -ln "broadcasting/auth" --
-  server/tests` returns four) and are now the grep. **And the derivation that replaced round 6's wrong
-  list was itself scoped past the files it commands** — `-- server` hides `bin/deploy.sh`, which step
-  9 requires editing — so all three sites drop the pathspec. **MAJOR-6/8/9/10 dissolve into one
-  edit rather than four debates, because R1 already takes the right position:** *what is true on a
-  real FPM host is UNMEASURED and this document does not assert it either way.* R2 and step 9 did not
-  honour it — R2 named `php-fpm -tt`, the instrument R1 disqualifies eight paragraphs above and which
-  measurably cannot run as the deploy user; step 9 ordered the ini gate R1 forbids building until
-  card#9300 measures it; `pm.status_path` sat as a caveat on a check while § 2.1's feed-reload wait
-  loop depends on it; and the frozen-consumer story cited a `break` the primitive contradicts, when
-  what governs it is **`ignore_user_abort`** — unnamed anywhere, and on this box present and
-  **commented** in the FPM ini with the distribution suggesting `On`, one character from making
-  AT-D2-15's GREEN (b) red against a correct handler. All four now honour R1: named, handed to
-  card#9300, and no instrument prescribed that has not been run. The three minors were each a live
-  inconsistency rather than a taste call and all three are fixed — `feed_resync_required`'s cell named
-  a close reason the loop never counts, § 8.3's latency bound was measured from the commit while its
-  predicate reads `created_at` at INSERT, and this list omitted § 13 row 42, now deferred with the
-  § 8.7 prose it is written in.
-  ⭐ **ROUND 8 — the second independent review (2026-09-12), run over the ROUND-7 FIX DELTA only.**
-  Eleven findings, **no blocker**: every mechanism a builder implements was already correct. What is
-  fixed here is the round-7 delta's own residue, on canon #16's rule that a change owes the docs it
-  invalidates — **this delta is what made these clauses false.** *(1)* **Round 7's own root-cause
-  lesson was applied to one of its two blockers.** G12's population became the RULING's sites for
-  `unavailable`, and the `reload` member round 7 MINTED got no guard at all. Measured, not reasoned:
-  deleting the handler's `yield feed.close{reason:"reload"}` left every gate at **rc 0** — because
-  `_used` is derived over the whole document and the `fleet.reload` row's own prose (lines 2439, 2977)
-  keeps the close table's *exactly four* cardinal matching while the handler regresses. The new **G12b**
-  holds the close at the **FENCE** rather than at a section, since section 8.3's pseudocode is what an
-  implementer builds from and a close surviving only in prose is a close no build emits; seen red on
-  that exact plant, naming both prose lines, and reverted byte-identically. *(2)* **The enforcement
-  bound moved at six sites and stayed 4× short at two more** — FLOOR § 9's *"up to one tick — 15 s"*,
-  the phrasing D2 § 9 forbids by name three lines below the row round 7 did fix, and § 13's F7 note
-  citing **decision 36** as authority for a figure decision 36 itself records as retired. Both now point
-  at D2 § 9's guarantee instead of restating a figure. *(3)* **The stall bound was corrected at every
-  CONSUMER and not at its OWNER.** § 8.5 still read *"that worker, for up to the bound"* — in the very
-  clause that hands the figure to R2's `pm.max_children` arithmetic — while § 9 case (b), written by
-  round 7, rules it *"a DETECTOR, not a cap"*. A pool sized from the owner's clause is sized short;
-  § 8.5 and the § 2 backpressure row now say detector, and name R2's teardown as what actually caps
-  occupancy. *(4)* Appendix A's second cardinal stayed at *thirty-nine* against forty T-rows, outside
-  G6's regex; the restatement is deleted rather than re-synced by hand (canon #16). ⚠ **Filed, not
-  fixed here:** the enforcement bound is still restated at ≥ 6 sites across two documents with no
-  guard — fixing N copies in place is what let the N+1th survive round 7 — and G12b guards one reason
-  by name where the site loop should derive its reasons from the declared set; both are consolidation
-  items in their own right. § 8.3's split ruling still assigns card#9300 the R1/R2 ini gate that R1
-  itself forbids building unmeasured, § 14 item 20's site inventory is short by one (§ 13 row 42 takes
-  a position on the parked question), and AT-D3-8 asserts on an input round 7's own fixture edit made
-  unproducible. All five gates rc 0, floor-preview included.
-- **card#9292** — **THE FLOOR PLAN — design only, no application code.** The operator, correcting a
-  report that the configurable unit was the room: the floor is configurable too — a hallway with
-  five offices for solo agents, or a big room and a small room sized to their populations. D3 § 14 item 19 had named position and the
-  space between and offered an authored position member — and still priced itself *Blocks: nothing
-  that ships*, parked the hallway on card#9269 and designed neither extent nor overlap; it is closed
-  as under-scoped from the one-room case, with what it got right kept as the default. The plan is two members of the floor's layout entry
-  (D3 § 4.6): a room's `origin` — a position, never a size, because a room's extent is its map's grid
-  and has that one home (§ 10.3) — and a floor's `hallway`, a Tiled document for the space no room
-  occupies, read by § 10.3's table with `desks` refused; two rooms whose footprints would intersect
-  are refused at every write, naming both (D2 § 6.11), and the one read-time case is § 9 F18. A
-  floor with no plan keeps item 19's interim rule as its default (side by side, key order, the
-  § 12 gap). No new table, subject, surface or message: the plan inherits the layout's revisions,
-  `building.layout` and `GET /api/building` (D2 § 8.7, § 13 row 45). D3 § 13 rows 31–33, rows 25 and 27
-  amended, D2 § 8.3's `building.layout` row; card#9269 re-scoped to the office's interior, the hallway being the plan's. Both
-  operator floors are worked in § 4.6. ⚠ Not built: a room's value in `rooms` becomes a record
-  there, and the shipped `BuildingLayout` refuses `hallway` by name and a room record as a
-  non-scalar form until Appendix B step 11 — which also owes the code comments and refusal messages the record shape makes stale,
-  re-derived by `grep -rn -E "install(_id| id)? =>" server/config server/app server/tests` rather
-  than listed here, and not edited here because this PR is design-only.
-- **card#9283** — **Per-field BYTE bounds are now ENFORCED at the ingest; an event carrying a field
-  over one is REFUSED.** D1 publishes a byte bound per `data` field — `tool.start.descriptor` ≤ 200 B,
-  `tool_name` ≤ 64 B, `subagent.spawn.title` ≤ 120 B, the heartbeat's three capped objects, and the
-  rest — and **nothing on the server re-checked any of them**: `EventValidator` bounded only the
-  serialized `data` blob (§ 4.3's 3 KiB cap), so a holder of a valid per-seat ingest token could put
-  a descriptor at ~20× its published bound on the wire and the server stored and served it. Every
-  consumer that sized to a published bound — D2 § 8.3.2's worst-case seat object is *built from*
-  these numbers — was relying on producer-side discipline alone.
-  ⭐ **The ruling (operator, 2026-09-12) was REJECT, LOUDLY** — not truncate, not accept-and-count.
-  Truncating would put the server in the business of silently editing telemetry, which D1 § 7's
-  sanitize-at-the-reporter rule exists to keep in exactly one place; accepting-and-counting turns the
-  bound into a suggestion. ⚠ **BEHAVIOUR CHANGE, and the cost is accepted on the record: an outdated
-  or non-conforming reporter's events start disappearing at upgrade.** A field over its bound is
-  `422 invalid_event` and, under § 12.4's existing atomic rule, takes its ≤ 199 conforming neighbours
-  with it — the whole batch is refused and nothing is stored. That is chosen because a refusal is
-  visible, counted against the seat and attributable, where both alternatives fail quietly.
-  ⛔ **The refusal names the field, the bound and what arrived** — `field: "data.descriptor"`, dotted
-  so it cannot be read as the common field of the same name, plus `kind`, `max_bytes` and
-  `received_bytes` in the body and all three in `message`. A bare status re-mints card#9146's shape
-  one layer down: it changes the question from *which field, and by how much* to *what is wrong with
-  the request*, and sends the reader into the wrong subsystem.
-  **The bound population is DERIVED, never listed.** `KindRegistry::KINDS[$kind]['bounds']` is a
-  transcription of D1 § 6's field tables, and `EventSchemaDriftTest` re-derives it from those tables
-  on every run — a bound added to D1 reds the registry until it carries it, so a field cannot become
-  unchecked silently. The unit is **bytes**: `strlen`, never `mb_strlen`, and every fixture is
-  multibyte and *inside* its bound when measured in characters, so the suite cannot pass against the
-  character-counting implementation card#9282 fixed one layer over.
-
-- **card#9282** — **The tier-3 task title truncated by CHARACTERS against a BYTE contract, and up
-  to 200 B reached a 120 B wire member.** `StateRecompute::taskTier3()` held `task.title` to
-  `mb_substr($title, 0, 120)`. D2 § 8.2.1 declares that member `≤ 120 B`; on the branch that answers
-  from `calls.descriptor`, the input arrives byte-capped at the descriptor's own **200 B** (D1
-  § 7.4), so a multibyte descriptor shorter than 120 CHARACTERS — an accented path, a non-Latin repo
-  name, an em dash — was not cut at all and went out at up to its full 200 bytes. Neither plane
-  caught it: `seat_state.task_title` is `VARCHAR(120)` and MariaDB counts `VARCHAR` in characters
-  (D2 § 6.3), which is that column being *sized to hold* the bound rather than to enforce it.
-  ⭐ **D1 § 7.4's procedure now has ONE implementation — `App\Support\ByteTruncation`** — cut at the
-  last character boundary at or before the bound less the mark, then append `…`. It is extracted
-  rather than written inline because `BOARD-TASK.md § 8.4` holds the (unbuilt) tier-1 poller to the
-  same bound through the same procedure, and *"one bound, one place"* is false the moment there are
-  two copies of the arithmetic; the bound itself is `StateRecompute::TASK_TITLE_MAX_BYTES`.
-  ⚠ **The magnitude here is 200 B against 120 B, and NOT the ~480 B first reported** — that figure
-  multiplies the bound by a 4-byte character against an input already capped at 200 B upstream. 480
-  belongs to the tier-1 path, where a board card `name` is capped by nothing; § 8.4 now says so, and
-  says that neither figure re-derives the other. That section also carried the claim that tier 3 was
-  *harmless* because its input was already byte-capped — true of the capping, wrong about which cap —
-  and the sentence that let this ship is corrected in the same change.
-  ⭐ **The `mb_substr` sibling audit the card owed is run and its result is recorded: NO third
-  member.** `FoldEvent::str()` is the only other character-counting truncation in `server/app/`, and
-  it is unit-correct for what it is — a storage guard sized to the COLUMN's character width (D2
-  § 6.3), explicitly not a second sanitizer. `TwoFactorReset`'s `Str::limit(…, 250)` writes a
-  `VARCHAR(255)` audit column that is on no wire. What the audit DID surface, for its own card and
-  not fixed here: nothing on the server re-checks a per-field BYTE cap the reporter is trusted to
-  apply, so a non-conforming reporter can still overrun `action.descriptor`'s `≤ 200 B`.
-- **card#7341** — **THE FLOOR TILESET IS VENDORED AND D3 § 14 ITEM 7 IS CLOSED — and the ruling is
-  that it is a BRIDGE.** Operator ruling of 2026-09-12: Kenney's **Furniture Kit**
-  (<https://kenney.nl/assets/furniture-kit>, `CC0-1.0`), chosen **explicitly as a bridge to
-  first-party vector art**. A curated subset of the pack's `Side/` renders lands under
-  `resources/floor/tiles/furniture-kit/` behind the Tiled tileset `furniture-kit.tsx`, each file
-  with the `docs/ATTRIBUTION.md` row Gate 1 requires, and `resources/floor/LINEAGE.md` records the
-  terms as read in the pack's own `License.txt`, the downloaded archive's SHA-256, what was curated
-  and what was deliberately not taken. `docs/PLAN.md § 0` carries it as an **append** beside D-07.
-  ⚠ **It does NOT meet D3 § 10.4's resolution-independence requirement and is not meant to** —
-  pre-rendered raster fails that bar by construction. Said in four places a reader can arrive at
-  independently (§ 10.3, § 10.4, `ATTRIBUTION.md`, `LINEAGE.md`), because an interim asset that only
-  the asset tree admits to being interim is one somebody later reads as a decision.
-  ⭐ **`Side/`, not `Isometric/`, and that was the judgement call.** The ratified reference is a
-  building in **cross-section** (§ 4.1's stacked plates) with a camera that zooms and pans (§ 4.5) —
-  an elevation, in which floors stack as bands; isometric tiles recede along two axes and cannot
-  stack into a section without occluding each other — and nothing in D3 asks for that projection,
-  which until § 10.3's new bullet was written the word's total absence from the document said for
-  it.
-  Taking both was refused rather than overlooked: a renderer draws one projection, and the isometric
-  set is four renders per object that every Gate 1 row would have to keep true for nothing drawn.
-  ⛔ **THE PROVENANCE GATE HAD NEVER BEEN RUN AGAINST THIS TILESET SHAPE.** Individually-sized
-  renders need an **image-collection** tileset — `columns="0"`, one `<tile><image source="…"/></tile>`
-  per PNG — and every clause-3 fixture in `bin/asset-provenance.selftest.py` was a sliced grid sheet
-  with one document-level `<image>`. It **passes** all three clauses unmodified, and no parser change
-  was needed or made; what was missing was evidence, so the selftest gains the collection form as a
-  control **plus two REDs of its own** (a per-tile `<image>` holding its bytes inline; a JSON tile
-  whose `image` is a `data:` URI), because a green over a shape no fixture ever fed the parser
-  reports where the fixtures stopped rather than what the parser does.
-  ⭐ **§ 12's viewport row is answered, and the answer is narrower than the row expected.** A desk
-  sprite is a **measured 116 px** wide — a new **Measured** row, held against the PNG's own IHDR
-  header by a new `verify-floor.py` G8 leg with both the number and the path re-derived from § 10.3's
-  sentence, seen to red on all three of its arms (wrong size, missing file, not a PNG). The
-  1,280 × 800 floor **does not move**, and the measurement's first result is one the old wording
-  assumed away: a 12-slot room as one native-scale row is 12 × 116 px of desk plus two 108 px walls =
-  **1,608 px**, *wider* than the viewport floor, so the tileset shows the room does not fit at 1:1
-  rather than showing that it does. The camera is navigation (§ 4.5), so the floor is reached by
-  zooming out or panning — and which one is taken is exactly what decides nameplate legibility, which
-  is what this row turns on and what no renderer exists to measure. Recorded as a verdict rather than
-  left silently unmet.
-  ⚠ **§ 12's Gate-2 embedded-literal row re-derived on its own stated trigger** (*"whenever art is
-  added"*): the longest look-encoded run of base64's alphabet under `resources/` is now **107 B**, in
-  the whitespace-stripped prose of the new lineage file — not 62 B in `index.js`. Still an order of
-  magnitude under the 1,024 B ceiling, and the new longest run being English prose is clause 2's
-  named residue observed rather than supposed.
-  **No map is vendored** — a tileset is not a map, `verify-floor.py`'s sweep is for Tiled's two *map*
-  spellings, and § 10.3's declared absence stands with its branch still reporting `ABSENT`.
-
-- **card#7897** — D3 § 5.1 rule 4 states that `task.as_of` is **not drawn on the desk**, and § 13 gains
-  **decision 26** recording it with its alternative and reversal cost. Operator ruling, 2026-09-12,
-  taking option (b) of the amendment PupFuzz/mezzanine#95 proposed and did not apply: the member stays
-  in § 5.1's field list and is EXCLUDED by a stated rule rather than dropped from the list, so the
-  desk's contract says nothing an implementer has to fill in. No code changes — the module already
-  does not carry the member; what it lacked was the document saying so.
-
-- **card#7582** — **The D4 amendments are RATIFIED and applied, and retirement now clears the
-  board-user mapping.** Operator ruling of 2026-09-12 on A1–A10 from `BOARD-TASK.md`'s pull
-  request, taken **as amended by an adversarial review** rather than as drafted. `FLEET-STATE.md`
-  gains the two § 2.1 process rows, `seats.board_user_id` (UNIQUE) and the `seat_board_task` DDL at
-  § 6.4, the `board_poll_ok` / `board_poll_failed` counters at § 7.2 and § 8.2.4, the § 6.7
-  retention posture, the § 6.8 sizing line, and the § 1.2 / § 4.9 / § 14 repairs that stop the
-  document saying the poller is designed nowhere.
-  ⭐ **A10, which the review found MISSING, is added: § 6.6 and AT-D2-10 now state the rebuild rule
-  in full** — the fold reads only `events` and the durable inputs a rebuild does not destroy
-  (`seats`, `seat_board_task`). Until this, both stated the narrower *read nothing outside the log*
-  as the definition while D4 relied on the wider one, which is two live readings of one rule.
-  ⛔ **The product fork answered: RETIREMENT CLEARS THE MAPPING, in the retirement transaction**
-  (`App\Fleet\SeatRetirement`, § 4.10, AT-D4-8). The alternative — leave the row and make D4's
-  "a row leaves in exactly two ways" true by deleting one of the ways — was refused because
-  `board_user_id` is UNIQUE: a retired seat keeping it holds that board user against the fleet, so
-  the REPLACEMENT seat cannot be mapped to the same person until someone runs an undocumented
-  `--clear` on a seat that has left every read surface, and the whole symptom is a bare non-zero
-  exit. **The store ships with it** — the ratified § 6.4 shape, one migration — because a clearing
-  act with no column to clear cannot be tested, and the test is what makes it real: it was seen to
-  fail on the unique-key refusal first.
-  ⚠ **Three of the review's findings changed what was ratified, and are applied rather than noted:**
-  the two counters gain counting VERBS in § 2.1 (without them A3 turned `verify-fleet-state.py` RED
-  with two G8 failures, measured — and re-measured here by planting it); the 5-minute cadence is
-  **Chosen**, not *Derived*, which is what D4's own number table said all along; and the poller's
-  title truncation is **120 BYTES by D1 § 7.4's procedure**, not 120 characters — a board card
-  `name` is capped by nothing, and `mb_substr(…, 0, 120)` of a multibyte title is up to 480 bytes
-  against § 8.2.1's `≤ 120 B` contract.
-  ⛔ **The poller is still not built** — `mezzanine:board-poll` and `mezzanine:seat-board-user` are a
-  separate pull, which the ruling says in terms; `seat_board_task` therefore has one writer today and
-  it only deletes.
-- **card#9146** — **THE PROMOTE CHAIN'S 403 WAS THE WRONG ACCOUNT'S TOKEN, and nothing checked
-  which account it was.** Every `release-promote-cards` run from 2026-08-24 to 2026-09-09 died
-  `✗ card#NNNN: move failed (HTTP 403) — left in place` on every card it named. The cause was not
-  the board: `secrets.KANBAN_WRITEBACK_TOKEN` held a token for kanban **user 10** instead of this
-  repo's writeback account, **user 15**. Measured on the workflow itself, one variable at a time —
-  run `34417338664` probed `user 10` and then 403'd on `card#9077`; the secret was re-set at
-  `2026-09-09T23:37:31Z`; run `34417760754` probed `user 15` and reported
-  `✓ card#9078: moved 107 → 108`. ⛔ **Both accounts are `board_custom` on board 14 with identical
-  `custom_permissions` today, so the role does not explain the refusal, and this repo has NOT
-  established why user 10 is refused** — the identity is the discriminator and that is all this
-  chain needs. **The repo-side defect was the missing check**: the preflight asserted only that
-  the secret was NON-EMPTY while its own error text DECLARED a requirement about the token's user,
-  so a mis-set credential looked like a board-permission mystery and cost four rounds of wrong
-  inference across two agents. `release-promote-cards.yml` now asks `GET /users/current.json`
-  **before the mover runs** and fails the job unless `.data.id` equals the new committed
-  `.release-pr.json` → `.promote.writeback_user_id`; it prints the two numeric ids and nothing
-  else from that response, and sends only to `vars.KANBAN_API_BASE` (the PR-editable `api_base`
-  path is unreachable from it, which is why it carries no second copy of the mover's host guard).
-  **Seen to fail before it was trusted** — run `34674557403` declared `writeback_user_id: 99` and
-  the job red with *"authenticates as kanban user 15, but .release-pr.json declares … user 99"*,
-  with the promote step never reached. **Then seen to work end to end, not as a dry run** — run
-  `34674965476` (`DRY_RUN: false`, on the bytes this ships) reported `✓ card#7334: moved 107 →
-  108` for three cards and `3 moved, 0 already-released, 0 stage-guarded, 0 no-card, 0 failed`,
-  and the board reads 108 for all three. Seven stranded cards were drained across that run and
-  `34674802211`, each re-verified as a `card#<id>`-tokened commit reachable from `main`;
-  **the rest of that backlog is still stranded** and needs the same treatment. **Neither vendored file was touched**, so the #100 body pins stay
-  green. `docs/KANBAN.md` gains **G-17** for the whole mechanism and warns that **G-1 is
-  not what bit this repo** — a token can be a full board member and still be the wrong account.
-
-- **card#9250** — **MIGRATIONS NOW RUN ON THE ENGINE THEY RUN ON.** Until this landed, no
-  migration in this repository had ever been executed against MariaDB: the suite is SQLite
-  (`server/phpunit.xml`), `php-tests` asserts SQLite by name, and production is MariaDB
-  (`docs/PLAN.md` D-15 as amended 2026-09-09). Laravel compiles the two through different schema
-  grammars — SQLite has no native `ENUM` and REBUILDS a table where MySQL/MariaDB emits
-  `ALTER … MODIFY` — so a migration that passed CI and failed on MariaDB was discoverable only at
-  deploy, where DDL is non-transactional and a multi-statement migration halts PART-APPLIED.
-  **A second job, `php-tests-mariadb`, now runs every migration and the whole suite against a
-  `mariadb:11.8.6` service container** — the exact floor `docs/design/FLEET-STATE.md § 6.1` pins,
-  not a floating tag, because the point is to execute the minimum the document promises.
-  ⛔ **An ADDITIONAL lane, not a changed one**: the SQLite lane and its `DB_CONNECTION=sqlite`
-  assertion are untouched, and the two jobs share nothing but the checkout. The backend is selected
-  by **exporting** `DB_CONNECTION`, which is the mechanism `phpunit.xml`'s unforced declaration and
-  `§ 6.2` finding 1 always described — *"nothing in this repo's CI selects a backend by exporting
-  it today; when something does, it must win"* is no longer a hypothetical, and the three places
-  that said so are corrected. Every other § 6.2 pin is forced + paired and correctly DEFEATS the
-  new job's exports: CI chooses the store, CI does not choose the isolation.
-  ⭐ **The lane is built so it can fail, and was seen to.** New `tools/ci-store-probe.php` asks the
-  SERVER rather than trusting a declaration: it reds unless `VERSION()` names MariaDB, it **derives**
-  § 6.1's floor from that document's engine row and reds when the live server is below it (the
-  `services:` image tag cannot be interpolated, so the copy is guarded rather than deleted), and it
-  asserts table presence against a caller-stated expectation. The lane runs it as a **control pair**
-  twice — empty, migrate, non-empty; wipe, run the suite, non-empty — and the second pair is the
-  only available proof that the SUITE resolved to MariaDB rather than silently to SQLite, which is
-  § 6.2 finding 4's failure mode (*a MariaDB matrix that re-ran both legs on SQLite, green, testing
-  nothing*). `pdo_sqlite` is deliberately **not installed** in that job for the same reason: a
-  fallback must fatal, not pass.
-  ⚠ **Still not covered, by name**: TLS and the `+00:00` session time zone (the container is
-  plaintext on loopback and `config/database.php` sets no `timezone`); `down()` (only `up()` runs —
-  `bin/deploy.sh` is forward-only on purpose, so a `down()` defect is on no production path); and
-  every concurrency exposure card#7523 lists (`FOR UPDATE SKIP LOCKED`, the `Predicates::record()`
-  lost update, the ABBA ordering), which need two connections working at once and which a
-  single-threaded suite does not produce. What card#7523 gains is that those are now blocked on a
-  TEST rather than on a STORE — the correction is written into `MySqlColumnTypeTest`'s header,
-  which said the opposite.
-  ⭐ **WHAT THE FIRST RUN FOUND, which is the whole argument for the lane.** Every migration
-  applied cleanly on MariaDB — **no migration defect exists**, and that is now a measurement
-  rather than a hope. What the lane did catch is a defect class in the TESTS: **two tests match
-  emitted SQL text against SQLite's `"` identifier quoting**, which MariaDB writes as backticks.
-  The two ends of that class are the reason a lane is worth more than an audit.
-  `Tests\Feature\Admin\SeatConsoleTest` FAILED — its `DB::beforeExecuting` hook never fired and
-  its own precondition assertion said so. `Tests\Feature\Ingest\At13AtomicBatchRejectionTest`
-  **PASSED, vacuously**: its filter matched nothing and an empty set is exactly what it asserts,
-  so AT-13's control-flow assertion — *"a refused batch must issue no INSERT at all"* — was a
-  decoration on that engine, green forever and proving the opposite of its claim. Both now ask
-  the connected grammar through one shared `Tests\TestCase::wrapTable()` rather than spelling a
-  quoting character, so a third site cannot mint it by copying a neighbour.
-  The second run found the second: a fixture wrote `'2026-01-01 00:00:00'` into a `DATETIME(3)`
-  column and asserted the literal back. SQLite returns the string it was handed; MariaDB returns
-  `…00:00:00.000`, which is what `§ 6.4` declares the column to be. **Neither engine nor the
-  application is wrong** — `App\Fold\Clock::toMs()` already absorbs both spellings by name and every
-  wire value goes through `Clock::wire()` — the FIXTURE was not a `DATETIME(3)` value, and now is.
-  Audited for siblings by the shape that produced it (a fraction-less datetime literal in a test):
-  `grep -rnE "'20[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'" server/tests server/app`
-  returns that file alone.
-- **card#9273** — **FLOOR LABELS: a floor can be NAMED, and the name is not the key.** Operator
-  ruling of 2026-09-11 (*"yes, I want to be able to name a floor"*) on the one thing card#9267's
-  derived key left out. A floor's entry in `config/building.php` is now a **record** — `['rooms' =>
-  [install => form, …]]`, optionally with `'label' => '…'` — and the label is display text only: the
-  plate and the elevator's stop read it, and `FLOOR.md § 4.2` states the same rule for the floor
-  screen card#9208 will build. **The key is untouched**: `/floor/{key}`, the stack order and the cab
-  position are the derived key whatever the label says, so a label is edited freely and no link
-  moves. **No label ⇒ the floor reads as its key** — honest, and no *unnamed floor* placeholder is
-  invented; an install the layout does not place has no entry and therefore no label. **Two floors
-  that would READ the same are refused at load** (`BuildingLayout::parse`), named by both keys and
-  the authored string — a duplicated label or a label equal to another floor's key — rather than
-  repaired by drawing the key beside the label (`§ 13` decision 25 carries the argument). **The
-  comparison is on what the page RENDERS, not on the bytes** — one named predicate,
-  `BuildingLayout::readsAs()`, strips and collapses whitespace the way the browser's own
-  `white-space: normal` does before comparing, so ` the solos` beside `the solos` is refused and a
-  label of one NO-BREAK SPACE is blank; the label itself is still stored exactly as authored. An
-  explicit `'label' => null` is an ABSENT label rather than a type refusal, so the document survives
-  the JSON-column store `§ 4.6` promises it to. The one case the reader cannot check — a label equal
-  to an install provisioned after the document was written — is named in `§ 4.6` and the composer
-  draws both floors rather than refuse a building for a name. The old bare room-set shape and any
-  unknown entry member (`id`, `key`, …) are refused **by name** with the new shape in the message.
-  `compose-cases.json` gains the labelled, unlabelled, unplaced and reads-alike cases, and the PHP
-  composer and the browser's `floors()` are held to the same `label` member through it. ⚠ Found and
-  fixed on the way: `main.js`'s elevator click computed the ride WITHOUT the delivered layout, so on
-  any composed building the destination the button named and the floor the cab landed on could
-  differ — the click now reads the last rendered building instead of deriving a second one.
-- **card#9267** — **THE ROOM MODEL: a room is an install, a floor is an operator-composed set of
-  rooms.** Operator ruling of 2026-09-11, which closes `FLOOR.md § 14` item 6 (*"is a floor an
-  install, or a PM?"*) — the answer was that the question conflated the COORDINATION unit with the
-  DISPLAY unit. `install_id` is the first and **does not move**: D1's seat config, D2's
-  `private-fleet.{install_id}`, its snapshot grouping and its ACL attachment point are all per
-  install and **neither D1, D2 nor D4 is edited by this PR**. The floor is the second, and it is
-  now composed. New `FLOOR.md § 4.6` owns the layout; `§ 3.1` carries both keys and points at the
-  derivation (`grep -n 'card#9267'`) of every other section the ruling made literally false, each
-  amended at its own site rather than enumerated anywhere; `§ 13` row 24 records the three
-  mechanisms with what each was taken over.
-  ⭐ **The building layout is `server/config/building.php`**, a deploy-time document — a LIST of
-  floors, each a mapping of install id => `open`|`office` — read through
-  `App\Building\BuildingLayout`, which takes the DECODED document and never a path. It is a
-  deploy-time file because nothing the admin console authors is read at render time today (the
-  floor map is a build artifact by card#9208's ruling, and the console's stored maps have no read
-  path), so a layout in that store would answer card#9071's open question by accident.
-  ⛔ **A FLOOR HAS NO AUTHORED ID — it IS its rooms, and its key is DERIVED: the lexically least
-  `install_id` among them.** That keeps floor keys and install ids apart in the one `/floor/{…}`
-  namespace (every floor key is an install the layout places), keeps every published
-  `/floor/{install_id}` link resolving, and leaves nothing in the document to get wrong — a keyed
-  entry is refused rather than read past. The first draft of this card had the operator name the
-  floor after one of its own rooms; the derived key keeps everything that anchor bought and drops
-  the rule.
-  ⛔ **NOTHING FALLS OFF THE BUILDING, IN EITHER DIRECTION.** An install the layout does not place
-  gets a floor of its own, alone, `open` — so the layout is a departure from a default rather than
-  an enumeration anything depends on being complete, and provisioning an install renders it with
-  no deploy. A room the fleet reports no seat for is drawn and labelled, never omitted. Both are
-  `§ 0` item 6's *nothing is happening* render refused at building scale.
-  ⭐ **THE LOBBY IS BUILT ON IT.** The dashboard delivers the validated layout with the page
-  (`#lobby-layout`, `§ 4.6`: never from an endpoint); `lobby-model.js` stacks the composed floors,
-  a plate of several rooms names them, and the elevator rides between FLOORS. The client applies
-  the one default rule itself — an install § 4.1's discrepancy check discovers after the page was
-  served still owes a floor — so the rule has two homes, PHP for the console and JS for the lobby,
-  and both are held to one fixture, `server/tests/fixtures/building/compose-cases.json`.
-  ⚠ **DESIGNED, NOT BUILT: the line between rooms** (card#9268). On one floor it is already
-  `§ 5.7`'s line; across floors the form is a **call marker at each end that resolves**, with the
-  line as its co-located case. `§ 6.2` gets no row and may not: the object that would drive it is
-  on no wire. The lobby-draws-it alternative is priced and rejected at `§ 4.6`.
-  ⚠ **The console's floors module shows which floor each room is on** and stops saying *a floor
-  is an install*. Its table, routes and name still say *floors* while holding one map per ROOM —
-  stated at the module rather than renamed here, a hygiene rename with no user-visible harm.
-  ⭐ **THE WORD *room* HAS TWO SENSES NOW, AND THE SWEEP OF BOTH WAS DONE IN THIS CARD** rather
-  than promised as a follow-up: D3 used *room* for the DRAWN INTERIOR before the ruling gave the
-  noun to the container, so every occurrence in `FLOOR.md` was read against both senses. The sites
-  where a container reading was available and wrong — § 4.1's and § 4.2's *a plate carries the
-  summary, not the room*, A17's row, § 6.2's and § 6.3's *the room is live*, § 10.4 and § 12
-  step 7 — are
-  amended and carry the `card#9267` marker; § 3.1 names the second noun once and its follow-up
-  promise is gone; what is left is the drawn place, in sentences no install fits.
-  ⛔ **The ruling also minted a third road to the elevator's ONE-STOP refusal** — one floor from N
-  installs, a fully-placed fleet composed onto a single floor, which is neither the one-install nor
-  the empty building already covered — and `TheBuildingStacksTheComposedFloorsTest` now asserts it.
-
-- **card#7343** — **PART 1 of the building: the lobby is now § 4.1's ratified CROSS-SECTION, and
-  the elevator is built.** `FLOOR.md § 4.1` has carried the cross-section since it was ratified —
-  "one **floor plate per install**, stacked, with an elevator as the way between them" — and the
-  lobby was still rendering it as a flat list, so this PR is that paragraph's CODE and **edits no
-  design document**. New `server/public/js/lobby/building-model.js` decides the stack and the ride;
-  `main.js` draws plates where it drew rows and wires the control.
-  ⭐ **The plates ARE the lobby's own floor rows.** § 4.1: the cross-section "is a *rendering* of
-  this table, and changes nothing in it … No new field is read, no count is recomputed." So
-  `plates()` is `lobby-model.js`'s `floors()` with a stack position added, the whole row is
-  asserted member-for-member against the model's, and the plate keeps the published
-  `/floor/{install_id}` link the row had. Two renderings of one floor's summary on one page is
-  what § 2.4 forbids, so the cross-section REPLACES the list rather than joining it.
-  ⛔ **An elevator with nowhere to go REFUSES THE RIDE AND SAYS SO.** `(level + 1) % stack.length` is
-  arithmetic that always "succeeds": on a one-floor building it returns the floor the cab is
-  already on, and a viewer would watch a working elevator on a building with no second floor. The
-  one-stop and no-stop cases are each rendered as their own sentence with the control disabled —
-  and the modulo ride is PLANTED in the shipped module to prove the refusal is what the check
-  measures. ⚠ **That is not a hypothetical degradation: it is what this server renders today.**
-  No install exists in any deployment (`docs/PLAN.md` P4 — "the live-host leg stays unexercised
-  until a host exists"), so the second floor is exercised by the suite and nowhere else.
-  ⭐ **The second and third floors are REAL INSTALLS through the real ingest**, which is P4's own
-  accept line ("second floor renders from a second install's feed"): the new suite provisions
-  `sola` and `zeta`, folds, and reads the served snapshot back.
-  ⛔ **A cab standing on a floor the building no longer has is never moved quietly** — a floor
-  leaves `installs[]` when its last seat retires (§ 3.5), and the client says where the cab went
-  instead of relocating it in silence, which is § 4.1's own refusal to pick a winner.
-  ⚠ **WHAT IS NOT BUILT, AND WHY.** *Where the ride arrives*: § 4.1 makes an elevator ride § 4.5's
-  camera arriving at `/floor/{install_id}`, and that route does not exist (card#9208 — the floor
-  map is a build artifact and none is vendored; § 14 item 7's tileset is open), so the ride moves
-  the cab between the plates of this screen and the plate's link stays the only thing pointing at
-  the route. *The shared solo floor*: `FLOOR.md § 14 item 6` is an OPEN OPERATOR QUESTION — "is a
-  floor an install, or a PM?" — and its "**In the meantime:**" is "**one floor is one install**",
-  which is what the client already does; D-01's floor-per-PM mapping is a *provisioning* choice about
-  `install_id` that D1 § 3.1 owns. Nothing was built for it, because building it would be
-  answering that question in code.
-
-- **card#7897** — **PART 1 ONLY: the thought bubble is BUILT.** Part 2 (messages moving between
-  desks) is untouched — it needs a GitHub-sourced `coord.round` event whose receipt route does not
-  exist, and the card says in terms *"Do NOT animate without it"*.
-  `FLOOR.md § 5.1` has carried the FORM amendment since `#30` — the bubble REPLACES the text chip, a
-  null `task` draws no bubble, and **no § 6.2 animation row is added because nothing about the bubble
-  moves** — so this PR is that amendment's CODE and **edits no design document**. New
-  `server/public/js/desk/task-bubble.js` decides whether a bubble is drawn at all, what text it holds
-  (rule 4's `task.ref` and `task.title`, capped and truncated **with a mark**), and where two bubbles
-  that would collide are parted (rule 5's deterministic pass over the **base** rects, in § 3.1's
-  identity order, so two browsers place them identically with nothing stored).
-  ⭐ **The `task` member now has ONE implementation** — `server/public/js/wire/task.js`, hoisted at
-  its second caller. The drill-down panel (card#7342) and the desk read the same null case, the same
-  reference rule and the same *stale title dropped* wording, so the two surfaces cannot come to
-  disagree about one seat's task; `DrillDownModuleWiringTest`'s shared-function sweep now holds them
-  to one copy each.
-  ⛔ **A null `task` and a desk with no character return the SAME value** — no bubble — because a
-  caller that could tell the two absences apart is a caller that could draw them apart. The
-  characterless set is **re-derived from § 7.1's own Desk column** on every run and set-differenced
-  against the module in both directions, with planted controls for each.
-  ⛔ **No motion, checked rather than commented**: the module holds no timer, no frame callback and
-  no transition, and the suite plants the 1.2 s linger § 5.1 refuses to prove the check can fail —
-  the refusal is a correctness one, because a bubble that hides itself on a timer makes *no bubble*
-  mean "`task` is null **or** the linger expired".
-  ⚠ **No DOM half and no floor page to hang one on** — § 4.4's floor route is card#9208-blocked on a
-  D2 read surface for an authored map, so the element contract stays the floor page's to declare.
-  And `task.ref` is null on every seat this deployment serves (tier 1 designed-not-built, tier 2
-  retired), so a bubble renders a **title with no link and no reference text** — never a guessed URL.
-
-- **card#7582** — **The board task-title producer is DESIGNED, and deliberately not built.**
-  New `docs/design/BOARD-TASK.md` (**D4**) designs tier 1 of `FLEET-STATE.md § 4.9`'s task-title
-  merge: the kanban poller, its cadence, the seat→board-user join, the read-scoped credential and
-  its never-emitted rule, every failure path, and eight acceptance tests with their REDs.
-  ⭐ **The one real design question was rebuildability** — `§ 6.6` + `AT-D2-10` make `seat_state`
-  reproducible from `events` and `RebuildCommand::reset()` nulls the five `task_*` columns, so any
-  tier-1 value written INTO the projection is erased by the documented recovery path. Priced
-  against routing board facts through `events` (a D1 change, and one that would need a forged seat
-  identity or a new producer endpoint) and against excluding `task_*` from AT-D2-10 (the exact
-  shape card#9214 had just deleted), the answer is neither: **the poller writes a durable INPUT
-  table and the fold derives the columns from it**, exactly as it already derives `render_state`
-  from `seats.retired_at` — an operator-written value in no event that `reset()` deliberately does
-  not touch. ⇒ no D1 change, no new event kind, no change to `reset()`, and **no fourth exclusion**.
-  D2 § 12 asks for the tier-1 freshness bound to be "re-derived once the board producer exists and
-  its poll cadence is known"; it is, from a 5-minute cadence, and the figure is unchanged.
-  ⚠ **Superseded by the ratification below:** that row stays **Chosen**, not *Derived* — D2 § 12's
-  `Derived` means computed from a number in D2 or D1, and the cadence is in neither.
-  ⛔ **Nothing is implemented and that is the deliverable.** Every structural piece needs a D2
-  amendment — a § 2.1 process row, a § 6.4 table and column, two § 7.2 counters — and D2 § 6.4
-  says a builder "may reorder columns and add nothing". The amendments are stated as exact text on
-  the PR, unapplied, for ratification. Two reasons hold independently: no board card is assigned
-  anywhere on board 14 (re-measured over the whole population, not a sample), so tier 1's answering
-  branch cannot be exercised on a real surface; and the server's board credential does not exist.
-  ⚠ **A finding recorded on this card is corrected here:** the raw board API's list endpoint DOES
-  carry `assigned_user_id` on every row — the earlier "no such key" was true of `kbcard`'s
-  ten-key projection and not of the API, and designed around the wrong reading the poller would
-  have issued one request per card per tick instead of one for the board.
-  `docs/PLAN.md § 2` gains D4 and **loses its "three design artifacts" count** — the same
-  set-versus-figure repair § 2.1 made for its process table. `tools/design/README.md` declares
-  that D4 is a design document under **no** verifier, rather than leaving that quietly true.
-
-- **card#9234** — **Tier 2 of the task-title merge is retired; the coordination producer, its two
-  objects and the thread line are NOT.** Operator ruling, 2026-09-10. Tier 2 was the GitHub-sourced
-  title — *"the seat's most recent coordination/PR activity"*, at `task.ref = "<repo>#N"` — and it
-  fired only on a seat holding no assigned board card. The same day's ruling that a card's assignee
-  names the agent working on it makes **tier 1** that answer, **tier 3** is always underneath, and
-  tier 2 cost a protocol-agent-name→`seat_id` join no document in this repo owns (card#7957).
-  `coord_thread` is gone as a value of `task.source`: out of `FLEET-STATE.md` § 4.9's tier table,
-  its § 6.4 DDL and its § 8.2.1 member table, out of `EVENT-SCHEMA.md` § 18.11 — which stood on
-  *"one producer, two consumers"* and now stands on the coordination family alone — and out of
-  `FLOOR.md`'s producer row and its § 14 items.
-  ⛔ **What stayed, because this removed the SECOND CONSUMER of one producer and not the producer:**
-  D1 § 18 entire, `coord.thread` / `coord.round` as objects (D2 § 8.3.3), D3 § 5.7's thread line,
-  beads, carriers, broadcast and `public/js/coord/`. An edit that removes those is undoing PR #88.
-  ⛔ **The number 2 is RETIRED, not renumbered.** Tier 3 stays tier 3, so `StateRecompute::taskTier3()`
-  and every *tier 3* reference in this repository's documents, tests and comments goes on meaning what
-  it meant; renumbering would have bought a contiguous sequence and falsified all of them at once.
-  The store narrows in **its own migration** (`2026_09_11_000000_narrow_seat_state_task_source_enum`)
-  rather than by an edit to the one that minted the column, because that one shipped in v0.2.0 and
-  v0.3.0: editing a shipped migration changes only what a FRESH database gets, and every migrated
-  store would keep the three-member ENUM with nothing red. No row can hold `coord_thread` — tier 2
-  was never built, and `StateRecompute` has only ever written `telemetry` or `null` — so the
-  narrowing carries no data migration, which was checked rather than assumed.
-  ⚠ **No design verifier reds on a HALF-done removal, and that was watched rather than trusted**:
-  `coord_thread` restored in the § 6.4 ENUM, in § 8.2.1's member table, or as a whole tier-2 row in
-  § 4.9 leaves all three of `tools/design/verify-*.py` green, while a fabricated member in the same
-  ENUM position reds `verify-fleet-state.py` G1 on the same run. The mechanism is that G1 excuses any
-  member D1 also names, and D1 names `coord_thread` — as the coordination OBJECT. The object and the
-  retired task-source value share a spelling, so the one gate that would have caught a resurrected
-  member is blind to this member by construction. Nothing can mint the value today, so this is a
-  guard gap and not a live defect; no new gate is built here.
-
-- **card#7342** — **The desk drill-down panel, and subagents rendered as interns.** New
-  `public/js/drilldown/` — a pure model (`drilldown-model.js`) carrying every rendering decision
-  and a thin DOM half that makes none, on the split `public/js/lobby` and `public/js/coord`
-  already use. It renders `docs/design/FLOOR.md § 4.3`'s current task (title, the tier that
-  answered, *stale title dropped*, and the reference as a link **only** where a base URL is
-  configured for its shape), the current action with § 2.4's *running for 2m 05s*, the context
-  gauge, the uncapped intern list and the recent-activity window — each nullable member under
-  § 5.6's stated absence, and **never a zero**: a null `context` reads *not reported* with the
-  bar element's value REMOVED rather than set to 0.
-  New `public/js/wire/duration.js` is § 2.4's duration format — the one function that section
-  says there is exactly one of — and `DurationFormatMatchesTheDocumentTest` re-derives § 2.4's
-  boundary table from `FLOOR.md` on every run and requires the shipped `.js` to reproduce every
-  row, which is the browser-side leg of the guard `tools/design/verify-floor.py` holds the
-  Python side of.
-  ⛔ **A live defect on the read plane is fixed at its write site**: `detail`'s `open_calls`,
-  `attention` and `session` were handed out as raw selected rows, so six timestamps reached the
-  drill-down as `DATETIME(3)` (`2026-08-23 14:23:31.004`) while the rest of the plane sent
-  § 8.2.1's `rfc3339_ms` — one response carried BOTH spellings of one instant, since
-  `blocked_since` is the promotion of `attention.opened_at`. `Date.parse` reads the store's
-  spelling as a LOCAL time, so an intern's age would have been wrong by the viewer's UTC offset
-  with nothing erroring. Seen to fail first, with the pre-fix value in the failure message.
-  ⚠ **D3 states two selections for the intern list and they are disjoint** — § 5.2's
-  `agent_scope == "subagent"` / non-null `parent_call_id` versus AT-D3-4's "nine open DISPATCH
-  calls … lists 9" and § 8's own label rows. The panel lists the dispatch calls, because the
-  other set carries no `title` and no `subagent_type` at all and § 8.1's cap argument ("the panel
-  … already has every intern") is false under it; the document is **not amended** and this card's
-  PR body carries the proposed text under its own heading.
-  `DrillDownRendersTheInternsTest` pins both selections, so the day it is ruled on the evidence
-  is a check rather than a memory.
-  ⚠ **What is not built and why**, so the gaps are recorded rather than discovered: `task.ref` is
-  null on every seat this deployment serves (D2 § 4.9 builds tier 3 only), so the link path runs
-  on a value nothing currently mints; the side table's stools and its *+N more* tag are the
-  DESK's and wait on the floor screen (card#9208); the transport / derivation / reporter / badges
-  / session / retirement / raw blocks and their *as of* stamps are a later slice, and no stamp is
-  drawn because this slice renders none of § 6.5's ten; and nothing patches the panel live
-  because no delta-feed client exists yet.
-
-- **card#9223** — **The ingest rate-limit suite pins its clock, and a real flake mechanism is
-  closed.** `App\Support\FixedWindow` indexes on `intdiv(now()->getTimestamp(), $windowS)` — an
-  **absolute** window — so a 120-request loop that straddled a real minute boundary put its 121st
-  request in a fresh window, where `202` is correct limiter behaviour and the TEST was the thing
-  that was wrong. Root-caused at source, then **seen to fail**: the boundary was forced both by
-  travelling the clock and by sleeping across a real one, reproducing `Expected 429 but received
-  202` on demand, and passing with the pin.
-  ⚠ **A severity claim in this bullet's first version was false and is corrected here rather than
-  quietly dropped.** It said the flake "reddened roughly one PR in three"; that was card#9223's
-  local sample of *three* runs restated as a CI rate. The record refutes it — `gh run list
-  --workflow php-tests.yml` gave 33 runs, 32 success, the one failure a composer/PHP-version error
-  on the lane's own setup branch. **No CI run had ever failed on this test.** The real exposure is
-  the loop's duration over the window length, ~1 %. What justifies the fix is not the rate but that
-  the lane is a candidate to become a REQUIRED check, where any nonzero flake rate blocks merges.
-  ⛔ **No assertion was weakened and no production behaviour changed** — the pin supplies the
-  precondition each test already names in its own title.
-  New `Tests\Feature\Support\PinsTheRateLimitWindow` pins the window;
-  `FixedWindowPinCoverageTest` **re-derives the population every run** and reds on any class that
-  asserts a `429` without a pinned clock. That guard replaced a first attempt that lived on the
-  trait itself and could not fail for either hazard it named — it was deleted along with the trait
-  it was meant to protect. Also corrected: a comment claiming the release test catches a mis-sized
-  TTL, which mutation testing shows it does not.
-- **card#9214** — **`task.as_of` is derived from the log, and AT-D2-10's blind fourth exclusion is
-  gone.** § 6.6 makes `seat_state` reproducible from `events` and states what a divergence means:
-  *"some fold rule is reading state that is not in the log, and that rule is a defect by
-  construction"*. `StateRecompute::taskTier3()` WAS such a rule — it stamped `task_as_of` from the
-  **wall clock** — and `mezzanine:rebuild` resets all five `task_*` columns, so the documented
-  `derivation_error` recovery **re-stamped every replayed seat at rebuild time** and the desk's
-  thought bubble claimed its title had been obtained when the operator ran the recovery. Worse the
-  moment § 4.9's tiers 1/2 exist, where `as_of` is the basis of the 30-minute staleness drop: one
-  rebuild would reset the staleness clock fleet-wide.
-  ⇒ **The stamp now comes from the answering call's own `opened_received_at`** — the server-clock
-  receipt of the event that carries the title — which satisfies § 8.2.1's *"server clock"* and
-  § 4.9's *"when this tier's value was obtained"* **with no D2 change at all**, and makes card
-  #7837's no-re-stamp property structural, so that card's `$unmoved` guard is **deleted** rather
-  than kept beside it. `task_as_of` also goes to null **with** the title now: the null branch used
-  to leave the vanished title's stamp behind — invisible on the wire, and not reproducible either.
-  ⛔ **The test that should have caught it was blind AND unexercised, and both halves are fixed.**
-  `At10RebuildEqualsFoldTest` unset `task_as_of` from its comparison — a **fourth** exclusion
-  beyond § 11's three named ones, with no justification in its docblock — and deleting it changed
-  nothing. ⚠ **The recorded reason for that was half wrong, and the measurement is corrected here:**
-  the column was NOT unpopulated. It read `2026-08-26 12:00:03.000` on **both** sides; the blinder
-  was the **frozen clock** — one batch, one instant, so the fold and the replay stamped the same
-  value. The fixture now ends with a second, live session whose titled dispatch call is still
-  **open**, the rebuild runs **5 s** after the fold (12× inside the tightest compared threshold,
-  § 7.2's 60 s `fold_lag`), the exclusion is deleted, and `snapshot()`'s docblock now names every
-  surviving member with the reason it is on the list.
-  ⭐ **SEEN RED FIRST** (canon #9): with the extended fixture and the exclusion removed but the fold
-  unfixed, AT-D2-10 failed on `task_as_of` **alone** — `12:00:03.000` expected, `12:00:08.000`
-  actual — then went green on the fix.
-  ⚠ **A D2 amendment was considered and REFUSED, not deferred.** Naming `task.as_of`
-  rebuild-excluded would have had to weaken § 11's *"the rendered object is byte-identical"* as
-  well, and would have carved out the exact defect class AT-D2-10 exists to detect. The alternative
-  text is written out in the PR body, unapplied and unratified.
-
-- **card#8300** — **The coordination thread line — card#7897 part 2 slice 2, D3 § 5.7 and its
-  client.** D2 § 8.3.3's two objects had a read surface (card#9212) and no render map; this is the
-  render map, and the first thing on the floor drawn **between** desks rather than at one.
-  **§ 5.7** names all twenty-two members — `coord_thread.*` × 11, `coord_round.*` × 11 — with a
-  null column of its own, because § 5.6's population is § 8.2.1's and is closed against it both
-  ways. **§ 6.2 gains A18/A19/A20**: the held thread line, the envelope, the broadcast pulse.
-  ⛔ **RESOLVE OR RENDER UNRESOLVED, and today nothing resolves.** No wire event and no config in
-  this repository maps a protocol agent name to a `seat_id` (D2 § 8.3.3; card#7957's ruling *(d)*
-  is unlanded), so **every participant renders unresolved and no thread line is drawn on any
-  floor** — the thread renders as its beads, its label and its named-unresolved participants. That
-  is card#7957's ruling *(2)* built rather than deferred: the renderer is correct on day one and
-  does not change shape when the join lands. `public/js/coord/`'s `resolve()` has **no else
-  branch** and `main.js` builds no join; both are held there by planted controls, because a
-  guessed line looks exactly like a correct one on a screen.
-  ⚠ **NOT RENDERED, each with the reason:** no duration anywhere — § 2.4's format is closed but
-  publishes no **wording** for a coordination age, and § 14 item 17 owns that gap "rather than
-  [having it] filled by whichever surface reaches them first", so both receipt clocks are labelled
-  timestamps and nothing is subtracted (the lobby made the same call at the same item; this is the
-  second surface to). No convergence — `lifecycle: "closed"` is *ended* and `declares_close` is
-  *somebody performed the close act*, and D2 publishes no flag to compute one from.
-  ⭐ **The gate was widened again and the widening is checked.** `verify-floor.py` reads § 5.7's
-  source column (G2) and its markers (G9); the § 12 row that ENUMERATES G2's tables is now
-  set-differenced against the tool's own map in both directions, closing the second home that
-  over-claimed for two revisions — six planted controls, each reding by name.
-  The lobby's `node` rig was **hoisted at its second caller** to
-  `Tests\Feature\Support\DrivesAShippedClientModule` rather than copied.
-  ⚠ **There is no browser on the build host.** Nothing here verifies layout, position or paint,
-  and `main.js` is exercised only against a stub of the four DOM calls it makes.
-  ⚠ **Slice 3 is not this card's and its text is wrong.** card#8300 still calls the producer "the
-  `coord.*` bridge producer"; D1 § 18.1 correction 1 moved it to Mezzanine's own
-  `POST /api/ingest/github` receipt route, so the coordination wire crosses no repository boundary
-  and `agent-webhook-bridge` is owed nothing.
-
-- **card#9209** — **D3 publishes a duration format.** § 7.1's Label cells rendered durations and
-  the document published no rule for them: its own exemplars — `4m 12s`, `11m`, `2h 06m` — are
-  produced by **no single rule**, § 12 carried no row, and the ratified preview sidestepped the
-  question with pre-formatted sample strings, so an implementer inherited a gap that looked solved.
-  **§ 2.4 now publishes ONE function** — seconds in, one string out — in seven clauses with a
-  boundary table: at most two units (`h`/`m`/`s`, no day unit), the largest non-zero unit first and
-  unpadded, the second zero-padded to two digits and **dropped when zero**, the remainder truncated
-  and never rounded, `0s` for zero and for anything under a second and for a negative age, and
-  *nothing done yet* / *no data yet* — never `0s` — for a **missing** one.
-  ⭐ **Shared by every rendered duration on the page, with no exception**, which is what retired the
-  two forms that were not the others': § 2.4's own *this state is 117 s behind* is now *1m 57s*, and
-  the fleet banner's *N minutes ago* is *N ago*. § 7.1's exemplars are regenerated from the rule
-  (all three already conformed); § 12 gains the units row, the day-boundary row and the guard-class
-  row; **§ 13 decision 23** records the no-day-unit call with its alternative, because that is the
-  half a reviewer is most likely to contest.
-  ⚠ **The gap was wider than § 7.1 and the population is now named.** § 5.3's `sweep_last_run_at`
-  and `ingest_last_receipt_at` ages, the panel's context-sample age, reporter uptime, oldest-unsent
-  age and timeline-row age, and the fleet banner are all durations this document renders and none of
-  them was among § 2.4's four — so § 2.1 row 2's *three* was a **closed list of instances** where the
-  row means a kind, and it was already false. Row 2 now names the kind; **§ 14 item 17** carries the
-  remaining **wording** gap (the format is closed for all of them; the string four of them are
-  spoken in is not).
-  ⛔ **Reconciled in the same change, so no shipped instance outlives the ruling** (card#8075's
-  lesson): the preview's `0m 50s` and `0m 21s` become `50s` and `21s`, and the lobby's three
-  card#9209 comments — which said *there is no format* — now say what is actually still open.
-  **New gates, both seen to fail:** `verify-floor.py` **G12** re-implements the function from
-  § 2.4's clauses, reproduces its boundary table before either leg runs, holds every duration inside
-  a published rendered span to it as a fixed point, and re-derives § 7.1's `stale` / `offline` ages
-  **arithmetically** from the timestamp and corrected clock those cells state themselves; the
-  preview selftest gains the same two legs over the artifact's own sample fleet, with the dark
-  desk's age derived from `last_receipt_at` and the page's frozen clock — and never from
-  `action.started_at`, which is the seat clock § 2.4 forbids subtracting.
-  ⚠ **One correction found in passing:** § 2.4 said the fleet banner's words were *"in words D2 § 2.3
-  fixes"*. D2 § 2.3 fixes the banner's trigger and its threshold and publishes no wording for it —
-  `grep` returns nothing — so the attribution is withdrawn and the words are named as this
-  document's.
-
-- **card#9212** — **D2 gains the coordination read surface that card#7897 part 2 slice 1 was
-  ruled to write and did not.** That slice was defined as two documents; `PupFuzz/mezzanine#31`
-  landed only D1 (`EVENT-SCHEMA.md § 18`), and `FLEET-STATE.md` carried **no** `coord.*` surface
-  under any name — which is why `verify-floor.py` red by name on the first § 5.1 render row a D3
-  build tried to source from one. **New D2 § 8.3.3** declares both objects as read-surface fields
-  (`coord_thread.*`, `coord_round.*`), and § 8.3's message table gains `coord.thread` and
-  `coord.round`. Nothing is re-derived: every field, bound and nullability is D1 § 18.6/§ 18.7's,
-  cited, and the section mints no number.
-  ⭐ **What the surface refuses is the load-bearing half.** No mapping from a protocol agent name to
-  a `seat_id` — UNVERIFIED at D1 § 18.13 row 6, ruled on card#7957, and a renderer that reads one as
-  the other draws a line to a desk no fact names; no `needs_human`, no `converged`, no round number,
-  no `is_broadcast`, no delivery digest, each with the D1 finding that killed it. ⇒ **The escalation
-  flare has no field at all and must not be drawn**, and the convergence spark has one that means
-  something narrower than convergence — a thread *ended*, a post *declared the close*.
-  ⚠ **The producer is Mezzanine's own receipt route, not the bridge** (D1 § 18.1 correction 1, on
-  D-10): the coordination wire crosses no repository boundary, so the ruling's cross-repo DECLARE
-  obligation has one end rather than two, and nothing is owed into `agent-webhook-bridge`.
-  **Feed only** — no snapshot member and no fifth endpoint, because a snapshot is a read of a
-  coordination store that D1 § 18.13 hands to a later slice; the cost (a just-connected floor draws
-  no thread line until the next post) is priced in § 8.3.3 and carried as § 14 item 14.
-  **Doc-sync of claims this falsified — the CLAIM was audited for siblings, not just the file.** In D2:
-  § 1.2's *"ingest of GitHub webhook … not designed anywhere yet"*, § 4.9's and § 13 row 25's *"the
-  producers of tiers 1 and 2 are designed in no document in this repo"*, and § 14 item 3. In **D3**,
-  where the same claim had a fourth and fifth copy: § 1.2's non-goal row and § 14 item 4's *closes it*.
-  Tier 2's producer has been D1 § 18 since PR #31 merged, and every one of these said otherwise.
-  D3's § 12 guard row moves with the gate change below — it enumerates the D2 surfaces G2 reads.
-  **Gates:** `verify-floor.py` learns D2's **fifth** field surface (reading **both** of § 8.3.3's
-  tables — a first-table-only read would publish one object and report clean over the other), and
-  `verify-fleet-state.py`'s G7 adds `coord` to the message-type prefixes it closes prose against.
-  Both were watched failing: a fabricated `coord_thread.bogus` in § 5.1 reds, and a `coord.bogus` in
-  D2's prose reds. New **AT-D2-24** pins the two rules a build could not otherwise be held to — the
-  invented join, and a coordination fact minting a seat state.
-- **card#7833** — **§ 5's predicate criteria are now evaluable, because § 6.4's `seat_predicates`
-  was EXTENDED to carry the evidence they ask for** (operator ruling: extend the store, do not
-  restate the criteria). Every criterion in § 5 is stated over a window, and the table carried only
-  cumulative branch counts plus two timestamps — from which no windowed count is derivable. ⭐ **The
-  gap is provable in one pair of histories, and that pair is now a test:** 250 clean turns inside a
-  day (criterion MET) and 249 spread over a month plus one an hour ago (NOT met) produce a
-  **byte-identical row** — `true_count` 250, `false_count` 0, `last_true_at` an hour ago,
-  `last_false_at` null, `alarm_since` null. No function of that tuple separates them. Since PR#21's
-  interim, four of the seven answered `cannot_evaluate` on every row of every pass: honest, and
-  inert.
-  **What § 6.4 gained:** `run_length` / `run_started_at` (the constancy evidence) and
-  `window_start` / `window_true` / `window_false` / `prev_start` / `prev_true` / `prev_false` (a
-  tumbling 24 h window and the last completed one). The run's BRANCH is deliberately not a column —
-  `Predicates::priorBranch()` already derives it from the two `last_*_at` timestamps, and a second
-  copy would be free to disagree.
-  **What the code gained:** *constant across ≥ N evaluations in a window W* is exactly *an unbroken
-  same-branch run of ≥ N that began no more than W ago*, so `seat_live`, `activity_recent`,
-  `turn_clean`, `ingest_receiving` and `fold_current` collapse from three implementations into ONE
-  `run` rule at five settings of `(direction, n, window)` — the old `consecutive` kind is that rule
-  with no window. The verdict is decided at `record()` and **latched** in `alarm_since`, never
-  recomputed cold: a run that crosses N inside W and keeps going outgrows W while still being
-  constant, and a cold recomputation would withdraw an alarm whose subject had not changed. Exactly
-  one event withdraws it — the run breaking.
-  ⚠ **THE ACCEPTED COST, recorded rather than absorbed: `call_closed_by_wire` moves from a ROLLING
-  24 h window to a TUMBLING one.** Its criterion is a *share* ("≥ 5 % server-closed across ≥ 1,000
-  in 24 h") and § 5 says so in terms, so restating it as a run would not weaken it — it would
-  **delete** it, and it is the only one of the seven that is a health signal rather than a
-  discrimination meta-monitor. Evaluated over the last **completed** window it is exact, at two
-  costs the operator accepted: the alarm can only arrive **at a window roll**, so worst-case
-  detection of a reap outage stretches by up to one window; and a burst of server closes that
-  **straddles** a boundary can leave both halves under the 1,000 floor and alarm on neither. Both
-  are under-firing, which is the direction § 5's own trade prefers — and the straddle is pinned by
-  a test, so a later change that makes it fire is visibly a design change and not a bug fix.
-  ⚠ **A second residue, also under-firing:** the run's window is measured from the run's START, so
-  a run that began before W and only reached N afterwards does not fire. Closing that needs the
-  timestamp of the (`run_length` − N + 1)-th evaluation — a per-evaluation bucket table, which was
-  refused: it would put a second row-write on the fold's hot path, written by two processes, and a
-  second lock-order edge on top of the one card#7523 already carries. **`Predicates::record()`'s
-  concurrency posture is untouched by design** — the new state is computed in PHP from the row it
-  already read and written by the upsert it already did: no new statement, no new writer, no new
-  lock-order edge.
-  ⭐ **`cannot_evaluate` is GONE, and that closes a read-side gap rather than merely tidying one.**
-  `Sweep::pass()` discards `Predicates::alarm()`'s return and § 8.2.3's `detail.predicates`
-  publishes only the row's own columns, so while a third outcome existed that wrote NOTHING, a
-  predicate **nobody was checking** rendered identically to a healthy one. It is closed by removing
-  the third outcome, not by plumbing a field: after a pass, `alarm_since !== null` holds if and only
-  if the outcome was `FIRES`, on every row visited — asserted directly, over a fixture containing
-  both verdicts so the check can fail. **AT-D2-13 is satisfiable for all seven predicates**, each
-  seen to fire and seen not to fire across its own boundary (5,759/5,760 · 199/200 · 49/50 ·
-  999/1,000 · exactly 7 days vs one second more), with ten mutations of the new rules each driven
-  red.
-  ⚠ **The migration was edited IN PLACE rather than shipped as an `ALTER`**, on a stated basis and
-  not a convenience: § 6.1 records that "the deploy host is not built yet" and § 6.8 that "no seat
-  has been instrumented yet", so no store anywhere holds a row of this table. Splitting one table's
-  declaration across two files to alter a table nothing has created would have left that migration's
-  own "§ 6.4's verbatim DDL" comment false.
-  ⚠ **One claim in this work was made from recall, then measured, and was WRONG** — recorded because
-  the correction is now load-bearing in a comment. The share comparison uses integer
-  cross-multiplication, and its first justification said `0.05 * 1000` is `50.000000000000007` in
-  IEEE-754 so the float form could not meet its own boundary. It is exactly `50.0`, and the float
-  form diverges from the integer form at no total in the reachable range. The integer form stays —
-  exact by construction, and § 5 states the threshold in percent — but it is recorded as a
-  robustness choice **with no failing case behind it**: a mutation to the float form leaves the
-  suite green, deliberately.
-
-- **card#7523** — **the store is repinned to MariaDB ≥ 11.8.6, replacing MySQL ≥ 8.0.12** (operator
-  ruling, 2026-09-09). This is the DOCUMENTATION AND PINS half; host provisioning is the operator's
-  and is not in it. **D2 § 6.1 does not carry its requirements across — it re-argues each one**: the
-  engine row now cites MariaDB for `FOR UPDATE SKIP LOCKED` (10.6.0) and `ALGORITHM=INSTANT` (10.3.2,
-  with no MySQL-style 64-row-version ceiling), and the character-set row moves off
-  `utf8mb4_0900_ai_ci` — a MySQL-only identifier that spells no vendor name, which is why a grep for
-  "MySQL" would have left it. The value it moves to is `utf8mb4_unicode_ci`, which is what
-  `server/config/database.php` has said all along: **the document and the config had already drifted
-  apart on this row and nobody could see it**, because the only thing the schema's correctness
-  actually rests on is `ascii_bin` on identifier columns, and that is present on both engines.
-  ⭐ **`JSON` is the one requirement that changed meaning, not just vendor.** On MariaDB it is an
-  alias for `LONGTEXT` + an automatic `CHECK (json_valid(…))`, not a binary type, and the `->`/`->>`
-  operators do not exist before 13.1. That is inert **here** and the reason is recorded rather than
-  assumed: this repo has **zero** SQL-side JSON — every JSON column is written whole, read whole and
-  decoded in PHP (re-verified this pass, not taken on trust). The same pass re-verified the other
-  divergences: no `uuid`/`ulid` column in any migration, so the one driver difference the research
-  names has nothing in this schema to act on; and no functional/expression index.
-  ⚠ **ONE ITEM IS UNSOURCED AND IS RECORDED AS UNSOURCED, not smoothed over.** Quantified
-  whole-column JSON read/write performance on a `LONGTEXT`-backed `JSON` against MySQL's binary
-  `JSON` — neither vendor isolates that access pattern. § 6.1 now says in terms that this document
-  claims **no parity in either direction**; it needs a benchmark, not a citation. § 6.8's row-cost
-  model carries the same caveat, having been built on the binary-`JSON` assumption.
-  ⚠ **`docs/PLAN.md` D-15 was superseded by an APPEND, never an edit** — that register's own rule
-  (`§ Amendments`). The row stands as written; the amendment states that the engine and its floor
-  move and that the *dedicated host*, the provisioning ownership and § 6.2's pinned names do not.
-  ⛔ **What this deliberately did NOT change, each for a stated reason.** `bin/deploy.sh` still
-  refuses any `DB_CONNECTION` but `mysql` — that is the LARAVEL CONNECTION NAME, not the server
-  product, Laravel's `mysql` driver speaks to MariaDB, and moving the app to `config/database.php`'s
-  `mariadb` connection would change what the deploy accepts *and* what the § 6.2 isolation guards key
-  on. Its refusal text and the comment above it now say all of that; the decision is the operator's
-  and is named as open in the D-15 amendment. Migrations, `config/database.php` and the suite's SQLite
-  pin are untouched. `docs/sprint-burndown.html` is generated and card#7523's own title still says
-  *"MySQL provisioning"* — both move when the operator retitles the card, not from here.
-  ⛔ **PHP docblocks still name MySQL as the deployed engine** (`Fold`, `Predicates`, `BatchWriter`,
-  `Clock`, the migrations, `MySqlColumnTypeTest`, `ingest-roundtrip.py`, …). No count is written
-  here because a count is a claim with a maintenance schedule; the population is whatever
-  `grep -rIil mysql server/app server/database server/tests` returns, less the identifiers
-  (`MYSQL_ATTR_SSL_CA`, `database.connections.mysql.*`, `MySqlGrammar`, `MySqlColumnTypeTest`)
-  which are names and not claims. They are reported as ONE class rather than fixed here — this
-  dispatch is docs and pins, and a repo-wide comment sweep during parallel work is how a rebase
-  eats a real change. **Every** copy of the `utf8mb4_0900_ai_ci` claim WAS fixed, in code comments
-  as well as in D2, because that claim is the one this card falsifies and a corrected claim with
-  false copies left behind is the drift the correction exists to remove. Also reported: `MySqlColumnTypeTest` compiles the real migrations through Laravel's
-  **MySqlGrammar**, which is no longer the grammar the prod store is reached by — inert today (the
-  `mariadb` driver differs only on `uuid`, which this schema has none of) and named so it does not go
-  quiet.
-- **card#9203** — **the PHP floor is now `^8.4.1`, and no surface restates it.** `server/composer.json`
-  declared `"php": "^8.3"` while the committed `server/composer.lock` pinned `symfony/*` v8.1.5, every
-  one of which requires `php >=8.4.1` — so **the repository could not install its own lockfile on the
-  version it declared**. Measured, not inferred: `composer install` on PHP 8.3.33 exits 2 with eighteen
-  *"your php version (8.3.33) does not satisfy"* problems, found by the first run of card#7344's lane.
-  ⛔ **The severity was in `bin/deploy.sh`, and it is what this card closes.** Precondition **A6** exists
-  for one reason — *"composer would refuse anyway, but it would refuse INSIDE the window, after the app
-  was already taken down"* — and it carried its own hand-written copy of the floor, `8.3*|8.4*|8.5*|9.*`.
-  On an 8.3 host that copy **PASSED**: the maintenance window opened, `php artisan down` ran, and
-  `composer install` then failed in-window. Per the deploy contract that is exit **2** — the app is left
-  DOWN, a marker is left on disk, nothing is rolled back and a bare re-run refuses. The guard was not
-  broken; it was faithfully enforcing a claim that had stopped being true. The same restatement had
-  drifted the OTHER way too, unnoticed: the case list accepted `9.*`, which `^8.3` never allowed.
-  ⛤ **A6 now READS the constraint instead of restating it, out of the RELEASE BEING DEPLOYED.** It moved
-  to after A7's ref resolution, out of letter order and commented as such, because it needs `$SHA`: the
-  floor that matters is the target tree's, not the prod checkout's, and those two differ on exactly one
-  deploy — **the one that raises the floor**, which is this one. Reading the checkout would have passed
-  it; reading the target refuses it before anything is touched.
-  ⛤ **`MEZZ_FPM_SERVICE`'s default is derived from the host's PHP** (`php8.4-fpm` on 8.4, `php8.5-fpm` on
-  8.5) rather than the literal `php8.3-fpm` it used to be. An FPM unit tracks the version a host has
-  INSTALLED, not the floor `composer.json` declares, so *any* literal there is wrong for some satisfying
-  host. A host whose CLI and FPM pool are different minors sets `MEZZ_FPM_SERVICE`, and does not get a
-  surprise for forgetting: A13 already requires the unit to exist and be enabled before the window.
-  ⚠ **`composer.lock` was NOT re-resolved.** `composer update --lock` moved exactly two lines — the
-  `content-hash` and the `platform.php` block, which had been saying `^8.3` while the lock's own contents
-  required `>=8.4.1`. **No package version changed** — the whole locked set was diffed name-by-version
-  before and after, and only those two lines moved. A dependency bump was not in this card's scope and
-  would have needed its own review.
-  ⛔ **The check that would have caught the mint now exists: `tools/verify-php-floor.py`.** It asserts that
-  the DECLARED floor can carry every package the LOCK pins, and that the lock is in step with the
-  declaration. `composer validate --strict` was clean for the whole time this was broken — it checks
-  composer.json's content hash, never whether the declared platform can install the locked tree — so the
-  `php-tests` lane now runs both, and derives its own `php-version` pin and cache key from
-  `server/composer.json` instead of carrying the `8.4` it used to spell out. That header's explanation of
-  why it deliberately did not follow the floor is rewritten, not left standing.
-  ⚠ **What is still not covered, stated rather than implied:** the lane pins the floor's MINOR, so it runs
-  the newest 8.4.x and never executes the exact `8.4.1` the declaration promises. That gap is closed
-  statically by the new tool (it reds if any locked package needs more than the declaration) rather than
-  by a patch-level pin, which would freeze CI on a PHP that stops receiving security patches and would
-  depend on `setup-php` resolving an exact patch level.
-  ⛤ **Seen to fail (canon #9).** `bin/deploy.selftest.sh` grew a paired section for A6 — a host one minor
-  below the floor, one PATCH below it, exactly at it, above it on a later minor, above the ceiling, a
-  release that RAISES the floor above what the checkout declares, an unevaluable constraint, an absent
-  `require.php` and an absent `composer.json` — each refusal next to a single-variable control that
-  passes. Restating the floor as the stale `^8.3` inside A6 reds that section — including the card's
-  own case going from *refused* to *proceeds* — and restoring it greens it. The 8.3 fixture is given
-  its own `php8.3-fpm` unit on purpose, so that A6 is the only thing that can refuse it and the exit
-  code cannot go on reading 1 for an unrelated reason.
-  ⚠ **Found and NOT fixed, reported rather than folded in:** `composer.lock` also carries packages capped
-  at PHP 8.5 (`8.1 - 8.5`, `8.2 - 8.5`), so its true installable range is `[8.4.1, 8.6)` while `^8.4.1`
-  promises `[8.4.1, 9.0)`. Nothing can reach that today — 8.6 does not exist — and the new tool checks the
-  floor only, so the ceiling half is unguarded and named here rather than left silent.
-- **card#9208** — **the floor map has no read surface, and that is now a ruling instead of a
-  silence.** D3 § 4 renders a tiled floor from an authored `.tmj` and D2 published nothing to obtain
-  one — card#8075's defect shape one layer up, where the cheap move is for the client to mint the
-  surface it needs. ⭐ **Operator ruling, 2026-09-09: the map is a BUILD ARTIFACT shipped with the
-  client and never served at runtime**, with the two other candidate shapes (a served map surface; the
-  map riding the snapshot) declined, and **a floor edit is a redeploy** accepted explicitly as its
-  cost. Recorded where each half belongs rather than where it was convenient: the read-surface half in
-  **D2** — § 8.2 declares that no endpoint serves a map, § 13 row 38 is the ruling with its
-  alternatives and its cost — because D3 § 1.2 makes every read surface D2's and § 1.3 forbids D3 to
-  edit it; the client half in **D3 § 10.3**, which replaces *"deliberately not invented here"* with the
-  answer, the artifact's path, and what a redeploy actually costs an author.
-  ⚠ **D2 declares the seat→desk binding and it needs NO new wire member.** § 8.2.1 now states that
-  `install_id` + `seat_id` **are** the binding and the whole of it — they ride every seat object and
-  every seat-scoped message already, the desk is a pure client-side function of that pair (D3 § 3.2),
-  and what was missing was the statement that they are load-bearing for the layout, not a field. No
-  slot index, no desk id, no map reference is published, and § 8.2.1's field table is unchanged.
-  ⛔ **`verify-floor.py`'s `S = 12` check was a decoration and is now a check.** It regexed the number
-  out of D3's own prose — a sentence calling the map *shipped* while **no `.tmj` exists anywhere in
-  this repository** — so the gate asserted the document against itself. G8 now resolves the artifact
-  from § 10.3's declared path in either Tiled spelling (both re-derived from § 10.1's allowlist) and
-  takes one of two branches, each seen to red: with a map present it counts the objects of the `desks`
-  layer and reds on a count that is not `S`; with none it requires § 10.3 to **declare** the absence
-  and sweeps the tree for any map that would falsify it. The gate's output says which branch ran,
-  because *S held against a file* and *S held against a declaration* are different claims.
-  ⭐ **The absence is now stated, not implicit:** § 10.3 declares the artifact as
-  `resources/floor/<install_id>.tmj`, that none is vendored, and that card#7341 vendors the `aimla`
-  one. Minting a map is deliberately NOT in this card — it needs the tileset D3 § 14 item 7 is still
-  open on and a `docs/ATTRIBUTION.md` row for it.
-  ⚠ **The ruling opened one question and it is filed rather than left as a consequence:** card#9085's
-  console still authors and stores one Tiled document per floor, and under this ruling nothing reads
-  that store but the console itself — an operator can author a floor, watch it save, and see no change
-  ever. D3 § 14 item 16 carries it with the three answers and says it is an operator call.
-  ⛔⭐ **REVERSED 2026-09-12 — operator ruling on the same card, taking D3 § 14 item 16's third
-  answer and widening it: *"option C. Each floor should be configurable separately, including room
-  design (walls, furniture, etc)"*.** The map is **served at runtime from the admin console's store**,
-  and the console is the source of truth. This is a DESIGN amendment (D2 + D3), and no application
-  code moves with it. Recorded where each half belongs, as before: **D2** gains § 8.7 (the building
-  surface — `GET /api/building`, `GET /api/building/rooms/{install_id}/map`, and the feed messages
-  `room.map` / `building.layout` that say one changed), § 6.11 (the authored store and its append-only
-  revisions: a prior layout IS retrievable after a bad save, a restore is a forward revision, a removal
-  is a revision, and *review* is the one thing version control gave that the store does not give back —
-  said in terms), § 2.2's two posture rows, § 8.1's third posture row, § 9's browser-only row, § 6.4's
-  DDL for `authored_revisions` / `building_layout` / `floors.map_version`, § 6.10's second
-  irreplaceable population, and § 13 row 38 REVERSED with rows 41–44 (own prefix not the fleet plane;
-  notify-then-fetch not poll; append-only revisions; ONE shipped default). **D3** § 10.3 is rewritten:
-  the configurable unit is the **ROOM** and the operator's *each floor* maps onto it (§ 13 row 27);
-  Tiled stays the authoring format and the console validates, previews, revisions, diffs, restores and
-  exports rather than growing an editor (row 28; § 14 item 18 prices the editor); the renderer's closed
-  read of the document is a table, and a desk object carrying ANY property is refused at the write; a
-  map apply fires no animation (row 29) and a failed fetch never draws the default (row 30, § 9 F16).
-  **The layout moves with the map** — § 4.6's deploy-time argument was § 10.3's and inverted with it
-  (§ 13 row 24 amended). ⚠ That move is **this design's inference**, not a clause of the ruling: the
-  operator's card#9070 words point the same way but were about the map, before card#9267 minted a
-  layout at all — § 4.6 says so and names it as the one call to reverse if the two-change-path
-  argument is not accepted. § 14 item 16 CLOSED; items 18 and 19 opened; Appendix A gains T39;
-  Appendix B gains three build slices.
-  ⚠ **Reconciled with card#7341 as the record has it, not as first dispatched:** that card's tileset
-  pull (#107, 2026-09-12) vendored the tileset and **no map**. § 10.3 declares the ONE shipped default
-  at `resources/floor/default.tmj` before any map exists at any path, so the map card#7341 goes on to
-  author is written there from the start and nothing is renamed; `verify-floor.py` G8b reds a map
-  landing at the old per-room path by name in every state (CONTRADICTED while § 10.3 declares the
-  absence; MISPLACED after it, instead of the default or beside it — the gate's own G8b comment
-  records why the *beside* leg was added).
-  ⛔ **`room.map` rides EVERY install's channel, like the heartbeat** — a client's subscriptions are
-  the snapshot's installs, and the room an operator has just drawn may have no seat reporting, so a
-  per-room publish would reach nobody. And the design says plainly what card#9071's *no pinning*
-  ruling protects (no identity in the document, no stored position, every browser agrees) and what no
-  document check can prevent (an author choosing `S` and geometry so a known seat lands at a known
-  desk — arithmetic on a pure function, not a feature).
-  ⛔ **`verify-floor.py` G8 now asserts the INVERSE of what it asserted:** a new leg, **G8d** (G8c is
-  the tileset pull's sprite check), requires § 10.3 to name the read paths a room's map is fetched
-  from and holds them to set-equality with D2 § 8.7's `GET` rows — seen red three ways (an
-  undeclared path; the map path dropped while the layout path stays; no path at all). G8b's existing
-  CONTRADICTED branch was also seen red on a map planted in the tree. `verify-fleet-state.py` G7's
-  prefix set gains `room` / `building`, seen red on a planted `building.reload`.
-  ⚠ **Code comments and docblocks now stale, owed by the build slices — the PREDICATE is the record,
-  and the list below is its full output on 2026-09-12, unrelated hits included and marked, so that
-  the build re-runs the predicate rather than trusting the list:**
-  `grep -rniE "build artifact|never served|no read path|with the page|not from an endpoint|all four|the one endpoint|deploy-time|9208" server/`.
-  **Slice 1** (the layout's home): `server/config/building.php`, `server/routes/web.php`,
-  `server/resources/views/dashboard.blade.php`, `server/resources/views/console/floors/index.blade.php`,
-  `server/public/js/lobby/lobby-model.js`, `server/public/js/lobby/building-model.js`,
-  `server/public/js/lobby/main.js`, `server/tests/Feature/Admin/FloorConsoleTest.php`,
-  `server/tests/Feature/Lobby/TheBuildingStacksTheComposedFloorsTest.php`. **Slice 2** (the surface):
-  `server/app/Http/Middleware/FleetReadGate.php`. **Slice 3 / the floor route** (the
-  docblocks saying the floor screen is *card#9208-blocked on a D2 read surface* — the surface now
-  exists and the blocker is the build): `server/public/js/desk/task-bubble.js`,
-  `server/public/js/drilldown/main.js`, `server/public/js/drilldown/drilldown-model.js`,
-  `server/tests/Feature/Coordination/CoordModuleWiringTest.php`,
-  `server/tests/Feature/Desk/DeskDrawsTheThoughtBubbleTest.php`,
-  `server/tests/Feature/DrillDown/DrillDownModuleWiringTest.php`,
-  `server/tests/Feature/DrillDown/DrillDownRendersTheInternsTest.php`. **Unrelated hits, not stale**
-  (the predicate's false positives, named so the next run can tell them apart): `server/routes/fleet.php`
-  (*all four routes are `GET`* — scoped to that file's four fleet routes, and still true of them),
-  `server/app/Fold/Fold.php`
-  (*all four fold call sites*), `server/app/Http/Controllers/FleetController.php` (a pagination row
-  *never served*), `server/tests/Feature/Feed/At19ReadAuthTest.php` (*the one endpoint that carries
-  `counters`*), `server/tests/Feature/Fold/At10RebuildEqualsFoldTest.php` (*all fourteen*).
-
-- **card#9181** — **D2 § 2.1's process table now names `mezzanine:feed-heartbeat`, and states no
-  count.** The table is what an operator provisions a host from, and it listed every process except
-  the 15 s feed heartbeat — so a host built from it would supervise the fold, the sweep and the
-  purge, come up green, and leave `feed.heartbeat` unsent. The client half of § 8.3 then does the
-  visible damage: **a channel that sees no message of any kind for 45 s renders `feed_down` and
-  reconnect-loops against a perfectly healthy fleet**, and because the timer is armed by *any*
-  message, the channels that fail are the QUIET ones — exactly the case § 8.3 built the heartbeat
-  for ("a quiet fleet and a dead socket must not look the same"). A `db`/`fold`/`sweep` change also
-  never reaches a connected client, `FeedHeartbeatCommand::tick()` being the only caller of
-  `Publisher::healthChanged()`. Nothing errors anywhere in that sequence.
-  ⛤ **The opening count is deleted rather than corrected.** *"Five processes — four that run on
-  their own"* is a second copy of the set standing next to it, and it is what let the omission read
-  as complete: the heartbeat was built, `bin/deploy.sh` supervised it, and the figure went on
-  saying five. § 2.1 now opens with "the rows of this table are the processes", states in
-  terms that it carries no count, and says *add a process, add a row* — so the next daemon has one
-  place to be recorded and no number to contradict it.
-  ⚠ **`bin/deploy.sh` is the guard that already existed, and it now cites one section instead of
-  two.** Its `DAEMON_SERVICES` default has carried `mezzanine-feed-heartbeat` since card#7459 and it
-  refuses to deploy without a systemd unit for every member, so a host missing the unit fails loudly
-  at deploy time — that is what kept this from being a live outage. Its comment described the set as
-  "§ 2.1's population plus § 8.3's heartbeat"; § 2.1 is now the whole of it.
-  ⛔ **Nothing checks § 2.1 against the processes the code actually defines** — no gate, no test,
-  and `tools/design/verify-fleet-state.py` does not parse that table. The sibling audit for this
-  card was run by hand off `server/app/Console/Commands/*.php`, `server/routes/console.php` and
-  `bin/deploy.sh`; it found the heartbeat and two more gaps of the same shape (Reverb, which no D2
-  section lists as a process to provision, and the per-minute scheduler tick `mezzanine:purge`
-  needs, which appears nowhere in this repo). Both are reported with this card rather than fixed
-  here — one change does one thing — together with the proposal for the check that would have
-  caught all three: a G-check re-deriving § 2.1's membership from the commands the code defines.
-- **card#7341** — **the lobby: `/dashboard` was a placeholder that said the floor "stays empty so
-  that #7341 has nothing to delete before it can start", and it now renders the fleet.** D3 § 4.1's
-  building summary, live from `GET /api/fleet/snapshot`: the floor list (`installs[].install_id`,
-  ascending), a per-floor state summary in § 7.1's **fixed member order**, the fleet totals
-  (`fleet.seats_total` / `fleet.seats_live`) **read from the wire and never recounted**, § 4.1's
-  discrepancy render in both directions with its one-fetch-per-distinct-`(N, M)` budget, the
-  membership stamp (the response's own `server_time`), and store / derivation / sweep as **three
-  separate indicators** plus § 5.3's ingest recency — four sibling elements, so there is no element
-  on the page that could carry an aggregate (D2 § 8.2.4: "the wire keeps them apart").
-  ⛤ **Native ES modules from `server/public/js/lobby/`, no bundler and no `@vite`** (§ 1.2 leaves
-  that choice to the implementer): there is no `package-lock.json` in this repository and `npm ci`
-  cannot run, so a build step would be a dependency this slice could not honestly gate.
-  ⛔ **THE MEMBER SET IS RE-DERIVED FROM D3 ON EVERY RUN, IN BOTH DIRECTIONS AND IN ORDER.**
-  § 7.1's table is parsed out of `docs/design/FLOOR.md` and compared to
-  `public/js/lobby/render-state.js`'s array position by position — a member D3 publishes that the
-  client does not know, a member the client knows that D3 does not publish, and a set that agrees
-  while two members have swapped places are three distinct failures with three distinct messages.
-  The floor-preview README's rule is the reason: "**six** copies of one member set are what this
-  replaced … a second member set, in any spelling, is how the unrecognised case gets lost again."
-  ⛤ **Seen to fail before being trusted — eleven planted controls**, each mutating the shipped
-  module (or the rendered page) and naming the check that must go red: § 7.1's closing anchor
-  renamed (the parse silently widening), a member dropped, `thinking` added — § 6.2 A4's
-  *derivation* mistaken for a wire member — two members swapped (set clean, order red), the fleet
-  totals recounted from the desks (AT-D3-15's own RED), the discrepancy budget's memory removed (it
-  becomes a poll), the summary's unrecognised remainder deleted (AT-D3-15's *silent* half: a seat in
-  no member set falls out of its own floor's count with no throw and no glyph), a null timestamp
-  coalesced to `00:00:00` (`docs/KANBAN.md § G-1`'s clean zero), an element renamed out from under
-  the client (`getElementById` answering `null` — nothing throws and one fact is never rendered),
-  an element nothing writes into, and a fifth indicator with no cell for it.
-  ⛤ **The render assertions are driven over a REAL snapshot body**, built by the real ingest and the
-  real fold through `FeedTestCase` and fetched over HTTP by an MFA-satisfied session — and the
-  fixture is chosen so the two candidate orders disagree: the wire serves `aimla-impl` (`offline`)
-  before `aimla-pm` (`idle`), while § 7.1 puts `idle` first, so a summary built in arrival order
-  fails. The client itself runs under `node`, so what the assertions drive is the file the browser
-  is served rather than a PHP re-implementation of it.
-  ⛔ **TWO THINGS ARE DELIBERATELY NOT BUILT, AND NEITHER IS AN OVERSIGHT.** The **tiled map, camera,
-  desks and elevator** are card#9208: D2 publishes no read surface for an authored floor map, § 10.3
-  says that path "is deliberately not invented here", and § 1.3 corollary 2 forbids a guessed
-  endpoint — so no map endpoint, no map fixture and no client-side map loader was minted. **No
-  duration string is rendered anywhere** — card#9209: § 7.1's own exemplars disagree (`4m 12s` /
-  `11m` / `2h 06m`) and § 12 carries no row, so § 5.3's two "as an age" readouts render the labelled
-  **timestamp** the wire actually carries instead, subtracting nothing; a test asserts no duration
-  shape reaches the page. `fleet.max_fold_lag_ms` is **not** rendered here either: its published
-  form is the fleet banner's (§ 2.4, § 7.4), which belongs to the floor's status strip, and a second
-  rendering of one fact is what § 2.4's one-form-per-fact rule forbids.
-  ⚠ **WHAT IS NOT VERIFIED, stated rather than implied: there is no browser on the build host.**
-  Nothing here has been laid out, painted, clicked or seen. "Visually apart" is bought
-  structurally — four separate block elements under their own heading — and the DOM layer
-  (`main.js`) is deliberately thin and decides nothing, because it is the part no check exercises.
-  What IS checked is that every id it addresses exists on the page and every id the page declares is
-  written into, in both directions, with the health cells' ids derived from the model rather than
-  listed.
-
-- **card#7344** — **the PHP half: CI now actually runs `server/`'s test suite.** Until
-  `.github/workflows/php-tests.yml` landed, **no workflow in this repo executed a line of PHP** —
-  the suite under `server/tests/` ran only when somebody remembered to run it, so every
-  `php artisan test` figure in a PR body here was self-attested and unreproducible. ⚠ **The cost
-  was already realised, not predicted:** `Tests\Feature\Feed\SeatObjectMatchesTheDocumentTest`
-  sat RED on `dev` for days (D2 § 8.2.1 declared `blocked_since`, `App\Read\SeatObject` did not
-  carry it — see the card#8075 entry below), and it was found because one agent happened to run
-  the suite by hand. The guard existed, had merged, and was failing the whole time. A guard
-  nothing runs is not a guard.
-  ⛤ **The lane runs the repo's own entry point, `composer test`** (`artisan config:clear` then
-  `artisan test`), rather than a hand-rolled phpunit command line: `server/composer.json` already
-  owns what "run the tests" means here and a second spelling in CI is a second thing to keep in
-  step with it. PHP was pinned to **8.4**, and NOT to the declared floor — the lane's own first run
-  measured why: `composer.lock` carried `symfony/*` v8.1.5 requiring `php >=8.4.1`, so the committed
-  lock COULD NOT be installed on the `^8.3` that `composer.json` declared and `bin/deploy.sh` reloaded
-  (`php8.3-fpm`). ⚠ **So the lane did NOT test the version the app was configured to deploy onto** —
-  those three surfaces disagreed, and that was filed as **card#9203**, a live deploy defect: on an 8.3
-  host `deploy.sh`'s A6 precondition PASSED, the maintenance window opened, and `composer install`
-  then failed INSIDE it. **card#9203's entry above is where that ends**: the floor is `^8.4.1`, and the
-  lane now derives its pin from `server/composer.json` rather than spelling one out. With `pdo_sqlite`/`sqlite3`, composer's download
-  cache keyed on `composer.lock`, and every action pinned to an exact commit.
-  ⛔ **No `paths:` filter, and here that is measured rather than inherited.** The house argument
-  applies (a filtered workflow produces NO RUN, which as a required check reads *pending*, never
-  *passed*), but this suite has a concrete second reason: **it reads outside `server/`** —
-  `SeatObjectMatchesTheDocumentTest` opens `base_path('../docs/design/FLEET-STATE.md')` and
-  compares § 8.2.1's field table to the wire object, so a `server/**` filter would be dark on a
-  docs-only PR editing that table, which is one of the two ways the card#8075 gap could have been
-  minted.
-  ⛤ **The backend is ASSERTED, not exported.** `server/phpunit.xml` leaves `DB_CONNECTION`
-  deliberately unforced and `docs/design/FLEET-STATE.md § 6.2`'s argument rests on nothing in this
-  repo's CI selecting a backend by exporting one; an `export DB_CONNECTION=sqlite` would have
-  falsified that sentence for a value the committed template already carries. So the lane greps
-  its `.env` and reds by name if `.env.example` is ever flipped, instead of silently running
-  somewhere else. **Seen to fail before being trusted**, both arms: the suite red on a planted
-  removal of `blocked_since` from `App\Read\SeatObject::build()` (naming
-  `SeatObjectMatchesTheDocumentTest`, *"§ 8.2.1 declares fields the seat object does not carry"* →
-  `['blocked_since']`), green again on restore; and the backend assertion red on a `.env` flipped
-  to mysql, green on the template's own value.
-  ⚠ **THIS CHANGE DOES NOT MAKE THE CHECK REQUIRED, AND THAT IS DELIBERATE, NOT AN OVERSIGHT.**
-  Requiring a context is a repository-settings act reserved to the operator, so it is raised
-  separately — `docs/PLAN.md § 4`'s row for this card asks for the required-check list to move in
-  the same PR, and this is the half of that row that is knowingly left open rather than done
-  quietly. `docs/VERSIONING.md § Branch model` is the one home of that list; **re-measured live on
-  2026-09-09 while adding this workflow, as that section instructs — both rulesets still require
-  exactly the five contexts it records, `updated_at` unmoved, so no copy needed updating.**
-  ⚠ **The JS half of the card stays open, and the reason is measured, not assumed.**
-  `server/package.json` declares exactly two scripts, `build` and `dev`; no JS test framework is
-  installed anywhere under `server/`, so a JS *test* lane would have nothing to run. A
-  `npm ci && npm run build` lane WOULD be meaningful — but `server/package-lock.json` does not
-  exist (and is not gitignored; it was simply never committed) and `npm ci` requires one. Minting
-  a lockfile is a dependency-pinning decision of its own, not a side effect of adding a test lane.
-
-- **card#9054** — **the sibling audit: more surfaces claimed a required-check status, and the one
-  "pin" standing behind them could not fail.** The v0.3.0 entry below fixed the two surfaces the
-  card named. Re-deriving the population instead of grepping its phrasing found the rest, and the
-  ones that mattered most used none of the card's words. `.github/workflows/deploy-selftest.yml`
-  repeated the false claim verbatim (*"`card-token-lint` is the only mechanically required check"*,
-  plus the same dead `card#7344` owner). ⛤ **`release-pr-guard.yml` said `card-token-lint` was
-  *already* required *"so making this one required is the obvious next step"* — while
-  `release-pr-guard` had itself been required since 2026-08-30**, i.e. the file describing the repo's
-  strictest merge gate told a reviewer that gate did not block. `design-doc-verifiers.yml` spoke of
-  *"the moment this becomes required"* about two contexts (`design-docs`, `design-artifact`) required
-  since 2026-08-31, and `asset-provenance.yml` still carried *"if this check is ever promoted to
-  required"* five lines under the block that had just been corrected. Every one of those headers
-  now states the mechanism without a membership claim and points at the one home.
-  ⛔ **The pin that was offered as the model for the others was a tautology.**
-  `bin/harness-fixture-drift.selftest.py` asserted that the string `NOT A REQUIRED STATUS CHECK` was
-  **present** in that workflow's header — so it reddened only if somebody DELETED the sentence, and
-  never if the sentence went FALSE, which is the one direction that costs anything. It is replaced by
-  the property this checkout can actually hold: **the header states no required-check status in
-  either direction, and points at `docs/VERSIONING.md § Branch model` instead.** Seen to fail three
-  ways before being trusted — a planted *IS required* claim, a planted *NOT required* claim (true
-  today, and it must still red: no file here can verify it), and the pointer removed — each red alone
-  and named its own plant; green on restore.
-  ⚠ **`docs/VERSIONING.md § Branch model`'s own lead paragraph was the last unmarked copy**: *"No
-  ruleset requires a status check"*, bold and first, was the one block in that stack of dated
-  amendments that was never marked superseded, so the reader who skims one paragraph got the 2026-08-23
-  answer. It is now marked like the rest. `docs/PLAN.md` D-12 is amended by APPEND, per that
-  register's own rule, rather than edited.
-  ⛤ **What is deliberately NOT fixed, and it is the class:** nothing stops the *fifth* copy. The new
-  assertion holds one workflow's header; the other ten are guarded by convention. A repo-wide check
-  needs a lane that runs unfiltered on every PR, which is a new context — a required-check-list
-  question, and therefore the operator's. Filed rather than built quietly.
-
-## [0.3.0] — 2026-09-09
-
-- **card#8075** — **the CODE half: `blocked_since` was a published member no server ever
-  populated.** The declaration landed in #46 — D2 § 8.2.1's row (`rfc3339_ms`, nullable, non-null
-  only when `activity_state == "blocked"`), its promotion note, and D3's reconciliation — and
-  **nothing followed it into `App\Read\SeatObject`** — #46's bullet landed in the v0.3.0 cut with no
-  serializer behind it, and this is the half that answers it. **Both halves ship in v0.3.0**, so no
-  released version ever carries the gap; `dev` carried it, between the two. What `dev` carried is a
-  **contract a consumer could read and the server never answered** — a client written against
-  § 8.2.1 asks a `blocked` desk when the hand went up and gets no key at all. The drift guard has
-  been RED on `dev` the whole time
-  (`SeatObjectMatchesTheDocumentTest` — *"§ 8.2.1 declares fields the seat object does not carry"*
-  → `['blocked_since']`), which is the guard doing exactly its job; with no PHP lane in CI
-  (card#7344) nothing announced it, and that is the second thing this gap measures.
-  ⛤ **One read primitive, not a query in two places.** `SeatFacts::blockedSince()` reaches
-  `attention_requests.opened_at` through `seat_state.open_attention_ref` and is its only home —
-  the wire object (`App\Read\SeatObject`, which publishes state and derives none) and the fold's
-  version-bearing FINGERPRINT (`SeatFacts::versionBearing()`) both call it, because a fingerprint
-  that disagreed with the object it is the fingerprint OF would emit deltas for changes the wire
-  does not carry, or withhold them for changes it does.
-  ⚠ **The "only when `blocked`" invariant is ENFORCED in that primitive rather than assumed of the
-  writer** — it gates on `activity_state` before it reads, exactly as `apiErrorType()` does. § 8.2.1
-  promoted this member *because nothing else on the object dates the wait*, so a value that
-  outlived its state would have nothing on the desk to contradict it.
-  ⛤ **Version-bearing, so both edges are delivered**: § 6.5's subtraction keeps it in, so it joins
-  the fingerprint and `SeatDelta::WIRE_MEMBER` in the same change — the guard asserts those two key
-  sets are identical in BOTH directions, so either one alone reds a green test — and the hand going
-  up and the hand coming down each ride the delta `activity_state` already emits.
-  ⭐ **A value test, because the drift guard can only see the NAME.**
-  `SeatObjectMatchesTheDocumentTest` re-derives § 8.2.1's field list from the document, and a
-  `blocked_since` hard-wired to `null` passes it while drawing a `blocked` desk with no *waiting
-  since* line — the defect the promotion exists to close. `FeedSurfaceTest` now asserts the VALUE
-  against the request the fixture raised, the null against the state § 8.2.1 gates it on, and the
-  delta on both edges; **seen to fail first**, both by removing the member (the drift guard reds
-  naming `['blocked_since']`) and by pinning the primitive to `null` (the value test reds while the
-  drift guard stays green, which is why it exists).
-  ⚠ **One stale pointer fixed on the way, in a file this change was already editing**:
-  `SeatDelta::WIRE_MEMBER`'s docblock credited its guard to `SeatDeltaMapCoversTheFingerprintTest`,
-  a class that exists nowhere — the guard is
-  `SeatObjectMatchesTheDocumentTest::test_the_delta_map_covers_every_version_bearing_member`. The
-  claim is what makes that restatement admissible, so a pointer to nothing is not cosmetic. **The
-  claim was audited for siblings, not just the file**: every `…Test` name referenced from a comment
-  under `server/app`, re-derived from disk against the test classes that exist — this was the only
-  stale one.
-  ⚠ **No DDL, no event, no derivation rule and no ceiling moved** — § 8.2.1's promotion note is
-  explicit that the value has always existed server-side; the only thing that changed is the
-  surface it is published on.
-- **card#9077** — **losing your authenticator was a permanent lockout, and the way out was already
-  built.** Measured before the change: `two_factor_recovery_codes` has been a column since the 2FA
-  migration, `POST /two-factor-challenge` has always accepted a `recovery_code`, and
-  `auth/two-factor-challenge.blade.php` has always said *"Lost the device? Use a recovery code
-  instead"* — while **nothing in the application ever displayed a code.** The offline recovery
-  mechanism was wired end to end and unusable, and the challenge screen offered a path the user had
-  never been given the means to take.
-  ⛤ **Step 1 — the codes are shown.** At enrolment, on the screen that mints them (that branch is
-  only reachable after `two-factor.enable`, which is `auth` + `password.confirm`), and again at
-  `/two-factor/recovery-codes` behind `auth` + `mfa` + `password.confirm`, linked from the
-  dashboard. Regeneration is Fortify's own route and action — one regeneration path, not two — with
-  only its browser landing replaced, because the stock response flashes the raw translation key.
-  ⚠ **The card asked for "shown once, never retrievable again" and this deliberately does not do
-  that**, because the premise was false of this codebase: Fortify stores the codes *encrypted*, not
-  hashed, and already registers `GET /user/two-factor-recovery-codes` returning them as JSON behind
-  the same password confirmation. A view that refused to render them would not have made them
-  unretrievable — it would have left that route the only way to read them and let the application
-  claim a property it does not have.
-  ⛤ **Step 2 — an emailed reset**, on the operator's ruling that it may go to the address already on
-  the account. ⛔ **It clears the enrolment and signs nobody in:** after consuming a code the account
-  has no second factor and takes the same forced-enrolment path a new account takes, password and
-  all. A reset that authenticated would be a password-less login built by accident. The code is
-  100 bits from `random_int()` over Crockford's base32, stored only as a SHA-256, single-use by the
-  claiming `UPDATE`'s own predicate, expiring in 30 minutes, and **typed into a form rather than
-  clicked in a link** so it never reaches an access log or a `Referer`. The destination is read from
-  the user row and there is no request field that could redirect it. Requesting is rate-limited on
-  the *submitted* address AND on the source — two limits, both applied — and every answer is the
-  same sentence whether the address is enrolled, unenrolled, retired or unknown. A retired account
-  is refused at both ends, so retirement is not reversible by anyone holding the mailbox.
-  ⚠⚠ **The security consequence, on the record because it is the point of the feature: an email
-  reset downgrades the second factor to mailbox possession.** Inherent to the mechanism, accepted
-  knowingly, and the reason the address can only be intercepted and never redirected.
-  ⛤ **`MAIL_MAILER=log` is now a REFUSAL rather than a fallback**, and that is a canon #20 fix
-  rather than caution: `LogTransport` writes the whole rendered message — reset code included — into
-  `storage/logs/`, so on the DEFAULT configuration minting a code would have put a live credential
-  in a log file. `php artisan mezzanine:mail:preflight [--to=…]` is the preflight, and `docs/PLAN.md`
-  § 5 carries the deployment obligation.
-  ⚠ **Found while building this and fixed here (canon #7): `code` and `recovery_code` were being
-  flashed into the session on every failed attempt.** Laravel flashes the whole request body on a
-  validation failure and stock `$dontFlash` covers only the three password fields — so a mistyped
-  TOTP code and a WHOLE RECOVERY CODE were already being written into the session, on paths that
-  predate this card.
-- **card#9078** — **a removed seat's desk goes immediately; retirement is an announcement, not an
-  inference.** Operator ruling, which **reverses `docs/design/FLOOR.md` § 3.5** and D2 § 4.10's
-  fourteen-day render window: *"A removal is a deliberate action by the operator. When an agent is
-  removed, its seat and desk should go away immediately."* `App\Read\RetirementFilter::renderable()`
-  now selects on `retired_at IS NULL` alone, so a retired seat leaves the snapshot, `seats_total`,
-  the seat-detail and timeline endpoints and the console's agent list in the same transaction that
-  announces it. **The 14-day window is retired, not kept as a backstop** — two removal paths for one
-  act would leave the second as dead code free to disagree with the first.
-  ⛤ **The record does not disappear, it MOVES**: the admin console's agent page gains a **retired
-  seats** list (`Snapshot::retiredSeats()`, the exact complement of the read the floor renders), so
-  `retired_at` / `retired_by` / `retired_reason` stay answerable with no window at all — a better
-  home than a ghost desk, and it consumes no slot on a finite floor.
-  ⛔ **What did not change, and must not:** removal is driven by the EXPLICIT retirement and never by
-  an absence — not by a delta, a poll, a scoped read, a timeout or silence. A seat that merely goes
-  quiet keeps its desk and renders degraded (`stale` at 300 s, `offline` at 900 s); that arm is
-  asserted, with the whole time axis driven past every ceiling in the design.
-  ⚠ **Docs and acceptance tests were rewritten, not deleted:** D3 § 3.5, § 2.3's backstop row, § 2.5,
-  § 4.2's lobby case, § 5.1, § 5.6, A13, § 7.1, decisions 10 and 35, § 12's number tables and
-  Appendix A; D2 § 4.2, § 4.5, § 4.10, § 6.7, § 8.2.1, § 8.2.4 and § 8.3. **AT-D2-23** and
-  **AT-D3-16** now assert the new rule and carry the old one in their own text — an acceptance test
-  that vanishes with the behaviour it pinned leaves no record that the rule was ever considered.
-  ⚠ **Gotcha for the floor build:** `docs/design/floor-preview/floor-preview.html` still draws a
-  retired desk. It is operator-ratified art direction and re-cutting it is its own change; the
-  artifact gate's `retired` label comparison is exempted with that stated in the gate itself.
-- **card#7459** — **the repo had no production deploy path at all.** `docs/PLAN.md § 5` + D-13 say
-  prod moves only via `bin/deploy.sh` and that "hand-deploys to prod are not a path"; the file did
-  not exist, so every prod change would have been a hand-deploy by construction. **`bin/deploy.sh`**
-  is that path: a precondition phase that refuses before touching anything, then a maintenance
-  window that takes the app down, checks out the target commit, **re-execs the deployed release's
-  own copy of itself** (so the new code is deployed by ITS procedure, not by the previous
-  release's), installs dependencies, migrates **forward-only**, rebuilds the caches in the order
-  that matters, restarts the long-lived daemons, brings the app up and smoke-checks `/up`.
-  ⚑ **The kanban-board sample this was to be adopted from is NOT reachable from this seat** —
-  `share/issue-347/kanban-solo/kanban-board-deploy.sh @ ee7df9b9` is on no path here and
-  `PupFuzz/agent-roundtable` answers 404 to this credential — so **no line was copied** and the
-  script's header says so rather than implying a provenance it does not have. What was adopted is
-  rt#347's enumeration of the sample's load-bearing properties, each implemented with its reasoning
-  stated at the step it governs. ⭐ **One deliberate divergence, ruled binding by rt#347 item 1**:
-  the daemons are restarted **inside** the window. The sample's host runs a shared host-scoped
-  daemon serving several tenants and is silent about restarting it; this host is single-tenant, so
-  `mezzanine:fold`, `mezzanine:sweep`, `mezzanine:feed-heartbeat` and — once card#7339 makes it the
-  broadcaster — Reverb all hold *this* app's code in memory, and copying that silence would leave
-  every deploy serving stale broadcast code with the sockets still up and the floor still
-  rendering. Reverb's membership in the restart set is **derived from `BROADCAST_CONNECTION`, never
-  asserted**, so it becomes mandatory the moment #7339 flips it; a Reverb unit named while the app
-  does not broadcast through Reverb is **refused** rather than silently never restarted. A unit
-  that restarts and then dies is an in-window failure too — `systemctl restart` returns when a unit
-  *started*, which is why the state is re-read after a settle. ⛔ **Down and stay down**: any
-  failure after the window opens leaves the app down, leaves a marker on disk and rolls nothing
-  back — a failed MySQL migration is half-applied and `down()` would be a second guess at a state
-  nobody has read yet. A **bare re-run then REFUSES** until an operator clears the marker, because
-  "run it again" is the reflex that erases the evidence. The exit codes are distinct on purpose
-  (0 deployed · 1 refused and untouched · 2 broke in-window and is down · 3 up but unverified).
-  ⭐ **Every refusal was seen to fail before it was trusted** — the card's whole acceptance.
-  `bin/deploy.selftest.sh` is hermetic and network-free (real git fixtures, the real script, the
-  real re-exec; php/composer/npm/systemctl/curl/id stubbed on PATH), prints its own assertion count
-  rather than pinning one here, and pairs every red with a **single-variable control that passes**:
-  the same migration with and without its `ALGORITHM=` comment, the same run with and without a
-  failing `migrate` — asserting `artisan up` IS called in one and NEVER in the other. It also pins
-  the cache order as an ordering assertion (`optimize:clear` → `migrate` → `config:cache` → … →
-  daemons → `up`) instead of leaving it to a reader, and asserts no `APP_KEY` or `DB_PASSWORD`
-  value reaches the transcript. The suite was **mutation-tested**: four single-variable defects
-  planted in the script (marker guard removed, post-restart `is-active` weakened, `optimize:clear`
-  moved after `migrate`, the § 6.9 pattern widened) each turned it red, and it caught a real one —
-  a config-drift check placed before the ref was resolved, which under `set -u` was a check that
-  could not fail. ⚑ **Two deployment obligations that were prose became gates**:
-  `docs/design/FLEET-STATE.md § 6.9` rule 1 says a migration on `events` states its algorithm
-  *"and the deploy checks it"* — this is that check, read out of the target tree before the window
-  opens — and `docs/PLAN.md § 5`'s `CACHE_STORE` rule, where `array`/`null` reintroduces the login
-  path's user-enumeration oracle, is now a refusal rather than a paragraph. ⚠ **The live-host leg is
-  entirely unexercised and cannot be**: the prod host does not exist (D-08). Nothing here has run
-  against systemd, sudo, MySQL, PHP-FPM or a real `/up`, and rt#347 item 5 — the review with
-  kanban-solo against the actual sample — is still owed. ⚠ **`server/package-lock.json` does not
-  exist, so the script refuses today**: `package.json` floats (vite ^8, tailwind ^4) and a
-  lockfile-less prod build can ship different JavaScript from the same commit on two different
-  days. Committing it is a prerequisite of the first real deploy, not of this PR.
-
-- **card#7684** — **The reporter mapped `PostToolUseFailure` by `is_interrupt` alone while D1
-  § 6.6, amended by card#7337, required a two-signal kill signature** — so the code contradicted the
-  spec on the one hook the whole kill-vs-complete contract turns on. `is_interrupt` is MEASURED
-  `false` on the headline kill (a `/clear` SIGKILL reports `Exit code 137` at 2.1.245), which is the
-  hazard § 6.6 names in prose and the mapping then shipped: the killed call closed `failed`. ⭐ **The
-  fix is the conjunction, and neither leg may be promoted**: `is_interrupt`, **or** exit 137 across a
-  session boundary — because exit 137 alone is SIGKILL in general and an **OOM kill is a genuine
-  failure**, which read as `aborted` would block *idle* on a turn that legitimately finished, the
-  same defect wearing the other hat. The second leg is a property of the CALL, not of the payload,
-  so the mapping now runs **after** the close has matched its open entry rather than on the payload
-  alone. ⛔ **The leg that cannot fire says so** rather than being resolved silently: a SIGKILL close
-  that crosses no boundary — an OOM kill, or a `/clear` kill whose close beat both `/clear` signals
-  — and a close whose open was never seen at all both increment `kill_close_same_session`, § 6.6's
-  stated residual made into a rate someone can read. ⭐ **Seen to fail before trusted**: against the
-  pre-fix reporter four of the new checks go red, headed by the `/clear` kill closing
-  `('failed', None)` where § 6.6 requires `('aborted', 'interrupted')`; and both single-leg
-  promotions are driven on planted copies, each producing the wrong close for the opposite reason.
-  Doc-sync: § 6.6's residual records what is now driven **and what a synthetic drive cannot
-  establish** — that the harness ever delivers that order, which still needs a real `/clear`; § 9.3's
-  counter row gains the unknowable-open case; and § 6.0's subscription table and § 6.6's own
-  `is_error` paragraph, which both still restated the pre-amendment `per is_interrupt` mapping, now
-  point at the kill signature instead.
-
-- **card#9085** — **the console's floors module, and the schema behind it.** `card#9070` shipped the
-  console shell with `App\Admin\ConsoleModules` as the one list its nav and landing page both read,
-  so this module lands as an **entry** in that list: nothing in the shell changed to accommodate it,
-  and both of `ConsoleShellTest`'s population checks reds until its six routes were listed as gated.
-  It ships the **`floors` table** — one authored Tiled map per floor, keyed by
-  `docs/design/FLOOR.md § 3.1`'s `install_id` — plus the module that authors, replaces and removes
-  one, and lists every floor with the seats it renders against the desk slots its map declares.
-  ⛔ **It is the (a) half of the operator's 2026-09-08 ruling and stops exactly at the (b) line.**
-  Nothing here names a seat: § 3.2 puts a seat at a desk by a pure function of the rendered seat set,
-  "without a stored position and without a server field", and pinning one is `card#9071`'s undecided
-  ruling. The absence is asserted rather than commented — over the route table, and over the schema's
-  own column list, because the edit that would cross the line is one column and one form field.
-  ⛤ **`S` is derived from the map, never stored beside it** — `docs/design/FLOOR.md § 10.3` makes the
-  map the one home for the slot count, so a `slot_count` column would be a second home free to
-  disagree with the document it describes.
-  ⛤ **A map an operator pastes in is validated against § 10.1 clause 3 at the write** (CSV layer
-  data, no embedded tileset image, one object layer named `desks`), because the two asset gates run
-  over *files in the repository* and a document in a database column is not one. § 10.3 now says that
-  in terms, including what the check does **not** cover: it cannot tell whether the tileset a map
-  names was ever vendored. The base64-run heuristic of clause 2 is deliberately not re-implemented —
-  clause 3 removes the base64 at its source, and § 10.1 records what that heuristic is worth on
-  machine output.
-  ⛤ **The seat count is `Snapshot::seats()`, the read the floor itself uses** — a second query would
-  disagree with the floor about which seats exist, starting with `FLEET-STATE.md § 4.10`'s 14-day
-  read filter. A floor whose install the snapshot no longer renders is surfaced on the page rather
-  than dropped from it.
-  ⚠ **Corrected in the same change:** `routes/admin.php` claimed "nothing here deletes a row", which
-  this module makes false — a floor map is a drawing, not a record. The console still registers no
-  `DELETE` verb, and that is asserted over the whole route table.
-
-- **card#9070** — **the admin console: nobody could sign in to a fresh deploy, and no path created
-  the first account.** Measured before the change: a `User` model, a users table, 2FA columns and a
-  `UserFactory`, a login page and `/two-factor-enroll` — and **no `UserController`, no admin routes,
-  and no artisan command that creates a user.** This ships the **console shell** (`/admin`, its own
-  `server/routes/admin.php`, a nav generated from `App\Admin\ConsoleModules` so `card#9085`'s
-  floors module is an entry rather than an edit), the **user module** (create, edit, retire) and the
-  **agent module** (read seat state, and the existing `mezzanine:retire` act). ⛔ **No floors/desks
-  schema and no seat-create path**, per the operator's (a)/(b) ruling: a seat exists because it
-  *reported* (`docs/design/FLOOR.md § 3.4`), so hand-authoring one is `card#9071`'s deferred
-  decision.
-  ⛤ **`php artisan mezzanine:user:create` is the whole fix for the deployment blocker, and it takes
-  no `--password` option** — an argument lands in argv and in shell history, so it prompts (never
-  echoed) or `--generate`s and prints once. It is also the documented way back from a lockout, which
-  is why retiring the **last** account that can still sign in is a **refusal** and not a warning:
-  there is no registration page and no mailer, so an install with no active account would be
-  unrecoverable except through this command.
-  ⛤ **Accounts RETIRE, they never delete, and a retired record does not change** — `users` gains
-  `retired_at`/`retired_by`/`retired_reason`,
-  the same shape `seats` carries, so an account that minted a token or retired a seat cannot vanish
-  and leave dangling references. The name and the address are part of that record, so
-  `App\Admin\UserProvisioning::update()` refuses a retired subject **at the write**: without that,
-  a rename followed by a create hands the freed address to a different person and does everything a
-  delete does in two authenticated requests. (Found in review: the only thing refusing it was the
-  `@unless` that hides the console's Edit link — a read-time guard for a write-site rule.)
-  A retired account is refused at **every credential path** because
-  the filter lives in the guard's user provider (`App\Auth\ActiveUserProvider`), not at the login
-  route: the login form, the session resolved on every request, and `remember me` all funnel through
-  `newModelQuery()`. Fortify's pending two-factor challenge does **not** (it resolves the challenged
-  user with `$model::find()`); that is measured, named in the test file, and unreachable because
-  `login.id` is only written after a credential check that already went through the provider.
-  ⛤ **A seat retired from the console performs `mezzanine:retire`'s act, not a copy of it** — the
-  transaction moved to `App\Fleet\SeatRetirement` at its second caller, so the console cannot skip
-  the recompute, the `cause: operator` transition row or the `seat.retired` publish. A mutant that
-  writes the three columns directly reds on both.
-  ⚠ **Found while building this, and fixed here: `database/seeders/DatabaseSeeder.php` shipped
-  Laravel's stock body**, which mints `test@example.com` with the factory's password — the literal
-  `password` — and `database/factories/` was in composer's PRODUCTION autoload, so
-  `php artisan db:seed` on a deployed host would have put a publicly-known credential behind the
-  login page. The card's premise was that nothing created a user; something did, and it was the one
-  path that must not be used. The seeder now creates nothing — **and, after review, neither half of
-  the mechanism ships either:** `Database\Factories\` and `Database\Seeders\` moved to
-  `autoload-dev`, and `composer install --no-dev` on a host is now a stated deployment obligation
-  (`docs/PLAN.md § 5`, `README.md`). Emptying the seeder closed the instance; this closes the class,
-  so the N+1th caller cannot re-mint it for free. Measured on a real `--no-dev` install from this
-  lockfile: `App\Admin\UserProvisioning` resolves, `Database\Factories\UserFactory` does not.
-  ⚠ **Canon #20 is asserted on surfaces that could actually carry the value** — the flashed input
-  Laravel re-renders a form from, the validation messages, the command's own output, and a live log
-  file with a canary line proving the capture works. A failed login for an unknown address is
-  word-for-word identical to a wrong password **and now costs the same one bcrypt comparison**,
-  because the stock provider returns before hashing on a miss, which is an enumeration oracle in
-  timing. ⚠ **The residual first stated here was false about this deployment and is corrected:** the
-  dummy hash was memoised into an *instance* property of a provider the container rebuilds every
-  request, so nothing was amortised over a php-fpm worker — a miss paid **two** bcrypts and a wrong
-  password on a real account paid **one**. The oracle's magnitude was stock Laravel's; only its sign
-  had flipped, and the expensive side was the one an unauthenticated attacker picks. The hash is now
-  paid for **once per deployment** (kept in the cache store, which `throttle:login` already puts on
-  that route for both branches, and re-minted if `BCRYPT_ROUNDS` changes); the residual is one cache
-  read on the miss path. The arm that missed this counted `check()` and *stubbed* `make()` — it
-  counts total hashing work on both paths now, which is the property.
-  ⛔ **AND THE COMMAND PRINTED A PASSWORD IT HAD NOT STORED — found in the second review round, on
-  the one surface this repository calls the only way back from a locked-out install.** Rate,
-  re-derived rather than relayed: 20 000 draws of `Str::password(24)` pushed through a real console
-  formatter came back mismatched 132 times — 0.66%, about one run in 150. `Str::password()`'s alphabet contains `<`, `>` and `\`, and
-  `Illuminate\Console\Command::line()` writes through Symfony's console formatter, whose last act
-  rewrites `\<` and `\>` and whose first consumes anything shaped like a style tag. So the operator
-  was shown a value that would not sign in while the account was created with the unmangled one —
-  an application with no mailer, no password reset and no registration page, and an address burned
-  permanently because a retired row is unrenameable. It had been reporting itself for a round as a
-  flaky test (the end-to-end `--generate` arm failed about one run in forty). Every credential this
-  application prints now goes through `App\Console\SecretLine`, which writes `OUTPUT_RAW` — the
-  bytes given are the bytes written, so nothing has to stay a transformation's inverse — and all
-  three commands that print a secret route through it rather than each being safe or not depending
-  on its own alphabet.
-  ⚠ **Three more from that round.** The retirement act and its command held two spellings of one
-  emptiness test, so `mezzanine:retire --by="   "` walked past the command's `=== ''` refusal into
-  the act's `trim()` throw and gave the operator a stack trace where the documented answer is
-  `INVALID`; the predicate now lives once, in `App\Support\RetirementAttribution`.
-  `UserProvisioning::update()` decided "is this account retired?" on the model implicit route-model
-  binding resolved at the top of the request, so an account retired mid-form could still be
-  renamed — it now re-reads under `lockForUpdate()` inside the transaction that writes, the way the
-  sibling act next to it already did. And `CACHE_STORE` is now a stated deployment obligation
-  beside `--no-dev`: the equal-cost login path depends on a store that persists between requests,
-  and only the `--no-dev` half of the round's two obligations had reached the list an operator
-  standing up a host reads.
-  ⛔ **AND THE THIRD REVIEW ROUND FOUND THE SAME SHAPE IN BOTH ACTS THAT MATTER MOST.** A seat
-  retirement decided its § 2.1 no-op on a read taken *before* its transaction and then UPDATEd on
-  `id` alone, so two retirements of one seat both passed the guard and both wrote — the second
-  overwriting the original author, reason and timestamp, and telling every connected floor the seat
-  retired twice. A double-clicked console button was enough. The guard now lives IN the UPDATE
-  (`whereNull('retired_at')`, the shape `mezzanine:feed-token:revoke` already revokes with), so
-  `0 rows affected` **is** the no-op and no lock is load-bearing for it.
-  ⛔ **And a password reset wrote the hash and nothing else, which is not a recovery from the
-  compromise it exists for.** `SESSION_DRIVER=database` makes a signed-in browser's authority a ROW
-  that survives a password change — Laravel's opt-in for invalidating it, `AuthenticateSession`, is
-  not on this stack — and remember-me is live end to end, so a stolen session cookie or remember-me
-  cookie kept working after the **only** compromise-recovery path this product has (no mailer, no
-  self-service reset). A reset now rotates `remember_token` and deletes that account's
-  `web_sessions` rows, **including the one the request is on**: a stolen session cookie *is* that
-  session's id, so "log the other devices out but keep mine" would keep the attacker's. A self-reset
-  therefore signs the operator out, and the edit form says so.
-
-- **card#9054** — **two documents said a red `asset-provenance` does not block a merge, and it
-  does.** Measured live 2026-09-08: rulesets `21222661` (`dev`) and `21222660` (`main`) are both
-  `active`, both have `bypass_actors: []`, and both require the same **five** contexts —
-  `asset-provenance`, `card-token-lint`, `design-artifact`, `design-docs`, `release-pr-guard`. The
-  three beyond the two `docs/VERSIONING.md` last recorded were added on **2026-08-31** (the
-  rulesets' own `updated_at`), **and no document moved with them for eight days**, so
-  `.github/workflows/asset-provenance.yml` and `docs/ATTRIBUTION.md` each told a reviewer that a red
-  there was advisory while it was blocking. ⛤ **The list is a REPOSITORY-SETTINGS fact and no file
-  in the checkout can verify a copy of it**, which is why the fix is not three corrected copies:
-  `docs/VERSIONING.md § Branch model` is the single home and now carries the API command that
-  re-derives it, and the other two surfaces **state the rule nowhere and point there instead**. The
-  standing caveat that a later-added workflow is not automatically required is KEPT — it is true,
-  and it is precisely why this drifted. *(Found in review of card#8301's PR; `card#7344`, which the
-  workflow comment named as owning the gap, is the app-code CI-lane card — `docs/PLAN.md`'s build
-  table gives it a required-check obligation for the lanes it will add, not for this one.)*
-
-- **card#8301** — **`docs/design/FLOOR.md § 10.1`'s closed licence allowlist admits `ISC`**, by
-  operator ruling of 2026-08-31, and `bin/asset-provenance.py`'s `LICENCE_ALLOWLIST` — the gate that
-  actually enforces the list, on every PR via `.github/workflows/asset-provenance.yml` — moved in the
-  same change. It unblocks **card#7341**, whose Tiled map and camera are ISC ports from
-  `shahar061/the-office`. The reason is written beside the member rather than left implied: ISC is
-  OSI-approved and **attribution-only**, functionally MIT, so it is not stricter than this
-  repository's own terms, and the list exists to keep **copyleft and non-commercial** terms out, not
-  to choose between two attribution licences. ⚠ **It admits ISC, not permissiveness as a category** —
-  a new RED fixture holds `Apache-2.0` refused for exactly that reason, so the ruling cannot be read
-  as a class widening. ⛤ **Widening the list CREATED an obligation, so the obligation was gated in
-  the same change:** ISC grants the licence only *"provided that the above copyright notice and this
-  permission notice appear in all copies"*, so Gate 1 now requires ISC's permission notice in
-  `docs/ATTRIBUTION.md` as soon as **any** row declares `ISC` — matched as the licence's own text,
-  because a link is not a reproduction and neither is the label. Without it a row could declare a
-  licence whose condition the repository never met while every check stayed green (§ 10.1 states the
-  residue: it is a presence check, not a licence audit).
-  ⛤ **THE OBLIGATION IS GATED IN BOTH FILES THAT OWE IT, AND THE ALLOWLIST IS NOW DERIVED FROM THE
-  OBLIGATION** — corrected on review, because the first cut of this change gated only the manifest.
-  `§ 10.1` and `§ 10.2` both say an ISC **port** under `resources/characters/` owes its notice in
-  `resources/characters/LINEAGE.md` as well, and the lineage half of the check was hard-coded to
-  MIT's text: it asked an ISC port for MIT's notice, found the MIT port's copy, and reported clean.
-  The mirror defect ran the other way — an `MIT` row **outside** the character tree owed a notice in
-  no file at all, because MIT reached the manifest only through the lineage file's mirror. One
-  behaviour, two implementations, two guarantees. There is now **one** notice check, keyed on the
-  licences the rows actually declare, called at both homes; and `LICENCE_ALLOWLIST` is the KEY SET of
-  the SPDX→notice table, so **admitting the next licence is the same edit as deciding what notice it
-  obliges** and cannot be done by forgetting one. `CC0-1.0` maps to `None` — a public-domain
-  dedication obliges no notice — and a control holds that a `CC0-1.0` row in a manifest with no
-  notice at all still passes.
-  **Where each arm was watched, said precisely, because this bullet first said *the real tree* about
-  runs that were fixtures:** the allowlist and both notice homes are held by
-  `bin/asset-provenance.selftest.py` — **`total=64 of POP=64`**, POP re-derived from the suite's own
-  source on every run (58 before this card, 60 at first review). They were **additionally** watched
-  on 2026-09-08 by running the shipped script over a byte-identical copy of this repository's own
-  manifest with `resources/characters/index.js` temporarily flipped to `ISC`: no notice anywhere →
-  exit 1 naming **both** files; the manifest notice alone → exit 1 naming `LINEAGE.md`, **while the
-  pre-review gate reported `BOTH ASSET GATES PASS` on the same bytes**; both notices → exit 0. The
-  two new REDs were each seen going from exit 0 to exit 1 against the pre-change gate, and
-  `CC-BY-NC-4.0` / `Apache-2.0` still exit 1. ⚠ **No `ISC` row is committed** — the manifest declares
-  four rows, all `MIT` — so on the tree that ships, the ISC path is exercised **by fixtures alone**.
-  **`tools/design/verify-floor.py` G5 now binds the doc to the suite:** AT-D3-12's ordinal REDs must
-  run contiguously and each must be carried by a FIXTURE NAME in the suite the test names, both
-  directions. Read out of the suite's `case(...)` calls with `ast`, not grepped — the first cut
-  grepped the file and a mutant that stripped a RED from its fixture still passed, because the
-  suite's own docstring says the words.
-  **`resources/characters/LINEAGE.md § 3` was the doc this invalidated** — three ISC-derived upstream
-  files were refused there *because of the allowlist*, and that reason has expired: they are still not
-  taken, but taking them is now a port decision carrying a notice obligation, not a licence
-  escalation. Its ISC evidence was also re-read at source (`LICENSE`, not the API's `spdx_id`, which
-  is the documented trap on this chain). **Nothing was ported and no ISC asset was added** — that is
-  card#7341's work, deliberately not done here.
-
-- **card#8174 (part 2)** — **`docs/CHANGELOG.md`'s per-PR bullet rule and `docs/PLAN.md § 4`'s
-  changelog size gate were both stated in the present tense and neither existed.** The bullet rule
-  — every PR whose title or branch carries a `card#NNNN` token owes a line-initial
-  `- **card#NNNN** — …` entry under `## [Unreleased]`, in the same PR — was prose for seven days,
-  and a sweep of `dev` found **six cards across seven merged commits** with no entry, including the
-  entire fleet-reporter (`card#7335`) and all three D-documents. ⛤ **Stated precisely, because the
-  first count was wrong: those six split three and three.** `docs/CHANGELOG.md` was created
-  2026-08-25 (`ceea110`); `card#7455`, `#7521` and `#7457` merged BEFORE it existed, so they broke
-  no rule and R4 correctly reports *cannot measure* on them. **Three of three card-bearing PRs that
-  merged after the rule existed missed the bullet** — a worse compliance rate than the inflated
-  figure suggested, not a better one. **R4** now asserts the rule on every PR, reading its card
-  grammar at run time from `CARD_RE` in `bin/promote-cards-by-token` — the same line
-  `card-token-lint.py` reads, so the accept-set has one home and no copy to drift. Two carve-outs,
-  both keyed on something observable rather than on a declared intent: a PR into `main` owes nothing
-  (release step 4 has just emptied the section **by construction**), and a PR that REMOVES a card's
-  bullet is exempt for that card (a revert of unreleased work owes the deletion, not a second
-  entry) — which cannot be claimed without deleting a visible line. **R5** implements `§ 4`'s own
-  formula literally — `threshold = 1 MiB − the bytes this file grew in the last 14 days`, growth
-  **re-measured from git history on every run and never stored** — and refuses only a PR that makes
-  an already-over-threshold file bigger, so the archiving PR that fixes it is not itself refused.
-  It was built rather than withdrawn because the file went 1,182 B → 150,881 B in five days, which
-  puts the contents-API truncation cliff about five weeks out rather than years. **Nine mutations
-  were each seen to red**, and R4 was replayed against real history: it refuses PR #41 exactly as it
-  merged and passes at the commit that backfilled it. ⛤ **Two defects in the guard itself surfaced
-  only on the real surface, not in review:** `git fetch --depth=1` **re-shallows a repository cloned
-  in full** — a six-commit branch collapsed to two, so R5 would have exited 2 on every PR while
-  `fetch-depth: 0` sat above it looking correct — and one selftest arm asserted something false
-  about itself, since a `--depth 3` clone of a three-commit history is a complete clone.
-
-- **card#7947** — **`verify-harness-facts.py`'s `COMMON` was a hand-transcribed list of nine
-  harness payload key names, and it backed most of that gate's fixture-key assertions.** The build
-  declares those fields ONCE, on a base schema every hook declaration intersects
-  (`<base>().and(<obj>({hook_event_name:…}))`), and the tool's key walker only ever entered the
-  hook-SPECIFIC half — so the transcription was never compared against the binary at all. ⛔ **That
-  is measured, not argued: 126 of the gate's 186 fixture-key assertions resolved against that
-  list**, and a copy of the real 2.1.247 bundle with `cwd:e()` rewritten to `dwc:e()` inside the
-  base schema — two bytes, the file's only difference from the installed build — **passed the
-  pre-change gate, `HARNESS-FACT CHECKS PASS`, exit 0**. A renamed common key could not red it,
-  which is the decoration canon #9 names; it is the fifth instance of the class card#7930 fixed
-  four of, and the largest by assertion count. **The base schema is now RESOLVED out of the
-  binary** at each hook's own declaration site — module-scoped like § 6's enum resolution, because
-  `h=` has 5009 assignments in a 2.1.247 bundle — and `hook_event_name` is a CAPTURE of the text
-  the hook pattern matched rather than a second spelling of it: **104 of the 186 assertions now
-  resolve against the derived base set and 22 against the captured discriminant. No harness key
-  name is written anywhere in the file.** ⭐ **Seen to fail, on the real bundle, before being
-  trusted**: the planted rename reds with 22 failures each naming `'cwd'` and the fixture that
-  carries it; a declaration stripped of its base prefix aborts naming `['Setup']` rather than
-  guessing which common fields it has; and the new fabricated-builder control, pointed at a REAL
-  builder, aborts saying it would confirm anything. **Both in-tool control legs name no field** —
-  one spelled `"cwd" in common` would be the transcribed list back again, wearing an assert.
-  ⚠ **One primitive fixed on the way, because the derivation made it hot**: the key walker
-  re-sliced the whole remaining 47 MB of bundle at every depth-0 comma (`re.match(pat, s[i:])`) —
-  the same defect `_assignments` records one screenful below, wearing a slice instead of an
-  unanchored `\b`. Anchored as `pattern.match(s, i)` the whole gate went **8.9 s → 4.9 s** on
-  2.1.247, so the added derivation costs less than nothing. ⚠ **Still NOT wired into CI, and not
-  proposed for it** — the gate is fail-closed on the installed build D1 declares and card#7929's
-  reasoning is unchanged, so this was validated locally against **Claude Code 2.1.247**, the build
-  D1's five declaration sites agree on, and against two planted copies of it. ⚠ **The derivation
-  deliberately did NOT move into `tools/design/d1_appendix.py`**: that library is the one parser
-  for § 17's MARKDOWN and has two callers because both need that grammar, whereas
-  `bin/harness-fixture-drift.py` never opens a bundle — hoisting a binary extractor into it would
-  put a second, unrelated subject in a shared library to serve one caller.
-- **card#8075** — **D3 § 7.1's `blocked` desk rendered *since 14:31* from NO D2 MEMBER, and the
-  ratified floor-preview had already invented `blocked_since` to draw it.** D2 § 8.2.1's seat object
-  declared nothing carrying when a wait began: the open attention request lives in § 8.2.3's
-  `detail`, which is the drill-down's source and not the desk's — so the one rendered fact on that
-  desk stood against § 5's own rule that a rendered fact with no field is a fact the client invented.
-  ⭐ **The measurement that decided it, and it points the opposite way from the cheap fix**: a
-  NON-live blocked desk already carries a real time through § 7.3's currency label, and a live one
-  carries no currency label at all — so dropping the timestamp would have made the **stale** desk the
-  better-informed of the two. The other candidate member is worse than absent: `activity.last_event_time`
-  equals the request's time at the instant the hand goes up and then moves with the next activity
-  event of any kind, silently re-dating a forty-minute wait. **card#8075's ruling took the expensive
-  answer**: D2 § 8.2.1 now declares **`blocked_since`** — `rfc3339_ms`, nullable, non-null only when
-  `activity_state == "blocked"`, carrying the open request's `event_time` on the seat's own clock,
-  the same basis § 4.7 already measures the 60-minute attention ceiling from. It is a **PROMOTION,
-  not a new fact**: `attention_requests.opened_at` is a stored column the seat row already points at
-  through `open_attention_ref`, so no DDL, no event and no derivation rule moved, and § 8.2.3's
-  *"~1.5 KiB of counters on every seat"* objection is priced on a drill-down payload, not on a member
-  that is `null` on every seat that is not blocked. **The preview's invented field is reconciled in
-  this change** — the spelling it minted is the ruled one, and both it and its README now say which
-  it is. D3 carries the render row (§ 5.1), the null render (§ 5.6), the seat-clock listing (§ 2.4)
-  and the § 7.1 cell's citation; the card#7966 bullet that held that cell OPEN is closed.
-  ⛔ **What was deliberately NOT built: a server-clock twin, and therefore no age.** The desk draws a
-  labelled seat-clock timestamp and § 2.4's four durations are still four; *waiting for 40m* would
-  need a basis D2 does not publish, and minting one is a product question this card did not put.
-  **Every derived figure moved and every one was re-measured, not re-typed** — the seat object
-  1,807→1,828 B, the worst case 5,529→5,572 B, the worst-case delta 6,112→6,171 B and with it D3
-  § 8.1's whole cap arithmetic (spare 2,080→2,021 B; the cap could still reach 15, and 16 still
-  breaches). ⭐ **The gate's own count of the population it checks was stale the moment the member
-  landed**: § 12 said *73 field names* beside a tool that re-derives 74 and reported clean, so
-  `verify-fleet-state.py` G2 now holds that number against the table too. **Both directions of G2
-  and the new count guard were each planted and watched red** before being trusted.
-- **card#7946** — **`fleet-reporter/fixtures/hooks/` vendored D1 § 17 verbatim and nothing
-  checked that the two agreed.** Editing § 17 alone left the fixtures stale with EVERY CHECK
-  GREEN: the reporter's own `harness_payload_keys` check reads the FIXTURES (so it validates
-  the copy against itself) and `verify-harness-facts.py` reads the APPENDIX (so it validates
-  the original against the harness binary) — neither can see the seam. ⭐ **That is measured,
-  not hypothesised: it diverged during card#7930, under the implementer's own hands, with
-  every gate green, and was caught only because they happened to be editing both ends.**
-  **`bin/harness-fixture-drift.py` + `.github/workflows/harness-fixture-drift.yml`** close it
-  by making the fixtures a DERIVATION rather than a copy: the guard regenerates all fifteen
-  files from the appendix — payloads grouped by `hook_event_name`, in document order, tagged
-  with the `_source` their region declares — and requires the committed bytes to be exactly
-  that, with `--write` repairing from the authority instead of by hand. ⛔ **Nothing about
-  § 17 is retyped in the guard**: the appendix is located by its own heading and its section
-  number is derived, the capture/stub split is read off which side of the DOCS-CITED heading
-  a payload sits on, and every failure to READ the authority is **exit 2 with the reason** —
-  heading renamed or duplicated, stub subsection gone, a payload parked where no region
-  classifies it, an empty region — kept distinct from exit 1 so a broken gate never reads as
-  a wrong fixture. **§ 17's grammar now has ONE spelling in this repo**: the shared parser
-  `tools/design/d1_appendix.py`, which `verify-harness-facts.py` now uses in place of its own
-  copy (same output, verified against 2.1.247 before and after), because a second parser is
-  free to disagree about what the appendix contains and that disagreement is this same defect
-  one level up. **Every arm was seen to fail** — nine drift arms, eleven fail-loud arms, and a
-  meta-control that mutates each of the fifteen fixtures in turn and requires each to red
-  ALONE naming itself, so the one green over fifteen files cannot be a comparison that
-  silently skipped one. ⚠ **The gate runs but does not BLOCK** — both rulesets still require
-  only `card-token-lint`. ⚠ **Nothing had drifted at the time of the fix**: today's fixtures
-  are byte-identical to the appendix, so this closes the hole rather than repairing a break.
-- **card#8161** — **D3's honesty principle was attributed to the operator, who disclaims it, and
-  cited to a document nobody in this repository can open.** `FLOOR.md § 6.1` read *"Every animation is
-  driven by a real event, or absent. — operator, via the proposal"*; the operator's verbatim ruling of
-  2026-08-30 (card#7953) is *"I never forbade motion that is neither held by a delivered field nor
-  caused by a delivered motion. Actually a little extra motion once in awhile is a nice touch.
-  Therefore blinking LEDs on a server rack is ok as long as it is not distracting"*, and **the
-  proposal is not in this repo** (tree-wide search at `dev`, with a control filename returning 0). ⛔
-  **The attribution is why the rule was never re-argued** — a rule an operator handed down is not
-  reopened, and a source no reader can fetch is not checked, so the design's own argument for it went
-  unexamined for four revisions while the ratified reference artifact rendered motion the document
-  forbade. ⭐ **The rule now has ONE home** — `§ 6.1`, as *this document's* design principle borrowed
-  from the prior art `README.md` names — and the three other sites **point** rather than restate
-  (`README.md`, whose *"borrowed from prior art"* framing was the honest one and is now the model;
-  `docs/PLAN.md § 2`; `FLOOR.md § 0` item 3). **No site attributes it to the operator.**
-  ⭐ **§ 6.3 relaxed, by SCOPING rather than loosening**: `§ 6.2` stays the closed set — for motion
-  that makes a **claim**, which is the half a viewer must be able to trust, so a `working` desk still
-  means working. Decorative motion is admitted and decided by **three property tests**, not a list of
-  names: does anything **read** it (decision 21's surviving constraint — the wall clock was refused
-  because `AT-D3-6` reads it and *"a frozen clock is not a defect and not a lie — it is the claim"*);
-  would it **assert something false on a dead feed**; could a viewer read it as one of the seventeen
-  (motion on an element a row draws is claim-bearing whatever drives it, which is what keeps
-  `AT-D3-1`'s idle-breathing RED red). ⚠ ***"Not distracting"* is given an operational form** or it is
-  a condition no reviewer can apply: **≥ 2 s cycle, opacity/scale only with no change of position, and
-  never a row's visual vocabulary** — a bound written to admit what the operator ratified (`.glowpulse`
-  at 2.4 s, 85%→55%) rather than to re-litigate it, with the 2 s carried in `§ 12` as **Chosen** and
-  saying so. Position is excluded because *an avatar walking IS the status*, which is also why moving
-  clouds and passing NPCs stay refused — by the amplitude bound, not by the claim test. **Three things
-  the card did not ask for and the amendment owes anyway:** `§ 6.2`'s *"everything that moves without a
-  delivered field is driven by the heartbeat"* note — which asks in its own text to be re-derived at
-  every amendment — **went false** and is re-derived with what `AT-D3-6` does and does not lose;
-  `§ 6.4`'s reduced-motion mechanism is **per-§ 6.2-row**, so decorative motion was outside it and now
-  stops under `reduce` explicitly; and `§ 6.3` bullet 2 (*motion driven by a timer*) would have
-  re-forbidden every decorative loop, since a loop with no driver is exactly what decoration is.
-  ⚠ **Stated rather than covered over: no mechanised check reaches decorative motion** — it writes no
-  animation-log row, so `AT-D3-1` cannot see it, and `verify-floor.py` reads the document and never
-  opens `floor-preview.html`, which is how `.glowpulse` sat unnoticed (card#7929: wiring the verifiers
-  is necessary and not sufficient). Review is what stands there, and saying so is the condition of
-  taking the option. **No change to `floor-preview.html`** — card#7953 ruled all three sites stay.
-- **card#7929** — **`tools/design/` was the only directory in this repository CI never entered:
-  246 KB of verification code referenced by zero workflows and zero hooks, while D1/D2/D3 cited
-  those tools as *"reds the gate"* in the PRESENT TENSE some fifty times between them.** The
-  convention behind it was a runbook sentence in `tools/design/README.md`, and **a runbook
-  protects nobody who does not follow it** — every D-document PR to that point merged on a gate
-  that never fired. **Four gates now run on every pull request**: `verify-event-schema.py`,
-  `verify-fleet-state.py`, `verify-floor.py`, and `floor-preview.selftest.mjs`, all pure repo
-  reads on stock `python3`/`node` — no credential, no network, no interpreter pin to keep honest.
-  ⛔ **Two are deliberately NOT wired, and named rather than skipped**: `verify-harness-facts.py`
-  is fail-closed on the installed Claude Code build D1 declares, and `floor-preview.browser.mjs`
-  on a headless Chromium; a stock runner carries neither, so wiring either would red every PR on
-  correct work — **and a gate that reds on correct work gets disabled**. Wiring them as a SKIP
-  would be worse: an *"N/A"* that reads green is a check reported as passed that never ran, which
-  is this very defect one layer down. ⚠ **No `paths:` filter, for a MEASURED reason** —
-  `verify-event-schema.py` resolves `docs/VERSIONING.md`'s path references and reds on any that is
-  missing, so a PR deleting `bin/release-pr-guard.py` breaks D1's gate while touching nothing under
-  `docs/design/`; a filter would pass that PR and leave the next unrelated one holding the red.
-  **No `branches:` filter either** — a filtered workflow produces no run, which as a required check
-  reads as PENDING, not passed. **`verify-design-docs.selftest.py` keeps the three document gates
-  from becoming decorations**: it copies the tracked tree, plants a defect of each verifier's own
-  headline class and requires a red naming the plant, asserting a DIFFERENTIAL rather than an
-  absolute pass so a PR that legitimately reds a verifier still gets its real message instead of a
-  control failure. ⚠ **A hole neither gate closes is declared rather than left implicit**:
-  `verify-floor.py`'s G1 holds `§ 6.2`'s closed animation set against the DOCUMENT only and the
-  artifact gate reads no animation at all, so **an animation in `floor-preview.html` with no row in
-  `§ 6.2` is invisible to both** — which is how `.glowpulse` sat unnoticed (card#8161).
-## [0.2.0] — 2026-08-30
-
-- **card#8174** — **`docs/VERSIONING.md` specified the release act in twelve numbered steps and
-  nothing enforced any of them.** On 2026-08-30 PR #38 merged `dev` → `main` green, breaking three
-  documented rules at once: the head was the integration branch (which `delete_branch_on_merge`
-  would have DELETED — the ruleset backstop the doc says *"do not lean on"* is what appears to have
-  held, and that path had never been taken before), `VERSION` was unmoved, and there was no
-  changelog section. `auto-tag-version` then failed **after** the merge — a correct report arriving
-  at the one moment it costs the most, because the commit is already on `main` and the only remedy
-  left is another release PR. ⭐ **The fix gates WHAT is merged, not WHO merges it**: one GitHub
-  identity is shared by the agent and the operator here, so no actor-based control — CODEOWNERS, a
-  bypass list, a required reviewer — can tell them apart, and every such rule would either block the
-  operator or admit the agent. A content gate is actor-independent, free, and states its verdict
-  while the fix is still one commit. **`bin/release-pr-guard.py` + `.github/workflows/
-  release-pr-guard.yml`** assert three rules on any PR whose base is `main`, and nothing at all on a
-  PR into `dev`: **R1** the head ref equals `release/` + the tag this PR would mint, **R2** `VERSION`
-  is strictly greater than `main`'s by semver precedence, **R3** `docs/CHANGELOG.md` carries a
-  section naming the new version. ⛔ **Every fact it needs is DERIVED, never retyped** — the release
-  branch from `on.push.branches` in `auto-tag-version.yml`, the tag form from `.release-pr.json`'s
-  `tag_format`, and the accepted `VERSION` spelling from that same workflow's own validation regex,
-  because a private looser copy of it would green a release the tagger then reds post-merge, which is
-  #38's harm shape rebuilt by the gate meant to prevent it. Every extraction failure is **exit 2, no
-  fallback to a guess**, and exit 2 is kept distinct from exit 1 so a broken guard does not send an
-  author to rename a branch that was fine. ⭐ **Refuses PR #38's real shape on all three rules**,
-  measured against the real commits (head `7139cd7`, `main` `556ac3f`) as well as a hermetic replay;
-  a well-formed release PR passes, so the reds are evidence rather than a check that always fails.
-  Every rule and every fail-loud path was seen red against a single-variable mutation of that
-  control, and the selftest caught one real defect while doing it: the R3 boundary was refusing a
-  legitimate `## v0.2.0` heading. ⚠ **The gate runs but does not BLOCK** — both rulesets still
-  require only `card-token-lint`; requiring context `release-pr-guard` is a one-line ruleset edit,
-  and the workflow deliberately carries **no `branches:` filter** so it is safe to require (a
-  filtered required check produces no run, which reads as *pending*, never *passed*). Steps 5, 6, 8,
-  9, 11 and 12 stay unenforced on purpose, named in `docs/VERSIONING.md` rather than covered by a
-  gate that would claim to have checked a judgement when it had checked a string.
-- **card#7966** — **D3's § 7.1 Label line column published strings that its own rule statements
-  forbid, and the reason no gate could say so is that the COMPOSITION of those strings was published
-  nowhere.** Two known instances, one root cause, and a sweep of all ten cells that found three more.
-  ⭐ **The root-cause fix is a stated convention, not the two corrected strings**: § 7.1 now declares
-  that its Label line column is a **worked instance and never a rule**, so where a cell and a rule
-  statement disagree the **rule governs and the cell is the defect** — which disposes of instance N+1
-  without a round trip — and that where two **rule statements** disagree neither the table nor its
-  reader settles it, because picking makes one of two ratified statements silently dead.
-  **`stalled`** read *API error — rate limit*: § 7.6's **phrase** with the raw wire value **elided**,
-  against § 7.6's own column heading *The line beside the raw value*, § 5.4's *"the line carries the
-  raw string either way"*, § 5.1's *rendered verbatim* and **the same row's own `Never` column**
-  (*"`api_error_type` is always on the line"*) — one row contradicting itself, and five statements
-  outranking one example. ⛔ **Correcting the string was half of it**: the order and separators of
-  raw value + phrase were stated by **no site in D3 at all**, which is exactly what let a second
-  reading be minted, so **§ 7.6 now publishes the composed line once** — *API error — the raw value
-  (the phrase)*, **(unrecognised)** in place of the phrase for a thirteenth value, **API error**
-  alone for a null — and § 7.1's cell is a worked instance pointing there rather than a second copy.
-  **`retired`** was the mirror image: § 3.5 asserted **one** string for **both** surfaces, in the
-  words *"rendered on the desk's label line **and in full in** the drill-down"* — self-refuting,
-  because a string that is *in full* on one surface is not the summary on the other. § 7.1's shorter
-  string stands; § 3.5 now states **two strings for two surfaces**, each site naming the other, and
-  answers the clock-basis question at source rather than by invention: `retired.at` is a **server**
-  clock (D2 § 8.2.1), and D3 labels a **seat** clock precisely because it is another machine's claim,
-  so neither string takes a label — exactly as the `stale` desk's *no data since 14:18* carries none.
-  **A third site was corrected on the same reading:** § 5.1's `api_error_type` row said the value is
-  *rendered verbatim* and then illustrated it with *rate limit* — § 7.6's **phrase**, where the raw
-  value is `rate_limit` — so the site stating the rule was showing the reader the value the rule
-  forbids.
-  ⭐ **The class now has a gate that did not exist: `verify-floor.py` G11**, an eleventh guard class
-  holding a **worked example against the rule statement governing it**. § 7.6's twelve member/phrase
-  pairs are re-derived from that table on every run and both rendering sites are held against them;
-  nothing is stored, and each predicate is **fed its own defect on every run** and must reject it.
-  Seen to fail three ways before being trusted, each on its own message and each restored: § 7.1's
-  cell reverted to the pre-fix string, § 5.1's illustration reverted to the phrase, and § 7.6's
-  phrase drifted with § 7.1 left untouched — the third proving the guard catches drift from **either**
-  end, which is why its message now names both sides instead of blaming § 7.1.
-  ⚠ **The downstream carve-outs went with it, because an exemption outliving its reason is a
-  permanently weakened check wearing a stale justification**: `stalled` is no longer in
-  `floor-preview.selftest.mjs`'s `LABEL_NOT_COMPARABLE` (three members, now two), its literal is
-  compared to § 7.1's cell like every other member's, and a new planted control re-mints the pre-fix
-  elision **from the artifact's own composition** and requires the comparison to go red on it — it
-  does, with *want "API error — rate_limit (rate limit)", got "API error — rate limit"*. The two
-  property-based assertions that stood in for that comparison are gone as the weaker restatement they
-  became, and the artifact's comment recording the tension now records its resolution.
-  ⛔ **The sweep's remainder is NAMED IN THE DOCUMENT rather than left for whoever builds the floor**,
-  because a clean column with an unnamed remainder reports where the searcher stopped: **`blocked`**
-  renders *since 14:31* from **no field at all** — no § 5 row carries it and D2 § 8.2.1 declares no
-  such timestamp, the open attention request living in `detail`, which is the drill-down's source and
-  not the desk's — against § 5's own rule that a rendered fact with no field is a fact the client
-  invented; **`working`** renders a descriptor § 5.1 assigns to the monitor, and states nothing for
-  the A4 seat whose turn is open with no call, where that descriptor does not exist; and
-  **`catching_up`** carries a second wording of the labelled seat-clock timestamp § 7.6 fixes once.
-  All three turned on one question D3 did not answer — whether § 7.3's currency label and § 7.1's
-  Label line are one rendered element or two — which is **rule against rule**, so the convention
-  reserved it rather than letting the first round pick it.
-  ⭐ **That question is now ANSWERED, and the answer closes two of the three: TWO rendered elements.**
-  § 7.6's `activity_state` table — the section that **owns** that render form — says *under the label*
-  in five rows; § 7.3's `catching_up` and `disabled` rows said *in the label only*. Rule against rule
-  was rule against **defect**, and the sanity check is what makes it more than a word choice: read as
-  one element, a `catching_up` desk's single line would carry *replaying history — last event 12:47
-  (seat clock)* **and** *was: working (last event 12:47, seat clock)* — the same field, twice, in one
-  line. **Both cells are corrected to *under the label***, and the sibling sweep found a **third** the
-  ruling had not seen: § 7.6's own `link_state` table said *activity state in the label only* for
-  `catching_up` too. § 7.3 now states the two-element rule and names § 7.6 as the form's owner, and
-  § 7.6 says it owns it — so the next divergence has a governing statement to lose against instead of
-  a second opinion to argue with.
-  ⇒ **`catching_up`'s Label line drops the restated timestamp** — *replaying history*, the state
-  sentence, with `activity.last_event_time` left to the currency label that owns it. **Not drift: a
-  real redundancy the one-element reading hid**, because under that reading the repetition read as a
-  paraphrase rather than as one field rendered twice on one desk.
-  ⇒ **`working`'s Label line is *working*, the state's own sentence** — and the alternative was
-  refused on the document's own rules rather than on taste. It may not be the descriptor (§ 5.1 gives
-  that to the **monitor**, and that row's null case sends the monitor back to *the desk's state line*,
-  so a repeat would point the fallback at a copy of what it stands in for and would say nothing at all
-  for the A4 seat whose `action` is null); it may not be *turn open, no call* or any other wording of
-  `open_turn` / `open_calls`, which A3 / A4's pose already renders; and it may not be **nothing**,
-  because **AT-D3-5 and AT-D3-13 both assert all ten members are pairwise distinguishable BY LABEL
-  LINE**. A bare state word is the only string left that renders `render_state` and no second fact.
-  ⛔ **`blocked` is NOT fixed here, and that is the finding rather than an omission.** It renders
-  *waiting on a human since 14:31 (seat clock)* from a timestamp **D2 publishes no member for** — the
-  open attention request lives in `detail`, the drill-down's source, not the desk's. Dropping the time
-  deletes the one thing a raised hand is for and inventing a field is what the preview already had to
-  do, so it is a **D2 gap, not a D3 drafting error**, carried as its own item (**card#8075**) and live
-  for the build (card#7341). The cell is untouched; § 7.1's remainder paragraph is the notice, and it
-  **stays** — a document naming its own known-contradictory cell is the whole point of that paragraph,
-  and the alternative is a document that reads complete while a cell is known wrong.
-  ⚠ **The downstream carve-out moved again, and for the second time the exemption's REASON was what
-  expired**: `working` is no longer in `floor-preview.selftest.mjs`'s `LABEL_NOT_COMPARABLE` (two
-  members, now **one** — `unknown` alone, whose literals are the sibling table's). Its stated reason
-  was *"the line is a wire field, not a fixed string"*, and D3 has now ruled that the line is not the
-  wire field. Both newly-comparable literals owe proof the comparison can fail **on them**, so both
-  got a planted control that re-mints the pre-fix expression from the artifact's own code: `working`
-  reds at *want "working", got "Bash: composer test"*, `catching_up` at *want "replaying history", got
-  "replaying history — last event 12:47 (seat clock)"*. Both run on **every** invocation.
-  The artifact (`floor-preview.html`) follows D3 rather than the gate being relaxed to follow it:
-  both labels are now constants. ⛔ **One honest consequence, declared rather than hidden:** the
-  descriptor now has **no desk render in the preview at all**, because that file draws the monitor as
-  a tint and not as text — § 5.1's monitor is unbuilt there, which is card#7341's to draw, and the
-  timestamp's new home is a surface the artifact's own `D3_SCOPE` already declares *not implemented*.
-  ⭐ **And the placement got a GATE, because a corrected string with nothing holding it is how the
-  first two instances arrived.** `verify-floor.py`'s **G11** — still eleven guard classes, this is a
-  second **fact** inside the one class it already names, *a worked example against the rule statement
-  governing it* — now re-derives the placement phrase from § 7.6's five `activity_state` rows and
-  holds every worked instance against it. **Nothing is stored:** the five rows must agree with **each
-  other** (if they do not, the tool reports the rule as disagreeing with **itself** and judges no
-  instance — that is a rule-against-rule amendment, not a defect in any example), the population is
-  found **structurally** (any table cell carrying a *was:* span or naming the `activity state`, so a
-  fourth site is in it the moment it exists), a run finding **none** reds rather than reporting clean
-  over an empty set, and the predicate's own defect arm substitutes a preposition the rule does **not**
-  use, picked from the recognizer's alternation. Seen red **six** ways, each on its own message with
-  `FLOOR.md`'s md5 verified identical after every restore: each § 7.3 row reverted; § 7.6's
-  `link_state` row reverted; one § 7.6 rule row drifted; **all five rule rows moved with the instances
-  left behind — three reds, which is the leg following the OWNER rather than a string typed into the
-  tool**; and the rule table's header renamed so the rule is never read at all.
-  ⚠ **One carve-out, and it is a finding rather than a convenience: § 12's own guard-class rows are
-  excluded by role.** A row documenting a guard necessarily **quotes the defect it guards** — § 12's
-  G11 row quotes *in the label only* in order to say what was wrong — so a recognizer that read it
-  **fails on the correction and passes a silent fix**, getting redder the more honestly the write-up
-  is done. It fired exactly that way on this leg's own documentation row before the carve-out existed.
-  § 12 renders nothing; G9 already excludes those rows by the same role.
-  ⚠ **And one hole is DECLARED rather than closed**, because the fix for it was worse: the leg asks
-  whether a cell **contradicts** § 7.6, never whether it states the placement at all, so a cell that
-  re-words the placement out of the recognizer's vocabulary escapes by matching nothing. The stricter
-  tier — every cell carrying a *was:* span must contain § 7.6's phrase — was written, run, and
-  **removed**: it red on § 7.1's own corrected `catching_up` cell, which says the form is drawn
-  *under this line* while pointing at § 7.3 and § 7.6. That cell is right; it **mentions** the form in
-  order to say the timestamp is not the Label line's, and no structural test here can tell a mention
-  from a placement, so the literal rule would have red on a careful paraphrase and passed a careless
-  overwrite. All three limits are written into § 12's own Status cell rather than left in a commit
-  message.
-
-- **card#7897 (part 2, slice 1)** — **the coordination-event producer is designed in D1, and the card
-  is corrected twice on the way.** `EVENT-SCHEMA.md` gains § 18: Mezzanine's own GitHub webhook
-  receiver, deriving two fact objects — `coord.thread` and `coord.round` — from a coordination
-  repository's deliveries. ⛔ **Correction 1: the producer is NOT the `agent-webhook-bridge`,** which
-  the card specifies (*"all bridge-produced"*). § 1 non-goals a bridge dependency outright on D-10,
-  and the card's route is additionally **unbuildable**: the bridge's `HandlerRegistry` resolves ten
-  handlers and not one is a generic HTTP forwarder, so consuming its stream would have meant a
-  feature request into another team's write-side actuator, on our critical path. ⛔ **Correction 2:
-  two objects, not three** — `coord.message` was already collapsed into `coord.round` by the card's
-  own ruling, and the brief re-listed all three; every coordination act is a post on a thread, so a
-  third object is a second format for one fact. ⭐ **The bridge's classification behaviour was
-  re-derived AT SOURCE** (`v0.77.0`, `f85b419`) as prior art, and § 18.3 records eleven findings with
-  their file — DL-252's actor-vs-thread-author split, the three-member `AUTHORING_ACTIONS` allow-list,
-  DL-002's shared identity, DL-035's frozen label, the body-`TO:` addressing rule, and DL-176's
-  signed-body dedup key. ⭐ **The card's honesty audit is FALSIFIED in three places, and each is
-  stated rather than designed around.** *(A)* The `from:`/`to:` labels are **not** a property of the
-  `opened` delivery — the coordination repo's integrity Action materialises missing labels from the
-  body *after* the issue exists, and the posting tool auto-adds a `to:` label to a live thread, so
-  the addressee set is neither reliably present nor frozen; the bridge's own source records **641**
-  such `issues.labeled` deliveries already dropped on the reference install. The derivation therefore
-  keys on the body's `FROM:`/`TO:` lines wherever it needs an **address**, which is the scope the
-  protocol makes them authoritative for — ⚠ **not membership, which is label-authoritative, as the
-  round-4 bullet below establishes and this line originally elided.**
-  *(B)* **A convergence has an act and may have no actor**: `issues.closed` is not an authoring
-  action, so under shared identity the closer is unrecoverable, and the phrase and the close arrive
-  as two different deliveries; the floor may show *that* a thread converged and never *who* closed
-  it. *(C)* **The escalation flare is a WON'T-DO** — its claimed observable, a gated / USER-ACTION
-  post, is barred by protocol from coordination threads (the banner is chat-output only), so
-  `needs_human` is deleted rather than carried permanently false, with the closure act named as a
-  protocol change. Also settled: the family gets **its own endpoint, HMAC auth (a third auth mode)
-  and validation order**, because nine of the batch envelope's invariants are false for a webhook
-  delivery and admitting it would weaken that path for the reporter too; **no post body ever
-  transits**; and one producer serves both consumers, the `coord.*` family and D2 § 4.9's tier-2 task
-  title.
-  ⭐ **A review round then found the same defect SHAPE at three sites, and fixing the shape is most
-  of what changed: a rule derived over one population, applied to a second without re-deriving it.**
-  *(1)* § 18.3's derivability test excluded *"the bridge's configuration, which this producer cannot
-  see"* and never asked the same question of the **coordination repo's own** config, equally
-  invisible — so four fields reached for it in four unstated places. § 18.3.1 is the consolidation,
-  and two of the four dissolved: `carrier` reads the title's bracketed token **syntactically** with no
-  set consulted (measured: all 728 real titles carry one, and the six distinct tokens are exactly the
-  six configured), and `participants` stops expanding `all` because `targets` already does it once.
-  What is left is **one declared input** provisioned with the hook registration — `roster[]` and
-  `shared_identity` — carrying the config revision it was copied at, and **guarded**, since a
-  body-derived name absent from the copy reds `coord_roster_unknown_name` on that seat's first post.
-  *(2)* § 7.3's redaction rules are derived over **argv** and § 18.10 claimed to reuse them
-  *unchanged*, *"covered for free"* by § 7.5's fixtures. Both false: measured over all **728** real
-  coordination titles, the pass corrupts **7.0%** of them, **49 of the 51 hits being rule 4's
-  bare-whitespace separator firing on English** (`token that` → `token ‹redacted›`) — and § 7.5 could
-  not have caught it, because all 13 fixtures were `(tool, command-or-path)` pairs. § 7.3 now declares
-  two **profiles** differing in exactly one rule (`coord.subject` requires an explicit `:`/`=`), which
-  takes the damage to **0.7%** while still redacting every credential shape planted in a title;
-  narrowing rule 4 for *all* callers was refused because it deletes what fixture 9 holds. § 7.5 gains
-  **fixtures 14–17** and a **caller** column, and AT-2 gains a fourth RED that fails in **both**
-  directions. *(3)* Decision 45's no-rate-limit argument is sound only for deliveries that **pass**
-  step 3; a request failing the HMAC is by construction not GitHub's, so § 12.3's failed-auth limit is
-  reused for it and `coord_signature_invalid` counts a refusal that previously left no trace.
-  ⛔ **`converges` is deleted, because it could not make the distinction it existed to make.** Measured
-  over the coordination repository's **entire** comment population — 10,552 comments, with a positive
-  and a negative control — the *"zero open questions"* phrase is on **78.1%** of posts: it is a
-  per-post sign-off, so the flag was true **11.5** times per closed thread and `converges + closed`
-  collapsed to `closed`. The protocol's `[CLOSE]` token is on **2.12%** of posts, **37.8%** of closed
-  threads and **0.6%** of open ones — so `declares_close` keys on that, named for what the post
-  declares rather than for a thread property it cannot establish. It **gains** a fact finding B looked
-  to have lost: all 224 anchored `[CLOSE]` comments carry a `FROM:` line, so the closer is nameable
-  where `issues.closed` never names one. **Thread-level convergence is a QUORUM and is now declared
-  NON-DERIVABLE** — no observer-CC flag, no required-participant set, no ACK ledger — rather than
-  approximated. **AT-26 asserts the RATE over a replayed corpus**, because the defect is statistical
-  and every per-post assertion passes under both implementations.
-  ⚠ **Two claims this entry itself made are corrected.** *(a)* It said the obligations D2 and D3
-  inherit were *"recorded as requests"*; **no request was recorded anywhere in the diff**, and § 18.11
-  said the opposite in terms. There is still **no D2 or D3 edit** — what those documents inherit is
-  cited at its site and carried in § 18.13, and the join key is ruled on `card#7957`. *(b)* § 18.8
-  step 7 claimed the idempotency key *"cannot expire into a double-derivation"*. True of the
-  constraint's form, false of any store: the reporter's equivalent is bounded by § 11.3's 8-day spool
-  residency and **GitHub's Redeliver has no such floor**, so an old redelivery re-derives. Marked
-  `D2-CITED:` at its site — a gate that structurally could not see the class now can — with the
-  residual in § 18.13, and **steps 7 and 9 now commit together**, so a failed derivation leaves no
-  digest to absorb the operator's retry. Also corrected: `to` falls back to labels on a **measured 30.1%**
-  of posts, not the 15.7% a 300-comment sample suggested; the § 18.3 prefix row no longer restates a
-  set its own source says *"do not restate"*; `lifecycle`'s unreachable unrecognised-value clause is
-  gone; AT-24's fixture no longer wants two `issues.opened` on one thread and AT-25's no longer
-  depends on a config switch that is **off** here. New overall: **AT-26**, **decisions 46–48**,
-  **§ 18.3.1** and **§ 18.8.1**, eight § 14 rows, three § 16 build-order rows, four § 7.5 fixtures.
-  ⛔ **The route counters — ten then, eleven now — are declared in § 18.8.1 and deliberately NOT
-  enrolled in § 12.7**:
-  membership there is an obligation on the store's counter plane, and enrolling them makes
-  `verify-fleet-state.py` red once per counter — which is how the obligation was found, and it is
-  filed in § 18.13 rather than papered over.
-  ⛔ **A second review round then found three rationales that were false about their own sources, and
-  all three are re-derived rather than re-worded.** *(1)* **`participants` no longer reads labels
-  ALONE at `closed`/`reopened`** — its justification, *labels are more current than the body*, is
-  false at source, because the integrity Action **materialises** missing labels from the body's
-  `FROM:`/`TO:` lines and the `closed` delivery carries the body it has at close, already listed in
-  § 18.13 row 1 among the keys read. The cost was concrete: a thread whose labels had not arrived
-  emitted `participants: []` at its close, **losing both endpoints of the thread line at the moment
-  the floor renders it**, while `issue.body` in that same delivery named them. **AT-25 gained a fourth
-  RED at the `closed` moment** so the rule has a check that fails rather than a paragraph that
-  asserts. ⛔⛤ **The repair that round shipped — body-only, labels supplying no member at any moment —
-  is SUPERSEDED by the round-4 entry below, and its stated premise was FALSE.** It is described here
-  as it was, so the correction below has something to correct, and every claim it rests on is
-  withdrawn there by name. *(2)* **§ 18 never said what the hook
-  SUBSCRIBES to**, which is the root cause of § 18.13 row 5 claiming the `issue_comment.edited`
-  deferral was un-backfillable *because the hook was not subscribed* while pricing the fix, in the
-  same cell, as *"one action in step 8"* — a subscription problem and a derive-set problem at once.
-  § 18.8 now declares the subscription (**two whole events, every action**: `issues` and
-  `issue_comment`) as the deliberately wider set, with step 8 as the narrower derive set, written
-  granularity-independently so no unread claim about GitHub's registration model is load-bearing. It
-  also decides the default riding on it: **a step-8-ignored delivery commits NO digest**, so a later
-  widening is backfillable from GitHub's delivery list instead of being absorbed as a duplicate — and
-  row 5 is re-derived from those two facts, bounded honestly by a vendor retention nothing here can
-  read. *(3)* **The step-3 rate-limit bucket is keyed `(route, source IP)`**, a bucket of this route's
-  own. § 12.3's limit was priced over **seats sharing with seats**; this endpoint is unauthenticated,
-  so a shared bucket would have let anyone on the internet spend the refusal budget only a bad-token
-  holder could previously reach — decision 45's *"the same trade § 12.3 already accepted"* was
-  understating a population change, which is the round's own defect shape a fourth time. The
-  distributed-source residual a per-IP key cannot cover is now named rather than implied. Also
-  corrected, none of it load-bearing: AT-2's first RED said *"all 17 fail"* where fixture 14 passes
-  under an identity sanitizer (the fourth RED covers it, and § 7.5's own preamble said the same thing
-  wrongly); `coord_name_malformed` had **three disagreeing definitions** and now has one, at § 18.8.1,
-  covering both callers and both causes with absence distinguished from malformation; § 18.13's
-  *"`posted_at` is `null` on a `coord.thread`"* is scoped to `closed`/`reopened`; § 15's *"rows 46–48
-  are all one shape"* enumerated 47, 48 and **45**; and the one 8-character source pin in a document
-  that uses seven is gone with the sentence that carried it.
-  ⛔⛤ **A third review round then REFUTED the second round's own repair at source, and `participants`
-  is now the UNION of the body-derived names and the `to:`/`from:` labels.** ⚠ **This paragraph
-  supersedes a claim that is published in an uneditable place** — the commit message of `e2b0be1`, and
-  the paragraph above it — that *"a `to:` label naming anyone the body's `TO:` line does not is a
-  structural hard-fail … so the label set is a **subset** of the body-derived set by construction and
-  reading labels can only lose names."* ⛔ **That claim is FALSE and inverted, and this bullet is where
-  it is withdrawn**, because a commit message cannot be corrected in place and a reader who finds it
-  first must be able to find this. Three mechanisms, each read at `e9bc22a`: the integrity workflow
-  subscribes `issues: [opened, edited]`, `issue_comment: [created, edited]` and
-  `pull_request_target: [opened, edited]` and has **no `labeled` trigger**, so a label added to a live
-  thread is validated by nothing; the hard-fail **detects and repairs nothing** — the script's only
-  label mutation on any path is `addLabels`, and it removes none; and `DESIGNS/protocol-spec.md`
-  § Recipient addressing states that **membership is label-authoritative** and that widening it *is* a
-  deliberate label edit, which the gate's own remediation text repeats. **A label-widened thread is
-  the protocol's PRESCRIBED way to widen membership, not a violation nobody has caught yet.**
-  ⭐ **Measured over the whole live population 2026-08-28 — 729 non-PR issues: 36 (4.9%) whose labels
-  name someone the body does not, and ZERO in the opposite direction** — so the body-only rule was not
-  merely unproven, it was strictly **lossier** than the rule it replaced, on 36 real threads. Issue
-  `#635` is the worked case and is now AT-25's fifth-RED fixture: body `FROM: pm` / `TO: magento`,
-  labels `from:pm, to:pm, to:magento, to:platform, to:moodle` — body-only drops `platform` and
-  `moodle` while the delivery carries both. **Documenting it as a known miss was explicitly refused**;
-  it would ship a published field knowingly wrong 4.9% of the time and rename the defect as
-  documentation. ⭐ **AT-25 gains a FIFTH RED because the fourth could not catch this**: the fourth
-  pins *"do not read labels alone"*, so it passes under every body-reading rule including the body-only
-  one — which is how the defect shipped past five green gates. § 18.5's *"the protocol names that
-  source authoritative"* is scoped to **addressing**, where it is true, and away from **membership**,
-  where it contradicted the spec sentence § 18.5 itself quotes. `coord_participants_unlabelled` is
-  kept — it guards the no-source-at-all boundary — but its live population is **0 of 729** and it is
-  no longer cited as the counter that would have caught this; the **new `coord_participants_label_only`**
-  counts the union's disagreement case, with a known expectation of 36 of 729. Also corrected in the
-  same pass: the *"14.6 times per closed thread"* ratio divided two different populations and the
-  honest same-population figure is **11.5** (6,526 phrase-carrying posts on closed threads ÷ 568
-  closed threads, 2026-08-28); § 18.6 re-minted finding A's **641** as *"unlabelled deliveries"* when
-  it is a count of `issues.labeled` **deliveries** on another system's stream (`CoordinationClassifier`
-  at `f85b419`) and **0 of 729 live issues lack an addressing label**; § 18.13's *"two of these nine
-  are closed by one act"* is **two fully and one partly**, since three rows name a capture; § 12.3's
-  failed-auth limit is keyed `(route, source IP)` to match the bucket § 18.8 actually reuses; and
-  § 4.1's endpoint table now lists `/api/ingest/github` by pointer.
-- **card#7976** — **the acceptance suite leaked one live flusher daemon per run, and the mechanism
-  was not the one the card described.** `Seat.freeze_flusher` writes `flusher.lock` so a hook
-  observes a live owner (§ 2.3) instead of forking a real flusher into an exact-count assertion —
-  legitimate precisely because it uses the product's own liveness rule and disables nothing. But
-  that rule is `now() - lock.mtimeMs < LOCK_STALE_MS`, `now()` is whatever `FLEET_REPORTER_NOW_MS`
-  says, and the freeze used **wall time**. So the one hook the spool-overflow entry directly below
-  this one pinned **two hours ahead**
-  (§ 4's aged-out drop, `of_at + 2 h`) read a just-written lock as two hours dead, concluded
-  correctly by § 2.3 that no flusher was alive, and forked a real detached one with no exit
-  condition — **within 35 s of the run starting, not after the 90 s expiry the card described.**
-  Measured at `cbc2a6a`: a full 163 s run took the box from 12 live daemons to 13, and the one it
-  added carried `FLEET_REPORTER_CONFIG=…/overflow-aged/config.json` with
-  `FLEET_REPORTER_NOW_MS` 54 minutes ahead of wall time.
-  ⚠ **Two corrections to the filed report, both measured rather than argued.** *(1)* The 90 s
-  expiry is real but **latent**: no seat here is driven late enough on a real clock to age out of
-  its own freeze, and a run in which it fired would have leaked more than the single daemon
-  observed. *(2)* The dozen daemons accumulated on the reporting workstation were **not this
-  suite's** — their configs are `/tmp/tmp.*`, `/tmp/mezzanine-roundtrip-*`, `/tmp/rtprobe-*` and
-  two scratchpad paths, while every seat here lives under a per-run `/tmp/fr-suite-*`. They came
-  from ad-hoc probe rigs, which is a separate leak with a separate owner.
-  ⛔ **So the obvious fix — re-freeze before every hook — was rejected on evidence rather than on
-  the docstring's disclaimer**: re-freezing on wall time leaves a pinned invocation exactly as
-  stale, and would have fixed none of the leak that was actually happening.
-  **The freeze is instead pinned to the clock the invocation will read**, in `Seat.env()` — the
-  one place that both decides `FLEET_REPORTER_NOW_MS` and is reached by every invocation,
-  including the AT-10 and AT-16 writer bursts that build their hooks in generated source and never
-  call `hook()`. The lock is then 0 s old under whatever clock that hook uses, which is the state
-  the freeze always modelled and never achieved when pinned; `flush()` opts out
-  (`env(freeze=False)`) because it *is* the flusher and must find no lock.
-  ⚠ **Reached by every invocation, but re-applied per `env()` CALL — and those two coincide
-  everywhere except the writer bursts.** AT-10 and AT-16 call `env()` once per worker `Popen` and
-  the worker then drives 40 (resp. 15) hooks off that one freeze, so for those two paths the
-  window is **narrowed, not closed**, and the "0 s old" property does not extend to their hooks
-  2..N. Measured under the bursts' own concurrency rather than extrapolated from the idle p99:
-  the lock's age at the last hook is **22.6 s** (AT-10) and **6.5 s** (AT-16) against
-  `LOCK_STALE_MS` 90 s — a **4x** margin, and AT-10 would have to grow ~4x, to ~159 hooks per
-  worker, before a hook in it read its own lock as stale. Left open deliberately: closing it
-  requires a second freeze implementation inside generated worker source which could only
-  re-stamp the lock on *wall* time — the exact defect fixed above — and would be silently wrong
-  the day a burst is given a pinned clock. § 17 is the guard, and it fails loudly.
-  ⭐ **The freeze is prevention, and prevention that fails is silent — so the run now also
-  MEASURES.** A new § 17 sweeps `/proc` for flusher daemons whose config lies under this run's own
-  temp directory, **fails** the suite naming each one, then reaps them; scoping identity to the
-  run's `mkdtemp` is what makes reaping safe beside another checkout's daemons or a concurrent run
-  of this same file. **A control daemon is planted first** — a wall-clock freeze plus a hook pinned
-  two hours ahead, the defect verbatim — and the sweep must find it and then see it gone, because a
-  sweep that passes by finding nothing is worth nothing until it has found something. Where
-  `/proc` cannot be read the sweep prints `SKIP` and is reprinted as *not measured*, never as a
-  pass. Shown to discriminate: with the clock-correct freeze reverted the run reds four checks and
-  names both leaked daemons by config path.
-  **CI was not accumulating these.** All six workflows are GitHub-hosted `ubuntu-latest`, whose
-  per-job VM is discarded, so nothing carries across runs — this was workstation hygiene. One
-  in-job consequence was real, though: `fleet-reporter.yml` runs the suite twice in one job and the
-  second step is the latency gate, whose own comment has it running "on an otherwise-idle job". A
-  daemon leaked by the first step was alive throughout the second, so that premise did not hold;
-  the end-of-run sweep restores it. ⚠ **No claim is made that these daemons affected any
-  measurement** — they idle at 0% CPU and their contribution has never been measured.
-
-- **card#7965** — **the ratified floor-preview is a reference implementation of a subset of D3 and
-  never said which subset, so an absent render surface was indistinguishable from one that was
-  missed.** The artifact is what card#7341 builds FROM, and the reader who needed that answer is
-  that card's implementer. Three surfaces already said the artifact was *partial*; none said *of
-  what*, and `docs/design/floor-preview/README.md`'s *"encodes, as working code, every design
-  ruling of the 2026-08-26/27 operator sessions"* — true of the operator's **design** rulings —
-  reads as coverage of D3's **render surfaces**. **That conflation was the defect, not the
-  absence.** ⛔ **The alternative was declined on the product, not on cost:** completing the preview
-  against D3 would make it a second full implementation of D3's render surfaces — the floor built
-  twice — and card#7341 a port of it rather than the build. There is one build. So the artifact now
-  carries **one machine-readable scope table**, a row per membership-tested render surface `FLOOR.md`
-  § 5.4 publishes (the same six `verify-floor.py` **G7** closes over): *implemented*, naming the
-  render table it is implemented by; *partial*, for `link_state`, which renders **raw** in two
-  drill-down blocks and is **not** membership-tested; or *not implemented*, naming why in one clause
-  (§ 7.2's eighteen badges, § 7.6's `activity_state`). It is rendered on the page from that same
-  table rather than re-typed, and the membership test itself is **derived** from it, so a row is the
-  one place a surface's status is written. ⭐ **A declaration with no check is a comment, and this is
-  the case where that bites**, so `floor-preview.selftest.mjs` re-derives § 5.4's six from the
-  document — from **both** of § 5.4's enumerations and its own count in words, cross-checked — and
-  set-differences them against the table **in both directions**: a surface D3 gains with no row reds,
-  and a row for a surface D3 does not publish reds. **D3 gaining a seventh surface now reds the gate
-  instead of passing silently**, and each direction has its own anchored mutation control, one of
-  them a D3 that *grew* a surface rather than one that broke.
-  **Three defects in what the artifact does implement, all in the same class and none reachable by
-  the member-set primitive card#7943 landed — they are keyed on IDENTITY, not on an enum member.**
-  (1) A seat's `desk` against the floor map: the SVG iterated a **fixed four-slot list** and
-  silently **dropped** any seat outside it, while the overlay pass read `THEMES[inst].desks[s.desk].x`
-  and **threw the whole render away** — one fact derived twice, failing in opposite directions on the
-  same seat. § 3.2's overflow rule and § 9 **F13** state the behaviour that is neither: the surplus
-  seats render in a **labelled overflow row** with the same desk and the same render, under a
-  persistent notice reading *floor map is short N desks*, and F13's *Never* column is one phrase —
-  **dropping a seat**. Placement is now **one pure function** of (map, seat list) that both the SVG
-  and the overlay pass read, and the map's slot count `S` comes from the map. (2) Three unguarded
-  `THEMES[…]` lookups threw on an install the client's art has never seen; all three now resolve
-  through one function, and the unthemed floor declares **no slots**, so § 3.2's overflow rule is
-  already the whole answer for it — every seat of an unknown install renders, labelled. (3)
-  `subagents[].subagent_type` was defaulted to *"intern"*; § 5.6 says the type tag is **not drawn**,
-  so it is not, and a substitute stated a fact the wire never sent. ⛔ **`title || "untitled"` beside
-  it was NOT changed and must not be**: § 5.1 gives a null title the literal *untitled* and AT-D3-4's
-  first RED is falling back to `subagent_type`, the tool name or *"subagent"* — the two nulls are
-  different rules, and treating them alike would break the compliant render to fix its neighbour.
-  Both are now one function with a control per direction. **The sample fleet carries a seat with no
-  slot on the `sola` floor and interns for both null edges**, because a behaviour no sample reaches
-  is one no implementer sees — the artifact is where card#7341 reads what these render like. The
-  gate carries a planted mutation for every layer, and **how many is counted at run time and printed
-  on the run's own last line** rather than restated in the files that describe it.
-  ⭐ **And the overflow row was drawn INSIDE the floor — on top of sola's tea bar — while every
-  check above passed. D3 § 3.2 had already said where it goes: BELOW THE FLOOR.** Four passes read
-  § 9 **F13**'s summary row, which names the row and its notice but not its position, and § 3.2 at
-  `FLOOR.md:537` is what owns the position. Drawn inside the floor, the row needed machinery to be
-  safe — a per-theme `overflow:{x,y}` origin, a declared "clear run" between the tea bar and the
-  plant, a stated row capacity, and a pairwise desk-versus-furniture collision gate over an
-  arbitrary-shape bbox extractor. **All of it is deleted, because the question stops being asked**:
-  an overflowing floor is now drawn on a canvas one band taller and the row lives in that appended
-  strip, so the floor's shapes stop at `FH`, the band's start there, and collision is impossible by
-  construction **at any row length**. What replaces the collision gate is one invariant with one
-  scalar per floor in each direction — **nothing the floor emits reaches below `FH`, and nothing the
-  band emits rises above it** — with a planted-mutation control for each leg (furniture pushed below
-  the line; the band raised back up into the floor), each seen red first. ⛔ **And an unmeasurable
-  shape now makes that assertion FAIL.** The deleted layer guaranteed *unmeasurable is loud* and the
-  guarantee was false in four demonstrated forms — an arc command, a `<polygon>`, a `NaN` width and
-  an unmodelled `stroke-width` — three of which stayed **green** with an obstacle drawn on the desk,
-  because each fell through a silent `else` and left a shorter list of boxes that still looked
-  clean. Every element is classified now, a tag the measurement does not own is named, and the
-  answer is *not measured* rather than a number. Two of the four are now MEASURED instead — an arc
-  is bounded by ±2r about its endpoints, a stroke pads its shape by half its width — and the other
-  two are planted controls, beside the two generalisations of the same class (a path command the
-  measurement does not implement, a transform it does not model). ⚠
-  **Still not evidence about the picture**: this is arithmetic on the artifact's own emitted
-  coordinates, so z-order, opacity and the difference between a box and the ink in it are outside
-  it, and where a bound cannot be computed exactly it is computed **wide** so that its only possible
-  error is over-reporting.
-  ⭐ **AND THAT LAST SENTENCE IS WHY THE ROW MOVED AND COLLIDED AGAIN — this bullet's own fix was
-  the fourth in one class, and the fifth round stopped patching it.** With the band correctly below
-  the floor, the sample seat's thought bubble landed **on the band's own arithmetic line** (the slot
-  and seat counts, behind an opaque white bubble) and its nameplate hung **out of the strip**, chip
-  and command line over the lobby. Every gate above was green, and the root cause is structural, not
-  arithmetic: **the artifact has two coordinate systems** — SVG user units, and HTML overlays
-  (`.bub`, `.plate`, `.mk`, `.hit`) positioned over that SVG but **sized in CSS pixels** — and
-  **every gate ever built here measured only the SVG layer**, so each round moved SVG content
-  correctly and re-collided with a layer in no denominator. § 8's own overlay leg made the same
-  mistake one level down: it compared the bubble's anchor against `FH`, which is where the strip
-  *begins* — and the strip begins with the header the row must not cover.
-  **The upstream fix is `tools/design/floor-preview.browser.mjs`**: assert geometry from
-  `getBoundingClientRect()` in a real headless browser, where both layers share ONE coordinate
-  space, so *does the bubble cover the header* is a rect intersection between things that were
-  actually laid out — **no transform parser, no arc bounding, no stroke padding and no *not
-  measured* category**, none of which is a question once the browser has done the layout. It asserts
-  its client↔user-unit map against a measured element before deriving any region through it; that
-  **no overlay covers any line of the band's header**, measured with the browser's own glyph widths;
-  that **every overlay is inside the storey region its own `data-band` declares** — the artifact
-  now declares that, and the gate checks the declaration instead of believing it; and that **every
-  child of `#world` is either judged or a declared animation affordance**, so an untagged overlay
-  class reds rather than sitting outside every check. Its population is two room widths × three
-  framings, and **widths are the only axis that can falsify anything**: `#world` scales the SVG and
-  the overlays together, so an overlay's user-unit size depends on the room's width alone — measured
-  across all six cases, not assumed. **No browser is a FAILURE, never a skip.** Its controls re-mint
-  head `fe482eb` whole — both constants at the values that shipped — and require both defects to go
-  red on their own messages, beside a floor-side containment defect, a lying `data-band` and an
-  untagged overlay. The two instances are fixed by giving the band a budget for the **whole overlay
-  stack**: the desks move to `FH+300` (the bubble's anchor clears the header's own deepest bound by
-  40 user units) and the strip to `520` (the nameplate is `53.8` CSS px, so the strip must cover
-  `300 + 64 + 53.8·BW/room`, which carries down to a 655 px room — derived by the gate, not stored).
-  § 8's static invariant is **kept** as the cheap no-browser backstop, with its overlay leg now
-  held against the header's re-derived extent and a control planted at the value the old `>= FH`
-  leg passed. ⚠ The browser gate measures **boxes, not ink**: opacity, z-order and legibility are
-  outside it, and opening the file remains the last word on how it looks.
-  Two adjacent limits are **stated rather than left to be inferred**: `deskSVG` hangs the intern
-  tray *outside* the slot, so at n ≥ 2 a seat with subagents reaches into the next one, and past
-  roughly n = 12 the clamped slab is narrower than the character drawn on it — both are `deskSVG`
-  re-layouts and belong to card#7341's build; and `placeFloor` is **order-dependent**, so it is a
-  pure function of the seat *list* and not of the seat *set*
-  § 3.2 asks for — § 3.2's own answer is the slot function `h(seat)` with forward probing, which
-  this preview does not implement and card#7341 does. **A gate hole in the same class was closed in
-  the gate itself, at every site that had it**: an `indexOf` result was used as a **slice bound**,
-  and `indexOf` answers `-1` for a heading that has moved — `slice(i, -1)` is *the document minus
-  one character*, not *to the end*. A § 5.4 whose closing anchor had moved silently widened the
-  population to the rest of the document, where six surface names are still findable, and the gate
-  printed `ok parsed 6 render surfaces from § 5.4` over a § 5.4 that published none — **the
-  false-clean shape this whole deliverable exists to prevent, inside it.** Fixing that site alone
-  left the others, and renaming § 7.1's closing anchor `### 7.2 Badges` widened its slice to a
-  quarter of the document with the ten `render_state` members still parsing out of it, so the gate
-  stayed PASS. All of them go through **one `sliceBetween(md, open, close)`** that returns `null`
-  when either anchor is missing, every caller treats `null` as a failure rather than an
-  empty-but-clean parse, and one control renames each closing anchor in turn and **prints** what the
-  replaced shape would have widened to. ⚠ **The widths are not written down here, and that is the
-  point rather than an omission**: an earlier revision of this bullet and of the primitive's own
-  doc-comment each carried one, and both were stale within two commits — a figure restated inside
-  the argument that restated figures drift is that argument demonstrating itself. The run prints
-  them. § 5.5's notice is asserted **in full** against the
-  re-derived shortfall rather than by its opening words, which left the count and the noun free to
-  drift and stay green.
-
-- **card#7952** — **the spool-overflow check read a wall clock it never meant to depend on, and reds
-  on CORRECT behaviour when a run straddles a top-of-hour by more than the grace below.**
-  `… and drops nothing while deferring`
-  asserts that a hook over the 2 KiB bound refuses to unlink the live bucket. That refusal is
-  **hour-keyed**: `enforceSpoolBoundFromHook` defers while the oldest bucket is the current-hour
-  bucket, and once that hour has ended plus `BUCKET_GRACE_MS` the same hook **drops it, correctly**
-  (§ 11.3). The 20 hooks were driven off the real clock and take **~5.0 s measured** — the same order
-  as that **5 s** grace — so a run crossing the roll watched the reporter do exactly the right thing
-  and failed the assertion for it. Reproduced deterministically under a pinned clock: a simulated
-  crossing that ends past the grace drops the pre-roll bucket (`spool_dropped_events=5`), and pinning
-  the roll to just after the first hook reproduces the **exact reported `expected 0, got 1`**; the
-  same crossing held *inside* the grace, and a pinned run that does not cross at all, both stay green
-  — so it is the crossing, not the pinning. **The contention it was blamed on is real but is the
-  amplifier, not the cause:** no drop path in the reporter is reachable without the oldest bucket's
-  hour having ended, so load can only red this check by stretching the block past the 5 s grace —
-  and a ~5.0 s block against a 5 s grace has essentially no margin to lose. ⛔ **Not fixed with a
-  retry and not by loosening the assertion**: the assertion was right and the reporter was right, and
-  the harness was the wrong side. The 20 hooks are now pinned 30 minutes into the previous UTC hour,
-  where no run duration — loaded, slow disk or otherwise — can reach a boundary. ⭐ **The pin also
-  turns the accident into coverage.** The hook-side aged-out drop, § 11.3's other half, was executed
-  only when a run happened to straddle the roll — the flake *was* its only exercise — and is now a
-  stated check that one hook two hours on drops the bucket and counts **all 20** lines. Both arms are
-  shown to discriminate: with the hour guards planted out the deferral assertion reds (`dropped 20
-  while deferring`), and with the drop planted out the complement reds — **the latter being a defect
-  the block could not previously catch at all**, because a reporter that never drops satisfied every
-  assertion it contained.
-
-- **card#7943** — **the ratified floor-preview carried SIX copies of one enum's member set, four of
-  them covering only the four `render_state` members its frozen sample fleet happens to contain.**
-  `FLOOR.md` § 7.1 defines **ten**, and § 5.4 / § 9 F9 / AT-D3-11 require an eleventh case — a
-  member the client does not know — to render as **explicitly unrecognised, carrying its raw
-  string**, never mapped to the nearest known member and never a crash. `GL`, `SCREENC`, `POSE`
-  and `labelFor`'s switch each broke that, and **the loud one was the least of them**:
-  `GL[s.render_state]` destructured `undefined` and threw a TypeError that
-  killed the whole render, while `SCREENC` emitted `fill="undefined"` into the SVG, `POSE` drew a
-  default creature and `labelFor`'s switch fell through to `undefined` — three SILENT wrong renders
-  that look like a render and report nothing. ⭐ **A FIFTH site was found by re-reading the
-  subsystem rather than by grepping the field name, and it was silent too:** the lobby's per-floor
-  summary iterated § 7.1's fixed member order, which over a wire value is a **filter** — a seat in
-  an unrecognised state fell straight out of its own floor's count (four seats at the desks, three
-  on the line), which is AT-D3-15's *the lobby never invents a count* failing in the direction
-  nobody watches — **and it was MASKED by the crash above.** The desk loop runs over every floor
-  before the lobby does, so at the pre-fix revision an unrecognised seat anywhere threw out of
-  `GL[…]` and no lobby line was ever drawn to be wrong; removing the crash is what makes the
-  undercount the live failure mode. It had to land in the same change for exactly that reason: a
-  fix that converts a loud failure into a silent one is not a fix.
-  **The repair is one table and six derivations, not six patched call-sites**: one
-  row per § 7.1 member in § 7.1's own order, carrying the desk render, pose, marker, chip class,
-  monitor tint, currency and label line as cells, and one explicitly unrecognised row beside it.
-  The member set is now written **once**; patching the sites independently is what minted six
-  copies of it in the first place. **Reachability, stated rather than implied:** unreachable today — the artifact ships a
-  fixed sample fleet — and reachable the moment card#7341 feeds it a live wire, where D2 can
-  deliver any of the ten. ⛔ **The unrecognised desk keeps its character and is drawn NOT-CURRENT.**
-  An empty chair is the render of `stale` and `offline` (§ 7.1), so drawing one for a member nobody
-  recognises would be the nearest-member guess arriving through the desk instead of through the
-  chip; the character is the seat's identity redrawn, which § 5.4 admits explicitly and which says
-  nothing about state. ⭐ **`api_error_type` gets the same treatment, because § 5.4 gives it the
-  same rule** — *"rendered verbatim **and** membership-tested… Reading the two rules as
-  alternatives is what would make one of them dead"* — and § 5.2's drill-down table has no row for
-  it, so the desk line is its only surface. § 7.6's twelve now render as **the raw value with the
-  published phrase beside it**, a thirteenth renders with the **unrecognised** marker, and an
-  unrecognised value in *any* membership-tested field the desk draws — not only `render_state` —
-  makes the desk not-current. Without that, AT-D3-11's second RED would have arrived through a
-  different field in the release that fixed it for the first. **⚠ Reported to D3's owner, not
-  settled here:** § 7.1's Label line cell writes the example as *API error — rate limit*, eliding
-  the raw value that § 5.4, § 5.1 (*rendered verbatim*) and § 7.6's column heading (*The line
-  beside the raw value*) all require. Two rule statements and a heading outrank one abbreviated
-  example.
-  **Four label cells were not § 7.1's Label line and three of the four were visible on the
-  ratified artifact**, carried in from the old switch: `idle` dropped ***finished — ***, which is
-  the half that makes it a *positive observation* rather than the silence § 7.5 refuses; `blocked`
-  dropped ***(seat clock)***; `stale` and `offline` wrote *— 11m* where § 7.1 writes *— **no data
-  for** 11m*. Consolidating six copies into one primitive is where the primitive owes being right.
-  **Visible changes to the ratified picture, and only these:** the `stale` sample desk gains the
-  not-current treatment § 7.1 and § 7.3 already specified for it (*empty chair, desk dimmed*), and
-  four sample desk labels gain the § 7.1 text they were missing. The floor SVG is otherwise
-  byte-identical.
-  **The check is `tools/design/floor-preview.selftest.mjs`** — Node, no dependencies, no network.
-  It re-derives **three** published tables from `FLOOR.md` and compares them **cell by cell**:
-  § 7.1's ten members *with their Label line column*, § 7.1's seven `unknown_reason` sentences,
-  and § 7.6's twelve `api_error_type` phrases — so a member added to D3 with no row reds it, and
-  so does a rendered string that has drifted from the document's. ⛔ **The first revision of this
-  suite parsed only the member NAMES while three surfaces claimed it checked the sentences**; a
-  sentence rewritten to say the opposite of D3 ran green. Fixed, and the fix is proved by
-  mutation. **Seen to fail**: 38 checks red against the pre-fix artifact, plus five anchored
-  mutations — the pre-fix lookup, the lobby filter, a rewritten sentence, a rewritten phrase, and
-  a label cell reverted — each required to go red on its own, because a check that only ever ran
-  behind a crash, or only ever ran green, is a check nobody has seen work.
-
-- **card#7936** — **A17's clock had two setters and its accessible text was bound to one of them, so
-  the hands and the text could render the same minute differently.** `FLOOR.md` § 6.2 A17
-  constraint 5 read *set by the same A17 firing that moves the hands and by nothing else* — but
-  constraint 4 and § 6.5 give the hands **two** setters: the firing, and the render that establishes
-  or re-establishes a LIVE feed, which moves the hands and writes **no** animation-log row (§ 11: *a
-  firing writes a row, where the setting of § 6.5 writes none*). *By nothing else* excluded the
-  second. A client built from that sentence draws the **connect snapshot** with hands on the current
-  minute and an accessible name never set, and a **successful reconnect** with hands on the new
-  minute and an accessible name still holding the minute from before the disconnect — **one fact,
-  two renderings, disagreeing**, which is the *exactly once* premise of that same constraint and
-  § 2.4's one-form-per-fact rule broken by the sentence invoking them. It is worst on the path A17
-  exists to make visible: a reconnect onto a feed that then dies (§ 9 F1) freezes the hands at the
-  reconnect minute and the text at an **older** one, so a screen-reader user is told a *different*
-  wrong time from the one on the wall. **The repair is to bind the text to the hands rather than to
-  a named driver** — *set in the same render that sets the hands*, with constraint 4 left owning
-  which renders those are — so the coupling survives the driver set moving again, and no fourth
-  phrasing of the set-vs-fire distinction is minted. ⭐ **The unset case is stated for the first
-  time:** § 6.5 draws a never-live clock **unset**, while *the minute and nothing else* said nothing
-  about a clock with no minute; the text is now decision 13's ***not reported***, never an empty
-  string (an element with no accessible name is a clock assistive technology cannot find) and never
-  a plausible time. **No gate caught any of this and one now does:** AT-D3-6's first read of the
-  text fell inside the heartbeat phase, by which time a firing had set it either way, so the test
-  passed on a defective client. It gains a GREEN that reads the text **before the first heartbeat**,
-  where only the establishing render can have set it, and a **fifth RED** — the text driven by the
-  firing alone — which passes every other assertion in the test and fails only that read.
-  **Deliberately NOT changed, and reported instead:** § 2.5's 1 s-tick row (*advances on the
-  heartbeat and on nothing else*) and § 5.5's row (*read at the moment a `feed.heartbeat` arrives*)
-  are statements about what may **drive** motion, and § 6.5 is explicit that setting a value on
-  first paint is not an animation of it — so both are true as scoped and neither is restated here.
-  § 2.3's computed-values row was the one flatly false copy — *sampled when a `feed.heartbeat`
-  arrives **and at no other moment*** is a universal negative § 6.5 contradicts — and it now points
-  at constraint 4 rather than carrying its own spelling of the rule. **The reference artifact needed
-  no change and is the evidence the property is buildable:** `floor-preview.html` already sets the
-  `<title>` in `paintRoom()` on every path that moves the hands, already sets the room in
-  `establishLive()`, and already renders unset as *no time set* — the implementation was right and
-  the specification was wrong.
-
-- **card#7897 (part 1)** — **the seat's task is a THOUGHT BUBBLE, and the bubble REPLACES the text
-  chip rather than joining it.** `FLOOR.md` § 5.1 named the element *the task chip* in four places
-  (§ 5.1, § 5.6, § 7.5 and AT-D3-14) while the operator-ratified reference artifact had already been
-  drawing a bubble and no chip since 2026-08-26 — so the document and the artifact card#7341 builds
-  FROM disagreed about the desk's single most visible element. The amendment is a **form** change on
-  the test that decides one: the same five driving fields, the same honesty properties, **no D2
-  change and no new § 6.2 row**, because nothing about the bubble moves. § 5.1 now carries the
-  element's one statement — six rules — and every other site names it and points there. ⭐ **Three
-  of the six are not restatements of the chip's rules.** *(1)* **One rendered form**: a chip
-  surviving beside a bubble is one fact drawn twice (§ 2.4). *(2)* **A desk that draws no character
-  draws no bubble** — the bubble is anchored to the character, and `stale`, `offline` and `retired`
-  draw an empty chair or a cleared desk (§ 7.1). This is **the amendment's only truth-content cost
-  and it is stated rather than hidden**: a dark desk that used to carry a chip now carries none, and
-  the value is read in the drill-down under that panel's currency treatment — the fact is not lost,
-  the desk's claim about a seat nobody can hear is. *(3)* **A title too long for its desk truncates
-  with a MARK**, in a box sized from the measured text; a silently clipped title is read as the whole
-  title, which is a claim the wire did not make. ⛔ **One directed behaviour is REFUSED and the
-  refusal is recorded as decision 22 rather than left in a PR:** the ruling directs adoption of
-  upstream's `0.15 s` fade-in → `1.2 s` linger → `0.3 s` fade-out state machine. Its linger is a
-  timer (§ 6.3's second forbidden form), its fades are motion with no row, and the fade-out
-  **collapses the null render** — once a bubble hides itself, *no bubble* stops meaning *`task` is
-  null* and starts meaning *`task` is null **or** the linger expired*, and a null render two facts
-  produce is not one. Upstream's machine is right for upstream: its bubble reports a **tool call**,
-  an instant, where ours reports a **standing fact**. Its load-bearing half —
-  re-show-swaps-text-without-re-fading, which exists to stop a busy seat's label strobing — survives
-  for free, because a bubble that never fades cannot strobe. The overlap resolver and the
-  measured-box sizing are adopted, as § 5.1 rules 5 and 4. **The reference artifact is corrected in
-  the same change on two counts, both of which it was RENDERING:** its `.bub` carried a
-  `4.5 s ease-in-out infinite` float — an un-held loop with no § 6.2 row, § 6.3's first bullet, the
-  same defect shape as the `10 s` clock interval § 10.4 already refuses — and its character test was
-  `render_state !== "stale"` **written twice**, once for the sprite and once for the bubble, so a
-  sample seat in `offline` or `retired` would have drawn **both a character and a thought bubble on
-  a desk § 7.1 says is an empty chair or cleared**. Both now select on one predicate,
-  `hasCharacter()`, keyed on the member set. **Deliberately NOT fixed, and reported instead:** the
-  artifact's `.glowpulse` — a `2.4 s` infinite pulse on every occupied desk's lamp, the meeting-room
-  lamp and three status dots — is the same un-held-loop class, but it is ratified warmth on an
-  operator-taste surface rather than this card's element, so it is surfaced for its own ruling.
-
-- **card#7930** — **D1's harness-fact gate stopped being red for a reason that had nothing to do
-  with D1, and D1's own re-capture obligation is discharged at 2.1.247.** `verify-harness-facts.py`
-  pinned its ground truth to an absolute path ending in `2.1.240` — a build the installer
-  garbage-collects — so it had emitted **31 failures** since the first harness update after it was
-  written, **30 of them saying real hooks "are not declared in this build"**. A reader repairing D1
-  to match that output would have deleted true facts, and *a gate that reds on correct work is a
-  gate that gets ignored*. Three more build-specific literals were pinned beside it: the
-  bundler-generated name `Ht` (regenerated every build), § 17's capture-run figures, and — the one
-  that could have put a **false fact into the document** — global-first-match identifier
-  resolution, which resolved `Notification.notification_type` to a 2-member set at 2.1.247 and to a
-  **39-member list of shell dotfile names** at 2.1.243. It was right at 2.1.240 by luck. The build
-  is now **READ from D1's five declared-build sites**, which must agree; the versions directory is
-  derived from wherever `claude` on `PATH` resolves; identifier resolution is module-scoped and
-  follows a bundled `import`/`export` pair to the declaring chunk; and when the declared build is
-  absent the gate still reds — **fail-closed is the point** — but with ONE line naming the build,
-  what is installed, and the fix. ⭐ **Newest-installed is deliberately not a default**: silently
-  re-binding converts *"true of 2.1.240"* into *"true of today's box"*, which is the false clean
-  the gate exists to prevent. ▶ **The re-capture then answered the card's real question:
-  NOTHING D1 states about the harness moved** across `2.1.240 → 2.1.243 → 2.1.245 → 2.1.246 →
-  2.1.247` — 0 of 22 fixture key sets, 0 of 9 enum value sets, 31 hooks, and every firing condition
-  re-observed. **Two facts got stronger**: `PostCompact` and `SessionStart(source=compact)` were
-  DOCS-CITED as *"not drivable"* and are now MEASURED (`claude -p --resume <sid> "/compact"` drives
-  both), and `PostCompact`'s real key set is **exactly** what the stub declared — the first evidence
-  this document has that a stub read from the binary is a fact and not a hope. **One thing is
-  contested and deliberately left open**: three of three headless dispatch runs at 2.1.247 produced
-  the **2.1.240** subagent lifecycle, not the 2.1.245 one D1 records — but that run varies *mode*
-  as well as *version* (the 2.1.245 row was measured through a real TUI), so it settles nothing and
-  **no fact was edited to prefer either reading**. Raw captures stay uncommitted per the 2026-08-23
-  ruling; the rig was scoped with `--settings`, never by editing `~/.claude/settings.json`, because
-  three other agents were live on this box. ⭐ **pm ruled the fork closed rather than open** — § 8.7
-  already requires *both* lifecycles to be handled and AT-1 carries a GREEN case for each, so
-  settling it would buy only the right to delete a trace the document must keep; **the primitive it
-  exposed is fixed instead**: § 6.0 obligation 2 now names **MODE** (headless `claude -p` vs a real
-  TUI) as a second axis beside VERSION, so *a fact measured in one mode is not established in the
-  other* and the next re-capture records which mode a fact came from instead of re-opening that row
-  at every build. Its **cost claim is corrected from estimate to measurement** in the same
-  obligation — *"re-running it is minutes"* was **the argument the requirement rested on**, and the
-  measured discharge was ten driven sessions, a fixture diff, ~25 restated version sites and
-  propagation into the reporter; an obligation defended by an estimate an order of magnitude low is
-  one that gets deferred, which is what happened across five builds. § 16 now **points at** that
-  obligation instead of carrying its own copy of the trigger, and names the two levers that would
-  make the next re-capture cheap.
-
-- **card#7913** — **Gate 2 now runs over all of `resources/`, and Tiled's default layer encoding
-  is refused rather than exempted.** Gate 2's argument became **universal** on 2026-08-27 (*every
-  asset is a file Gate 1 can see*) while its enforcement stayed scoped to `resources/characters/`.
-  So `resources/floor/` — the tree about to receive this project's **first vendored third-party
-  art** (card#7341) — was covered by Gate 1 and by **neither Gate 2 clause**: a `.psd` there passed
-  with a valid row, and a 40 KB base64 PNG pasted into a `.js` there had no path, no row and
-  nothing to object. Both of those are now REDs in `bin/asset-provenance.selftest.py`, and both
-  **passed** before this change. ⚠ **"Widen Gate 2" is a TWO-knob change** — the tree *and* the
-  file-type allowlist — and moving one alone is not a widening: measured on a correct, CSV-only map
-  set with zero base64 anywhere, widening only the tree puts **4 of 5 files RED**, not one of them
-  for an embedded-bytes reason. Both knobs moved: clause 1 admits **`.tmx` / `.tmj` / `.tsx` /
-  `.tsj`**, each with its reason in `FLOOR.md § 10.1`, **including the `.tsx` collision** (Tiled
-  Tileset XML *and* TypeScript-JSX — harmless under `resources/` today, named so it is not a trap).
-  ⭐ **New clause 3, and it is what lets clause 2's 1,024 B ceiling apply to the map formats with NO
-  carve-out:** every Tiled artifact must store layer data **plainly as CSV** and **embed no tileset
-  image**, read out of the artifact's own `encoding` / `compression` / `<image source=>` — no
-  heuristic, no alphabet, no ceiling to tune. The embedded tileset image is the **true positive**:
-  image bytes inside a map, with no path, therefore no row, therefore no provenance. Exempting
-  `.tmj`/`.tmx` from clause 2 would have re-opened exactly that. ⭐ **And the reason it is CSV rather
-  than a carve-out is a measurement, not a preference:** `looks_encoded()` is an AND over three
-  character classes, so a run missing one passes clause 2 **at any length** — and Tiled's ordinary
-  uncompressed base64 layer data (little-endian `uint32` GIDs) misses one routinely. Over a uniform
-  1,200-tile map at every GID in `0..255` the run is **6,400 B in all 256 cases** and **154 of them
-  pass clause 2**, including **GID 1, the first tile of the tileset**. A carve-out would have had to
-  be reasoned against a verdict that flips when an artist repositions a tile. The selftest carries
-  that coin as a pair — GID 1 evades clause 2 and clause 3 catches it anyway; GID 14 trips both.
-  **The understated residue is corrected in the same change, on both surfaces that carried it:**
-  `bin/asset-provenance.py` called the one-class evasion *"a deliberate shortcut nobody takes by
-  accident"* — **ordinary machine output takes it by accident**, and that sentence was a live claim
-  in a gate's stated-residue list that a reader draws a conclusion from. Narrowed to what is true,
-  not deleted, in the module docstring, at the predicate, and now in `§ 10.1` clause 2, which had
-  never stated the residue at all. **Selftest 43 → 58 fixtures**, all seen failing under three
-  reverting mutations. **Out of scope, deliberately:** clause 1 still trusts the extension and
-  sniffs no magic bytes (a separate question, recorded in the gate's docstring and § 10.1).
-- **card#7912** — **the ratified floor-preview stops encoding three things the spec does not
-  support.** `docs/design/floor-preview/floor-preview.html` is the artifact card#7341 is specified
-  to build FROM, so a divergence in it propagates by design rather than by accident. **(1) `thinking`
-  was an eleventh `render_state` in seven places** — a badge class, a `busyTop` test, the sample
-  seat's own wire field, a colour map, a monitor branch, a glyph/label map and a drill-down branch —
-  and the drill-down then mapped it **back** to `working` for display, which is both the tell that
-  the author knew it was not a wire member and *precisely* the mapping `FLOOR.md` § 5.4 forbids by
-  name. It is not a state: it is § 6.2 **A4**'s holding condition over a `working` seat
-  (`render_state == "working"` ∧ `open_calls == 0` ∧ `open_turn == true`). The artifact now derives
-  the **pose** from those three fields in one place (`poseOf`) and the drawing layer never sees a
-  state name at all; the sample seat carries `render_state: "working"` with the two fields that
-  select the pose, which is the data that should have driven it all along, and the drill-down shows
-  `render_state` verbatim beside the condition. **The state chip renders the STATE** (§ 5.1: *pose
-  and glyph | `render_state`*) — so the A4 seat's chip reads *WORKING* where it used to read
-  *THINKING*, and the think pose is carried by the pose treatment it always belonged to: the `…`
-  marker and the desk's state line. **D2 was not touched, deliberately**: the state set is closed and
-  derived, and adding a member to carry a client-side pose would put a rendering concern on the wire.
-  **(2) The lobby's per-floor summary iterated its own member list**; it now iterates § 7.1's fixed
-  ten-member order, which § 4.1 requires — the same root cause, so the same fix. **(3) The wall clock
-  and sky ran on a 10 s `setInterval` off the viewer's clock** — § 6.3's second forbidden form, and
-  the mover that keeps moving after the feed dies. They now hold **one value**, set by a delivered
-  `feed.heartbeat` and by nothing else (**A17**), so every other render — a zoom, an elevator ride, a
-  sky repaint — draws the held value and cannot move it. The minute hand steps once a minute with no
-  seconds term (**A17 constraint 1**), the hands' minute is carried as accessible text set on every
-  path that moves the hands (**constraint 5**, and in the corrected form card#7936 will bring the
-  document to), a live-establishing render **sets** the room while F1's 10 s poll sets nothing
-  (**§ 6.5**), and a room that has never been live is drawn **unset** — hands hidden, flat sky —
-  never at a plausible time. ⭐ **The artifact now demonstrates the argument instead of asserting
-  it:** a *simulated feed* control switches between **live**, **down** and **never live**, and on
-  *down* the clock holds while F1's poll count climbs beside a *polling (feed down)* status line —
-  which is what makes a frozen clock legible as the feed-down claim rather than as a minute that
-  happens not to have changed. The one `setInterval` left is the **feed** itself, whose entire body
-  is *deliver a heartbeat*; it is what a socket does in the build. `README.md`'s *"live wall clock +
-  day/night windows from the VIEWER's clock"* — the last sentence in the repo an implementer could
-  read as licence for the interval — is corrected and points at A17 rather than restating it.
-  **Untouched:** `docs/design/FLOOR.md` (card#7913 is editing it concurrently), D1, D2, the ratified
-  look everywhere it is not the defect, and the staged `coord.*` communication layer.
-- **card#7341** — **the floor's wall clock and day/night sky advance on `feed.heartbeat`, so they
-  stop when the feed does.** The operator ruled on 2026-08-27 between three options
-  (`docs/design/FLOOR.md § 13` decision 21 records all three): ship them **static**, carve an
-  exception into § 6.3 for viewer-clock decoration, or drive them from a **delivered message**. The
-  third is not a compromise — it is the only one that makes the element *earn* its motion. The
-  ratified reference re-renders clock and sky on a **10-second interval from the viewer's clock**,
-  which is § 6.3's second forbidden form and, worse than a rule violation, is a **second mover that
-  keeps moving after the feed dies**: the page then never goes still, and AT-D3-6 (*the feed dying is
-  visible within 45 s*) loses the observable it asserts. Driven by the heartbeat, **the clock stops
-  with the page — and a stopped clock is the feed-down claim in the form every human reads
-  instinctively.** ⭐ **§ 6.2 gains A17** (`edge`, driver `feed.heartbeat`, absence = *no message has
-  arrived, which at 45 s is the feed-down condition itself*), and the note under that table no longer
-  says A14 is *the only thing that moves unconditionally* — a sentence A17 makes false — but the
-  **property** it was protecting, which is stronger: *everything on this page that moves without a
-  delivered field holding it is driven by the heartbeat, so when the feed dies all of it stops
-  together.* **Five constraints ride with the row**, each a defect if dropped: **no second hand** —
-  the heartbeat is 15 s, so the minute hand **steps once a minute and is merely sampled four times**,
-  and a hand jumping in 15 s steps is the *looks broken* that gets repaired with a timer; the clock
-  reads the **viewer's** clock with only its **sampling** event-driven, reconciled at § 5.5 as the
-  client's own narration and never a fact about a seat; it is **no authority on the time and grows no
-  *as of* stamp** — the status strip already says how current the page is; a render **sets** it
-  rather than animating it, and ⭐ **only a render that establishes or re-establishes a LIVE feed sets
-  it** — a render the client makes *because* the feed is down never does, which is what keeps F1's
-  **10 s poll** from handing the clock back the interval this ruling removed, under the name
-  *setting*; and the hands' minute is **readable as text exactly once** (the element's accessible
-  name), because an analog clock has no string for a test to assert on and an implementer would
-  otherwise invent the target. **AT-D3-6 now ASSERTS the freeze**, in both directions and in a form a
-  conformant client can satisfy: its heartbeat phase **crosses a minute boundary**, and the rendered
-  minute advances **exactly once — on the heartbeat that crossed it, not on the other three and not
-  between them** — then is identical at every read after the feed stops, across the boundary the
-  silence phase spans. A **third RED is the exact repair a maintainer will attempt**: put A17 back on
-  a 10 s interval and watch the freeze fail at that boundary. § 6.3's timer bullet gains the
-  **driven-by versus read-at** distinction that decides the case (*motion that stops is caused;
-  motion that continues was on a timer*), § 4.2's enumeration of what the floor screen contains now
-  names the room, § 10.4's ⛔ *not admitted* bullet is replaced by the ruling, and § 6.4 **names the
-  five animation rows whose reduced-motion form no test asserts** (§ 14 item 15) rather than claiming
-  a coverage the two tests do not provide. **Out of scope and untouched:** the animation itself
-  (this is the spec), `docs/design/floor-preview/floor-preview.html`'s own `setInterval` (card#7912
-  owns the artifact), D1 and D2, and every other § 6.2 row.
-- **card#7898** — **D3 admits the ratified art direction, and the asset gates move from absence
-  to declared provenance.** The operator ratified a high-resolution, whimsical, modern
-  (Ghibli-adjacent in *feel*) direction on 2026-08-26/27; `docs/design/FLOOR.md` as written
-  **forbade it in three places** and its CI gate would have red on the first asset it needs.
-  **§ 10.1 — Gate 2 stopped asserting an absence.** *"No image file in the character tree"* was
-  the mechanised form of *the sprites are generated*, and it became false about the product
-  rather than merely strict. It is replaced by the claim Gate 1 needs in order to mean anything:
-  **every asset is a file Gate 1 can see**. The manifest gains a seventh column, **`origin`**, a
-  closed set of `first-party` / `licensed`, each checked against the row's own source URL; the
-  character-tree allowlist widens to `.ts` `.js` `.md` `.svg` `.png`, every member with its
-  reason written down and `.avif` / `.webp` / `.jpg` / `.psd` / `.dat` still failing by name; and
-  clause 2's purpose is restated as the load-bearing one — **an asset embedded inside another
-  file has no path, so no row, so no provenance**. **What it COSTS is named in the document
-  rather than discovered later**: the old gate was self-verifying, the new one rests on a row
-  being *true*, and somebody who vendors commercial art as a `.png` under a `first-party` row
-  passes everything. `bin/asset-provenance.py`, `docs/ATTRIBUTION.md`,
-  `resources/characters/LINEAGE.md` and the workflow comment all say so.
-  **§ 6.3 — the ambient-life bullet was SHARPENED, not deleted.** The ratified micro-animation
-  (blink + wiggle while busy, slumped-asleep idle with drifting z's) was forbidden by a bullet
-  that named *blinking*. The rule is now the **property** that bullet's own reason states —
-  *motion neither held by a delivered field nor caused by a delivered message* — and every named
-  motion survives as an example of it. A blink in every state is still forbidden; a blink held by
-  a § 6.2 row's condition is the drawn form of that row. The only door in is still a § 6.2 row.
-  **A6 (`idle`) gains a held loop** and its reduced-motion form is the static slumped pose; ⭐
-  **a sleeper is never a gone seat** — `stale` / `offline` render the empty chair, stated as a
-  § 7.5 rule and asserted by AT-D3-5 (with motion) and AT-D3-13 (without).
-  **§ 4.5 — the capability floor is a property, not a technology**: a renderer crisp *at any
-  camera zoom without resampling artefacts*, where it read *a 2-D tile renderer drawing sprite
-  frames*. The camera is **navigation and animates nothing** — no § 6.2 row. The 1,280 × 800
-  floor **stays, and the reason is restated** because *"it's vector now, it scales"* is exactly
-  the argument the next reader will make: the rule is about **legibility**, never pixel density.
-  **§ 10.4 is new** — the art direction as a specification, because the ratified artifact is not
-  one: the ten seeded dimensions (7 silhouettes × 16 hues × 5 sizes + pattern/ears/sprout/eyes/
-  mouth/accessory/tilt, **8,064,000** tuples), the intern seeding, ⭐ **the salt is a design
-  choice — on visible repetition, widen the space or re-pick the salt, NEVER special-case a
-  seat** (a special-cased seat is a stored appearance wearing a disguise), and the collision
-  acceptance stated as a figure to be **measured** rather than the birthday estimate this entry
-  is careful not to pass off as one. **§ 10.5 is new** — the IP line, **stated as unenforceable
-  by gate**: no character owned by another rights-holder ships, and *review*, not a script, is
-  what enforces it. The seeded **vibe line** is reconciled with § 5.4 honestly rather than by
-  exception — appearance-class text is a rendering of *identity*, labelled as seeded, and drives
-  no pose, label, badge or animation.
-  **AT-D3-12's RED set was rebuilt** — its *vendored character* case tested a rule that no longer
-  exists and would have passed vacuously. **Every new guard was seen to fail**: nine deliberate
-  mutations of the gate, each watched red and restored. ⭐ **The control that matters most is the
-  SVG false-positive pair** — a complex first-party SVG carrying a 1,926 B minified integer path
-  must PASS while an SVG with an inlined `data:image/…` blob must FAIL. The first draft of that
-  control did **not** discriminate (its longest run was 20 B, which any alphabet passes); it was
-  rebuilt around the shape that actually collides — minified integer path data, where `-` is the
-  separator — and clause 2's alphabet was narrowed from base64URL's superset to base64's own,
-  which is what makes the drawing pass. **A gate that reds on correct work gets switched off.**
-  `docs/PLAN.md` records D-07's supersession as an **append**, not an edit — a register records
-  what was decided when. **Out of scope and untouched:** the `coord.*` event family and the
-  communication layer (card#7897 — events before animation), the floor build itself (card#7341),
-  D1, D2, § 8.1's cap arithmetic and the licence allowlist.
-- **card#7341** — the operator-ratified INITIAL DESIGN for the floor UI lands as a working reference artifact (`docs/design/floor-preview/`): building cross-section + elevator navigation, per-floor themes, seeded 7×16×5 characters with one intern sprite per open subagent (cap 8, then +N), held-loop micro-animation, viewer-clock sky, and the staged coord.* communication layer. The build implements this; customization comes later by operator direction. *(This bullet was landed in the file's PREAMBLE — between two halves of a sentence, above `## [Unreleased]` — and is moved here by card#7898. `docs/VERSIONING.md`'s release step collects what is under the section heading, so a bullet above it is a changelog entry no release would ever pick up.)*
-
-- **card#7837** — The fold sampled its version-bearing fingerprint AFTER the projector wrote, so
-  every projector-written member was invisible to the delta feed. `StateRecompute::after()` read
-  `SeatFacts::versionBearing()` on its own first line, which in `Fold::window()` is *after*
-  `Projector::apply()` — making `$before` and `$after` identical on `context.*`, `model_label`,
-  `enabled`, `selftest_failed`, D1's reporter badges and the `calls` rows behind `subagents`.
-  **Measured on the suite's rig, before → after:** a `context.sample` emitted **no delta at all**
-  → `changed: ["context","model_label"]`; an `enabled` flip emitted
-  `["link_state","render_state"]` → `["enabled","link_state","render_state"]`. (Card #7827's entry
-  above recorded the `context.sample` case as `changed: ["badges"]`; on a fixture where no badge
-  moves it emits nothing, which is the same defect one step worse.) **The fix is ONE fingerprint
-  sampled earlier and explicitly NOT a projector-returned diff**, which would be a second
-  implementation of § 6.5's version-bearing set free to disagree with the first. `$before` is now
-  a REQUIRED argument on both `after()` and `forSeat()` — required rather than defaulted so no
-  call site, and no test seam overriding them, can keep sampling on the wrong side; the rule is
-  the same one line everywhere: *sampled before the first write of the unit of work*. **Four fold
-  call sites**: `Fold::window()`, `Fold::recoverOneAtATime()` (sampled inside the retry's own
-  transaction, because attempt 1 may have written and rolled back), `Fold::quarantine()` (where
-  nothing writes first, so the value is unchanged — stated rather than left to be inferred), and
-  `mezzanine:rebuild`, which the card did not name and which § 6.6 requires derive through the
-  fold's code rather than a copy of it. **A sibling audit found the same shape in two more
-  writers, both fixed**: `mezzanine:retire` set `seats.retired_at/by/reason` before settling, so
-  the delta announcing a retirement carried `render_state: "retired"` and left the client's
-  `retired` object null (`["render_state"]` → `["render_state","retired"]`);
-  `Sweep::orphanCloses()` and `Sweep::quiesce()` close `calls` rows before settling, and
-  `subagents` / `subagents_open` read `calls` directly, so a desk kept rendering an intern the
-  server had closed. Both are driven separately — job 2 fires on a still-live seat at the call's
-  own 60-minute ceiling, job 6 only once the seat is `offline`, and a fix reasoned about for one
-  of them is a fix with one instance of evidence; each patch gained `subagents` and
-  `subagents_open`. **One instance of the class is reported and NOT fixed**:
-  `Sweep::leavingLive()` has no settle of its own and defers to JOB 1, so its `stalled_since`
-  clear lands above JOB 1's sample and `api_error_type` never reaches the wire. Moving JOB 1's
-  sample above it was measured to be worse — JOB 6 settles in between and writes `render_state`,
-  so a wider `$before` mints a SECOND transition row for one physical event (`[offline_quiesce,
-  staleness_sweep]` where § 4.6 allows one), and **all 68 of the sweeper's existing tests passed
-  under that mutation**, so `SweepJobsTest`'s job-6 case gains an exact-row-list assertion that
-  was seen to fail under it. The fix is a decision about which settle owns JOB 5's writes; the
-  hazard is recorded at the call site. **AND A SECOND, DISTINCT DEFECT IN THE SAME METHOD, JUDGED
-  SEPARATELY AND ALSO FIXED:** `taskTier3()` re-stamped `task_as_of` to `now()` on every recompute
-  while a title existed, and `task` is version-bearing — measured at **20 deltas over 20
-  heartbeat+sweep passes, every one `changed: ["task"]`, now 0**. `as_of` is what § 4.9's
-  freshness bounds are measured against, i.e. when the tier's value was *obtained*; re-stamping an
-  unchanged answer claimed it had been re-obtained by a pass that only re-read it. Not fixed by
-  dropping `task` from the fingerprint: § 6.5 states that set as a closed subtraction of ten named
-  members and adding an eleventh is a D2 change. Two suite cases that had to fence their fixtures
-  to a seat with no open call to dodge this now say so and are joined by one that drives the
-  open-call fixture directly. `FeedSurfaceTest::test_a_projector_written_member_reaches_the_delta`
-  is complete and green (it called `markTestIncomplete()` on its first line); every new assertion
-  was seen to fail against the old ordering first, and each carries a control plus a REST-snapshot
-  check that the surface which was already correct stayed correct. 297 tests / 3,643 assertions,
-  from 293 / 3,561 with one incomplete. ⚠ Run on SQLite: this seat has no MariaDB credential, and
-  nothing changed here is engine-specific.
-
-- **card#7827** — Fleet-state PART B: the REST read plane and the WebSocket delta feed —
-  `docs/design/FLEET-STATE.md` §§ 8.2, 8.2.1, 8.2.3, 8.2.4, 8.3, 8.4, 8.5, 8.6 and 9. **The four
-  REST endpoints** (`/api/fleet/snapshot`, `/seats/{i}/{s}`, `/seats/{i}/{s}/timeline`,
-  `/health`), the § 8.2.1 seat object in full, § 8.2.4's fleet-health object stated once and
-  carried by all three of its surfaces, and § 4.10's 14-day retired-seat READ FILTER as one
-  predicate every read query shares. **Read-side auth** (§ 9): the `feed_tokens` store, a `mzr_`
-  `fleet_read` credential with issue/revoke commands, revocation checked per request and never
-  cached, `token_wrong_surface` for an `mzn_` ingest token, and § 9's 120/600 req-min limits —
-  each seen to fire and seen not to — plus D1 § 12.3's failed-authentication limit on the REFUSAL
-  path, which took no rate-limit slot at all before, spending `RateLimiter::hitFailedAuth()`'s
-  existing per-source-address budget rather than a second one. A request presenting NO credential
-  is excluded (it is unauthenticated, not a failed authentication, and this surface has browsers),
-  and so is a token that resolves to a revoked or expired row — D1 § 12.3's own exclusion, which
-  matters twice over on a shared budget. **The timeline pages on a KEYSET CURSOR** `(received_at,
-  id)`, issued by the server as the response's `next_before` and decided by a `limit + 1`
-  look-ahead: `received_at` alone is not unique — one batch stamps one value across up to 200
-  events — so the strict `received_at < ?` cursor a client could only derive from the response
-  skipped every event sharing the boundary timestamp. Measured before the fix at 120 events in one
-  batch: page 1 served 50, page 2 served **0**, and 70 were unreachable — `200 {"events": []}`,
-  the one shape `ReadRefusal::badCursor()` exists to refuse, produced from a well-formed cursor on
-  ordinary traffic. ⚠ A bare timestamp is now refused `422 bad_cursor`, which TIGHTENS what the
-  endpoint accepts: § 8.2 names the parameter and specifies no type for its value, and refusing the
-  assembled cursor is what keeps the lossy form from being re-derived by the next client.
-  **The feed** (§ 8.3): four of its five message types as
-  broadcastable events sharing one envelope and one channel name, published from the ONE place
-  `state_version` is bumped, and a 15 s `mezzanine:feed-heartbeat` daemon that is deliberately not
-  the sweeper's. `App\Events\SeatRetired` — card #7712's declared publication point — now reaches
-  the wire. **AT-D2-7, AT-D2-8, AT-D2-16, AT-D2-19 and AT-D2-20 ship with their REDs DRIVEN**, and
-  **AT-D2-21 and AT-D2-23 are now COMPLETE**: their primary REDs were wire-surface assertions card
-  #7712 shipped undriven, and both are driven here (the omitted `fold_lag_ms`, and the vanishing
-  desk). 56 new tests, 285 total.
-  **⛔ AT-D2-15 IS NOT DELIVERED AND IS NOT APPROXIMATED.** Per-connection backpressure is a
-  property of the socket server's outbound queue, which no application publish can observe — and
-  `laravel/reverb`, § 8.3's pinned transport, is NOT INSTALLABLE on this tree: every version
-  through v1.11.1 needs `guzzlehttp/psr7 ^2.6` against this application's `3.1.0`, and
-  `composer require -W --dry-run` resolves only by downgrading guzzle 8.1.0 → 7.15.5, promises
-  3.0.2 → 2.5.3 and psr7 3.1.0 → 2.13.1. A backpressure test written against a mock would test
-  the mock. **Six D2 findings are REPORTED, not patched — the design doc is untouched:**
-  (1) § 8.3's 250 ms COALESCING and § 8.5's `delta.state_version == local + 1` cannot both hold,
-  because a merged message is indistinguishable from a lost one — this card ships one delta per
-  version and names the cost; (2) § 8.2.4 declares five members non-null while declaring
-  `db: "down"` reachable on the same object, so they are ABSENT rather than invented on that path;
-  (3) § 8.2.3's `detail` enumeration omits this plane's `seat_predicates`, which Appendix A's S11
-  requires per seat per predicate — added as an additive member under § 8.1's own rule, and
-  § 8.2.4 was NOT its home (`sweep_seat_error`, card #7832, needs none: it is already a
-  `seat_counters` row); (4) AT-D2-19's "redirect to the MFA challenge" contradicts § 2.2, and
-  § 2.2 wins; (5) AT-D2-16's "closed at its materialized `orphan_due_at`" reads two ways and card
-  #7712 chose one — asserted here only on what both readings share; (6) § 8.4 step 5's watermark
-  and § 8.5's discard are the same comparison, so one is unobservable without the other.
-  **⚠ AND ONE CARD #7339 DEFECT, FOUND HERE AND NOT CROSSED INTO** — *both defects in this
-  paragraph were CLOSED BY `card#7837` below; the description is kept as the finding record and is
-  no longer a statement about the code:* `StateRecompute::after()`
-  samples its version-bearing fingerprint AFTER `Projector::apply()` has written the event, so
-  every projector-written member — `context.*`, `model_label`, `enabled`, `selftest_failed`, D1's
-  reporter badges, a late `subagents[].title` — is invisible to both the bump decision and the
-  delta patch. Measured: an `enabled` flip publishes `changed: ["link_state","render_state"]`; a
-  `context.sample` publishes `changed: ["badges"]`. The SNAPSHOT carries all of them correctly, so
-  the watchdog and § 8.4's join are unaffected and a reload heals a browser; recorded as an
-  incomplete test naming the mechanism and the affected population rather than left green. A
-  second, smaller one is reported the same way: `taskTier3()` re-stamps `task_as_of` on every
-  recompute, so a seat with an open call emits a delta on every fold pass — the 16 % of pure noise
-  § 8.3 refuses. **⛔ AND A `blob` SHIPPED WHERE § 6.4 DECLARES `VARBINARY(16)`, IN BOTH TOKEN
-  TABLES:** `$table->binary()` with no length compiles to `blob` on MySQL — `MySqlGrammar::typeBinary()`
-  emits `varbinary({$length})` only `if ($column->length)` — and the suite runs on SQLite, where the
-  two are the same, so nothing could notice. Fixed in `feed_tokens` and in the identical line
-  card #7338's `ingest_tokens` migration carries, and now GUARDED: `MySqlColumnTypeTest` compiles
-  the real migrations through the real MySQL grammar with no MySQL server, which proves the SQL
-  text and explicitly not the engine's enforcement of it. **Three more not-delivered items are named
-  rather than left to be inferred** — `fleet.health` ON CONNECT (§ 8.3 requires it; only the change
-  half exists, and the cost is the up-to-15 s latency § 8.3 itself names, NOT blindness, because the
-  unconditional heartbeat carries the same object), `feed_resync_required` (no writer anywhere in
-  `app/`, and downstream of AT-D2-15 rather than independent: § 8.5 increments it only at the
-  socket server's backpressure close), and § 6.4's `revoked_reason`, a column this application
-  creates that the document's DDL does not contain. ⚠ Written for both engines and tested on SQLite;
-  every MySQL-specific behaviour
-  left unexercised is enumerated in the PR body (card #7523, the store host), and there is no PHP
-  test lane in CI (card #7344), so this suite is SELF-ATTESTED and the mutation evidence in the PR
-  body is the load-bearing part.
-
-- **card#7712** — The three processes `docs/design/FLEET-STATE.md § 2.1` names and neither half of
-  card #7339 built. **`mezzanine:sweep`** — a supervised 15 s daemon applying § 2.1's seven
-  time-derived jobs (staleness, orphan-timeout closes, attention ceilings, compaction ceilings, the
-  leaving-live clears, offline quiescence, the § 5 predicate-constant alarms), recomputing
-  `link_state` / `render_state` for every seat and bumping `state_version` under § 6.5's per-writer
-  rule; it is what makes `stale` reachable at all, because a seat that has stopped sending has no
-  unfolded events and is never claimed by the fold. **`mezzanine:purge`** — hourly, scheduled,
-  bounded 5,000-row batches under a 60 s budget, with `purge_backlog_rows` when it falls behind and
-  a hard REFUSAL of any retention below `D2-MUST` #3's 10-day dedup window (§ 2.2: "deleting on a
-  broken assumption costs the dedup guarantee — the safe direction is to keep"). **`mezzanine:retire`**
-  — the only writer of retirement, doing § 4.10's whole act in one transaction: the three columns,
-  the recomputed `render_state`, the `cause: operator` transition row, the `state_version` bump and
-  the `seat.retired` publish, each of which had no producer before. The publish is dispatched
-  **inside** that transaction and carries `ShouldDispatchAfterCommit`, so it is ordered by the act
-  that sets the columns and is delivered only if the act commits — a rollback reaches no client.
-  Creates § 6.4's `seat_predicates` and records all seven § 5 predicates at their own evaluation
-  sites. **One seat's failure costs one desk and no longer kills the daemon:** the per-seat pass is
-  inside an error boundary that logs, counts `sweep_seat_error` and continues, and a pass reports
-  how many seats it skipped — without it a single reachable raise (§ 2.3's unseeded cursor clock)
-  exits the process and, under a supervisor, crash-loops the fleet's time-derived transitions.
-  **AT-D2-21** (a frozen fold cannot look healthy — `fold_lag_ms` computed from a basis two
-  processes write, the badge, the episode counter, the never-folded seat) and **AT-D2-23** (a
-  retired seat is rendered, not disappeared) have their store-side REDs driven rather than
-  described; the PRIMARY RED of each is a wire-surface assertion Part B owns and neither is claimed
-  complete here. 59 tests; every one of the seven jobs and every new check was SEEN TO FAIL under a
-  named mutation whose landing was proved by `git diff` — including one mutation that did NOT red,
-  which corrected a false claim in this card's own comments (job order is not what makes § 6.4's
-  four deleted ENUM members unreachable; the disjointness of the two jobs' write sets is).
-  **Three D2 gaps are REPORTED, not patched — the design doc is untouched:** § 6.4 declares no home
-  for § 8.2.4's `sweep_last_run_at` / `purge_last_run_at` (a `plane_state` table is added and
-  flagged), no receipt column for § 4.6's compaction ceiling
-  (`sessions.compaction_open_received_at`, flagged), and `seat_predicates` cannot express § 5's own
-  rolling-window criteria — so those four criteria are **not evaluated at all**: the alarm returns a
-  named `cannot_evaluate` outcome rather than guessing in either direction. An earlier revision
-  approximated them and claimed the error ran in a safe under-firing direction; that claim was false
-  in both directions (a wall-clock proxy fired on the first evaluation after a sweep outage, and a
-  cumulative share latched permanently on a months-old incident), and the approximation is gone
-  rather than tuned. ⚠ Written for both engines and tested on SQLite: the sweeper's per-seat
-  work takes no row locks, so `FOR UPDATE SKIP LOCKED` is untouched by this card and remains
-  UNEXERCISED (card #7523, the store host) — and one MySQL-only exposure is now NAMED rather than
-  wrongly justified: `Predicates::record()` is a read-modify-write, two of the seven predicates are
-  written by two different processes, and the `SKIP LOCKED` claim its docblock used to rest on
-  excludes only other *fold* workers. On the pinned engine that is a lost update, and the two
-  writers take `seat_predicates` and `seat_state` in opposite orders. Corrected in the docblock,
-  carried onto #7523, not fixable here. **Deploy note:** `sessions.compaction_open_received_at` is
-  added NULLABLE with no backfill while `compactionCeilings()` requires it NOT NULL — no live data
-  exists yet, so pre-existing open compactions cannot be stranded; a backfill would be owed if that
-  ever stopped being true. The WebSocket delta feed and the REST snapshot remain Part B's, and the
-  feed-bound halves of both acceptance tests are named rather than approximated.
-
-- **card#7339** — PART A of the fleet-state card: the store schema and **the fold** — everything
-  that turns accepted events into seat state. Creates `docs/design/FLEET-STATE.md § 6.4`'s
-  remaining projection tables (`sessions`, `calls`, `attention_requests`,
-  `seat_state_transitions`); adds `App\Fold\*` — § 4.3's derivation, § 4.5's link cascade,
-  § 4.2's collapse, § 6.5's per-seat claim / visibility lag / purged-window branch /
-  poison-event rule, and a projection for every one of the fourteen kinds the ingest accepts —
-  plus `mezzanine:fold` (§ 2.1) and `mezzanine:rebuild` (§ 6.6), which shares the fold's
-  `project()` rather than a copy of it. Fourteen acceptance tests from § 11 (AT-D2-1, -2 both
-  hook orders and Case β, -3, -4, -5, -6, -9, -10, -11, -17, -22), each seen RED under its own
-  named mutation before green, with the mutation's landing proved by `git diff` rather than
-  assumed. **Doc-sync: § 6.4's `sessions` gains `last_turn_background_tasks_open`** — the fourth
-  component of § 4.3's `L`, which card #7337 added to the derivation and not to the DDL; rule 4,
-  the only rule that can mint `idle`, reads it. ⚠ Written for both engines and tested on SQLite:
-  `FOR UPDATE SKIP LOCKED`, `ascii_bin`, `ON DUPLICATE KEY`, `ALGORITHM=INSTANT` and
-  `DATETIME(3)` are UNEXERCISED, and `SKIP LOCKED` is the fold's concurrency correctness
-  (card #7523, the store host, is the operator dependency that closes this). The WebSocket delta
-  feed and the REST snapshot are Part B; the sweeper, `mezzanine:purge` and `mezzanine:retire`
-  are claimed by neither part.
-
-- **card#7686** — `tools/design/verify-fleet-state.py`'s G6 was RED on `dev`, and the defect was in
-  the guard: its predicate read **any** `D2` mention in a D1 section as an unmarked obligation, so
-  card#7338's `§ 6.5` doc-sync — which *cites* D2 § 6.4's existing `calls.synthesized` column as
-  corroboration, and imposes nothing — was flagged as an obligation with no marker and no Appendix A
-  row. Marking it `D2-MUST` would have been false and an Appendix A row would have recorded an
-  obligation that does not exist. `docs/design/EVENT-SCHEMA.md § 1` now declares a fourth form,
-  **`D2-CITED:`**, for a sentence that references D2 without constraining it, and G6 subtracts those
-  lines. It is the one form that subtracts, so it is fenced three ways and each was seen to fail on a
-  plant: an **unmarked** D2 mention still reds (silence is never the citation case — the S29 shape is
-  untouched), an obligation marker on the same line wins over it, and a `D2-CITED:` line must name
-  the place in D2 it cites and must carry no deontic language — an obligation cannot pass by wearing
-  the marker. A new CONTROL holds D1 § 1's declared vocabulary and the tool's greps together, so a
-  form renamed in the document and not in the checker reds instead of silently forgiving. Appendix
-  A's derived 28/1 split is unchanged.
-- **card#7338** — The batch ingest endpoint: `POST /api/ingest/events` and
-  `GET /api/ingest/health`, implementing `docs/design/EVENT-SCHEMA.md § 12` — the eleven
-  validation steps in their stated order, the error bodies of § 12.2, the four rate limits of
-  § 12.3 (the failed-authentication one evaluated inside step 4, where its subject is reachable),
-  atomic batches, per-event dedup and the § 12.7 counters. Per-seat `mzn_` tokens stored as
-  SHA-256 only, issued and revoked by `mezzanine:ingest-token:issue` / `:revoke`. The routes carry
-  **no middleware at all** — no session, no CSRF, no MFA and not Laravel's stock `api` throttle —
-  so the surface is machine-to-machine in structure rather than by convention, and the separation
-  is asserted both ways. Creates the store tables the ingest writes (`installs`, `seats`,
-  `batches`, `events`, `seat_state`, the two counter tables); the fold and feed tables are
-  card #7339's. Validated against the real `fleet-reporter` over TLS with certificate
-  verification on (`server/tests/roundtrip/ingest-roundtrip.py`), which also drives AT-9 and
-  AT-13's reporter half. Fixes a wildcard CORS header the unpublished stock config was applying
-  to every `/api/*` route, including the MFA-gated snapshot. Doc-sync: `§ 6.5` gains the
-  `synthesized` field row that `§ 6.6` has always mandated, and `§ 12.2` splits the one `422` row
-  into the two codes `§ 12.1` actually names.
-- **card#7337** — Ran D1's AT-1 against a real `/clear` on a real seat, and **it failed** — the
-  reporter behaved exactly as `docs/design/EVENT-SCHEMA.md` § 8.2/§ 8.3 specify, while the design's
-  guarantee did not hold on the installed harness (2.1.245). Three measured facts: a killed call
-  **does** fire `PostToolUseFailure` (`Exit code 137`, `is_interrupt: false`) under the new
-  `session_id`; a dispatched subagent runs as a **background task**, so the parent's turn ends clean
-  while it works; and a conforming consumer therefore minted *idle* on a seat running a subagent.
-  Amended in consequence: `D2-MUST` #1 and D2 § 4.3's `derive_activity` gain
-  `background_tasks_open == 0` (and `session.end` clears that one component of `L`, so an idle that
-  is **true** after the reap is not suppressed); § 6.6 gains a two-signal **kill signature**
-  (`is_interrupt`, **or** exit 137 across a session boundary — exit 137 alone is an OOM kill and a
-  genuine failure); § 8.6 refuses a cross-session late close and counts `late_close_cross_session`;
-  § 6.0's re-capture obligation widens from minor to **any** version change, because a patch bump is
-  what moved the lifecycle. AT-1 is rewritten against that lifecycle, with its idle assertion
-  narrowed to the transitions that are false. New rig `tools/at1-kill-vs-complete/` drives the proof
-  end to end under a scratch config, with a hermetic `selftest.py`, a RED plant that raises rather
-  than silently applying nowhere, and an **operator-run** credential prerequisite the rig refuses to
-  script. Whether the harness behaviour changed between 2.1.240 and 2.1.245 is **not established**.
-
-- **card#7335** — **the producer half of D1**: `fleet-reporter/` — one zero-dependency Node file
-  driven by Claude Code hooks and by the statusLine integration, D1 § 17's captured payloads
-  vendored beside it, and a hermetic acceptance suite. This is D1 § 16's artifacts 0–4; the ingest,
-  the server-side ledger and the staleness/predicate alarms are D2's and card #7338's. Built to the
-  card's three properties, each driven RED before GREEN. **Never blocks the seat** — one try/catch
-  per entry point with `process.exit(0)` in a `finally`, no stdout from a hook on any path, every
-  write a synchronous append; the network modules are required **lazily**, which makes that property
-  structural rather than observed (a hook process never loads an HTTP client at all) and takes 67 ms
-  of module loading off every hook fire. **Survives the bridge being down** — hour-bucketed
-  append-only spool, per-bucket read offsets, exponential backoff with full jitter, and a poison-pill
-  rule that costs one bad batch its own events and never the stream behind it; every discard is
-  counted, and a 30-hook outage followed by a restore delivers every event by id. **Programmatic end
-  to end** — every field is read from a hook payload or from process state, no model is asked to
-  describe itself, and the descriptor allowlist is the control with redaction as the second layer.
-  ⛔ **Five defects the suite found, every one of them silent in production**: a new flusher could
-  never claim ownership of `state.json`, so the cursor and `seq` never persisted and every restart
-  re-sent the spool from `seq` 1 — **dedup absorbs duplicate events but not a duplicated ordering
-  key**; a single `(bucket, offset)` cursor permanently skipped any bucket older than itself, losing
-  the straggler writes § 11.1's deletion grace exists for, with nothing counted; corrupt spool lines
-  were re-quarantined and re-counted on every retry pass, inflating the loss numbers the floor
-  renders precisely during an outage; `selftest`'s own sanitizer fixtures incremented the seat's live
-  `sanitizer_redactions`, a diagnostic moving an operational counter; and the statusLine passthrough
-  threw `ERR_UNKNOWN_ENCODING` and swallowed it, blanking the status line of every seat that had one.
-  ⭐ **Review then found that the known-VALUE leg of `redactSecrets` had no live subject at all.** The
-  function has two independent legs — values the process holds, and shapes (`CRED_PREFIX_RE`) — and
-  every credential in the suite carried a shape the regex already matches, so **deleting the value
-  leg outright left the whole section green**, reproduced before it was fixed. The only secret ever
-  registered was `config.token`, which by validation always carries the `mzn_` prefix, while
-  `proxy_url` is `https://user:password@host:port` and § 3.1 constrains nothing inside it — an
-  arbitrary password, matched by no prefix in the shape list, held in memory by every hook process.
-  `registerConfigSecrets` now registers every configured secret, and the new test isolates the leg
-  with a control in each direction. ⚠ **Two false-clean traps caught while building it are named
-  rather than passed over**: the first sweep read the spool line the harness itself had planted, so
-  RED and GREEN reported the same hit; and the corrupt line was initially placed behind a valid
-  event, where the disposal rule commits it only on a successful POST, so against an unreachable
-  proxy it never reached the sink and the sweep was reading a file that did not exist.
-  ⛔ **A failed spool append lost the event UNCOUNTED** — against D1 § 0 item 9 (*a counter for every
-  discarded event*) and § 11.4 (*nothing is discarded uncounted*), and reproduced rather than
-  inferred: with the current bucket made a directory and `counters/` + `log/` left writable, a real
-  `PreToolUse` gave rc 0, zero spooled events and a counter sink reading `"c":{}` — **the seat
-  renders healthy while dropping events**. **Fixed in the PRIMITIVE rather than at the four
-  call-sites, only one of which was correct**: `appendLine` counts its own failure keyed by subtree
-  and retries once through an uncached open, which previously spent exactly one event per transient
-  error. Two more of that round: the bucket name is now derived immediately before the write, which
-  the primitive's own header had always claimed and only `journal()` implemented; and
-  `projectLabel()` returned `basename(cwd)` *before* sanitizing, so § 7.3 rule 6 could never match a
-  bare username token and `cwd=$HOME` put **the OS username on the wire** — literally conformant with
-  § 6.1 and a § 1 non-goal violation.
-  ⇒ **D1 was the wrong side once**: § 6.1's `harness_label` pattern could not accept the value that
-  same row mandates (`claude-code/2.1.240` contains `/`), and left alone, an ingest implementing
-  § 6.1 literally would 422 the first correctly-configured seat, reject all 200 events in the batch
-  and quarantine them permanently. The pattern is widened, and the check now re-reads the pattern AND
-  the example out of the doc row and asserts them against each other, so the two copies cannot drift
-  again. ⚠ **The latency assertion moved behind `FLEET_REPORTER_PERF=1` on measurement, not
-  preference**: subtracting a baseline was tried and MEASURED to fail — interleaving baseline and
-  reporter samples so both see the same load gives an attributable median of **53 ms** idle against
-  **82 ms** and **163 ms** under six busy cores, with the p99 difference swinging **−1,070 ms** to
-  **+520 ms** on identical code, so the p99 is noise outright and the median — the better statistic —
-  still triples under load. What is asserted on every run is what is not load-sensitive: every hook
-  exits 0 and prints nothing on stdout on every adverse path. ⚠ **`K.FLUSH_MIN_EVENTS` was DELETED
-  rather than wired** — § 11.5's early-flush leg needs the flusher's whole duty cycle restructured,
-  the 10 s leg bounds the delay either way, and a defined-but-unread constant reads as an implemented
-  trigger to anyone grepping for it. ⚠ **Named rather than assumed**: a real Windows install
-  (card #7336), a real `/clear` against a real subagent (AT-1, card #7337), the `proxy_url` CONNECT
-  path, and reachability against a real ingest host are all unverified here. Suite: 189 → 217 checks,
-  exit 0 (219 under `FLEET_REPORTER_PERF=1`).
-
-- **card#7334** — Laravel application skeleton in `server/`, with mandatory MFA on stock
-  packages (Fortify + `pragmarx/google2fa`). MFA gates three surfaces independently — the
-  browser pages, the websocket handshake (`/broadcasting/auth`), and the REST snapshot route
-  — through one middleware, `EnsureTwoFactorSatisfied`. Fortify's stock passkey and
-  self-registration features are disabled: a passkey completes a login on its own, and
-  Fortify logs an un-enrolled user in on a password alone, so `auth` by itself never meant
-  "MFA-satisfied". Test-store isolation is pinned and guarded per
-  `docs/design/FLEET-STATE.md § 6.2`. Repo layout decision recorded as D-16.
-- **card#7340** — Ported munder-difflin's procedural character generator into
-  `resources/characters/` as dependency-free ES modules, seeded from `(install_id, seat_id)` so
-  a seat's character is identical on every browser and every reload with nothing stored. Added
-  `docs/ATTRIBUTION.md` (the asset manifest), `resources/characters/LINEAGE.md` (upstream, the
-  pinned commit, the reproduced MIT notice, and what was deliberately not taken), and
-  `bin/asset-provenance.py` + its RED fixtures enforcing `docs/design/FLOOR.md § 10.1`'s two
-  gates and AT-D3-12's lineage half. The new workflow is **not** a required status check.
-
-- **card#7456** — **D2, the fleet-state model and feed contract** (`docs/design/FLEET-STATE.md`):
-  everything between a durably-accepted batch and the floor — the per-seat state model, the MySQL
-  store on its dedicated host, the fold, retention, the server-side counters and the two read
-  surfaces, with twenty-three acceptance tests each carrying its RED, plus the mechanical verifier
-  `tools/design/verify-fleet-state.py`. D1 owns the wire and is cited, never restated: its five
-  `D2-MUST` constraints and the **twenty-nine** further places D1 addresses this document are
-  enumerated in Appendix A, one row each, pointing at the section that discharges them.
-  ⭐ **State is a PURE FUNCTION of stored facts, not a stored state machine** — five facts, one
-  precedence, recomputed each fold pass, because a machine has states that can be entered and not
-  left (the one-way trapdoor D1 had to fix twice) and a function over bounded facts cannot; every
-  open fact carries a stated ceiling and `offline` quiescence is the backstop under all of them.
-  ⛔ **DELIVERY IS NEVER ACTIVITY**: every receipt-derived timestamp is named for receipt and may
-  drive only transport states, activity claims come only from the seat's own turn and tool events,
-  and `reporter.heartbeat` is explicitly not one. The fleet PM channel's maxim — that a stamp which
-  refreshes only when a seat posts *"corroborates; it cannot exonerate"* — is quoted verbatim and
-  attributed, and **AT-D2-4's RED is the single line that would break it**.
-  ⇒ Also settled rather than deferred: the feed's ordering key is a server-minted `state_version` and
-  **not** D1's `(seq_epoch, seq)`, because orphan closes, staleness, ceilings and quiescence mint
-  transitions with no wire event behind them, so a `seq`-ordered feed could not sequence precisely
-  the transitions that fire when a seat goes quiet; `blocked` outranks `working`, stated loudly
-  because it is the one place two D1 rules are simultaneously true and D1 states no precedence;
-  fail-posture is stated per path and never inherited; and **`events` is deliberately NOT
-  partitioned** — MySQL requires every unique key to contain every partitioning column, so a RANGE
-  partition would force the dedup key to include the date and `D2-MUST` #3's dedup would silently
-  stop working. Retention is 14 days because the dedup guarantee IS the unique key on `events`, so
-  the chain 8 d spool < 10 d dedup < 14 d retention is one inequality that moves together. **Four D1
-  amendment needs are RECORDED in § 14 rather than edited into D1** — closed later on card#7521.
-  ⛔ **Six of round 1's 35 findings needed design changes rather than wording**, chief among them
-  that **the frozen-fold detector was written only by the fold, so it died with the thing it
-  detects**: `fold_lag_ms` is now computed at read time from a basis the ingest and the fold write
-  separately, and its operand is the OLDEST unfolded event rather than the newest, which reads ~0 on
-  a busy seat. § 4.5's five self-referential link-state predicates became an ordered cascade with a
-  total function and a defined value for a silent seat, and leaving `live` now CLEARS `stalled` and
-  `blocked` at the stale boundary while only MASKING `idle`, with the asymmetry and its reason
-  stated.
-  ⚠ **The review loop's stop-observable fired on the INSTRUMENT, so the instrument was repaired
-  first** and the document fixes were validated under the repaired tool. G5 was a bare substring
-  search over the whole cited section — vacuous for 24 of 50 § 12 rows, and **a live 2 s → 7 s drift
-  passed green**; G6 built its cited set from the whole row, so D2's own § links satisfied a
-  D1-citation requirement; G3 hard-coded 8940/86400, 8192 and the seat counts 4/50/200. Each is now
-  re-derived from its definition site and PERTURBED per row to prove the match can fail, with the
-  residue printed honestly — **64 of 81 proven discriminating, 17 not** — instead of counted as
-  passes. **G8 checked writers against rows and not rows against writers**, so a § 7.2 counter no
-  rule increments was invisible (measured: re-adding `offline_quiesced_attention` passed green); the
-  mirror direction's first run found five pre-existing rows with no writer. **The mirror then had to
-  be tightened from a bare name match to WRITERSHIP** — a declaration list satisfied the old
-  predicate, and so, per the second gate, did a sentence DENYING the counter exists — after which its
-  first run named four more, one of them the live sixth instance the previous pass could not see.
-  ⛔ **A sibling audit of one shape — a D2 claim about D1 content asserted without reading D1 — found
-  the delta-volume population missing `compaction.start` / `.end`**, which § 3.2 declares ARE
-  activity events: 8,940 → **8,980/seat-day**, with an independent cross-check the document now
-  carries (every D1 kind but the heartbeat, so D1's own ceiling sum 10,420 − 1,440 = 8,980). All
-  eight occurrences and every dependent figure were re-derived rather than restated, and G3 re-adds
-  the sum from the document's own components and is proven capable of the other answer.
-  ⇒ **AT-D2-14's hostile export is a GREEN, and the row asserting an abort was a check that could
-  never fire.** The row claimed the test-store guard aborts under `DB_DATABASE=mezzanine php artisan
-  test`. It cannot, while the pin is intact: PHPUnit's `<env>` writes only `putenv`/`$_ENV`, a shell
-  export lands in `$_SERVER`, and Laravel reads `$_SERVER` first — so the `<server>` twin beats the
-  export, **the resolved value never moves, and the guard has nothing to refuse**. Measured during
-  card #7334's build: the suite PASSES under that export. **A check that can never fire is the mirror
-  of the check that cannot fail**, so the row now asserts the green and reads the refusal from the
-  third RED, which deletes half a pin — the only lever that moves the resolved value. The sibling
-  audit found the same false claim in four more places, all corrected: § 6.2's proof bullet, the
-  AT-run-order row, the closing summary, and `docs/PLAN.md § 3`'s acceptance line for the
-  MySQL-provisioning card (card #7523), **where it would have sent a future builder chasing a refusal
-  that cannot happen and then weakening a correct pin to produce it**.
-
-- **card#7457** — **D3, the floor UI specification** (`docs/design/FLOOR.md`): everything after a D2
-  JSON object reaches a browser — the lobby, the floor and the desk drill-down, the identity mapping,
-  the closed animation table, degraded rendering, every failure path with its observable, asset
-  provenance as a build gate, and seventeen acceptance tests each with its RED. D2 owns the state
-  model and is cited, never restated; the **thirty-eight** places D2 addresses this document and the
-  **twelve** more D1 does are enumerated in Appendix A, one row each. Ships
-  `tools/design/verify-floor.py` — eight guard classes, every population re-derived from D2 rather
-  than stored in the checker, each watched failing against a planted defect before its pass was
-  claimed.
-  ⭐ **THE CLIENT DERIVES NO STATE, and the seven things it computes for itself are a CLOSED list**
-  (§ 2.1): every rendered fact names the D2 field it comes from, and the verifier reds when a source
-  cell names a field D2 does not send. A closed list is checkable against a candidate computation;
-  *"only presentational"* is not.
-  ⭐ **The honesty principle is a TABLE, not a principle** — sixteen animations, each with the wire
-  field or message that drives it and the exact edge that starts it, and **an animation with no row
-  is a defect**. The renderer must log `(animation_id, seat, cause)` for every animation it starts,
-  which is what makes **AT-D3-1** able to fail: its RED is adding idle breathing to the character
-  sprite, the single most natural thing to add to a pixel-art office and the thing that would quietly
-  make the floor's motion meaningless. ⛔ **No ambient life at all** — motion is the floor's
-  vocabulary and decoration would spend it on nothing; a state-held loop may say WHICH state, never
-  HOW MUCH, at one frame per D2's 250 ms coalescing tick, so no loop can appear more informative than
-  the feed that drives it. ⚠ **§ 6.1 landed carrying the attribution card#8161 later withdrew**
-  (*"— operator, via the proposal"*, at two sites), and § 6.3's blanket refusal of decorative motion
-  is scoped there too; this bullet describes the document as it shipped.
-  ⭐ **Identity is a pure function, not a stored position** — the desk slot is FNV-1a-32 of D1's
-  config-resident `(install_id, seat_id)` with deterministic probing, so two browsers, two reloads
-  and two server restarts agree with no server field and no local storage; sorted order and arrival
-  order are both refused with their failure modes (a sorted floor shifts wholesale when a seat is
-  provisioned; arrival order is not a function of the rendered set, so two browsers disagree). The
-  cost is paid openly: on a collision an arriving seat can displace an incumbent, bounded to the
-  chain, **animated as a move** because nothing on this floor moves without a cause, with the
-  frequency stated as `N/S` — 4 seats over 12 slots, **1 in 3** on the shipped map.
-  ⇒ **The subagent cap STAYS at 8**, closing D2 § 14 item 9, and the arithmetic is re-derived by the
-  gate rather than transcribed: **2,080 B** spare (8,192 − 6,112), ⌊2,080 ÷ 263⌋ = **7** more would
-  fit, the cap **could** reach **15** at 7,953 B, and 16 breaches at 8,216 B — **24 B over**. It
-  stays at 8 on a D2 fact rather than a taste judgement: **the drill-down does not read
-  `subagents[]`** — it reads the seat-detail response, whose open-call list D2 § 8.2.3 serves *"in
-  full (not capped at 8)"* — so the array's only consumer is the floor's side table, and the spare is
-  the margin the next field addition will need.
-  ⛔ **Asset provenance is two build gates, one of them an ABSENCE**: every asset file owes an
-  `ATTRIBUTION.md` row carrying source URL, author, SPDX identifier, retrieval date and the vendored
-  file's SHA-256, a missing row or a mismatched hash failing the build; and because character art is
-  GENERATED from the seat key by the ported MIT generator, the second gate asserts **there is no
-  image file in the character tree at all** — a hash denylist could only refuse the copies someone
-  thought to enumerate, an empty tree refuses the one nobody anticipated. The licence allowlist is
-  closed at `CC0-1.0` and `MIT`, and widening it is an operator decision, not an implementer's.
-  ⚠ **Nothing is invented where the contract cannot answer**: five gaps are filed as D2 amendment
-  needs, each with what is rendered in the meantime — the timeline and detail endpoints have no field
-  tables, the feed has no message for a seat or install entering the population, D2 refuses machine
-  tokens on the socket for a revocation property the browser's own session shares and D2 does not
-  address, no compaction fact reaches a consumer, and `fleet.reload.reason` has no member set. The
-  task-title fallback is **tier 3 only**, carried forward as an open question, because the proposal's
-  three tiers are not in this repository and inventing them from the phrase would put a guessed rule
-  in a contract.
-  ⚠ **The closing rounds' recurring finding was RESTATEMENT — a fact spelled at N sites drifts — so
-  six facts were each given one owner and a guard**: the dark-only desk render (12 sites), where the
-  derivation lag renders (5 sites), the animation log's episode schema, record-versus-lobby, § 2.4's
-  marker rule, and the AT build-order rule (6 instances); G9's population is derived rather than
-  stored; and **G6's Appendix-A recognizer stopped being the literal `D3`** — it is now `D3` plus the
-  render-directed phrasings D2 and D1 actually use, matched **wrap-tolerantly**, because grepping for
-  `D3` alone reported clean while D2 § 4.7 and § 4.8 placed three render obligations this document
-  neither listed nor discharged, and a line-scoped list would have left the check clean over a phrase
-  typeset across a wrap exactly as before.
-
-- **card#7521** — **D1 and D2 are reconciled: the eight § 14 items D2 filed against D1 are closed at
-  the positions § 14 itself named**, plus four Gate-C findings on the D2 side and the doc-sync those
-  amendments oblige. **Item 1** — the flusher's 90-minute `inferred_silence` close emits **no**
-  `turn.end`; the server closes the turn, because a hook-path exception buys nothing the idempotent
-  server close does not already provide and puts a second writer on a fact one writer owns.
-  **Item 2** — both orphan ceilings are measured from the server's `received_at`:
-  `started_at = event_time` is right for a *duration* and wrong for a *ceiling*, because seat clock
-  skew must not move a server ceiling. **Item 4** — the ordering key becomes
-  `(event_time, seq_epoch, seq)`, total across an epoch reset and reducing to the old key whenever
-  the epoch is constant, with § 10.2's out-of-order row moved so the key has one spelling.
-  **Item 5** — sticky-until-restart is confirmed INTENDED, with its reason (a badge that clears
-  itself is indistinguishable from one that never fired) and the consumer clause, and no wire change.
-  **Item 10** — a clean turn's `idle` survives a later `session.end`, the idle rule reading two facts
-  off the `turn.end` that a session end falsifies neither of. **Item 11** — `mzr_` joins rule 3's
-  known-prefix regex.
-  ⭐ **Item 12 took the CLASS fix, not the row fix.** D2 § 14 named two possible closes — re-word
-  § 12.7's consequence column, or state that the server's badges are a separate vocabulary — and the
-  second is the upstream one, so § 12.7's preamble now says as a class that no badge that table names
-  is a member of § 9.3's array. That disposes of the `seq_collision` and `batches_refused.<error>`
-  rows the same item flagged in the same breath; **a row-by-row fix would have left both standing and
-  the next server counter would have minted the contradiction again**.
-  ⛔ **Item 13 is the marker convention, and its root cause was D1 § 1's own false claim**: § 1 said
-  its only D2 marker was `D2-MUST` with *"exactly five such constraints"*, against Appendix A's
-  twenty-nine further obligations. § 1 now declares `D2-MUST` for the five numbered constraints and a
-  `D2:` prefix (or a *constraining D2* note) for every other consumer-addressed obligation, **on the
-  obligation sentence rather than somewhere in its section** — which is the property that let S29 be
-  walked past three times while a section-level check stayed green.
-  ⇒ **The verifier now follows the convention rather than the mention**: G6 builds a second
-  population from markers ON the obligation sentence, splits Appendix A against it, and **fails on a
-  D1 section that mentions D2 without marking which sentence is the obligation** — the S29 shape
-  itself. Measured on the plant rather than argued: with D1 § 12.5's marker stripped and the
-  section's other D2 mention left intact, **the `origin/dev` tool still derived 28 / 1 and carries no
-  such check**. **Manual residue: 14 rows before, 1 after**, and the one left is printed by name on
-  every run even at zero — S25's D1 source is a decision-register row rather than a section number,
-  so no marker convention in D1 can reach it, and minting a normative D1 sentence to make it
-  greppable would have contradicted a recorded decision.
-  ⚠ **Gate-C on the D2 side, where the sharpest of the four is a stored denominator**: two prose
-  comments said the delta-volume sum has *"six"* components against a seven-operand sum the tool
-  itself prints as seven, so the count is struck from the prose and **the neighbouring `< 6` floor is
-  RE-DERIVED rather than kept** — it is now the operand count of the sum's own arithmetic, read
-  independently of the value extraction it guards, because a pinned floor goes on passing after the
-  document grows a component, which is the one change the control exists to catch. Also: § 8.2's
-  `snapshot_denied` pointer sent the reader to § 9 when § 8.6 owns the rule; § 4.6's quiescence write
-  sequence now writes `last_turn_aborted_count: 0`, so the precedence paragraph restates a written
-  rule instead of asserting a value nothing sets; and § 6.5's version/platform volume disposition is
-  re-derived from § 8.3 and § 12 rather than guessed. § 14 items 3, 6, 7 and 9 stay open — **none of
-  them is D1's**.
-
-- **card#7455** — **D1, the keystone P0 design artifact** (`docs/design/EVENT-SCHEMA.md`): the
-  complete contract between `fleet-reporter` — a zero-dependency Node hook bundle on every agent
-  seat, Linux and Windows — and the Mezzanine ingest. Fourteen event kinds with field-level tables
-  and worked payloads, the batch envelope, the client-side sanitizer, the spool and flusher
-  mechanics, the server's response contract, and twenty-two acceptance tests each with its RED,
-  written to `docs/PLAN.md`'s D-14 standalone-implementer bar. `docs/VERSIONING.md § Wire
-  compatibility` keeps the versioning policy and gains **rule 7** (a new event kind and a new
-  closed-enum member are backward-compatible — ignore-or-coerce-and-count on the receiver); § 5
-  records only how these fields comply, and cites rather than restates.
-  ⭐ **Kill-vs-complete is an explicit open/close call ledger, not an inference from turn
-  boundaries.** A `/clear` SIGKILLs an in-flight subagent tool call and no `PostToolUse` ever fires
-  (measured 26/26, roundtable #341/#340), so **absence must never read as completion**: every
-  `PreToolUse` opens a call with a reporter-minted `call_id`, and every session or turn boundary
-  REAPS the calls still open and closes them `aborted` with a stated `abort_reason` and
-  `close_source` ahead of the boundary event, which then names them in `aborted_call_ids`. One
-  consequence makes the whole thing checkable at the wire: **`idle` may be minted ONLY from a
-  `turn.end` with `end_reason` `stop_hook` and an empty `aborted_call_ids`**. The cost accepted is
-  over-eager aborts for a call legitimately outstanding at Stop, bounded by the late-completion rule
-  — a completion is an observation and an abort is an inference, so the observation always overrides,
-  and a rising `late_completion` count is the signal that a reap rule is wrong.
-  ⭐ **Sanitization is an allowlist first and regexes second**: a descriptor is built only from an
-  explicitly allowlisted input key of an explicitly allowlisted tool, and every other tool —
-  including every `mcp__*` tool, whose input schemas third parties define — contributes `tool_name`
-  and no descriptor at all. The redaction pass exists because allowlisted text can still carry a
-  credential, **not as the primary control**, and that ordering is what the RED fixtures test:
-  fixture 8 removes the allowlist alone and must fail alone.
-  ⛔ **Silence is the failure mode this design fears most, so liveness is asserted continuously
-  rather than inferred.** The prior art is a fleet predicate keyed on the undocumented
-  `CLAUDE_CODE_CHILD_SESSION` marker that went constant on a harness upgrade and left two consumers
-  dark for **30 days with no log line**. So identity comes from an install-time config file and never
-  from the environment; no emission is gated on any harness marker (classifiers label, they never
-  suppress); every predicate reports both branch counts and the server alarms when one goes constant;
-  `/clear` is detected by two independent signals whose counters diverging is itself the self-test;
-  and a 60 s heartbeat with a 300 s staleness alarm makes *reporter dark* a rendered state rather
-  than a quiet desk.
-  ⛔ **Round 1 found the schema resting on three false premises about the harness, and each took a
-  redesign rather than a patch**: `session.end` becomes an OBSERVATION (`SessionEnd` exists, so the
-  four-way inference is gone and one inferred member remains, reversible via `session_reopened`, with
-  the supersede-on-different-session rule deleted outright because it made two terminals on one seat
-  abort each other's healthy calls); subagent matching is rebuilt on `agent_id`, so parallel
-  dispatches stop losing their stop edge; and **`blocked` becomes a PAIR** — it had an entry event
-  and no exit event.
-  ⭐ **Round 3's class fix is the one worth carrying: hand-transcribed facts about another product's
-  schema, with nothing binding them to a source and nothing able to red when they diverged.** Round 1
-  found two wrong; **the round-2 fix corrected those instances and minted five more**, so with
-  per-instance patching having failed twice, this round landed the binding first. Fifty-six real hook
-  payloads across ten events were captured from Claude Code 2.1.240, § 6.0's fact layer was rebuilt
-  on them — 36 rows, each **MEASURED** (fixture + version pin), **DOCS-CITED** (source + date) or
-  **UNVERIFIED** (cost + closure act) — sixteen of those payloads are reproduced in § 17, one per
-  distinct shape, sanitized only by replacing ids and paths with placeholders of the same shape and
-  length, beside five labelled stubs for the hooks `claude -p` cannot drive; and a SELFTEST-MUST
-  makes the reporter assert its expected payload keys against those fixtures and red on divergence.
-  ⭐ **What the capture found that no review did**: the dispatch tool's payload `tool_name` is
-  **`Agent`, not `Task`** — keyed on `Task` alone, `subagent.spawn` would never have fired, no
-  `agent_id` would ever have bound, and the descriptor allowlist would have returned null for every
-  dispatch; `Stop` does **not** fire inside a subagent (settling the highest-cost open fact);
-  `PostToolUseFailure` carries `is_interrupt`, the harness's own kill-vs-fail discriminator; and a
-  permission-refused call fires no close hook at all. It also **overruled the review** on three key
-  names — `SessionStart.source`, `SessionEnd.reason` and `PreCompact.trigger` are real, while the
-  asserted `session_start_reason` / `session_end_reason` / `compact_reason` occur nowhere in the
-  installed binary.
-  ⛔ **Round 4 bound the VALUE sets as well as the key names, and both of its blockers lived in that
-  gap.** The call index's `open` record carried one `agent_id` field meaning two opposite things —
-  the scope a call was opened in, and the child a dispatch spawned — and splitting it into
-  `agent_scope_id` / `child_agent_id` exposed that **no rule in the design ever closed a call opened
-  inside a subagent**, because `Stop` does not fire there. And `reporter.heartbeat.degraded` was
-  `array<enum>` with its member set stated nowhere and its two examples spelling one member two ways;
-  twelve members are now declared in § 9.3, named after their counters, and **the array's bound is
-  that table's size rather than a chosen 16**. `notification_type` was corrected **14 → 16** against
-  the binary — the omitted pair being `elicitation_dialog` and `elicitation_url_dialog`, the two the
-  `elicitation` branch depends on, which no guard could see because the guard bound key names and not
-  value sets — and `notification_kind.other` was **deleted as structurally unreachable rather than
-  hedged**.
-  ⇒ **`tools/design/verify-event-schema.py` and `verify-harness-facts.py` ship with the document**,
-  re-deriving their ground truth every run rather than storing it; the harness verifier reads key
-  sets and enum value sets out of the installed binary, and **its controls ABORT rather than report
-  clean** — two declarations must resolve to different sets, no set may be empty, and a fabricated
-  field must raise. Every check in both was seen to fail on a planted or real defect before its pass
-  was trusted.
-  ⚠ **One figure was wrong three rounds running, in the same direction each time, so it now has one
-  home and a gate**: the heartbeat's fill time read *"50+ days"* from a 500 B assumption, then
-  *"~25 days"* from a *"~900 B"* measurement of the worked example **taken with its 524 B `counters`
-  object left out**. It serializes to **1,487 B**, so a heartbeat-only seat fills the 32 MiB spool in
-  **~15.7 days** — the conclusion survives with a narrower margin — and `verify-event-schema.py` now
-  re-serializes that example on every run and reds if any figure in the paragraph disagrees. The
-  superseded value was deleted at its three other sites rather than re-synced, so the fill time has
-  one home and the others state the property they actually rest on.
-  ⚠ **The raw 56-payload capture run stays UNCOMMITTED by PM ruling** (2026-08-23): this repository
-  is public and the captures carry a real seat's session ids, cwd paths and prompt text, so § 17's
-  reproduced fixtures plus the binary-derived guard are the durable evidence and the 56-run counts
-  stay labelled run-provenance, **unfalsifiable by design**.
+Older releases: `docs/changelog/<tag>.md`, one per tag.

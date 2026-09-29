@@ -19,10 +19,12 @@
 # NO `paths:` FILTER — AND THE REASON IS MEASURED, NOT STYLISTIC.
 # `paths: docs/design/**` is the obvious filter and it is WRONG, because these verifiers' read
 # surface is wider than their subject. Measured while building this workflow: run
-# `verify-event-schema.py` against a tree carrying only the four design documents and it reds with
-#   VERSIONING L159: missing file ../.github/workflows/release-pr-guard.yml
-#   VERSIONING L201: missing file ../bin/release-pr-guard.py
-# because it resolves `docs/VERSIONING.md`'s path references and requires each to EXIST. So a PR
+# `verify-event-schema.py` against a tree carrying only the four design documents and it reds,
+# naming each path reference in `docs/VERSIONING.md` it cannot resolve — among them
+# `../.github/workflows/release-pr-guard.yml` and `../bin/release-pr-guard.py` — because it
+# resolves that file's path references and requires each to EXIST. (Its findings cite the
+# VERSIONING line each reference sits on; those numbers move whenever that file is edited, so they
+# are not reproduced here — the filenames are the example.) So a PR
 # that deletes `bin/release-pr-guard.py`, or edits `docs/VERSIONING.md`, breaks D1's gate while
 # touching nothing under `docs/design/`. Under a path filter that PR merges green and the next
 # unrelated PR inherits the red.

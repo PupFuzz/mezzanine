@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Floor;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use Tests\Feature\Support\DrivesAShippedClientModule;
 
 /**
@@ -63,6 +65,50 @@ trait DrivesTheFleetClientModule
     }
 
     /**
+     * Every checked-in fixture file's name, DERIVED from the directory rather than listed.
+     *
+     * ⛔ ONE POPULATION FOR EVERY READER. The run lookup below and the seat-object check
+     * (`EveryFixtureSeatMatchesThePublishedSeatObjectTest`) each carried their own hand list of
+     * these names, so a new fixture file was loadable by one and invisible to the other — a seat
+     * object no check had read. A run name held by two files is refused, because which of them a
+     * lookup returned would depend on the order the directory happened to list them in.
+     *
+     * @return list<string>
+     */
+    protected function fixtureFileNames(): array
+    {
+        // Derived once per process: the files are checked-in bytes, and every run lookup reads this.
+        static $derived = null;
+
+        if ($derived !== null) {
+            return $derived;
+        }
+
+        $names = array_map(
+            static fn (string $path): string => basename($path, '.json'),
+            glob(__DIR__.'/fixtures/*.json') ?: [],
+        );
+
+        sort($names);
+
+        $this->assertNotSame([], $names, 'no fixture file was found — every lookup below would read nothing');
+
+        $runs = [];
+
+        foreach ($names as $name) {
+            foreach (array_keys($this->fixtureFile($name)['runs'] ?? []) as $run) {
+                if (isset($runs[$run])) {
+                    $this->fail("the run {$run} is held by both {$runs[$run]} and {$name}");
+                }
+
+                $runs[$run] = $name;
+            }
+        }
+
+        return $derived = $names;
+    }
+
+    /**
      * One named run out of the file that holds it. § 4.3's table says which file that is; this is
      * the same mapping, derived from the files themselves rather than restated.
      *
@@ -70,7 +116,7 @@ trait DrivesTheFleetClientModule
      */
     protected function fixture(string $run): array
     {
-        foreach (['fx-snapshot-4', 'fx-gap', 'fx-membership', 'fx-confirm'] as $file) {
+        foreach ($this->fixtureFileNames() as $file) {
             $body = $this->fixtureFile($file);
 
             if (isset($body['runs'][$run])) {
@@ -207,6 +253,75 @@ trait DrivesTheFleetClientModule
             'total' => $r['discrepancy_state']['total'] ?? null,
             'refreshing' => $r['discrepancy_state']['refreshing'] ?? null,
         ], $result['records']);
+    }
+
+    /**
+     * § 2.4's wording for one fact, with `duration` in place of the table's own exemplar — read out
+     * of the wording table on every call, so the words are the document's.
+     *
+     * ⚠ HOISTED HERE AT ITS SECOND CALLER (card#7341 step 5): the age readout's test wrote it for
+     * the three ticking ages, and the desk render's needs the fourth — the derivation lag.
+     */
+    protected function wording(string $fact, string $duration): string
+    {
+        $doc = $this->floorMd();
+        $start = strpos($doc, '| Duration | Field | The string, verbatim | Where it may appear |');
+
+        $this->assertNotFalse($start, '§ 2.4\'s wording table was not found — every wording below would be unread');
+
+        $this->assertSame(1, preg_match('/^\s*\| \*\*'.preg_quote($fact, '/').'\*\* \| [^|]+ \| \*\*\*([^*]+)\*\*\* \|/m',
+            substr($doc, $start), $m), "§ 2.4's wording table has no row for the {$fact}");
+
+        $this->assertSame(1, preg_match('/^(.*?)\d+[hms](?: \d{2}[hms])?(.*)$/', $m[1], $parts),
+            "the {$fact}'s published string carries no duration to substitute");
+
+        return $parts[1].$duration.$parts[2];
+    }
+
+    /**
+     * ⚠ THIS AND THE TWO BELOW ARE HOISTED HERE AT THEIR SECOND CALLER (card#7341 step 5): the age
+     * readout's test wrote them, and the desk render's reads the same served snapshot and the same
+     * wire instants.
+     *
+     * @return array<string, array<string, mixed>> the run's served snapshot, keyed as the client holds it
+     */
+    protected function snapshotSeats(string $run): array
+    {
+        $seats = [];
+
+        foreach ($this->fixture($run)['http']['/api/fleet/snapshot'][0]['body']['installs'] as $install) {
+            foreach ($install['seats'] as $seat) {
+                $seats["{$seat['install_id']}/{$seat['seat_id']}"] = $seat;
+            }
+        }
+
+        return $seats;
+    }
+
+    protected function serverTimeMs(string $run): int
+    {
+        return $this->ms($this->fixture($run)['http']['/api/fleet/snapshot'][0]['body']['server_time']);
+    }
+
+    /** An `rfc3339_ms` wire instant as epoch milliseconds — UTC-designated, so no zone question. */
+    protected function ms(string $wire): int
+    {
+        $t = DateTimeImmutable::createFromFormat('Y-m-d\TH:i:s.v\Z', $wire, new DateTimeZone('UTC'));
+
+        $this->assertNotFalse($t, "`{$wire}` is not an rfc3339_ms instant");
+
+        return $t->getTimestamp() * 1000 + (int) $t->format('v');
+    }
+
+    /**
+     * The SHIPPED `formatDuration` over these seconds, in order.
+     *
+     * @param  list<int|float>  $seconds
+     * @return list<string>
+     */
+    protected function formatDurations(array $seconds): array
+    {
+        return $this->probe(['repeat' => 0, 'durations' => $seconds])['durations'];
     }
 
     /**

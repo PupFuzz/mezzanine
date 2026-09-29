@@ -116,9 +116,13 @@ very fact it exists to check.
 | `resources/floor/tiles/furniture-kit/wallHalf.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `67b83c905472d847fbd73566571fa7b479faedb3aae3160309c5e15088d73a4e` |
 | `resources/floor/tiles/furniture-kit/wallWindow.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `50f9029b7ff9893b021e1c4c5b016f89ab66f52ce9ae948c0d3796442b235a05` |
 | `resources/floor/tiles/furniture-kit/wallWindowSlide.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `671bef582ebc9e4c3708b539ddd992442f75cc0a514c3960a73f66ff9581e7e8` |
-| `resources/floor/tiles/furniture-kit.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `3eadf855dbabc1a12621d4fbc21bad1357cfa6b5e346de3b8c1daab0133272a6` |
-| `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `d5dddf60a60738ec9274fc60f630f0e0ed22d30bcd68518276b0169d08490cce` |
-| `resources/floor/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `41b5e3bb1bae8501387b7bb717256105dc56740afdd4d7779de3896feee5949f` |
+| `resources/floor/tiles/furniture-kit.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `00278845ee2f0492bf76d8d59ff32f0225b8f2bf579e18424ed3d1dc2d99eddf` |
+| `resources/floor/tiles/floor-plane.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `2e5322d59fdd94b008a9a78749f685429641f5ebc7190b0f7b20292c6360465b` |
+| `resources/floor/tiles/floor-plane/planks.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `a76ffbcca697e69c47c50ba31a19ff87b19ca91b3c3e7d7b0b5665528b94374a` |
+| `resources/floor/tiles/floor-plane/rug.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `d888116b53e6e7ea7bc71ede5abda510d6951ce2f6c6a1e3711e45278fddd6ca` |
+| `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `28447dd7e8c0b77d8e5c881b12d90c958861505254b2ab20378fe7e11b291a15` |
+| `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `90158ec868ded10645364bb62bb23993e634067b26bafafa3c38e1f581eae6b4` |
+| `resources/floor/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `551e001d897ac5e67435e81f6aec9539884f5f6c41c0bd11429b30e55f281bee` |
 <!-- asset-manifest:end -->
 
 **`portrait-art.js` is the one `licensed` row here, and that is the column doing its job.** It is

@@ -59,6 +59,15 @@ export function clockOffsetMs(serverTime, browserNowMs) {
 }
 
 /**
+ * § 2.4's CORRECTED CLOCK — `browser_now + clock_offset_ms` — the instant every age on the page is
+ * measured from. `null` while no offset is held: the caller then draws no age, never one measured
+ * against the viewer's own machine clock.
+ */
+export function correctedNowMs(offsetMs, browserNowMs) {
+    return offsetMs === null ? null : browserNowMs + offsetMs;
+}
+
+/**
  * § 2.4's seven clauses, as one function: a number of seconds in, one string out.
  *
  * ⛔ A NON-NUMBER THROWS RATHER THAN RENDERING `0s`. Clause 7 is explicit that `0s` is "not the

@@ -22,10 +22,10 @@ use Tests\Feature\Lobby\DrivesTheLobbyClient;
  * `tests/Feature/Lobby/lobby-probe.mjs`'s scripted `fetch`, which is why this file uses the lobby's rig:
  * that rig copies and drives the whole shipped `public/js` tree, `wire/` included.
  *
- * ⚠ WHAT T39's CLIENT HALF STILL OWES, AND NOTHING HERE CLAIMS IT. The cache has no caller on any page
- * yet: its two callers are the stream that delivers `room.map` — opened by the client protocol,
- * built at Appendix B step 3 and constructed by no page before step 8 — and step 7's floor route,
- * which enters rooms and draws their maps. So this file asserts the fetch, the reuse, the
+ * ⚠ WHAT T39's CLIENT HALF OWES ELSEWHERE, AND NOTHING HERE CLAIMS IT. The cache's two callers are
+ * the stream that delivers `room.map` — opened by the client protocol, built at Appendix B step 3
+ * and constructed by the floor page since step 8 — and step 7's floor screen, which enters rooms
+ * and draws their maps; `Tests\Feature\Floor\TheFloorComposesItsRoomsTest` asserts those halves. So this file asserts the fetch, the reuse, the
  * invalidation, the one line the apply returns for the client's event record, and the failure the
  * cache holds. It does NOT assert *re-renders one room* (step 7 draws rooms), *one
  * event-log line WRITTEN* (step 3 builds the record; FLOOR gates the WRITING at step 7, which is

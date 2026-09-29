@@ -37,6 +37,24 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
      */
     private const POPULATION_EXEMPT = ['lobby_persistent_unheld', 'missing_discovery_repeating', 'missing_discovery_sparse'];
 
+    /**
+     * The runs that carry a DUPLICATED `protocol_agent_name` on purpose — an install
+     * MISCONFIGURATION, which is the scenario under test rather than a fixture defect.
+     *
+     * ⛔ THE INVARIANT IS DECLARED ON D2's PLANE AND ENFORCED AT THE CONSUMER, and that is exactly
+     * why a fixture has to be able to break it: "a seat cannot enforce it — its own check asks
+     * whether its name is in the roster, and two seats declaring one name both pass"
+     * (D2 § 13 row 50). So the only surface that can see the violation is this client, and
+     * `docs/design/FLOOR.md § 11`'s `fx-coord` row duplicates `"helper"` deliberately so that
+     * AT-D3-18 can assert `duplicate_declaration` is rendered as its own reason. A check that
+     * refused such a fixture would forbid the one input the render is gated on.
+     *
+     * ⚠ IT IS A RUN ALLOWLIST AND NOT A CHECK THAT WAS LOOSENED: every other run is still held to
+     * uniqueness, and a run added here without a fixture row stating the misconfiguration is the
+     * review question this comment leaves for its reader.
+     */
+    private const MISCONFIGURED_DECLARATIONS = ['coord'];
+
     /** The published shape itself, checked over every object every fixture file holds. */
     public function test_every_seat_object_every_fixture_carries_matches_8_2_1(): void
     {
@@ -200,7 +218,7 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
 
             $duplicated = array_keys(array_filter(array_count_values(array_filter($names)), static fn (int $n): bool => $n > 1));
 
-            if ($duplicated !== []) {
+            if ($duplicated !== [] && ! in_array($run, self::MISCONFIGURED_DECLARATIONS, true)) {
                 $defects[] = 'protocol_agent_name '.implode(', ', $duplicated)
                     ." is not unique within install {$install['install_id']} (§ 8.2.1)";
             }
@@ -462,6 +480,11 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
     /**
      * Every seat body a run serves — the ones with the REST envelope on them.
      *
+     * ⛔ SELECTED BY THE ENDPOINT, NOT ONLY BY A `seat_id` MEMBER. D2 § 8.2's timeline response for one
+     * seat carries `install_id` and `seat_id` too (card#7342 step 10's drill-down runs serve it), and it
+     * is a list of events rather than a seat object — held to § 8.2.1 it would be read as a seat missing
+     * every member. `GET /api/fleet/seats/{install_id}/{seat_id}` is the one endpoint whose body is a seat.
+     *
      * @return list<array{0: string, 1: array<string, mixed>}>
      */
     private function everyServedSeatBody(): array
@@ -472,7 +495,7 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
             foreach ($body['runs'] as $run => $scenario) {
                 foreach ($scenario['http'] ?? [] as $path => $responses) {
                     foreach ($responses as $n => $response) {
-                        if (isset($response['body']['seat_id'])) {
+                        if (isset($response['body']['seat_id']) && preg_match('#^/api/fleet/seats/[^/]+/[^/]+$#', $path) === 1) {
                             $bodies[] = ["{$file} {$run} {$path}#{$n}", $response['body']];
                         }
                     }
@@ -490,7 +513,7 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
     {
         $files = [];
 
-        foreach (['fx-snapshot-4', 'fx-gap', 'fx-membership', 'fx-confirm'] as $file) {
+        foreach ($this->fixtureFileNames() as $file) {
             $files[$file] = $this->fixtureFile($file);
         }
 

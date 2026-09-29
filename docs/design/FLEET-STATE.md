@@ -1252,6 +1252,10 @@ believed they had already done:
 <server name="REDIS_URL"      value=""/>
 ```
 
+⛔ **Editing the block above edits the pins.** `Tests\Feature\DatabasePinTest` reads it and compares it
+to `server/phpunit.xml`, key by key and value by value; the guard bullet below that opens *"And THIS
+SECTION'S OWN BLOCK is checked against the file it owns"* says how, and what each key's other cover is.
+
 **And the pin is guarded, not trusted** ([AT-D2-14](#at-d2-14-the-store-is-pinned-and-the-pin-bites)):
 
 - A test-suite bootstrap guard (`Tests\TestCase::createApplication()`) **aborts the run** before the
@@ -1271,6 +1275,14 @@ believed they had already done:
     `mezzanine_test` while the connection points elsewhere. Measured on card#9328: with the `DB_URL`
     pin removed from `phpunit.xml` and a `DB_URL` exported, the `config()` read passed. The connection's
     PDO is lazy, so this read opens no connection.
+    ⚠ **It compares the database NAME, and no other component of the URL** — stated because the
+    bullet above reads as total. `ConfigurationUrlParser::getPrimaryOptions()` also replaces the
+    driver, host, port, username and password. Measured on card#9803 with a `DB_URL` of
+    `mysql://127.0.0.1:3399/mezzanine_test` pinned in `phpunit.xml`: every `config()` pin passed,
+    this read passed, and the run went on to open a connection to that host and port — the suite
+    would have rebuilt a `mezzanine_test` on a server nobody chose had one been listening. What
+    closes that for the DECLARED value is the doc↔file bullet below; the resolved case is open and
+    belongs with the Redis form of the connection read.
   - ⚠ **`REDIS_URL` has no connection-level read.** Laravel's `RedisManager` also applies the URL only
     when it resolves a connection, so a `REDIS_URL` path is invisible to the `config()` read, just as
     `DB_URL`'s was. Nothing refuses it, and today nothing reaches it: the suite runs cache, session and
@@ -1279,6 +1291,49 @@ believed they had already done:
 - A second test asserts the `phpunit.xml` file itself: every pinned key has both an `<env force="true">`
   and a `<server>`, and the two agree. That catches the silent-divergence mode where one line of the
   pair is edited.
+- **That test's own population is asserted too, and is not a hand-written list it is trusted to keep
+  current** (card#9742, taking the shape kanban-solo published on rt#506 after hitting it in their copy
+  of the same guard). It iterates a constant, so without this leg it reported on whatever subset that
+  constant happened to name: a pin added to `phpunit.xml` and not to the constant was never
+  visited, and the suite stayed green while the NEWEST pin — the one most likely to be wrong — was the
+  one it could silently omit. The key set read from the file must therefore equal the guarded set
+  **exactly, in both directions**: a key the file pins and the test does not name reds as `UNGUARDED`,
+  and a key the test names and the file no longer pins reds as `GUARDED BUT ABSENT`. A key claimed by
+  EITHER half — a forced `<env>` or a `<server>` — is in the file's set, because a half-written pin is
+  the divergence the pairing test above exists to catch and must be judged rather than fall out of the
+  set. The unforced `<env>` entries (`DB_CONNECTION` and the defaults above it) claim nothing and are
+  not pins.
+- **And THIS SECTION'S OWN BLOCK is checked against the file it owns** (card#9803). The block above is
+  a verbatim copy of `phpunit.xml`'s pins, this section declares itself their owner, and until
+  card#9803 nothing compared the two — so the owning copy could drift from the implementing one in
+  either direction, silently. The block STAYS rather than being replaced by a pointer at the file:
+  this document is published to the fleet and most of its readers have no `server/phpunit.xml` to
+  follow a pointer into, which is the case where a restatement is guarded instead of deleted. The
+  harm is the CORRECTION rather than the disagreement: a seat that
+  finds the file disagreeing with the section that owns the values edits the FILE, which is an edit
+  to the pins deciding which database `RefreshDatabase` rebuilds destructively and which Redis index
+  a flush reaches. `DatabasePinTest` now reads the block above through the same reader it reads
+  `phpunit.xml` with — one implementation of *what a pin is*, because a second one in a check about
+  two copies disagreeing is the same defect a layer further out — and reds naming the key and
+  printing what each copy declares.
+  **The population is the pin set itself, not a list anyone maintains:** the key sets are read from
+  the two files and compared, and then, over `phpunit.xml`'s own set read at run time, each pin's
+  `<env>` value, its `force` and its `<server>` value are compared — so a pin added to the file is
+  compared on the run that adds it, with no second decision to remember. `force` is in there
+  because finding 1 above makes it as load-bearing as the value: a block whose `force="true"` has
+  been dropped isolates nothing once copied into the file. Naming a subset here instead would be an
+  unguarded restatement of a list, which is the defect this bullet is about.
+  ⚠ **What the check is WORTH differs by key, and card#9803 established it key by key.** For
+  `REDIS_URL` it is the only thing there is: the value is asserted nowhere else, for the reason the
+  bullet above gives. For `DB_URL` it is the only thing behind every component but the database
+  name, which is all the connection read compares. For `DB_DATABASE`, `REDIS_DB` and
+  `REDIS_CACHE_DB` it is not the only guard, and which red you get depends on which copy moved: a
+  drift in THIS DOCUMENT reaches this check and nothing else, one step before a seat copies it into
+  the file, while a drift in the FILE moves a resolved value and so aborts the run at the bootstrap
+  guard before this check runs at all. The check is the better report of the two — it prints what
+  each copy declares and leaves which one drifted to the reader — where the abort blames an
+  exported variable that in this sequence is not the cause, which is why that refusal now names
+  this one beside it.
 - `DB_CONNECTION` is declared **`mysql`** and is **not** forced, deliberately, and `phpunit.xml`
   comments the omission as load-bearing. **There is one engine.** SQLite is not a supported
   configuration anywhere this application runs, so nothing selects a backend any more
@@ -1865,6 +1920,13 @@ CREATE TABLE authored_revisions (
   restored_from  INT UNSIGNED NULL,         -- the revision this one copies, when it is a restore
   authored_by    VARCHAR(255) NOT NULL,
   authored_at    DATETIME(3)  NOT NULL,
+  furniture_box  VARCHAR(16)  CHARACTER SET ascii COLLATE ascii_bin NULL,
+                                            -- a room_map's: App\Floor\FurnitureBox::signature()
+                                            -- ("<w>x<h>") of the box its document was validated
+                                            -- against at this write (FLOOR.md § 14 item 28(1)).
+                                            -- NULL on a layout, on a removal, and on every revision
+                                            -- written before the column: validated against no
+                                            -- recorded box, so re-validated, never assumed passing
   UNIQUE KEY uq_revision (kind, subject, revision)
 ) ENGINE=InnoDB;
 ```
@@ -2508,13 +2570,20 @@ them and says which one it does not:
 | **revert** | `authored_revisions` is append-only: a save inserts revision N+1 for its `(kind, subject)` and points `floors.map_version` — or `building_layout.layout_version` — at it in one transaction. A **restore** is a new revision whose `document` copies revision K's, with `restored_from = K`; history is never rewritten, and *undo the restore* is itself a restore. A **removal** is a revision with `document NULL`, so a removed map is as retrievable as an edited one, and the room renders the shipped default until it is authored again | **yes**, to any prior revision |
 | **blame** | `authored_by` and `authored_at` on every revision — the console session's user, the same value `floors.updated_by` already records | **yes** |
 | **diff** | the console shows two revisions side by side and names what moved: the tile layers whose data differ, the desk count `S` before and after, and a line diff of the two documents pretty-printed. A CSV-encoded map is reviewable in a diff — [FLOOR.md § 10.1](FLOOR.md#101-the-manifest-and-the-two-gates) clause 3 chose CSV partly for that — and the store keeps the document byte for byte, so the diff is of what was authored | **yes**, read in the console rather than in a pull request |
-| **review** | **not recovered, and stated.** There is no approval step: every authenticated user is an operator (the console's own rule, card#9070), so no second person stands between a save and the floor. What stands in its place is weaker and is named exactly — the console **previews** a document with the floor's own renderer before it is saved ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) — ⚠ a stand-in that exists only once that renderer does ([FLOOR.md Appendix B](FLOOR.md#appendix-b--what-an-implementer-builds-from-this) step 7), so until then the revert below is the only thing between a bad save and every viewer, and that is said rather than implied — and the revert makes a wrong save cost one restore rather than a redeploy | **no** |
+| **review** | **not recovered, and stated.** There is no approval step: every authenticated user is an operator (the console's own rule, card#9070), so no second person stands between a save and the floor. What stands in its place is weaker and is named exactly — the console **previews** a document with the floor's own renderer before it is saved ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) — ⚠ a stand-in not yet built: the renderer exists ([FLOOR.md Appendix B](FLOOR.md#appendix-b--what-an-implementer-builds-from-this) rows 7 and 14) and the console does not yet preview with it, so until it does the revert below is the only thing between a bad save and every viewer, and that is said rather than implied — and the revert makes a wrong save cost one restore rather than a redeploy | **no** |
 
 **The write path, stated once.** The admin console is the only writer of all three tables — its
 **floors** module (card#9085) writes a room's map and its **building layout** module (card#9208's
 build slice 1) writes the layout, and both go through the one serialised path below — and one save is
 one transaction: validate the document — a room map by
-`App\Floor\FloorMap`, whose refusals [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states; the layout
+`App\Floor\FloorMap`, whose refusals [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states, and, at
+its save and its restore, by `App\Floor\DeskSlots`: two `desks` objects whose half-open rects
+intersect, or one smaller than the furniture box, refused naming them
+([FLOOR.md § 14](FLOOR.md#14-open-questions-for-the-review-loop) item 28(1), since Appendix B row 14's
+slice C), the revision then recording the box it passed in `furniture_box`. That one is a rule of the
+WRITE and never of the reader: a stored map a later box fails — or one stored before the column, whose
+`furniture_box` is NULL, validated against no recorded box — stays current and on the floor and is
+listed on the console's room index until its author saves one that passes; the layout
 by `App\Building\BuildingLayout`, whose refusals [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)
 states — since card#9292 the floor plan's among them: a placed room's `origin`; a planned floor's
 `hallway`, held to `App\Floor\FloorMap`'s rules with its `desks` layer refused rather than required;
@@ -3707,8 +3776,9 @@ opens the error log before it prints anything, so under a user without that priv
 instrument the deploy user cannot run, prescribed as a **deploy gate** at
 [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 9. ⚠ **Whether any instrument
 dumps the EFFECTIVE merged pool configuration under the deploy user is UNMEASURED, and this document
-does not assert one**: reading the pool file is what a deploy user can certainly do, and it sees the
-file rather than the resolution. Card#9300's gate reads the pool FILE — `request_terminate_timeout`,
+does not assert one**: reading the pool file is what a deploy user can do wherever the file is readable
+to it — where it is not (a `pool.d` file at 640 root:root), the gate refuses `cannot read <file>` rather
+than judge without it (card#9815) — and it sees the file rather than the resolution. Card#9300's gate reads the pool FILE — `request_terminate_timeout`,
 `pm.status_path`, `pm.status_listen` and the R1 overrides — and then asks the running pool for its status,
 which proves the pool is up, named as the file says, and reachable by the deploy user; the merged
 configuration itself stays unread, and `pm.max_children`, the proxy's send timeout and the vhost's routing
@@ -3890,7 +3960,7 @@ lifecycle edge would lose the thread's first round.
 | `coord_round.from` | slug | **yes** | ≤ 48 B — the **protocol agent name** this post evidences; `null` when it evidences none | `"pm"` |
 | `coord_round.attribution` | slug | no | ≤ 16 B — the same three states, for the same reason | `"resolved"` |
 | `coord_round.to` | array\<slug\> | no | 0…32 members, each ≤ 48 B — the address **as written**: the body `TO:` line, else the thread's `to:` labels. `all` appears here verbatim, which is what makes a broadcast legible without a boolean | `["all"]` |
-| `coord_round.targets` | array\<slug\> | **yes** | 0…32 members, each ≤ 48 B — the **resolved** fan-out, `all` expanded against this install's roster and no other ([D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)). ⛔ **`null` and `[]` are different answers**: `[]` says *this post reached nobody*, `null` says *the fan-out is not resolvable here* | `["magento","platform","moodle"]` |
+| `coord_round.targets` | array\<slug\> | **yes** | 0…32 members, each ≤ 48 B — the **resolved** fan-out, derived exactly as [D1 § 18.7](EVENT-SCHEMA.md#187-coordround) states it and deliberately not re-derived here. ⛔ **`null` and `[]` are different answers**: `[]` says *this post reached nobody*, `null` says *the fan-out is not resolvable here* | `["magento","platform","moodle"]` |
 | `coord_round.carrier` | slug | **yes** | ≤ 16 B — the thread's leading bracketed token, repeated so a post is legible alone | `"announce"` |
 | `coord_round.declares_close` | bool | no | — this post carries the protocol's `[CLOSE]` token, anchored past the addressing preamble. ⛔ **Not a convergence** ([D1 § 18.5](EVENT-SCHEMA.md#185-the-three-findings-the-audit-turns-on)), and the not-published table below says what that costs a renderer | `false` |
 | `coord_round.posted_at` | rfc3339_ms | **yes** | the comment's own timestamp, GitHub's clock; `null` when the payload carries none | `"2026-08-27T09:14:02.000Z"` |
@@ -4339,7 +4409,7 @@ from the snapshot's row.
         "rooms": [ { "install": "aimla", "form": "open" } ] },
       { "floor": "sola", "label": "the solos",
         "rooms": [ { "install": "sola", "form": "office", "origin": { "x": 0,   "y": 160 } },
-                   { "install": "zeta", "form": "office", "origin": { "x": 288, "y": 160 } } ],
+                   { "install": "zeta", "form": "office", "origin": { "x": 480, "y": 160 } } ],
         "hallway": { "type": "map", "orientation": "orthogonal", "width": 50, "height": 5,
                      "tilewidth": 32, "tileheight": 32,
                      "tilesets": [ { "firstgid": 1, "source": "tiles/furniture-kit.tsx" } ],
@@ -4365,8 +4435,9 @@ from the snapshot's row.
   authored, whole, because it is part of the layout document and not a room's; a floor with neither
   is laid out by that section's default rule in the client. `origin` is a position and never a size: a
   room's extent is the grid of the map this surface answers for it below, which is why no member
-  here says how big a room is — the worked floor's `sola` and `zeta` are authored, 256 px wide, which
-  is why they may sit 288 px apart; two unauthored rooms would take the shipped default's grid and the
+  here says how big a room is — the worked floor's `sola` and `zeta` are authored, 448 px wide (one desk
+  at [FLOOR.md § 12](FLOOR.md#12-every-number-and-where-it-comes-from)'s furniture box, the least a room
+  map may hold since FLOOR.md § 14 item 28(1)), which is why they may sit 480 px apart; two unauthored rooms would take the shipped default's grid and the
   save would be checked against that. **The response grows by every hallway on every connect**, bounded by
   the layout's own write bound ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions))
   and by nothing this surface adds; the hallway endpoint of its own that was declined is
@@ -4392,7 +4463,7 @@ authored, and what the floor reads of it is [FLOOR.md § 10.3](FLOOR.md#103-the-
            "tilesets": [ { "firstgid": 1, "source": "tiles/furniture-kit.tsx" } ],
            "layers": [ { "type": "tilelayer", "name": "floor", "data": [ 1, 1, 1 ] },
                        { "type": "objectgroup", "name": "desks",
-                         "objects": [ { "id": 1, "x": 64, "y": 96, "width": 116, "height": 64 } ] } ] }
+                         "objects": [ { "id": 1, "x": 64, "y": 96, "width": 440, "height": 228 } ] } ] }
 }
 ```
 
@@ -5055,7 +5126,8 @@ and the gate on trusting the derived signal at all.*
   `config('database.redis.cache.database')` resolve to the pinned values and
   `DB::connection()->getDatabaseName()` resolves to `mezzanine_test`; the connection's resolved
   `time_zone` is `+00:00`; every isolation-critical key has both an `<env force="true">` and a matching
-  `<server>` entry with equal values; `DB_CONNECTION` is declared `mysql` and not forced.
+  `<server>` entry with equal values; the key set the shape test guards is exactly the key set
+  `phpunit.xml` declares; `DB_CONNECTION` is declared `mysql` and not forced.
 - **The hostile export is a GREEN, not a RED — corrected 2026-08-25 (card#7334; this row previously
   said the opposite).** `DB_DATABASE=mezzanine REDIS_DB=9 php artisan test` **passes, and passing is
   the correct outcome**: with BOTH halves of each pin present the export is *defeated*, so the resolved
@@ -5089,6 +5161,14 @@ and the gate on trusting the derived signal at all.*
   silent-divergence mode (one line of a two-line pin edited, everything still reading correctly)
   **and the only lever that demonstrates the guard refusing** — deleting a half is what lets an export
   reach the resolved value at all.
+- **Fourth RED — the shape test's own population, and it is staged on a FIXTURE COPY of `phpunit.xml`,
+  never on the file itself** (card#9742). Staging it in the real file changes the isolation of the very
+  run that performs the control, so the copy is part of the method rather than caution. Add a further pin
+  — both halves, any name the test does not know — to a copy of `phpunit.xml`, point the test's read at
+  the copy, and leave its constant untouched → it reds naming that key `UNGUARDED`. Delete a pinned key
+  from the same copy while the constant still names it → it reds naming that key `GUARDED BUT ABSENT`.
+  Both directions, because a guard that reports on a set it does not define is the same defect whichever
+  way the sets have drifted.
 
 ### AT-D2-15 feed backpressure closes one connection and no others
 

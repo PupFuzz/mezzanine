@@ -84,6 +84,17 @@ final class FloorMap
          * @var array{width: int, height: int, tilewidth: int, tileheight: int}
          */
         public readonly array $grid,
+        /**
+         * The `desks` layer's objects, in the order the layer lists them, each with the name a refusal
+         * calls it by (`id 3`, or `object #3 (it declares no `id`)`) and its geometry in pixels.
+         * Read here, once, by the same walk that counts `S` and checks each object against the
+         * grid, so `App\Floor\DeskSlots` — the console's item-28(1) refusals and its
+         * re-validation listing — judges the very objects this parser admitted and parses nothing
+         * a second time.
+         *
+         * @var list<array{name: string, x: float, y: float, w: float, h: float}>
+         */
+        public readonly array $desks,
     ) {}
 
     /**
@@ -160,7 +171,9 @@ final class FloorMap
 
         $grid = self::structure($decoded, 'This map');
 
-        return new self($document, self::countSlots($decoded->layers, $grid), $grid);
+        $desks = self::readSlots($decoded->layers, $grid);
+
+        return new self($document, count($desks), $grid, $desks);
     }
 
     /**
@@ -549,8 +562,9 @@ final class FloorMap
      *
      * @param  array<mixed>  $layers
      * @param  array{width: int, height: int, tilewidth: int, tileheight: int}  $grid
+     * @return list<array{name: string, x: float, y: float, w: float, h: float}> the slots, whose count is `S`
      */
-    private static function countSlots(array $layers, array $grid): int
+    private static function readSlots(array $layers, array $grid): array
     {
         $desks = self::deskLayers($layers);
 
@@ -595,6 +609,7 @@ final class FloorMap
 
         $pixelWidth = $grid['width'] * $grid['tilewidth'];
         $pixelHeight = $grid['height'] * $grid['tileheight'];
+        $slots = [];
 
         foreach (array_values($objects) as $index => $object) {
             $named = $object instanceof \stdClass && isset($object->id) && is_scalar($object->id)
@@ -638,9 +653,11 @@ final class FloorMap
                     $grid['width'], $grid['height'], $grid['tilewidth'], $grid['tileheight'],
                 ));
             }
+
+            $slots[] = ['name' => $named, 'x' => $x, 'y' => $y, 'w' => $width, 'h' => $height];
         }
 
-        return count($objects);
+        return $slots;
     }
 
     /**

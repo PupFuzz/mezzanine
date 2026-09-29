@@ -1,0 +1,43 @@
+# dependency-audit-selftest.yml — keep the scheduled dependency audit's refusals real, at PR time.
+#
+# WHAT IT DOES. Runs `bin/dependency-audit.selftest.sh` over this checkout. The suite extracts the
+# shell of `.github/workflows/dependency-audit.yml` (the callee) and of the reporting job in
+# `.github/workflows/dependency-ref-matrix.yml` (the caller) verbatim from their marked blocks and
+# runs it against the vendored fixtures in `bin/dependency-audit-fixtures/`, with the three network
+# seams replaced by fixture readers. What each leg asserts is the suite's own header; it is not
+# restated here.
+#
+# WHY IT EXISTS. The audit itself runs only on a schedule, from the default branch, so a PR that
+# breaks its shell would otherwise surface as a red scheduled run a day after the merge — or, worse,
+# as a green one over nothing. This lane is the PR-time half.
+#
+# NO `paths:` FILTER, DELIBERATELY — the same reasoning as `deploy-selftest.yml`: the suite is
+# seconds of bash, and a path-filtered workflow produces NO RUN, which reads as *pending* rather
+# than *passed*.
+#
+# ⛔ WHETHER A RED HERE BLOCKS A MERGE IS NOT STATED IN THIS FILE, DELIBERATELY.
+# `docs/VERSIONING.md § Branch model` is its one home and carries the command that re-derives it.
+#
+# NEEDS NO CREDENTIAL AND NO NETWORK: bash + jq + sed + awk + find + the checkout.
+
+name: Dependency audit selftest
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit-selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # `bash` explicitly rather than relying on the executable bit surviving a checkout.
+      - name: Self-test (every fail-closed leg, the discriminating pair, and the mutant controls)
+        run: bash bin/dependency-audit.selftest.sh

@@ -23,9 +23,10 @@ use Tests\TestCase;
  * the placement rule for a guard: not on the thing it guards.
  *
  * ⚠ WHAT THIS DOES NOT CHECK, so a green is not read as more than it is: that a desk whose cell
- * DOES draw a character draws the character § 7.1 describes. The pose is the desk's render
- * (§ 7.1's own table, built with the floor) and no desk exists yet to draw one. What is
- * checkable today is the partition the BUBBLE switches on.
+ * DOES draw a character draws the character § 7.1 describes. The pose is the desk render's
+ * (`desk/desk-render.js`, Appendix B step 5): `TheDeskSpeaksTheDocumentsWordsTest` holds its
+ * empty chairs to the same Desk column, and AT-D3-5 holds the pictures apart. What THIS file
+ * checks is the partition the BUBBLE switches on.
  */
 class DeskCharacterSetMatchesTheDocumentTest extends TestCase
 {

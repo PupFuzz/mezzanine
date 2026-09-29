@@ -11,17 +11,15 @@ use Tests\TestCase;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⚠ AT-D3-4 HAS TWO SURFACES AND THIS FILE COVERS ONE. Its GREEN reads "the side table, the
  * drill-down, the uncapped intern list": the side table's stools and its *+N more* tag are the
- * DESK's, from the seat object's capped `subagents[]`, and there is no desk — the floor screen
- * is card#9208-blocked. So the two side-table clauses of that test are UNASSERTED here and are
- * named rather than quietly folded in; what is asserted is every clause that reads the panel.
+ * DESK's, from the seat object's capped `subagents[]` — `desk/desk-render.js`, Appendix B step 5.
+ * AT-D3-4 as a whole — both surfaces, over the harness, with the drill-down opened from the floor —
+ * is `Tests\Feature\Floor\TheInternListIsUncappedWhereTheSideTableIsCappedTest` (Appendix B step
+ * 10); this file holds the panel model's own clauses over one response.
  *
- * ⛔ AND THIS FILE PINS A CONTRADICTION IN D3 RATHER THAN RESOLVING IT SILENTLY. § 5.2's rule
- * cell and § 8's *the full list* row select this list on `agent_scope == "subagent"` / a
- * non-null `parent_call_id`; § 8's LABEL rows, § 8.1's cap argument and AT-D3-4's own GREEN
- * ("nine open DISPATCH calls … lists 9") select it on the dispatch calls. The two are disjoint
- * on real data. `drilldown-model.js` carries the whole argument and implements the second; the
- * test below asserts both selections, so the day the amendment in card#7342's PR body is ruled
- * on, the evidence is a check rather than a memory.
+ * ⛔ THE LIST IS THE SEAT'S DISPATCH CALLS — § 5.2's selection sentence and § 8's *the full list*
+ * row, by the operator's ruling of 2026-09-25 (card#7342). The calls carrying `agent_scope ==
+ * "subagent"` / a `parent_call_id` are the ones an intern itself runs, and the first test below
+ * holds that one of them is NOT listed.
  */
 class DrillDownRendersTheInternsTest extends TestCase
 {
@@ -53,7 +51,7 @@ class DrillDownRendersTheInternsTest extends TestCase
         // for a subagent exists on any read surface.
         $this->assertSame('draft the D1 event schema', $interns['rows'][0]['label']);
         $this->assertSame('coder', $interns['rows'][0]['type']);
-        $this->assertSame('14:23:31 (seat clock)', $interns['rows'][0]['started_at']);
+        $this->assertSame('14:23:31 (seat clock) — seat clock is +412 ms from the server\'s', $interns['rows'][0]['started_at']);
 
         // ⛔ THE HONEST ORPHAN: a null title renders **untitled**, with the `call_id` in the
         // drill-down (§ 8, § 5.6, AT-D3-4's GREEN). Never the type, the tool name, or the word
@@ -97,43 +95,39 @@ class DrillDownRendersTheInternsTest extends TestCase
         $this->assertNotEmpty($detail['open_calls']);
     }
 
-    /** A response with no `detail` has no source for this list, and says so (§ 5.5). */
-    public function test_a_response_without_detail_says_the_list_is_unsourced(): void
+    /**
+     * § 9 F11: with no `detail` the list "falls back to `subagents[]` **and says it is capped**" — never
+     * the capped array shown as if it were complete, and never an empty list either. While the request
+     * is still OUT, nothing is claimed yet: F11 names a failed request, not a pending one.
+     */
+    public function test_a_response_without_detail_falls_back_to_the_capped_array_and_says_so(): void
     {
         $seat = $this->seatBody();
         unset($seat['detail']);
 
-        $model = $this->probe(['seat' => $seat, 'now_ms' => $this->nowMs()])['model'];
+        $probe = $this->probe(['seat' => $seat, 'now_ms' => $this->nowMs(), 'drive_main' => true,
+            'options' => ['detail_failure' => ['status' => 503]]]);
+        $model = $probe['model'];
 
         $this->assertFalse($model['interns']['sourced']);
-        $this->assertSame([], $model['interns']['rows']);
-        $this->assertNotNull($model['interns']['statement']);
+        $this->assertTrue($model['interns']['capped']);
+        $this->assertSame(array_column($seat['subagents'], 'call_id'), array_column($model['interns']['rows'], 'call_id'));
+        // F11's ratified wording, read out of the document that publishes it rather than spelled
+        // here — so the module's copy (a browser cannot read FLOOR.md) reds when the two diverge.
+        $this->assertSame($this->f11Fallback(), $model['interns']['statement']);
         // The count still comes from the seat object, which DOES carry it.
         $this->assertSame(1, $model['interns']['open']);
-    }
+        // …and every other section that needs `detail` reads F11's own word.
+        $this->assertSame('unavailable', $model['counters']['statement']);
+        $this->assertSame('unavailable', $model['badges']['rows'][0]['counters']);
+        $this->assertSame($model['interns']['statement'], $probe['main']['dom']['[data-panel-interns-statement]']['text']);
 
-    /**
-     * ⛔ THE EVIDENCE FOR THE AMENDMENT. Both of D3's stated selections, run over one response.
-     */
-    public function test_the_two_selections_d3_states_for_this_list_are_disjoint(): void
-    {
-        $probe = $this->probe([
-            'seat' => $this->seatBody(['subagents_open' => 9], $this->detailBody(9)),
-            'now_ms' => $this->nowMs(),
-        ]);
+        $pending = $this->probe(['seat' => $seat, 'now_ms' => $this->nowMs(), 'options' => ['detail_pending' => true]])['model'];
 
-        $interns = $probe['selections']['interns'];
-        $scoped = $probe['selections']['subagent_scoped'];
-
-        $this->assertCount(9, $interns, 'the dispatch selection is AT-D3-4’s nine');
-        $this->assertSame([], array_intersect($interns, $scoped),
-            'the two selections § 5.2 and AT-D3-4 state for one list overlap — if they ever do, '
-            .'the contradiction this test exists to record has changed and the amendment '
-            .'proposed on card#7342 must be re-argued rather than applied');
-
-        // And the set § 5.2's rule selects carries no title and no type at all, which is why it
-        // cannot be the list § 8's own label rows describe.
-        $this->assertSame(['01K3TB0000000000000000000'], $scoped);
+        $this->assertSame([], $pending['interns']['rows']);
+        $this->assertFalse($pending['interns']['listed']);
+        $this->assertStringNotContainsString('unavailable', (string) $pending['interns']['statement']);
+        $this->assertStringNotContainsString('unavailable', (string) $pending['counters']['statement']);
     }
 
     /** ⛔ THE CONTROLS — each planted in the SHIPPED module. */
@@ -177,5 +171,22 @@ class DrillDownRendersTheInternsTest extends TestCase
         $this->assertContains('01K3TA4E5F6G7H8J9K0M1N2P3Q', array_column($all['interns']['rows'], 'call_id'),
             'CONTROL 3 did not bite: every open call was admitted and the seat’s own `Bash` call '
             .'still did not appear, so the selection assertion is guarding nothing');
+    }
+
+    /**
+     * § 9 F11's fallback line, as the document publishes it: the bold-italic wording in F11's row.
+     */
+    private function f11Fallback(): string
+    {
+        $row = array_values(array_filter(
+            explode("\n", $this->floorMd()),
+            fn (string $line) => str_starts_with($line, '| F11 |'),
+        ));
+
+        $this->assertCount(1, $row, 'FLOOR.md § 9 has no single F11 row to read the fallback wording from');
+        $this->assertSame(1, preg_match('/\*\*\*(unavailable [^*]+)\*\*\*/u', $row[0], $m),
+            'F11\'s row publishes no ***unavailable …*** wording for the intern list\'s fallback');
+
+        return $m[1];
     }
 }

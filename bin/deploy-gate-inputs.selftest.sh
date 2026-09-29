@@ -1,44 +1,36 @@
 #!/usr/bin/env bash
 # deploy-gate-inputs.selftest.sh — hermetic, network-free acceptance for bin/deploy-gate-inputs.sh.
-# card#9637
+# card#9637, card#9745
 #
-# WHY IT EXISTS. `bin/deploy-gate-inputs.sh` exists because a gate's demands and this repository
-# were never in the same room. Its FIRST version had that defect one level up: its derivation only
-# ever FOUND reads, so a read written in a shape its pattern missed was absent from the derived set
-# AND from the table it is compared against — the two sides stayed equal and the run went GREEN over
-# a gate nobody had checked. Six of eight realistic ways to add a read escaped that way. The fix is
-# a derivation that STOPS on what it sees (a loose superset of lines that could be a read; anything
-# in it the strict pattern does not match stops the check) and a table that pins each read's
-# DISPOSITION, not just its path. That fix is not totality, and the checker does not claim it is:
-# shapes its superset does not see still run green, and they are enumerated in the one place —
-# the `NOT PROVED BY A GREEN` block `bin/deploy-gate-inputs.sh` prints on every run. The cases
-# below are the escapes it DOES claim to stop; each is a red here for that reason.
-#
-# ⛔ AND THAT FIX IS ONLY WORTH ANYTHING IF IT IS RE-RUN. The eight escapes were first measured
-# against throwaway fixtures in a temp dir that nothing in this repository kept, so the pattern
-# could have been tightened the next day with the lane staying green forever. Every one of them is
-# a case below, against the REAL script, and this file runs in the same CI lane as the check it
-# tests.
+# WHY IT EXISTS. `bin/deploy-gate-inputs.sh` RUNS the target-tree gates bin/deploy.sh declares
+# host-free over a commit, and trusts a read ledger for what they read. Both halves fail silently if
+# nothing watches them fail: a lane that stopped running a gate, or a ledger that stopped seeing a
+# read, stays GREEN. So each verdict below is a case against the REAL script, each one
+# asserted on the message as well as the exit code — a check with two reasons to exit 2 would
+# otherwise look like it discriminates when it does not.
 #
 # WHAT IS REAL AND WHAT IS NOT.
-#   REAL: bash, git, the whole of `bin/deploy-gate-inputs.sh`, and a fixture repository built from
-#         THIS repository's own tracked tree at HEAD — with `bin/deploy.sh` taken from the working
-#         copy, because that is the file the checker's CLASSIFIED table is pinned against.
-#   NOT RUN: `bin/deploy.sh` itself. Nothing here deploys, reaches a host, opens a `.env`, needs a
-#         credential or touches the network; every fixture lives under one temp dir.
+#   REAL: bash, git, the whole of `bin/deploy-gate-inputs.sh`, the whole of `bin/deploy.sh` (the lane
+#         sources it and runs its gates), and a fixture repository built from THIS repository's own
+#         tracked tree at HEAD — with `bin/deploy.sh` taken from the working copy, so that a change to
+#         the deploy is tested before it is committed.
+#   NOT RUN: a deploy. Nothing here reaches a host, opens a `.env`, needs a credential or touches the
+#         network; every fixture lives under one temp dir.
 #
-# RED-FIRST, WITH ONE CONTROL. `control: the repository as it is` is the single variable every red
-# below differs from: the same fixture, plus exactly one mutation. A pass is evidence only because
-# that control passes and each mutation is watched to fail — and to fail for the RIGHT REASON,
-# which is why every case asserts on the message and not on the exit code alone (a check with two
-# reasons to exit 2 would otherwise look like it discriminates when it does not).
+# RED-FIRST, WITH CONTROLS. `control: the repository as it is` is the single variable every red below
+# differs from: the same fixture, plus exactly one mutation. The content predicates each have a control
+# of their own that differs from their red by the one line the gate judges.
 #
-# ⚠ THE MUTATION POINT IS DERIVED, NOT WRITTEN DOWN. Cases are inserted after the LAST line of
-# `bin/deploy.sh` that the checker's own `READ_PREFIX_RE`/`READ_ARG_RE` match — both extracted from
-# the checker at run time, never restated here — so a `bin/deploy.sh` that moves its gates around
-# does not silently turn these cases into no-ops against a line that is no longer a read.
+# ⚠ A MUTATION THAT CHANGES NOTHING IS A FAILURE, NOT A PASS. Mutations of bin/deploy.sh are anchored
+# on the definition line of a gate the declaration names (`gate_a11_trusted_proxies() {`). If that
+# line moves or the gate is renamed, `mutate` reds on the spot rather than letting the case run over
+# the unmutated script and read its green as the check's.
 #
-# RUN: bin/deploy-gate-inputs.selftest.sh          (exit 0 = every case passed)
+# ⚠ A CASE THIS RUNNER CANNOT BUILD IS NAMED, NOT COUNTED. Where the environment prevents constructing a
+# case, `notverified` prints ⚠ NOT VERIFIED HERE saying which and why, the count is repeated in the
+# summary, and the suite does not fail: nothing was measured, so there is no finding either way.
+#
+# RUN: bin/deploy-gate-inputs.selftest.sh          (exit 0 = every case passed; ⚠ lines name what did not run)
 
 set -uo pipefail
 
@@ -51,15 +43,18 @@ REPO="$(cd "$HERE/.." && pwd)"
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 
-fails=0; cases=0
+fails=0; cases=0; unverified=0
 ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  FAIL %s\n' "$1" >&2; fails=$((fails + 1)); }
+# notverified <reason> — a case THIS RUNNER COULD NOT BUILD. Not a pass and not a failure: the case did
+# not run, and naming it is the result (card#10368). The summary repeats the count.
+notverified() { unverified=$((unverified + 1)); printf '  ⚠ NOT VERIFIED HERE  %s\n' "$1" >&2; }
 # `eq` branches rather than chaining `A && ok || bad`: in that chain the reporter's OWN exit status
 # is a second way to reach `bad`, so a printf that fails (a closed or full stdout under a CI lane's
-# redirection) turns a case that PASSED into a FAIL, for a reason that is not about the check. `has`
-# below already branches; this is the same shape written the same way.
+# redirection) turns a case that PASSED into a FAIL, for a reason that is not about the check.
 eq()  { cases=$((cases+1)); if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 — expected '$2', got '$3'"; fi; }
 has() { cases=$((cases+1)); case "$3" in *"$2"*) ok "$1" ;; *) bad "$1 — output did not contain '$2'" ;; esac; }
+hasnt() { cases=$((cases+1)); case "$3" in *"$2"*) bad "$1 — output unexpectedly contained '$2'" ;; *) ok "$1" ;; esac; }
 section() { printf '\n── %s\n' "$1"; }
 
 # git, with an identity and no signing: the fixtures are commits, and a machine whose global config
@@ -67,253 +62,253 @@ section() { printf '\n── %s\n' "$1"; }
 G() { local d="$1"; shift; git -c user.email=selftest@invalid -c user.name=selftest \
         -c commit.gpgsign=false -c init.defaultBranch=main -C "$d" "$@"; }
 
-# ── the derivation's own patterns, taken FROM the checker ──────────────────────────────────────
-# Extracted, never restated: these decide where every mutation below is inserted, so a copy here
-# would be a second notion of what a read looks like — the exact defect this suite exists to pin.
-PFX="$(sed -n "s/^READ_PREFIX_RE='\(.*\)'\$/\1/p" "$CHECK")"
-ARG="$(sed -n "s/^READ_ARG_RE='\(.*\)'\$/\1/p" "$CHECK")"
-# Both operands here are TESTS with no side effect, so this chain is exactly `if ! (A && B)`: the
-# block runs when either pattern came back empty, which is the intent. The hazard SC2015 names —
-# `C` reached because `B` was an action that failed — has no operand to arrive through.
-# shellcheck disable=SC2015  # A and B are both tests; C is the "either was empty" branch
-[ -n "$PFX" ] && [ -n "$ARG" ] || {
-  echo "selftest: could not extract READ_PREFIX_RE/READ_ARG_RE from $CHECK — the insertion point of" >&2
-  echo "          every case below is derived from them, so nothing here would be testing anything." >&2
-  exit 1; }
-RRE="$PFX$ARG"
-
 # ── the base fixture: this repository's own tree at HEAD ───────────────────────────────────────
 mkdir -p "$T/base"
 git -C "$REPO" archive HEAD | tar -x -C "$T/base" || { echo "selftest: git archive HEAD failed" >&2; exit 1; }
-# bin/deploy.sh from the WORKING copy: the checker's CLASSIFIED table pins digests of that file's
-# disposition lines, so the fixture has to hold the same one for the control to mean anything.
 cp "$REPO/bin/deploy.sh" "$T/base/bin/deploy.sh"
 G "$T/base" init -q
 G "$T/base" add -A
 G "$T/base" commit -q -m "fixture: this repository at HEAD"
-
-ANCHOR="$(grep -nE "$RRE" "$T/base/bin/deploy.sh" | tail -1 | cut -d: -f1)"
-[ -n "$ANCHOR" ] || { echo "selftest: no line of bin/deploy.sh matches the checker's READ_RE — every" >&2
-                      echo "          case below would insert into nothing." >&2; exit 1; }
-
 BASE_SHA="$(G "$T/base" rev-parse HEAD)"
 DIR="$T/base"; OUT=""; RC=0
-# One fixture repository, restored to its base commit before each case, rather than a copy per
-# case: the restore is `reset --hard <the base commit>` + `clean -fdx` against an ABSOLUTE sha —
-# never `HEAD~1`, which would walk backwards through whatever the last case happened to commit.
-mkcase() { # mkcase <name> — the fixture, back at the state the control passed on
-  G "$DIR" reset -q --hard "$BASE_SHA"
-  G "$DIR" clean -qfdx
-}
-insert() { # insert <line>… — after the last derived read of $DIR's bin/deploy.sh, inside phase_a
-  local at f="$DIR/ins.$$"
-  printf '%s\n' "$@" > "$f"
-  at="$(grep -nE "$RRE" "$DIR/bin/deploy.sh" | tail -1 | cut -d: -f1)"
-  awk -v at="$at" -v f="$f" 'NR==at { print; while ((getline l < f) > 0) print l; next } { print }' \
-    "$DIR/bin/deploy.sh" > "$DIR/bin/deploy.sh.new"
-  mv "$DIR/bin/deploy.sh.new" "$DIR/bin/deploy.sh"
-  rm -f "$f"
+
+# One fixture repository, restored to its base commit before each case: `reset --hard <the base
+# commit>` + `clean -fdx` against an ABSOLUTE sha — never `HEAD~1`, which would walk backwards through
+# whatever the last case happened to commit.
+mkcase() { G "$DIR" reset -q --hard "$BASE_SHA"; G "$DIR" clean -qfdx; }
+# mutate <sed script> — edit the fixture's bin/deploy.sh, and red if the edit changed nothing.
+mutate() {
+  cp "$DIR/bin/deploy.sh" "$T/before"
+  sed -i "$1" "$DIR/bin/deploy.sh"
+  cmp -s "$T/before" "$DIR/bin/deploy.sh" \
+    && bad "mutation '$1' changed nothing in bin/deploy.sh — its anchor has moved, so the case below tests nothing"
+  return 0
 }
 run() { # run — commit $DIR's mutation and ask the checker about it
   G "$DIR" add -A >/dev/null
   G "$DIR" diff --cached --quiet || G "$DIR" commit -q -m mutation
   OUT="$(cd "$DIR" && bash "$CHECK" --ref HEAD 2>&1)"; RC=$?
-  # VERBOSE=1 prints what each mutation actually made the check SAY. A case that exits 2 for the
-  # wrong reason looks identical to one that exits 2 for the right one from the assertions alone.
+  # VERBOSE=1 prints what each mutation actually made the check SAY.
   [ -z "${VERBOSE:-}" ] || { printf '    → exit %s\n' "$RC"
-                             printf '%s' "$OUT" | grep -E '⛔|✅|—' | head -3 | sed 's/^/      /'; }
+                             printf '%s' "$OUT" | grep -E '⛔|✅' | head -3 | sed 's/^/      /'; }
 }
+# The gate the mutations below are anchored in, by its definition line.
+A11='/^gate_a11_trusted_proxies() {$/'
 
 # ── the control ────────────────────────────────────────────────────────────────────────────────
 section "CONTROL — the repository as it is"
-mkcase control; run
-eq  "control: exit 0"                               0 "$RC"
-has "control: says every input is present"          "every target-tree input" "$OUT"
-has "control: the population is derived, not typed" "population derived from bin/deploy.sh" "$OUT"
-has "control: the reader family is derived too"     "reader family derived" "$OUT"
-has "control: says every line it SEES was matched"  "SEES as a possible read was matched by it" "$OUT"
-# The claim about what a green does NOT establish has ONE home — the block the check prints — and
-# three in-repo surfaces (its own header, the workflow header, docs/CHANGELOG.md) point at it by name
-# rather than keeping a copy. Deleting the block would leave those three pointing at nothing, which
-# is how the four copies that preceded it all went stale; this is the assertion that reds instead.
-has "control: prints what a green does NOT prove"   "WHAT A GREEN HERE PROVES, AND WHAT IT DOES NOT" "$OUT"
-has "control: names the decision that left the gap" "card#9637" "$OUT"
+mkcase; run
+eq  "control: exit 0"                                  0 "$RC"
+has "control: says every declared gate passes"         "every target-tree gate bin/deploy.sh declares host-free passes" "$OUT"
+has "control: the gates are RUN, not parsed"           "its target-tree gates, RUN over" "$OUT"
+# Every row the fixture's own bin/deploy.sh declares host-free is reported as run — read out of that
+# file by sourcing it, never listed here, so a new host-free row is covered the day it is declared.
+# shellcheck disable=SC2016  # expanded by the bash that sources the fixture's deploy.sh
+declared="$(cd "$DIR" && MEZZ_DEPLOY_ROOT="$DIR" bash -c '. bin/deploy.sh; for r in "${GATE_TREE_READERS[@]}"; do [ "${r#* }" != host-free ] || printf "%s\n" "${r%% *}"; done')"
+n_declared=0; n_ran=0
+while IFS= read -r fn; do
+  [ -n "$fn" ] || continue
+  n_declared=$((n_declared + 1))
+  printf '%s\n' "$OUT" | grep -qE "^  passed +$fn\$" && n_ran=$((n_ran + 1))
+done <<< "$declared"
+eq  "control: every host-free row the fixture's bin/deploy.sh declares was run and passed (declared/ran)" \
+    "$n_declared/$n_declared" "$n_declared/$n_ran"
+has "control: the population is the ledger's — a migration the TREE names is listed as read" \
+    "read  server/database/migrations/2026_08_25_100000_create_fleet_store_tables.php" "$OUT"
+has "control: each git process was matched to the ledger"  "each one a git_at call in the ledger" "$OUT"
+has "control: names the declared readers it does NOT run, in the deploy's words" "fpm_code_reload_ready — A14" "$OUT"
+# The claim about what a green does NOT establish has ONE home — the block the check prints — and the
+# workflow header and the changelog point at it by name. Deleting it would leave them pointing at
+# nothing, which is how the four copies that preceded it all went stale; this is the assertion that reds.
+has "control: prints what a green does NOT prove"      "WHAT A GREEN HERE PROVES, AND WHAT IT DOES NOT" "$OUT"
+has "control: names the card that built the ledger"    "card#9745" "$OUT"
 
-# ── the eight escape shapes ────────────────────────────────────────────────────────────────────
-# Each adds ONE read of a path this repository does not carry. Before round 2, six of the eight
-# exited 0 with the check still reporting its full population — the read was in neither the derived
-# set nor the table, so the two agreed and the lane was green over an unchecked gate.
-section "ESCAPES — a new read the derivation must never miss"
+# ── findings about the RELEASE — exit 1, the gate named, and the deploy's own words ────────────
+section "FINDINGS — a gate REFUSES this commit, so a real deploy of it would"
 
-# ⚠ THE SINGLE QUOTES BELOW ARE THE POINT, and each case says on its own line which shape it
-# holds open. Two kinds run through this section. Shell SOURCE, which this suite injects into the
-# fixture's `bin/deploy.sh`: there the `$` IS the escape shape under test, and letting it expand
-# here would inject THIS file's value and leave the case measuring a line nobody wrote. And
-# assertion NEEDLES, which quote the checker's own output, where those `$` and backquotes are
-# printed literally and an expansion would match nothing.
+mkcase; rm -f "$DIR/server/package-lock.json"; run
+eq  "an absent lockfile: exit 1 (a finding, not a failure)" 1 "$RC"
+has "absent lockfile: the refusing gate is named"      "REFUSES" "$OUT"
+has "absent lockfile: …as the gate function"            "REFUSED  gate_a12_target_lockfile" "$OUT"
+has "absent lockfile: in the deploy's own words"        "server/package-lock.json is missing from" "$OUT"
+has "absent lockfile: says it is the deploy's gate, not a rule of this lane" "This is the deploy's OWN gate" "$OUT"
 
-mkcase esc_control
-# shellcheck disable=SC2016  # injected source: the matched `$SHA`
-insert '  git_read_at newv "$SHA" server/NEWPATH.json'
+mkcase; : > "$DIR/server/composer.json"; run
+eq  "an empty composer.json: exit 1"                   1 "$RC"
+has "empty composer.json: A6's refusal"                "server/composer.json is missing or empty" "$OUT"
+
+mkcase; rm -f "$DIR/server/bootstrap/app.php"; ln -s ../top.txt "$DIR/server/bootstrap/app.php"; run
+eq  "app.php committed as a SYMLINK: exit 1"           1 "$RC"
+has "symlink: the deploy's reader refuses it by its mode" "is a symbolic link at" "$OUT"
+
+mkcase; rm -f "$DIR/bin/supervision.sh"; run
+eq  "no bin/supervision.sh: exit 1"                    1 "$RC"
+has "no bin/supervision.sh: A13's target half refuses" "bin/supervision.sh is missing or empty" "$OUT"
+
+# ⭐ THE CONTENT PREDICATES — what this lane did not assert before card#9745. Each red beside a control
+# that differs by the one line the gate judges.
+alter_events() { # alter_events <algorithm clause or nothing>
+  cat > "$DIR/server/database/migrations/2099_01_01_000000_alter_events_selftest.php" <<MIG
+<?php
+// $1
+return new class { public function up(): void { Schema::table('events', fn (\$t) => \$t->string('x')->nullable()); } };
+MIG
+}
+mkcase; alter_events ""; run
+eq  "an ALTER on events with no ALGORITHM=: exit 1"    1 "$RC"
+has "ALTER without ALGORITHM=: A10's refusal, naming the migration" "2099_01_01_000000_alter_events_selftest.php" "$OUT"
+has "ALTER without ALGORITHM=: in the deploy's words"  "without stating an ALGORITHM" "$OUT"
+mkcase; alter_events "ALGORITHM=INSTANT"; run
+eq  "the control: the same ALTER declaring ALGORITHM=INSTANT: exit 0" 0 "$RC"
+
+mkcase
+# shellcheck disable=SC2016  # PHP source, written as it is: `$m` is PHP's, not the shell's
+printf '<?php return Application::configure()->withMiddleware(fn ($m) => $m->trustProxies(at: '"'"'*'"'"'))->create();\n' \
+  > "$DIR/server/bootstrap/app.php"
 run
-eq  "the matched shape (control for the seven below): exit 2" 2 "$RC"
-has "the matched shape: names the unclassified path"          "NOT classified here: server/NEWPATH.json" "$OUT"
-
-mkcase esc_a
-# shellcheck disable=SC2016  # injected source: an unquoted `$SHA`
-insert '  git_read_at newv $SHA server/NEWPATH.json'
+eq  "trustProxies('*'): exit 1"                        1 "$RC"
+has "trustProxies('*'): A11's refusal"                 "trusts ALL proxies" "$OUT"
+mkcase
+# shellcheck disable=SC2016  # PHP source, written as it is: `$m` is PHP's, not the shell's
+printf '<?php return Application::configure()->withMiddleware(fn ($m) => $m->trustProxies(at: '"'"'10.0.0.1'"'"'))->create();\n' \
+  > "$DIR/server/bootstrap/app.php"
 run
-eq  "A  \$SHA unquoted: exit 2"                     2 "$RC"
-has "A  \$SHA unquoted: the derivation stops"       "shape the derivation does not match" "$OUT"
+eq  "the control: trustProxies naming one proxy: exit 0" 0 "$RC"
+hasnt "the control: and no warning that none is configured" "no trustProxies() configured" "$OUT"
 
-mkcase esc_b
-# shellcheck disable=SC2016  # injected source: a braced `${SHA}`
-insert '  git_read_at newv "${SHA}" server/NEWPATH.json'
+mkcase; printf '{"lockfileVersion":9}\n' > "$DIR/server/package-lock.json"; run
+eq  "a lockfileVersion A12 cannot map: exit 1"         1 "$RC"
+has "unmappable lockfileVersion: A12's refusal"        "which A12 cannot map to an npm floor" "$OUT"
+
+# Every gate is run, not only the first to refuse: a PR author learns every refusal in one round.
+mkcase; rm -f "$DIR/server/package-lock.json"; : > "$DIR/server/composer.json"; run
+eq  "two gates refuse at once: exit 1"                 1 "$RC"
+has "two refusals: both are named"                     "gate_a6_target_php_floor gate_a12_target_lockfile" "$OUT"
+
+# ── LEG 3: every git process of a gate run is a git_at call ────────────────────────────────────
+section "THE LEDGER — every git process a gate starts is one git_at recorded"
+
+mkcase
+# shellcheck disable=SC2016  # injected source
+mutate "${A11}a \\  git -C \"\$DEPLOY_ROOT\" cat-file -e \"\$1:server/artisan\""
 run
-eq  "B  \${SHA} braced: exit 2"                     2 "$RC"
-has "B  \${SHA} braced: the derivation stops"       "shape the derivation does not match" "$OUT"
+eq  "a BARE git call inside a gate: exit 2"            2 "$RC"
+has "bare git: named as a git process with no git_at call, by its arguments" \
+    "git process with NO git_at call:   git -C" "$OUT"
+has "bare git: …which are the ones it was given"       "cat-file -e" "$OUT"
 
-mkcase esc_c
-# shellcheck disable=SC2016  # injected source: `$SHA` on a call split over two lines
-# The backslash is the LITERAL trailing continuation this case injects; the `'`
-# after it closes the argument, since a single-quoted string has no escapes.
-# shellcheck disable=SC1003  # a literal trailing backslash — see above
-insert '  git_read_at newv "$SHA" \' '    server/NEWPATH.json'
+mkcase
+# shellcheck disable=SC2016  # injected source
+mutate 's/^  git -C "\$DEPLOY_ROOT" "\$@"$/  command -p git -C "$DEPLOY_ROOT" "$@"/'
 run
-eq  "C  the call split over two lines: exit 2"      2 "$RC"
-has "C  split call: named as a continuation, not derived as the path \`\\\`" \
-    "continued onto the NEXT line" "$OUT"
+eq  "git_at itself bypassing the shim (a git found without PATH): exit 2" 2 "$RC"
+has "shim bypassed: every call is named as one no git process answered" \
+    "git_at call that NO git process answered through the shim" "$OUT"
 
-mkcase esc_d
-# shellcheck disable=SC2016  # injected source: a different rev variable, `$TARGET_SHA`
-insert '  git_read_at newv "$TARGET_SHA" server/NEWPATH.json'
+mkcase
+# shellcheck disable=SC2016  # injected source
+mutate "${A11}i extra_reader() { local x; git_read_at x \"\$1\" server/artisan || true; }"
+# shellcheck disable=SC2016  # injected source
+mutate "${A11}a \\  extra_reader \"\$1\""
 run
-eq  "D  a different rev variable: exit 2"           2 "$RC"
-has "D  a different rev variable: the derivation stops" "shape the derivation does not match" "$OUT"
+eq  "a gate reading through a helper the declaration does not name: exit 2" 2 "$RC"
+has "undeclared helper: named, with the path it read" \
+    "gate_a11_trusted_proxies read server/artisan through extra_reader, which bin/deploy.sh" "$OUT"
 
-mkcase esc_e
-# shellcheck disable=SC2016  # injected source: `$SHA` read by a third reader function
-insert '  git_show_at newv "$SHA" server/NEWPATH.json'
-# shellcheck disable=SC2016  # injected source: the `"$2:$3"` inside an appended reader body
-printf '%s\n' 'git_show_at() { git_at show "$2:$3"; }' >> "$DIR/bin/deploy.sh"
+mkcase
+# shellcheck disable=SC2016  # injected source
+mutate "${A11}a \\  local __h; git_read_at __h HEAD server/artisan || true"
 run
-eq  "E  a THIRD reader function: exit 2"            2 "$RC"
-has "E  a third reader: found by its body running a reading git subcommand" \
-    "shape the derivation does not match" "$OUT"
+eq  "a host-free gate reading a rev that is not the commit: exit 2" 2 "$RC"
+has "another rev: named, as a read of this host's checkout" "gate_a11_trusted_proxies read HEAD:server/artisan" "$OUT"
 
-mkcase esc_f
-# shellcheck disable=SC2016  # injected source: the positionals and `$SHA` inside a wrapper
-insert '  read_target() { git_read_at "$1" "$SHA" "$2"; }' '  read_target newv server/NEWPATH.json'
+# ── the declaration ────────────────────────────────────────────────────────────────────────────
+section "THE DECLARATION — what is run is what bin/deploy.sh declares, and it must be there to run"
+
+mkcase
+mutate '/^GATE_TREE_READERS=(/,/^)$/d'
 run
-eq  "F  a wrapper around a reader: exit 2"          2 "$RC"
-has "F  a wrapper: the reader call inside it is the call site" \
-    "shape the derivation does not match" "$OUT"
+eq  "no GATE_TREE_READERS: exit 2"                     2 "$RC"
+has "no declaration: says so"                          "declares no GATE_TREE_READERS" "$OUT"
 
-mkcase esc_h
-# shellcheck disable=SC2016  # injected source: `$SHA` and the `$SRV` the path is built from
-insert '  SRV=server; git_read_at newv "$SHA" "$SRV/NEWPATH.json"'
+mkcase
+mutate "s/^  'gate_a11_trusted_proxies host-free'\$/  'gate_a11_trusted_proxies host-free'\n  'gate_nowhere host-free'/"
 run
-eq  "H  a path assembled from a variable: exit 2"   2 "$RC"
-# shellcheck disable=SC2016  # assertion needle: `$SRV/NEWPATH.json`
-has "H  assembled path: classified as run-time or not at all, never passed over" \
-    'NOT classified here: $SRV/NEWPATH.json' "$OUT"
+eq  "a declared function that is not defined: exit 2"  2 "$RC"
+has "undefined: named"                                 "declares gate_nowhere in GATE_TREE_READERS and defines no such function" "$OUT"
 
-# Not one of the eight, and the reason the superset also covers $SHA lines: a read made with no
-# reader at all.
-mkcase esc_raw
-# shellcheck disable=SC2016  # injected source: the `$(...)` and `$SHA:` of a reader-less read
-insert '  body="$(git_at show "$SHA:server/NEWPATH.json")"'
+mkcase
+mutate "s/^  'gate_a11_trusted_proxies host-free'\$/  'gate_a11_trusted_proxies host-free'\n  'gate_reads_nothing host-free'/"
+printf '%s\n' 'gate_reads_nothing() { :; }' >> "$DIR/bin/deploy.sh"
 run
-eq  "raw \`git show \$SHA:…\`, no reader involved: exit 2" 2 "$RC"
-# shellcheck disable=SC2016  # assertion needle: the backquoted `git show`
-has "raw git show: named as a subcommand that is not one of the non-reading ones" \
-    'runs `git show`' "$OUT"
-# …and ONE line is named, not two. A gate that reads the release inline must not be taken for a
-# reader FUNCTION: that would make every call to the gate a call site the strict pattern cannot
-# match, and point a maintainer at `phase_a`'s caller instead of at the line they just wrote.
-eq  "raw git show: the gate holding it is not itself taken for a reader" \
-    1 "$(printf '%s' "$OUT" | grep -c 'bin/deploy.sh:[0-9]* —')"
+eq  "a declared reader that reads nothing: exit 2"     2 "$RC"
+has "reads nothing: named as stale"                    "gate_reads_nothing is declared a reader of the release" "$OUT"
 
-# ── the disposition pin ────────────────────────────────────────────────────────────────────────
-section "DISPOSITIONS — the table describes what the gate DOES, and is pinned to it"
-
-mkcase dispo
-# The first disposition at or after the last derived read — inside that read's region by
-# construction, so the pin must move. Derived, so this stays a real mutation if the gates move.
-at="$(awk -v s="$ANCHOR" 'NR>=s && /(^|[^A-Za-z0-9_])refuse([[:space:]]|$)/ { print NR; exit }' \
-        "$DIR/bin/deploy.sh")"
-[ -n "$at" ] && sed -i "${at}s/refuse/warn/" "$DIR/bin/deploy.sh"
+mkcase
+mutate "s/^\\(  '[a-z0-9_]*\\) host-free'\$/\\1 not run by this case'/"
 run
-eq  "a gate's refuse becomes a warn: exit 2"        2 "$RC"
-has "refuse→warn: the row's pinned disposition MOVED" "pinned location/disposition MOVED" "$OUT"
-has "refuse→warn: the check prints the lines the digest now covers" "the lines the digest now covers" "$OUT"
+eq  "no host-free row at all: exit 2"                  2 "$RC"
+has "no host-free row: an empty population is refused" "declares no host-free reader" "$OUT"
 
-mkcase vanish
-sed -i "${ANCHOR}d" "$DIR/bin/deploy.sh"
-run
-eq  "a classified read deleted from the deploy: exit 2" 2 "$RC"
-has "a read that vanished is named, not quietly dropped" "no longer read by the deploy" "$OUT"
+mkcase; rm -f "$DIR/bin/deploy.sh"; run
+eq  "no bin/deploy.sh at the commit: exit 2"           2 "$RC"
+has "no deploy script: says nothing was measured"      "is not readable at" "$OUT"
 
-# ── the derivation's own inputs ────────────────────────────────────────────────────────────────
-section "THE DERIVATION'S OWN INPUTS — an empty measurement is never a pass"
+# ── could not speak ────────────────────────────────────────────────────────────────────────────
+section "COULD NOT SPEAK — a failure of the check is never a finding about the release"
 
-mkcase noreads
-grep -vE "$RRE" "$DIR/bin/deploy.sh" > "$DIR/bin/deploy.sh.new"
-mv "$DIR/bin/deploy.sh.new" "$DIR/bin/deploy.sh"
-run
-eq  "no read derivable at all: exit 2"              2 "$RC"
-has "an empty derivation is refused, not reported as a pass" "no target-tree read was derived" "$OUT"
+# A read of git that FAILED is not a missing file: the deploy refuses it as not established, and here
+# that is this check's exit 2. The object is made unreadable in the fixture's store. Two runners cannot
+# build that, and each is named rather than counted as a pass or a fail: one where git has PACKED the
+# blob (its own housekeeping — `gc --auto`, a clone arriving as a pack — decides that, never the change
+# under test), so there is no per-object file to make unreadable; and one where root reads every mode.
+# ⛔ Forcing the object loose would only move this dependency on git's storage layout one layer down.
+mkcase; run
+blob="$(G "$DIR" rev-parse HEAD:server/composer.json)"
+obj="$DIR/.git/objects/${blob:0:2}/${blob:2}"
+if [ ! -f "$obj" ]; then
+  notverified "the fixture's server/composer.json blob is packed (no loose object at $obj), so the failed-read case did not run"
+else
+  chmod 000 "$obj"
+  if G "$DIR" cat-file -p "$blob" >/dev/null 2>&1; then
+    notverified "a git object at mode 000 is still readable on this runner (root?), so the failed-read case did not run"
+  else
+    OUT="$(cd "$DIR" && bash "$CHECK" --ref HEAD 2>&1)"; RC=$?
+    eq  "a read of the release git could not complete: exit 2, NOT 1" 2 "$RC"
+    has "failed read: named as not established, not as a finding" "could not establish a read of" "$OUT"
+  fi
+  chmod 644 "$obj"
+fi
 
-mkcase nofamily
-awk '/^git_read_call_site\(\)[[:space:]]*\{/ { skip = 1 } skip && /^\}[[:space:]]*$/ { skip = 0; next }
-     !skip { print }' "$DIR/bin/deploy.sh" > "$DIR/bin/deploy.sh.new"
-mv "$DIR/bin/deploy.sh.new" "$DIR/bin/deploy.sh"
-run
-eq  "the reader family's own source removed: exit 2" 2 "$RC"
-has "no family derivable: says so rather than deriving an empty one" "git_read_call_site" "$OUT"
-
-mkcase nodeploy
-rm -f "$DIR/bin/deploy.sh"
-run
-eq  "no bin/deploy.sh at the commit: exit 2"        2 "$RC"
-has "no deploy script: says nothing was measured"   "is not readable at" "$OUT"
-
-# The check CRASHING must not be readable as a finding. Exit 1 is its word for "a required input is
-# MISSING" — a verdict about the release — and an unexpected failure under `set -e` leaves the shell
-# exiting on that command's own status, which is very often 1. `set -E` + the ERR trap is what keeps
-# the two apart, and `-E` without a trap is an inert flag, so the trap is watched to fire here.
-mkcase crash
-mkdir -p "$DIR/stub"
-printf '#!/bin/sh\nexit 3\n' > "$DIR/stub/sha256sum"; chmod +x "$DIR/stub/sha256sum"
-OUT="$(cd "$DIR" && PATH="$DIR/stub:$PATH" bash "$CHECK" --ref HEAD 2>&1)"; RC=$?
-eq  "a tool the check needs fails: exit 2, NOT 1"   2 "$RC"
+# The check CRASHING must not be readable as a finding. `set -E` + the ERR trap keep the two apart, and
+# `-E` without a trap is an inert flag, so the trap is watched to fire.
+mkcase
+mkdir -p "$T/stub"; printf '#!/bin/sh\nexit 3\n' > "$T/stub/mktemp"; chmod +x "$T/stub/mktemp"
+OUT="$(cd "$DIR" && PATH="$T/stub:$PATH" bash "$CHECK" --ref HEAD 2>&1)"; RC=$?
+eq  "a tool the check needs fails: exit 2, NOT 1"      2 "$RC"
 has "a crash says it established nothing, and is not a finding" "established NOTHING" "$OUT"
 
-# ── findings about the RELEASE — exit 1, and never confused with exit 2 ────────────────────────
-section "FINDINGS — this repository does not satisfy the gate"
+# ── the invocation ─────────────────────────────────────────────────────────────────────────────
+# A mistyped COMMAND LINE must not be readable as a finding either (card#9831).
+section "THE INVOCATION — a mistyped command line is never a verdict about the release"
 
-mkcase absent
-rm -f "$DIR/server/package-lock.json"
-run
-eq  "a required input absent: exit 1 (a finding, not a failure)" 1 "$RC"
-has "absent input: names the path and its gate"     "server/package-lock.json (A12)" "$OUT"
-has "absent input: says a real deploy refuses at phase A" "REFUSES at phase A" "$OUT"
+mkcase
+OUT="$(cd "$DIR" && bash "$CHECK" --ref 2>&1)"; RC=$?
+eq  "--ref with no value: exit 2, NOT 1"               2 "$RC"
+has "--ref with no value: stops with the banner"       "⛔ deploy-gate-inputs.sh — --ref needs a value" "$OUT"
 
-mkcase empty
-: > "$DIR/server/composer.json"
-run
-eq  "a required-nonempty input present but empty: exit 1" 1 "$RC"
-has "empty input: reported as empty, not as absent"  "present but EMPTY" "$OUT"
+OUT="$(cd "$DIR" && bash "$CHECK" --ref '' 2>&1)"; RC=$?
+eq  "--ref with an empty value: exit 2, NOT 1"         2 "$RC"
+has "--ref with an empty value: stops with the banner" "⛔ deploy-gate-inputs.sh — --ref needs a value" "$OUT"
 
-mkcase symlink
-rm -f "$DIR/server/bootstrap/app.php"
-ln -s ../top.txt "$DIR/server/bootstrap/app.php"
-run
-eq  "a required input committed as a SYMLINK: exit 1" 1 "$RC"
-has "symlink: the mode is the finding"               "mode 120000" "$OUT"
-has "symlink: quotes the reader's own word for it"   "a symbolic link" "$OUT"
+OUT="$(cd "$DIR" && bash "$CHECK" --reff HEAD 2>&1)"; RC=$?
+eq  "an unknown argument: exit 2"                      2 "$RC"
+has "an unknown argument: stops with the banner, naming it" "⛔ deploy-gate-inputs.sh — unknown argument: --reff" "$OUT"
 
 printf '\n──────────────────────────────────────────────\n'
+if [ "$unverified" -gt 0 ]; then
+  printf '⚠ %d case(s) could NOT BE BUILT on this runner and did not run; each is named above with why.\n' "$unverified" >&2
+fi
 if [ "$fails" -eq 0 ]; then
   printf 'deploy-gate-inputs.selftest.sh: %d assertions, all passed\n' "$cases"; exit 0
 fi

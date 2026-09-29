@@ -95,7 +95,8 @@ refuse() { printf 'refuse\n'; exit 0; }
 . "$WORK/env.bash"
 
 # A silently-empty extraction reads as "nothing disagreed". Name every function this harness calls.
-for fn in env_lines_load env_get env_read env_file_scan env_laravel_value env_app_falsy store_locality; do
+for fn in env_lines_load env_get env_read env_file_scan env_laravel_value env_app_falsy store_locality \
+          scratch_writable; do
   declare -F "$fn" >/dev/null || die "$DEPLOY defines no $fn — the .env reading block has moved or been renamed"
 done
 # `declare -p` rather than `${#…[@]}`: under `set -u` an unset array is an ERROR, not a zero length, and

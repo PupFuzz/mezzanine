@@ -3,18 +3,18 @@
  * decides whether two counts disagree at all. card#7341 Appendix B step 3.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ IT LIVES IN `wire/` BECAUSE IT HAS TWO CONSUMERS, AND ONE OF THEM IS NOT THE LOBBY. The
- * budget was `lobby/lobby-model.js`'s while the lobby's own § 4.1 trigger was the only thing that
- * spent it; the client protocol (`wire/fleet-client.js`) now spends the same budget for the same
- * disagreement, and a second copy of a rule with a memory is two memories — the first thing they
- * do is disagree about what has already been spent. `lobby-model.js` imports and re-exports this
- * class, exactly as it re-exports `clockTime`, so every lobby caller's import is unchanged.
+ * ⛔ IT LIVES IN `wire/` BECAUSE THE CLIENT PROTOCOL IS WHAT SPENDS IT. The budget was
+ * `lobby/lobby-model.js`'s while the lobby's own § 4.1 trigger was the only thing that spent it;
+ * the client protocol (`wire/fleet-client.js`) took the same trigger at card#7341 step 3, and since
+ * step 9 it is the ONLY spender — the lobby renders the protocol's pair and issues no fetch of its
+ * own, so there is one memory of what has been spent, not two free to disagree.
  *
  * ⛔ A `wire/` MODULE MUST NOT IMPORT A `lobby/` ONE, WHICH IS WHY `disagrees` IS HERE. The
  * budget's own admission test used to ask `discrepancyNotice()` — the lobby's WORDING function —
  * whether the counts disagree, which made "do these two numbers differ" a fact only the lobby
- * could answer. It is one predicate with two readers (this budget, and the notice that words the
- * disagreement), so it is stated once, here, and the notice asks it too.
+ * could answer. It is one predicate with two readers (this budget, and `lobby-model.js`'s
+ * `discrepancyNotice()`, which words the disagreement), so it is stated once, here, and the notice
+ * asks it too.
  *
  * ⚠ `refund` EXISTS BECAUSE A FETCH CAN FAIL, AND A PAIR THE FAILED FETCH NEVER ANSWERED IS NOT
  * SPENT (§ 2.3 as card#7341 step 3 leaves it; the protocol's S11). The budget bounds a

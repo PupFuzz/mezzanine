@@ -31,11 +31,16 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                member D2 does not declare
   G8  the desk-slot worked example              FNV-1a-32 re-computed for every published key;
                                                `S` against the SHIPPED DEFAULT map file -- present,
-                                               its `desks` objects are counted; absent, section
-                                               10.3 must SAY so and no map may exist in the tree;
+                                               its `desks` objects are counted and held pairwise
+                                               disjoint on half-open rects (each is the furniture
+                                               box its desk is drawn inside, section 10.3); absent,
+                                               section 10.3 must SAY so and no map may exist in the tree;
                                                the desk sprite's size against its PNG; and the
                                                READ PATHS section 10.3 says a room's map is fetched
-                                               from must be exactly the ones D2 section 8.7 declares
+                                               from must be exactly the ones D2 section 8.7 declares;
+                                               and the worked floors laid at the furniture box --
+                                               section 4.6's two rows and D2 section 8.7's authored
+                                               rooms and worked room map -- re-derived from the box
   G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
                                                bearing members without `fetch-fresh` / `dark-only`;
                                                a section 5 table this gate has no column for; a table
@@ -776,7 +781,7 @@ if not g5_ord_total:
 #   makes co-gating stop masking: the row-10 mention of a split test is qualified, so it discharges the
 #   panel half and leaves the floor half's step-8 mention to be checked on its own artifacts.
 appB = table_rows(raw, r"^\| Order \| Artifact \| Gate \|") or []
-step_of, artifact_step, g5_unread, g5_halves = {}, {}, [], 0
+step_of, artifact_step, g5_unread, g5_halves, g5_landed = {}, {}, [], 0, []
 if not appB:
     fail.append("G5 CONTROL: Appendix B's build-order table did not parse — every acceptance test's "
                 "gate step would be unread and the ordering rule below would be vacuous")
@@ -784,7 +789,16 @@ else:
     dd_step, artifact_dupe = None, []    # step_of: AT -> [(step, half-or-None)]
     for r in appB:
         c = cells(r)
-        if len(c) < 3 or not c[0].isdigit():
+        if len(c) < 3:
+            continue
+        if not c[0].isdigit():
+            # A row the ordering rule cannot compare is a row it must not silently skip: every bold
+            # name in it would go unregistered and every gate in it unenforced, while the run
+            # reported clean (card#7341's rows 14-16 design round found this on a proposed `8a`).
+            fail.append(f"G5: Appendix B row `{c[0]}` has an Order cell that is not an integer step. "
+                        f"The ordering rule compares integer steps, so this row's artifacts and gates "
+                        f"would be read by nothing — a suffixed row is a row the gate cannot see. Use a "
+                        f"new number and state the dependency order in the cell")
             continue
         n = int(c[0])
         for a in re.findall(r"\*\*([^*]+)\*\*", c[1]):
@@ -802,6 +816,48 @@ else:
         fail.append(f"G5: Appendix B names the artifact `{k}` at step {a_} and again at step {b_}. An "
                     f"artifact built at two steps has no step, and every test that reads it would be "
                     f"checked against whichever row this parse saw last")
+    # G5, THE LANDED MARKER HAS ONE FORM (card#7341 Q9).  A row whose step has landed says so in
+    # its Artifact cell, and the rule above reads every BOLD span in that cell as an artifact -- so
+    # a bold `✅ LANDED …` registered as a phantom artifact (step 3 measured it: writing its own
+    # marker bold moved the artifact count by one), and the one row written unbolded to dodge that
+    # left the table holding two forms of one thing.  Skipping bold markers in the parse
+    # would have kept both forms accepted, so the check does the opposite: every marker is held to
+    # ONE form, unbolded, at the head of the Artifact cell, and anything else reds -- a bold marker,
+    # a marker elsewhere in the cell, and a marker in the Gate cell, where one sat on row 1.
+    #   A MARKER is recognised by the glyph or by `landed` followed by a date, case-insensitive,
+    # because `What landed is …` is prose two rows carry and is not a status claim.
+    G5_MARKER_FORM = "✅ landed YYYY-MM-DD (card#N …) — "
+    g5_marker_at_head = re.compile(r"^✅ landed \d{4}-\d{2}-\d{2} \(card#\d+[^()]*\) — ")
+    g5_marker_any = re.compile(r"✅|\blanded\s+\d{4}-\d{2}-\d{2}", re.I)
+    for r in appB:
+        c = cells(r)
+        if len(c) < 3 or not c[0].isdigit():
+            continue
+        n = int(c[0])
+        for a in re.findall(r"\*\*([^*]+)\*\*", c[1]):
+            # the SAME recognizer as the legs below: a bold name that merely contains the word
+            # (`**landed-state animation**`) is an artifact, not a status claim
+            if g5_marker_any.search(a):
+                phantom = re.sub(r"[`\s]+", " ", a).strip().lower()
+                fail.append(f"G5: Appendix B step {n}'s Artifact cell carries a BOLD status marker "
+                            f"`**{a}**` — every bold span in an Artifact cell is registered as an "
+                            f"artifact, so this one is a phantom artifact named `{phantom}`. A "
+                            f"landed step's marker has one form, `{G5_MARKER_FORM}`, unbolded, at "
+                            f"the head of the Artifact cell")
+        head = g5_marker_at_head.match(c[1])
+        if head:
+            g5_landed.append(n)
+        rest = c[1][head.end():] if head else c[1]
+        if g5_marker_any.search(rest):
+            fail.append(f"G5: Appendix B step {n}'s Artifact cell carries a status marker that is not "
+                        f"the one form `{G5_MARKER_FORM}` at the head of the cell — "
+                        f"`{g5_marker_any.search(rest).group(0)}…`. Two forms of one marker is two "
+                        f"formats for one thing, and a reader cannot tell which rows have landed "
+                        f"without reading every cell's prose")
+        if g5_marker_any.search(c[2]):
+            fail.append(f"G5: Appendix B step {n}'s Gate cell carries a status marker "
+                        f"(`{g5_marker_any.search(c[2]).group(0)}…`). A landed step is marked once, "
+                        f"in its Artifact cell, as `{G5_MARKER_FORM}` — the Gate cell names the gate")
     if dd_step is None:
         fail.append("G5 CONTROL: no Appendix B row names the drill-down as its artifact, so the step "
                     "that builds it is unknown and every panel-asserting test would pass this rule")
@@ -1595,6 +1651,9 @@ ABSENCE = prose(r"No floor map is vendored in this repository today")
 # and each member is a tree this repository does not author: the object store, an installed
 # dependency tree, and runtime scratch.  A map placed in one of them is outside the claim.
 SWEEP_SKIP = {".git", "node_modules", "vendor", "storage"}
+# What this leg reads out of each present map, by path, for G8e below: its `desks` objects and its
+# grid.  Filled in the COUNTED branch; empty means no map was read, which G8e reports by name.
+g8_maps = {}
 
 m_sp = re.search(prose(r"\*\*`(\.tm[a-z])`, `(\.tm[a-z])`\*\* — Tiled's map"), sec101)
 m_layer = re.search(prose(r"object layer named `([a-z_]+)`"), sec103)
@@ -1630,20 +1689,34 @@ else:
     )
     present = [q for q in candidates if q.is_file()]
 
-    def desks_in(q):
-        """Objects on the named object layer, read from the file in its own spelling."""
+    def desk_objects(q):
+        """The named object layer's objects as (id, x, y, w, h), read from the file in its own
+        spelling; None when the layer is not exactly one.  An object missing a rect member raises,
+        which the caller reports as a map this gate cannot read."""
         if q.suffix == ".tmj":
             doc = json.loads(q.read_text())
             hit = [l for l in doc.get("layers", [])
                    if l.get("name") == layer_name and l.get("type") == "objectgroup"]
             if len(hit) != 1:
                 return None
-            return len(hit[0].get("objects", []))
+            return [(o.get("id"), float(o["x"]), float(o["y"]), float(o["width"]), float(o["height"]))
+                    for o in hit[0].get("objects", [])]
         root = ET.parse(q).getroot()
         hit = [g for g in root.iter("objectgroup") if g.get("name") == layer_name]
         if len(hit) != 1:
             return None
-        return len(hit[0].findall("object"))
+        return [(o.get("id"), float(o.get("x")), float(o.get("y")),
+                 float(o.get("width")), float(o.get("height")))
+                for o in hit[0].findall("object")]
+
+    def map_grid(q):
+        """Section 10.3's grid row — `width`, `height`, `tilewidth`, `tileheight` — read from the
+        file in its own spelling.  A missing member raises, which the caller reports."""
+        if q.suffix == ".tmj":
+            doc = json.loads(q.read_text())
+            return {k: int(doc[k]) for k in ("width", "height", "tilewidth", "tileheight")}
+        root = ET.parse(q).getroot()
+        return {k: int(root.get(k)) for k in ("width", "height", "tilewidth", "tileheight")}
 
     if in_tree and absence_declared:
         g8_branch = "CONTRADICTED"
@@ -1680,12 +1753,33 @@ else:
                         f"one-default rule (D2 § 13 row 44) exists to refuse")
         for q in present:
             try:
-                n_desks = desks_in(q)
+                objs = desk_objects(q)
+                g8_maps[str(q.relative_to(ROOT))] = (objs or [], map_grid(q))
             except Exception as exc:                      # a map this gate cannot read is a RED
                 fail.append(f"G8: `{q.relative_to(ROOT)}` could not be parsed as a Tiled map "
                             f"({type(exc).__name__}: {exc}) — `S` cannot be checked against a file "
                             f"nothing can read, and a skip here is how the count went unchecked before")
                 continue
+            n_desks = None if objs is None else len(objs)
+            # G8, THE SLOTS ARE PAIRWISE DISJOINT (card#7341's rows 14-16 round, PR #227 F1).  Section
+            # 10.3 makes each `desks` object the furniture box its desk is drawn INSIDE, so the
+            # operator's no-overlap ruling holds by construction only while the map's objects are
+            # pairwise disjoint on HALF-OPEN rects -- `[x, x+w) × [y, y+h)`, section 4.6's footprint
+            # rule, so a shared edge is not a shared pixel.  The console refuses nothing for an
+            # authored map yet (section 14 item 28); the shipped default is held here.
+            for i, a in enumerate(objs or []):
+                for b in (objs or [])[i + 1:]:
+                    if (a[1] < b[1] + b[3] and b[1] < a[1] + a[3]
+                            and a[2] < b[2] + b[4] and b[2] < a[2] + a[4]):
+                        fail.append(f"G8: `{q.relative_to(ROOT)}` `{layer_name}` objects id {a[0]} and "
+                                    f"id {b[0]} share a pixel — section 10.3 makes each object the "
+                                    f"furniture box its desk is drawn inside, so two objects that "
+                                    f"intersect on half-open rects are two desks drawn over each "
+                                    f"other, and the no-overlap ruling AT-D3-20 holds rests on the "
+                                    f"shipped default being pairwise disjoint")
+            if objs:
+                g8_branch += (f"; {len(objs)} `{layer_name}` objects held pairwise disjoint on "
+                              f"half-open rects")
             if n_desks is None:
                 fail.append(f"G8: `{q.relative_to(ROOT)}` declares no single object layer named "
                             f"`{layer_name}`, which section 10.3 requires and section 3.2's slot "
@@ -1752,6 +1846,180 @@ if m_sprite:
                             f"`{_rel}` is {_aw}x{_ah} px — the document and the file disagree, and "
                             f"section 12's viewport row rests on the document's copy")
 
+# ---- G8e. the FURNITURE BOX at the cap and the shipped default's GRID, against their FILES ---------
+# Appendix B row 14's slice B (card#7341 step 11) gave section 12 two more Measured rows -- the
+# furniture box at the cap, and the shipped default's pixel size -- and each is a number with two
+# homes: a sentence in section 10.3 and a file.  G4 binds section 12's row to section 10.3's sentence;
+# this leg binds the sentence to the bytes, exactly as G8c does for the sprite, so a moved box or a
+# re-authored map reds here rather than surviving in prose.  BOTH POPULATIONS ARE READ OUT OF THE
+# DOCUMENT: the figures come from section 10.3's own sentences, the box's path from the box sentence,
+# and the map from the path G8b resolved.
+#
+# The box is parsed with the ONE shape `App\Floor\FurnitureBox` admits -- and the shape is READ OUT
+# OF THAT CLASS (its `DECLARATION` constant, a PCRE this leg translates), never copied here (PR #232
+# round 1, MINOR-4): a copy would be a second home for the one contract that keeps PHP's reading and
+# `import`'s equal, free to drift from it while this gate reported clean.  The translation binds
+# Python's `\d` to ASCII with `re.ASCII`, as PCRE's is without `/u` (round 2, MINOR-B: `4٤0` matched
+# here and int()'d to 440 while PHP refused it), and the control below screens exactly three things:
+# the flag set (`m` alone), the capture-group count (two), and the two escapes a PHP single-quoted
+# literal can carry whose bytes are NOT the pattern's (`\\`, `\'`), refused rather than mistranslated.
+# It screens nothing else: an escape the two engines read differently (`\Z`, `\h`) passes it, and is
+# kept out only by the pattern as it stands carrying none (round 3, hygiene b).  And the shipped
+# default's every `desks` object is held AT LEAST the box: section 10.3 makes the object the box its
+# desk is drawn inside, so an object smaller than it is section 9 F21's undersized line on every
+# viewer's floor -- the state the default shipped in until slice B, and the one this leg exists to
+# keep it out of.
+BOX_DECL = prose(r"The furniture box at the cap is (\d+) px wide and (\d+) px tall\*\* \(`([^`]+)`\)")
+GRID_DECL = prose(r"The shipped default's grid is ([\d,]+) px wide and ([\d,]+) px tall\*\*")
+BOX_READER = ROOT / "server/app/Floor/FurnitureBox.php"
+BOX_LINE = None
+_decl = re.search(r"private const DECLARATION = '/(.+)/([a-z]*)';", BOX_READER.read_text()) if BOX_READER.is_file() else None
+if _decl is None:
+    fail.append(f"G8 CONTROL: `{BOX_READER.relative_to(ROOT)}` no longer declares the furniture box's one admitted "
+                f"shape as `private const DECLARATION = '/…/m';`, so this leg has no shape to read the box with "
+                f"and will not guess one")
+elif (_decl.group(2) != "m" or len(re.findall(r"(?<!\\)\((?!\?)", _decl.group(1))) != 2
+      or "\\\\" in _decl.group(1) or "\\'" in _decl.group(1)):
+    fail.append(f"G8 CONTROL: `FurnitureBox::DECLARATION` is `/{_decl.group(1)}/{_decl.group(2)}` — this leg "
+                f"translates a multiline PCRE with exactly two capture groups (width, height), no other flag, and "
+                f"neither of the two PHP single-quote escapes (`\\\\`, `\\'`) whose bytes are not the pattern's")
+else:
+    # A PHP single-quoted string keeps every backslash EXCEPT in the two escapes the control above
+    # refuses, so past it the pattern's bytes are the PCRE's own; its one flag, `m`, is Python's
+    # `re.M`, and `re.ASCII` binds `\d` to the digits PCRE matches without `/u`.  The two groups are
+    # counted as UNESCAPED `(` -- the pattern's own `\(` is a literal paren, not a group.
+    BOX_LINE = re.compile(_decl.group(1), re.M | re.ASCII)
+m_box = re.search(BOX_DECL, sec103)
+g8e_box = "NOT MEASURED"
+g8e_grid = "NOT MEASURED"
+_box = None
+if BOX_LINE is None:
+    pass
+elif not m_box:
+    fail.append("G8 CONTROL: section 10.3 no longer states the furniture box at the cap in the form this "
+                "leg reads (`The furniture box at the cap is N px wide and N px tall** (`path`)`), so "
+                "section 12's Measured row for it is bound to prose nothing re-derives")
+else:
+    _bw, _bh, _brel = int(m_box.group(1)), int(m_box.group(2)), m_box.group(3)
+    _bsrc = ROOT / _brel
+    if not _bsrc.is_file():
+        g8e_box = f"MISSING — `{_brel}`"
+        fail.append(f"G8: section 10.3 states the furniture box at the cap is {_bw}x{_bh} px and names "
+                    f"`{_brel}` as its one source, and no such file exists — a measurement of a file "
+                    f"that is not there, in a third number")
+    else:
+        _found = BOX_LINE.findall(_bsrc.read_text())
+        if len(_found) != 1:
+            g8e_box = f"UNREADABLE — `{_brel}` declares the box {len(_found)} times in the one admitted shape"
+            fail.append(f"G8: `{_brel}` declares the furniture box {len(_found)} times in the one shape "
+                        f"`App\\Floor\\FurnitureBox` admits — `export const FURNITURE_BOX = "
+                        f"Object.freeze({{ width: N, height: N }});`, integers, nothing computed — and "
+                        f"it must declare it exactly once; a box this gate cannot read is one the console "
+                        f"would validate maps against by guessing")
+        else:
+            _box = (int(_found[0][0]), int(_found[0][1]))
+            g8e_box = f"MEASURED from {_brel}: {_box[0]}x{_box[1]} px"
+            if _box != (_bw, _bh):
+                fail.append(f"G8: section 10.3 states the furniture box at the cap is {_bw}x{_bh} px and "
+                            f"`{_brel}` declares {_box[0]}x{_box[1]} px — the document and the file "
+                            f"disagree, and section 12's box row rests on the document's copy")
+m_grid = re.search(GRID_DECL, sec103)
+if not m_grid:
+    fail.append("G8 CONTROL: section 10.3 no longer states the shipped default's grid in pixels in the form "
+                "this leg reads (`The shipped default's grid is N px wide and N px tall**`), so section "
+                "12's Measured row for it is bound to prose nothing re-derives")
+elif not g8_maps:
+    fail.append("G8: section 10.3 states the shipped default's grid in pixels and no map file was read to "
+                "hold it against — the figure is a measurement of a file this run never opened")
+else:
+    _gw, _gh = int(m_grid.group(1).replace(",", "")), int(m_grid.group(2).replace(",", ""))
+    for _mrel, (_mobjs, _mgrid) in g8_maps.items():
+        _pw, _ph = _mgrid["width"] * _mgrid["tilewidth"], _mgrid["height"] * _mgrid["tileheight"]
+        g8e_grid = f"MEASURED from {_mrel}: {_pw}x{_ph} px ({_mgrid['width']}x{_mgrid['height']} tiles of {_mgrid['tilewidth']}x{_mgrid['tileheight']})"
+        if (_pw, _ph) != (_gw, _gh):
+            fail.append(f"G8: section 10.3 states the shipped default's grid is {_gw:,}x{_gh:,} px and "
+                        f"`{_mrel}` is {_pw:,}x{_ph:,} px (`width × tilewidth` by `height × tileheight`) "
+                        f"— the document and the file disagree, and section 12's grid row and its "
+                        f"viewport arithmetic rest on the document's copy")
+        if _box is not None:
+            for _o in _mobjs:
+                if _o[3] < _box[0] or _o[4] < _box[1]:
+                    fail.append(f"G8: `{_mrel}` `desks` object id {_o[0]} is {_o[3]:g}x{_o[4]:g} px, "
+                                f"smaller than the furniture box at the cap ({_box[0]}x{_box[1]}) — "
+                                f"section 10.3 makes each object the box its desk is drawn inside, so an "
+                                f"object smaller than it is F21's undersized line on every viewer's floor, "
+                                f"and the shipped default is the map every unauthored room renders")
+            g8e_grid += f"; {len(_mobjs)} `desks` objects held at least the box"
+
+# ---- G8f. section 12's VIEWPORT arithmetic, re-derived from the map, the box and the viewport floor ----
+# The viewport row restates, in prose, how wide the shipped default is in furniture boxes and what the
+# camera's fit zoom is at the viewport floor.  Until PR #232's round-1 review that cell CLAIMED to be
+# gate-bound while three planted edits to it exited 0 (MAJOR-2).  This leg is the binding: the row
+# count and the boxes per row are re-derived from the map's `desks` objects (grouped by `y`), the box
+# from G8e, the grid from G8b, and the viewport floor from section 12's own row, and each figure the
+# cell states -- `R rows of N furniture boxes: N × W px = P px`, `on a grid **G px wide**`, `fit zoom is
+# **V ÷ G ≈ Z**` -- is recomputed and held.  A figure the cell states in another form is a CONTROL red,
+# not a skip.
+sec12_text = section_text("12-every-number-and-where-it-comes-from") or ""
+VIEW_ROW = r"^\| Floor viewport floor \| \*\*([\d,]+) × ([\d,]+) CSS px\*\* \|(.*)$"
+m_view = re.search(VIEW_ROW, sec12_text, re.M)
+g8f = "NOT MEASURED"
+if not m_view:
+    fail.append("G8 CONTROL: section 12's `Floor viewport floor` row no longer carries `**W × H CSS px**` as "
+                "its Number cell, so the viewport arithmetic has no viewport to be re-derived against")
+elif _box is None or not g8_maps:
+    fail.append("G8: section 12's viewport arithmetic could not be re-derived — the box or the map was not "
+                "read (see the G8 lines above), and the cell's figures stand unbound on this run")
+else:
+    _vw, _vh = int(m_view.group(1).replace(",", "")), int(m_view.group(2).replace(",", ""))
+    _cell = m_view.group(3)
+    m_rows = re.search(r"(\d+) rows? of (\d+) furniture boxes: (\d+) × ([\d,]+) px = ([\d,]+) px", _cell)
+    m_wide = re.search(r"on a grid \*\*([\d,]+) px wide\*\*", _cell)
+    m_fit = re.search(r"fit zoom is \*\*([\d,]+) ÷ ([\d,]+) ≈ (0\.\d+)\*\*", _cell)
+    if not (m_rows and m_wide and m_fit):
+        fail.append("G8 CONTROL: section 12's viewport cell no longer states its arithmetic in the three forms this "
+                    "leg reads — `R rows of N furniture boxes: N × W px = P px`, `on a grid **G px wide**`, "
+                    "`fit zoom is **V ÷ G ≈ Z**` — so the figures it does state are bound to nothing")
+    else:
+        for _mrel, (_mobjs, _mgrid) in g8_maps.items():
+            _by_y = {}
+            for _o in _mobjs:
+                _by_y.setdefault(_o[2], []).append(_o)
+            _per_row = sorted({len(v) for v in _by_y.values()})
+            _pw = _mgrid["width"] * _mgrid["tilewidth"]
+            _ph = _mgrid["height"] * _mgrid["tileheight"]
+            _fit = min(_vw / _pw, _vh / _ph)
+            g8f = (f"MEASURED from {_mrel}: {len(_by_y)} row(s) of {_per_row} objects, grid {_pw}x{_ph} px, "
+                   f"fit {_vw}/{_pw} = {_fit:.4f} ({'width' if _vw / _pw <= _vh / _ph else 'height'} binds)")
+            if len(_per_row) != 1:
+                fail.append(f"G8: `{_mrel}` lays its `desks` objects in rows of unequal length {_per_row}, and "
+                            f"section 12's viewport arithmetic assumes rows of one length")
+                continue
+            _n = _per_row[0]
+            _want = {
+                "rows": (int(m_rows.group(1)), len(_by_y)),
+                "boxes per row": (int(m_rows.group(2)), _n),
+                "multiplier": (int(m_rows.group(3)), _n),
+                "box width": (int(m_rows.group(4).replace(",", "")), _box[0]),
+                "desk across": (int(m_rows.group(5).replace(",", "")), _n * _box[0]),
+                "grid width": (int(m_wide.group(1).replace(",", "")), _pw),
+                "fit's viewport": (int(m_fit.group(1).replace(",", "")), _vw),
+                "fit's grid": (int(m_fit.group(2).replace(",", "")), _pw),
+            }
+            for _name, (_stated, _real) in _want.items():
+                if _stated != _real:
+                    fail.append(f"G8: section 12's viewport cell states {_name} = {_stated:,} and the map, the box "
+                                f"and the viewport floor re-derive {_real:,} — the cell's arithmetic drifted from "
+                                f"what it is stated to be computed from (`{_mrel}`, `{_brel}`)")
+            if m_fit.group(3) != f"{_fit:.2f}":
+                fail.append(f"G8: section 12's viewport cell states a fit zoom of {m_fit.group(3)} and "
+                            f"{_vw:,} ÷ {_pw:,} is {_fit:.4f}, {_fit:.2f} to two places — the cell's zoom drifted "
+                            f"from the grid it is computed on")
+            if _vw / _pw > _vh / _ph:
+                fail.append(f"G8: section 12's viewport cell computes its fit zoom on the grid's WIDTH and on "
+                            f"`{_mrel}` the height binds first ({_vh} ÷ {_ph} < {_vw} ÷ {_pw}) — the stated zoom "
+                            f"is not the fit")
+
 # ---- G8d. THE READ PATHS section 10.3 names must be EXACTLY the ones D2 § 8.7 declares -------------
 # Under the 2026-09-09 ruling this document was required to say the map had NO read path, and D2 was
 # required to say so too (its section 8.2 declared "no fifth endpoint ... none that serves a floor
@@ -1789,6 +2057,145 @@ for _p in sorted(d2_87_paths - d3_paths):
     fail.append(f"G8d: D2 § 8.7 declares `GET {_p}` for the building and section 10.3 no longer names "
                 f"it — the document has stopped saying where that document comes from, which is the "
                 f"silence this leg exists to refuse")
+
+# ---- G8g. the WORKED FLOORS laid at the furniture box: section 4.6's two rows and D2 § 8.7 ----------
+# Appendix B row 14's slice C re-derived three worked examples to section 12's Measured box -- section
+# 4.6's *both of the operator's floors* table, D2 § 8.7's sentence on the worked floor's authored rooms,
+# and D2 § 8.7's worked `GET /api/building/rooms/aimla/map` document -- and each carries the box, or a
+# figure computed from it, in prose.  G8e binds the box to its file; this leg binds those copies to
+# G8e's box (PR #234 round 1, F2 and F4), so a moved box reds here instead of leaving a worked floor
+# that the console would refuse.  EVERY FIGURE IS READ OUT OF THE DOCUMENTS and re-derived: each grid's
+# pixel size from its tile count, the office pitch from the office width and the stated gap, the
+# floor's extent from the rooms and the hallway, each room's desks against the box, each floor's
+# placed rooms pairwise disjoint on half-open rects (§ 4.6's own rule), and § 8.7's worked JSON parsed
+# as JSON.  A figure stated in another form is a CONTROL red, never a skip.
+def _n(s):
+    return int(s.replace(",", ""))
+
+
+sec46 = section_text("46-the-building-layout") or ""
+g8g = []
+_OFFICE = (r"each map a (\d+) × (\d+) grid of (\d+) px tiles — ([\d,]+) × ([\d,]+) px — with one `desks` "
+           r"object at \[§ 12\]\([^)]*\)'s furniture box, ([\d,]+) × ([\d,]+) px")
+_PITCH = r"the \*i\*-th office at `\{x: ([\d,]+)·i, y: ([\d,]+)\}` — ([\d,]+) px between neighbours"
+_HALL = r"`hallway`: a (\d+) × (\d+) grid of corridor tiles, ([\d,]+) × ([\d,]+) px"
+_EXTENT = r"The floor's extent is their union, ([\d,]+) × ([\d,]+) px"
+_COUNT = r"^\| \*a hallway with (\d+) office rooms"
+_ROOM = (r"`(\w+)`, (\w+) seats?, a (\d+) × (\d+) grid of (?:(\d+) px|the same) tiles — ([\d,]+) × ([\d,]+) "
+         r"px — with `S = (\d+)`, (\w+) rows? of (\w+)")
+_AT = r"`(\w+)` at `\{x: ([\d,]+), y: ([\d,]+)\}`"
+_forms = {k: re.findall(v, sec46, re.M) for k, v in
+          (("office", _OFFICE), ("pitch", _PITCH), ("hallway", _HALL), ("extent", _EXTENT), ("count", _COUNT))}
+_rooms = re.findall(_ROOM, sec46)
+_bad = [k for k, v in _forms.items() if len(v) != 1]
+if _box is None:
+    fail.append("G8g: section 4.6's and D2 § 8.7's worked floors could not be held to the furniture box — "
+                "G8e read no box on this run (see the G8 lines above), so their figures stand unbound")
+elif _bad or len(_rooms) != 2:
+    fail.append(f"G8g CONTROL: section 4.6's worked floors no longer state {_bad or ['the two rooms of the second floor']} "
+                f"in the form this leg reads (each form exactly once; the second floor's rooms as "
+                f"``name`, N seats, a C × R grid of T px tiles — W × H px — with `S = N`, R rows of N`), "
+                f"so the figures they do state are bound to nothing")
+else:
+    _c, _r, _t, _w, _h, _bw, _bh = map(_n, _forms["office"][0])
+    _pitch, _oy, _gap = map(_n, _forms["pitch"][0])
+    _hc, _hr, _hw, _hh = map(_n, _forms["hallway"][0])
+    _ew, _eh = map(_n, _forms["extent"][0])
+    _k = _n(_forms["count"][0])
+    _want = {
+        "the office's box": ((_bw, _bh), _box),
+        "the office's pixel size": ((_w, _h), (_c * _t, _r * _t)),
+        "the hallway's pixel size": ((_hw, _hh), (_hc * _t, _hr * _t)),
+        "the office pitch": (_pitch, _w + _gap),
+        "the offices' y": (_oy, _hh),
+        "the floor's extent": ((_ew, _eh), (max(_hw, _pitch * (_k - 1) + _w), _oy + _h)),
+    }
+    for _name, (_stated, _real) in _want.items():
+        if _stated != _real:
+            fail.append(f"G8g: section 4.6's office floor states {_name} = {_stated} and it re-derives "
+                        f"{_real} from the row's own figures and the furniture box {_box[0]}x{_box[1]}")
+    if _w < _box[0] or _h < _box[1] or _gap <= 0:
+        fail.append(f"G8g: section 4.6's office map is {_w}x{_h} px at a {_gap} px gap, and a room must hold "
+                    f"one desk at the furniture box {_box[0]}x{_box[1]} (§ 14 item 28(1)) with its neighbours "
+                    f"disjoint")
+    _ext = {}
+    _tile = None
+    for _nm, _seats, _cc, _rr, _tt, _pw, _ph, _s, _rows, _per in _rooms:
+        _tile = int(_tt) if _tt else _tile
+        _rows_n, _per_n = NUM.get(_rows, -1), NUM.get(_per, -1)
+        _ext[_nm] = (_n(_pw), _n(_ph))
+        if _tile is None or (_n(_pw), _n(_ph)) != (int(_cc) * _tile, int(_rr) * _tile):
+            fail.append(f"G8g: section 4.6 states `{_nm}`'s map is {_pw} × {_ph} px and its grid "
+                        f"{_cc} × {_rr} of {_tile} px tiles re-derives otherwise")
+        if int(_s) != _rows_n * _per_n:
+            fail.append(f"G8g: section 4.6 states `{_nm}` has `S = {_s}` laid as {_rows} row(s) of {_per}")
+        if _per_n * _box[0] > _n(_pw) or _rows_n * _box[1] > _n(_ph):
+            fail.append(f"G8g: section 4.6 lays `{_nm}`'s desks {_rows} row(s) of {_per} at the furniture box "
+                        f"{_box[0]}x{_box[1]}, which needs {_per_n * _box[0]}x{_rows_n * _box[1]} px, on a "
+                        f"{_pw} × {_ph} px map")
+    _row2 = next((l for l in sec46.split("\n") if all(f"`{nm}`, " in l for nm in _ext)), "")
+    _at = {nm: (_n(x), _n(y)) for nm, x, y in re.findall(_AT, _row2)}
+    if set(_at) != set(_ext):
+        fail.append(f"G8g CONTROL: section 4.6's second floor places {sorted(_at)} and sizes {sorted(_ext)} — "
+                    f"a room this leg cannot both place and size is one whose overlap it cannot judge")
+    else:
+        _ns = sorted(_at)
+        for _i, _a in enumerate(_ns):
+            for _b in _ns[_i + 1:]:
+                (_ax, _ay), (_aw, _ah) = _at[_a], _ext[_a]
+                (_bx, _by), (_bw2, _bh2) = _at[_b], _ext[_b]
+                if _ax < _bx + _bw2 and _bx < _ax + _aw and _ay < _by + _bh2 and _by < _ay + _ah:
+                    fail.append(f"G8g: section 4.6 places `{_a}` and `{_b}` so that their maps intersect — "
+                                f"a worked floor that § 9 F18 would name")
+    g8g.append(f"section 4.6: the office floor ({_k} × {_w}x{_h} at pitch {_pitch}, extent {_ew}x{_eh}) and "
+               f"{len(_rooms)} room(s) of the second floor re-derived")
+
+    # D2 § 8.7: the sentence on the worked floor's authored rooms, and both worked JSON documents.
+    _m87 = re.search(r"are authored, ([\d,]+) px wide \(one desk\s+at \[FLOOR\.md § 12\]\([^)]*\)'s furniture "
+                     r"box[^)]*\)\), which is why they may sit ([\d,]+) px apart", _sec87)
+    _jsons = {}
+    for _lead in (r"\*\*`GET /api/building`, worked:\*\*", r"\*\*`GET /api/building/rooms/(\w+)/map`, worked\*\*"):
+        _mj = re.search(_lead + r".*?```json\n(.*?)\n```", _sec87, re.S)
+        if _mj:
+            try:
+                _jsons[_lead] = json.loads(_mj.group(_mj.lastindex))
+            except ValueError:
+                pass
+    if not _m87 or len(_jsons) != 2:
+        fail.append("G8g CONTROL: D2 § 8.7 no longer states its worked floor's authored rooms as `are authored, "
+                    "W px wide (one desk at [FLOOR.md § 12](…)'s furniture box …), which is why they may sit "
+                    "D px apart`, or its two worked JSON documents did not parse — so the figures it does "
+                    "state are bound to nothing")
+    else:
+        _w87, _apart = _n(_m87.group(1)), _n(_m87.group(2))
+        if _w87 < _box[0]:
+            fail.append(f"G8g: D2 § 8.7 states its authored rooms are {_w87} px wide, one desk at the furniture "
+                        f"box, and the box is {_box[0]} px wide")
+        if _apart < _w87:
+            fail.append(f"G8g: D2 § 8.7 says its rooms may sit {_apart} px apart because they are {_w87} px "
+                        f"wide — rooms that far apart intersect")
+        _xs = sorted(r["origin"]["x"] for f in _jsons[r"\*\*`GET /api/building`, worked:\*\*"]["layout"]["floors"]
+                     for r in f["rooms"] if "origin" in r)
+        if len(_xs) < 2 or any(b - a != _apart for a, b in zip(_xs, _xs[1:])):
+            fail.append(f"G8g: D2 § 8.7 says its planned rooms sit {_apart} px apart and the worked layout "
+                        f"places them at x = {_xs}")
+        _map = _jsons[r"\*\*`GET /api/building/rooms/(\w+)/map`, worked\*\*"]["map"]
+        _gw, _gh = _map["width"] * _map["tilewidth"], _map["height"] * _map["tileheight"]
+        _objs = [o for l in _map["layers"] if l.get("name") == "desks" for o in l.get("objects", [])]
+        if not _objs:
+            fail.append("G8g CONTROL: D2 § 8.7's worked room map carries no `desks` object, and a room map "
+                        "holds at least one since § 14 item 28(1)")
+        for _o in _objs:
+            if _o["width"] < _box[0] or _o["height"] < _box[1]:
+                fail.append(f"G8g: D2 § 8.7's worked room map has `desks` object id {_o['id']} at "
+                            f"{_o['width']}x{_o['height']} px, smaller than the furniture box "
+                            f"{_box[0]}x{_box[1]} — the document the console would refuse")
+            if _o["x"] < 0 or _o["y"] < 0 or _o["x"] + _o["width"] > _gw or _o["y"] + _o["height"] > _gh:
+                fail.append(f"G8g: D2 § 8.7's worked room map has `desks` object id {_o['id']} outside its "
+                            f"{_gw}x{_gh} px grid")
+        g8g.append(f"D2 § 8.7: rooms {_w87} px wide at {_apart} px apart (layout x = {_xs}), and "
+                   f"{len(_objs)} `desks` object(s) of the worked room map on its {_gw}x{_gh} px grid")
+g8g = "; ".join(g8g) or "NOT MEASURED"
 
 # --------------------- G9. D2 § 6.5's delivery contract, re-derived from D2 ----
 # G2 asks whether a rendered field EXISTS in D2 § 8.2.1.  All ten of the members below do, which is
@@ -2733,7 +3140,8 @@ print(f"G5  acceptance tests: {len(at_ids)}; fixtures declared {len(fx_declared)
       f"{len(fx_used)}, symmetric difference {len(fx_declared ^ fx_used)}; build order: "
       f"{len(artifact_step)} artifacts re-derived from Appendix B's Artifact cells, "
       f"{sum(len(v) for v in step_of.values())} gate mentions over {g5_halves} declared test halves, "
-      f"every half checked against EVERY artifact it declares and at EVERY step that gates it")
+      f"every half checked against EVERY artifact it declares and at EVERY step that gates it; "
+      f"landed steps, each marked in the one form at the head of its Artifact cell: {g5_landed}")
 print(f"    G5 residue — an artifact name a test's body EMPHASISES and its `Reads:` clause does not "
       f"declare: {len(g5_unread)}. Printed in full, never capped: naming an artifact is not reading "
       f"one, so these are not failures — but the gap between what a body names and what it declares "
@@ -2780,6 +3188,17 @@ print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's
 print(f"    G8 the desk sprite section 12's viewport row waited on: {g8c_branch}. MEASURED means "
       f"the size was read out of the PNG's own IHDR header and held against section 10.3's "
       f"sentence, both the dimensions and the path re-derived from that sentence.")
+print(f"    G8 the furniture box at the cap (Appendix B row 14, slice B): {g8e_box}. MEASURED means the box "
+      f"was read out of its one declaration line — the shape `App\\Floor\\FurnitureBox` admits — and held "
+      f"against section 10.3's sentence, the path re-derived from that sentence.")
+print(f"    G8 the shipped default's grid: {g8e_grid}. MEASURED means `width × tilewidth` by `height × "
+      f"tileheight` was read out of the map and held against section 10.3's sentence, and every `desks` "
+      f"object was held at least the box above.")
+print(f"    G8 section 12's viewport arithmetic: {g8f}. MEASURED means the rows, the boxes per row, the desk "
+      f"across, the grid width and the fit zoom the viewport cell states were each recomputed from the map, "
+      f"the box and the row's own viewport floor and held equal.")
+print(f"    G8 the worked floors laid at the furniture box: {g8g}. Each figure section 4.6's two rows and D2 "
+      f"§ 8.7 state was re-derived from the box above, the rows' own tile counts and the worked JSON, and held.")
 print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase pairs re-derived from "
       f"section 7.6, section 7.1's worked instance held against them, section 5.1's verbatim "
       f"illustration held against the MEMBERS; both predicates fed their own defect on this run and "

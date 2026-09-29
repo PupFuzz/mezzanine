@@ -168,7 +168,8 @@ its date, its decider and the scope of what it moved. The original row above sta
   with the certificate verified, and fails closed without it. `bin/deploy.sh` A5 enforces that split from
   `server/.env` alone: a `DB_URL` it does not follow counts as another host, a key written in a form it does
   not read exactly as Laravel does is refused by name, a `.env` Laravel's own parser does not read as the
-  lines it is written in — or that carries a NUL byte, which Laravel reads and nothing in the script can —
+  lines it is written in — or that carries a NUL byte, which Laravel reads and nothing in the script can, or
+  that opened and could not be read to its end (card#9610) —
   is refused before any key is read, and a variable set in the process environment (a
   PHP-FPM pool's `env[DB_HOST]`, say), which Laravel prefers over `.env`, is outside what it reads. Every
   verdict whose answer could differ is on the value the app RECEIVES rather than the text of the line — a CA
@@ -385,6 +386,16 @@ rule violations anyone could have committed at the time.
   changes. R5 refuses only a PR that makes an over-threshold file **bigger**; over threshold
   while flat or shrinking is a loud warning, so the archiving PR is never blocked by the
   condition it fixes.
+  ⚠ **The fortnight of runway is not there during the fortnight after an archive, and the
+  clamp that removes it is correct.** The growth term is `growth = max(0, head_size -
+  window_size)`, so it reads **zero** whenever the head is SMALLER than the file was 14 days ago
+  — which is exactly the state an archive leaves behind. For those 14 days the threshold is the
+  full cliff, and R5 gives its notice AT the cliff rather than a fortnight ahead of it. Keep the
+  clamp: without it a shrinking file derives a threshold ABOVE the cliff, and R5 would license a
+  file that is already past the truncation point. The notice window returns of its own accord
+  once 14 days of post-archive history exist, and the margin an archive buys is large enough that
+  nothing needs to happen in between — re-print it with `wc -c docs/CHANGELOG.md` against the
+  1,048,576 B cliff.
   ⚠ **This bullet claimed the gate in the present tense from 2026-08-23 (D-11) until 2026-08-30,
   and no such gate existed** — every `CHANGELOG` reference in `bin/`, `tools/` and `.github/` was
   the release guard's section-existence check. It exists now; the note stays because a decisions
@@ -396,6 +407,44 @@ rule violations anyone could have committed at the time.
   150,881 B in six days (mean ≈ 25 KB/day, peak day 43.5 KB). At that mean the 1 MiB cliff is
   roughly **five weeks** out, not years — the size gate is a live concern, which is why it was
   built rather than withdrawn.
+  ⚑ **Measured again 2026-09-18, on the day of the first archive:** `docs/CHANGELOG.md` was
+  509,802 B and 92.8 % of it was released sections, which is what card#9813 moved out. Re-derive
+  both with the per-section census — `LC_ALL=C awk '/^## /{if(n!="")printf "%s\t%d\n",n,b; n=$0;
+  b=0} {b+=length($0)+1} END{printf "%s\t%d\n",n,b}' docs/CHANGELOG.md` — and the live total with
+  `wc -c docs/CHANGELOG.md`; the figures above are the reading on that date, not a standing claim.
+- **Archived releases — one file per tag, and why their only size check is a backstop.** The live
+  `docs/CHANGELOG.md` holds `## [Unreleased]` and **exactly the latest released section**. Every
+  older released section lives verbatim at `docs/changelog/<tag>.md`, one file per tag
+  (`v0.2.0.md`, `v0.3.0.md`, `v0.4.0.md` at the first archive, card#9813) — named by the tag
+  because `docs/VERSIONING.md` core rule 3 makes the tag the unit that owes an entry. Moving a
+  section is a **verbatim** move: `cmp` the extracted section against the same section on the
+  base, and extract with `tail -n +6` rather than an `awk` range, because `awk` re-emits a
+  trailing newline and so cannot see a missing one (measured on this card — the `awk` form passed
+  a file whose final newline had been stripped).
+  ✅ **Archiving is release flow step 13**, not a periodic act — `docs/VERSIONING.md § Release
+  flow` owns it, including why it lands on `dev` in its own tokenless docs PR rather than on the
+  release branch.
+  ⛔ **Enforced by `bin/release-pr-guard.py` R7** on the release PR that follows: its
+  `docs/CHANGELOG.md` may carry at most TWO released sections — the one it mints and the previous
+  latest — and the refusal names the `docs/changelog/<tag>.md` file each excess section belongs
+  in. Off the release path R7 only warns, because a feature PR's author did not skip the step.
+  Before card#9814 the omission surfaced only as R5's notice on some later PR by some other
+  author.
+  ⭐ **The archive files need no size gate of their own, and that is an invariant rather than an
+  omission.**
+  Every byte in `docs/changelog/<tag>.md` was part of `docs/CHANGELOG.md` at the release commit
+  that produced it, where R5 held the whole file under the cliff — so one section plus a
+  five-line header is necessarily under the cliff too, and the file never receives bytes again
+  because a release **collects** entries rather than authoring them. The invariant rests on
+  **released sections being immutable**, which this repo states here for the first time: a
+  released section is as fixed as the tag that carries it, and editing one post hoc is the single
+  way to push an archive file at the cliff. That residual has a mechanical backstop in R7's
+  second clause (card#9814): a `docs/changelog/*.md` past R5's own contents-API cliff constant is
+  refused on a release PR and warned on any other.
+  ⭐ **Enumerate the changelog's readers by derivation, never from a remembered directory list:**
+  `grep -rn -i changelog bin tools .github docs CLAUDE.md README.md fleet-reporter resources
+  server --exclude-dir=vendor | grep -v '^docs/CHANGELOG.md:'`. The `-i` is load-bearing — the
+  archive directory is lowercase and a case-sensitive sweep misses every reference to it.
 - **Cite only the card the PR is about.** The same `card#N` token drives the changelog obligation
   *and* the board writeback (#343's mention-vs-closure defect). A card cited "for context" is a
   spurious changelog obligation and a wrongly-moved card at once. Nothing enforces this yet —
@@ -486,24 +535,141 @@ rule violations anyone could have committed at the time.
     already open when the code moves keeps the old code until it ends, which is
     `mezzanine:feed-reload`'s job and the drain's (the stream bullet below).
 - **What the deploy refuses on** — every one of them seen to fail before it was trusted: root,
-  an unreviewed failure marker, a modified prod tree, `.env` (missing, unreadable by the deploy user, world-readable, non-production,
+  an unreviewed failure marker, a modified prod tree, `.env` (missing, unreadable by the deploy user, **opened and not readable to its end** (card#9610), **not read at all because no usable scratch file could be had for the loader's read diagnostic** (card#9933, card#9932), world-readable, non-production,
   `APP_DEBUG=true`, empty `APP_KEY`, a `DB_CONNECTION` other than `mysql`, a store on another host without `MYSQL_ATTR_SSL_CA`, a
   non-persistent `CACHE_STORE`, a key A5 reads written in a form other than plain `KEY=value`, a file Laravel's
   own parser does not read as the lines it is written in, a file carrying a NUL byte), the PHP floor, a commit not contained in `origin/main` (`--allow-unreleased` is the deliberate escape), a
-  same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, a migration that
+  same-commit no-op (`--redeploy`), `trustProxies('*')`, a missing npm lockfile, **a host whose
+  `bash`, `git` or `npm` is too old** (card#9616 — each by name, in phase A, before anything is
+  touched; the detail is the bullet below this list), a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
   *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`, `setsid`
   or `ps`, a crontab the deployed release's own install would refuse (an unreadable one included), a
   release with no `bin/supervision.sh` or one that no longer defines what the deploy runs from it, a
   release that would move the daemons' lock files, a PHP-FPM whose opcache would not re-read changed files (timestamps
   off in the ini, a pool or a `.user.ini`; preload set; no pool running as the deploy user; no FPM
-  binary), a missing `cgi-fcgi` or `timeout`, a malformed `MEZZ_FEED_DRAIN_CEILING_S`, and a host
+  binary; an FPM whose `-i` prints no FPM phpinfo, with FPM's own stderr printed beneath it), **a pool
+  file or pool directory the FPM config includes that the deploy user cannot read**, named as `cannot
+  read <path>` (card#9815) — the ordinary shape is a `pool.d` file at 640 root:root, and the fix is to
+  let the deploy user read it — a missing `cgi-fcgi` or `timeout`, a malformed `MEZZ_FEED_DRAIN_CEILING_S`, and a host
   that cannot serve or drain the feed's stream (card#9300): no `MEZZ_STREAM_POOL`, or one naming no
   pool, another user's pool, a `request_terminate_timeout` other than 0, no `pm.status_path` or
   `pm.status_listen`, a status that does not answer over that listener for that pool; and on that
   pool `zlib.output_compression`, `output_handler` or `ignore_user_abort` set in the ini, the pool
   or a `.user.ini`. `output_buffering` is reported and **not** refused — measured, the handler's
-  flush defeats this host's 4096. And **a read of the release itself that git could not complete**: every
+  flush defeats this host's 4096. And **a fetch git could not complete**, and **a repository git could not
+  open**, each named as itself (card#9646). Both used to end phase A with git's own status and no refusal at
+  all: a fetch that failed exited 1 for a ref of this checkout it could not read and 128 for a remote it
+  could not reach, and `git status` exited 128 on an unreadable `.git/index` — so the operator got either a
+  code the exit table does not list, or the code that MEANS "refused, nothing was touched" with neither the
+  `⛔ REFUSED` banner nor the `Nothing was changed` promise on screen to confirm it. **And a repository git
+  cannot open is told apart from a checkout that is not there**: `rev-parse --git-dir` exits 128 for both,
+  and asserting the second for every 128 sent an operator whose prod checkout had been restored from backup
+  — `detected dubious ownership`, which git prints its own repair line for — looking for a checkout that was
+  right there. git's own wording is the discriminator, git's message is printed, and an unrecognised wording
+  gets the generic refusal rather than a false specific one. And **a `MEZZ_REMOTE` that is not the NAME of a
+  remote of the checkout** (card#9832), refused at A3c before the first line that would print it. The variable
+  is documented as a name, but `git fetch` takes a URL as readily as one and a URL can carry a credential, so
+  `MEZZ_REMOTE=https://user:token@host/org/repo` is a configuration git accepts — and every later mention of
+  it put that credential on the operator's screen and in the deploy log: measured on the tree before the gate,
+  five times over in a single refused run, in A7's step line and in four lines of the fetch refusal. **git's own
+  redaction is no backstop**, being per-transport and not the deploy's to rely on: measured, git 2.53.0, an
+  `https://` URL is reported with the credential stripped and a `git://` one verbatim, and either message is on
+  screen before the script sees it — which is why redaction is the weaker half and refusal is the fix. The test
+  is **MEMBERSHIP in `git remote`, never a pattern match for `://` or `@`**: `backup@nas` and a bare `@` are
+  legal remote names (measured, git 2.53.0 — a remote name is a refname component), so a pattern would refuse a
+  host configured exactly right. **What membership does NOT close is stated at the size it was measured**
+  (review round 2, which found the first wording overclaiming): no name `git remote add` will CREATE can be a
+  URL — a refname may not contain `:`, and every URL form with a place for a credential carries one — but `git config` writes a
+  section name straight into `.git/config` with no such check, so `git config
+  'remote.https://user:secret@host/o/r.git.url' <url>` exits 0, `git remote` lists that URL as a NAME, and the
+  membership test passes it (all measured, git 2.53.0). That is a configured remote of the checkout, and the
+  honest claim is the narrow one. **A second test closes it** (card#9991, the operator's decision): after
+  membership passes, a `MEZZ_REMOTE` whose name contains `:` is refused, since `git remote add` and `git remote
+  rename` both refuse such a name (measured, git 2.53.0) and every URL form with a place for a credential carries
+  one — the accepted cost is that a checkout which deliberately named a remote with a URL stops deploying until
+  it renames it. **And the list the gate prints marks such a name rather than printing it**, by its position in
+  `git remote`'s list and the same predicate, because before card#9991 that list was `git remote`'s output
+  verbatim and the refusal for a value naming no remote printed the credential on such a checkout, under a
+  headline saying the value is not printed. The refusal says how to rename the remote without printing its name; a credential belongs in
+  `remote.<name>.url`, never in the name, and `git remote` itself still prints it. A multi-line
+  `MEZZ_REMOTE` equal to two or more ADJACENT names joined by newlines is refused before the list test, since
+  the test is applied to the value and the value is not a name — nothing secret passed that way, but A7 would
+  have claimed the gate had established a name for a value that names none, and then echoed it. **The refusal
+  does not echo the value**, which is the whole of its point — a refusal that quoted the rejected value to
+  explain itself would emit the credential it exists to keep out of the log — so it names the VARIABLE and
+  lists the remotes the checkout HAS, which are names (`git remote` with no options prints no
+  `remote.<name>.url`), each name containing `:` marked rather than printed. The cost is paid knowingly:
+  an operator who merely mistyped a NAME does not see the typo echoed back, and the list of names that would
+  have worked is what makes it findable; echoing "only when the value looks safe" would be the same guess by
+  another route. `git remote`'s own status is read, and a `git remote` that FAILED is refused as *"whether
+  MEZZ_REMOTE names a remote is NOT established"* rather than as a value that names nothing. And **a `.env` that OPENED and could not be read
+  to its end** (card#9610), which is the one an earlier round could not see: bash's `read` returns the same
+  status at end-of-file and on a read error, so a file the kernel refused mid-read came back as an EMPTY one
+  and the deploy refused on `APP_ENV is 'unset'` — a cause nothing established. bash's own DIAGNOSTIC is what
+  tells the two apart (a read error prints, an end-of-file is silent, the same rule the git reads use), it is
+  printed back before anything is decided, and nothing read partway is used. The one shape no reader can see
+  is stated in `bin/deploy.sh` rather than assumed away: an I/O error the kernel reports AS an end-of-file.
+  **And the file the loader never READ is a refusal of its own, under a headline of its own** (card#9933).
+  The loader needs a scratch file for that diagnostic, and where no usable one can be had —
+  `mktemp` making none, a file `mktemp` made that this shell could not open, or one it opened that a
+  byte written into did not read back (card#9932) — it closes the
+  descriptor and returns before the read runs — one flag whichever it was, because every caller asking
+  whether a key's value is established acts on one fact: the file was not read. The REFUSAL used to
+  be shared too, and it was the read's: the operator was told the open had succeeded and the read had
+  stopped short on a file no byte of which had been read, and was sent to `dmesg` and the mount for a
+  `$TMPDIR` this deploy could not write to — every sentence of it pointing away from the cause the run had
+  established, which sat one line below in the same refusal. A5 now names the scratch file in the headline
+  and says outright that the finding is about neither the file nor the disk it sits on. **Which SCRATCH
+  step failed is read off a status rather than assumed**, because each sends an operator to a different
+  place: `mktemp` failing is a `$TMPDIR` finding, a scratch file that was created and could not be
+  OPENED is not — `mktemp` worked, and what to look at is how many files the deploy may have open — and
+  one that was opened and could not be WRITTEN is the free space (`df`) of the filesystem behind
+  `$TMPDIR`.
+  **After the window there is no refusal to make**, because the new release is already serving — so a
+  `server/.env` the smoke check cannot read leaves the deploy **UNVERIFIED and says which reason it is**:
+  `APP_URL` in a form the script does not read, a `server/.env` that stopped being readable between phase A
+  and the smoke check, a `server/.env` that was never READ because that phase's own scratch file failed, or
+  an `APP_URL` the host genuinely does not set. Only the last of those is "unset", and reporting the others
+  as unset is what card#9610 ended. **The scratch one is a warning of its own and not a fourth way of
+  saying the file went bad** (card#9933): phase B is a re-exec, so it makes a scratch file of its own,
+  after `php artisan up` has closed the window — and a deploy that finished, `✔ DEPLOYED`, exit 0, used
+  to report that failure as a
+  `server/.env` whose open or read had failed and which had stopped being readable, with bash's reason
+  "above" where no such diagnostic can exist. It now names the scratch file, says the `.env` may be
+  perfectly readable, and says outright that the release IS serving and it is the CHECK that was not made.
+  It also says what the `--dry-run` remedy is worth here: that run reaches the same loader at A5 and names
+  the cause, but only while the cause is still there, so a `$TMPDIR` that was missing, unwritable or out
+  of inodes or out of space during the deploy and has been put right since leaves the warning as the
+  only record. ⛔ **A `$TMPDIR` out of BLOCKS is not a `mktemp` failure, and it is refused as what it
+  is** (card#9932): `mktemp` creates an EMPTY file, so a filesystem with no space left can still give it
+  one — measured on a 100%-full tmpfs, where `mktemp` returned 0 and the `<>` open succeeded, and what
+  failed was the first byte written. So the scratch space is PROVED before it is used — one probe,
+  `scratch_writable`, writes a byte and reads it back — and a space that fails it is refused as created
+  and not writable, with free BLOCKS (`df`) as the number to read. INODE exhaustion is the "full" that
+  makes `mktemp` itself fail. The advice on every scratch-file message about a `mktemp` that FAILED names
+  `df -i` now; it used to say *"check … that it is not full"*, which sends an operator to the one number
+  that does not decide that failure. ⛔ **The DENIAL that goes with it — that a `df` at 100% is not on its own the finding —
+  is made for a scratch FILE and not for a scratch DIRECTORY** — A13's is the one live directory — because what
+  was measured is that an EMPTY FILE costs an inode and no block; a directory can cost a block as well on
+  a filesystem that allocates one for it, which is unmeasured, so `scratch_dir`'s advice names both
+  numbers rather than ruling either out (on a block-full tmpfs `mktemp -d` succeeded too, and the probe
+  refuses it; a filesystem that spends a block on a directory is unmeasured). ⚠ **A full-by-blocks
+  `$TMPDIR` used to mis-certify the `.env` loader** — with a SECOND, coincident fault: the read of `.env`
+  genuinely failing, its diagnostic lost into the full scratch file, and an empty diagnostic read as end of
+  file, so a failed read became a complete read of an empty file (card#9932 comment 6034). The loader does
+  not use `_scratch` (it runs in both phases and in the mirror, and answers for its own failure), so it
+  runs the same probe when it opens its scratch file and refuses at A5 — or warns in phase B — under the
+  scratch headline. ⚠ **The probe runs once per process, when that file is opened, and the gap is named
+  in `bin/deploy.sh` (§ env_read_err_open)**: a filesystem that fills AFTER a process's first load, while
+  a read of `.env` genuinely fails, is still unseen. Probing per load would close it at the price of the
+  invariant the loader's callers are written on — that only a process's first load can come back with the
+  scratch kind — and would put a scratch failure behind the refusal that says the `.env` stopped being
+  readable. **git's stderr is read back with its status read too** (card#9932): `git_ref_oid` and
+  `git_commit_of` decide a failing status on what git printed, so a `cat` of that file that FAILED is
+  refused as *"git's error output could not be read back"* — claiming neither an absent ref nor a failed
+  read — where its empty output used to pass for git's silence. And **a read of the release
+  itself that git could not complete**: every
   precondition that judges the target tree reads it out of the object database before the checkout, and a
   read that FAILED is refused by name (card#9608) — *"the release does not carry this path"* and *"git could
   not read it"* are different answers, only the first is a finding about the release, and a gate handed the
@@ -511,15 +677,191 @@ rule violations anyone could have committed at the time.
   file** is refused the same way, on its MODE: `ls-tree` calls a symlink's type `blob` exactly as it does a
   file's, and a symlink's blob is the PATH IT POINTS AT, so a type check passed one through and handed A11
   the string `../app.real.php` to grep — the same positive statement about a file never opened, reached from
-  the other side. A tree, a symlink, a submodule and any other mode are each refused by name. And **a release
+  the other side. A tree, a symlink, a submodule and any other mode are each refused by name. **The REF it
+  is asked for, and the ANCESTRY that says the commit is released, are read under that same rule**
+  (card#9611): a ref whose object the checkout cannot read is refused as that, not as *"does not resolve to
+  a commit on origin"*, and an ancestry git could not compute is refused as that, not as *"is not contained
+  in `origin/main`"* — `--allow-unreleased` waives the FINDING that a commit is unreleased and does not
+  apply where the question was never answered. Both named a cause that had never been established, which
+  costs an operator the debugging path rather than the deploy. **What is READ, at either site, is what the
+  refusal is allowed to claim**: resolving a ref NAME reads the refs alone, but `--ref` is the operator's
+  own string, so rev syntax and an abbreviated id walk into the object store after all — there a failed
+  read comes back as *"there is no ref of that name"* and is told apart by git's own SILENCE, which an
+  absence answers with. **That discriminator has measured limits, and the refusals name them instead of
+  claiming more than was read**: a checkout whose PACK is unreadable answers SILENTLY for every candidate
+  that needs the pack — an abbreviated id, `main~1`, `:/subject` — which is the shape a real host is in, so
+  A7 tells an operator which of the two their `--ref` is and what resolves without the store being read at
+  all; and a REF FILE at mode 000 answers silently too, on a store where every object reads, which nothing
+  here can see — not reachable today only because the fetch refuses on that ref first (card#9646), and
+  written down in `bin/deploy.sh` beside the premise it falsifies rather than left as a premise. **A status that is
+  neither 0 nor 1 is split by that same silence**: git exits 128 without printing anything for `@{…}` reflog
+  syntax on a completely healthy store — `--ref HEAD@{1}` does it on any host — so that refusal states the
+  status, claims no failed read, and says what to deploy from instead. **A LOUD answer is named as the
+  failed read it is, unless git's own message says otherwise**: a peel to a type the object is not is
+  loud on a store where every object reads — `--ref 'main^{blob}'` at status 1, an annotated tag over a
+  TREE at 128, the same wording at both — so one function reads that wording and refuses it as what it
+  is, at both of the sites that can meet it, rather than each site re-deriving a rule out of the status.
+  And a `origin/main` that is **not there at all** is an ANSWER rather than a read that failed — nothing
+  is released, so neither is this commit — so `--allow-unreleased` applies to it exactly as to any other
+  unreleased commit, and where the graph truly could not be read the refusal names the repair, because
+  the in-window recovery deploy meets it too. **The repair it names works inside the deploy root's own
+  `.git`, and it is one that actually repairs**: `fsck` names the object and says whether it is
+  unreadable or gone, `chmod` restores an unreadable one in place, a GONE one is replaced by swapping
+  `.git` alone out of a `git clone --no-checkout` then `checkout --force`, and
+  `repack -a -d` confirms — it refuses outright if anything reachable cannot be read. It says outright that
+  `git fetch` CANNOT bring that object back (fetch negotiates from refs, and this checkout's refs already
+  claim the commit, so the remote is never asked — measured, git 2.53.0: exit 0 and nothing transferred with
+  the object unreadable, exit 0 and the object still gone with it deleted), and it says outright not to
+  re-clone the deploy root: `server/.env` is created on the host and is in no commit, so its `APP_KEY` and
+  `DB_PASSWORD` exist nowhere else, and a fresh clone would take `server/storage/` and the `.deploy-failed`
+  marker — the logs and the marker the failure banner sends the operator to — with it. And **a release
   with no `server/bootstrap/app.php`**: `server/artisan` requires that file, so every artisan command of such
   a release fails — the first of them `php artisan optimize:clear`, inside the maintenance window, with the
-  app down — which is the same reading the PHP floor and a missing `bin/supervision.sh` already get. It warns,
+  app down — which is the same reading the PHP floor and a missing `bin/supervision.sh` already get. And
+  **a scratch file or directory phase A could not create** (card#9816) — whatever the reason `mktemp`
+  gives, measured with a `TMPDIR` that is not there — refused as itself, with `mktemp`'s own error
+  above the refusal naming the path it tried. A13's work directory used to end phase A with
+  `mktemp`'s status 1 and no refusal at all, and `git_ref_oid`'s and `git_commit_of`'s stderr files,
+  made while `--ref` is resolved, sit inside calls where `set -e` does not apply, so a failed
+  `mktemp` there carried on with an empty path and refused on a cause nothing established: *"does not
+  resolve to a commit on origin"* for a ref that is there, and a failed git read for a tag git never got to
+  peel. A scratch file `mktemp` DID make is proved writable before it is used, for the reason above
+  (card#9932). The `.env` loader's own scratch file is the one exception: it runs in both phases and in the
+  mirror, so it answers for that failure itself, refusing at A5 — under a headline naming the scratch
+  file, not the read that failure prevented (card#9610, card#9933). It warns,
   rather than refusing, where the doc's own reading is that the state is
   fail-safe: no `trustProxies()` at all, and keys the release's `.env.example` names that the
   host's `.env` does not set. It also warns, naming it, when the document root it reads a `.user.ini`
   from does not exist, and when the release carries no `server/.env.example` for the check that reads
   it — each a gap it says out loud rather than a state it calls safe.
+- **The host's own tool VERSIONS are refused by name, before anything is touched** (card#9616), which
+  until that card was true of PHP alone: A1 asked of every other binary in its list only whether it was
+  PRESENT.
+  - **bash.** `BASH_FLOOR` at the top of `bin/deploy.sh` is the one home of the number, and the value is
+    **measured, not read off the constructs**. A scan for version-gated syntax finds `mapfile` (4.0) and
+    `exec {fd}<` (4.1) and stops a whole minor short, because the binding construct is not syntax:
+    `"${a[@]}"` over an EMPTY array under `set -u` is an `unbound variable` death on every bash before
+    4.4 — and `"${a[*]}"` equally, while `"${!a[@]}"` is safe on both, all three measured. **Which of a
+    file's array expansions can ever BE empty is a whole-program property, not a syntactic one**, which
+    is the second reason a scan cannot answer the question — and the reason no list of the sites is
+    written down here. Two hand audits of exactly that population were wrong in opposite directions:
+    the first called three guarded sites hazards and missed `checkout_lock_holders`; the second added
+    `env_lines_load`'s `ENV_LINES`, which measurement then removed (the split is `<<<`, which appends a
+    terminator, so even a zero-byte `.env` is one empty line and the array is never `()` on a path the
+    loops reach). **The mechanical check is the pair of CI runs, not an enumeration.** Measured, on bash
+    built from the GNU release tarballs: at 4.4 the self-test passes in full; at 4.3 it fails on two
+    independent sites — A7's *"does not resolve to a commit"* refusal DYING on `"${ref_note[@]}"` (exit 1
+    with no `⛔ REFUSED` banner and no *"Nothing was changed"* promise, which is the exit code that MEANS
+    "refused, nothing was touched" reached by a death), and a FIRST deploy, where
+    `checkout_lock_holders` expands an empty array because no daemon lock file exists yet. That second
+    one does not stop the deploy — the expansion is inside a `$( )`, so the subshell dies and the parent
+    reads an empty answer — so no assertion about the deploy's verdict can see it, and the self-test
+    carries a `no_shell_death` tripwire that can. `.github/workflows/deploy-selftest.yml`'s `bash-floor`
+    job re-runs the pair on every PR — the floor must pass, **and the minor below it must fail, with its
+    own `N assertions, M FAILED` summary line rather than merely a non-zero exit** — so the number stays
+    a measurement and cannot quietly become a claim. Both the SERVING copy (A1) and the copy the RELEASE
+    ships (A6b) are held to a floor: after `artisan down` the deploy re-execs the target's
+    `bin/deploy.sh`, which never runs A1, so a release that RAISES the floor would meet it inside the
+    window with the app down. A release predating the card declares none, and that is said out loud and
+    is not a refusal — refusing it would make every rollback undeployable for want of a line it could
+    not have carried. **And every bash the deploy starts is the interpreter the gates measured**: the
+    re-exec hands over `$BASH`, this process's own shell, instead of going through the target's
+    `#!/usr/bin/env bash`, and A13 reads the release's `bin/supervision.sh` under `$BASH` rather than a
+    bare `bash -c`. So `somebash bin/deploy.sh` on a host whose PATH `bash` is older no longer passes
+    both gates and then dies in the window on a shell neither of them read — and A13 no longer reports
+    *"the crontab block of `bin/supervision.sh` at &lt;sha&gt; could not be installed here"*, a statement
+    about the RELEASE, when what failed was this host's PATH `bash`. **That is asserted, not argued**:
+    the self-test starts one deploy through an explicit interpreter and, with a recording pass-through
+    standing in for PATH's `bash`, requires that neither the window nor A13 appears in its log —
+    reverting either hand-over reds exactly that case. The ordinary cases cannot see the difference,
+    because they start the deploy through its shebang, where the two interpreters are one process.
+  - **git.** Every read of the release out of the object database passes its path as `:(literal)<path>`,
+    so a git that does not know pathspec magic fails or mis-answers all of them — and the first arrives
+    as *"git could not read server/composer.json"*, a statement about the release that is not the cause.
+    A3b PROBES it instead of parsing `git --version`, which a distro backport makes wrong in both
+    directions: first `git ls-tree HEAD -- VERSION` on this checkout, which establishes that git can list
+    a tree at all, then the same read with the magic, which must print exactly `VERSION`. **The output is
+    what is required, not the status** — a magic-less git can also exit 0 having listed nothing, taking
+    the whole string for a literal path, and that is indistinguishable downstream from a release that
+    does not carry the file.
+  - **npm.** A12 reads the `lockfileVersion` out of the TARGET tree's `server/package-lock.json` and
+    refuses an `npm --version` below what it implies — an EMPTY lockfile being refused as that rather
+    than as a version the gate cannot map, since the remediation differs — 3 needs npm 7, from npm's own documentation,
+    which is quoted at the gate and marked **documented, not measured**; 1 and 2 state no floor and none
+    is invented for them, and any other version is refused rather than guessed at. Read from the target
+    because the release that MOVES to a newer lockfile format is exactly the one the serving checkout's
+    lockfile says nothing about. `npm ci` runs inside the window, so the refusal is that failure moved to
+    before anything is touched.
+  - **And the COMPARISON every one of those gates makes refuses operands it cannot read** (card#9984),
+    which until that card it answered instead. `ver_ge` fell through to zeros: an operand that is not a
+    version left every field 0, 0 is neither greater nor less than 0 at any field, and the answer
+    was *"at least"*. No call site is under `set -e` — each is left of a `||` or inside
+    an `if` — so nothing died, and A1 certified a `BASH_FLOOR` it had not read while the deploy carried
+    on with no bash floor enforced at any point. **A comparison that could not be performed is not a
+    comparison that passed**, and there is no third return value a caller could read, so it does not
+    return at all: it refuses by name, the way A1c already refuses an `npm --version` that is not a
+    version. **The predicate is therefore not total** — a caller wanting a stricter reading
+    establishes its operand first, as A1c, A6 and A6b each already do, and as A1 now does.
+    It also no longer splits its operands with a here-string, which is a temporary file on every bash
+    below 5.1 and therefore on a supported host: a read that failed there reached the same
+    fall-through with no bad input at all. ⚠ **What makes that read fail is narrower than it looks and
+    is recorded at the function** — bash validates `$TMPDIR` and falls back to `/tmp`, `/var/tmp`,
+    `/usr/tmp` and `.`, measured on 4.4 — so no fixture here can produce it without root, and what the
+    self-test pins is the property rather than one host condition that reached it.
+  - **And what a BASH_FLOOR IS is now ONE test, wherever it is read** (card#9984 round 2), because the
+    bullet above closed only half of the asymmetry it claimed. A6b has always refused a non-version
+    floor in the TARGET release; A1 handed this copy's own straight to `ver_ge`, whose leading-digit
+    check is the right test for a predicate A6 gives three-field PHP versions and A12 a bare `7`,
+    and far too loose for a bash floor. Measured with A1's `bash_floor_is_version` guard
+    deleted, host bash 4.0, and the floor line mistyped as `4,4`, `4.x`, `4-4`, `4x`, `4` or
+    `"4 4"`: each begins with a digit, so the
+    comparison RAN, truncated at the first non-digit, read the floor as 4.0 and answered MET — bash
+    4.0 deploying past a floor of 4.4. **A floor read as far as it parses and then passed is the
+    same defect as one never read at all**, and the mistyped separator is the likelier typo.
+    **`bash_floor_is_version` states what a floor is, once** — `<digits>.<digits>`, exactly two
+    fields — and A1, A6b and the `bash-floor` job's floor step each hold their own copy of the
+    declaration to it, so no two of them can disagree about what a floor is.
+    ⚠ **A1c had a FOURTH copy of that glob** — the host `npm --version` — which the first pass at
+    this consolidation missed: `9.x.5` passed it and A12 compared it as 9.0.5. It does NOT take
+    `bash_floor_is_version`, because a floor and a host version are not the same shape: an npm may
+    legitimately print a prerelease suffix, which `ver_ge` truncates on purpose. So there are
+    **a named predicate for each, and no EXECUTABLE copy of that glob left** — check it
+    rather than trusting this sentence:
+    `grep -n '\[0-9\]\*\.\[0-9\]\*' bin/deploy.sh | grep -v ':[[:space:]]*#'`
+    should print nothing, the remaining hits being comments that name the glob they
+    replaced. `bash_floor_is_version` is for a declaration,
+    and **`ver_is_comparable`** for a version a tool reported — two or more fields, each
+    beginning with a digit. Among the three fields `ver_ge` actually reads, that is exactly the
+    condition under which it reads each as written instead of substituting 0; beyond them the
+    predicate is deliberately STRICTER than the comparison needs, which the function's own
+    header argues for rather than leaving as an accident (a fourth non-numeric field is never
+    read, so it could not have been misread — it is refused so the rule stays one sentence, and
+    so nothing couples this predicate to `ver_ge`'s field depth). A6 keeps neither: it is handed
+    `${HOST_PHP_VERSION:-0}`, whose `0` sentinel means *php could not be read* and which
+    `ver_ge` already refuses to compare.
+    The floor predicate is STRICTER than the `[0-9]*.[0-9]*` glob it replaces in A6b, which
+    also admitted `4.4x` and `4.x.5`; the second
+    is the one that mattered, since a release declaring it was enforced as the floor 4.0.5 — a
+    floor nobody wrote — rather than refused, and which way that substitution errs is unknowable,
+    exactly as with a PHP constraint A6 cannot evaluate. **Tightening it strands no release**:
+    every published tag was read and none declares a `BASH_FLOOR`, so the stricter predicate
+    rejects nothing that is out there. They do not all reach that conclusion by the same route,
+    though — the tags that CARRY `bin/deploy.sh` take A6b's survivable predates-card#9616 path,
+    while the earliest carry no `bin/deploy.sh` at all and A6b refuses those at its `git_read_at`
+    branch, as it already did before this card. Which tag is in which group is
+    `git cat-file -e <tag>:bin/deploy.sh`, not a list written here.
+    Auditing that table for siblings found the one member of the class that was still a DEATH:
+    with the `BASH_FLOOR=` line DELETED from a serving copy, the first expansion of it died under
+    `set -u` — `BASH_FLOOR: unbound variable`, exit 1, no `⛔` banner and no *"Nothing was
+    changed"* promise, which is the code the exit table reserves for *refused, nothing was
+    touched*, reached by a death. It is answered now, as itself, and so is a blank declaration;
+    the remedy for both is the same line, so they share one refusal. **This is deliberately not
+    symmetric with A6b**, where a release declaring no floor is the survivable
+    predates-card#9616 path: that release could not have declared one, whereas this copy's
+    missing line was edited out.
+    ⚠ `BASH_FLOOR=4 4` unquoted is not a floor any gate ever sees: it is an assignment followed by
+    the command `4`, so that copy dies at 127 with no banner before `main` is reached. Quoted, it
+    is a declaration, and it is refused as one.
 - **The `.env` refusals above rest on a MIRROR, and the mirror's agreement with what it mirrors is a
   standing CI property** (card#9591). A5 cannot ask PHP what `server/.env` means — at phase A the config
   cache is stale by construction and the host may have no working app — so `bin/deploy.sh` re-implements
