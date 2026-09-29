@@ -464,7 +464,7 @@ class LobbyPageWiringTest extends TestCase
             // The size those make is `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`'s.
             // The r2 ruling extends it to the status line: both are `plate-row.js`'s one label, which the size
             // test builds; what only this file can hold is that the page stands that module's rows.
-            'plate text' => ["import { labelMax, labelScale, surfaceStyle } from './building-scene.js';", "import { plateRow } from './plate-row.js';",
+            'plate text' => ["import { CAB, buildingArt, cabStyle, labelMax, labelScale, surfaceStyle } from './building-scene.js';", "import { plateRow } from './plate-row.js';",
                 "floors.style.setProperty('--label-scale', String(labelScale(camera)));",
                 // … and the r4b ruling: the label wraps within what is visible of the surface, `labelMax()`
                 // of the camera `view()` shows, which the size test holds at fit.
@@ -486,7 +486,7 @@ class LobbyPageWiringTest extends TestCase
             // `building-scene.js`'s `surfaceStyle()`, applied on every render, and the camera sized to the
             // surface the render leaves. What the style is for each scene is
             // `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest`'s.
-            'surface' => ["import { labelMax, labelScale, surfaceStyle } from './building-scene.js';",
+            'surface' => ["import { CAB, buildingArt, cabStyle, labelMax, labelScale, surfaceStyle } from './building-scene.js';",
                 "Object.assign(el('lobby-building').style, surfaceStyle(scene));",
                 ': screen.resize(size);', 'view(current(camera));'],
             'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
@@ -494,7 +494,7 @@ class LobbyPageWiringTest extends TestCase
             // the plates' labels and hidden from assistive technology, kept across renders so the cab glides,
             // and the cab gliding over the ride's glide (none under reduced motion) and cut on every other
             // render. What the shapes and the cab's style are is `TheBuildingIsDrawnAsTheReferencesSectionTest`'s.
-            'building drawing' => ["import { CAB, buildingArt, cabStyle } from './building-scene.js';",
+            'building drawing' => ["import { CAB, buildingArt, cabStyle, labelMax, labelScale, surfaceStyle } from './building-scene.js';",
                 "drawing.setAttribute('aria-hidden', 'true');",
                 'const drawn = buildingArt(scene);', 'const cabAt = cabStyle(scene, level, cabGlide);',
                 "    paintBuilding(scene, building.elevator.level);\n",

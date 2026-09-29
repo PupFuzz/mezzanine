@@ -47,8 +47,7 @@ import { cameraGestures } from '../wire/camera-gestures.js';
 import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
 import { framesNothing } from '../wire/camera.js';
 import { startLobbyScreen } from './lobby-screen.js';
-import { labelMax, labelScale, surfaceStyle } from './building-scene.js';
-import { CAB, buildingArt, cabStyle } from './building-scene.js';
+import { CAB, buildingArt, cabStyle, labelMax, labelScale, surfaceStyle } from './building-scene.js';
 import { plateRow } from './plate-row.js';
 import { holdPlateLinks } from './ride-hold.js';
 

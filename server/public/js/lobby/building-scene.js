@@ -35,9 +35,9 @@
  * CARRYING NO FACT: `buildingArt()` reads the scene's rects and nothing else — no plate's key, name,
  * summary or rooms — so two buildings of one height draw the same building
  * (`Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest`). ⛔ NO SKY AND NO CLOCK: § 4.1
- * — the lobby draws no wall clock, and a sky, if one is drawn, is § 6.2 A17's, on A17's driver; the
- * lobby loads no module that fires A17 (it holds no animation log, Appendix B row 16), so this drawing
- * has no sky and no window a sky would show through. The roof and the ground lobby stand inside the
+ * — the lobby draws no wall clock, and no sky (the seat's ruling, card#7343, recorded at § 4.1): a sky
+ * would be § 6.2 A17's, on A17's driver, and the lobby loads no module that fires A17 (it holds no
+ * animation log, Appendix B row 16), so this drawing has no window a sky would show through. The roof and the ground lobby stand inside the
  * scene's `extent`, so the whole-building framing — the first framing and the whole-building control —
  * shows them.
  */

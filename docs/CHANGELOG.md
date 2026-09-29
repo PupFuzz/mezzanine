@@ -70,7 +70,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   the whole-building view takes in the roof and the ground lobby. The drawing is scenery: it shows no
   fleet state, every floor of one building is drawn alike, and each plate's name and status line read over
   it as before. The lobby draws no sky: a sky there would have to come from the floor's heartbeat-driven
-  room clock, which the lobby does not run, and whether it gains one is still to be decided.
+  room clock, which the lobby does not run, so the lobby keeps the plain page background.
   `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` holds the drawing.
   The shared camera (`wire/camera.js`) gained `focusOn()`, a zoom to one rect inside what is framed, and
   the floor page and the lobby share one glide through `wire/camera-view.js`, one wheel-and-drag wiring
