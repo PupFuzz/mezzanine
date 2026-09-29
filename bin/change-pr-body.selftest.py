@@ -443,7 +443,7 @@ eq("the body's last line is `**Coordinated in:**` — no attribution trailer aft
 AI_ATTRIBUTION_RE = re.compile(
     r"Generated with \[?Claude|claude\.com/claude-code|claude\.ai/code/session|"
     r"Co-Authored-By:\s*Claude", re.I)
-eq("no AI-attribution line anywhere in the generated body",
+eq("none of the three AI_LINES attribution shapes anywhere in the generated body (a subset of upstream `ai-attribution`)",
    [], AI_ATTRIBUTION_RE.findall(BODY))
 eq("  CONTROL: the pattern catches every AI_LINES shape",
    [True] * len(AI_LINES), [bool(AI_ATTRIBUTION_RE.search(line)) for _, line in AI_LINES])
