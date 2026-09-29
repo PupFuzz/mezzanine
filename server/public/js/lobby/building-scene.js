@@ -37,9 +37,9 @@
  * (`Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest`). ⛔ NO SKY AND NO CLOCK: § 4.1
  * — the lobby draws no wall clock, and no sky (the seat's ruling, card#7343, recorded at § 4.1): a sky
  * would be § 6.2 A17's, on A17's driver, and the lobby loads no module that fires A17 (it holds no
- * animation log, Appendix B row 16), so this drawing has no window a sky would show through. The roof and the ground lobby stand inside the
- * scene's `extent`, so the whole-building framing — the first framing and the whole-building control —
- * shows them.
+ * animation log, Appendix B row 16), so this drawing has no window a sky would show through. The roof
+ * and the ground lobby stand inside the scene's `extent`, so the whole-building framing — the first
+ * framing and the whole-building control — shows them.
  */
 
 import { framesNothing } from '../wire/camera.js';
@@ -141,8 +141,11 @@ export function buildingScene(plates) {
 
 /**
  * The storey's parts, in scene px from a plate's top-left — the drawing's, carrying no fact. The shaft
- * stands at the plate's RIGHT, so the plate's label, at its top-left (`plate-row.js`), reads over the
- * plain wall rather than over the doors and the cab.
+ * stands at the plate's RIGHT, so a label no wider than its own plate sits over the plain wall — but
+ * `labelMax()` is the SURFACE's visible width, not the plate's, so at whole-building fit on three or more
+ * floors every label is wider than its plate and routinely crosses the shaft, the cab and the plate below
+ * it (design review r1, card#7343 row 16). What keeps a label legible wherever it lands is not what
+ * stands behind it but its own backing — `plate-row.js`'s plaque, `LABEL_PLAQUE` below.
  */
 const STOREY = {
     skirting: 836,
@@ -179,6 +182,18 @@ const INK = {
     ground: '#b9d98f',
     path: '#e9d8bf',
 };
+
+/**
+ * The plate label's backing — a rounded cream plaque behind its text (design review r1, card#7343 row
+ * 16 F1): `labelMax()` is the surface's visible width and not the plate's, so at whole-building fit on
+ * three or more floors a label is routinely wider than its plate and crosses the shaft, the cab or the
+ * plate below it — the plaque is the label's own contrast, standing over whatever the drawing puts
+ * behind it, so no plate's label depends on where it lands. The storey's own wall colour (`INK.wall`):
+ * its contrast clears WCAG 2.1 SC 1.4.3's 4.5:1 against both the link's default blue (#0000EE, ≈8.5:1)
+ * and the plate's own body text (black, ≈19.1:1) —
+ * `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` computes and holds both.
+ */
+export const LABEL_PLAQUE = INK.wall;
 
 /** A shape: an SVG element name, its attributes, and the text it carries (only the roof sign's and the lobby's). */
 function shape(el, attrs, text = null) {
@@ -245,10 +260,13 @@ function roof(extent) {
         shape('rect', { x: x + 120, y: top + 36, width: 760, height: 200, rx: 36, fill: INK.sign, stroke: INK.signInk, 'stroke-width': 10 }),
         shape('line', { x1: x + 260, y1: top + 236, x2: x + 260, y2: eave, stroke: INK.sign, 'stroke-width': 14 }),
         shape('line', { x1: x + 740, y1: top + 236, x2: x + 740, y2: eave, stroke: INK.sign, 'stroke-width': 14 }),
-        shape('text', { x: x + 500, y: top + 176, 'text-anchor': 'middle', 'font-family': 'Quicksand, ui-rounded, system-ui, sans-serif', 'font-weight': 700, 'font-size': 116, textLength: 640, lengthAdjust: 'spacingAndGlyphs', fill: INK.signInk }, 'MEZZANINE'),
+        // font-size 76 and letter-spacing ≈10.36 are the reference's own sign proportions (44px text on a
+        // 440-wide sign, floor-preview.html:1098-1099) scaled to this sign's 760px width — no textLength or
+        // lengthAdjust, which distort an unshipped Quicksand's fallback glyphs (design review r1, row 16 F3).
+        shape('text', { x: x + 500, y: top + 160, 'text-anchor': 'middle', 'font-family': 'Quicksand, ui-rounded, system-ui, sans-serif', 'font-weight': 700, 'font-size': 76, 'letter-spacing': 10.36, fill: INK.signInk }, 'MEZZANINE'),
         ...plant(x + 1000, eave, 60),
         ...plant(x + 1110, eave, 44),
-        shape('rect', { x: x - 0, y: eave, width: w, height: 64, rx: 20, fill: INK.roof }),
+        shape('rect', { x, y: eave, width: w, height: 64, rx: 20, fill: INK.roof }),
         shape('rect', { x, y: eave, width: w, height: 18, rx: 9, fill: INK.roofTop }),
     ];
 }
@@ -269,7 +287,9 @@ function ground(extent) {
         shape('path', { d: `M ${doors.x} ${floor} L ${doors.x} ${floor - doors.h + 90} Q ${doors.x + doors.w / 2} ${floor - doors.h - 60} ${doors.x + doors.w} ${floor - doors.h + 90} L ${doors.x + doors.w} ${floor} Z`, fill: INK.glass, stroke: INK.skirting, 'stroke-width': 12 }),
         shape('line', { x1: doors.x + doors.w / 2, y1: floor - doors.h + 20, x2: doors.x + doors.w / 2, y2: floor, stroke: INK.skirting, 'stroke-width': 8 }),
         shape('rect', { x: doors.x - 30, y: floor - 6, width: doors.w + 60, height: 20, rx: 10, fill: INK.mat }),
-        shape('text', { x: x + 300, y: top + 140, 'text-anchor': 'middle', 'font-family': 'Quicksand, ui-rounded, system-ui, sans-serif', 'font-weight': 700, 'font-size': 72, textLength: 300, lengthAdjust: 'spacingAndGlyphs', fill: INK.skirting }, 'LOBBY'),
+        // The same defect as the roof sign's (design review r1, row 16 F3), fixed the same way: no
+        // textLength or lengthAdjust, and letter-spacing at the roof sign's own ratio to font-size (6/44).
+        shape('text', { x: x + 300, y: top + 140, 'text-anchor': 'middle', 'font-family': 'Quicksand, ui-rounded, system-ui, sans-serif', 'font-weight': 700, 'font-size': 72, 'letter-spacing': 9.82, fill: INK.skirting }, 'LOBBY'),
         ...plant(x + 170, floor, 90),
         ...plant(x + 1080, floor, 90),
         shape('rect', { x, y: floor, width: w, height: 80, fill: INK.ground }),
@@ -298,7 +318,9 @@ export function buildingArt(scene) {
     return {
         box: extent,
         shapes: [
-            shape('rect', { x: extent.x - 24, y: extent.y + ROOF_H - 40, width: extent.w + 48, height: extent.h - ROOF_H + 40 - 80, rx: 28, fill: INK.shell }),
+            // Inside the extent (design review r1, row 16 F4): the whole-building fit frames the extent
+            // exactly, and a frame drawn wider than it is clipped there — plates keep extent.x, labelMax()'s.
+            shape('rect', { x: extent.x, y: extent.y + ROOF_H - 40, width: extent.w, height: extent.h - ROOF_H + 40 - 80, rx: 28, fill: INK.shell }),
             ...scene.plates.flatMap(({ rect }) => storey(rect)),
             ...roof(extent),
             ...ground(extent),

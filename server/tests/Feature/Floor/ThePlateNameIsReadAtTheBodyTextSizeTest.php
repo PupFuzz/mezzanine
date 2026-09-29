@@ -295,6 +295,11 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             'a label with no width to wrap within' => ["        maxWidth: 'var(--label-max)',\n", '', 'can run wider than the surface'],
             'a label wrapped at a width of its own' => ["maxWidth: 'var(--label-max)'", "maxWidth: '1280px'", 'can run wider than the surface'],
             'a word that never breaks' => ["        overflowWrap: 'anywhere',\n", '', 'a word wider than the surface'],
+            // Design review r1, row 16 F1: the label carries its own plaque, inside the same counter-scaled
+            // element, so a label crossing the shaft or the cab at whole-building fit stays legible.
+            'a label with no plaque' => ["        backgroundColor: LABEL_PLAQUE,\n", '', 'no plaque background'],
+            'a plaque not box-sizing border-box' => ["        boxSizing: 'border-box',\n", '', 'box-sizing: border-box'],
+            'a plaque with no padding' => ["        padding: '0.3em 0.55em',\n", '', 'no padding'],
         ];
     }
 
@@ -306,6 +311,16 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
 
         $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, $reason)),
             "the planted defect did not bite for its reason ({$reason}): ".json_encode($defects));
+    }
+
+    /** A plaque too dark to contrast the plate's own link and body text — WCAG 2.1 SC 1.4.3's 4.5:1 unmet. */
+    public function test_red_a_plaque_with_low_contrast(): void
+    {
+        $dir = $this->mutatedModules([self::SCENE, 'export const LABEL_PLAQUE = INK.wall;', 'export const LABEL_PLAQUE = INK.sign;']);
+        $defects = $this->sizeDefects($this->replay(self::RUNS[0], $dir), $dir);
+
+        $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, 'WCAG')),
+            'CONTROL (a plaque with low contrast) did not bite: '.json_encode($defects));
     }
 
     /** A page that sets its body text size — `1rem` is then no longer it. */
@@ -391,7 +406,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         $shown = [];
 
         foreach ($rows as [$plate, $row]) {
-            array_push($defects, ...$this->readingDefects($plate, $row), ...$this->wrapDefects($plate, $row));
+            array_push($defects, ...$this->readingDefects($plate, $row), ...$this->wrapDefects($plate, $row), ...$this->plaqueDefects($plate, $row));
 
             foreach ($this->texts($row) as $t) {
                 if ($t['hidden']) {
@@ -502,6 +517,76 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         }
 
         return $defects;
+    }
+
+    /**
+     * card#7343 row 16 design review r1 F1: the plate's label carries its own plaque — a background, set
+     * on the same counter-scaled element as the text, so it scales with the text and never with the
+     * scene — with padding and a border radius, sized in `box-sizing: border-box` so the padding stays
+     * inside `--label-max` rather than adding to it; and its contrast against both the link's default
+     * colour and the plate's own body text clears WCAG 2.1 SC 1.4.3's 4.5:1, computed rather than eyeballed.
+     *
+     * @return list<string>
+     */
+    private function plaqueDefects(array $plate, array $row): array
+    {
+        $label = $this->find($row, static fn (array $n): bool => ($n['style']['transform'] ?? null) === self::COUNTER_SCALE);
+
+        if ($label === null) {
+            return ["the plate {$plate['floor']} has no counter-scaled label — the plaque clause read nothing"];
+        }
+
+        $bg = $label['style']['backgroundColor'] ?? '';
+
+        if ($bg === '') {
+            return ["the plate {$plate['floor']}'s label carries no plaque background"];
+        }
+
+        $defects = [];
+
+        if (($label['style']['boxSizing'] ?? null) !== 'border-box') {
+            $defects[] = "the plate {$plate['floor']}'s plaque is not box-sizing: border-box, so its padding can run the plaque wider than --label-max";
+        }
+
+        if (($label['style']['padding'] ?? '') === '') {
+            $defects[] = "the plate {$plate['floor']}'s label has a plaque colour but no padding";
+        }
+
+        foreach (['#0000EE' => 'the link', '#000000' => 'the body text'] as $fg => $what) {
+            $ratio = $this->contrast($bg, $fg);
+
+            if ($ratio < 4.5) {
+                $defects[] = sprintf("the plate %s's plaque (%s) contrasts %s (%s) at %.2f:1, under WCAG 2.1 SC 1.4.3's 4.5:1",
+                    $plate['floor'], $bg, $what, $fg, $ratio);
+            }
+        }
+
+        return $defects;
+    }
+
+    /** WCAG 2.1's relative luminance (§ 1.4.3, Appendix G) of a `#rrggbb` colour. */
+    private function luminance(string $hex): float
+    {
+        $hex = ltrim($hex, '#');
+        $lin = static function (int $c): float {
+            $c /= 255;
+
+            return $c <= 0.03928 ? $c / 12.92 : (($c + 0.055) / 1.055) ** 2.4;
+        };
+
+        return 0.2126 * $lin((int) hexdec(substr($hex, 0, 2)))
+            + 0.7152 * $lin((int) hexdec(substr($hex, 2, 2)))
+            + 0.0722 * $lin((int) hexdec(substr($hex, 4, 2)));
+    }
+
+    /** WCAG 2.1's contrast ratio (§ 1.4.3) between two `#rrggbb` colours, ≥ 1. */
+    private function contrast(string $a, string $b): float
+    {
+        [$lighter, $darker] = $this->luminance($a) > $this->luminance($b)
+            ? [$this->luminance($a), $this->luminance($b)]
+            : [$this->luminance($b), $this->luminance($a)];
+
+        return ($lighter + 0.05) / ($darker + 0.05);
     }
 
     /**

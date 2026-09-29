@@ -20,10 +20,11 @@ use Tests\TestCase;
  *  · SCENERY CARRYING NO FACT: two buildings of one height whose plates differ in every key and fact draw
  *    the same building, and the drawing's only words are its own — the roof sign's and the ground
  *    lobby's — so no plate's name or status is scaled by the camera as the drawing is (`artDefects()`).
- *  · THE BUILDING IS FRAMED WHOLE: the roof's sign and the ground lobby stand inside the scene's `extent`,
- *    above the top plate and below the bottom one, so the whole-building framing shows them; and every
- *    plate stands at the extent's left edge and spans its width, which `labelMax()` reads a plate's left
- *    edge from.
+ *  · THE BUILDING IS FRAMED WHOLE: the roof's sign, the ground lobby and the outer frame stand inside
+ *    the scene's `extent` — the sign and the lobby above the top plate and below the bottom one, the
+ *    frame never wider than the extent the whole-building fit frames exactly (design review r1, F4) — so
+ *    the whole-building framing shows all of them; and every plate stands at the extent's left edge and
+ *    spans its width, which `labelMax()` reads a plate's left edge from.
  *  · THE CAB GLIDES WITH THE RIDE ONLY: at the plate it stands at, over the ride's `glide_ms` — `wire/camera.js`'s
  *    `glideMs()` — and cut under `prefers-reduced-motion` and on every other render (`cabDefects()`).
  *
@@ -69,6 +70,13 @@ class TheBuildingIsDrawnAsTheReferencesSectionTest extends TestCase
             'a ground lobby outside the building\'s extent' => ['w: PLATE_W, h: ROOF_H + PLATE_H * plates.length + GROUND_H }', 'w: PLATE_W, h: ROOF_H + PLATE_H * plates.length }', 'the ground lobby'],
             // A plate off the building's left edge: `labelMax()` would read the wrong left edge.
             'a plate off the building\'s left edge' => ['rect: { x: 0, y: ROOF_H + plate.level * PLATE_H,', 'rect: { x: 40, y: ROOF_H + plate.level * PLATE_H,', 'left edge'],
+            // The outer frame drawn wider than the extent (design review r1, row 16 F4): the whole-building
+            // fit frames the extent exactly, and a frame drawn outside it is clipped there.
+            'the outer frame outside the building\'s extent' => [
+                'shape(\'rect\', { x: extent.x, y: extent.y + ROOF_H - 40, width: extent.w, height: extent.h - ROOF_H + 40 - 80, rx: 28, fill: INK.shell }),',
+                'shape(\'rect\', { x: extent.x - 24, y: extent.y + ROOF_H - 40, width: extent.w + 48, height: extent.h - ROOF_H + 40 - 80, rx: 28, fill: INK.shell }),',
+                'outer frame',
+            ],
         ];
     }
 
@@ -159,6 +167,16 @@ class TheBuildingIsDrawnAsTheReferencesSectionTest extends TestCase
 
         if ($art['box'] !== $extent) {
             $defects[] = "the drawing of {$n} floors is not boxed on the scene's extent";
+        }
+
+        // Design review r1, row 16 F4: the outer frame — the drawing's first shape — stands inside the
+        // extent the whole-building fit frames exactly; a frame wider than it is clipped there.
+        $frame = $art['shapes'][0]['attrs'] ?? null;
+
+        if ($frame === null
+            || $frame['x'] < $extent['x'] || $frame['x'] + $frame['width'] > $extent['x'] + $extent['w']
+            || $frame['y'] < $extent['y'] || $frame['y'] + $frame['height'] > $extent['y'] + $extent['h']) {
+            $defects[] = "the building's outer frame is not inside the scene's extent ({$n} floors): ".json_encode($frame);
         }
 
         foreach ($plates as $p) {

@@ -34,12 +34,19 @@
  * than the name's own lines. Anchored at the bottom instead, a label taller than its plate ran up past
  * the building's top edge, and the clip cut the top floor's name first (Appendix B row 16, decision 38).
  *
+ * ⛔ THE LABEL CARRIES ITS OWN PLAQUE (design review r1, card#7343 row 16 F1): `labelMax()` is the
+ * surface's visible width and not the plate's, so at whole-building fit on three or more floors a label
+ * is routinely wider than its plate and crosses the shaft, the cab or the plate below it — legible there
+ * because of its own backing, never because of what stands behind it. The plaque is set on this same
+ * element, so it is counter-scaled with the text and never scaled by the scene; its colour and the
+ * contrast it clears for both the link and the body text are `building-scene.js`'s `LABEL_PLAQUE`.
+ *
  * ⛔ THE PLATE'S ACCESSIBLE NAME IS WHAT IT WAS: the link carries the name, ` — ` and the summary, in
  * that order, as it always did — the separator VISUALLY HIDDEN now that the two sit on lines of their own, and
  * still read. The rooms and the cab's word stay outside the link, as they were.
  */
 
-import { LABEL_FONT } from './building-scene.js';
+import { LABEL_FONT, LABEL_PLAQUE } from './building-scene.js';
 
 /**
  * Text kept for assistive technology and never painted — the conventional clip, since the page ships
@@ -101,6 +108,16 @@ export function plateRow(doc, plate, rect, here) {
         // The counter-scale about that same corner, so the scaled label's top stays on the plate's top edge.
         transformOrigin: '0 0',
         transform: 'scale(var(--label-scale))',
+        // ⛔ THE PLAQUE (design review r1, card#7343 row 16 F1): `labelMax()` is the surface's visible width,
+        // not the plate's, so at whole-building fit on three or more floors a label is routinely wider than
+        // its plate and crosses the shaft, the cab or the plate below it — legible there only because it
+        // carries its own backing, INSIDE this element, so the plaque is counter-scaled with the text and
+        // never scaled by the scene. `boxSizing: 'border-box'` keeps the padding inside `--label-max` rather
+        // than adding to it.
+        backgroundColor: LABEL_PLAQUE,
+        borderRadius: '0.5em',
+        padding: '0.3em 0.55em',
+        boxSizing: 'border-box',
     });
 
     // § 4.1: "one row per floor, THE ROW BEING THE LINK to the floor".

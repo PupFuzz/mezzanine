@@ -274,13 +274,16 @@ class LobbyPageWiringTest extends TestCase
         $this->assertArrayHasKey('plate text', $this->cameraDefects($inline),
             'CONTROL (a plate not built by plate-row.js) did not bite');
 
-        // CONTROLS — the building's drawing (Appendix B row 16, slice B): never painted, painted for
-        // assistive technology to read, rebuilt on every render so the cab's glide is cut, a cab that glides
+        // CONTROLS — the ride's own cab-glide timing (Appendix B row 16, slice B): a cab that glides
         // over a time not the ride's (under reduced motion too), and a cab still gliding after the ride.
+        // ⚠ A building never painted, a drawing read out to assistive technology, and a drawing rebuilt on
+        // every render were checked here as STRING-PRESENCE against `$js` until the impl review's r1 finding
+        // (card#7343 row 16): a plant of exactly those three shapes — the cab's `Object.assign` deleted,
+        // `scenery.replaceChildren()` deleted, an unconditional `drawing.remove()` added — stayed green
+        // against it, because reading main.js's own text never RUNS what it says. That construction, the
+        // keeping and the painting are `building-paint.js`'s now, and a node probe RUNS them on a stand-in
+        // DOM: `Tests\Feature\Lobby\TheBuildingDrawingKeepsItsElementTest`.
         foreach ([
-            'a building never drawn' => ["    paintBuilding(scene, building.elevator.level);\n", ''],
-            'a drawing read out as the building' => ["drawing.setAttribute('aria-hidden', 'true');\n", ''],
-            'a drawing rebuilt on every render' => ["    for (const row of [...rows.children]) {\n        if (row !== drawing) {\n            row.remove();\n        }\n    }\n", "    rows.textContent = '';\n"],
             'a cab gliding over a time of its own' => ['    cabGlide = ride.glide_ms;', '    cabGlide = 850;'],
             'a cab still gliding after the ride' => ["        cabGlide = 0;\n        window.location.assign(ride.route);", '        window.location.assign(ride.route);'],
         ] as $what => [$anchor, $replacement]) {
@@ -464,7 +467,7 @@ class LobbyPageWiringTest extends TestCase
             // The size those make is `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`'s.
             // The r2 ruling extends it to the status line: both are `plate-row.js`'s one label, which the size
             // test builds; what only this file can hold is that the page stands that module's rows.
-            'plate text' => ["import { CAB, buildingArt, cabStyle, labelMax, labelScale, surfaceStyle } from './building-scene.js';", "import { plateRow } from './plate-row.js';",
+            'plate text' => ["import { labelMax, labelScale, surfaceStyle } from './building-scene.js';", "import { plateRow } from './plate-row.js';",
                 "floors.style.setProperty('--label-scale', String(labelScale(camera)));",
                 // … and the r4b ruling: the label wraps within what is visible of the surface, `labelMax()`
                 // of the camera `view()` shows, which the size test holds at fit.
@@ -486,7 +489,7 @@ class LobbyPageWiringTest extends TestCase
             // `building-scene.js`'s `surfaceStyle()`, applied on every render, and the camera sized to the
             // surface the render leaves. What the style is for each scene is
             // `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest`'s.
-            'surface' => ["import { CAB, buildingArt, cabStyle, labelMax, labelScale, surfaceStyle } from './building-scene.js';",
+            'surface' => ["import { labelMax, labelScale, surfaceStyle } from './building-scene.js';",
                 "Object.assign(el('lobby-building').style, surfaceStyle(scene));",
                 ': screen.resize(size);', 'view(current(camera));'],
             'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
@@ -494,13 +497,16 @@ class LobbyPageWiringTest extends TestCase
             // the plates' labels and hidden from assistive technology, kept across renders so the cab glides,
             // and the cab gliding over the ride's glide (none under reduced motion) and cut on every other
             // render. What the shapes and the cab's style are is `TheBuildingIsDrawnAsTheReferencesSectionTest`'s.
-            'building drawing' => ["import { CAB, buildingArt, cabStyle, labelMax, labelScale, surfaceStyle } from './building-scene.js';",
-                "drawing.setAttribute('aria-hidden', 'true');",
-                'const drawn = buildingArt(scene);', 'const cabAt = cabStyle(scene, level, cabGlide);',
-                "    paintBuilding(scene, building.elevator.level);\n",
-                "    for (const row of [...rows.children]) {\n        if (row !== drawing) {\n            row.remove();\n        }\n    }\n",
+            'building drawing' => ["import { buildingDrawing, keepDrawing, paintBuilding } from './building-paint.js';",
+                "const { drawing, art, scenery, cabNode } = buildingDrawing(document);",
+                "    keepDrawing(rows, drawing);\n",
+                "    paintedBox = paintBuilding(document, { drawing, art, scenery, cabNode }, scene, building.elevator.level, cabGlide, paintedBox);\n",
                 "    cabGlide = ride.glide_ms;\n    screen.draw(cab);",
                 "        cabGlide = 0;\n        window.location.assign(ride.route);"],
+            // Impl review r1 finding 2 (card#7343 row 16): a render landing while a ride is in flight keeps the
+            // ride's cab rather than re-seating it on the model's pre-ride facts — `cab-position.js`'s pure
+            // `resolveCab()`, held behaviourally by `Tests\Feature\Lobby\TheRideOwnsTheCabDuringItsGlideTest`.
+            'cab position' => ["import { resolveCab } from './cab-position.js';", 'cab = resolveCab(cab, building, frame.riding);'],
         ];
 
         foreach ($wired as $act => $needles) {
