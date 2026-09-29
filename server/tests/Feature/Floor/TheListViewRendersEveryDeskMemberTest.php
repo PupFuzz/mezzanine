@@ -157,7 +157,10 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
             }
 
             foreach ($this->fixtureFile($file)['runs'] ?? [] as $run => $scenario) {
-                if (($scenario['lobby'] ?? false) === true) {
+                // A lobby run — `true`, or the object that states row 16's camera acts — draws no desk.
+                $lobby = $scenario['lobby'] ?? false;
+
+                if ($lobby === true || is_array($lobby)) {
                     continue;
                 }
 

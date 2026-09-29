@@ -576,10 +576,12 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
             .'check stayed clean');
 
         // ⛔ CONTROL 19 — the exact defect that shipped in the click handler, planted back: a
-        // second composition of the building on the click, written without the layout.
+        // second composition of the building on the click, written without the layout. The click
+        // reads the drawn building in `lobby-screen.js`'s `ride()` since Appendix B row 16 (card#7343)
+        // moved the ride's decision there, so that is where the plant goes.
         $recomposed = str_replace(
-            'lastBuilding === null ? null : lastBuilding.elevator.next',
-            'lastSnapshot === null ? null : buildingModel(lastSnapshot, cab).elevator.next',
+            'const next = building === null ? null : building.elevator.next;',
+            'const next = building === null ? null : buildingModel(this.#drawn.summary, null).elevator.next;',
             $js,
         );
 
@@ -631,7 +633,7 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
         $missing = [];
 
         if (! str_contains($js, 'plate.name')) {
-            $missing[] = 'main.js no longer writes plate.name onto the plate — a named floor '
+            $missing[] = 'the page-facing client no longer writes plate.name onto the plate — a named floor '
                 .'reads as its key again (docs/design/FLOOR.md § 4.6, card#9273)';
         }
 
@@ -655,16 +657,19 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
     }
 
     /**
-     * The lobby's page-facing client: `main.js`, which writes the DOM, and `lobby-screen.js`, the one
+     * The lobby's page-facing client: `main.js`, which writes the DOM, `lobby-screen.js`, the one
      * place that composes the frame it writes (card#7341 step 9 moved the composition there when the
-     * lobby started rendering the client protocol's population). Read as one text, because the
-     * guards below are about the PAIR — the building composed once, and every half of it written —
-     * and neither file alone is the lobby a viewer gets.
+     * lobby started rendering the client protocol's population), and `plate-row.js`, which builds each
+     * plate's elements for `main.js` (Appendix B row 16, card#7343 r2). Read as one text, because the
+     * guards below are about the WHOLE — the building composed once, and every half of it written —
+     * and no one file alone is the lobby a viewer gets.
      */
     private function pageFacingClient(): string
     {
         return (string) file_get_contents($this->moduleDir().'/main.js')
-            ."\n".(string) file_get_contents($this->moduleDir().'/lobby-screen.js');
+            ."\n".(string) file_get_contents($this->moduleDir().'/lobby-screen.js')
+            // The plate's elements since Appendix B row 16's r2 (card#7343): its name is written there.
+            ."\n".(string) file_get_contents($this->moduleDir().'/plate-row.js');
     }
 
     /** The rendered page, as an MFA-satisfied session actually receives it. */
