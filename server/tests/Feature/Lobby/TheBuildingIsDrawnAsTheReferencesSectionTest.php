@@ -13,7 +13,7 @@ use Tests\TestCase;
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE SHIPPED `lobby/building-scene.js` UNDER `node` (`building-art-probe.mjs`): `buildingScene()` and
- * `buildingArt()` over buildings of one to four and ten floors, and `cabStyle()` over a ride's glide and a
+ * `buildingArt()` over a building of each stack height `HEIGHTS` names, and `cabStyle()` over a ride's glide and a
  * render's. What the page does with them — paints the shapes under the plates' labels, keeps the drawing
  * across renders, and hands the cab the ride's glide — is `LobbyPageWiringTest`'s.
  *

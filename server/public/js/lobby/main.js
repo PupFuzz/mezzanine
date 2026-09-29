@@ -111,8 +111,11 @@ function unscroll() {
     node.scrollLeft = 0;
 }
 
-/** The building's zoom buttons — handed to `wire/camera-keys.js` to wire, and offered by it on every camera shown. */
-const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out') };
+/**
+ * The building's zoom buttons — handed to `wire/camera-keys.js` to wire — and its framing control, the
+ * whole-building control: all three offered by `offerKeys()` on every camera shown (card#7343 c7692).
+ */
+const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out'), fit: el('lobby-whole-building') };
 
 /**
  * One camera on the plates: the scene point at the camera's `x`, `y` at the surface's top-left, at its
@@ -133,8 +136,10 @@ const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out')
  * minimum is visible beside the plates, and a label no wider than the surface is one a pan can always
  * bring wholly into view.
  *
- * ⛔ AND THE KEYS AND THE ZOOM BUTTONS ARE OFFERED ONLY WHILE THE CAMERA FRAMES SOMETHING (card#7343 r4b,
- * the seat's ruling): `wire/camera-keys.js`'s `offerKeys()`, from the same camera.
+ * ⛔ AND THE CAMERA IS OFFERED ONLY WHILE IT FRAMES SOMETHING (card#7343 r4b, the seat's ruling, and
+ * comment 7692): the keys, the zoom buttons, the whole-building control and the building's tab stop —
+ * `wire/camera-keys.js`'s `offerKeys()`, from the screen's camera, which every gate reads, and never a
+ * glide's step towards it: a building that stops framing mid-glide withdraws them at once.
  */
 function view(camera) {
     const framed = !framesNothing(camera);
@@ -150,7 +155,7 @@ function view(camera) {
         : '';
     floors.style.setProperty('--label-scale', String(labelScale(camera)));
     floors.style.setProperty('--label-max', `${labelMax(camera)}px`);
-    offerKeys(el('lobby-building'), zoomButtons, camera);
+    offerKeys(el('lobby-building'), zoomButtons, screen.camera());
 }
 
 const { show, glideTo, current } = cameraView(view);

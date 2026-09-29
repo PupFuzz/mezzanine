@@ -7,9 +7,11 @@
  * these inline, and the lobby (`lobby/main.js`, row 16) had none — a building camera the wheel and the
  * drag reached and the keyboard did not, which is a camera a viewer without a pointer cannot move.
  * Both pages call `cameraKeys()`, beside `camera-gestures.js`'s `cameraGestures()`, with four arguments:
- * the drawing (`element`), its zoom-in and zoom-out buttons (`buttons`), the screen's acts (`acts`, with
+ * the drawing (`element`), its zoom-in and zoom-out buttons (`buttons`, which also carries the page's
+ * framing control as `fit` — `offerKeys()`'s, and wired by the page itself), the screen's acts (`acts`, with
  * its `camera()` as `cameraGestures()`'s have it) and `show` — `cameraGestures()`'s three, with the buttons
- * after the drawing. And both call `offerKeys()` with the same drawing and buttons on every render.
+ * after the drawing. And both call `offerKeys()` with the same drawing and buttons on every camera they
+ * show (the floor on every render).
  *
  * ⛔ THIS FILE DECIDES NOTHING ABOUT THE CAMERA. How far a notch zooms and a pan moves are the screen's
  * acts (`zoomStep(notches)`, `drag(dx, dy)`, each over `camera.js`); what comes back is handed to `show`.
@@ -22,10 +24,13 @@
  *  · ⛔ NOTHING FRAMED, NOTHING OFFERED AND NOTHING TAKEN (card#7343 r4b, the seat's ruling — the same one
  *    gate as `camera-gestures.js`'s, `camera.js`'s `framesNothing()` over the screen's `camera()`). While
  *    the camera frames nothing, a key is the browser's — an arrow key scrolls the lobby's flowing list, as
- *    it did before the lobby had a camera — the zoom buttons are hidden, and the drawing names no
- *    `aria-keyshortcuts`, so assistive technology is not told of keys that would do nothing. `offerKeys()`
- *    puts both back once the camera frames something. The page's markup starts with neither offered,
- *    because no camera frames anything before the first render.
+ *    it did before the lobby had a camera — and nothing of the camera is offered: the zoom buttons and the
+ *    page's framing control (the floor's *Fit the floor*, the lobby's *Whole building*) are hidden, the
+ *    drawing is no tab stop, and it names no `aria-keyshortcuts`, so neither the keyboard nor assistive
+ *    technology is sent to a camera that would do nothing (card#7343 comment 7692, items 1 and 2).
+ *    `offerKeys()` puts all of it back once the camera frames something. The page's markup starts with
+ *    none of it offered, because no camera frames anything before the first render; a drawing that held
+ *    the keyboard's focus when its camera stopped framing loses it to the page, the accepted edge (c7692).
  *
  * Driven under `node` with stand-in elements by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.
  */
@@ -86,23 +91,37 @@ export function cameraKeys(element, buttons, acts, show) {
 }
 
 /**
- * The keys and the zoom buttons offered while the camera frames something, and withdrawn while it frames
- * nothing: the buttons shown or hidden, and the drawing's `aria-keyshortcuts` named or removed. A page
- * calls it with the camera each render leaves.
+ * The camera offered while it frames something, and withdrawn while it frames nothing: the zoom buttons
+ * and the page's framing control shown or hidden, and the drawing a tab stop naming its
+ * `aria-keyshortcuts`, or neither. A page calls it with the screen's camera — the one every gate reads,
+ * and not a glide's step towards it (c7692 item 4) — on every camera it shows.
+ *
+ * ⛔ IT WRITES ONLY WHEN THE OFFER CHANGES, read off the drawing's own `aria-keyshortcuts`: a glide shows a
+ * camera on every frame, and the offer then changes on none of them. That reading is sound because the
+ * page's markup starts with the whole offer withdrawn — no `aria-keyshortcuts`, no `tabindex`, every button
+ * hidden — which both pages' wiring tests hold, and because nothing but this function writes any of it.
  *
  * @param {Element} element the focusable drawing `cameraKeys()` was handed
- * @param {{zoomIn: HTMLElement, zoomOut: HTMLElement}} buttons the same zoom buttons
- * @param {{bounds: object|null}} camera the screen's camera as the render leaves it
+ * @param {{zoomIn: HTMLElement, zoomOut: HTMLElement, fit: HTMLElement}} buttons the same zoom buttons, and
+ *        the page's framing control
+ * @param {{bounds: object|null}} camera the screen's camera as it stands
  */
 export function offerKeys(element, buttons, camera) {
     const offered = !framesNothing(camera);
 
+    if (element.hasAttribute('aria-keyshortcuts') === offered) {
+        return;
+    }
+
     buttons.zoomIn.hidden = !offered;
     buttons.zoomOut.hidden = !offered;
+    buttons.fit.hidden = !offered;
 
     if (offered) {
         element.setAttribute('aria-keyshortcuts', KEY_SHORTCUTS);
+        element.setAttribute('tabindex', '0');
     } else {
         element.removeAttribute('aria-keyshortcuts');
+        element.removeAttribute('tabindex');
     }
 }

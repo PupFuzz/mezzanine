@@ -30,10 +30,9 @@
  * edge however many lines the wrap makes. Two plates' labels can meet only where a plate on the screen is
  * shorter than its label's lines; a label then runs down over the plate below it, and the bottom plate's
  * below the building's bottom edge, so what the surface's clip cuts first is a label's last lines — the
- * status line's. A name is reached only where a plate on the screen is shorter than the name's own lines,
- * past the point where labels meet (a plate shorter than the name's lines, not all of the label's). Anchored at the bottom instead, a label taller than its plate ran
- * up past the building's top edge, and the clip cut the top floor's name first (Appendix B row 16,
- * decision 38).
+ * status line's. A name is reached only further past that point, where a plate on the screen is shorter
+ * than the name's own lines. Anchored at the bottom instead, a label taller than its plate ran up past
+ * the building's top edge, and the clip cut the top floor's name first (Appendix B row 16, decision 38).
  *
  * ⛔ THE PLATE'S ACCESSIBLE NAME IS WHAT IT WAS: the link carries the name, ` — ` and the summary, in
  * that order, as it always did — the separator VISUALLY HIDDEN now that the two sit on lines of their own, and

@@ -257,10 +257,23 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('refocus', $this->exposureDefects($html, $unguarded),
             'CONTROL (a rebuild that moves focus into the drawing whether or not the keyboard was in it) did not bite');
 
-        $unfocusable = str_replace(' tabindex="0" data-dimmed', ' data-dimmed', $html);
-        $this->assertNotSame($unfocusable, $html);
-        $this->assertArrayHasKey('focus', $this->exposureDefects($unfocusable, $painter),
-            'CONTROL (a drawing the keyboard cannot reach) did not bite');
+        // card#7343 comment 7692 item 1: the drawing's tab stop is `offerKeys()`'s, offered only while the camera
+        // frames the floor, so the markup offers none — a drawing the keyboard cannot reach is now planted in
+        // `offerKeys()` itself, `TheCameraWireIsOneForBothPagesTest`'s offer defects.
+        $tabbed = str_replace(' aria-label="the room drawing" data-dimmed', ' aria-label="the room drawing" tabindex="0" data-dimmed', $html);
+        $this->assertNotSame($tabbed, $html);
+        $this->assertArrayHasKey('focus', $this->exposureDefects($tabbed, $painter),
+            'CONTROL (a drawing that is a tab stop before any camera frames it) did not bite');
+
+        $fitShown = str_replace('id="floor-fit" hidden>', 'id="floor-fit">', $html);
+        $this->assertNotSame($fitShown, $html);
+        $this->assertArrayHasKey('fit', $this->exposureDefects($fitShown, $painter),
+            'CONTROL (Fit the floor shown before any camera frames the floor) did not bite');
+
+        $fitless = str_replace("fit: el('floor-fit') }", "fit: el('floor-zoom-out') }", $js);
+        $this->assertNotSame($fitless, $js);
+        $this->assertArrayHasKey('buttons', $this->cameraDefects($fitless),
+            'CONTROL (Fit the floor never offered or withdrawn with the camera) did not bite');
 
         $blind = str_replace('    viewport: viewport(),', '', $js);
         $this->assertNotSame($blind, $js);
@@ -330,8 +343,9 @@ class FloorPageWiringTest extends TestCase
             'resize' => ["    screen.resize(viewport(), surface());\n    show(screen.camera());\n"],
             // … and the camera as it stands, so every key is the browser's while it frames nothing (card#7343 r4b).
             'keyboard' => ["import { cameraKeys, offerKeys } from '../wire/camera-keys.js';", 'cameraKeys(drawing, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);'],
-            // … and the zoom buttons and the drawing's keys offered from each frame's camera (card#7343 r4b).
-            'buttons' => ["const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out') };",
+            // … and the zoom buttons, *Fit the floor* and the drawing's keys and tab stop offered from each
+            // frame's camera (card#7343 r4b, comment 7692).
+            'buttons' => ["const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit') };",
                 "    offerKeys(el('floor-drawing'), zoomButtons, frame.camera);"],
             'fit' => ["el('floor-fit').addEventListener('click'", 'screen.fitFloor()'],
         ];
@@ -366,8 +380,14 @@ class FloorPageWiringTest extends TestCase
             return ['focus' => 'the page declares no #floor-drawing'];
         }
 
-        if (! str_contains($m[1], 'tabindex="0"')) {
-            $defects['focus'] = 'the drawing takes no keyboard focus, so its keys reach nothing';
+        // card#7343 comment 7692 item 1: `offerKeys()` makes the drawing a tab stop once its camera frames the
+        // floor, and the markup starts with it withdrawn — the early return `offerKeys()` takes reads that.
+        if (str_contains($m[1], 'tabindex')) {
+            $defects['focus'] = 'the drawing is a tab stop in the markup, before any camera frames it — `offerKeys()` offers it';
+        }
+
+        if (preg_match('/<button type="button" id="floor-fit"([^>]*)>/', $html, $fit) !== 1 || preg_match('/(^|\s)hidden(\s|$)/', $fit[1]) !== 1) {
+            $defects['fit'] = 'Fit the floor is shown in the markup, before any camera frames the floor — `offerKeys()` offers it';
         }
 
         if (str_contains($m[1], 'role="img"')) {

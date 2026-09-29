@@ -24,8 +24,10 @@ use Tests\TestCase;
  * ⛔ NOTHING FRAMED, NOTHING TAKEN (card#7343 r4b, the seat's ruling, widening r3b's on the wheel): over a
  * drawing whose camera frames nothing — the uncomposed lobby, whose list flows in the page — every event is
  * left to the browser: the wheel, a `dragstart`, a press and its `user-select`, the move's capture and pan,
- * the click after a drag, and the arrow and zoom keys; and the zoom buttons are hidden and the drawing
- * names no `aria-keyshortcuts` (`offerKeys()`). Each gate is planted out alone and watched red on its own
+ * the click after a drag, and the arrow and zoom keys, a capture a pan took being released at the move;
+ * and nothing of the camera is offered — the zoom buttons and the page's framing control hidden, the
+ * drawing no tab stop and naming no `aria-keyshortcuts` — with an unchanged offer written nowhere
+ * (`offerKeys()`; card#7343 comment 7692). Each gate is planted out alone and watched red on its own
  * step of `unframedDefects()`, and planted always-shut and watched red on the framed checks, which are the
  * controls that a framed drawing keeps every behaviour.
  *
@@ -163,7 +165,10 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             'the dragstart' => ['camera-gestures.js', "        // Gate: nothing framed — a link in the flowing list drags as any link does.\n", 'if (unframed()) {', 'dragstart'],
             'the press' => ['camera-gestures.js', "        // Gate: nothing framed — a press selects text as ever, and no drag starts.\n", 'if (unframed()) {', 'press'],
             'the move' => ['camera-gestures.js', "        // Gate: nothing framed any more — the press ends here, uncaptured, and pans nothing.\n", 'if (unframed()) {', 'move'],
-            'the click after a drag' => ['camera-gestures.js', "        // Gate: nothing framed any more — the click is the browser's, and follows the link it is on.\n", 'if (unframed()) {', 'click'],
+            'the click after a drag' => ['camera-gestures.js', "        // Gate: nothing framed any more — the click is the browser's. It follows the link it is on when the\n"
+                ."        // press was never captured or moved again once nothing was framed (the move gate released it); a\n"
+                ."        // press released still captured — it panned, and never moved after the frame went — clicks the\n"
+                ."        // drawing, which follows nothing.\n", 'if (unframed()) {', 'click'],
             'the keys' => ['camera-keys.js', "        // Gate: nothing framed — every key is the browser's (see the header).\n", 'if (framesNothing(acts.camera())) {', 'keys'],
         ];
     }
@@ -188,6 +193,20 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
         $dir = $this->mutatedModules([$file, $comment.'        '.$guard, $comment.'        if (true) {']);
 
         $this->assertNotSame([], [...$this->gestureDefects($dir), ...$this->keyDefects($dir)], "CONTROL (the {$step} gate planted shut) did not bite");
+    }
+
+    /**
+     * card#7343 c7692 item 3: a press that panned keeps no capture once nothing is framed — its release and
+     * its click would otherwise land on the drawing, not on the link under the pointer.
+     */
+    public function test_red_a_capture_kept_once_nothing_is_framed(): void
+    {
+        $dir = $this->mutatedModules(['camera-gestures.js', "            if (drag.moved) {\n                element.releasePointerCapture(event.pointerId);\n            }\n", '']);
+        $defects = $this->unframedDefects($dir);
+
+        $this->assertNotSame([], $defects, 'CONTROL (a capture kept past the frame) did not bite');
+        $this->assertSame([], array_filter($defects, static fn (string $d): bool => ! str_starts_with($d, '[move]')),
+            'a capture kept past the frame bit a step not the move gate\'s: '.json_encode($defects));
     }
 
     /** The one predicate, read backwards either way: every framed check reds, or every unframed one does. */
@@ -217,6 +236,13 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             'an arrow key the drawing does not name' => ["['+', '-', ...Object.keys(KEY_PAN)]", "['+', '-', 'ArrowLeft']"],
             'a key named that no handler takes' => ["['+', '-', ...Object.keys(KEY_PAN)]", "['+', '-', 'Home', ...Object.keys(KEY_PAN)]"],
             'offered backwards' => ['    const offered = !framesNothing(camera);', '    const offered = framesNothing(camera);'],
+            // card#7343 c7692 item 1 — moved here from the pages' markup: the drawing's tab stop is offered.
+            'a drawing the keyboard cannot reach' => ["        element.setAttribute('tabindex', '0');\n", ''],
+            'a tab stop left for a camera that frames nothing' => ["        element.removeAttribute('tabindex');\n", ''],
+            // card#7343 c7692 item 2: the framing control withdrawn with the zoom buttons.
+            'a framing control shown while nothing is framed' => ['    buttons.fit.hidden = !offered;', '    buttons.fit.hidden = false;'],
+            // card#7343 c7692 item 4: an unchanged offer written again on every camera shown.
+            'an offer written on every camera' => ["    if (element.hasAttribute('aria-keyshortcuts') === offered) {\n        return;\n    }\n", ''],
         ];
     }
 
@@ -409,6 +435,17 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
                 [$move(20), [$untouched('pointermove')]],
                 [['type' => 'pointerup'], [$untouched('pointerup')]],
             ]],
+            // A framed press that panned, and then nothing framed before it moves again (card#7343 c7692 item 3):
+            // the move gate releases the capture the pan took, so the release and its click land on what is
+            // under the pointer — and it pans nothing more. The move gate's own step, a second scenario.
+            'move after a pan' => ['gestures', true, [
+                [$down(0), [$untouched('pointerdown', 'none')]],
+                [$move(10), [['capture' => 7], ['show' => ['act' => 'drag', 'dx' => 10, 'dy' => 0]], $untouched('pointermove', 'none')]],
+                [['type' => 'reframe', 'framed' => false], [['reframed' => false]]],
+                [$move(20), [['release' => 7], $untouched('pointermove')]],
+                [['type' => 'pointerup'], [$untouched('pointerup')]],
+                [['type' => 'click'], [$untouched('click')]],
+            ], 'move'],
             // A framed press that panned, and then nothing framed before its click: the click is the browser's.
             'click' => ['gestures', true, [
                 [$down(0), [$untouched('pointerdown', 'none')]],
@@ -423,11 +460,14 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
 
         $defects = [];
 
-        foreach ($checks as $step => [$mode, $framed, $steps]) {
+        // Each check reds on its gate's step: its own name, or the step it names as its fourth member.
+        foreach ($checks as $name => $check) {
+            [$mode, $framed, $steps] = $check;
+            $step = $check[3] ?? $name;
             $expected = array_merge(...array_column($steps, 1));
             $log = $this->probe([$mode => array_column($steps, 0), 'framed' => $framed], $dir)['log'];
 
-            foreach ($this->logDefects($log, $expected, "unframed {$step}") as $defect) {
+            foreach ($this->logDefects($log, $expected, "unframed {$name}") as $defect) {
                 $defects[] = "[{$step}] {$defect}";
             }
         }
@@ -444,7 +484,9 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
      */
     private function offerDefects(?string $dir = null): array
     {
-        $log = $this->probe(['offer' => [false, true, false, true]], $dir)['log'];
+        // Twice in a row each way, as a glide shows one camera after another; the markup starts withdrawn.
+        $offers = [false, false, true, true, false, false, true];
+        $log = $this->probe(['offer' => $offers], $dir)['log'];
         $taken = ['+', '=', '-', '_', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
         $defects = [];
 
@@ -453,6 +495,26 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
 
             if ($entry['zoom_in_hidden'] === $framed || $entry['zoom_out_hidden'] === $framed) {
                 $defects[] = sprintf('offer %d (%s): a zoom button is %s', $i, $framed ? 'framed' : 'nothing framed', $framed ? 'hidden' : 'shown');
+            }
+
+            // card#7343 c7692 item 2: the page's framing control — Fit the floor, Whole building — with them.
+            if ($entry['fit_hidden'] === $framed) {
+                $defects[] = sprintf('offer %d (%s): the framing control is %s', $i, $framed ? 'framed' : 'nothing framed', $framed ? 'hidden' : 'shown');
+            }
+
+            // card#7343 c7692 item 1: the drawing is a tab stop while — and only while — its camera frames.
+            if ($entry['tabindex'] !== ($framed ? '0' : null)) {
+                $defects[] = $framed
+                    ? "offer {$i} (framed): the keyboard cannot reach the drawing (tabindex ".json_encode($entry['tabindex']).')'
+                    : "offer {$i} (nothing framed): the drawing is a tab stop for a camera that does nothing (tabindex {$entry['tabindex']})";
+            }
+
+            // card#7343 c7692 item 4: an offer that did not change writes nothing — a glide shows a camera every frame.
+            $wrote = $entry['writes'] - ($log[$i - 1]['writes'] ?? 0);
+            $changed = $framed !== ($log[$i - 1]['framed'] ?? false);
+
+            if (! $changed && $wrote !== 0) {
+                $defects[] = "offer {$i} ({$entry['framed']}): the offer did not change and was written {$wrote} times — it churns on every glide frame";
             }
 
             if (! $framed && $entry['keyshortcuts'] !== null) {
@@ -472,7 +534,7 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             }
         }
 
-        return count($log) === 4 ? $defects : [...$defects, 'the offer log has '.count($log).' entries, not 4'];
+        return count($log) === count($offers) ? $defects : [...$defects, 'the offer log has '.count($log).' entries, not '.count($offers)];
     }
 
     /** A gate's whole block in the shipped module — its comment, its guard, and its body up to the blank line after it. */
