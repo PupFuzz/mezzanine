@@ -202,7 +202,7 @@ export class LobbyScreen {
             scene,
             camera: this.#camera,
             // A ride in flight: the page disables the ride control until it has arrived.
-            riding: this.riding,
+            riding: this.#riding !== null,
             // § 4.1's words over the protocol's own pair — and silence while no check can run.
             discrepancy: feed.applied && state !== null ? discrepancyNotice(state.held, state.total) : null,
             strip: statusStrip(feed, client.fleet),
