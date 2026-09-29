@@ -27,6 +27,8 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-29
+
 - **card#7341** — **Appendix B row 15 has landed, so the release gate on the room drawing is met.** Every
   exit of a held desk render in the animation log now records the cause FLOOR.md § 11's precedence
   gives it: a desk that turns into the empty chair because its reads keep being refused records
