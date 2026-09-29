@@ -18,10 +18,11 @@ THE ARMS, AND WHY THEY ARE KEPT APART.
     adds a rule reds this arm for under-coverage instead of leaving it quietly incomplete.
   * § 2b UPSTREAM AI-ATTRIBUTION — the lines the operator's 2026-09-27 instruction forbids (the
     Claude Code model line this generator used to emit, a session link, a co-author trailer),
-    planted back into the body and judged by coord 0.58.0's linter, which has the
-    `ai-attribution` rule the vendored copy does not yet carry. That linter is read from the
-    plugin cache (`CPB_UPSTREAM_LINT` overrides the path) and is NOT vendored here, so where it
-    is absent — a CI runner — the arm prints `NOT RUN` by name instead of passing. Once the
+    planted back into the body and judged by the newest cached coord linter (0.58.0 or later),
+    which has the `ai-attribution` rule the vendored copy does not yet carry. That linter is read
+    from the plugin cache (`CPB_UPSTREAM_LINT` overrides the path, and an override naming no file
+    FAILS) and is NOT vendored here, so where it is absent — a CI runner — the arm prints
+    `NOT RUN` by name instead of passing; § 4's whole-body pattern check still runs there. Once the
     vendored copy carries the rule, § 2 drives the same mutations against it on every run.
   * § 3 REFUSALS (rc 2) — the inputs the generator must decline instead of inventing. A
     generator that invents a `Built:` value produces a fabricated attestation, which is worse
@@ -242,7 +243,7 @@ MUTANTS = (
 # The lines the operator's 2026-09-27 instruction (card#10673) keeps off every GitHub-bound text,
 # each planted where this generator used to write its attribution trailer — the first is that
 # trailer's exact old spelling. Driven by § 2 when the vendored linter carries `ai-attribution`,
-# and by § 2b against coord 0.58.0's linter either way.
+# and by § 2b against the newest cached coord linter either way.
 AI_LINES = (
     ("the Claude Code model line this generator used to emit is put back",
      "🤖 Generated with [Claude Code](https://claude.com/claude-code)"
@@ -282,14 +283,26 @@ eq("  … with no mutation claiming a rule the linter does not have",
 eq("META-CONTROL: the body under mutation is still the clean one", [], rules(BODY))
 
 
-# ── § 2b UPSTREAM AI-ATTRIBUTION — coord 0.58.0's linter, from the plugin cache ───────────────
-print("\n§ 2b UPSTREAM AI-ATTRIBUTION — the generated body against coord 0.58.0's `ai-attribution`")
+# ── § 2b UPSTREAM AI-ATTRIBUTION — the newest cached coord linter, from the plugin cache ─────
+print("\n§ 2b UPSTREAM AI-ATTRIBUTION — the generated body against the cached coord `ai-attribution`")
 
-UPSTREAM_LINT = Path(os.environ.get(
-    "CPB_UPSTREAM_LINT",
-    Path.home() / ".claude/plugins/cache/agent-board-framework/coord/0.58.0/templates/bin/"
-                  "pr-body-lint.py"))
-if not UPSTREAM_LINT.is_file():
+# The newest cached coord release, not a pinned one: a pin to 0.58.0 would turn this arm into a
+# silent NOT RUN on the first plugin update. An explicit CPB_UPSTREAM_LINT that names no file is
+# an operator error and FAILS — only the absent-by-default case (a CI runner) is NOT RUN.
+def _newest_cached_lint() -> Path:
+    root = Path.home() / ".claude/plugins/cache/agent-board-framework/coord"
+    found = [(tuple(int(n) for n in d.name.split(".")), d / "templates/bin/pr-body-lint.py")
+             for d in (root.iterdir() if root.is_dir() else ())
+             if re.fullmatch(r"\d+\.\d+\.\d+", d.name)]
+    return max(found)[1] if found else root / "<none cached>/templates/bin/pr-body-lint.py"
+
+
+UPSTREAM_OVERRIDE = os.environ.get("CPB_UPSTREAM_LINT")
+UPSTREAM_LINT = Path(UPSTREAM_OVERRIDE) if UPSTREAM_OVERRIDE else _newest_cached_lint()
+if UPSTREAM_OVERRIDE and not UPSTREAM_LINT.is_file():
+    bad(f"CPB_UPSTREAM_LINT names {UPSTREAM_LINT}, which is not a file — an explicit override "
+        f"that resolves to nothing is a misconfiguration, not an absent linter")
+elif not UPSTREAM_LINT.is_file():
     print(f"  NOT RUN — no upstream linter at {UPSTREAM_LINT} (set CPB_UPSTREAM_LINT). The "
           f"`ai-attribution` judgement of this body is UNVERIFIED on this run"
           + (" — § 2 drove it against the vendored linter." if "ai-attribution" in LINT_RULE_IDS
@@ -424,6 +437,16 @@ contains("  … and the stale-base consequence is stated, not left to be inferre
 # because § 2b does not run where the upstream linter is absent.
 eq("the body's last line is `**Coordinated in:**` — no attribution trailer after it",
    COORD, BODY.rstrip("\n").splitlines()[-1])
+# … and nowhere else in the body either. The last-line check only guards the old trailer slot; this
+# is the placement-independent half, and it runs on every runner (CI included) because it needs
+# no upstream linter. Patterns are the three AI_LINES shapes, matched loosely.
+AI_ATTRIBUTION_RE = re.compile(
+    r"Generated with \[?Claude|claude\.com/claude-code|claude\.ai/code/session|"
+    r"Co-Authored-By:\s*Claude", re.I)
+eq("no AI-attribution line anywhere in the generated body",
+   [], AI_ATTRIBUTION_RE.findall(BODY))
+eq("  CONTROL: the pattern catches every AI_LINES shape",
+   [True] * len(AI_LINES), [bool(AI_ATTRIBUTION_RE.search(line)) for _, line in AI_LINES])
 contains("the checklist names the verbatim fields as unjudged beyond one line",
          "written VERBATIM", run.stderr)
 
