@@ -39,8 +39,9 @@
  *
  * ⭐ THE CAMERA AT BUILDING SCALE AND THE RIDE'S ARRIVAL — Appendix B row 16, slice A (card#7343). This
  * screen holds row 15's camera (`../wire/camera.js`) as `floor/floor-screen.js` holds it on the floor:
- * its second caller, framing every plate of the building (`building-scene.js`) where the floor screen
- * frames the floor. The first framing fits — whole-building, § 6.5's setting and not a move — and every
+ * its second caller, framing every plate of the building (`building-scene.js`) — under its roof and over
+ * its ground lobby, which the scene's extent takes in since slice B — where the floor screen frames the
+ * floor. The first framing fits — whole-building, § 6.5's setting and not a move — and every
  * later render keeps the viewer's zoom and pan and only re-clamps them. The whole-building control is
  * the fit; zoom-to-a-plate is the ride: `ride()` names the elevator's next stop — the cab the page then
  * moves there, since the cab is the viewer's and not the model's — zooms the camera to that plate and

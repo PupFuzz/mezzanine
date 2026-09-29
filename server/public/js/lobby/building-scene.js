@@ -25,8 +25,21 @@
  *
  * ⛔ THE NUMBERS ARE THE DRAWING's (§ 10.4's last bullet): a plate's size carries no fact. The plate is
  * a storey's proportion — the reference's storey has about the proportions of § 12's viewport
- * floor — so a zoom to one plate fills the surface rather than panning a strip across it. Slice B,
- * which draws the plate as the reference's section, owns these numbers from then on.
+ * floor — so a zoom to one plate fills the surface rather than panning a strip across it.
+ *
+ * ⭐ THE PLATE DRAWN AS THE REFERENCE's SECTION — slice B (card#7343). `buildingArt()` is the building
+ * the plates stand in, as data the page paints and decides nothing about (`lobby/main.js`'s painter, as
+ * `floor/painter.js` paints `floor/scene.js`): the roof and its sign above the top plate, each plate a
+ * storey — its wall, skirting, floorboards and slab, and its elevator doors in the shaft — and the ground
+ * lobby under the bottom plate; `cabStyle()` stands the cab in its shaft at the viewer's plate. ⛔ SCENERY
+ * CARRYING NO FACT: `buildingArt()` reads the scene's rects and nothing else — no plate's key, name,
+ * summary or rooms — so two buildings of one height draw the same building
+ * (`Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest`). ⛔ NO SKY AND NO CLOCK: § 4.1
+ * — the lobby draws no wall clock, and a sky, if one is drawn, is § 6.2 A17's, on A17's driver; the
+ * lobby loads no module that fires A17 (it holds no animation log, Appendix B row 16), so this drawing
+ * has no sky and no window a sky would show through. The roof and the ground lobby stand inside the
+ * scene's `extent`, so the whole-building framing — the first framing and the whole-building control —
+ * shows them.
  */
 
 import { framesNothing } from '../wire/camera.js';
@@ -102,19 +115,231 @@ export function labelMax(camera) {
     return Math.min(width, Math.max(LABEL_MIN_PX, width - left));
 }
 
+/** The roof and its sign, above the top plate, in scene px — the drawing's, carrying no fact. */
+export const ROOF_H = 360;
+
+/** The ground lobby, under the bottom plate, in scene px — the drawing's, carrying no fact. */
+export const GROUND_H = 520;
+
 /**
  * The scene for a stack of plates: `{ extent, plates: [{ floor, rect }] }`, `extent` the whole
- * building's rect — `null` when there is no plate to frame — and each plate's `rect` at its `level`.
+ * building's rect — the roof, every plate and the ground lobby; `null` when there is no plate to frame
+ * — and each plate's `rect` at its `level`, under the roof. Every plate, the roof and the ground lobby
+ * are the building's width, so a plate's left edge is the extent's (`labelMax()` reads it there).
  *
  * @param {Array<{floor: string, level: number}>} plates `building-model.js`'s `plates()`, in its order
  */
 export function buildingScene(plates) {
     return {
-        extent: plates.length === 0 ? null : { x: 0, y: 0, w: PLATE_W, h: PLATE_H * plates.length },
+        extent: plates.length === 0 ? null : { x: 0, y: 0, w: PLATE_W, h: ROOF_H + PLATE_H * plates.length + GROUND_H },
         plates: plates.map((plate) => ({
             floor: plate.floor,
-            rect: { x: 0, y: plate.level * PLATE_H, w: PLATE_W, h: PLATE_H },
+            rect: { x: 0, y: ROOF_H + plate.level * PLATE_H, w: PLATE_W, h: PLATE_H },
         })),
+    };
+}
+
+/**
+ * The storey's parts, in scene px from a plate's top-left — the drawing's, carrying no fact. The shaft
+ * stands at the plate's RIGHT, so the plate's label, at its top-left (`plate-row.js`), reads over the
+ * plain wall rather than over the doors and the cab.
+ */
+const STOREY = {
+    skirting: 836,
+    floor: 856,
+    slab: 948,
+    shaft: { x: 1296, w: 232 },
+    door: { x: 1316, y: 420, w: 192, h: 416 },
+};
+
+/** The palette — § 10.4's warm and whimsical, in the drawing's own figures. */
+const INK = {
+    shell: '#e7b98f',
+    wall: '#fcf3e4',
+    panel: '#f6e5cd',
+    skirting: '#c98f63',
+    floor: '#e2b07c',
+    plank: '#c9925f',
+    slab: '#b27b56',
+    slabTop: '#f0cfa8',
+    shaft: '#f2e2cb',
+    guide: '#c9a27e',
+    door: '#dbe5ee',
+    doorEdge: '#9fb1c4',
+    lamp: '#ffcf7d',
+    roof: '#c7735a',
+    roofTop: '#e08f6f',
+    sign: '#3b2f4a',
+    signInk: '#ffcf7d',
+    leaf: '#7fb77e',
+    leafDark: '#5f9a63',
+    pot: '#d98b5f',
+    glass: '#cfe8ef',
+    mat: '#e7866d',
+    ground: '#b9d98f',
+    path: '#e9d8bf',
+};
+
+/** A shape: an SVG element name, its attributes, and the text it carries (only the roof sign's and the lobby's). */
+function shape(el, attrs, text = null) {
+    return text === null ? { el, attrs } : { el, attrs, text };
+}
+
+/** A potted plant standing on `y` at `x` — the roof garden's and the ground lobby's. */
+function plant(x, y, size) {
+    return [
+        shape('ellipse', { cx: x, cy: y - size * 1.25, rx: size * 0.72, ry: size * 0.9, fill: INK.leaf }),
+        shape('ellipse', { cx: x - size * 0.34, cy: y - size * 0.95, rx: size * 0.42, ry: size * 0.55, fill: INK.leafDark }),
+        shape('ellipse', { cx: x + size * 0.36, cy: y - size * 1.05, rx: size * 0.4, ry: size * 0.52, fill: INK.leafDark }),
+        shape('path', { d: `M ${x - size * 0.5} ${y - size * 0.55} L ${x + size * 0.5} ${y - size * 0.55} L ${x + size * 0.38} ${y} L ${x - size * 0.38} ${y} Z`, fill: INK.pot }),
+    ];
+}
+
+/** One storey at a plate's rect: wall, panels, skirting, floorboards, slab, shaft and its doors. */
+function storey(rect) {
+    const { x, y, w } = rect;
+    const shapes = [
+        shape('rect', { x, y, width: w, height: STOREY.skirting, fill: INK.wall }),
+    ];
+
+    // Arched wall panels between the building's left wall and the shaft — moulding, identical on every storey.
+    for (let px = x + 96; px + 220 <= x + STOREY.shaft.x - 48; px += 300) {
+        shapes.push(shape('path', {
+            d: `M ${px} ${y + STOREY.skirting - 60} L ${px} ${y + 380} Q ${px} ${y + 260} ${px + 110} ${y + 260} Q ${px + 220} ${y + 260} ${px + 220} ${y + 380} L ${px + 220} ${y + STOREY.skirting - 60} Z`,
+            fill: INK.panel,
+        }));
+    }
+
+    shapes.push(
+        shape('rect', { x, y: y + STOREY.skirting, width: w, height: STOREY.floor - STOREY.skirting, fill: INK.skirting }),
+        shape('rect', { x, y: y + STOREY.floor, width: w, height: STOREY.slab - STOREY.floor, fill: INK.floor }),
+    );
+
+    for (let px = x + 120; px < x + w; px += 160) {
+        shapes.push(shape('rect', { x: px, y: y + STOREY.floor, width: 4, height: STOREY.slab - STOREY.floor, fill: INK.plank }));
+    }
+
+    shapes.push(
+        shape('rect', { x, y: y + STOREY.slab, width: w, height: PLATE_H - STOREY.slab, fill: INK.slab }),
+        shape('rect', { x, y: y + STOREY.slab, width: w, height: 10, fill: INK.slabTop }),
+        // The shaft, its guide rail, and this storey's doors with the lamp over them — lit alike on every storey.
+        shape('rect', { x: x + STOREY.shaft.x, y, width: STOREY.shaft.w, height: STOREY.skirting, fill: INK.shaft }),
+        shape('line', { x1: x + STOREY.shaft.x + STOREY.shaft.w / 2, y1: y, x2: x + STOREY.shaft.x + STOREY.shaft.w / 2, y2: y + STOREY.door.y - 24, stroke: INK.guide, 'stroke-width': 6, 'stroke-dasharray': '14 12' }),
+        shape('rect', { x: x + STOREY.door.x, y: y + STOREY.door.y, width: STOREY.door.w, height: STOREY.door.h, rx: 18, fill: INK.door, stroke: INK.doorEdge, 'stroke-width': 6 }),
+        shape('line', { x1: x + STOREY.door.x + STOREY.door.w / 2, y1: y + STOREY.door.y, x2: x + STOREY.door.x + STOREY.door.w / 2, y2: y + STOREY.door.y + STOREY.door.h, stroke: INK.doorEdge, 'stroke-width': 5 }),
+        shape('circle', { cx: x + STOREY.door.x + STOREY.door.w / 2, cy: y + STOREY.door.y - 40, r: 14, fill: INK.lamp }),
+    );
+
+    return shapes;
+}
+
+/** The roof over the building's top: its slab with an overhang, a chimney, the sign and a roof garden. */
+function roof(extent) {
+    const { x, w } = extent;
+    const top = extent.y;
+    const eave = top + ROOF_H - 64;
+
+    return [
+        shape('rect', { x: x + w - 330, y: eave - 150, width: 120, height: 150, rx: 14, fill: INK.roof }),
+        shape('rect', { x: x + w - 346, y: eave - 172, width: 152, height: 30, rx: 12, fill: INK.roofTop }),
+        shape('rect', { x: x + 120, y: top + 36, width: 760, height: 200, rx: 36, fill: INK.sign, stroke: INK.signInk, 'stroke-width': 10 }),
+        shape('line', { x1: x + 260, y1: top + 236, x2: x + 260, y2: eave, stroke: INK.sign, 'stroke-width': 14 }),
+        shape('line', { x1: x + 740, y1: top + 236, x2: x + 740, y2: eave, stroke: INK.sign, 'stroke-width': 14 }),
+        shape('text', { x: x + 500, y: top + 176, 'text-anchor': 'middle', 'font-family': 'Quicksand, ui-rounded, system-ui, sans-serif', 'font-weight': 700, 'font-size': 116, textLength: 640, lengthAdjust: 'spacingAndGlyphs', fill: INK.signInk }, 'MEZZANINE'),
+        ...plant(x + 1000, eave, 60),
+        ...plant(x + 1110, eave, 44),
+        shape('rect', { x: x - 0, y: eave, width: w, height: 64, rx: 20, fill: INK.roof }),
+        shape('rect', { x, y: eave, width: w, height: 18, rx: 9, fill: INK.roofTop }),
+    ];
+}
+
+/** The ground lobby under the bottom plate: its wall, the entrance, the lobby's own name, plants and the ground. */
+function ground(extent) {
+    const { x, w } = extent;
+    const top = extent.y + extent.h - GROUND_H;
+    const floor = top + GROUND_H - 80;
+    const doors = { x: x + 560, w: 360, h: 300 };
+
+    return [
+        shape('rect', { x, y: top, width: w, height: GROUND_H - 80, fill: INK.wall }),
+        shape('rect', { x: x + STOREY.shaft.x, y: top, width: STOREY.shaft.w, height: GROUND_H - 80, fill: INK.shaft }),
+        shape('rect', { x: x + STOREY.door.x, y: floor - STOREY.door.h, width: STOREY.door.w, height: STOREY.door.h, rx: 18, fill: INK.door, stroke: INK.doorEdge, 'stroke-width': 6 }),
+        shape('line', { x1: x + STOREY.door.x + STOREY.door.w / 2, y1: floor - STOREY.door.h, x2: x + STOREY.door.x + STOREY.door.w / 2, y2: floor, stroke: INK.doorEdge, 'stroke-width': 5 }),
+        // The entrance: two glass doors under an arch, and the welcome mat before them.
+        shape('path', { d: `M ${doors.x} ${floor} L ${doors.x} ${floor - doors.h + 90} Q ${doors.x + doors.w / 2} ${floor - doors.h - 60} ${doors.x + doors.w} ${floor - doors.h + 90} L ${doors.x + doors.w} ${floor} Z`, fill: INK.glass, stroke: INK.skirting, 'stroke-width': 12 }),
+        shape('line', { x1: doors.x + doors.w / 2, y1: floor - doors.h + 20, x2: doors.x + doors.w / 2, y2: floor, stroke: INK.skirting, 'stroke-width': 8 }),
+        shape('rect', { x: doors.x - 30, y: floor - 6, width: doors.w + 60, height: 20, rx: 10, fill: INK.mat }),
+        shape('text', { x: x + 300, y: top + 140, 'text-anchor': 'middle', 'font-family': 'Quicksand, ui-rounded, system-ui, sans-serif', 'font-weight': 700, 'font-size': 72, textLength: 300, lengthAdjust: 'spacingAndGlyphs', fill: INK.skirting }, 'LOBBY'),
+        ...plant(x + 170, floor, 90),
+        ...plant(x + 1080, floor, 90),
+        shape('rect', { x, y: floor, width: w, height: 80, fill: INK.ground }),
+        shape('rect', { x: doors.x - 30, y: floor, width: doors.w + 60, height: 80, fill: INK.path }),
+    ];
+}
+
+/**
+ * The building the plates stand in, as shapes for the page to paint under the plates' labels:
+ * `{ box, shapes: [{ el, attrs, text? }] }` in scene px, bottom first — `box` the scene's `extent` —
+ * or `null` when the scene has no extent (nothing composed, or no plate), where the list flows and no
+ * building is drawn.
+ *
+ * ⛔ IT READS THE SCENE's RECTS AND NOTHING ELSE (row 16: scenery carrying no fact) — never a plate's
+ * key — so it is a function of the stack's height alone.
+ *
+ * @param {{extent: object|null, plates: Array<{rect: object}>}|null} scene `buildingScene()`'s
+ */
+export function buildingArt(scene) {
+    const extent = scene?.extent ?? null;
+
+    if (extent === null) {
+        return null;
+    }
+
+    return {
+        box: extent,
+        shapes: [
+            shape('rect', { x: extent.x - 24, y: extent.y + ROOF_H - 40, width: extent.w + 48, height: extent.h - ROOF_H + 40 - 80, rx: 28, fill: INK.shell }),
+            ...scene.plates.flatMap(({ rect }) => storey(rect)),
+            ...roof(extent),
+            ...ground(extent),
+        ],
+    };
+}
+
+/**
+ * The cab, in scene px from its plate's top-left: a frame around that storey's doors, a lamp on top and
+ * the cable it hangs from, down from its storey's ceiling — the reference's cab, which carries no fact: where it stands is the viewer's
+ * ride (`lobby/main.js`'s `cab`, § 4.5: navigation is never state), and the plate's label already says
+ * *the elevator is here* in words.
+ */
+export const CAB = Object.freeze([
+    shape('line', { x1: STOREY.shaft.x + STOREY.shaft.w / 2, y1: 0, x2: STOREY.shaft.x + STOREY.shaft.w / 2, y2: STOREY.door.y - 32, stroke: INK.sign, 'stroke-width': 5 }),
+    shape('rect', { x: STOREY.door.x - 14, y: STOREY.door.y - 32, width: STOREY.door.w + 28, height: STOREY.door.h + 46, rx: 26, fill: 'none', stroke: '#f2b84b', 'stroke-width': 14 }),
+    shape('rect', { x: STOREY.door.x + STOREY.door.w / 2 - 30, y: STOREY.door.y - 52, width: 60, height: 22, rx: 11, fill: '#f2b84b' }),
+]);
+
+/**
+ * The cab's style: standing at the plate the elevator is at — `building-model.js`'s `elevator().level`,
+ * the viewer's own stop — and gliding there over `ms`, the ride's `glide_ms` (none on any other render,
+ * and none under `prefers-reduced-motion`, where the ride's glide is `0` and the cab cuts). A CSS
+ * transition on the one cab element: it starts nothing through the animation set and writes no log row,
+ * because the ride is navigation (§ 4.6's elevator row: no § 6.2 row). `null` where the cab stands at no
+ * plate — nothing composed, or no plate.
+ *
+ * @param {{plates: Array<{rect: object}>}|null} scene `buildingScene()`'s
+ * @param {number|null} level the plate the cab stands at
+ * @param {number} ms how long the cab may take to get there — `0` cuts
+ */
+export function cabStyle(scene, level, ms) {
+    const plate = level === null ? null : scene?.plates[level] ?? null;
+
+    if (plate === null) {
+        return null;
+    }
+
+    return {
+        transform: `translate(${plate.rect.x}px, ${plate.rect.y}px)`,
+        transition: ms > 0 ? `transform ${ms}ms linear` : 'none',
     };
 }
 

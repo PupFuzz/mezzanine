@@ -52,9 +52,10 @@ use Tests\TestCase;
  * GREEN, beside the discriminating control § 11 names.
  *
  * ⚠ WHAT THIS DOES NOT HOLD: the plate drawn as the reference's section, the cab drawn and glided, the
- * roof sign, ground lobby and sky — Appendix B row 16's slice B. The seventh RED is held here over the
- * plate the MODEL hands the page (`lobby/main.js` draws each plate's text and nothing else); a drawn
- * section that painted desks would need its own check where it is drawn. And, as on the floor, no test
+ * roof sign and the ground lobby — Appendix B row 16's slice B, whose drawing reads no plate's field
+ * (`Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest`, where it is drawn). The seventh RED is
+ * held here over the plate the MODEL hands the page (`lobby/main.js` draws each plate's text over that
+ * drawing, which reads the scene's rects alone). And, as on the floor, no test
  * here can see a wheel, a drag or a click reach these acts in a browser: `lobby/main.js` wires them and
  * decides nothing, and `LobbyPageWiringTest` holds its elements and the ride's wiring.
  */

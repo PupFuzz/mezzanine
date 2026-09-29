@@ -79,7 +79,8 @@
         {{--
             § 4.5's camera at building scale — Appendix B row 16, slice A (card#7343). `#lobby-building`
             is the drawing surface: the plates stand in it where `public/js/lobby/building-scene.js`
-            puts them, and the camera (`public/js/wire/camera.js`, held by `lobby-screen.js`) is one
+            puts them, over the building it draws — the roof and its sign, a storey under each plate, the
+            ground lobby and the cab (slice B, which `public/js/lobby/main.js` paints) — and the camera (`public/js/wire/camera.js`, held by `lobby-screen.js`) is one
             transform on `#lobby-floors` — every plate in view on entry and on the whole-building
             control, one plate in view on a ride. Wheel to zoom, drag to pan; it takes focus, so `+`/`-`
             or `#lobby-zoom-in`/`#lobby-zoom-out` zoom about its centre and the arrow keys pan — the floor

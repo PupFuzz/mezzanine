@@ -261,6 +261,21 @@ class LobbyPageWiringTest extends TestCase
         $this->assertArrayHasKey('plate text', $this->cameraDefects($inline),
             'CONTROL (a plate not built by plate-row.js) did not bite');
 
+        // CONTROLS — the building's drawing (Appendix B row 16, slice B): never painted, painted for
+        // assistive technology to read, rebuilt on every render so the cab's glide is cut, a cab that glides
+        // over a time not the ride's (under reduced motion too), and a cab still gliding after the ride.
+        foreach ([
+            'a building never drawn' => ["    paintBuilding(scene, building.elevator.level);\n", ''],
+            'a drawing read out as the building' => ["drawing.setAttribute('aria-hidden', 'true');\n", ''],
+            'a drawing rebuilt on every render' => ["    for (const row of [...rows.children]) {\n        if (row !== drawing) {\n            row.remove();\n        }\n    }\n", "    rows.textContent = '';\n"],
+            'a cab gliding over a time of its own' => ['    cabGlide = ride.glide_ms;', '    cabGlide = 850;'],
+            'a cab still gliding after the ride' => ["        cabGlide = 0;\n        window.location.assign(ride.route);", '        window.location.assign(ride.route);'],
+        ] as $what => [$anchor, $replacement]) {
+            $planted = str_replace($anchor, $replacement, $js);
+            $this->assertNotSame($planted, $js, "the {$what} control's anchor is gone — it mutated nothing");
+            $this->assertArrayHasKey('building drawing', $this->cameraDefects($planted), "CONTROL ({$what}) did not bite");
+        }
+
         // CONTROL — the whole-building control wired to nothing.
         $unwired = str_replace('screen.wholeBuilding()', 'screen.camera()', $js);
         $this->assertNotSame($unwired, $js, "the whole-building control's anchor is gone — it mutated nothing");
@@ -451,6 +466,17 @@ class LobbyPageWiringTest extends TestCase
                 "Object.assign(el('lobby-building').style, surfaceStyle(scene));",
                 ': screen.resize(size);', 'view(current(camera));'],
             'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
+            // Appendix B row 16, slice B: the building's drawing — `building-scene.js`'s shapes, painted under
+            // the plates' labels and hidden from assistive technology, kept across renders so the cab glides,
+            // and the cab gliding over the ride's glide (none under reduced motion) and cut on every other
+            // render. What the shapes and the cab's style are is `TheBuildingIsDrawnAsTheReferencesSectionTest`'s.
+            'building drawing' => ["import { CAB, buildingArt, cabStyle } from './building-scene.js';",
+                "drawing.setAttribute('aria-hidden', 'true');",
+                'const drawn = buildingArt(scene);', 'const cabAt = cabStyle(scene, level, cabGlide);',
+                "    paintBuilding(scene, building.elevator.level);\n",
+                "    for (const row of [...rows.children]) {\n        if (row !== drawing) {\n            row.remove();\n        }\n    }\n",
+                "    cabGlide = ride.glide_ms;\n    screen.draw(cab);",
+                "        cabGlide = 0;\n        window.location.assign(ride.route);"],
         ];
 
         foreach ($wired as $act => $needles) {

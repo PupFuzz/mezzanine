@@ -18,12 +18,16 @@
  *
  * ⛔ NO ANIMATION. § 6.5: "a snapshot never animates", and § 4.1's plates carry no § 6.2 row — so
  * there is nothing here to suppress, stated because the next reader adding a transition to a
- * re-render is the person this line is for.
+ * re-render is the person this line is for. The one transition on this page is the cab's, and it is
+ * the ride's: navigation, over the ride's own glide, and cut on every render that is no ride (the
+ * building's `drawing`, below).
  *
  * ⭐ THE CAMERA AT BUILDING SCALE AND THE RIDE'S ARRIVAL ARE THE SCREEN's (Appendix B row 16, slice A,
  * card#7343); this file supplies the building's drawing surface — a clipping drawing only while there
  * is a building to draw (`building-scene.js`'s `surfaceStyle()`) — stands each plate at the rect the
- * screen's scene gives it (`plate-row.js`'s row), shows the screen's camera on the plates as one
+ * screen's scene gives it (`plate-row.js`'s row) over the building `building-scene.js` draws — the roof and
+ * its sign, a storey under each plate, the ground lobby and the cab (slice B) — shows the screen's camera
+ * on the plates and the drawing as one
  * transform — each plate's text, its name and its status line, counter-scaled from that same camera,
  * so it is read at the page's body text size at every zoom (the operator's rulings, `building-scene.js`'s
  * `LABEL_FONT`), and wrapped within what is visible of the surface (`building-scene.js`'s `labelMax()`) — and wires the wheel, the drag, the keys, the zoom buttons, the keyboard's focus on a
@@ -44,6 +48,7 @@ import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
 import { framesNothing } from '../wire/camera.js';
 import { startLobbyScreen } from './lobby-screen.js';
 import { labelMax, labelScale, surfaceStyle } from './building-scene.js';
+import { CAB, buildingArt, cabStyle } from './building-scene.js';
 import { plateRow } from './plate-row.js';
 import { holdPlateLinks } from './ride-hold.js';
 
@@ -150,6 +155,87 @@ function view(camera) {
 
 const { show, glideTo, current } = cameraView(view);
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** One of `building-scene.js`'s shapes as an SVG element — its attributes and its text, and nothing decided. */
+function svgShape({ el, attrs, text }) {
+    const node = document.createElementNS(SVG_NS, el);
+
+    for (const [name, value] of Object.entries(attrs)) {
+        node.setAttribute(name, String(value));
+    }
+
+    if (text !== undefined) {
+        node.textContent = text;
+    }
+
+    return node;
+}
+
+/**
+ * ⭐ THE BUILDING's DRAWING — Appendix B row 16, slice B (card#7343): the roof and its sign, each plate as a
+ * storey of the reference's section, the ground lobby, and the cab in its shaft, all `building-scene.js`'s
+ * (`buildingArt()`, `CAB`, `cabStyle()`) and painted here deciding nothing, as `floor/painter.js` paints the
+ * floor's scene. One `<svg>` in the first row of `#lobby-floors`, so the camera's one transform moves and
+ * scales it with the plates; the plates' rows stand after it, so each plate's label reads over its storey
+ * and is never scaled by it (`plate-row.js`). Scenery carrying no fact: hidden from assistive technology,
+ * never a pointer's target, and painted from the scene's rects alone.
+ *
+ * ⛔ IT IS KEPT ACROSS RENDERS — `renderBuilding()` replaces every other row and never this one — because
+ * the cab GLIDES: a ride sets `cabGlide` to its `glide_ms` before it draws the cab at its next stop, and a
+ * CSS transition carries the cab there over the ride's glide, which a row rebuilt on the render would cut.
+ * Arriving sets it back to `0`, so every other render — a snapshot, a delta, a re-seated cab — cuts the
+ * cab to where it stands, and under `prefers-reduced-motion` the ride's glide is `0` and the cab cuts too.
+ * The ride is navigation (§ 4.6's elevator row): the glide writes no animation-log row and starts nothing
+ * through the set, and the lobby loads no module that could.
+ */
+const drawing = document.createElement('li');
+const art = document.createElementNS(SVG_NS, 'svg');
+const scenery = document.createElementNS(SVG_NS, 'g');
+const cabNode = document.createElementNS(SVG_NS, 'g');
+
+drawing.setAttribute('aria-hidden', 'true');
+Object.assign(drawing.style, { position: 'absolute', left: '0', top: '0', listStyle: 'none', pointerEvents: 'none' });
+art.setAttribute('overflow', 'visible');
+art.style.display = 'block';
+cabNode.append(...CAB.map(svgShape));
+art.append(scenery, cabNode);
+drawing.append(art);
+
+/** How long the cab may take to its stop on the next render — a ride's `glide_ms` while it is in flight, else `0`. */
+let cabGlide = 0;
+
+/** The building box the scenery was last painted for, so a render that changed no box repaints none. */
+let paintedBox = null;
+
+/** The building's drawing for a scene, with the cab at `level` — or no drawing, where the list flows. */
+function paintBuilding(scene, level) {
+    const drawn = buildingArt(scene);
+
+    drawing.hidden = drawn === null;
+
+    if (drawn === null) {
+        return;
+    }
+
+    const { x, y, w, h } = drawn.box;
+    const box = `${x} ${y} ${w} ${h}`;
+
+    if (box !== paintedBox) {
+        paintedBox = box;
+        art.setAttribute('viewBox', box);
+        art.setAttribute('width', String(w));
+        art.setAttribute('height', String(h));
+        Object.assign(drawing.style, { left: `${x}px`, top: `${y}px` });
+        scenery.replaceChildren(...drawn.shapes.map(svgShape));
+    }
+
+    const cabAt = cabStyle(scene, level, cabGlide);
+
+    cabNode.style.display = cabAt === null ? 'none' : '';
+    Object.assign(cabNode.style, cabAt ?? {});
+}
+
 /** A list element rebuilt from lines the model has already decided the text of. */
 function list(id, lines) {
     const node = el(id);
@@ -180,7 +266,17 @@ function list(id, lines) {
 function renderBuilding(building, scene, unclaimed, riding) {
     const rows = el('lobby-floors');
 
-    rows.textContent = '';
+    // Every row but the building's drawing, which stays so the cab can glide (see `drawing`).
+    for (const row of [...rows.children]) {
+        if (row !== drawing) {
+            row.remove();
+        }
+    }
+
+    if (drawing.parentNode !== rows) {
+        rows.prepend(drawing);
+    }
+
     // The surface is a drawing that clips only while there is a building to draw; with none — § 9 F17's
     // cold start, or no install — it is no box at all and the list flows in the page (card#7343 r3).
     Object.assign(el('lobby-building').style, surfaceStyle(scene));
@@ -188,6 +284,8 @@ function renderBuilding(building, scene, unclaimed, riding) {
     rows.style.position = scene?.extent ? 'relative' : '';
     rows.style.width = scene?.extent ? `${scene.extent.w}px` : '';
     rows.style.height = scene?.extent ? `${scene.extent.h}px` : '';
+    // The roof, the storeys, the ground lobby and the cab at the viewer's stop — nothing with no building.
+    paintBuilding(scene, building.elevator.level);
 
     // § 9 F17's cold start: no layout was ever loaded, so no floor is composed and each install
     // the client holds is listed as a room with no floor claimed — every seat still reachable
@@ -332,8 +430,11 @@ el('lobby-elevator').addEventListener('click', () => {
     }
 
     cab = ride.cab;
+    // The cab glides to its stop with the camera — over the ride's glide, which is none under reduced motion.
+    cabGlide = ride.glide_ms;
     screen.draw(cab);
     glideTo(ride.from, ride.to, ride.glide_ms, () => {
+        cabGlide = 0;
         window.location.assign(ride.route);
         screen.returned();
         screen.draw(cab);

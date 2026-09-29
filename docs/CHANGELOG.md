@@ -59,8 +59,17 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   the mouse wheel, the arrow keys, text selection and a press on a room's link all work on it as they
   did before, with the zoom buttons hidden: on either page the camera takes a wheel, a key, a press or
   a drag only while it frames something, and otherwise leaves the event to the browser. A press on a
-  framed drawing starts no native drag and selects no text. Drawing each plate as the reference's
-  section, with the roof sign, ground lobby and sky, is slice B.
+  framed drawing starts no native drag and selects no text.
+  Slice B draws the building itself, in the reference's warm, rounded style and sharp at every zoom: a
+  roof with a *MEZZANINE* sign, each floor plate as a storey with its elevator doors, a ground-floor
+  lobby with its entrance, and the elevator cab in its shaft at the floor it is on. *Ride the elevator*
+  glides the cab to the next floor together with the camera, and cuts it there under
+  `prefers-reduced-motion`; the whole-building view takes in the roof and the ground lobby. The drawing
+  is scenery: it shows no fleet state, every floor of one building is drawn alike, and each plate's name
+  and status line read over it as before. The lobby draws no sky: a sky there would have to come from
+  the floor's heartbeat-driven room clock, which the lobby does not run, and whether it gains one is
+  still to be decided. `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` holds the
+  drawing.
   The shared camera (`wire/camera.js`) gained `focusOn()`, a zoom to one rect inside what is framed,
   and the floor page and the lobby share one glide through `wire/camera-view.js`, one wheel-and-drag
   wiring through `wire/camera-gestures.js` and one keyboard-and-zoom-button wiring through
