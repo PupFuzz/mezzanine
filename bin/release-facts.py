@@ -14,9 +14,12 @@ from the source it names, or `NOT VERIFIED` naming what was not read and why. No
      UNKNOWN: an empty answer is a measurement that did not happen, never "nothing is required".
   3. WHAT THIS CANNOT VERIFY, always printed.
 
-EXIT: 0 printed; 1 a job declares a key that makes its status context differ from its job id
-(`name:`, a matrix `strategy:`, a reusable-workflow `uses:`) — the gates column joins on job id,
-so that join is a CHECKED fact here rather than an assumption; 2 the tree could not be read.
+EXIT: 0 printed; 1 a job that a pull_request runs declares a key that makes its status context
+differ from its job id (`name:`, a matrix `strategy:`, a reusable-workflow `uses:`) — the gates
+column joins on job id, so that join is a CHECKED fact here rather than an assumption. A job with no
+pull_request trigger is printed and not counted: no PR carries its context, so the join decides
+nothing for it (the comment in `tree_section` says why the trap stays visible). 2 the tree could
+not be read.
 A live read that fails never changes the exit status.
 
 CREDENTIAL: `GH_TOKEN`, else `GITHUB_TOKEN`, else unauthenticated. Which one is named in the
@@ -122,7 +125,7 @@ def tree_section(root: Path):
         raise TreeError(f"no workflow files under {wf}")
     print("== 1. FROM THE TREE (no network) ==")
     print(f"workflow jobs under {wf.relative_to(root)}/ — requirability read from the pull_request trigger:")
-    lanes, broken = {}, []
+    lanes, broken, exempt = {}, [], []
     for f in files:
         try:
             trig, jobs = parse_workflow(f.read_text(encoding="utf-8"))
@@ -138,12 +141,25 @@ def tree_section(root: Path):
         for job, keys in jobs:
             lanes[job] = trig is not None and not any(trig.values())
             print(f"  {job:<26} {f.name:<28} {how}")
-            broken += [f"{f.name}: job `{job}` declares `{k}:`" for k in keys]
+            # SCOPED TO JOBS A PULL REQUEST CAN RUN. The join below is what needs context == job id,
+            # and for a job with NO pull_request trigger it decides nothing: no PR ever carries its
+            # context, so a ruleset requiring it traps every PR whatever the name, and § 2 names that
+            # trap either way — `yes!` when the context is the job id, and "requires context …, which
+            # is no job id in this tree — it can never report" when it is not. A reusable-workflow
+            # caller (`uses:` + a matrix `strategy:`) on a schedule is the shape this admits.
+            if trig is None:
+                exempt += [f"{f.name}: job `{job}` declares `{k}:`" for k in keys]
+            else:
+                broken += [f"{f.name}: job `{job}` declares `{k}:`" for k in keys]
+    for e in exempt:
+        print(f"  · context != job id, not a finding — {e}, and no pull_request runs it, so the join decides"
+              " nothing for it; a ruleset requiring its context is named in § 2 as one that can never report")
     if broken:
         for b in broken:
             print(f"  ✗ CONTEXT != JOB ID — {b}; its status context is not its job id")
     else:
-        print("  ✓ no job declares name:/strategy:/uses:, so each status context is its job id (checked, not assumed)")
+        print("  ✓ no job a pull_request runs declares name:/strategy:/uses:, so each such status context is its"
+              " job id (checked, not assumed)")
     floors(root, lanes)
     return lanes, broken
 

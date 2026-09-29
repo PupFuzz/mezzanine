@@ -1,4 +1,4 @@
-<!-- BEGIN coord:solo-orientation (synced from coord v0.55.0) -->
+<!-- BEGIN coord:solo-orientation (synced from coord v0.58.0) -->
 # Agent Board Framework — solo agent orientation
 
 > **⚠ Only two sections of this file reach a session automatically: `## Who you are` and
@@ -185,15 +185,18 @@ audience is the person who deploys or upgrades to what the PR ships — not you,
 install nobody else will re-aim it for you. What that means line by line — the IN/OUT tables, the
 home named for everything they keep out, and how a solo install reads a home that says "the
 review-request round" — is ONE section and is not restated here: **`coord:release-pr` skill § PR
-body — write it for the software installer**. Nothing is dropped; only the home moves. **Run
-`pr-body-lint.py --body-file <the body file>` before `gh pr create`:** it reds on the SHAPE, and
-on a solo install it is the only reader besides you — so adopt `templates/workflows/pr-body-lint.yml`
-in your repo too, and read a green as "the shape is right", never as "the audience is right".
+body — write it for the software installer**. Its section set is the RELEASE body's; a feature
+PR's section shape is your repo's own, and its OUT table binds every body. Nothing is dropped; only
+the home moves. **Run `pr-body-lint.py --body-file <the body file> --title "<the PR title>"`
+before `gh pr create`:** it reds on the release section set and scope line when the title opens
+`release:`, and on narration openers, live-state readings and the audit rows on any PR, and on a solo
+install it is the only reader besides you — so adopt `templates/workflows/pr-body-lint.yml` in
+your repo too, and read a green as "the shape is right", never as "the audience is right".
 
 **Declare how you built it — the `Built:` line (card#4870).** Every PR body you open carries a
 REQUIRED one-line `Built:` field declaring how the work was produced — one of the legitimate values
 defined in `built-line.md`, which is **canonical for
-the value set and for the conditions on the restricted value**; read them there rather than
+the value set and for the conditions on the restricted values**; read them there rather than
 restating them. It is one of the machine-read, process-native lines the PR-body standard above
 explicitly preserves, so trimming a body never removes it. You are your own reviewer here, which is
 exactly why the field has to be right without one: nobody else will catch a wrong count.
@@ -208,7 +211,8 @@ or transcripts: nothing in the tree records a dispatch — a worktree does not r
 contexts touched it, and a transcript is not the record for a branch — so a reassembled figure is a
 fabricated attestation, strictly worse than the gap it fills, because a gap is visible and a
 plausible number is not. You are the dispatching seat for everything you push and there is no other
-seat to ask, so record the count at the dispatch and no gap opens on a branch you built. The narrow
+seat to ask, so record the count at the dispatch and no gap opens on a branch you built unless you
+miss that increment — a process miss you name, never repair by reconstructing. The narrow
 conditions under which `Built: unattestable — <reason>` is legitimate at all are owned by the
 `built-line.md` — **read them there rather than from a copy here.** Note only that they are
 written for installs with several seats, so any of them that turn on a *different* seat simply never
@@ -228,8 +232,11 @@ merge-button intent) using each repo's own conventions. Use it whenever cutting 
   it over raw `gh pr merge`: raw `gh pr merge` is auto-mode-gated on every call (it can't tell
   an integration merge from a release merge, so it prompts), while `solo-self-merge` is the
   allow-listed safe path that keeps the unattended self-drive loop moving.
-- **Back-merge sync PRs (release → integration) → you self-merge** once the underlying release
-  PR is merged (that merge IS the production gate). Use a **merge commit** (`gh pr merge --merge`,
+- **Back-merge sync PRs (release → integration) → you self-merge** once **BOTH** hold: the
+  underlying release PR is merged (that merge IS the production gate) **and** the two-leg pure-sync
+  test measures clean on this PR's head merge commit (the `release-pr` skill, § Step C, owns the
+  test). Both, not either — the merge is the production approval, the measurement earns the
+  review exemption. Use a **merge commit** (`gh pr merge --merge`,
   **not** `solo-self-merge` — that wrapper squashes; back-merge must preserve topology). Note:
   raw `gh pr merge` is deliberately **not** allow-listed (only `solo-self-merge` is), so this
   **prompts once** in auto-mode — that's expected and fine here, because a human just merged the

@@ -6,7 +6,7 @@
 # docstring to describe; it is not restated here.
 #
 # WHAT CAN RED IT. The selftest (a reporter whose cases no longer discriminate), and the reporter's
-# exit 1: a job in this tree declaring a key that makes its status context differ from its job id.
+# exit 1: a job a pull_request runs declaring a key that makes its status context differ from its job id.
 # That is the one fact the reporter CHECKS rather than prints, because every "is this lane required?"
 # answer in this repository joins a ruleset's context against a job id. A live read that fails, a
 # floor it could not read, or a lane that gates nothing never reds it — those are printed and named.

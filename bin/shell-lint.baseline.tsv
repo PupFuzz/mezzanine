@@ -27,6 +27,8 @@
 #cfg	probe	SC2046
 #cfg	probe	SC2086
 #cfg	probe	SC2218
+#cfg	directive	bin/dependency-audit.selftest.sh	disable=SC2015	10
+#cfg	directive	bin/dependency-audit.selftest.sh	disable=SC2016	8
 #cfg	directive	bin/deploy-gate-inputs.selftest.sh	disable=SC2016	8
 #cfg	directive	bin/deploy-gate-inputs.sh	disable=SC2016	3
 #cfg	directive	bin/deploy.selftest.sh	disable=SC1090	2
@@ -46,6 +48,7 @@
 #cfg	directive	bin/env-mirror-diff.mirror.sh	disable=SC2317	2
 #cfg	directive	bin/env-mirror-diff.sh	disable=SC2016	6
 #cfg	directive	bin/shell-lint.sh	disable=SC2064	1
+#pop	bin/dependency-audit.selftest.sh
 #pop	bin/deploy-gate-inputs.selftest.sh
 #pop	bin/deploy-gate-inputs.sh
 #pop	bin/deploy.selftest.sh
