@@ -38,7 +38,7 @@ change PR too. `Bundled` and `Release artifacts` come from the row its own IN ta
     ## Upgrade warnings ONLY when the installer cannot deploy correctly without an action
                         (`--upgrade-warnings`; absent that need there is no section at all,
                         not an empty one — the IN table is explicit)
-    the machine lines   `Built:`, `**Coordinated in:**`, and the attribution trailer
+    the machine lines   `Built:` and `**Coordinated in:**`, and nothing after them
 
 `CLAUDE.md § PR bodies are judged against the fleet standard` carries the map from this
 repository's former house sections onto that set, and its `change-pr-body:house-map` block is what
@@ -51,13 +51,22 @@ green). The selftest drives the real linter over this generator's real output, s
 the output complies is measured on every CI run rather than asserted in this paragraph.
 
 ⛔ READ THAT CLAIM AT ITS EXACT SCOPE: THE SKELETON PASSES, A BODY BUILT FROM IT IS NOT PROMISED TO.
-`--agent` and `--session-url` are PASS-THROUGH — this program writes what it is handed into the
-trailer and judges neither, by the same emit/do-not-judge rule above — so they can red the linter:
-`--agent 'CI is green at 0a2aa07'` reds `live-state-reading`, and a session URL carrying `FROM:`
-reds `attribution-line`. Add the author's own prose on top and the surface is wider again. ⇒ THIS
-IS WHY THE LINT STEP AFTER THE GENERATOR IS NOT OPTIONAL and why the stderr checklist names it: a
-green here is a statement about the SKELETON, and the body that gets pushed is a different
-document. The right answer to those two fields is the lint, never a validator bolted on here.
+`--built` and `--coordinated-in` are written VERBATIM and judged only for being one non-empty
+line, and the author's own prose goes on top of the skeleton, so the body that gets pushed is a
+different document from the one the selftest judged. ⇒ THIS IS WHY THE LINT STEP AFTER THE
+GENERATOR IS NOT OPTIONAL and why the stderr checklist names it. The right answer to what the
+author adds is the lint, never a validator bolted on here.
+
+⛔ NO AI ATTRIBUTION, AND NO AGENT LINE IN ITS PLACE. The operator's standing instruction
+(2026-09-27, framework card#10673) is that nothing written to GitHub names the AI model or carries
+a Claude session link or co-author trailer; upstream's `pr-body-lint.py` carries it as the
+`ai-attribution` rule from coord 0.58.0 on. It supersedes the 2026-09-17 directive that put the
+producing agent BESIDE a Claude Code model line, so that line, the `--agent` text appended to it
+and the `--session-url` line under it are all gone, and neither option exists any more (argparse
+refuses both as unrecognised). The agent's identity has no body line to move to, and none is
+invented here: upstream attributes a PR by the ROSTER'S REPO BINDING (`docs/protocol-spec.md`
+§ Addressing — an implementation repo's PR is the seat that owns it), and which subagent roles
+built the change is already on the machine-read `Built:` line (`dispatched (coder ×1 / …)`).
 
 ⚠ NO COUNT IN THE SCOPE LINE, AND THE GENERATOR EXEMPTION IS THE REASON RATHER THAN AN OVERSIGHT.
 The standard exempts generated output from canon #16 "where the generator RUNS" — `release-pr-body`
@@ -88,11 +97,6 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
-
-# The attribution trailer's first line, fixed. Which AGENT produced the PR is appended to THIS
-# line (`--agent`) rather than written as a `FROM:` line at the top: operator directive,
-# 2026-09-17, fleet-wide. `pr-body-lint.py`'s `attribution-line` rule reds the `FROM:` spelling.
-MODEL_LINE = "🤖 Generated with [Claude Code](https://claude.com/claude-code)"
 
 AUTHOR_MARK = "<!-- AUTHOR:"
 
@@ -199,15 +203,11 @@ def resolve_base(base: str) -> tuple[str | None, str, list[Git]]:
 
 
 def build_body(scope_line: str, highlights: str, upgrade: str | None,
-               built: str, coordinated_in: str, agent: str | None,
-               session_url: str | None) -> str:
+               built: str, coordinated_in: str) -> str:
     parts = [scope_line, "", "## Highlights", "", highlights, ""]
     if upgrade is not None:
         parts += ["## Upgrade warnings", "", upgrade, ""]
-    parts += ["Built: %s" % built, "**Coordinated in:** %s" % coordinated_in, ""]
-    parts.append(MODEL_LINE + (" — %s" % agent if agent else ""))
-    if session_url:
-        parts += ["", session_url]
+    parts += ["Built: %s" % built, "**Coordinated in:** %s" % coordinated_in]
     return "\n".join(parts) + "\n"
 
 
@@ -228,13 +228,6 @@ def main(argv: list[str]) -> int:
                     help="the branch this PR merges INTO (default: %(default)s)")
     ap.add_argument("--head", default="HEAD",
                     help="the branch this PR merges FROM (default: %(default)s)")
-    ap.add_argument("--agent",
-                    help="appended to the model-attribution line, which is where the producing "
-                         "agent is recorded (operator directive 2026-09-17). A PR body carries "
-                         "no `FROM:` line.")
-    ap.add_argument("--session-url",
-                    help="the session URL for the attribution trailer. Omitted when not given, "
-                         "rather than invented.")
     ap.add_argument("--upgrade-warnings", action="store_true",
                     help="emit `## Upgrade warnings`. Leave it off unless the installer cannot "
                          "deploy or upgrade correctly without an action: the standard admits no "
@@ -249,15 +242,6 @@ def main(argv: list[str]) -> int:
         if "\n" in value or "\r" in value:
             return refuse("%s spans more than one line. Both fields are parsed as ONE line and "
                           "only the first would be read." % name)
-
-    # THE SAME SHAPE, AUDITED ACROSS THE OTHER FIELDS THAT LAND ON ONE LINE (canon #7). `--agent`
-    # and `--session-url` are not machine-read, so they get their own reason rather than the one
-    # above: each is written INTO the attribution trailer, and a value carrying a newline splits
-    # that trailer into text the author never wrote and would have to notice to fix.
-    for name, value in (("--agent", args.agent), ("--session-url", args.session_url)):
-        if value is not None and ("\n" in value or "\r" in value):
-            return refuse("%s spans more than one line, and it is written into the attribution "
-                          "trailer as one." % name)
 
     # ⛔ THIS PROBE ANSWERS "CAN GIT ANSWER HERE AT ALL", NOT "IS THIS A REPOSITORY". The two are
     # different questions and only git knows which one failed, so its answer is carried rather
@@ -324,8 +308,7 @@ def main(argv: list[str]) -> int:
 
     body = build_body(scope_line, HIGHLIGHTS_PLACEHOLDER,
                       UPGRADE_PLACEHOLDER if args.upgrade_warnings else None,
-                      args.built.strip(), args.coordinated_in.strip(), args.agent,
-                      args.session_url)
+                      args.built.strip(), args.coordinated_in.strip())
     sys.stdout.write(body)
 
     # STDERR: what is NOT done. A generator that printed nothing here would read as "this body is
@@ -345,21 +328,18 @@ def main(argv: list[str]) -> int:
         "  * `git fetch origin` first if that tip is not the base's current one — a stale base\n"
         "    moves the merge-base back and widens the range this body claims to merge.\n"
         "  * every `%s … -->` marker — delete the marker, write the section.\n"
-        "  * `--agent` / `--session-url` are passed through UNJUDGED; the lint below is what\n"
+        "  * `--built` / `--coordinated-in` are written VERBATIM; the lint below is what\n"
         "    judges the body you actually push.\n"
         "  * read it back as the person INSTALLING this, then judge it:\n"
         "      python3 bin/pr-body-lint.py --body-file <the body file>\n"
         % (base_ref, base_tip, merge_base[:12], AUTHOR_MARK))
-    if not args.session_url:
-        sys.stderr.write("  * the attribution trailer has NO session URL (--session-url was not "
-                         "given).\n")
     return 0
 
 
 if __name__ == "__main__":
     # The same property upstream's `stdio-encoding` fragment pins, without vendoring a region
-    # this repository would then owe a manifest row and a pin for: this program writes `🤖`, `→`
-    # and `⛔`, and a stream left on the platform's codec dies INSIDE the write on the first one,
+    # this repository would then owe a manifest row and a pin for: this program writes `→`
+    # and `—`, and a stream left on the platform's codec dies INSIDE the write on the first one,
     # leaving the body file empty. Pinned here rather than at the N write sites.
     for _stream in (sys.stdout, sys.stderr):
         _stream.reconfigure(encoding="utf-8", errors="backslashreplace", newline="\n")

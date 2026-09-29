@@ -27,6 +27,13 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **`bin/change-pr-body.py` no longer writes AI attribution into a PR body.** The generated body
+  ends on its `Built:` and `**Coordinated in:**` lines: the `Generated with Claude Code` model line
+  and the session link are gone, and so are the `--agent` and `--session-url` options that filled
+  them — a script still passing either now stops with a usage error. The operator's standing
+  instruction of 2026-09-27 keeps AI attribution off every GitHub-bound text, and the linter in
+  coord 0.58.0 reds it. `bin/change-pr-body.selftest.py` plants those lines back and shows that
+  linter reds each one.
 - **card#7343** — **The lobby's elevator ride now arrives at the floor, and the lobby has the floor's
   camera at building scale** (FLOOR.md Appendix B row 16, slice A). The lobby opens with every floor
   plate in view; the wheel zooms and a drag pans the building, and a *Whole building* control brings
