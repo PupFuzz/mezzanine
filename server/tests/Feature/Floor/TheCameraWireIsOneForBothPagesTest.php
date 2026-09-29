@@ -21,6 +21,10 @@ use Tests\TestCase;
  * planted in the shipped file and watched red — the floor's own keyboard and zoom-button checks among
  * them, moved here with the code they check (card#7343 r2-2).
  *
+ * ⛔ THE WHEEL IS THE CAMERA's ONLY WHILE THE CAMERA FRAMES SOMETHING (card#7343 r3b, the seat's ruling):
+ * over a drawing that frames a scene it zooms and is taken from the page's scroll; over one that frames
+ * nothing — the uncomposed lobby, whose list flows in the page — it is left to the browser.
+ *
  * ⛔ A PRESS NEVER DRAGS AN ELEMENT OUT AND NEVER SELECTS TEXT (card#7343 r2-3): a `dragstart` in the
  * drawing is refused, and the drawing is `user-select: none` from a primary press until it ends — and
  * selectable again after, however it ended.
@@ -110,7 +114,11 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             'a wheel whose deltaMode never reaches the camera' => ['camera-gestures.js', '{ deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }', '{ deltaY: event.deltaY, ctrlKey: event.ctrlKey }'],
             'a wheel whose ctrlKey (a pinch) never reaches the camera' => ['camera-gestures.js', '{ deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }', '{ deltaY: event.deltaY, deltaMode: event.deltaMode }'],
             'a wheel about the page, not the drawing' => ['camera-gestures.js', '{ x: event.clientX - r.left, y: event.clientY - r.top }', '{ x: event.clientX, y: event.clientY }'],
-            'a wheel that also scrolls the page' => ['camera-gestures.js', "    element.addEventListener('wheel', (event) => {\n        event.preventDefault();\n", "    element.addEventListener('wheel', (event) => {\n"],
+            'a wheel that also scrolls the page' => ['camera-gestures.js', "        event.preventDefault();\n\n        const r = element.getBoundingClientRect();\n", "        const r = element.getBoundingClientRect();\n"],
+            // card#7343 r3b (the seat's ruling): the wheel is the camera's only while it frames something.
+            'a wheel taken from the page over a drawing that frames nothing' => ['camera-gestures.js', "        if (acts.camera().bounds === null) {\n            return;\n        }\n\n", ''],
+            'a wheel left to the page over a drawing that frames a scene' => ['camera-gestures.js', 'if (acts.camera().bounds === null) {', 'if (true) {'],
+            'a wheel whose guard reads the camera backwards' => ['camera-gestures.js', 'if (acts.camera().bounds === null) {', 'if (acts.camera().bounds !== null) {'],
             'a drag that follows the plate link it ended over' => ['camera-gestures.js', "            event.preventDefault();\n            event.stopPropagation();", '            event.stopPropagation();'],
             'a drag that selects the desk it ended over' => ['camera-gestures.js', "            event.preventDefault();\n            event.stopPropagation();", '            event.preventDefault();'],
             // card#7343 r2-3: a pan started on a plate's link is no native drag of it, and a pan selects no text.
@@ -128,7 +136,29 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
     {
         $dir = $this->mutatedModules([$file, $anchor, $replacement]);
 
-        $this->assertNotSame([], $this->gestureDefects($dir), 'the planted gesture defect did not bite');
+        $this->assertNotSame([], [...$this->gestureDefects($dir), ...$this->unframedWheelDefects($dir)], 'the planted gesture defect did not bite');
+    }
+
+    /**
+     * card#7343 r3b (the seat's ruling): a camera that frames nothing — the uncomposed lobby, whose list
+     * flows in the page — leaves the wheel to the browser: no act, no show, and its default untouched, so
+     * the page scrolls. The framed half is `gestureDefects()`'s first step, the wheel every drawn page takes.
+     */
+    public function test_green_a_wheel_over_a_drawing_that_frames_nothing_is_the_pages_scroll(): void
+    {
+        $this->assertSame([], $this->unframedWheelDefects());
+    }
+
+    /** Each half of the ruling planted alone, each watched red on its own half. */
+    public function test_red_each_half_of_the_framed_wheel_bites_on_its_own_check(): void
+    {
+        $taken = $this->mutatedModules(['camera-gestures.js', "        if (acts.camera().bounds === null) {\n            return;\n        }\n\n", '']);
+        $this->assertNotSame([], $this->unframedWheelDefects($taken), 'CONTROL (a wheel taken from an uncomposed page) did not bite');
+        $this->assertSame([], $this->gestureDefects($taken), 'the unguarded wheel changed a framed drawing\'s gestures too — the plant is not the one half');
+
+        $left = $this->mutatedModules(['camera-gestures.js', 'if (acts.camera().bounds === null) {', 'if (true) {']);
+        $this->assertNotSame([], $this->gestureDefects($left), 'CONTROL (a framed drawing whose wheel is left to the page) did not bite');
+        $this->assertSame([], $this->unframedWheelDefects($left), 'the never-handled wheel changed the uncomposed page\'s wheel — the plant is not the one half');
     }
 
     // ── The keys and the zoom buttons ───────────────────────────────────────────────────────────
@@ -267,6 +297,23 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
         }
 
         return $this->logDefects($this->probe(['gestures' => array_column($steps, 0)], $dir)['log'], $expected, 'gesture');
+    }
+
+    /**
+     * The wheel over a camera that frames nothing (`"framed": false`): no act shown, the default not
+     * prevented and the propagation not stopped — the page's scroll, untouched.
+     *
+     * @return list<string>
+     */
+    private function unframedWheelDefects(?string $dir = null): array
+    {
+        $log = $this->probe(['framed' => false, 'gestures' => [
+            ['type' => 'wheel', 'clientX' => 110, 'clientY' => 220, 'deltaY' => 100, 'deltaMode' => 0, 'ctrlKey' => false],
+        ]], $dir)['log'];
+
+        return $this->logDefects($log, [
+            ['event' => 'wheel', 'default_prevented' => false, 'propagation_stopped' => false, 'user_select' => '', 'webkit_user_select' => ''],
+        ], 'unframed wheel');
     }
 
     /**

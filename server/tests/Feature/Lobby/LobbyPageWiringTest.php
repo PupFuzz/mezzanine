@@ -33,7 +33,7 @@ use Tests\TestCase;
  * `EventSource`).
  *
  * ⛔ AND THE BUILDING's CAMERA (Appendix B row 16, card#7343): that the page hands each viewer act to the
- * lobby screen — the ride and its arrival, the whole-building control, the wheel and the drag through
+ * lobby screen — the ride and its arrival, the hold that keeps a plate link from outrunning it, the whole-building control, the wheel and the drag through
  * `wire/camera-gestures.js`, the keys and the zoom buttons through `wire/camera-keys.js`, the keyboard's
  * focus on a plate — grows no copy of either shared module, stands `plate-row.js`'s rows and writes their
  * counter-scale from the camera it shows; and that the building takes focus with the floor's keys and
@@ -149,6 +149,25 @@ class LobbyPageWiringTest extends TestCase
         $this->assertNotSame($held, $js, "the arrival-hold control's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('ride in flight', $this->cameraDefects($held),
             'CONTROL (a hold that outlives the glide) did not bite');
+
+        // CONTROL — the gestures handed a camera that frames nothing (card#7343 r3b): every wheel over the
+        // drawn building would then scroll the page instead of zooming it.
+        $unframed = str_replace('camera: screen.camera }, show);', 'camera: () => ({ bounds: null }) }, show);', $js);
+        $this->assertNotSame($unframed, $js, "the framed-wheel control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('wheel', $this->cameraDefects($unframed),
+            'CONTROL (a wheel handed a camera that frames nothing) did not bite');
+
+        // CONTROL — a plate link clicked mid-ride that navigates (card#7343 r3b): the hold never wired.
+        $unheld = str_replace("holdPlateLinks(building, screen.riding);\n", '', $js);
+        $this->assertNotSame($unheld, $js, "the link-hold control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('ride in flight', $this->cameraDefects($unheld),
+            'CONTROL (a plate link that outruns the committed ride) did not bite');
+
+        // CONTROL — the hold wired over something other than the screen's in-flight state.
+        $blind = str_replace('holdPlateLinks(building, screen.riding);', 'holdPlateLinks(building, () => false);', $js);
+        $this->assertNotSame($blind, $js, "the link-hold state control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('ride in flight', $this->cameraDefects($blind),
+            'CONTROL (a hold that never sees a ride) did not bite');
 
         // CONTROL — the keys and the zoom buttons wired to nothing (card#7343 r2-2).
         $keyless = str_replace('cameraKeys(building, ', "cameraKeys(el('lobby-floors'), ", $js);
@@ -355,10 +374,14 @@ class LobbyPageWiringTest extends TestCase
             'ride in flight' => ['}, { commit: true });', 'ride.disabled = building.elevator.next === null || riding;',
                 'renderBuilding(building, frame.scene, summary.unclaimed, frame.riding);',
                 "window.addEventListener('pageshow', (event) => {\n    if (event.persisted) {\n        screen.returned();",
-                "        window.location.assign(ride.route);\n        screen.returned();\n        screen.draw(cab);\n    }, { commit: true });"],
+                "        window.location.assign(ride.route);\n        screen.returned();\n        screen.draw(cab);\n    }, { commit: true });",
+                // … and the committed ride wins over a plate link clicked during it (card#7343 r3b): the hold
+                // is `ride-hold.js`'s, on the building, over the screen's own in-flight state.
+                "import { holdPlateLinks } from './ride-hold.js';", 'holdPlateLinks(building, screen.riding);'],
             'whole-building' => ["el('lobby-whole-building').addEventListener('click'", 'screen.wholeBuilding()'],
-            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { wheel: screen.wheel,'],
-            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { wheel: screen.wheel, drag: screen.drag }, show);'],
+            // … and the camera as it stands, so the wheel is the page's scroll while it frames nothing (card#7343 r3b).
+            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { wheel: screen.wheel,', ', camera: screen.camera }, show);'],
+            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
             // The clipping surface is never scrolled out from under the camera (card#7343 r1).
             'scroll' => ["function view(camera) {\n    if (camera.bounds !== null) {\n        unscroll();\n    }\n", "building.addEventListener('scroll', unscroll);",
                 "    node.scrollTop = 0;\n    node.scrollLeft = 0;"],

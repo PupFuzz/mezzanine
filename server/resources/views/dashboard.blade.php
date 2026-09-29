@@ -88,7 +88,7 @@
             does is state. ⛔ It carries no size or clip of its own: it is a fixed-height, clipping drawing
             only while there is a building to draw (`building-scene.js`'s `surfaceStyle()`, which
             `lobby/main.js` applies on every render), and with none — no snapshot yet, or § 9 F17's
-            rooms with no floor claimed — the list flows in the page.
+            rooms with no floor claimed — the list flows in the page, and the wheel scrolls it.
         --}}
         <div id="lobby-building" role="group" aria-label="the building drawing" tabindex="0" aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight">
             <ul id="lobby-floors" aria-labelledby="lobby-floors-heading" style="margin: 0; transform-origin: 0 0">

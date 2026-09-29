@@ -171,10 +171,17 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('wheel', $this->cameraDefects($unwheeled),
             'CONTROL (a wheel that never reaches the camera) did not bite');
 
-        $undragged = str_replace('drag: screen.drag }', 'drag: screen.camera }', $js);
+        $undragged = str_replace('drag: screen.drag, camera: screen.camera }', 'drag: screen.camera, camera: screen.camera }', $js);
         $this->assertNotSame($undragged, $js);
         $this->assertArrayHasKey('drag', $this->cameraDefects($undragged),
             'CONTROL (a drag that never reaches the camera) did not bite');
+
+        // card#7343 r3b: the gestures ask the screen's camera whether it frames the floor; one that never
+        // does leaves every wheel over the drawn floor to the page's scroll.
+        $unframed = str_replace('camera: screen.camera }, show);', 'camera: () => ({ bounds: null }) }, show);', $js);
+        $this->assertNotSame($unframed, $js);
+        $this->assertArrayHasKey('wheel', $this->cameraDefects($unframed),
+            'CONTROL (a wheel handed a camera that frames nothing) did not bite');
 
         // The gestures are wire/camera-gestures.js's, whose own defects TheCameraWireIsOneForBothPagesTest
         // plants and watches red; what can drift here is a page growing its own copy back beside it.
@@ -304,8 +311,9 @@ class FloorPageWiringTest extends TestCase
         $defects = [];
         $wired = [
             'viewport' => ['viewport: viewport(),', 'screen.resize(viewport(), surface())'],
-            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel,'],
-            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag }, show);'],
+            // … and the camera as it stands, so the wheel is the page's scroll while it frames nothing (card#7343 r3b).
+            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel,', ', camera: screen.camera }, show);'],
+            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
             'resize' => ["    screen.resize(viewport(), surface());\n    show(screen.camera());\n"],
             'keyboard' => ["import { cameraKeys } from '../wire/camera-keys.js';", 'cameraKeys(drawing, {'],
             'buttons' => ["cameraKeys(drawing, { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out') }, { zoomStep: screen.zoomStep, drag: screen.drag }, show);"],

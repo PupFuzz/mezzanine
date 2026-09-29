@@ -46,6 +46,11 @@ use Tests\TestCase;
  * surface's width, with every painted text free to break — so a status line wider than the surface takes
  * more lines rather than running past the drawing's clip (`wrapDefects()`).
  *
+ * ⛔ AND THE TOP FLOOR's NAME IS NEVER ABOVE THE SURFACE's TOP AT FIT (card#7343 r3b, the seat's ruling): the
+ * label stands at its plate's top-left and grows down, so a label taller than its plate runs down over the
+ * plate below it and the clip cuts its last lines first, never the top floor's name (`anchorDefects()`,
+ * which sweeps the label's height because nothing here measures it).
+ *
  * ⚠ WHAT THIS DOES NOT HOLD: nothing here lays out or paints — there is no browser on the build host — so
  * that a browser draws the product above at the size above, and wraps it where the width says, is the CSS
  * model, not a measurement; and where two plates' labels meet (a plate on the screen shorter than its
@@ -76,6 +81,60 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         foreach (self::RUNS as $run) {
             $this->assertSame([], $this->sizeDefects($this->replay($run)), "[{$run}]");
         }
+    }
+
+    /**
+     * card#7343 r3b (the seat's ruling): a plate's label stands at its plate's top-left and grows down, so the
+     * top floor's name is never above the surface's top at whole-building fit, however tall its label is.
+     */
+    public function test_green_the_top_plates_name_is_never_above_the_surface_top_at_fit(): void
+    {
+        foreach (self::RUNS as $run) {
+            $this->assertSame([], $this->anchorDefects($this->replay($run)), "[{$run}]");
+        }
+    }
+
+    /**
+     * The anchor the r3b ruling refused and replaced — the label at its plate's bottom-left, growing up, as
+     * r1–r3 built it (§ 13 decision 38) — and each half of it alone: past the point where labels meet, each
+     * puts the top floor's name above the surface's top, where the clip cuts it.
+     *
+     * @return array<string, array{0: list<array{0: string, 1: string}>}>
+     */
+    public static function anchorPlants(): array
+    {
+        $bottom = ["        top: '0',\n", "        bottom: '0',\n"];
+        $origin = ["        transformOrigin: '0 0',", "        transformOrigin: '0 100%',"];
+
+        return [
+            'the refused anchor: the plate\'s bottom-left, growing up' => [[$bottom, $origin]],
+            'a label anchored at the plate\'s bottom' => [[$bottom]],
+            'a label counter-scaled about its bottom' => [[$origin]],
+        ];
+    }
+
+    /** @param  list<array{0: string, 1: string}>  $edits */
+    #[DataProvider('anchorPlants')]
+    public function test_red_a_top_plates_name_above_the_surface_top(array $edits): void
+    {
+        // One anchored edit per plant, so the edits are applied to the one span of `plate-row.js` that holds them all.
+        $source = (string) file_get_contents($this->moduleDir().'/'.self::ROW);
+        $start = strpos($source, $edits[0][0]);
+        $last = end($edits)[0];
+        $this->assertNotFalse($start, 'the anchor plant\'s first line is not in plate-row.js');
+        $this->assertNotFalse(strpos($source, $last, $start), 'the anchor plant\'s last line is not in plate-row.js after its first');
+        $span = substr($source, $start, strpos($source, $last, $start) + strlen($last) - $start);
+        $planted = $span;
+
+        foreach ($edits as [$from, $to]) {
+            $this->assertSame(1, substr_count($planted, $from), "the anchor plant's line {$from} is not in the span once");
+            $planted = str_replace($from, $to, $planted);
+        }
+
+        $dir = $this->mutatedModules([self::ROW, $span, $planted]);
+
+        $this->assertNotSame([], array_filter($this->anchorDefects($this->replay(self::RUNS[0], $dir), $dir),
+            static fn (string $d): bool => str_contains($d, 'above the surface\'s top')), 'CONTROL (the name above the surface top) did not bite');
     }
 
     /** The runs are what they say: N floors, and fit's zoom differs between them — else one size was measured four times. */
@@ -383,6 +442,99 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         }
 
         return $defects;
+    }
+
+    /**
+     * card#7343 r3b (the seat's ruling): at whole-building fit the top plate's name — its label's first line,
+     * which `readingDefects()` holds — is never above the surface's top, whatever the label's height. Nothing
+     * here lays text out, so the label's height is not measured: it is swept, at the plate's own height on the
+     * screen (the point where labels meet) and at two and eight times it (past that point), and the name's
+     * top is placed from the shipped construction's own styles — the row's top, the label's `top` or `bottom`,
+     * and its counter-scale about its `transformOrigin` — under the fit camera the harness recorded.
+     *
+     * @return list<string>
+     */
+    private function anchorDefects(array $result, ?string $dir = null): array
+    {
+        $fit = null;
+
+        foreach ($result['lobby_renders'] as $r) {
+            if (($r['frame']['building']['composed'] ?? false) === true) {
+                $fit = $r['frame'];
+
+                break;
+            }
+        }
+
+        if ($fit === null) {
+            return ['the run never drew the building at fit'];
+        }
+
+        $this->assertTrue($fit['camera']['fitted'], 'the first frame that drew the building is not at fit');
+        $built = $this->probe(['frames' => [['building' => $fit['building'], 'scene' => $fit['scene']]]], $dir, __DIR__.'/plate-row-probe.mjs')['frames'][0]['rows'];
+        $camera = $fit['camera'];
+        $zoom = $camera['zoom'];
+        $scale = 1 / $zoom;
+        $tops = array_map(fn (array $row): float => $this->px($row['style']['top'] ?? null, 'the row\'s top'), $built);
+        $i = array_keys($tops, min($tops), true)[0];
+        $row = $built[$i];
+        $floor = $fit['building']['plates'][$i]['floor'];
+        $label = $this->find($row, static fn (array $n): bool => ($n['style']['transform'] ?? null) === self::COUNTER_SCALE);
+
+        if ($label === null) {
+            return ["the top plate {$floor} has no counter-scaled label — the anchor clause read nothing"];
+        }
+
+        $rowTop = $tops[$i];
+        $rowHeight = $this->px($row['style']['height'] ?? null, 'the row\'s height');
+        $defects = [];
+
+        // The label's px are screen px under its counter-scale, so its height is the same figure in its own box.
+        foreach ([1, 2, 8] as $times) {
+            $height = $rowHeight * $zoom * $times;
+            $style = $label['style'];
+            $boxTop = match (true) {
+                isset($style['top']) && ! isset($style['bottom']) => $rowTop + $this->px($style['top'], 'the label\'s top'),
+                isset($style['bottom']) && ! isset($style['top']) => $rowTop + $rowHeight - $this->px($style['bottom'], 'the label\'s bottom') - $height,
+                default => $this->fail('the label is anchored by both its top and its bottom, or by neither: '.json_encode($style)),
+            };
+            $origin = $this->originY($style['transformOrigin'] ?? '50% 50%', $height);
+            $nameTop = ($boxTop + $origin * (1 - $scale) - $camera['y']) * $zoom;
+
+            if ($nameTop < -1e-6) {
+                $defects[] = sprintf("at whole-building fit the top plate %s's name stands %.1f px above the surface's top once its label is %.1f px tall — the clip cuts the floor's name",
+                    $floor, -$nameTop, $height);
+            }
+        }
+
+        return $defects;
+    }
+
+    /** A length the construction sets — `0` or a px figure — as a number of px. */
+    private function px(?string $length, string $what): float
+    {
+        $this->assertNotNull($length, "{$what} is not set");
+        $this->assertMatchesRegularExpression('/^-?\d+(\.\d+)?(px)?$/', $length, "{$what} ({$length}) is not a length this check reads");
+        $this->assertTrue(str_ends_with($length, 'px') || (float) $length === 0.0, "{$what} ({$length}) is a unitless figure other than 0");
+
+        return (float) $length;
+    }
+
+    /** Where a `transformOrigin` puts its vertical origin in a box `$height` px tall, in px from the box's top. */
+    private function originY(string $origin, float $height): float
+    {
+        $parts = preg_split('/\s+/', trim($origin));
+        // One value names the horizontal origin unless it is `top` or `bottom`; the vertical is then `center`.
+        $y = count($parts) === 1 ? (in_array($parts[0], ['top', 'bottom'], true) ? $parts[0] : 'center') : $parts[1];
+
+        return match (true) {
+            $y === 'top' || $y === '0' => 0.0,
+            $y === 'bottom' => $height,
+            $y === 'center' => $height / 2,
+            preg_match('/^(\d+(?:\.\d+)?)%$/', $y, $m) === 1 => $height * (float) $m[1] / 100,
+            preg_match('/^(\d+(?:\.\d+)?)px$/', $y, $m) === 1 => (float) $m[1],
+            default => $this->fail("the label's transformOrigin ({$origin}) is not one this check reads"),
+        };
     }
 
     /** Which part of the plate a text is — the name, the summary, the rooms, the cab's word, or the separator. */

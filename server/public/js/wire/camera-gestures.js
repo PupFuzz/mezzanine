@@ -11,7 +11,16 @@
  * screen's acts (`wheel(point, delta)`, `drag(dx, dy)`, each over `camera.js`); what comes back is
  * handed to `show` — `camera-view.js`'s — which renders nothing. What IS decided here is the gesture:
  *  · the wheel zooms about the cursor, carrying the event's `deltaMode` and `ctrlKey` (a pinch) with
- *    its `deltaY`, and takes the event from the page's own scroll;
+ *    its `deltaY`, and takes the event from the page's own scroll — WHILE THE CAMERA FRAMES SOMETHING
+ *    (card#7343 r3b, the seat's ruling). A camera with no `bounds` has no scene to zoom, and the drawing
+ *    is then no box of its own: the lobby's uncomposed list flows in the page (`lobby/building-scene.js`'s
+ *    `surfaceStyle()`), so a wheel over it is the page's scroll and is left to the browser, as it was
+ *    before the lobby had a camera. The screen's `camera()` is asked on every wheel, because a building
+ *    can arrive or go away between two. On the floor the camera frames the floor's extent from the first
+ *    frame that has one, so a drawn floor's wheel is handled as before; its camera frames nothing before
+ *    that frame, under the list view (where the drawing is hidden), and on a floor with nothing measurable
+ *    on it (no map held and no desk — `floor-screen.js`), and there a wheel, which zoomed nothing, is now
+ *    the page's scroll too;
  *  · only the primary pointer's primary button drags — a right-click's menu or a second finger never
  *    starts a pan no `pointerup` of its own would end — and a press is a click until it has moved
  *    `DRAG_SLOP_PX`, when the pointer is captured;
@@ -47,8 +56,9 @@ export const DRAG_SLOP_PX = 4;
 /**
  * @param {EventTarget & {getBoundingClientRect: function(): {left: number, top: number},
  *         setPointerCapture: function(number): void, style: object}} element the drawing the viewer points at
- * @param {{wheel: function(object, object): object, drag: function(number, number): object}} acts the
- *        screen's camera acts, each returning the camera it leaves
+ * @param {{wheel: function(object, object): object, drag: function(number, number): object,
+ *         camera: function(): {bounds: object|null}}} acts the screen's camera acts, each returning the
+ *        camera it leaves, and the camera as it stands
  * @param {function(object): void} show puts a camera on the drawing (`camera-view.js`'s `show`)
  */
 export function cameraGestures(element, acts, show) {
@@ -67,6 +77,11 @@ export function cameraGestures(element, acts, show) {
     });
 
     element.addEventListener('wheel', (event) => {
+        // Nothing framed: the wheel is the page's scroll, and the event is left to the browser.
+        if (acts.camera().bounds === null) {
+            return;
+        }
+
         event.preventDefault();
 
         const r = element.getBoundingClientRect();

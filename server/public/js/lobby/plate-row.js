@@ -22,10 +22,15 @@
  * rooms where the plate names them, and *the elevator is here* on the cab's plate. The label wraps within
  * the surface's width (`--label-max`, which `view()` writes too), so on a narrow or browser-zoomed surface
  * a long status line takes more lines rather than running past the surface's edge, where the drawing's
- * clip would hide it from every pan. The label stands at the plate's bottom-left corner and grows up from
- * it, so two plates' labels can meet only where a plate on the screen is shorter than its label's lines —
- * however many the wrap makes — and the top plate's label then runs above the building's top edge
- * (Appendix B row 16 states what that costs).
+ * clip would hide it from every pan. The label stands at the plate's TOP-LEFT corner and grows down from
+ * it (card#7343 r3b, the seat's ruling), so a floor's name — the label's first line — is on its plate's top
+ * edge however many lines the wrap makes. Two plates' labels can meet only where a plate on the screen is
+ * shorter than its label's lines; a label then runs down over the plate below it, and the bottom plate's
+ * below the building's bottom edge, so what the surface's clip cuts first is a label's last lines — the
+ * status line's. A name is reached only where a plate on the screen is shorter than the name's own lines,
+ * far past the point where labels meet. Anchored at the bottom instead, a label taller than its plate ran
+ * up past the building's top edge, and the clip cut the top floor's name first (Appendix B row 16,
+ * decision 38).
  *
  * ⛔ THE PLATE'S ACCESSIBLE NAME IS WHAT IT WAS: the link carries the name, ` — ` and the summary, in
  * that order, as it always did — the separator VISUALLY HIDDEN now that the two sit on lines of their own, and
@@ -77,8 +82,11 @@ export function plateRow(doc, plate, rect, here) {
 
     Object.assign(label.style, {
         position: 'absolute',
+        // ⛔ AT THE PLATE's TOP-LEFT, GROWING DOWN (card#7343 r3b, the seat's ruling): the name, the label's
+        // first line, stands at the plate's top edge whatever the label's height; a label taller than its
+        // plate runs down, and what falls past the surface's edge first is its last lines — the status line's.
         left: '0',
-        bottom: '0',
+        top: '0',
         fontSize: LABEL_FONT,
         // ⛔ WRAPPED WITHIN THE SURFACE (card#7343 r3, the seat's ruling): the label's px are screen px
         // (the counter-scale), so a label no wider than the surface — `--label-max`, the surface's width,
@@ -86,7 +94,8 @@ export function plateRow(doc, plate, rect, here) {
         whiteSpace: 'normal',
         overflowWrap: 'anywhere',
         maxWidth: 'var(--label-max)',
-        transformOrigin: '0 100%',
+        // The counter-scale about that same corner, so the scaled label's top stays on the plate's top edge.
+        transformOrigin: '0 0',
         transform: 'scale(var(--label-scale))',
     });
 

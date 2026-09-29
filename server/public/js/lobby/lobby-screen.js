@@ -52,10 +52,11 @@
  * ruling; Appendix B row 16). From `ride()` until the page's glide has arrived and the page has asked
  * for the ride's route — `returned()`, which the page also calls when the back-forward cache restores
  * it — a ride is IN FLIGHT: the frame says so (`riding`, which disables the ride control), a second
- * `ride()` is refused, and the wheel, the keys, the zoom buttons, the drag and the whole-building control
- * leave the camera on the plate. The page's glide is committed (`wire/camera-view.js`), so any of them
- * cuts it to the plate and it arrives. The keyboard's focus on a plate does neither: `focusPlate()` moves
- * nothing while a ride is in flight, so the glide runs on. Once it has arrived the hold is over: a
+ * `ride()` is refused, a plate link clicked is held (the page's `ride-hold.js`, over `riding`), and the
+ * wheel, the keys, the zoom buttons, the drag and the whole-building control leave the camera on the
+ * plate. The page's glide is committed (`wire/camera-view.js`), so any of them cuts it to the plate and
+ * it arrives. The keyboard's focus on a plate does neither: `focusPlate()` moves nothing while a ride
+ * is in flight, so the glide runs on. Once it has arrived the hold is over: a
  * navigation the browser then cancels or never completes leaves a lobby whose controls work, never one
  * held for good.
  *
@@ -120,6 +121,11 @@ export class LobbyScreen {
     /** The camera as it stands — the viewer's head, as data. */
     get camera() {
         return this.#camera;
+    }
+
+    /** Whether a ride is in flight — from its click until its glide has arrived (`returned()`). */
+    get riding() {
+        return this.#riding !== null;
     }
 
     /**
@@ -196,7 +202,7 @@ export class LobbyScreen {
             scene,
             camera: this.#camera,
             // A ride in flight: the page disables the ride control until it has arrived.
-            riding: this.#riding !== null,
+            riding: this.riding,
             // § 4.1's words over the protocol's own pair — and silence while no check can run.
             discrepancy: feed.applied && state !== null ? discrepancyNotice(state.held, state.total) : null,
             strip: statusStrip(feed, client.fleet),
@@ -340,7 +346,7 @@ function within(outer, inner) {
  * @param {function(object): void} draw receives each lobby frame
  * @param {{surface: {width: number, height: number}, reduce?: boolean}} options `LobbyScreen`'s
  * @returns {{render: function(string|null): Promise<void>, refresh: function(): Promise<void>, draw: function(string|null): void,
- *            ride: function(): object|null, returned: function(): void, wholeBuilding: function(): object,
+ *            ride: function(): object|null, returned: function(): void, riding: function(): boolean, wholeBuilding: function(): object,
  *            focusPlate: function(string): object|null, wheel: Function, zoomStep: Function, drag: Function,
  *            resize: Function, camera: function(): object}}
  */
@@ -362,6 +368,7 @@ export function startLobbyScreen(client, fetchImpl, draw, options) {
         // shows the camera each returns, and a ride's arrival is the page's route change.
         ride: () => screen.ride(),
         returned: () => screen.returned(),
+        riding: () => screen.riding,
         wholeBuilding: () => screen.wholeBuilding(),
         focusPlate: (floor) => screen.focusPlate(floor),
         wheel: (point, delta) => screen.wheel(point, delta),

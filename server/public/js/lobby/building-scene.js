@@ -19,7 +19,8 @@
  * a fixed height that clips the plates, which the camera alone moves; with none — no snapshot yet, § 9
  * F17's cold start with no layout (its rooms listed with no floor claimed), or no install — it is no
  * style at all, and the list flows in the page as the lobby's list always did, every row reachable by
- * the page's own scroll.
+ * the page's own scroll — the wheel's included, which `wire/camera-gestures.js` leaves to the page while
+ * the camera frames nothing (card#7343 r3b).
  *
  * ⛔ THE NUMBERS ARE THE DRAWING's (§ 10.4's last bullet): a plate's size carries no fact. The plate is
  * a storey's proportion — the reference's storey has about the proportions of § 12's viewport

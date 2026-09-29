@@ -359,7 +359,7 @@ el('floor-panel-more').addEventListener('click', () => {
 // the drawing's view from the camera the screen hands back.
 const drawing = el('floor-drawing');
 
-cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag }, show);
+cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);
 cameraKeys(drawing, { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out') }, { zoomStep: screen.zoomStep, drag: screen.drag }, show);
 el('floor-fit').addEventListener('click', () => {
     const { from, to, glide_ms: ms } = screen.fitFloor();

@@ -31,10 +31,10 @@
  * A ride's click moves the cab — the page's `cab`, set to the stop `ride()` names — glides the camera to
  * the plate (or cuts, under `prefers-reduced-motion`) and then ARRIVES: the page goes to the route the
  * screen handed back, `/floor/{key}`, which the floor page serves on a cold start. The click commits
- * the ride: an interrupted glide cuts to the plate and arrives, and the control is disabled until the
- * glide has arrived. The glide is the viewer's, and it steps through `wire/camera-view.js`; the wheel
- * and the drag are `wire/camera-gestures.js`'s and the keys and the zoom buttons `wire/camera-keys.js`'s
- * — each the floor page's own.
+ * the ride: an interrupted glide cuts to the plate and arrives, the control is disabled until the
+ * glide has arrived, and a plate link clicked meanwhile does not navigate. The glide is the viewer's,
+ * and it steps through `wire/camera-view.js`; the wheel and the drag are `wire/camera-gestures.js`'s
+ * and the keys and the zoom buttons `wire/camera-keys.js`'s — each the floor page's own.
  */
 
 import { livePage } from '../wire/live-page.js';
@@ -44,6 +44,7 @@ import { cameraKeys } from '../wire/camera-keys.js';
 import { startLobbyScreen } from './lobby-screen.js';
 import { labelScale, surfaceStyle } from './building-scene.js';
 import { plateRow } from './plate-row.js';
+import { holdPlateLinks } from './ride-hold.js';
 
 /**
  * THE VIEWER'S OWN CAB POSITION, and it lives here because § 4.5 says navigation is never state:
@@ -303,7 +304,9 @@ el('lobby-refresh').addEventListener('click', () => {
  * ⛔ THE CLICK COMMITS THE RIDE, AND THE HOLD PROTECTS THE GLIDE (card#7343 r1 ruling; r2-4). The glide
  * is `camera-view.js`'s COMMITTED glide: a wheel, a key, a zoom button, a drag, a resize or the
  * whole-building control during it cuts it to the plate and arrives, and the ride control is disabled
- * from the click until the glide has arrived. The keyboard's focus on a plate during it leaves the glide
+ * from the click until the glide has arrived. A plate link clicked during it — by the pointer, or by the
+ * keyboard's Enter, which is the same `click` — does not navigate: the committed ride wins
+ * (`ride-hold.js`, below; card#7343 r3b). The keyboard's focus on a plate during it leaves the glide
  * running (the screen's `focusPlate()` moves nothing while a ride is in flight). Arriving asks for the
  * route and then ends the hold (`returned()`) and re-draws — so a navigation the browser cancels, or one
  * that never completes, leaves a lobby whose controls work.
@@ -344,11 +347,14 @@ el('lobby-whole-building').addEventListener('click', () => {
 // The wheel zooms about the cursor in proportion to its scroll, and a drag with the primary button pans,
 // wired by `wire/camera-gestures.js`; the keys zoom about the centre and pan by a step, and so do the
 // zoom buttons, wired by `wire/camera-keys.js` — row 15's acts at building scale, each module the
-// floor's too. None renders; each shows the camera the screen hands back. A drag that moved is no click
-// on the plate — the link — it ended over.
+// floor's too. None renders; each shows the camera the screen hands back — and the wheel is the page's
+// own scroll while the camera frames nothing, the uncomposed list flowing in the page. A drag that moved
+// is no click on the plate — the link — it ended over.
 const building = el('lobby-building');
 
-cameraGestures(building, { wheel: screen.wheel, drag: screen.drag }, show);
+cameraGestures(building, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);
+// The committed ride wins (card#7343 r3b): a plate link clicked while a ride is in flight does not navigate.
+holdPlateLinks(building, screen.riding);
 cameraKeys(building, { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out') }, { zoomStep: screen.zoomStep, drag: screen.drag }, show);
 // Focus can scroll the clipping surface; the camera alone moves the view (`unscroll()`).
 building.addEventListener('scroll', unscroll);

@@ -15,9 +15,10 @@
  *    `{ "op": "glide", "ms", "commit" }` — `glideTo(FROM, TO, ms, done)`, committed or not;
  *    `{ "op": "frame", "ms" }` — the clock moves `ms` and every frame requested so far runs;
  *    `{ "op": "show" }` — `show(OTHER)`; `{ "op": "glide_other", "ms" }` — `glideTo(FROM, OTHER, …)`.
- *  · `{ "gestures": [event, …] }` — `cameraGestures()` on a stand-in element whose box is at
- *    (10, 20), with acts that record their arguments. Each event is `{ "type", …the event's own
- *    members }`, dispatched cancelable.
+ *  · `{ "gestures": [event, …], "framed"? }` — `cameraGestures()` on a stand-in element whose box is
+ *    at (10, 20), with acts that record their arguments and a camera that frames a scene — or, with
+ *    `"framed": false`, frames nothing (`bounds: null`, the uncomposed lobby's). Each event is
+ *    `{ "type", …the event's own members }`, dispatched cancelable.
  *  · `{ "keys": [event, …] }` — `cameraKeys()` on a stand-in drawing and two stand-in buttons, with
  *    acts that record their arguments. Each event is `{ "type", …members }`, dispatched cancelable on
  *    the drawing — or, with `"on": "zoom_in"` / `"zoom_out"`, on that button.
@@ -118,7 +119,9 @@ if (payload.view !== undefined) {
     const show = (camera) => log.push({ show: camera });
 
     if (payload.gestures !== undefined) {
-        cameraGestures(element, { wheel: acts.wheel, drag: acts.drag }, show);
+        const bounds = payload.framed === false ? null : { x: 0, y: 0, w: 1600, h: 2000 };
+
+        cameraGestures(element, { wheel: acts.wheel, drag: acts.drag, camera: () => ({ bounds }) }, show);
     } else {
         cameraKeys(element, { zoomIn: targets.zoom_in, zoomOut: targets.zoom_out }, { zoomStep: acts.zoomStep, drag: acts.drag }, show);
     }
