@@ -52,16 +52,16 @@
  * what stands behind it either: the arches, the shaft and the cab stay visible through it. The halo is
  * set on this same element (an INHERITED CSS property, so every descendant text carries it too), so it
  * is counter-scaled with the text and never scaled by the scene. Its colour, `building-scene.js`'s
- * `LABEL_HALO`, clears 4.5:1 against the link and the body text as a colour pair; legibility over the
- * drawing's darker parts rests on the stack's density, `LABEL_HALO_RADII`, and no contrast over the
- * drawing itself is measured.
+ * `LABEL_HALO`, clears 4.5:1 against the link and the body text as a colour pair; and each visible text span
+ * stands on `LABEL_BACKING` (card#7343 r1), whose contrast over the rendered drawing is MEASURED on pixels
+ * by `tools/design/lobby-label-contrast.browser.mjs`.
  *
  * ⛔ THE PLATE'S ACCESSIBLE NAME IS WHAT IT WAS: the link carries the name, ` — ` and the summary, in
  * that order, as it always did — the separator VISUALLY HIDDEN now that the two sit on lines of their own, and
  * still read. The rooms and the cab's word stay outside the link, as they were.
  */
 
-import { LABEL_FONT, LABEL_HALO, LABEL_HALO_RADII } from './building-scene.js';
+import { LABEL_BACKING, LABEL_FONT, LABEL_HALO, LABEL_HALO_RADII } from './building-scene.js';
 
 /**
  * The halo itself: one zero-offset `text-shadow` layer of `LABEL_HALO` per radius in
@@ -70,6 +70,19 @@ import { LABEL_FONT, LABEL_HALO, LABEL_HALO_RADII } from './building-scene.js';
  * row `plateRow()` builds.
  */
 const LABEL_TEXT_SHADOW = LABEL_HALO_RADII.map((r) => `0 0 ${r}px ${LABEL_HALO}`).join(', ');
+
+/**
+ * The backing each of the label's visible text spans stands on (card#7343 r1, the seat's ruling R2): the
+ * wall's colour behind the TEXT, one box per line (`box-decoration-break: clone`) — so a label that runs off
+ * its plate, over a dark window or the sky behind the building, still stands on the wall's colour, and the
+ * drawing shows between the lines and past their ends. Never on the label's own box: that plaque blanked
+ * the drawing (design review r1). `LABEL_BACKING`'s docblock says what is measured over it.
+ */
+const TEXT_BACKING = {
+    backgroundColor: LABEL_BACKING,
+    boxDecorationBreak: 'clone',
+    webkitBoxDecorationBreak: 'clone',
+};
 
 /**
  * Text kept for assistive technology and never painted — the conventional clip, since the page ships
@@ -148,7 +161,8 @@ export function plateRow(doc, plate, rect, here) {
     // § 4.6 (card#9273): the floor reads as its LABEL where the layout gives it one, else as its key.
     // The link is the key either way. A line of its own: the status line stands under it.
     name.textContent = plate.name;
-    name.style.display = 'block';
+    // A line of its own, as wide as its text: its backing hugs the name rather than spanning the label.
+    Object.assign(name.style, { display: 'block', width: 'fit-content' }, TEXT_BACKING);
 
     const separator = doc.createElement('span');
 
@@ -159,6 +173,7 @@ export function plateRow(doc, plate, rect, here) {
 
     // § 2.1 row 5: the per-floor count is labelled as a count of the seats THE CLIENT HOLDS.
     summary.textContent = plate.summary === '' ? 'no seats held' : plate.summary;
+    Object.assign(summary.style, TEXT_BACKING);
     link.append(name, separator, summary);
 
     const status = [];
@@ -169,6 +184,7 @@ export function plateRow(doc, plate, rect, here) {
         rooms.textContent = ' — rooms: ' + plate.rooms
             .map((room) => `${room.install_id} (${room.form}${room.reported ? '' : ' — no seats reported for this room'})`)
             .join(', ');
+        Object.assign(rooms.style, TEXT_BACKING);
         status.push(rooms);
     }
 
@@ -177,6 +193,7 @@ export function plateRow(doc, plate, rect, here) {
         const cab = doc.createElement('span');
 
         cab.textContent = ' — the elevator is here';
+        Object.assign(cab.style, TEXT_BACKING);
         status.push(cab);
     }
 

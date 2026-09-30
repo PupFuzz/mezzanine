@@ -38,17 +38,21 @@
  * stand inside the scene's `extent`, so the whole-building framing — the first framing and the
  * whole-building control — shows them.
  *
- * ⭐ THE SKY BEHIND THE BUILDING, AND NO CLOCK (the operator's ruling on card#7343, 2026-09-30; § 4.1).
- * `surfaceStyle()` paints the drawing surface — all of it the building does not cover, at every zoom —
- * with the sky of the phase it is handed, in the reference's dim treatment: the phase's gradient at
- * `SKY_OPACITY` under `SKY_WASH`, with stars at night (`docs/design/floor-preview/floor-preview.html`'s
- * building). ⛔ THE PHASE IS NOT DECIDED HERE: it is § 6.2 A17's value, set by the floor's own driver on a
+ * ⭐ THE SKY IN THE WINDOWS AND BEHIND THE BUILDING, AND NO CLOCK (the operator's ruling on card#7343,
+ * 2026-09-30; § 4.1; the seat's ruling R1 of its r1 fix round). The time of day is carried by each
+ * storey's WINDOWS, as the reference's windows carry it: `windowArt()` fills the four arches with the
+ * phase's sky at full strength. `surfaceStyle()` paints the rest of the drawing surface — all of it the
+ * building does not cover, at every zoom — with the same sky in the reference's dim treatment, the foil
+ * behind the windows: the phase's gradient at `SKY_OPACITY` under `SKY_WASH`, with stars at night
+ * (`docs/design/floor-preview/floor-preview.html`'s building). Both read ONE table,
+ * `floor/floor-layout.js`'s `SKY_PAINT`, which the floor's windows read too. ⛔ THE PHASE IS NOT DECIDED HERE: it is § 6.2 A17's value, set by the floor's own driver on a
  * delivered `feed.heartbeat` (`lobby-screen.js`'s frame `sky`), so this module maps a phase to paint and
  * reads no clock. ⛔ NO TRANSITION, in either of A17's columns: the sky STEPS to its new value (§ 6.2
  * A17, § 6.4). The lobby still draws no wall clock — that element is the floor's room render (§ 4.1).
  */
 
 import { framesNothing } from '../wire/camera.js';
+import { skyPaint } from '../floor/floor-layout.js';
 
 /** A plate's width in scene px. */
 export const PLATE_W = 1600;
@@ -180,7 +184,6 @@ const STOREY = {
 const INK = {
     shell: '#e7b98f',
     wall: '#fcf3e4',
-    panel: '#f6e5cd',
     skirting: '#c98f63',
     floor: '#e2b07c',
     plank: '#c9925f',
@@ -217,11 +220,23 @@ const INK = {
  * computes and holds both. That is a claim about the colour PAIR only: a blurred shadow is not an opaque
  * backing, so what a glyph actually stands on is the halo blended over whatever the drawing puts there,
  * and over the drawing's darker parts (the slab, #b27b56, is ≈2.6:1 against the link's blue) and over the
- * sky behind the building, which a label wider than its plate crosses (card#7343), legibility
- * rests on the STACK's density — `LABEL_HALO_RADII` below — which that test holds as built, and not on
- * any contrast ratio measured over the drawing: none is (there is no renderer on the build host).
+ * sky behind the building, which a label wider than its plate crosses (card#7343), the halo alone is not
+ * enough — the design review of card#7343 r1 measured it at ≈1.8:1 there — so each text span also stands
+ * on `LABEL_BACKING`, below, and it is THAT, measured on rendered pixels, that holds the text's contrast.
  */
 export const LABEL_HALO = INK.wall;
+
+/**
+ * The backing behind each of a plate label's visible text spans — the wall's colour, very nearly opaque,
+ * one box per line (`plate-row.js`'s `TEXT_BACKING`; the seat's ruling R2 on card#7343 r1). What a glyph
+ * stands on is then the backing, whatever the drawing or the sky behind the building puts under it.
+ * ⭐ MEASURED, NOT ARGUED: `tools/design/lobby-label-contrast.browser.mjs` renders the lobby in headless
+ * Chromium at every sky phase and reads, for every glyph pixel of every label, the contrast of the text's
+ * colour against the pixel behind it, against WCAG 2.1 SC 1.4.3's 4.5:1 — and its selftest plants a label
+ * with no backing and sees it red. It is not wired in CI (a stock runner carries no Chromium; see
+ * `.github/workflows/design-doc-verifiers.yml`), so it is run by hand, as `floor-preview.browser.mjs` is.
+ */
+export const LABEL_BACKING = rgba(INK.wall, 0.92);
 
 /**
  * The halo's stack — one zero-offset `text-shadow` layer of `LABEL_HALO` per entry, blurred by that many
@@ -235,9 +250,17 @@ export const LABEL_HALO = INK.wall;
  */
 export const LABEL_HALO_RADII = Object.freeze([1, 1, 2, 2, 3, 3, 4, 4]);
 
-/** A shape: an SVG element name, its attributes, and the text it carries (only the roof sign's and the lobby's). */
+/**
+ * A shape: an SVG element name, its attributes, and the text it carries (only the roof sign's and the
+ * lobby's) — or, for a paint server (`windowArt()`'s gradient), the shapes it holds.
+ */
 function shape(el, attrs, text = null) {
     return text === null ? { el, attrs } : { el, attrs, text };
+}
+
+/** A shape that holds other shapes — `<defs>`, a gradient and its stops. */
+function parent(el, attrs, children) {
+    return { el, attrs, children };
 }
 
 /** A potted plant standing on `y` at `x` — the roof garden's and the ground lobby's. */
@@ -272,7 +295,7 @@ function shaftAt(left) {
     };
 }
 
-/** One storey at a plate's rect: wall, panels, skirting, floorboards, slab, shaft and its doors. */
+/** One storey at a plate's rect: wall, skirting, floorboards, slab, shaft and its doors (its windows are `windowArt()`'s). */
 function storey(rect) {
     const { x, y, w } = rect;
     const shaft = shaftAt(x);
@@ -280,13 +303,8 @@ function storey(rect) {
         shape('rect', { x, y, width: w, height: STOREY.skirting, fill: INK.wall }),
     ];
 
-    // Arched wall panels between the building's left wall and the shaft — moulding, identical on every storey.
-    for (let px = x + 96; px + 220 <= shaft.x - 48; px += 300) {
-        shapes.push(shape('path', {
-            d: `M ${px} ${y + STOREY.skirting - 60} L ${px} ${y + 380} Q ${px} ${y + 260} ${px + 110} ${y + 260} Q ${px + 220} ${y + 260} ${px + 220} ${y + 380} L ${px + 220} ${y + STOREY.skirting - 60} Z`,
-            fill: INK.panel,
-        }));
-    }
+    // The arched windows between the building's left wall and the shaft are `windowArt()`'s: they carry
+    // A17's sky, so they are painted from the phase and not with the scenery, which reads the rects alone.
 
     shapes.push(
         shape('rect', { x, y: y + STOREY.skirting, width: w, height: STOREY.floor - STOREY.skirting, fill: INK.skirting }),
@@ -399,6 +417,169 @@ export function buildingArt(scene) {
     };
 }
 
+/**
+ * The storey's windows, in scene px from a plate's left and top edges: four arches between the building's
+ * left wall and the shaft, where the moulded wall panels stood before the windows carried the sky.
+ */
+const WINDOW = {
+    first: 96,
+    step: 300,
+    w: 220,
+    top: 260,
+    spring: 380,
+    bottom: STOREY.skirting - 60,
+};
+
+/** The one gradient every lobby window is filled with — the phase's `top` to `bot`, down each arch. */
+export const WINDOW_SKY_ID = 'lobby-window-sky';
+
+/** The window frame's colour and the city's inks — the reference window's own (`floor-preview.html`'s `floorBody()`). */
+const WINDOW_INK = {
+    frame: '#4a5670',
+    star: '#e8ecff',
+    moon: '#fff3cf',
+    sun: '#ffe9a3',
+    lit: '#ffcf7d',
+    cityFlat: '#454b63',
+    cityNight: '#1b2547',
+    cityDay: '#5a7086',
+};
+
+/** One arch's outline — the path the window's sky fills and its frame strokes. */
+function archPath(px, y) {
+    const { w, top, spring, bottom } = WINDOW;
+
+    return `M ${px} ${y + bottom} L ${px} ${y + spring} Q ${px} ${y + top} ${px + w / 2} ${y + top} Q ${px + w} ${y + top} ${px + w} ${y + spring} L ${px + w} ${y + bottom} Z`;
+}
+
+/** The colour `fraction` of the way from `a` to `b`, both `#rrggbb` — the sky at a height in the window. */
+function mix(a, b, fraction) {
+    const [x, y] = [a, b].map((hex) => Number.parseInt(hex.slice(1), 16));
+    const channel = (shift) => Math.round(((x >> shift) & 255) + (((y >> shift) & 255) - ((x >> shift) & 255)) * fraction);
+
+    return `#${[16, 8, 0].map((shift) => channel(shift).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Every window of every plate, as `{ px, y, index }` — `index` its place in its storey's row, from the left. */
+function windowsOf(scene) {
+    return scene.plates.flatMap(({ rect }) => {
+        const out = [];
+        const last = shaftAt(rect.x).x - 48;
+
+        for (let px = rect.x + WINDOW.first, index = 0; px + WINDOW.w <= last; px += WINDOW.step, index += 1) {
+            out.push({ px, y: rect.y, index });
+        }
+
+        return out;
+    });
+}
+
+/** One window: its sky, the phase's stars, the city's roofline with its lit windows, the sun or the moon, and the frame. */
+function windowShapes({ px, y, index }, sky) {
+    const { w, top, bottom } = WINDOW;
+    const h = bottom - top;
+    const shapes = [shape('path', { d: archPath(px, y), fill: `url(#${WINDOW_SKY_ID})` })];
+
+    if (sky.stars) {
+        for (let i = 0; i < 7; i += 1) {
+            shapes.push(shape('circle', { cx: px + 26 + ((i * 67) % (w - 52)), cy: y + top + 70 + ((i * 37) % 170), r: 4 + (i % 2) * 2, fill: WINDOW_INK.star, opacity: 0.8 }));
+        }
+    }
+
+    for (let i = 0; i < 6; i += 1) {
+        const bx = px + 10 + i * 34;
+        const bh = 70 + ((i * 13) % 26) * 3;
+
+        shapes.push(shape('rect', {
+            x: bx,
+            y: y + bottom - bh,
+            width: 24,
+            height: bh,
+            fill: sky.flat ? WINDOW_INK.cityFlat : sky.city_lit > 0 ? WINDOW_INK.cityNight : WINDOW_INK.cityDay,
+            opacity: sky.city_lit > 0 ? 1 : 0.75,
+        }));
+
+        if (sky.city_lit > 0) {
+            shapes.push(
+                shape('rect', { x: bx + 4, y: y + bottom - bh + 12, width: 7, height: 7, fill: WINDOW_INK.lit, opacity: sky.city_lit }),
+                shape('rect', { x: bx + 13, y: y + bottom - bh + 26, width: 7, height: 7, fill: WINDOW_INK.lit, opacity: sky.city_lit * 0.7 }),
+            );
+        }
+    }
+
+    // One moon and one sun per storey, each in its own window, as the reference draws one of each per floor.
+    if (sky.moon && index === 2) {
+        const cx = px + w * 0.66;
+        const cy = y + top + 110;
+
+        shapes.push(
+            shape('circle', { cx, cy, r: 30, fill: WINDOW_INK.moon, opacity: 0.95 }),
+            // The crescent's bite is the sky's own colour at that height, so it reads as sky and not as a disc.
+            shape('circle', { cx: cx - 12, cy: cy - 10, r: 25, fill: mix(sky.top, sky.bot, (cy - y - top) / h) }),
+        );
+    }
+
+    if (sky.sun && index === 1) {
+        const cy = y + top + h * sky.sun_y;
+
+        shapes.push(
+            shape('circle', { cx: px + w / 2, cy, r: 34, fill: WINDOW_INK.sun }),
+            shape('circle', { cx: px + w / 2, cy, r: 48, fill: WINDOW_INK.sun, opacity: 0.25 }),
+        );
+    }
+
+    shapes.push(
+        shape('path', { d: archPath(px, y), fill: 'none', stroke: WINDOW_INK.frame, 'stroke-width': 10 }),
+        shape('line', { x1: px + w / 2, y1: y + top, x2: px + w / 2, y2: y + bottom, stroke: WINDOW_INK.frame, 'stroke-width': 3 }),
+    );
+
+    return shapes;
+}
+
+/**
+ * THE PLATES' WINDOWS, CARRYING THE TIME OF DAY (card#7343 r1, the seat's ruling R1): every storey's four
+ * arched windows filled with A17's sky at FULL strength — the reference's windows (`floor-preview.html`'s
+ * `floorBody()`), which is where the reference carries the time; the dim backdrop behind the building
+ * (`skyBackground()`) is only its foil. The paint is `floor-layout.js`'s `SKY_PAINT` entry for the phase,
+ * the one table the floor's windows read too.
+ *
+ * ⭐ WHAT IS TAKEN FROM THE REFERENCE's WINDOW, AND WHAT IS NOT. Taken, because each fits an arch at lobby
+ * scale and each is part of how the reference says the time: the gradient `top` to `bot`; seven stars per
+ * window at night; the city's roofline — six blocks, lit windows at the phase's `city_lit`, the flat unlit
+ * ink when `unset`; ONE moon per storey at night and ONE sun per storey at the phase's `sun_y`, each in its
+ * own window as the reference draws one of each per floor; the frame and its mullion. Left out: nothing of
+ * the reference's window content — only its rectangle, which is the lobby's arch here, and its size, which
+ * is scaled to the arch.
+ *
+ * ⛔ `unset` (no live feed yet, § 6.5) is the reference's flat treatment: its flat gradient, no stars, no
+ * sun, no moon and an unlit city — never a plausible time of day. ⛔ THE PHASE IS A17's VALUE and is not
+ * decided here; this reads the scene's rects and the phase, and nothing of any plate — two buildings of one
+ * height at one phase have the same windows.
+ *
+ * @param {{extent: object|null, plates: Array<{rect: object}>}|null} scene `buildingScene()`'s
+ * @param {string|null} phase § 6.2 A17's sky phase — `lobby-screen.js`'s frame `sky`
+ * @returns {{shapes: Array<object>}|null} `null` where no building is drawn
+ */
+export function windowArt(scene, phase) {
+    if ((scene?.extent ?? null) === null) {
+        return null;
+    }
+
+    const sky = skyPaint(phase);
+
+    return {
+        shapes: [
+            parent('defs', {}, [
+                parent('linearGradient', { id: WINDOW_SKY_ID, x1: 0, y1: 0, x2: 0, y2: 1 }, [
+                    shape('stop', { offset: 0, 'stop-color': sky.top }),
+                    shape('stop', { offset: 1, 'stop-color': sky.bot }),
+                ]),
+            ]),
+            ...windowsOf(scene).flatMap((window) => windowShapes(window, sky)),
+        ],
+    };
+}
+
 /** The cab's own column: `shaftAt()` at its plate's left edge, where `cabStyle()` translates it. */
 const CAB_SHAFT = shaftAt(0);
 
@@ -442,20 +623,6 @@ export function cabStyle(scene, level, ms) {
 /** The drawing surface's height while it draws a building — the drawing's, carrying no fact. */
 export const SURFACE_H = '70vh';
 
-/**
- * The sky's paint per § 4.2 phase — the reference's own `SKY` table (`floor-preview.html`), top and bottom
- * of its gradient, and whether the phase has stars. `unset` is the reference's null render (§ 6.5): the
- * sky of a page that has never been live — flat, starless, no time of day at all, never a plausible one.
- * Figures of the drawing's, carrying no fact: the fact is the phase.
- */
-export const SKY = Object.freeze({
-    night: Object.freeze({ top: '#141c3a', bot: '#25335e', stars: true }),
-    dawn: Object.freeze({ top: '#3a3a6e', bot: '#e8927c', stars: false }),
-    day: Object.freeze({ top: '#8fc4e8', bot: '#cfe6f2', stars: false }),
-    dusk: Object.freeze({ top: '#4a3a6e', bot: '#f0a86a', stars: false }),
-    unset: Object.freeze({ top: '#2a2f42', bot: '#39405a', stars: false }),
-});
-
 /** The reference's dim treatment: the sky's gradient at this opacity, under `SKY_WASH` … */
 export const SKY_OPACITY = 0.45;
 
@@ -465,7 +632,7 @@ export const SKY_WASH = 'rgba(18, 20, 31, 0.55)';
 /** The ground the reference paints its sky over (`floor-preview.html`'s drawing surface). */
 export const SKY_GROUND = '#1a1724';
 
-/** The night's stars, as points on the surface in percent of its size — the reference's own scatter, 26 of them. */
+/** The night's stars, as points on the surface in percent of its size — after the reference's scatter, 26 of them. */
 const STARS = Object.freeze(Array.from({ length: 26 }, (_, i) => Object.freeze({
     x: ((i * 181) % 1000) / 10,
     y: ((i * 97) % 1000) / 10,
@@ -482,12 +649,14 @@ function rgba(hex, alpha) {
 /**
  * The sky behind the building for a phase, as the surface's CSS background: the stars at night, over the
  * wash, over the phase's gradient at `SKY_OPACITY`, over `SKY_GROUND` — `unset`'s when `phase` is `null`
- * (no live feed yet, § 6.5).
+ * (no live feed yet, § 6.5). The paint is `floor-layout.js`'s `SKY_PAINT`, the one table every sky reads;
+ * this is the reference's FOIL behind the building, dimmed, and the time of day is carried by the windows
+ * (`windowArt()`), which show the same entry at full strength.
  *
  * @param {string|null} phase § 6.2 A17's sky phase — `lobby-screen.js`'s frame `sky`
  */
 export function skyBackground(phase) {
-    const sky = SKY[phase ?? 'unset'];
+    const sky = skyPaint(phase);
     const stars = sky.stars
         ? STARS.map((s) => `radial-gradient(circle at ${s.x}% ${s.y}%, rgba(232, 236, 255, 0.5) ${s.r}px, transparent ${s.r + 0.6}px)`)
         : [];

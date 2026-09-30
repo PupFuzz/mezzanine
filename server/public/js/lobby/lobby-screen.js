@@ -44,7 +44,8 @@
  * animation set, which this screen constructs drawing A17 alone (`edgeRows`): a heartbeat writes one
  * A17 row, and no delta, retirement or camera act writes any. So the sky follows the VIEWER's clock,
  * steps only on the heartbeat — never on a timer, a poll or the 1 s tick — and freezes when the feed
- * dies, as the floor's windows do (§ 9 F1). Under `prefers-reduced-motion` A17's row is logged without
+ * dies, as the floor's windows do (§ 9 F1). The frame's `sky` is painted in the plates' windows and, dimmed,
+ * behind the building (`building-scene.js`'s `windowArt()` and `surfaceStyle()`). Under `prefers-reduced-motion` A17's row is logged without
  * motion and the sky steps exactly as it does with motion: both columns of A17 are one step, no tween.
  *
  * ⭐ THE CAMERA AT BUILDING SCALE AND THE RIDE'S ARRIVAL — Appendix B row 16, slice A (card#7343). This
@@ -81,7 +82,9 @@
  * ⛔ NAVIGATION IS NEVER STATE (§ 4.5, § 4.6's elevator row). A ride, a zoom and a pan draw nothing,
  * drain nothing and fetch nothing, and write no animation-log row: the one path to the log on this
  * screen is `render()`'s A17 over a drained journal (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`
- * holds the camera acts to an unchanged log, and the lobby page's whole import graph to that one path).
+ * holds the camera acts to an unchanged log — a ride planted to write a row through this set reds it — and
+ * the lobby page's whole import graph to that one path; `LobbyPageWiringTest` holds `lobby/main.js`, which
+ * holds the page's log without importing it, to handing it here and using it nowhere else).
  * A glide is the viewer's, and under `prefers-reduced-motion` it is a cut: `glide_ms` is `0`, for the cab
  * and the camera alike.
  */

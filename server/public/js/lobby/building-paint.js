@@ -22,20 +22,25 @@
  * element from one render to the next — because the cab's CSS transition lives on it, and an element
  * removed from the DOM (even if immediately re-added) is not the element a running transition ran on.
  *
- * ⛔ THE CAB's STYLE IS RE-APPLIED EVERY PAINT, THE SCENERY ONLY WHEN ITS BOX CHANGES (`paintBuilding()`):
+ * ⛔ THE CAB's STYLE IS RE-APPLIED EVERY PAINT, THE WINDOWS WHEN THE BOX OR A17's PHASE CHANGES, THE SCENERY
+ * ONLY WHEN ITS BOX CHANGES (`paintBuilding()`):
  * the roof, the storeys and the ground lobby are one box's worth of shapes that do not change while the
- * stack does not, so they are repainted only when `buildingArt()`'s `box` changes (`paintedBox`, the
- * caller's own, threaded through and handed back); the cab moves independently of the box — the viewer
+ * stack does not, so they are repainted only when `buildingArt()`'s `box` changes (`painted`, the
+ * caller's own, threaded through and handed back); the windows carry A17's sky and are repainted when the
+ * phase steps as well; the cab moves independently of the box — the viewer
  * rides while the stack stays the same height — so `Object.assign(cabNode.style, cabStyle(…))` runs on
  * every call, box changed or not.
  */
 
-import { CAB, buildingArt, cabStyle } from './building-scene.js';
+import { CAB, buildingArt, cabStyle, windowArt } from './building-scene.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-/** One of `building-scene.js`'s shapes as an SVG element — its attributes and its text, deciding nothing. */
-export function svgShape(doc, { el, attrs, text }) {
+/**
+ * One of `building-scene.js`'s shapes as an SVG element — its attributes and its text, or the shapes it
+ * holds (a paint server: `<defs>`, a gradient, its stops), deciding nothing.
+ */
+export function svgShape(doc, { el, attrs, text, children }) {
     const node = doc.createElementNS(SVG_NS, el);
 
     for (const [name, value] of Object.entries(attrs)) {
@@ -44,6 +49,10 @@ export function svgShape(doc, { el, attrs, text }) {
 
     if (text !== undefined) {
         node.textContent = text;
+    }
+
+    if (children !== undefined) {
+        node.append(...children.map((child) => svgShape(doc, child)));
     }
 
     return node;
@@ -60,6 +69,7 @@ export function buildingDrawing(doc) {
     const drawing = doc.createElement('li');
     const art = doc.createElementNS(SVG_NS, 'svg');
     const scenery = doc.createElementNS(SVG_NS, 'g');
+    const windows = doc.createElementNS(SVG_NS, 'g');
     const cabNode = doc.createElementNS(SVG_NS, 'g');
 
     drawing.setAttribute('aria-hidden', 'true');
@@ -67,10 +77,10 @@ export function buildingDrawing(doc) {
     art.setAttribute('overflow', 'visible');
     art.style.display = 'block';
     cabNode.append(...CAB.map((shape) => svgShape(doc, shape)));
-    art.append(scenery, cabNode);
+    art.append(scenery, windows, cabNode);
     drawing.append(art);
 
-    return { drawing, art, scenery, cabNode };
+    return { drawing, art, scenery, windows, cabNode };
 }
 
 /**
@@ -93,29 +103,36 @@ export function keepDrawing(rows, drawing) {
 }
 
 /**
- * Paints the building's drawing for a scene, with the cab at `level` gliding over `cabGlide`.
+ * Paints the building's drawing for a scene, with the cab at `level` gliding over `cabGlide` and the
+ * plates' windows showing A17's sky of `phase`.
+ *
+ * ⛔ THE WINDOWS ARE REPAINTED WHEN THE BOX OR THE PHASE CHANGES, THE SCENERY ONLY WHEN THE BOX DOES: the
+ * sky steps on a heartbeat while the stack stays the same height, and a window left at the phase it was
+ * first painted with would be a sky frozen on a live feed.
  *
  * @param {Document} doc the page's `document`, or the probe's stand-in
- * @param {{drawing: Element, art: Element, scenery: Element, cabNode: Element}} nodes `buildingDrawing()`'s
+ * @param {{drawing: Element, art: Element, scenery: Element, windows: Element, cabNode: Element}} nodes `buildingDrawing()`'s
  * @param {object|null} scene `building-scene.js`'s `buildingScene()`
  * @param {number|null} level the plate the cab stands at
  * @param {number} cabGlide how long the cab may take to its stop — `0` cuts
- * @param {string|null} paintedBox the box the scenery was last painted for — the caller's own state
- * @returns {string|null} the box painted this call — thread back as the next call's `paintedBox`
+ * @param {{box: string, sky: string}|null} painted what was last painted — the caller's own state
+ * @param {string|null} phase § 6.2 A17's sky phase — the lobby frame's `sky`
+ * @returns {{box: string, sky: string}|null} what is painted after this call — thread back as the next call's `painted`
  */
-export function paintBuilding(doc, { drawing, art, scenery, cabNode }, scene, level, cabGlide, paintedBox) {
+export function paintBuilding(doc, { drawing, art, scenery, windows, cabNode }, scene, level, cabGlide, painted, phase) {
     const drawn = buildingArt(scene);
 
     drawing.hidden = drawn === null;
 
     if (drawn === null) {
-        return paintedBox;
+        return painted;
     }
 
     const { x, y, w, h } = drawn.box;
     const box = `${x} ${y} ${w} ${h}`;
+    const sky = `${box} ${phase ?? 'unset'}`;
 
-    if (box !== paintedBox) {
+    if (box !== painted?.box) {
         art.setAttribute('viewBox', box);
         art.setAttribute('width', String(w));
         art.setAttribute('height', String(h));
@@ -123,10 +140,14 @@ export function paintBuilding(doc, { drawing, art, scenery, cabNode }, scene, le
         scenery.replaceChildren(...drawn.shapes.map((shape) => svgShape(doc, shape)));
     }
 
+    if (sky !== painted?.sky) {
+        windows.replaceChildren(...windowArt(scene, phase).shapes.map((shape) => svgShape(doc, shape)));
+    }
+
     const cabAt = cabStyle(scene, level, cabGlide);
 
     cabNode.style.display = cabAt === null ? 'none' : '';
     Object.assign(cabNode.style, cabAt ?? {});
 
-    return box;
+    return { box, sky };
 }

@@ -284,7 +284,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             // The r2 ruling's own red: the status line left in the plate, which the camera scales.
             'a status line the camera scales' => ["    label.append(link, ...status);\n    row.append(label);", "    label.append(link);\n    row.append(label, ...status);", 'on the screen, not the body text size'],
             'a status line at a figure of its own' => ['        status.push(cab);', "        cab.style.fontSize = '48px';\n        status.push(cab);", 'a size of its own'],
-            'a name on the status line, not above it' => ["    name.style.display = 'block';\n", '', 'is not a line of its own'],
+            'a name on the status line, not above it' => ["Object.assign(name.style, { display: 'block', width: 'fit-content' }, TEXT_BACKING);", "Object.assign(name.style, { width: 'fit-content' }, TEXT_BACKING);", 'is not a line of its own'],
             'the status line first' => ['    link.append(name, separator, summary);', '    link.append(summary, separator, name);', 'is not the name'],
             'a separator painted between the lines' => ["    Object.assign(separator.style, VISUALLY_HIDDEN);\n", '', 'is painted'],
             'a plate whose accessible name lost its separator' => ['    link.append(name, separator, summary);', '    link.append(name, summary);', 'accessible name'],
@@ -545,14 +545,16 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     /**
      * card#7343 row 16 design review r2 F1, pinned by r3 F-B: the plate's label carries its own halo — a
      * `text-shadow`, set on the same counter-scaled element as the text, so it scales with the text and
-     * never with the scene, and NEVER a background: a box was tried first (r1) and blanked the drawing
-     * under it. Two things are held, and they are different claims. The COLOUR's contrast against both
+     * never with the scene, and the LABEL's box NEVER a background: a box was tried first (r1) and blanked
+     * the drawing under it. (Each visible text span inside it stands on a per-line backing since card#7343's
+     * r1 fix round — `LABEL_BACKING` — which is what holds the text's contrast over the drawing.) Two things are held, and they are different claims. The COLOUR's contrast against both
      * the link's default colour and the plate's own body text clears WCAG 2.1 SC 1.4.3's 4.5:1, computed
      * rather than eyeballed — a claim about the colour pair only. The halo's legibility over the drawing's
      * darker parts rests on the stack's DENSITY instead, so the built `textShadow` must be every layer of
      * `LABEL_HALO_RADII`, in order, each zero-offset, blurred at its radius and in the halo's colour — a
-     * single layer or radii stripped to nothing would keep the colour and lose the density. No contrast
-     * over the drawing itself is measured: there is no renderer here.
+     * single layer or radii stripped to nothing would keep the colour and lose the density. The contrast
+     * over the drawing itself is measured on rendered pixels by `tools/design/lobby-label-contrast.browser.mjs`,
+     * outside this suite, because it needs a browser.
      *
      * @param  list<float>  $radii  `haloRadii()`
      * @return list<string>

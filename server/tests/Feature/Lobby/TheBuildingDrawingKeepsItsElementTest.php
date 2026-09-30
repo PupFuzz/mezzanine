@@ -42,12 +42,26 @@ class TheBuildingDrawingKeepsItsElementTest extends TestCase
         ],
     ];
 
-    /** Three renders: a ride to plate 0 over 500 ms, an ordinary render at the same plate, a ride to plate 1. */
+    /**
+     * Four renders: a ride to plate 0 over 500 ms at day, an ordinary render at the same plate and phase, a
+     * ride to plate 1 at day, and a heartbeat's render that steps A17's sky to night on the same box.
+     */
     private const RENDERS = [
-        ['scene' => self::SCENE, 'level' => 0, 'glide' => 500],
-        ['scene' => self::SCENE, 'level' => 0, 'glide' => 0],
-        ['scene' => self::SCENE, 'level' => 1, 'glide' => 700],
+        ['scene' => self::SCENE, 'level' => 0, 'glide' => 500, 'sky' => 'day'],
+        ['scene' => self::SCENE, 'level' => 0, 'glide' => 0, 'sky' => 'day'],
+        ['scene' => self::SCENE, 'level' => 1, 'glide' => 700, 'sky' => 'day'],
+        ['scene' => self::SCENE, 'level' => 1, 'glide' => 0, 'sky' => 'night'],
     ];
+
+    /** `floor-layout.js`'s `SKY_PAINT` `top` for a phase, read from the source rather than restated. */
+    private function skyTop(string $phase): string
+    {
+        $source = (string) file_get_contents($this->jsRoot().'/floor/floor-layout.js');
+
+        $this->assertSame(1, preg_match("/^    {$phase}: Object\.freeze\(\{ top: '(#[0-9a-f]{6})'/m", $source, $m), "SKY_PAINT.{$phase} did not parse");
+
+        return $m[1];
+    }
 
     public function test_green_the_drawing_survives_and_paints_correctly_across_renders(): void
     {
@@ -68,6 +82,8 @@ class TheBuildingDrawingKeepsItsElementTest extends TestCase
                 "export function keepDrawing(rows, drawing) {\n    for (const row of [...rows.children]) {\n        row.remove();\n    }\n\n    rows.prepend(drawing);\n}",
                 'kept',
             ],
+            // card#7343 r1: the windows painted once and never again, so A17's sky freezes on a live feed.
+            'the windows repainted only with the box' => ['    if (sky !== painted?.sky) {', '    if (box !== painted?.box) {', 'still show '],
             // Plant D: the drawing is reachable by the pointer.
             'pointerEvents dropped from construction' => [
                 "Object.assign(drawing.style, { position: 'absolute', left: '0', top: '0', listStyle: 'none', pointerEvents: 'none' });",
@@ -120,6 +136,13 @@ class TheBuildingDrawingKeepsItsElementTest extends TestCase
         foreach ($out['renders'] as $i => $render) {
             if ($render['shapeCount'] === 0) {
                 $defects[] = "render {$i} painted no shape — the scenery was never repainted";
+            }
+
+            // The windows show the render's own phase — A17's sky as the page was handed it.
+            $sky = self::RENDERS[$i]['sky'];
+
+            if ($render['windowCount'] === 0 || ($render['windowSky'][0] ?? null) !== $this->skyTop($sky)) {
+                $defects[] = "render {$i}'s windows still show ".json_encode($render['windowSky']).", not the {$sky} sky";
             }
 
             $level = $wantLevels[$i];

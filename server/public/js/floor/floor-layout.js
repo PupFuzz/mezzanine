@@ -446,3 +446,33 @@ export function skyPhase(hours) {
 
     return hours < 21 ? 'dusk' : 'night';
 }
+
+/**
+ * Each phase `skyPhase()` decides, as PAINT — the one phase→paint table every sky on either page reads
+ * (card#7343 r1): the floor's windows (`floor/painter.js`), the lobby's plate windows and the lobby's dim
+ * backdrop behind the building (`lobby/building-scene.js`). It is the reference's own phase record
+ * (`docs/design/floor-preview/floor-preview.html`'s `SKY`), member for member: the window gradient's
+ * `top` and `bot`, whether the phase shows `stars`, a `moon` or a `sun` (at `sun_y`, a fraction of the
+ * window's height), and how lit the city's windows are (`city_lit`, `0` for none). `unset` is the
+ * reference's null render (§ 6.5): the sky of a page that has never been live — `flat`, starless,
+ * sunless, moonless and unlit, never a plausible time of day.
+ *
+ * ⛔ PAINT ONLY. Which phase an hour is stays `skyPhase()`'s; nothing here reads a clock.
+ */
+export const SKY_PAINT = Object.freeze({
+    night: Object.freeze({ top: '#141c3a', bot: '#25335e', stars: true, moon: true, sun: false, sun_y: null, city_lit: 0.8, flat: false }),
+    dawn: Object.freeze({ top: '#3a3a6e', bot: '#e8927c', stars: false, moon: false, sun: true, sun_y: 0.82, city_lit: 0.35, flat: false }),
+    day: Object.freeze({ top: '#8fc4e8', bot: '#cfe6f2', stars: false, moon: false, sun: true, sun_y: 0.28, city_lit: 0, flat: false }),
+    dusk: Object.freeze({ top: '#4a3a6e', bot: '#f0a86a', stars: false, moon: false, sun: true, sun_y: 0.86, city_lit: 0.55, flat: false }),
+    unset: Object.freeze({ top: '#2a2f42', bot: '#39405a', stars: false, moon: false, sun: false, sun_y: null, city_lit: 0, flat: true }),
+});
+
+/**
+ * A sky's paint for a phase — `SKY_PAINT`'s entry, `unset`'s when there is no phase (`null`: no live
+ * feed yet, § 6.5).
+ *
+ * @param {string|null} phase `skyPhase()`'s answer, as A17's value carries it
+ */
+export function skyPaint(phase) {
+    return SKY_PAINT[phase ?? 'unset'];
+}

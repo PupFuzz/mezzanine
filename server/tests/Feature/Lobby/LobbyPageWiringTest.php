@@ -96,6 +96,17 @@ class LobbyPageWiringTest extends TestCase
         $this->assertSame([], $this->pageLogDefects($this->mainJs()));
     }
 
+    /**
+     * card#7343 r1 (impl review MINOR 1): the page holds the log without importing it, so the import-graph
+     * walk (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`) cannot see a row written through it here.
+     * What holds it is this: in `main.js`'s code the page's `log` is named exactly twice — taken from
+     * `livePage()` and handed to `startLobbyScreen()` — and used nowhere else.
+     */
+    public function test_the_page_hands_the_log_to_the_screen_and_uses_it_nowhere_else(): void
+    {
+        $this->assertSame([], $this->logUseDefects($this->mainJs()));
+    }
+
     public function test_the_page_serves_the_module_and_every_import_resolves(): void
     {
         $this->assertStringContainsString('type="module"', $this->lobbyPage());
@@ -449,6 +460,33 @@ class LobbyPageWiringTest extends TestCase
         $this->assertNotSame($ownLog, $js, "CONTROL 13's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('retention', $this->pageLogDefects($ownLog),
             'CONTROL 13 did not bite: the page constructed an unbounded log and the retention check stayed clean');
+
+        // CONTROL 14 — the page writing a row through the log it holds, beside handing it to the screen.
+        $written = str_replace("client.start();\n", "log.edge({ animation_id: 'A14', cause: 'feed.heartbeat', install_id: null, seat_id: null, motion: true, at: 0 });\nclient.start();\n", $js);
+        $this->assertNotSame($written, $js, "CONTROL 14's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('log', $this->logUseDefects($written),
+            'CONTROL 14 did not bite: the page wrote a row through its log and the use check stayed clean');
+    }
+
+    /**
+     * Every use of the page's `log` in `main.js`'s code (comments blanked, and `log` as a name of its own —
+     * never inside `lobby-log` or after a `.`): exactly the two the page needs.
+     *
+     * @return array<string, string>
+     */
+    private function logUseDefects(string $js): array
+    {
+        $code = (string) preg_replace(['#/\*.*?\*/#s', '#(^|[^:\\\\])//[^\n]*#'], ['', '$1'], $js);
+        $uses = preg_match_all('/(?<![\w$.\-])log\b(?!-)/', $code);
+        $wanted = ['requestRender, log } = livePage(', 'startLobbyScreen(client, pageFetch, clock, log, paint, {'];
+
+        foreach ($wanted as $needle) {
+            if (! str_contains($code, $needle)) {
+                return ['log' => "the page does not name its log where it should (`{$needle}` is missing)"];
+            }
+        }
+
+        return $uses === count($wanted) ? [] : ['log' => "the page names its log {$uses} times, not the ".count($wanted).' it needs — a use beside handing it to the screen'];
     }
 
     /** @return array<string, string> */
@@ -515,9 +553,9 @@ class LobbyPageWiringTest extends TestCase
             // and the cab gliding over the ride's glide (none under reduced motion) and cut on every other
             // render. What the shapes and the cab's style are is `TheBuildingIsDrawnAsTheReferencesSectionTest`'s.
             'building drawing' => ["import { buildingDrawing, keepDrawing, paintBuilding } from './building-paint.js';",
-                "const { drawing, art, scenery, cabNode } = buildingDrawing(document);",
+                'const { drawing, art, scenery, windows, cabNode } = buildingDrawing(document);',
                 "    keepDrawing(rows, drawing);\n",
-                "    paintedBox = paintBuilding(document, { drawing, art, scenery, cabNode }, scene, building.elevator.level, cabGlide, paintedBox);\n",
+                "    painted = paintBuilding(document, { drawing, art, scenery, windows, cabNode }, scene, building.elevator.level, cabGlide, painted, sky);\n",
                 "    cabGlide = ride.glide_ms;\n    screen.draw(cab);",
                 "        cabGlide = 0;\n        window.location.assign(ride.route);"],
             // Impl review r2 (card#7343 row 16): the page reads `cab` through a THUNK, so `lobby-screen.js`'s

@@ -179,16 +179,17 @@ const { show, glideTo, current } = cameraView(view);
  * other render — a snapshot, a delta, a re-seated cab — cuts the cab to where it stands, and under
  * `prefers-reduced-motion` the ride's glide is `0` and the cab cuts too. The ride is navigation (§ 4.6's
  * elevator row): the glide writes no animation-log row and starts nothing through the set — the lobby's
- * one path to the log is the screen's A17 over a drained journal, which no ride drains. The construction, the keeping and the painting are `building-paint.js`'s —
+ * one path to the log is the screen's A17 over a drained journal, which no ride drains, and this page names
+ * the `log` it takes from `livePage()` only to hand it to the screen (`LobbyPageWiringTest` holds that). The construction, the keeping and the painting are `building-paint.js`'s —
  * DOM operations extracted so a node probe can drive them (`Tests\Feature\Lobby\TheBuildingDrawingKeepsItsElementTest`).
  */
-const { drawing, art, scenery, cabNode } = buildingDrawing(document);
+const { drawing, art, scenery, windows, cabNode } = buildingDrawing(document);
 
 /** How long the cab may take to its stop on the next render — a ride's `glide_ms` while it is in flight, else `0`. */
 let cabGlide = 0;
 
-/** The building box the scenery was last painted for, so a render that changed no box repaints none. */
-let paintedBox = null;
+/** What the drawing was last painted for — its box and A17's phase — so a render that changed neither repaints nothing. */
+let painted = null;
 
 /** A list element rebuilt from lines the model has already decided the text of. */
 function list(id, lines) {
@@ -232,7 +233,7 @@ function renderBuilding(building, scene, sky, unclaimed, riding) {
     rows.style.width = scene?.extent ? `${scene.extent.w}px` : '';
     rows.style.height = scene?.extent ? `${scene.extent.h}px` : '';
     // The roof, the storeys, the ground lobby and the cab at the viewer's stop — nothing with no building.
-    paintedBox = paintBuilding(document, { drawing, art, scenery, cabNode }, scene, building.elevator.level, cabGlide, paintedBox);
+    painted = paintBuilding(document, { drawing, art, scenery, windows, cabNode }, scene, building.elevator.level, cabGlide, painted, sky);
 
     // § 9 F17's cold start: no layout was ever loaded, so no floor is composed and each install
     // the client holds is listed as a room with no floor claimed — every seat still reachable

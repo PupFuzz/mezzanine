@@ -89,11 +89,19 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   the whole-building view takes in the roof and the ground lobby. The drawing is scenery: it shows no
   fleet state, every floor of one building is drawn alike, and each plate's name and status line read over
   it as before. `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` holds the drawing.
-  Behind the building, filling the rest of the drawing, the lobby draws the floor windows' sky — dimmed as
-  in the reference, with stars at night, and a flat starless sky until the page has been live. It is the
-  floor's own sky value on the floor's own driver: it follows the viewer's clock, moves only when a feed
-  heartbeat arrives — never on a timer or a poll — and stops when the feed dies, just as the floor's
-  windows do, and it steps to a new phase rather than fading, with reduced motion or without. That sky is
+  Each floor plate's arched windows now show the time of day, as the reference's windows do: the sky's
+  gradient at full strength, stars and a moon at night, the sun by day, at dawn and at dusk, and a city
+  roofline whose windows light up after dark. Behind the building the rest of the drawing shows the same
+  sky, dimmed as in the reference. Until the page has been live, the windows and the backdrop show a flat
+  sky with no stars, sun, moon or lit windows. It is the floor's own sky value on the floor's own driver:
+  it follows the viewer's clock, moves only when a feed heartbeat arrives — never on a timer or a poll —
+  and stops when the feed dies, just as the floor's windows do, and it steps to a new phase rather than
+  fading, with reduced motion or without. Every sky on both pages is painted from one table in
+  `floor/floor-layout.js`, so the floor's windows now show the same gradients as the lobby's instead of
+  flat colours. A floor's name and status line now sit on a pale backing, one box per line, so they stay
+  readable where they run over a dark window or off the plate onto the night sky;
+  `tools/design/lobby-label-contrast.browser.mjs` measures that contrast in a headless browser and is run
+  by hand, not in CI. That sky is
   the lobby's one animation: each heartbeat writes one A17 row to the page's animation log and nothing
   else. Both pages now take their animation log from `wire/live-page.js`, which bounds it with FLOOR.md
   § 12's retention figure, and the floor screen and the lobby share one sky driver, `RoomClock` in

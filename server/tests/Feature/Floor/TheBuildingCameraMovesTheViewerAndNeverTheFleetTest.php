@@ -44,8 +44,11 @@ use Tests\TestCase;
  * row* true of a camera act is that the lobby reaches the log and the set by exactly ONE path — the page's
  * bounded log from `wire/live-page.js`, handed to `lobby/lobby-screen.js`, the one module that constructs
  * the set, drawing A17 alone (`TheLobbySkyIsTheFloorsA17Test` holds the rows that set writes) — and no
- * other module the page loads can write a row or start anything through it; that is asserted over the
- * page's whole import graph from `lobby/main.js`, as its edges into the two modules.
+ * other module the page loads can IMPORT the log or the set; that is asserted over the page's whole import
+ * graph from `lobby/main.js`, as its edges into the two modules. Two things the graph cannot see are held
+ * elsewhere: `lobby/main.js` holds the page's log without importing it, and `LobbyPageWiringTest` holds it
+ * to handing that log to the screen and using it nowhere else; and a camera act writing a row through the
+ * lobby's own set, on the one path, is caught by the replayed log (the planted ride below).
  * The walk reads, in each module's code (its comments blanked), every string-literal specifier after
  * `from`, after a bare `import` and inside `import(` — single quotes, double quotes, or a backtick with no
  * `${` (`Tests\Feature\Support\ModuleSpecifiers`) — and follows each that starts `./` or `../`; every
@@ -254,6 +257,22 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
         $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, $reason)),
             "CONTROL (the lobby loading the log or the set by `{$line}`) did not bite for its reason ({$reason}): ".json_encode($defects));
+    }
+
+    /**
+     * card#7343 r1 (design review MINOR 5): a ride that writes a row through the lobby's own set — the one
+     * path the import graph allows — is caught by the replayed log, not by the graph, which cannot see it.
+     */
+    public function test_red_a_ride_that_writes_a_row_through_the_lobbys_set(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN,
+            "        this.#riding = { cab: plate.floor, route: plate.href, from, to: this.#camera, glide_ms: glideMs(this.#reduce) };\n",
+            "        this.#riding = { cab: plate.floor, route: plate.href, from, to: this.#camera, glide_ms: glideMs(this.#reduce) };\n"
+            ."        this.#set.edges([{ t: 'feed.heartbeat' }], 0);\n"]);
+
+        $this->assertSame([], $this->graphDefects(dirname($dir)), 'the plant is not on the one path — the graph reds it, and the log clause is not what caught it');
+        $this->assertNotSame([], array_filter($this->logDefects(self::RUN, $dir), static fn (string $d): bool => str_contains($d, 'the camera acts changed the animation log')),
+            'CONTROL (a ride writing an A17 row through the lobby\'s set) did not bite for its reason');
     }
 
     /** The one path gone — the lobby screen no longer loads the set — is a walk holding nothing, not a clean one. */
@@ -859,13 +878,13 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     }
 
     /** @return list<string> */
-    private function logDefects(string $run): array
+    private function logDefects(string $run, ?string $dir = null): array
     {
         $lobby = $this->fixture($run)['lobby'];
         unset($lobby['camera']);
 
-        $touched = $this->replay($run);
-        $untouched = $this->replay($run, null, ['lobby' => $lobby]);
+        $touched = $this->replay($run, $dir);
+        $untouched = $this->replay($run, $dir, ['lobby' => $lobby]);
         $defects = [];
 
         if ($touched['camera_acts'] === [] || $untouched['camera_acts'] !== []) {

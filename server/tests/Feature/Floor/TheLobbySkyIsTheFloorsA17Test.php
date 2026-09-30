@@ -104,6 +104,12 @@ class TheLobbySkyIsTheFloorsA17Test extends TestCase
         $this->assertSame([], $this->paintDefects());
     }
 
+    /** card#7343 r1 (R1): the plates' windows carry the time — A17's sky at full strength, from the one table. */
+    public function test_green_the_windows_carry_every_phase_from_the_one_table(): void
+    {
+        $this->assertSame([], $this->windowDefects());
+    }
+
     public function test_green_the_lobby_holds_the_floors_driver_and_decides_no_phase_of_its_own(): void
     {
         $this->assertSame([], $this->sourceDefects($this->jsRoot()));
@@ -188,13 +194,32 @@ class TheLobbySkyIsTheFloorsA17Test extends TestCase
         $this->assertNotSame([], $this->paintDefects($dir), 'CONTROL (a sky that cross-fades) did not bite');
     }
 
-    /** Stars in the day sky, or none at night — the paint ignoring the phase it is handed. */
+    /** Stars in the day sky — the one table wrong, and every sky that reads it with it. */
     public function test_red_stars_by_day(): void
     {
-        $dir = $this->mutatedModules(['../lobby/building-scene.js', "day: Object.freeze({ top: '#8fc4e8', bot: '#cfe6f2', stars: false }),",
-            "day: Object.freeze({ top: '#8fc4e8', bot: '#cfe6f2', stars: true }),"]);
+        $dir = $this->mutatedModules([self::DRIVER, "day: Object.freeze({ top: '#8fc4e8', bot: '#cfe6f2', stars: false,",
+            "day: Object.freeze({ top: '#8fc4e8', bot: '#cfe6f2', stars: true,"]);
 
-        $this->assertNotSame([], $this->paintDefects($dir), 'CONTROL (stars by day) did not bite');
+        $this->assertNotSame([], $this->paintDefects($dir), 'CONTROL (stars by day) did not bite on the backdrop');
+        $this->assertNotSame([], $this->windowDefects($dir), 'CONTROL (stars by day) did not bite on the windows');
+    }
+
+    /** Windows that never carry the time — painted `unset` whatever phase A17 set. */
+    public function test_red_windows_that_never_carry_the_time(): void
+    {
+        $dir = $this->mutatedModules(['../lobby/building-scene.js', "    const sky = skyPaint(phase);\n\n    return {\n        shapes: [", "    const sky = skyPaint(null);\n\n    return {\n        shapes: ["]);
+
+        $this->assertNotSame([], array_filter($this->windowDefects($dir), static fn (string $d): bool => str_contains($d, 'the backdrop')),
+            'CONTROL (windows that never carry the time) did not bite for its reason');
+    }
+
+    /** The floor's windows back on a palette of their own beside the one table. */
+    public function test_red_a_floor_window_palette_of_its_own(): void
+    {
+        $dir = $this->mutatedModules(['../floor/painter.js', "\${Object.keys(SKY_PAINT).map((phase) => `.sky-\${phase}{fill:url(#sky-\${phase})}`).join('')}\n",
+            ".sky-night{fill:#27324d}.sky-dawn{fill:#f6c9a8}.sky-day{fill:#bfe3f7}.sky-dusk{fill:#e8a07a}.sky-unset{fill:#ddd}\n"]);
+
+        $this->assertNotSame([], $this->sourceDefects(dirname($dir)), 'CONTROL (a floor window palette of its own) did not bite');
     }
 
     // ── The clauses ────────────────────────────────────────────────────────────────────────────
@@ -328,6 +353,66 @@ class TheLobbySkyIsTheFloorsA17Test extends TestCase
     }
 
     /**
+     * The plates' windows, over every phase the shipped phase function decides and over none (`null`, no
+     * live feed yet): every window filled from the phase's gradient, whose stops are the colours the
+     * backdrop's gradient is dimmed from (one table, not two); stars and the moon at night only; the sun
+     * on a phase that has one and on no other; and `unset` a sky with no time of day at all — no star, no
+     * sun, no moon and no lit city window. No windows with no building drawn.
+     *
+     * @return list<string>
+     */
+    private function windowDefects(?string $dir = null): array
+    {
+        $out = $this->probe([], $dir, self::PROBE);
+        $defects = [];
+        $plates = 2;
+
+        if ($out['unwindowed'] !== null) {
+            $defects[] = 'a lobby with no building drawn paints windows';
+        }
+
+        foreach ([...array_values(array_unique($out['phases'])), 'null'] as $phase) {
+            $w = $out['windows'][$phase] ?? null;
+
+            if ($w === null || $w['windows'] < 4 * $plates) {
+                $defects[] = "the phase `{$phase}` paints no window of its own sky";
+
+                continue;
+            }
+
+            preg_match_all('/rgba\((\d+), (\d+), (\d+), [\d.]+\)/', $out['styles'][$phase]['backgroundImage'], $m, PREG_SET_ORDER);
+            $backdrop = array_map(static fn (array $c): string => sprintf('#%02x%02x%02x', $c[1], $c[2], $c[3]), array_slice($m, -2));
+
+            if (array_map('strtolower', $w['stops']) !== $backdrop) {
+                $defects[] = "the phase `{$phase}`'s windows show ".json_encode($w['stops']).', not the backdrop\'s sky '.json_encode($backdrop).' at full strength';
+            }
+
+            $night = $phase === 'night';
+            $sunny = in_array($phase, ['dawn', 'day', 'dusk'], true);
+
+            if (($w['stars'] > 0) !== $night || ($w['moons'] === $plates) !== $night || ($w['moons'] > 0 && ! $night)) {
+                $defects[] = "the phase `{$phase}`'s windows show {$w['stars']} stars and {$w['moons']} moons — stars and one moon a storey at night, and never otherwise";
+            }
+
+            if ($w['suns'] !== ($sunny ? 2 * $plates : 0)) {
+                $defects[] = "the phase `{$phase}`'s windows show {$w['suns']} sun shapes — one sun and its glow a storey on a phase with a sun, and none otherwise";
+            }
+
+            if ($phase === 'null' && $w['lit'] !== 0) {
+                $defects[] = 'a sky never set (`unset`) lights the city — a plausible time on a page that was never live';
+            }
+        }
+
+        $stops = array_map(static fn (array $w): string => json_encode($w['stops']), $out['windows']);
+
+        if (count(array_unique($stops)) !== count($stops)) {
+            $defects[] = 'two phases paint the same window sky';
+        }
+
+        return $defects;
+    }
+
+    /**
      * The lobby screen holds the floor's driver, and no module but the phase function's decides a phase.
      *
      * @return list<string>
@@ -360,6 +445,13 @@ class TheLobbySkyIsTheFloorsA17Test extends TestCase
         }
 
         $this->assertGreaterThan(10, $read, 'the scan read almost no module — it would report clean over an unread tree');
+
+        // One phase→paint table (card#7343 r1): the floor's windows read `SKY_PAINT` too, with no palette of their own.
+        $painter = (string) file_get_contents($root.'/floor/painter.js');
+
+        if (! str_contains($painter, "import { SKY_PAINT } from './floor-layout.js';") || preg_match('/\.sky-\w+\{fill:#/', $painter) === 1) {
+            $defects[] = 'floor/painter.js paints its windows\' sky from a palette of its own, not `floor-layout.js`\'s `SKY_PAINT`';
+        }
 
         return $defects;
     }

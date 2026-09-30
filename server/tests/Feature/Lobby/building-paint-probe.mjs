@@ -9,8 +9,8 @@
  * defect in the real code.
  *
  * stdin — JSON: `{ "renders": [ { "scene": <buildingScene()'s, or null>, "level": number|null,
- *   "glide": number } … ] }` — `buildingDrawing(doc)` is built once, then `keepDrawing(rows, drawing)`
- *   and `paintBuilding()` are called once per render, `paintedBox` threaded through as the real page does.
+ *   "glide": number, "sky": <A17's phase>|null } … ] }` — `buildingDrawing(doc)` is built once, then `keepDrawing(rows, drawing)`
+ *   and `paintBuilding()` are called once per render, `painted` threaded through as the real page does.
  *
  * stdout — JSON: `{
  *   "pointerEvents": string|undefined,   -- the drawing's own style, set once at construction
@@ -18,6 +18,7 @@
  *   "removes": number,                   -- how many times `drawing.remove()` was actually called
  *   "prepends": number,                  -- how many times `rows.prepend(drawing)` was actually called
  *   "renders": [ { "hidden": bool, "box": string|null, "shapeCount": number,
+ *                   "windowSky": [ <the windows' gradient stop colours> ], "windowCount": number,
  *                   "cabStyle": {…}, "cabDisplay": string } … ]
  * }`
  *
@@ -108,7 +109,7 @@ const { buildingDrawing, keepDrawing, paintBuilding } = await import(pathToFileU
 const payload = JSON.parse(readFileSync(0, 'utf8'));
 
 const rows = element('ul');
-const { drawing, art, scenery, cabNode } = buildingDrawing(doc);
+const { drawing, art, scenery, windows, cabNode } = buildingDrawing(doc);
 
 // The two counters the four named defects are read off — real call counts on the real objects, not a
 // reading of the source that called them.
@@ -132,16 +133,21 @@ rows.prepend = (...nodes) => {
     realPrepend(...nodes);
 };
 
-let paintedBox = null;
+let painted = null;
 const renders = [];
 
-for (const { scene, level, glide } of payload.renders) {
+for (const { scene, level, glide, sky = null } of payload.renders) {
     keepDrawing(rows, drawing);
-    paintedBox = paintBuilding(doc, { drawing, art, scenery, cabNode }, scene, level, glide, paintedBox);
+    painted = paintBuilding(doc, { drawing, art, scenery, windows, cabNode }, scene, level, glide, painted, sky);
     renders.push({
         hidden: drawing.hidden,
-        box: paintedBox,
+        box: painted?.box ?? null,
         shapeCount: scenery.children.length,
+        // The windows' gradient stops as painted — A17's sky the windows show after this render.
+        windowSky: windows.children
+            .filter((n) => n.tag === 'defs')
+            .flatMap((d) => d.children.flatMap((g) => g.children.map((stop) => stop.attrs['stop-color']))),
+        windowCount: windows.children.length,
         cabStyle: { ...cabNode.style },
         cabDisplay: cabNode.style.display ?? '',
     });
