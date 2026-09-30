@@ -133,9 +133,17 @@ export class LobbyScreen {
      * § 2.5's apply path for the lobby: drain the journal, apply any `building.layout` it carried,
      * make the entry's layout request once a snapshot has applied, then draw.
      *
-     * @param {string|null} cab the viewer's elevator stop (§ 4.5: navigation is never state)
+     * ⛔ `cabNow` IS READ AFTER THE AWAITS ABOVE, NOT BEFORE THEM (impl review r2, card#7343 row 16: the
+     * second attempt at this passed a plain `cab` VALUE, captured at the moment `render()` was called —
+     * stale by the time these awaits resolve if a ride started in between, so the frame this draws was
+     * built on the floor the viewer had already left). A thunk defers the read to the one place that
+     * matters — right before `draw()` — so whatever `cab` is AT THAT MOMENT, ride just committed or not,
+     * is what this frame is drawn from. No `riding` branch and no other signal: reading late is the
+     * whole fix (`Tests\Feature\Lobby\TheDrawnCabNeverStalesTest`, driving this class through `node`).
+     *
+     * @param {function(): (string|null)} cabNow the viewer's elevator stop, read fresh at draw time
      */
-    async render(cab) {
+    async render(cabNow) {
         for (const entry of this.#client.takeWire()) {
             if (entry.t === 'building.layout' && await this.#building.applyLayout(entry)) {
                 this.#layoutAsked = true;
@@ -147,7 +155,7 @@ export class LobbyScreen {
             await this.#building.fetchLayout();
         }
 
-        return this.draw(cab);
+        return this.draw(cabNow());
     }
 
     /**
@@ -346,7 +354,7 @@ function within(outer, inner) {
  * @param {Function} fetchImpl the browser's own `fetch`, unbound — `wire/building.js`'s injection
  * @param {function(object): void} draw receives each lobby frame
  * @param {{surface: {width: number, height: number}, reduce?: boolean}} options `LobbyScreen`'s
- * @returns {{render: function(string|null): Promise<void>, refresh: function(): Promise<void>, draw: function(string|null): void,
+ * @returns {{render: function(function(): (string|null)): Promise<void>, refresh: function(): Promise<void>, draw: function(string|null): void,
  *            ride: function(): object|null, returned: function(): void, riding: function(): boolean, wholeBuilding: function(): object,
  *            focusPlate: function(string): object|null, wheel: Function, zoomStep: Function, drag: Function,
  *            resize: Function, camera: function(): object}}
@@ -355,8 +363,9 @@ export function startLobbyScreen(client, fetchImpl, draw, options) {
     const screen = new LobbyScreen(client, new Building(fetchImpl), options);
 
     return {
-        render: async (cab = null) => {
-            draw(await screen.render(cab));
+        // `cabNow` is a thunk, read after render()'s own awaits — LobbyScreen#render's docblock.
+        render: async (cabNow = () => null) => {
+            draw(await screen.render(cabNow));
         },
         refresh: async () => {
             await screen.refresh();

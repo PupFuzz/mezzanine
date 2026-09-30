@@ -23,8 +23,9 @@ use Tests\TestCase;
  *  · THE BUILDING IS FRAMED WHOLE: the roof's sign, the ground lobby and the outer frame stand inside
  *    the scene's `extent` — the sign and the lobby above the top plate and below the bottom one, the
  *    frame never wider than the extent the whole-building fit frames exactly (design review r1, F4) — so
- *    the whole-building framing shows all of them; and every plate stands at the extent's left edge and
- *    spans its width, which `labelMax()` reads a plate's left edge from.
+ *    the whole-building framing shows all of them; and every plate stands at ONE consistent left edge,
+ *    inset symmetrically inside the extent so the frame shows as the outer wall around it (design review
+ *    r2, F2) — `labelMax()` reads that inset left edge, and never the extent's own.
  *  · THE CAB GLIDES WITH THE RIDE ONLY: at the plate it stands at, over the ride's `glide_ms` — `wire/camera.js`'s
  *    `glideMs()` — and cut under `prefers-reduced-motion` and on every other render (`cabDefects()`).
  *
@@ -67,9 +68,16 @@ class TheBuildingIsDrawnAsTheReferencesSectionTest extends TestCase
             // The roof outside the framing: the whole-building control would cut the sign off.
             'a roof outside the building\'s extent' => ['extent: plates.length === 0 ? null : { x: 0, y: 0,', 'extent: plates.length === 0 ? null : { x: 0, y: ROOF_H,', 'the roof sign'],
             // The ground lobby outside the framing.
-            'a ground lobby outside the building\'s extent' => ['w: PLATE_W, h: ROOF_H + PLATE_H * plates.length + GROUND_H }', 'w: PLATE_W, h: ROOF_H + PLATE_H * plates.length }', 'the ground lobby'],
+            'a ground lobby outside the building\'s extent' => ['w: PLATE_W + PLATE_INSET * 2, h: ROOF_H + PLATE_H * plates.length + GROUND_H }', 'w: PLATE_W + PLATE_INSET * 2, h: ROOF_H + PLATE_H * plates.length }', 'the ground lobby'],
             // A plate off the building's left edge: `labelMax()` would read the wrong left edge.
-            'a plate off the building\'s left edge' => ['rect: { x: 0, y: ROOF_H + plate.level * PLATE_H,', 'rect: { x: 40, y: ROOF_H + plate.level * PLATE_H,', 'left edge'],
+            'a plate off the building\'s left edge' => ['rect: { x: PLATE_INSET, y: ROOF_H + plate.level * PLATE_H,', 'rect: { x: PLATE_INSET + 40, y: ROOF_H + plate.level * PLATE_H,', 'left edge'],
+            // textLength/lengthAdjust reintroduced on the roof sign (design review r2, row 16 F4):
+            // distorts an unshipped Quicksand's fallback glyphs — r1's own defect (F3), returning.
+            'textLength reintroduced on the roof sign' => [
+                "'font-size': 76, 'letter-spacing': 10.36, fill: INK.signInk },",
+                "'font-size': 76, 'letter-spacing': 10.36, textLength: 640, fill: INK.signInk },",
+                'textLength',
+            ],
             // The outer frame drawn wider than the extent (design review r1, row 16 F4): the whole-building
             // fit frames the extent exactly, and a frame drawn outside it is clipped there.
             'the outer frame outside the building\'s extent' => [
@@ -179,11 +187,25 @@ class TheBuildingIsDrawnAsTheReferencesSectionTest extends TestCase
             $defects[] = "the building's outer frame is not inside the scene's extent ({$n} floors): ".json_encode($frame);
         }
 
+        // Design review r2 F2: every plate stands at the SAME left edge, inset from the extent's own —
+        // never the extent's left edge itself, which is now the frame's, showing as the wall around them
+        // (`PLATE_INSET`) — and the two margins either side of a plate are equal, so the frame reads as
+        // one even wall and not a wider gap on one side. `labelMax()` reads a plate's own left edge, not
+        // the extent's; no figure is repeated here, only the relationship its inputs must hold.
+        $plateLeft = null;
+
         foreach ($plates as $p) {
             $r = $p['rect'];
+            $plateLeft ??= $r['x'];
+            $leftMargin = $r['x'] - $extent['x'];
+            $rightMargin = $extent['x'] + $extent['w'] - ($r['x'] + $r['w']);
 
-            if ($r['x'] !== $extent['x'] || $r['w'] !== $extent['w']) {
-                $defects[] = "the plate {$p['floor']} does not stand at the building's left edge and width — labelMax() reads the plates' left edge there";
+            if ($r['x'] !== $plateLeft) {
+                $defects[] = "the plate {$p['floor']} does not stand at the same left edge as the rest of the stack ({$r['x']} vs {$plateLeft}) — labelMax() reads one left edge for the whole building";
+            }
+
+            if ($leftMargin <= 0 || abs($leftMargin - $rightMargin) > 1e-9) {
+                $defects[] = "the plate {$p['floor']} does not stand at a symmetrically inset left edge (left margin {$leftMargin}, right margin {$rightMargin}) — the frame would not read as an even wall around it";
             }
         }
 
@@ -192,6 +214,13 @@ class TheBuildingIsDrawnAsTheReferencesSectionTest extends TestCase
         foreach ($art['shapes'] as $shape) {
             if (isset($shape['text'])) {
                 $texts[$shape['text']] = $shape;
+
+                // Design review r2 F4: no drawn text carries textLength/lengthAdjust — it distorts an
+                // unshipped Quicksand's fallback glyphs (r1 F3's own defect, on the roof sign and the
+                // ground lobby's LOBBY text both).
+                if (array_key_exists('textLength', $shape['attrs']) || array_key_exists('lengthAdjust', $shape['attrs'])) {
+                    $defects[] = "the drawing's {$shape['text']} text carries textLength or lengthAdjust ({$n} floors): ".json_encode($shape['attrs']);
+                }
             }
         }
 

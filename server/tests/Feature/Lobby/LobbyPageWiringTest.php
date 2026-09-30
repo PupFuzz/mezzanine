@@ -429,7 +429,7 @@ class LobbyPageWiringTest extends TestCase
 
         // CONTROL 12 — the lobby holding a protocol of its own, which inherits the browser's reconnect
         // (Appendix B row 8's ⛔) and is the page walking around the one construction both pages share.
-        $bypassed = str_replace('livePage(() => screen.render(cab))', 'new FleetClient(fetch, EventSource, { now: Date.now }) && livePage(() => screen.render(cab))', $js);
+        $bypassed = str_replace('livePage(() => screen.render(() => cab))', 'new FleetClient(fetch, EventSource, { now: Date.now }) && livePage(() => screen.render(() => cab))', $js);
         $this->assertNotSame($bypassed, $js, "CONTROL 12's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('recovery', $this->livePageDefects($bypassed),
             'CONTROL 12 did not bite: the page constructed its own protocol and the recovery check stayed clean');
@@ -503,10 +503,10 @@ class LobbyPageWiringTest extends TestCase
                 "    paintedBox = paintBuilding(document, { drawing, art, scenery, cabNode }, scene, building.elevator.level, cabGlide, paintedBox);\n",
                 "    cabGlide = ride.glide_ms;\n    screen.draw(cab);",
                 "        cabGlide = 0;\n        window.location.assign(ride.route);"],
-            // Impl review r1 finding 2 (card#7343 row 16): a render landing while a ride is in flight keeps the
-            // ride's cab rather than re-seating it on the model's pre-ride facts — `cab-position.js`'s pure
-            // `resolveCab()`, held behaviourally by `Tests\Feature\Lobby\TheRideOwnsTheCabDuringItsGlideTest`.
-            'cab position' => ["import { resolveCab } from './cab-position.js';", 'cab = resolveCab(cab, building, frame.riding);'],
+            // Impl review r2 (card#7343 row 16): the page reads `cab` through a THUNK, so `lobby-screen.js`'s
+            // `render()` sees the current cab only after its own awaits, never one captured stale at the
+            // moment the render started — held behaviourally by `Tests\Feature\Lobby\TheDrawnCabNeverStalesTest`.
+            'cab read late' => ["livePage(() => screen.render(() => cab));"],
         ];
 
         foreach ($wired as $act => $needles) {

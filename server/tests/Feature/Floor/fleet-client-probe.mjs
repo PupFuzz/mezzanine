@@ -763,7 +763,7 @@ async function replay(scenario) {
     floor?.render();
 
     if (lobby !== null) {
-        await lobby.render(cab);
+        await lobby.render(() => cab);
         await turn();
     }
 
@@ -804,7 +804,7 @@ async function replay(scenario) {
             }
 
             if (lobby !== null) {
-                await lobby.render(cab);
+                await lobby.render(() => cab);
                 await turn();
             }
         }

@@ -49,7 +49,6 @@ import { framesNothing } from '../wire/camera.js';
 import { startLobbyScreen } from './lobby-screen.js';
 import { labelMax, labelScale, surfaceStyle } from './building-scene.js';
 import { buildingDrawing, keepDrawing, paintBuilding } from './building-paint.js';
-import { resolveCab } from './cab-position.js';
 import { plateRow } from './plate-row.js';
 import { holdPlateLinks } from './ride-hold.js';
 
@@ -302,13 +301,17 @@ function paint(frame) {
 
     const building = frame.building;
 
-    // The cab is re-seated on what the model RESOLVED it to, so a stranded cab reports itself once
-    // and the next render is an ordinary one — UNLESS a ride is in flight, whose cab is the viewer's own
-    // act and not a fact this render may undo (`cab-position.js`'s `resolveCab()`, impl review r1 finding
-    // 2): a render whose fetch landed after the click, carrying the model's pre-ride facts, must never
-    // glide the cab backwards to the floor the ride just left. An uncomposed lobby (§ 9 F17) resolved
+    // The cab is re-seated on what the model RESOLVED it to, so a stranded cab reports itself once and
+    // the next render is an ordinary one. This is safe now that `cab` is never stale here (impl review
+    // r2, card#7343 row 16): `livePage(() => screen.render(() => cab))` reads `cab` through a thunk
+    // `lobby-screen.js`'s `render()` calls only after its own awaits, so `building` above was already
+    // composed from whatever `cab` was at THIS draw — `elevator.at` echoes it back unchanged unless the
+    // ride's own floor is gone (the stranded case this reseat exists for), so a ride in flight needs no
+    // special case here at all: it never diverges from the model. An uncomposed lobby (§ 9 F17) resolved
     // nothing either way.
-    cab = resolveCab(cab, building, frame.riding);
+    if (building.composed) {
+        cab = building.elevator.at;
+    }
 
     renderBuilding(building, frame.scene, summary.unclaimed, frame.riding);
     // The render may just have made the surface a drawing, or stopped it being one (`surfaceStyle()`), so
@@ -338,7 +341,7 @@ function paint(frame) {
     }
 }
 
-const { client, fetch: pageFetch, requestRender } = livePage(() => screen.render(cab));
+const { client, fetch: pageFetch, requestRender } = livePage(() => screen.render(() => cab));
 const screen = startLobbyScreen(client, pageFetch, paint, {
     surface: surface(),
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,

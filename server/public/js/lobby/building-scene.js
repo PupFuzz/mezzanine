@@ -51,6 +51,16 @@ export const PLATE_W = 1600;
 export const PLATE_H = 1000;
 
 /**
+ * The margin each plate stands INSIDE the extent, on both sides (design review r2, card#7343 row 16
+ * F2): the frame — `buildingArt()`'s first shape — spans the extent's full width, and a plate exactly
+ * as wide as the extent left nothing of it to show, painting the frame fully over (r1's mistake). Each
+ * plate stands `PLATE_INSET` in from the extent's left edge, `PLATE_W` wide, so the frame shows as the
+ * outer wall around it — the reference's own technique, its shell wider than its floors
+ * (`docs/design/floor-preview/floor-preview.html:1094`).
+ */
+export const PLATE_INSET = 24;
+
+/**
  * ⛔ A PLATE'S TEXT IS DRAWN AT A FIXED SCREEN SIZE, AND THAT SIZE IS THE PAGE'S OWN (operator rulings on
  * card#7343, 2026-09-27, Appendix B row 16: F1 for the name, then r2 for its status line — the summary,
  * the rooms and the cab's word). The lobby exists to pick a floor, so a plate is read before any zoom:
@@ -96,9 +106,11 @@ export const LABEL_MIN_PX = 320;
  * `LABEL_MIN_PX` is visible to the right of the plates. Clamped: never wider than the surface, so a pan
  * can always bring the whole label into view (a plate whose left edge is off the surface's left), and
  * never narrower than `LABEL_MIN_PX` (a plate panned towards the surface's right edge), unless the
- * surface itself is narrower still. Every plate stands at the building's left edge
- * (`buildingScene()`), which is the camera's framed `bounds.x`; a camera that frames nothing has no
- * plate, and its labels — none — wrap within the surface.
+ * surface itself is narrower still. ⛔ A PLATE STANDS `PLATE_INSET` IN FROM THE EXTENT's LEFT EDGE, NOT
+ * ON IT (design review r2, F2: the frame shows as the outer wall around the plates, which stand inside
+ * it) — so this reads the plate's OWN left edge, `camera.bounds.x + PLATE_INSET`, and never
+ * `camera.bounds.x` alone, which is the FRAME's edge and would over-count the width available by one
+ * margin. A camera that frames nothing has no plate, and its labels — none — wrap within the surface.
  *
  * @param {{surface: {width: number}, bounds: {x: number}|null, zoom: number, x: number}} camera a
  *        `wire/camera.js` camera — the one the plates are shown under
@@ -110,7 +122,7 @@ export function labelMax(camera) {
         return width;
     }
 
-    const left = (camera.bounds.x - camera.x) * camera.zoom;
+    const left = (camera.bounds.x + PLATE_INSET - camera.x) * camera.zoom;
 
     return Math.min(width, Math.max(LABEL_MIN_PX, width - left));
 }
@@ -123,18 +135,19 @@ export const GROUND_H = 520;
 
 /**
  * The scene for a stack of plates: `{ extent, plates: [{ floor, rect }] }`, `extent` the whole
- * building's rect — the roof, every plate and the ground lobby; `null` when there is no plate to frame
- * — and each plate's `rect` at its `level`, under the roof. Every plate, the roof and the ground lobby
- * are the building's width, so a plate's left edge is the extent's (`labelMax()` reads it there).
+ * building's rect — the roof, every plate and the ground lobby, `PLATE_INSET` wider on each side than a
+ * plate so the frame shows as the outer wall around them (design review r2, F2); `null` when there is no
+ * plate to frame — and each plate's `rect` at its `level`, under the roof, standing `PLATE_INSET` in from
+ * the extent's left edge — `labelMax()` reads it there, not the extent's own (`camera.bounds.x`).
  *
  * @param {Array<{floor: string, level: number}>} plates `building-model.js`'s `plates()`, in its order
  */
 export function buildingScene(plates) {
     return {
-        extent: plates.length === 0 ? null : { x: 0, y: 0, w: PLATE_W, h: ROOF_H + PLATE_H * plates.length + GROUND_H },
+        extent: plates.length === 0 ? null : { x: 0, y: 0, w: PLATE_W + PLATE_INSET * 2, h: ROOF_H + PLATE_H * plates.length + GROUND_H },
         plates: plates.map((plate) => ({
             floor: plate.floor,
-            rect: { x: 0, y: ROOF_H + plate.level * PLATE_H, w: PLATE_W, h: PLATE_H },
+            rect: { x: PLATE_INSET, y: ROOF_H + plate.level * PLATE_H, w: PLATE_W, h: PLATE_H },
         })),
     };
 }
@@ -144,8 +157,10 @@ export function buildingScene(plates) {
  * stands at the plate's RIGHT, so a label no wider than its own plate sits over the plain wall — but
  * `labelMax()` is the SURFACE's visible width, not the plate's, so at whole-building fit on three or more
  * floors every label is wider than its plate and routinely crosses the shaft, the cab and the plate below
- * it (design review r1, card#7343 row 16). What keeps a label legible wherever it lands is not what
- * stands behind it but its own backing — `plate-row.js`'s plaque, `LABEL_PLAQUE` below.
+ * it (design review r1, card#7343 row 16). ⛔ AN OPAQUE BACKING IS REFUSED (design review r2, F1): a
+ * plaque tried first, and blanked the drawing under it — arches read as rectangles, the cab's top
+ * covered at 7+ floors, ~65% of a storey at ten. What keeps a label legible wherever it lands, without
+ * hiding what it lands on, is a HALO on the text itself — `plate-row.js`'s `LABEL_HALO` below.
  */
 const STOREY = {
     skirting: 836,
@@ -184,16 +199,18 @@ const INK = {
 };
 
 /**
- * The plate label's backing — a rounded cream plaque behind its text (design review r1, card#7343 row
- * 16 F1): `labelMax()` is the surface's visible width and not the plate's, so at whole-building fit on
- * three or more floors a label is routinely wider than its plate and crosses the shaft, the cab or the
- * plate below it — the plaque is the label's own contrast, standing over whatever the drawing puts
- * behind it, so no plate's label depends on where it lands. The storey's own wall colour (`INK.wall`):
- * its contrast clears WCAG 2.1 SC 1.4.3's 4.5:1 against both the link's default blue (#0000EE, ≈8.5:1)
- * and the plate's own body text (black, ≈19.1:1) —
- * `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` computes and holds both.
+ * The plate label's halo — the storey's own wall colour (`INK.wall`), stacked as several zero-offset,
+ * blurred `text-shadow`s behind the label's text (design review r2, card#7343 row 16 F1, replacing r1's
+ * opaque plaque, which blanked the drawing under it): `labelMax()` is the surface's visible width and
+ * not the plate's, so at whole-building fit on three or more floors a label is routinely wider than its
+ * plate and crosses the shaft, the cab or the plate below it — the halo is the label's own contrast
+ * there, ON the glyphs rather than a box behind them, so the arches, the shaft and the cab stay visible
+ * through it. Its contrast clears WCAG 2.1 SC 1.4.3's 4.5:1 against both the link's default blue
+ * (#0000EE, ≈8.5:1) and the plate's own body text (black, ≈19.1:1) —
+ * `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` computes and holds both, now read off
+ * the halo's `textShadow` colour rather than a `backgroundColor`.
  */
-export const LABEL_PLAQUE = INK.wall;
+export const LABEL_HALO = INK.wall;
 
 /** A shape: an SVG element name, its attributes, and the text it carries (only the roof sign's and the lobby's). */
 function shape(el, attrs, text = null) {
@@ -318,8 +335,9 @@ export function buildingArt(scene) {
     return {
         box: extent,
         shapes: [
-            // Inside the extent (design review r1, row 16 F4): the whole-building fit frames the extent
-            // exactly, and a frame drawn wider than it is clipped there — plates keep extent.x, labelMax()'s.
+            // The extent's full width (design review r1 F4, then r2 F2): the whole-building fit frames
+            // the extent exactly, so a frame drawn wider than it would be clipped there — and the plates
+            // are the ones inset `PLATE_INSET` inside it now, so this shows as the outer wall around them.
             shape('rect', { x: extent.x, y: extent.y + ROOF_H - 40, width: extent.w, height: extent.h - ROOF_H + 40 - 80, rx: 28, fill: INK.shell }),
             ...scene.plates.flatMap(({ rect }) => storey(rect)),
             ...roof(extent),
