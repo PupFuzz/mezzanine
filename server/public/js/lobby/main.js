@@ -130,15 +130,12 @@ const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out')
  * zoom — `wire/camera.js`'s `view`, as a CSS transform. Nothing framed is no transform at all: the list
  * as it flows, which is how a lobby with no plate reads (§ 9 F17's rooms, or no install).
  *
- * ⛔ THE SAME CAMERA PAINTS THE PLATES' LABELS (card#7343 r4's fix round, replacing the r1–r3 mechanism —
- * the operator's ruling 2026-09-30, option A: the labels stand BESIDE the building). `label-paint.js`'s
+ * ⛔ THE SAME CAMERA PAINTS THE PLATES' LABELS (FLOOR.md § 4.1 states the contract). `label-paint.js`'s
  * `showLabels()` is called here, on EVERY camera this function shows — fit, wheel, key, drag, every glide
- * step, resize — and is the ONLY function that ever writes a plate's label geometry or paint: it decides
- * the counter-scale, the side (beside the building, or the fallback onto the plate), the width, the line
- * budget and the ink, all as CSS custom properties on `#lobby-floors` that `plate-row.js`'s rows read
- * through `var()`s and never anything of their own. Because it runs on every camera shown rather than
- * only on a feed render, a plate's label can never go stale between a render and the camera moves that
- * follow it — the root cause both r3 review rounds named for the mechanism this replaces.
+ * step, resize — and is the ONLY function that ever writes a plate's label geometry or paint, as CSS
+ * custom properties on `#lobby-floors` that `plate-row.js`'s rows read through `var()`s and never anything
+ * of their own. Because it runs on every camera shown rather than only on a feed render, a plate's label
+ * can never go stale between a render and the camera moves that follow it.
  *
  * ⛔ AND THE CAMERA IS OFFERED ONLY WHILE IT FRAMES SOMETHING (card#7343 r4b, the seat's ruling, and
  * comment 7692): the keys, the zoom buttons, the whole-building control and the building's tab stop —

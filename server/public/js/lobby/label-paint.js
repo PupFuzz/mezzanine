@@ -1,82 +1,38 @@
 /**
  * A PLATE'S LABEL, PAINTED — the one primitive that decides where every plate's label stands, how wide
- * it is, how many of its lines show, and what it is painted in. `docs/design/FLOOR.md § 4.1`, Appendix B
- * row 16 (card#7343 r4's fix round: replacing the r1–r3 mechanism, the operator's ruling 2026-09-30,
- * option A — the design review's SOUND WITH CHANGES verdict on `design-252-labels.md`).
+ * it is, how many of its lines show, and what it is painted in. **The label CONTRACT is
+ * `docs/design/FLOOR.md` § 4.1's alone; this module states only what its own code does.**
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ WHY THIS MODULE EXISTS, AND WHY THE r3 MECHANISM IS REPLACED RATHER THAN PATCHED AGAIN. Three
- * review rounds of the beside-the-building label minted new label defects each time (MAJORs: 2, 1, 5 —
- * RISING, the canon #15/#19 non-convergence tripwire). The root cause both r3 reviewers named
- * independently: `lobby/main.js`'s old `labelPlan()` ran ONLY on a feed render (`paint()`), while
- * `view()` — called on every wheel, key, drag, glide step and resize — never re-planned; a `left` baked
- * from the PLAN's zoom went stale, and stale, wrong maths (rather than any one bug in it) is what kept
- * re-minting findings. ⭐ THE FIX IS STRUCTURAL, NOT ANOTHER PATCH: `showLabels()` below is the ONLY
- * function that ever writes a plate's label geometry or paint, and it is called from `view()` on EVERY
- * camera shown — so there is no "plan" to go stale, because nothing is ever planned ahead of the camera
- * that will render it. `lobby/plate-row.js` builds each plate's label ONCE, with no geometry or paint of
- * its own baked in: every number and colour it uses is a CSS custom property this module writes on
- * `#lobby-floors` (which every plate's label inherits), so a plate's label reacts to whatever camera
- * `showLabels()` was last called with, including mid-glide, with NO rebuild.
+ * ⛔ THE STRUCTURE THAT KEEPS THIS FROM GOING STALE: `showLabels()` below is the ONLY function that ever
+ * writes a plate's label geometry or paint, called from `main.js`'s `view()` on EVERY camera the page
+ * shows — so there is no plan computed ahead of the camera that will render it. `lobby/plate-row.js`
+ * builds each plate's label ONCE, with no geometry or paint of its own baked in: every number and colour
+ * it uses is a CSS custom property this module writes on `#lobby-floors` (which every plate's label
+ * inherits, since every plate shares one storey height and one camera), so a plate's label reacts to
+ * whatever camera `showLabels()` was last called with, including mid-glide, with no rebuild.
  *
- * ⭐ THE OPERATOR'S RULING (2026-09-30, option A): *"the lobby's floor labels move BESIDE the building,
- * as the ratified reference does"* — `docs/design/floor-preview/floor-preview.html`'s each-storey name,
- * drawn to the left of its storey, `text-anchor="end"`, warm gold, never over the drawing; *"On a screen
- * with no room beside the building (phone width), labels fall back to sitting over the plate."*
+ * ⭐ THE PROPERTIES WRITTEN, all on `#lobby-floors`: `--label-scale` (the counter-scale); `--label-left`
+ * and `--label-width` (the label's position and size, in the units `plate-row.js`'s own docblock, at its
+ * `left`, derives why each must be — resolved here in JS rather than a live CSS `calc()`, for testability
+ * without a CSS engine and to keep one writer, one mechanism); `--label-lines` (`linesFor()` — how many
+ * lines are not clipped away); `--label-ink` (the link's colour); `--label-text-ink` (the summary, rooms
+ * and cue's colour); `--label-backing`; `--label-halo`; `--label-align` (read by `plate-row.js` as both
+ * `text-align` and `justify-content` — modern CSS Box Alignment accepts `left`/`right` for both, so one
+ * value serves both); and `data-label-side`, a TEST HOOK ONLY — nothing here reads it back, and
+ * `plate-row.js` reads no attribute, only `var()`s.
  *
- * ⭐ THE PROPERTIES WRITTEN, all on `#lobby-floors` (CSS custom properties inherit to every plate's
- * `<li>`, so one write serves every plate — every plate shares one storey height and one camera):
- *   `--label-scale`  the counter-scale, `1/zoom` — unchanged from the r1–r3 mechanism.
- *   `--label-left`   the label's `left`, in SCENE px (`plate-row.js`'s own docblock, at its `left`,
- *                    derives why this must be a SCENE quantity and not a real one). ⚠ NOT in the design
- *                    review's own P1 list, which asked for a live CSS `calc()` referencing only
- *                    `--label-width` and `--label-scale`. ⚠ r4 review round: this module's own text used
- *                    to claim such a `calc()` “cannot ALSO yield exactly 0 for the fallback” — FALSE, a
- *                    0/1 side flag folded into the same expression can select `0` exactly. The real reason
- *                    this module resolves the offset in JS rather than a live `calc()` is TESTABILITY and
- *                    ONE WRITER: a raw `calc()` string is not independently checkable by a `node` CI probe
- *                    with no CSS engine at all (P5's own ask), while this module's own tests read back a
- *                    plain number; and every OTHER property here is already a value THIS module computes
- *                    fresh on every `view()`, so folding `left` into the same shape keeps one mechanism
- *                    (JS, rewritten every camera) rather than splitting the arithmetic across JS and the
- *                    browser's own CSS engine. Staleness is unaffected either way: this is still the ONE
- *                    writer, still rewritten fresh on every `view()`.
- *   `--label-width`  the label's `width`, in real px — the beside room (to `sideFor()`'s threshold) or
- *                    the fallback's own room on the plate (today's old `labelMax()`, unchanged reasoning).
- *   `--label-lines`  how many of the label's lines are not clipped away — `linesFor()`.
- *   `--label-ink`    the LINK's colour — gold beside, a dark warm ink falling back.
- *   `--label-text-ink` the SUMMARY/ROOMS/CUE's colour — a lighter warm ink beside (P3: "a light warm ink
- *                    measured ≥ 4.5:1"), the SAME dark ink as the link falling back. ⚠ Also not in the
- *                    review's literal list (which named one `--label-ink`) — P3's own prose needs two,
- *                    since it states the link's ink and the non-link text's ink as different colours.
- *   `--label-backing` the per-line background — `transparent` beside (P3: "no backing"), the wall's
- *                    near-opaque cream falling back (unchanged from the r1 mechanism).
- *   `--label-halo`   the label's `text-shadow` — a thin dark wash beside (P3: "a thin dark wash-coloured
- *                    halo against stars" — a bright star pixel behind a gold glyph is the one case the
- *                    ink's own ≥ 7:1 measured margin does not by itself cover), `none` falling back (the
- *                    near-opaque backing needs no halo under it, unlike the r1–r3 mechanism's over-the-
- *                    drawing case this halo used to guard). ⚠ Not in the review's literal list either —
- *                    P3 asks for it by name and there is nowhere else to put it.
- *   `--label-align`  `'right'` beside, `'left'` falling back — read by `plate-row.js` as BOTH `text-align`
- *                    (lines 2–3) and `justify-content` (line 1's flex row: modern CSS Box Alignment
- *                    accepts `left`/`right` there directly, so one value serves both, and the review's
- *                    `--label-name-ml` margin trick — needed only by the r1–r3 mechanism's single-block
- *                    name — is not needed here).
- *   `data-label-side` `'left'` or `'plate'`, on `#lobby-floors` — A TEST HOOK ONLY, per the design review;
- *                    nothing here reads it back, and `plate-row.js` reads no attribute, only `var()`s.
- *
- * ⛔ ONE STOREY HEIGHT FOR EVERY PLATE. The refute round asked whether a storey could be taller than
- * another (an overflow strip, a "lobby" storey) — it cannot: `building-scene.js`'s `buildingScene()`
- * gives every plate `rect.h = PLATE_H`, uniformly: there is no overflow strip in the building's own
- * drawing (that concept is the FLOOR page's, a different screen), and the ground lobby and roof are
- * scenery with no label of their own. So `--label-lines` is one number, shared, exactly like every other
- * property this module writes.
+ * ⛔ ONE STOREY HEIGHT FOR EVERY PLATE: `building-scene.js`'s `buildingScene()` gives every plate
+ * `rect.h = PLATE_H`, uniformly — there is no overflow strip in the building's own drawing (that concept
+ * is the FLOOR page's, a different screen), and the ground lobby and roof are scenery with no label of
+ * their own — so `--label-lines` is one number, shared, exactly like every other property this module
+ * writes.
  */
 
 import { framesNothing } from '../wire/camera.js';
 import { INK, PLATE_H, PLATE_INSET, rgba, SKY_GROUND } from './building-scene.js';
 
-/** The plate label's font — the page's own body size, unchanged from the r1–r3 mechanism. */
+/** The plate label's font — the page's own body size (FLOOR.md § 4.1). */
 export const LABEL_FONT = '1rem';
 
 /**
@@ -95,29 +51,21 @@ export const LABEL_LINE_PX = 20;
 export const LABEL_GAP_PX = 8;
 
 /**
- * ⭐ THE THRESHOLD THAT PICKS A SIDE, AND ITS REAL REASON (design review, P4: give the threshold's real
- * reason, not a WCAG reflow citation — the r1–r3 mechanism's `LABEL_MIN_PX` cited WCAG 2.1's Reflow
- * criterion, which is about a VIEWPORT's own minimum width and has nothing to do with how wide one label
- * box needs to be). The real reason: the CUE is the line's one UNSHRINKABLE content (`flex: 0 0 auto` in
- * `plate-row.js`, design review P2: "never ellipsizes away") — *" — the elevator is here"* renders at
- * ≈189 real px at `LABEL_FONT` (measured, not estimated: a bare span at `1rem`, headless Chromium) — so
- * a `--label-width` narrower than the cue's own width cannot show it whole regardless of how far the name
- * shrinks, which is what the built check `test_green_showlabels_written_values_match_a_hand_computed_camera_at_every_side`
- * and the browser tool's own "cue stays reachable" measurement both hold. `LABEL_SIDE_MIN_PX` is the
- * cue's own measured width plus the flex row's `0.25em` gap plus room for a few characters of even the
- * shortest name before it is worth showing beside the building at all — rounded up for slack. A figure of
- * the drawing's, carrying no fact, and NOT an estimate the way the r1–r3 mechanism's minimum was: it is
- * pinned to the one content width that must fit. `tools/design/lobby-label-contrast.browser.mjs`'s own
- * `cueUnreachable()` check (r4 review round: this claimed a control before one existed — PLANTS.cueWidth
- * now shrinks `LABEL_SIDE_MIN_PX` below the cue's own measured width and the tool's selftest asserts that
- * plant reds on the cue-reachable check alone) is what catches the cue growing past this width unnoticed.
+ * ⭐ THE THRESHOLD THAT PICKS A SIDE, AND ITS REAL REASON (never a WCAG reflow citation — that criterion
+ * is about a VIEWPORT's own minimum width, unrelated to how wide one label box needs to be). The real
+ * reason: the CUE is the line's one UNSHRINKABLE content (`flex: 0 0 auto` in `plate-row.js`) — *" — the
+ * elevator is here"* — so a `--label-width` narrower than the cue's own measured width cannot show it
+ * whole regardless of how far the name shrinks. `LABEL_SIDE_MIN_PX` is the cue's own measured width plus
+ * the flex row's own gap plus room for a few characters of even the shortest name before it is worth
+ * showing beside the building at all — pinned to that measured content width, never estimated.
+ * `tools/design/lobby-label-contrast.browser.mjs`'s own `cueUnreachable()` check (with `PLANTS.cueWidth`,
+ * which shrinks this constant below the cue's own measured width) is what catches the cue growing past
+ * it unnoticed.
  *
- * ⭐ WHY A DESKTOP WINDOW ROUTINELY FALLS BACK TOO (design review P4: say honestly that zoomed desktop
- * views use the fallback, and why): the camera's own CLAMP (`wire/camera.js`'s `clamp()`) keeps the
- * framed extent fully in view — at a high enough zoom (a `zoomAt()` deep in, or the elevator ride's own
- * `focusOn()` on one plate), the clamp pushes the shell's own left edge to or past the surface's own left
- * edge, so the room available beside it shrinks toward zero. This is not a bug and not a WCAG citation:
- * it is the SAME clamp that keeps the building on screen at every zoom, applied honestly.
+ * ⭐ WHY A DESKTOP WINDOW ROUTINELY FALLS BACK TOO: the camera's own CLAMP (`wire/camera.js`'s `clamp()`)
+ * keeps the framed extent fully in view — at a high enough zoom, the clamp pushes the shell's own left
+ * edge to or past the surface's own left edge, so the room available beside it shrinks toward zero. This
+ * is not a bug: it is the SAME clamp that keeps the building on screen at every zoom.
  */
 export const LABEL_SIDE_MIN_PX = 240;
 
@@ -125,78 +73,56 @@ export const LABEL_SIDE_MIN_PX = 240;
 export const LABEL_GOLD = '#ffcf7d';
 
 /**
- * The light warm ink for the summary, the rooms line and the cue, standing beside the building (P3): the
+ * The light warm ink for the summary, the rooms line and the cue, standing beside the building: the
  * SAME cream `building-scene.js`'s `INK.wall` already names for the storeys' own walls, read rather than
- * copied — brighter than gold, so wherever gold clears WCAG 2.1 SC 1.4.3's 4.5:1 against the sky (the
- * design review measured ≥ 7.15:1 at every phase, excluding star pixels), this ink clears it by more.
+ * copied — brighter than gold, so wherever gold clears WCAG 2.1 SC 1.4.3 against the sky, this ink clears
+ * it by more (`tools/design/lobby-label-contrast.browser.mjs` measures both, on rendered pixels).
  */
 export const LABEL_TEXT_INK = INK.wall;
 
 /**
- * The dark ink for BOTH the link and the summary/rooms/cue, falling back onto the plate (P3: "dark ink on
- * the cream backing") — a warm near-black rather than pure black, in the drawing's own palette. The
- * fallback's near-opaque backing (below) is what holds its contrast, measured on rendered pixels exactly
- * as the r1 mechanism's was; this ink is chosen dark enough that the backing alone clears WCAG comfortably.
+ * The dark ink for BOTH the link and the summary/rooms/cue, falling back onto the plate — a warm
+ * near-black rather than pure black, in the drawing's own palette, chosen dark enough that the fallback's
+ * own near-opaque backing (below) alone clears WCAG comfortably, measured on rendered pixels.
  */
 export const LABEL_DARK_INK = '#241a10';
 
 /**
  * The backing behind each of a plate label's visible lines, falling back onto the plate — the wall's
- * colour, very nearly opaque: what a glyph stands on is then the backing, whatever the drawing puts
- * under it. ⚠ RAISED FROM card#7343 r1's `0.92` (MEASURED, not argued): at `0.92` a small but nonzero
- * fraction of whatever sits beneath still bleeds through, imperceptible over the drawing's OWN gentler
- * colour transitions but measurable at a HARD one — `tools/design/lobby-label-contrast.browser.mjs`,
- * run at phone width at night, caught pixels under 4.5:1 exactly where a fallback label crosses the
- * shell's own drawn edge (a sharp colour boundary the r1–r3 mechanism's own render matrix never
- * happened to put a label astride). `0.985` leaves the same 8% of visible bleed at under 2%. ⚠ r4 review
- * round declared residuals, named rather than chased to zero: a night-sky star pixel behind "Floor 9"'s
- * glyph and a phone-width fallback descender's own ring — both measured, both left as accepted findings
- * in the tool's `RESIDUALS` list with the reason each is negligible; every OTHER failure the tool's
- * contrast check finds still reds it.
+ * colour, very nearly opaque: what a glyph stands on is then the backing, whatever the drawing puts under
+ * it. The opacity is MEASURED, not argued: `tools/design/lobby-label-contrast.browser.mjs` catches any
+ * value that lets rendered pixels bleed under 4.5:1 at a hard colour boundary the drawing produces (the
+ * shell's own drawn edge, a storey seam). The tool declares any residual it finds by name and reason
+ * rather than exiting non-zero on a finding already understood and accepted; every other failure reds it.
  */
 export const LABEL_BACKING = rgba(INK.wall, 0.985);
 
 /**
- * The thin dark halo standing BESIDE the building (P3: "a thin dark wash-coloured halo against stars") —
- * `text-shadow` layers in the reference's OWN backdrop colour (`building-scene.js`'s `SKY_GROUND`, read
- * rather than copied — opaque, so the stack's density is the blur's own falloff and not also an alpha
- * composite): gold's own measured contrast against the sky (≥ 7.15:1 at every phase but a star pixel)
- * already clears WCAG comfortably, so this halo is not legibility's own load-bearing mechanism the way
- * the r1–r3 mechanism's wall-coloured stack was over the drawing — it exists for the one case that
- * measurement excludes, a bright star pixel sitting directly behind or beside a glyph. ⚠ MEASURED, NOT
- * ARGUED, exactly as the fallback's backing is, and measured TWICE: a single thin layer left isolated
- * glyph pixels over a star under 4.5:1; a second attempt at two radii (1px, 2px) STILL left pixels under
- * 4.5:1, because `tools/design/lobby-label-contrast.browser.mjs` samples a RING 2–3 px out from every
- * glyph pixel (the same ring the fallback's backing padding is sized against), and a 2px-radius halo does
- * not cover a 3px ring sample — the coverage has to reach as far as the ring does, not merely "thin and
- * present". This is `LABEL_HALO_RADII`-shaped: `[1, 1, 2, 2, 3, 3, 4, 4]`, the SAME stack the r1 wall
- * halo used (each radius twice, "two layers of one opacity compose denser than either"), reaching 4px —
- * clear of the ring's own 3px. ⚠ r4 review round declared residuals, named rather than chased to zero: a
- * night-sky star pixel directly behind "Floor 9"'s own glyph (real, negligible — a single pixel) and the
- * phone-width fallback's own descender ring (probable anti-aliasing artefact at the fallback's hard text
- * edge) — both in the tool's `RESIDUALS` list with the reason each is accepted; every OTHER failure the
- * tool's contrast check finds still reds it.
+ * The thin dark halo standing BESIDE the building — `text-shadow` layers in the reference's OWN backdrop
+ * colour (`building-scene.js`'s `SKY_GROUND`, read rather than copied — opaque, so the stack's density is
+ * the blur's own falloff and not also an alpha composite): gold's own contrast against the sky already
+ * clears WCAG comfortably, so this halo is not legibility's own load-bearing mechanism — it exists for
+ * the one case contrast measurement excludes, a bright star pixel sitting directly behind or beside a
+ * glyph. MEASURED, NOT ARGUED: `tools/design/lobby-label-contrast.browser.mjs` samples a ring of pixels
+ * out from every glyph pixel, and the stack's own radii were widened until that ring's own sampling
+ * distance stopped finding an under-threshold pixel behind a star, with any residual declared by name and
+ * reason rather than chased to zero.
  */
 export const LABEL_HALO_BESIDE = [1, 1, 2, 2, 3, 3, 4, 4].map((r) => `0 0 ${r}px ${SKY_GROUND}`).join(', ');
 
 /**
  * The SHELL's own on-screen left edge (the extent's `x = 0`, never a plate's `rect.x`) in real CSS px —
- * negative, or past the surface's own width, once a pan or zoom has carried it there. ⛔ THE r3 MECHANISM
- * MEASURED FROM THE PLATE'S OWN EDGE (`+ PLATE_INSET`), NOT THE SHELL'S — both r3 reviewers' independent
- * MAJOR (the plate stands `PLATE_INSET` IN from the shell, so a label placed by the plate's own edge runs
- * `PLATE_INSET` scene px too far right, onto the shell's own wall, at any zoom past the one point where
- * `PLATE_INSET · zoom` happens to equal the label's own width). This reads the whole building's extent —
- * `camera.bounds.x`, always `0` for the lobby's camera (`building-scene.js`'s `buildingScene()` gives the
- * extent `x: 0`), even while the ride's own `focusOn()` has zoomed the VIEW to one plate: `focusOn()`
- * narrows the view without changing what is framed (`wire/camera.js`'s own docblock: "What is framed does
- * not change"), so `camera.bounds` is always the whole building's, exactly what a label beside the
- * building must clear.
+ * negative, or past the surface's own width, once a pan or zoom has carried it there. This reads the
+ * whole building's extent — `camera.bounds.x`, always `0` for the lobby's camera (`building-scene.js`'s
+ * `buildingScene()` gives the extent `x: 0`), even while the ride's own `focusOn()` has zoomed the VIEW
+ * to one plate: `focusOn()` narrows the view without changing what is framed, so `camera.bounds` is
+ * always the whole building's, exactly what a label beside the building must clear.
  */
 function shellScreenLeft(camera) {
     return (camera.bounds.x - camera.x) * camera.zoom;
 }
 
-/** A plate's own on-screen left edge (`PLATE_INSET` in from the shell) — the fallback's own measure, unchanged from the r1 mechanism. */
+/** A plate's own on-screen left edge (`PLATE_INSET` in from the shell) — the fallback's own measure. */
 function plateScreenLeft(camera) {
     return (camera.bounds.x + PLATE_INSET - camera.x) * camera.zoom;
 }
@@ -204,9 +130,8 @@ function plateScreenLeft(camera) {
 /**
  * Whether there is room to stand a plate's label BESIDE the building (`'left'`) or whether it falls back
  * to standing ON the plate (`'plate'`) — `LABEL_SIDE_MIN_PX`'s own docblock states the threshold and its
- * real reason. Re-evaluated on every call (design review P4): `showLabels()` calls this on every `view()`,
- * so a ride's glide, a wheel, a resize or a drag can all flip the side mid-motion, live, with no rebuild —
- * this is what closes the r3 mechanism's stale-plan defect at its root rather than patching around it.
+ * real reason. Re-evaluated on every call: `showLabels()` calls this on every `view()`, so a ride's
+ * glide, a wheel, a resize or a drag can all flip the side mid-motion, live, with no rebuild.
  */
 function sideFor(camera) {
     return Math.max(0, shellScreenLeft(camera)) >= LABEL_SIDE_MIN_PX ? 'left' : 'plate';
@@ -242,9 +167,8 @@ function leftFor(camera, side, width) {
 /**
  * How many of a plate's label's (up to three) lines are not clipped away: the storey's own on-screen
  * height (`PLATE_H` at the camera's zoom) divided by one line's own height (`LABEL_LINE_PX`), floored at
- * `1` (design review P2: "The name + cue line always shows") — never `0`, so line 1 is never itself
- * clipped by the line-count budget (though `plate-row.js`'s own `max-height` can still clip PART of it on
- * a storey shorter than one line — see that module's own docblock, and FLOOR.md § 4.1's stated bound).
+ * `1`, never `0`, so line 1 (the name and the cab's own cue) is never itself clipped by the line-count
+ * budget — FLOOR.md § 4.1 states the bound this still leaves.
  */
 function linesFor(camera) {
     return Math.max(1, Math.floor((PLATE_H * camera.zoom) / LABEL_LINE_PX));

@@ -204,6 +204,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { scriptedFetch } from '../Support/scripted-fetch.mjs';
+import { shownLabel } from '../Support/shown-label.mjs';
 
 const dir = process.argv[2];
 
@@ -226,33 +227,11 @@ const { showLabels } = await import(pathToFileURL(join(dir, '..', 'lobby', 'labe
 const { between } = await import(pathToFileURL(join(dir, 'camera.js')).href);
 
 /**
- * A camera's plate-label geometry and paint, for the harness's own recording — `label-paint.js`'s
- * `showLabels()`, the SHIPPED module's ONE primitive (card#7343 r4's fix round; this replaces the r1–r3
- * mechanism's own `plateLabel()`, which read four separate `building-scene.js` functions this module no
- * longer exports), called against a stand-in element (a bare `style`/`dataset` pair, the same shape
- * `showLabels()` needs and nothing more) so this probe reads back exactly the custom properties the
- * shipped page would write on `#lobby-floors`, never a re-derivation of its own.
+ * A camera's plate-label geometry and paint, for the harness's own recording — `Support/shown-label.mjs`'s
+ * `shownLabel()`, shared with `plate-row-probe.mjs` (card#7343 r6's fix round, r5 review item 9: the two
+ * probes' own copies had drifted in format), bound to this probe's own `showLabels()` import.
  */
-function plateLabel(camera) {
-    const props = new Map();
-    const el = { style: { setProperty: (k, v) => props.set(k, v) }, dataset: {} };
-
-    showLabels(el, camera);
-
-    return {
-        zoom: camera.zoom,
-        scale: props.has('--label-scale') ? Number(props.get('--label-scale')) : null,
-        side: el.dataset.labelSide ?? null,
-        left: props.get('--label-left') ?? null,
-        width: props.get('--label-width') ?? null,
-        lines: props.has('--label-lines') ? Number(props.get('--label-lines')) : null,
-        ink: props.get('--label-ink') ?? null,
-        textInk: props.get('--label-text-ink') ?? null,
-        backing: props.get('--label-backing') ?? null,
-        halo: props.get('--label-halo') ?? null,
-        align: props.get('--label-align') ?? null,
-    };
-}
+const plateLabel = (camera) => shownLabel(showLabels, camera);
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const furniture = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'furniture-box.js')).href);

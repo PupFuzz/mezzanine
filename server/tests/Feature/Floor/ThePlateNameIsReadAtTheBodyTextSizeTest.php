@@ -8,63 +8,28 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
- * **A plate's label is read at the lobby page's own body text size, whatever the camera does — and it
- * stands BESIDE the building, wherever there is room for it.** `docs/design/FLOOR.md` Appendix B row 16
- * — the operator's rulings on card#7343: F1/r2 (2026-09-27, the name and the status line at the page's
- * body text size) and 2026-09-30 option A (beside the building). card#7343 r4's fix round REPLACED the
- * mechanism this file used to test (r1–r3's `labelPlan()`, computed once per render and staled by every
- * camera move between renders — the root cause both r3 review rounds named independently) with
- * `lobby/label-paint.js`'s `showLabels()`, the ONE function that ever writes a plate's label geometry or
- * paint, called on EVERY camera `lobby/main.js`'s `view()` shows. This file is rewritten to that
- * mechanism rather than deleting its properties (design review P5).
+ * **The lobby's plate labels** — `docs/design/FLOOR.md` § 4.1 is the contract (placement, the three-line
+ * clip, the accessible name, paint); this file holds it against the shipped construction and source
+ * wiring, never restating it.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ WHAT THIS PROVES IS THE ARITHMETIC OVER THE SHIPPED CONSTRUCTION — not a measurement of pixels on a
  * screen (there is no browser on the build host; `tools/design/lobby-label-contrast.browser.mjs` is
  * where pixels are actually measured, run by hand). The runs are `fixtures/fx-plate-names.json`'s —
- * `building_rides`' entry under layouts of 2, 4, 8 and 10 floors, on the harness's default 1280 × 800
- * surface — replayed through the harness's lobby (`lobby/lobby-screen.js` over `wire/camera.js`), which
- * records `showLabels()`'s OWN written values for the camera of every frame and of every act — the
- * camera's zoom, `showLabels()`'s counter-scale, its side, its resolved `left`/`width` in scene/real px,
- * its line budget and its paint — through `fleet-client-probe.mjs`'s `plateLabel()`, which calls
- * `showLabels()` directly (never a copy) against a stand-in element. Each drawn frame's plates are then
- * BUILT by the shipped `lobby/plate-row.js` under `node` with a stand-in `document`
- * (`plate-row-probe.mjs`), and every painted text in each row is read where it sits: its font — the
- * nearest `fontSize` on it or above it in the row, else the page's own `1rem` — times the zoom, times the
- * counter-scale once for each `scale(var(--label-scale))` above it. `plateRow()` itself carries no
- * geometry of its own: every position, size, line-budget and paint property it sets is a `var(--label-…)`
- * reference, so what this file reads off a built row's `style` is STRUCTURAL (does the row reference the
- * right property?) while what it reads off `showLabels()`'s own return is NUMERIC (does that property
- * resolve correctly for this camera?) — two different questions, both asked. The source wiring that
- * joins them — `view()` calling `showLabels()`, and `paint()`/`renderBuilding()` writing NO label
- * geometry — is `Tests\Feature\Lobby\LobbyPageWiringTest`'s.
- *
- * ⛔ THE BODY TEXT SIZE IS THE PAGE's, AND NO FIGURE IS WRITTEN HERE. The lobby page ships no stylesheet
- * and sets no font size of its own, so its body text is at the root's size — `1rem`. The plate label's
- * font is held to exactly that, and the page is held to setting no other.
- *
- * ⭐ THE LINK's ACCESSIBLE NAME IS THE NAME AND THE SUMMARY TOGETHER (the operator's ruling, card#7343,
- * 2026-09-30, option A, opq-1790766555-81d4 — RESTORING the r1–r3 mechanism's own contract, which card#7343
- * r4's fix round had dropped to "the name alone" for a reason its own review round found FALSE: nothing
- * about the flex-row line shape actually required it). `plate-row.js`'s own docblock derives the mechanism,
- * including why `aria-labelledby` (the first attempt) was REFUTED empirically rather than assumed sound —
- * a Chromium accessibility-tree read showed a stray space before the comma, forced by how that attribute
- * joins referenced names, no separator text could remove: the name link's own `textContent` stays the name
- * alone (visually, and for `constructionDefects()`'s own structural check below), but it carries
- * `aria-label`, a literal string this module controls byte-for-byte, replacing the link's text-derived name
- * entirely — and the summary (line 2) is a SECOND link to the SAME `href`, `tabindex="-1"` and
- * `aria-hidden="true"`, clickable without being a second tab stop or a duplicate announcement. The rooms line and the cue stay OUTSIDE both links,
- * read by a screen reader in ordinary document order right after the (one, combined) accessible name,
- * whether or not the line-budget currently shows them — `clip-path` hides a clipped line VISUALLY, never
- * from the accessibility tree.
- *
- * ⛔ NO LABEL COVERS THE BUILDING'S SHELL WHEREVER IT STANDS BESIDE IT, AND NO LABEL OVERLAPS ANOTHER
- * (the operator's own properties, both r3 rounds' MAJOR findings): the shell-edge check compares the
- * built label's own `left`/`width` — read off `showLabels()`, never re-derived from the camera alone —
- * against the SHELL's edge (`PLATE_INSET` from the plate's own, both r3 reviewers' independent MAJOR
- * against the r1–r3 mechanism, which measured from the plate); the overlap check compares
- * `showLabels()`'s own `lines × LABEL_LINE_PX` against the storey's own on-screen height, at every camera
- * a run shows, except the documented one-line floor (`label-paint.js`'s own "name-only bound").
+ * `building_rides`' entry under several floor-count layouts, on the harness's default surface — replayed
+ * through the harness's lobby (`lobby/lobby-screen.js` over `wire/camera.js`), which records
+ * `showLabels()`'s OWN written values for the camera of every frame and of every act through
+ * `fleet-client-probe.mjs`'s `plateLabel()`, which calls `showLabels()` directly (never a copy) against a
+ * stand-in element. Each drawn frame's plates are then BUILT by the shipped `lobby/plate-row.js` under
+ * `node` with a stand-in `document` (`plate-row-probe.mjs`), and every painted text in each row is read
+ * where it sits: its font — the nearest `fontSize` on it or above it in the row, else the page's own body
+ * size — times the zoom, times the counter-scale once for each `scale(var(--label-scale))` above it.
+ * `plateRow()` itself carries no geometry of its own: every position, size, line-budget and paint
+ * property it sets is a `var(--label-…)` reference, so what this file reads off a built row's `style` is
+ * STRUCTURAL (does the row reference the right property?) while what it reads off `showLabels()`'s own
+ * return is NUMERIC (does that property resolve correctly for this camera?) — two different questions,
+ * both asked. The source wiring that joins them — `view()` calling `showLabels()`, and
+ * `paint()`/`renderBuilding()` writing NO label geometry — is `Tests\Feature\Lobby\LobbyPageWiringTest`'s.
  *
  * ⚠ WHAT THIS DOES NOT HOLD: nothing here lays out or paints — there is no browser on the build host —
  * so that a browser actually clips at `max-height`, ellipsizes at the right width, and paints the ink and
@@ -188,6 +153,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         $minPx = $this->sourceConstant(self::PAINT, 'LABEL_SIDE_MIN_PX');
         $linePx = $this->sourceConstant(self::PAINT, 'LABEL_LINE_PX');
         $plateH = $this->sourceConstant(self::SCENE, 'PLATE_H');
+        $darkInk = $this->sourceStringConstant(self::PAINT, 'LABEL_DARK_INK');
 
         // A camera well clear of the fallback threshold (beside), and one deep enough into a zoom that the
         // shell's own edge is off the surface (the fallback) — the SAME two cases `sideFor()`'s own docblock
@@ -226,10 +192,24 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
                 $this->assertSame('transparent', $got['backing'], "[{$what}] beside: backing should be transparent");
                 $this->assertNotSame('none', $got['halo'], "[{$what}] beside: halo should be set");
             } else {
+                // r6 review round (r5 review m5): `assertNotSame(0.0, $got['width'], …)` compares a float
+                // literal against whatever PHP's JSON decode gave `width` — a PHP `0` (int) is never
+                // `!==` a PHP `0.0` (float), so this could not fail regardless of the ACTUAL width. The
+                // fallback width is now hand-computed from the same arithmetic `widthFor()`'s own docblock
+                // states (the room on the plate, clamped to at least `LABEL_SIDE_MIN_PX` and at most the
+                // surface's own width) and held with delta, exactly as the beside branch already is.
+                $plateScreenLeft = ($camera['bounds']['x'] + $plateInset - $camera['x']) * $camera['zoom'];
+                $fallbackWidth = min($camera['surface']['width'], max($minPx, $camera['surface']['width'] - $plateScreenLeft));
+
                 $this->assertEqualsWithDelta(0.0, $got['left'], self::EPSILON, "[{$what}] left");
                 $this->assertSame('left', $got['align'], "[{$what}] align");
-                $this->assertNotSame(0.0, $got['width'], "[{$what}] fallback: width should be a real figure, not 0");
-                $this->assertSame($got['ink'], $got['textInk'], "[{$what}] fallback: ink and textInk should be the same dark colour");
+                $this->assertEqualsWithDelta($fallbackWidth, $got['width'], self::EPSILON, "[{$what}] fallback width");
+                // r6 review round: `$got['ink'] === $got['textInk']` held only that the two properties
+                // AGREE with each other, never that either is actually the dark ink `label-paint.js`
+                // ships — both could drift to some other shared colour and this would still pass. Both are
+                // now held against `LABEL_DARK_INK`, read from source rather than duplicated as a literal.
+                $this->assertSame($darkInk, $got['ink'], "[{$what}] fallback: ink should be the source's own dark ink");
+                $this->assertSame($darkInk, $got['textInk'], "[{$what}] fallback: textInk should be the source's own dark ink");
                 $this->assertNotSame('transparent', $got['backing'], "[{$what}] fallback: backing should be the near-opaque cream, not transparent");
                 $this->assertSame('none', $got['halo'], "[{$what}] fallback: halo should be none — the opaque backing needs no halo under it");
             }
@@ -305,7 +285,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             'the summary link does not open the same floor' => ['summaryLink.href = plate.href;', "summaryLink.href = plate.href + '?x';", 'the same floor'],
             'a status line outside the label — the camera would never counter-scale it' => ["    label.append(line1, line2);", "    label.append(line1);\n    row.append(line2);"],
             'a name that does not ellipsize' => ["    whiteSpace: 'nowrap',\n", '', 'does not ellipsize'],
-            'the summary before the name' => ['    label.append(line1, line2);', '    label.append(line2, line1);', 'aria-label'],
+            'the summary before the name' => ['    label.append(line1, line2);', '    label.append(line2, line1);', 'ordering'],
             'a cue inside the link' => ['        line1.append(cue);', '        link.append(cue);', 'carries no cue'],
             'a label that does not clip whole lines' => ["clipPath: 'inset(-4px -4px 0 -4px)',", '', 'no clip'],
             'a label with no line budget' => ['maxHeight: `calc(var(--label-lines) * ${LABEL_LINE_PX}px)`,'."\n", '', 'no line budget'],
@@ -510,7 +490,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
                 continue;
             }
 
-            // Every visible line is deterministic and whole-line clipped (design review P2): never
+            // Every visible line is deterministic and whole-line clipped (FLOOR.md § 4.1): never
             // wrapped, ellipsized at its own trailing edge rather than clipped mid-glyph.
             $ellipsized = static function (?array $node) use (&$defects, $plate): void {
                 if ($node === null) {
@@ -529,6 +509,12 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
 
             if (($link['tag'] ?? null) !== 'a') {
                 $defects[] = "the plate {$plate['floor']}'s line 1 does not start with the link";
+            } elseif (! array_key_exists('aria-label', $link['attrs'] ?? [])) {
+                // r6 review round (r5 review m4): a swap that puts the summary link first is NOT the same
+                // defect as the name link's own aria-label holding a WRONG value — the summary link never
+                // carries an `aria-label` key at all, so its ABSENCE (rather than a mismatched value) is
+                // the ordering check's own, undiluted signal.
+                $defects[] = "the plate {$plate['floor']}'s line 1 does not carry the name link — ordering";
             } else {
                 $ellipsized($link);
 
@@ -703,6 +689,17 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             "{$name} did not parse from {$file}");
 
         return (float) $m[1];
+    }
+
+    /** A single-quoted string `export const NAME = '…';` read out of a shipped module's source. */
+    private function sourceStringConstant(string $file, string $name, ?string $dir = null): string
+    {
+        $source = (string) file_get_contents(($dir === null ? $this->moduleDir() : $dir).'/'.$file);
+
+        $this->assertSame(1, preg_match('/export const '.preg_quote($name, '/')." = '([^']*)';/", $source, $m),
+            "{$name} did not parse from {$file}");
+
+        return $m[1];
     }
 
     /** Which part of the plate a text is — the name, the summary, the rooms, or the cab's word. */

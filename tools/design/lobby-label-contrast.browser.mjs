@@ -1,10 +1,8 @@
 #!/usr/bin/env node
-// THE LOBBY's PLATE-LABEL CONTRAST, COVERAGE, OVERLAP AND LINE INTEGRITY, MEASURED ON RENDERED PIXELS —
-// card#7343 r4's fix round (the operator's ruling 2026-09-30, option A: the labels move BESIDE the
-// building), rebuilt against `lobby/label-paint.js`'s `showLabels()`, the ONE primitive that writes a
-// plate's label geometry and paint (design review, replacing the r1–r3 mechanism this tool used to
-// measure). Node, no dependencies, no network beyond 127.0.0.1 — but a real browser, because what a
-// glyph stands on, whether a label's own box reaches the building's, whether two labels' boxes reach
+// THE LOBBY's PLATE-LABEL CONTRAST, COVERAGE, OVERLAP AND LINE INTEGRITY, MEASURED ON RENDERED PIXELS.
+// The contract this holds is `docs/design/FLOOR.md` § 4.1's; this header states only what this tool
+// checks and how. Node, no dependencies, no network beyond 127.0.0.1 — but a real browser, because what
+// a glyph stands on, whether a label's own box reaches the building's, whether two labels' boxes reach
 // each other, and whether a line is shown WHOLE or sliced mid-glyph are each a composition only a
 // renderer produces.
 //
@@ -12,46 +10,39 @@
 //   node tools/design/lobby-label-contrast.browser.mjs --selftest   # …and see each check red on its own planted defect
 //   node tools/design/lobby-label-contrast.browser.mjs --chrome <path>   # or $CHROME
 //
-// ⛔ THE PAGE IS NOT THE SERVED ONE, BUT ITS LAYOUT-RELEVANT SHAPE IS (design review, M6 — the r1–r3
-// tool's own runs used the VIEWPORT size as the drawing surface's size, which is not what a browser
-// ever gives `#lobby-building`): the served page (`dashboard.blade.php`) ships NO stylesheet, so the
-// ONLY thing narrowing `#lobby-building`'s width below the viewport's is the BROWSER'S OWN DEFAULT
-// `<body>` margin — verified empirically here (Chromium's UA stylesheet: 8px, all four sides, so 16px
-// off the width). This harness's page keeps that default (never `body { margin: 0 }`) and nests the
-// drawing exactly as the served page does — `<body><main><section><div id="lobby-building">` — so the
-// surface it measures is the ACTUAL rendered `clientWidth`/`clientHeight` a real browser gives that
-// element at a given viewport, never a formula applied in this file. `SURFACE_H` (`building-scene.js`,
-// `70vh`) accounts for the height half; nothing here re-states either number.
+// ⛔ THE PAGE IS NOT THE SERVED ONE, BUT ITS LAYOUT-RELEVANT SHAPE IS: the served page ships NO
+// stylesheet, so the ONLY thing narrowing `#lobby-building`'s width below the viewport's is the
+// BROWSER'S OWN DEFAULT `<body>` margin. This harness's page keeps that default (never `body { margin:
+// 0 }`) and nests the drawing exactly as the served page does, so the surface it measures is the ACTUAL
+// rendered `clientWidth`/`clientHeight` a real browser gives that element at a given viewport, never a
+// formula applied in this file.
 //
 // ⛔ WHAT IS RENDERED — every viewport and framing this file judges, so this sentence is never a claim
-// wider than `RUNS` below actually covers: at each of five VIEWPORT sizes (800×800, 1280×800, 1440×900,
-// 1920×1080, 2560×1080 — chosen so the SURFACE they produce is 784×560, 1264×560, 1424×630, 1904×756 and
-// 2544×756, design review P5's own examples), 1, 3, 10, 12 and 16 floors at fit, day; a 4-room plate and
-// a long summary, each on the cab's own floor, at 1264×560; a wheel-between-renders case (showLabels()
-// called again after a wheel, with NO row rebuilt) at 1264×560; and, from the r3-round's own matrix
-// still worth keeping (every sky phase, the ride's own zoomed-to-one-plate aspect, and a phone-width
-// fallback): 3 and 10 floors at every phase at 1264×560, 10 floors at 1904×756, 10 floors zoomed to one
-// plate at 1264×560, and 3 floors at phone width (359×568, the SAME viewport-minus-16/0.7-height
-// formula applied to a 375×812 phone viewport).
+// wider than `RUNS` below actually covers: several viewport sizes, several floor counts at fit, every sky
+// phase, a 4-room plate, a long summary, a wheel-between-renders case (`showLabels()` called again with
+// NO row rebuilt), zoomed to one plate, and phone width.
 //
 // ⛔ WHAT IS MEASURED, PER RUN. The shipped `server/public/js/lobby/building-scene.js`,
 // `building-paint.js`, `label-paint.js` and `plate-row.js` draw the building and stand every plate's
 // label exactly as `lobby/main.js` does — `plateRow()` once, `showLabels()` on the SAME camera every
 // `view()` would show it on. Five things are read back:
 //   **Contrast** — each render is captured twice, as drawn and with every label span's text made
-//   transparent (its halo and backing left as they are). A pixel that differs between the two is a GLYPH
-//   pixel, and the second capture is what that glyph stands on; the contrast of the span's own text
-//   colour against that pixel, and against a RING of pixels 2 and 3 px out from it in every direction (in
-//   the SAME bare capture), is WCAG 2.1's ratio (SC 1.4.3), held to 4.5:1.
+//   transparent and every link's own decoration killed in BOTH captures (so an underline is never counted
+//   as a glyph). A pixel that differs between the two is a GLYPH pixel, and the second capture is what
+//   that glyph stands on; the contrast of the span's own text colour against that pixel, and against a
+//   RING of pixels out from it (in the SAME bare capture, clipped to the drawing surface), is WCAG 2.1's
+//   ratio (SC 1.4.3). Any residual is declared by the line it sits on (the span's own text and a Y-BAND),
+//   by name and reason, with its own cap — never a whole run's own cap, which a new defect elsewhere in
+//   that run could hide behind.
 //   **Coverage** — every plate's label (its outer box) against the building's own drawn box: the
-//   intersection's area, in real screen px². Must be `0` wherever `side === 'left'` (there was room); the
-//   fallback (`side === 'plate'`) is the operator's own accepted case and is reported, never asserted at 0.
+//   intersection's area, in real screen px². Must be `0` wherever a label stands beside the building; the
+//   fallback is the accepted case and is reported, never asserted at 0.
 //   **Overlap** — every PAIR of plates' label boxes against each other: the intersection's area, which
 //   must be `0` regardless of which side the labels stand on.
-//   **No line sliced (r5's fix round, item 4 — judged from RENDERED PIXELS, not a bounding-rect
-//   heuristic: r4 review m4, "checker footprint ≠ painted")** — every glyph-diff pixel `MEASURE` finds
-//   (the SAME diff pass contrast already runs) must sit at or above its own label's `clip-path` bottom
-//   edge; any that don't are pixels the clip should never have let paint show.
+//   **No line sliced** — judged from RENDERED PIXELS, never a bounding-rect heuristic: every glyph-diff
+//   pixel `MEASURE` finds (the SAME diff pass contrast already runs) must sit at or above its own label's
+//   `clip-path` bottom edge, excluding one explained by falling inside some OTHER label's own legitimate
+//   box; any that aren't are pixels the clip should never have let paint show.
 //   **The cue stays reachable** — on the cab's own plate, the cue's own rect lies wholly inside the
 //   label's unclipped (fully-shown) region, so *the elevator is here* is never itself the line a short
 //   storey slices.
@@ -59,13 +50,23 @@
 // ⛔ NO BROWSER IS A FAILURE, NEVER A SKIP, AND IT IS NOT WIRED IN CI (a stock runner carries no
 // Chromium — `.github/workflows/design-doc-verifiers.yml` names both browser gates and why). Run by hand.
 //
-// ⛔ THE SELFTEST PLANTS ONE DEFECT PER CHECK AND REQUIRES EACH TO RED ON ITS OWN, FOR ITS OWN REASON (r5's
-// fix round, item 4 — closing two gaps r4 review found: the slice check reded only via overlap, and the
-// cue-reachable check had no plant at all): no backing at all (contrast); the beside-the-building gap
-// inverted, coverage; the per-storey line budget ignored (overlap — which, at floor counts tall enough
-// for this round to exist, ALSO slices as a documented side effect, so it is not this round's own proof of
-// the slice check); the label's own clip-path bled on the bottom too (sliced lines, alone — never via
-// overlap); and the side threshold shrunk below the cue's own measured width (cue-reachable).
+// ⛔ THE SELFTEST PLANTS ONE DEFECT PER CHECK AND REQUIRES EACH TO RED ON ITS OWN, FOR ITS OWN REASON: no
+// backing at all (contrast); the beside-the-building gap inverted, into the building (coverage); the
+// per-storey line budget ignored (overlap — the same scenario this plant forces also overlaps every label
+// with its neighbours, which masks the slice check's own signal there by the declared blind spot below,
+// so this plant is not this check's own proof); the label's own clip-path bled on the bottom too (sliced
+// lines, alone — never via overlap); the side threshold shrunk below the cue's own measured width
+// (cue-reachable); and the fallback backing dimmed well past its own contrast floor, on a DIFFERENT line
+// than any declared residual (phone residual — proving a new defect still reds despite an accepted one).
+//
+// ⚠ DECLARED BLIND SPOT, LEFT — NOT CHEAP TO CLOSE: the slice check's own neighbour-exclusion (`MEASURE`'s
+// per-pixel loop, "explainedElsewhere") was added to stop a genuine false positive — a glyph pixel that is
+// really a NEIGHBOUR's own correctly-clipped content, wrongly attributed to THIS label's bleed (found
+// empirically) — by excluding any candidate pixel that falls inside some OTHER label's own box. That
+// exclusion cannot currently tell "the neighbour's own real content" from "THIS label's bleed that happens
+// to land inside the neighbour's box", so a run where labels overlap heavily can mask real slicing at the
+// same time it overlaps — proper per-line attribution (which of the neighbour's own, budget-limited lines
+// could legitimately paint at that exact y) would close it, and is future work.
 
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -97,6 +98,11 @@ const PLANTS = {
   // pushing it past the label's own left edge — reachable ONLY by this specific narrow-width shape, never
   // by `LABEL_GAP_PX` or the line budget, so it cannot trip coverage, overlap or the slice check.
   cueWidth: ['export const LABEL_SIDE_MIN_PX = 240;', 'export const LABEL_SIDE_MIN_PX = 50;'],
+  // r6's fix round (R3): a NEW under-threshold pixel on the phone run, on a DIFFERENT span than the
+  // declared residual's (the name line, never the rooms line) — proving the residual's span+y-band key
+  // actually discriminates: this defect must still red despite the phone run ALSO carrying its accepted
+  // residual, because `residualSplit()` only ever explains samples matching the declared span AND band.
+  phoneResidual: ['export const LABEL_BACKING = rgba(INK.wall, 0.985);', 'export const LABEL_BACKING = rgba(INK.wall, 0.4);'],
 };
 
 function findChrome() {
@@ -283,12 +289,20 @@ function labeledLines(boxes) {
   return out;
 }
 
-// ⛔ THE LINK's OWN UNDERLINE IS NOT THE GLYPH: `<a>` draws `text-decoration: underline` in ITS OWN
-// colour (`text-decoration-color` defaults to that element's `currentcolor`, never a descendant's), so
-// hiding a span's fill alone leaves a solid link-coloured line sitting right under the text.
+// ⛔ r6's fix round (r5 review MAJOR 2): DECORATION IS NEVER PART OF THE DIFF, IN EITHER CAPTURE. An
+// `<a>` draws `text-decoration: underline` in its OWN colour, so if the DRAWN capture shows it and the
+// BARE one does not, the diff at every underline pixel is large regardless of any real glyph — the tool
+// then measures the LINK's text colour against whatever sits under the UNDERLINE, which is a different
+// question than SC 1.4.3 asks. Applied ONCE, before either capture, so both see the SAME (undecorated)
+// rendering and an underline can never register as a glyph-diff pixel.
+const KILL_DECORATION = `(() => { const s = document.createElement('style'); s.id = '__kill_decoration';
+  s.textContent = 'li[data-floor] a{text-decoration:none!important}';
+  document.head.append(s); return true; })()`;
+
+// ⛔ THE LINK's OWN FILL, HIDDEN FOR THE BARE CAPTURE — what a glyph stands on, decoration already
+// killed by `KILL_DECORATION` above in both captures alike.
 const HIDE_TEXT = `(() => { const s = document.createElement('style'); s.id = '__hide';
-  s.textContent = 'li[data-floor] a, li[data-floor] span, li[data-floor] div{color:transparent!important;-webkit-text-fill-color:transparent!important}'
-    + 'li[data-floor] a{text-decoration:none!important}';
+  s.textContent = 'li[data-floor] a, li[data-floor] span, li[data-floor] div{color:transparent!important;-webkit-text-fill-color:transparent!important}';
   document.head.append(s); return true; })()`;
 
 /** The area, in px², two rects share — `0` where they do not overlap at all. */
@@ -339,7 +353,7 @@ const MEASURE = (a, b, spans, surface, labels) => `(async () => {
   for (const r of [2, 3]) for (let a = 0; a < 8; a += 1) RING.push([Math.round(r * Math.cos(a * Math.PI / 4)), Math.round(r * Math.sin(a * Math.PI / 4))]);
   const surf = ${JSON.stringify(surface)};
   const allLabels = ${JSON.stringify(labels)};
-  const ratios = []; const worst = []; let slicedPixels = 0; const slicedFloors = new Set(); const sliceSamples = [];
+  const ratios = []; const worst = []; const underSamples = []; let slicedPixels = 0; const slicedFloors = new Set(); const sliceSamples = [];
   for (const span of ${JSON.stringify(spans)}) {
     const [r, g, b] = span.color.match(/\\d+(\\.\\d+)?/g).map(Number);
     const fg = L(r, g, b);
@@ -394,14 +408,20 @@ const MEASURE = (a, b, spans, surface, labels) => `(async () => {
           }
           const ratio = (Math.max(fg, worstBg) + 0.05) / (Math.min(fg, worstBg) + 0.05);
           ratios.push(ratio);
-          if (ratio < ${MIN_RATIO} && worst.length < 3) worst.push({ text: span.text, x, y, ratio: +ratio.toFixed(2) });
+          if (ratio < ${MIN_RATIO}) {
+            // r6's fix round (R3): every under-threshold pixel's OWN span text and y — never just a
+            // whole-run count — is what a declared residual is keyed against, so a residual can name
+            // "this line, this y-band" and nothing wider silently hides behind its cap.
+            underSamples.push({ text: span.text, y });
+            if (worst.length < 3) worst.push({ text: span.text, x, y, ratio: +ratio.toFixed(2) });
+          }
         }
       }
     }
   }
   ratios.sort((p, q) => p - q);
   return { glyphs: ratios.length, min: ratios[0] ?? null, p01: ratios[Math.floor(ratios.length * 0.01)] ?? null,
-    under: ratios.filter((v) => v < ${MIN_RATIO}).length, worst, slicedPixels, slicedFloors: [...slicedFloors], sliceSamples };
+    under: ratios.filter((v) => v < ${MIN_RATIO}).length, underSamples, worst, slicedPixels, slicedFloors: [...slicedFloors], sliceSamples };
 })()`;
 
 /** A viewport (W×H) and the SURFACE it is expected to produce — asserted, never assumed, per run. */
@@ -433,6 +453,7 @@ async function runOverlapScenario(chrome, plant) {
   try {
     const base = `http://127.0.0.1:${server.address().port}/index.html`;
     await b.load(`${base}?floors=14&phase=day&zoom=fit&w=1440&h=900`);
+    await b.evaluate(KILL_DECORATION);
     const surfaceEl = await b.evaluate("(() => { const r = document.getElementById('lobby-building').getBoundingClientRect(); return { w: r.width, h: r.height, l: r.left, t: r.top, r: r.right, b: r.bottom }; })()");
     const boxes = await b.evaluate(BOXES);
     const drawn = await b.shot();
@@ -451,25 +472,59 @@ async function runOverlapScenario(chrome, plant) {
 }
 
 /**
- * ⭐ r5's fix round (item 5): ACCEPTED RESIDUALS, declared by name and reason rather than chased to
- * zero or left to fail the tool's exit code silently. `maxUnder` bounds how many under-4.5:1 glyph
- * pixels the run may carry and still `ok` — any pixel past that bound, or any OTHER run's failure, still
- * reds. Matched by run parameters (never by a live pixel count, which would let a residual silently grow).
+ * ⭐ r5's fix round (item 5), tightened by r6's (R3, r5 review MAJOR 2): ACCEPTED RESIDUALS, declared by
+ * name and reason rather than chased to zero or left to fail the tool's exit code silently. ⚠ r5's own
+ * shape capped the WHOLE RUN's `under` count — a run-keyed cap, which a NEW defect anywhere else in that
+ * SAME run could hide behind unnoticed (the finding that sank the phone run's own gate: 52 measured px
+ * were the summary link's underline, capped at 60, and nothing distinguished "the declared residual grew
+ * a little" from "a real defect landed beside it"). Each residual here is now keyed to the LINE it sits
+ * on — the span's own text plus a Y-BAND — so `judge()` explains each UNDER-THRESHOLD PIXEL individually:
+ * one matching a residual's span/band, within its `cap`, is accepted; anything else — a different span, a
+ * pixel outside the band, or a count past the cap — reds, whatever run it is in. `cap` is the MEASURED
+ * count (R3: "the cap equal to the measured count"), not a round number guessed to leave headroom.
  */
 const RESIDUALS = [
   {
-    what: 'a single night-sky star pixel directly behind "Floor 9"\'s own glyph',
-    reason: 'real (the star IS brighter than the sky around it), negligible: one pixel measured, capped at 3 for run-to-run anti-aliasing jitter',
+    what: 'a night-sky star pixel directly behind "Floor 9"\'s own glyph',
+    reason: 'real (the star IS brighter than the sky around it), negligible — confined to this one glyph',
     match: (run) => run.floors === 10 && run.phase === 'night' && run.w === 1440 && run.h === 900,
-    maxUnder: 3,
+    text: 'Floor 9',
+    yBand: [496, 499],
+    cap: 3,
   },
   {
-    what: 'the phone-width fallback\'s own descender ring',
-    reason: 'anti-aliasing at the fallback\'s hard text edge across several glyphs with descenders (g/y/p), not a backing/ink defect — 52 measured, capped at 60 for jitter',
+    what: 'the phone-width fallback\'s own rooms-line descender ring',
+    reason: 'anti-aliasing at a descender\'s own hard edge ("reported" in the rooms line) once the summary '
+      + 'link\'s underline is no longer counted as a glyph pixel (R2 dropped it; R3 makes both captures '
+      + 'agree on decoration) — not a backing/ink defect',
     match: (run) => run.w === 375 && run.h === 812,
-    maxUnder: 60,
+    text: '— rooms: alpha (office), beta (office — no seats reported for this room)',
+    yBand: [263, 265],
+    cap: 3,
   },
 ];
+
+/**
+ * Every under-threshold sample this run produced, split into what a declared residual explains and what
+ * it does not — the residual's own `match`, `text` and `yBand` must ALL agree, never the run alone.
+ *
+ * @return {{ explained: number, unexplained: Array<{text: string, y: number}>, declared: ?object }}
+ */
+function residualSplit(run, underSamples) {
+  const declared = RESIDUALS.find((res) => res.match(run));
+  const explained = [];
+  const unexplained = [];
+
+  for (const s of underSamples) {
+    if (declared && s.text === declared.text && s.y >= declared.yBand[0] && s.y <= declared.yBand[1]) {
+      explained.push(s);
+    } else {
+      unexplained.push(s);
+    }
+  }
+
+  return { explained: explained.length, unexplained, declared: declared ?? null };
+}
 
 /** Every run, measured; each result carries `ok`. */
 async function judge(chrome, plant) {
@@ -482,6 +537,7 @@ async function judge(chrome, plant) {
         const base = `http://127.0.0.1:${server.address().port}/index.html`;
         const q = `floors=${run.floors}&phase=${run.phase}&zoom=${run.zoom}&w=${run.w}&h=${run.h}&rooms4=${run.rooms4 || 0}&longsum=${run.longsum || 0}&cab=0`;
         await b.load(`${base}?${q}`);
+        await b.evaluate(KILL_DECORATION);
         const surfaceEl = await b.evaluate("(() => { const r = document.getElementById('lobby-building').getBoundingClientRect(); return { w: r.width, h: r.height, l: r.left, t: r.top, r: r.right, b: r.bottom }; })()");
         const surface = { w: surfaceEl.w, h: surfaceEl.h };
         const boxes = await b.evaluate(BOXES);
@@ -502,12 +558,12 @@ async function judge(chrome, plant) {
         const population = run.zoom === 'plate' ? 1 : run.floors;
         const measured = spans.length >= population * 2 && m.glyphs > 200 * population && boxes.building !== null;
         const side = boxes.side;
-        const residual = RESIDUALS.find((res) => res.match(run));
-        const acceptedUnder = residual ? residual.maxUnder : 0;
+        const { explained, unexplained, declared } = residualSplit(run, m.underSamples);
+        const residualOk = declared === null ? unexplained.length === 0 : unexplained.length === 0 && explained <= declared.cap;
         results.push({
           ...run, surface, side, spans: spans.length, ...m, covered: +covered.toFixed(2), overlap: +overlap.toFixed(2),
-          unreachable: unreachable.length, measured, residual: residual ? residual.what : null,
-          ok: measured && m.under <= acceptedUnder && overlap === 0 && m.slicedPixels === 0 && unreachable.length === 0 && (side !== 'left' || covered === 0),
+          unreachable: unreachable.length, measured, residual: declared ? declared.what : null, residualExplained: explained, residualUnexplained: unexplained,
+          ok: measured && residualOk && overlap === 0 && m.slicedPixels === 0 && unreachable.length === 0 && (side !== 'left' || covered === 0),
         });
       } finally {
         b.close();
@@ -524,7 +580,8 @@ const report = (r) => `${r.ok ? 'PASS' : 'FAIL'}  ${String(r.floors).padStart(2)
   + `covered ${r.covered}px², overlap ${r.overlap}px², sliced-px ${r.slicedPixels}, cue-unreachable ${r.unreachable}`
   + `${r.measured ? '' : '  — NOT MEASURED (too few spans, glyph pixels, or no building box)'}${r.worst.length ? `  e.g. ${JSON.stringify(r.worst)}` : ''}`
   + `${r.sliceSamples.length ? `  sliced e.g. ${JSON.stringify(r.sliceSamples)}` : ''}`
-  + `${r.residual ? `  ACCEPTED RESIDUAL: ${r.residual}` : ''}`;
+  + `${r.residual ? `  ACCEPTED RESIDUAL (${r.residualExplained}): ${r.residual}` : ''}`
+  + `${r.residualUnexplained?.length ? `  UNEXPLAINED under-threshold: ${JSON.stringify(r.residualUnexplained.slice(0, 5))}` : ''}`;
 
 const chrome = findChrome();
 if (chrome === null) {
@@ -539,7 +596,12 @@ for (const r of shipped) console.log(report(r));
 let failed = shipped.some((r) => !r.ok);
 
 if (argOf('--selftest') !== null || process.argv.includes('--selftest')) {
-  const judgePlants = { contrast: ['plate-row.js', PLANTS.contrast], coverage: ['label-paint.js', PLANTS.coverage], cueWidth: ['label-paint.js', PLANTS.cueWidth] };
+  const judgePlants = {
+    contrast: ['plate-row.js', PLANTS.contrast],
+    coverage: ['label-paint.js', PLANTS.coverage],
+    cueWidth: ['label-paint.js', PLANTS.cueWidth],
+    phoneResidual: ['label-paint.js', PLANTS.phoneResidual],
+  };
 
   for (const [check, [file, [anchor, replacement]]] of Object.entries(judgePlants)) {
     const planted = await judge(chrome, { file: ['lobby', file], anchor, replacement });
@@ -548,16 +610,21 @@ if (argOf('--selftest') !== null || process.argv.includes('--selftest')) {
 
     const bit = check === 'contrast' ? planted.every((r) => r.measured) && planted.some((r) => r.under > 0)
       : check === 'coverage' ? planted.some((r) => r.side === 'left' && r.covered > 0)
-      : planted.some((r) => r.unreachable > 0); // cueWidth
+      : check === 'cueWidth' ? planted.some((r) => r.unreachable > 0)
+      // phoneResidual (R3): the phone run specifically must carry an UNEXPLAINED under-threshold sample
+      // (never just "more under-threshold pixels", which the declared residual's own cap could still
+      // absorb if this check were run-keyed rather than span+band-keyed) and must not be `ok`.
+      : planted.some((r) => r.w === 375 && r.h === 812 && r.residualUnexplained.length > 0 && !r.ok);
 
     console.log(bit ? `CONTROL CAUGHT (${check})` : `CONTROL NOT CAUGHT (${check}) — the check cannot tell a correct render from this planted one`);
     failed = failed || !bit;
   }
 
-  // r5's fix round (item 4): ONE defect per check, each proven to bite ALONE. The overlap plant (a
-  // forced 4-line budget) ALSO slices as a side effect — documented, not hidden — but the slice check's
-  // OWN control (`PLANTS.slice`, a widened bottom clip-path bleed) must bite the slice signal with the
-  // overlap signal still clean, or it has proven nothing this check could not already claim via overlap.
+  // r5's fix round (item 4): ONE defect per check, each proven to bite ALONE. ⚠ r6 review round: the
+  // overlap plant does NOT also slice (measured 0 sliced-px — the header's own declared blind spot is
+  // why: heavy overlap masks slicing via the neighbour-exclusion, it does not cause it), so the slice
+  // check's OWN control (`PLANTS.slice`, a widened bottom clip-path bleed) is this check's ONLY proof,
+  // not a second proof beside an overlap side effect that was never real.
   console.log('── CONTROL (overlap): must FAIL');
   const shipped14 = await runOverlapScenario(chrome, null);
   const overlapPlanted = await runOverlapScenario(chrome, { file: ['lobby', 'label-paint.js'], anchor: PLANTS.overlap[0], replacement: PLANTS.overlap[1] });

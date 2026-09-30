@@ -116,27 +116,12 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   a drag that ends over a desk or a floor plate is never a click on it. AT-D3-21's building half is
   `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`, the shared wiring is driven
   under `node` by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`, and the plates' text size is
-  held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`. A plate's label geometry and
-  paint are now decided by one function, `lobby/label-paint.js`'s `showLabels()`, called every time the
-  camera moves rather than only when the fleet's own render happens, so a wheel, a drag or an elevator
-  glide can never leave a label planned for a camera the viewer has already left; the test holds that a
-  beside label never reaches the building's own outer wall — a geometric guarantee CI can check with no
-  browser — and that `showLabels()`'s own written values match a hand-computed camera with no render
-  built at all. The link's accessible name is the plate's name AND its summary together (the operator's
-  ruling, 2026-09-30), e.g. "Floor 2, 4 seats · 3 live": an `aria-label` this module writes byte-for-byte,
-  and the summary is a second link to the same floor, out of the tab order and never announced twice, so
-  clicking it opens the floor exactly as clicking the name does. Every line of a label — the name, the summary, the rooms —
-  now shares one shape, a shrinking row whose backing hugs its own text rather than spanning the label's
-  full width, so a short line's backing never crosses the windows, the shaft or the sky behind it.
-  `tools/design/lobby-label-contrast.browser.mjs` renders at the page's own served surface sizes now (the
-  viewport less the browser's own default margin, at the drawing's own height), measures — from rendered
-  pixels, never a bounding-box heuristic — how much of the building a label's box covers (asserted zero
-  wherever a label stands beside it), how much any two labels' boxes overlap, that no visible line is cut
-  through its own glyphs, and that the elevator's cue never sits unreachable, alongside the contrast it
-  already measured, over floor counts from 1 to 16, five window sizes, every sky phase, a wheel between
-  two renders, zoomed to one plate and at phone width. It exits clean on the shipped code, with two
-  declared residuals (a single night-sky star pixel and the phone-width fallback's own anti-aliased
-  descender ring) rather than chasing every last sub-threshold pixel to zero.
+  held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`. A wheel, a drag or an elevator
+  glide can never leave a label planned for a camera the viewer has already left. A floor's link now
+  announces its name with its seat counts together, e.g. "Floor 2, 4 seats · 3 live"; clicking the seat
+  counts also opens that floor, the same as clicking the name. Contrast, placement and overlap are held on
+  rendered pixels by `tools/design/lobby-label-contrast.browser.mjs`, run by hand — see FLOOR.md § 4.1 for
+  the full contract.
 
 ## [0.6.0] — 2026-09-29
 

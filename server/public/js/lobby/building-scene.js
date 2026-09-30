@@ -7,11 +7,10 @@
  * ⛔ GEOMETRY AND NOTHING ELSE. A plate here is its key and a rect; every fact the plate carries — its
  * name, its rooms, its summary, its link — is `building-model.js`'s `plates()`, which this module reads
  * for the stack position alone (`level`) and never re-derives. So the cross-section still reads no field
- * the table does not and recounts nothing (row 16; AT-D3-15 stays at row 9). ⛔ NO LABEL KNOWLEDGE EITHER,
- * since card#7343 r4's fix round: a plate's label — its font, its counter-scale, its side, its width, its
- * line budget and its paint — is `lobby/label-paint.js`'s, a sibling module in `building-paint.js`'s own
- * shape (a DOM primitive over this module's geometry), not this one's; this module exports `PLATE_INSET`
- * and `INK` for it to read rather than holding a second copy of either.
+ * the table does not and recounts nothing (row 16; AT-D3-15 stays at row 9). ⛔ NO LABEL KNOWLEDGE EITHER:
+ * a plate's label — its font, its counter-scale, its side, its width, its line budget and its paint — is
+ * `lobby/label-paint.js`'s (FLOOR.md § 4.1 states the contract), not this one's; this module exports
+ * `PLATE_INSET` and `INK` for it to read rather than holding a second copy of either.
  *
  * ⛔ THE STACK RUNS FIRST-AT-THE-TOP, because `level` is an index into § 4.1's ascending order and the
  * ratified reference draws the first of it at the top (`building-model.js`'s `plates()` says why that is
@@ -101,11 +100,10 @@ export function buildingScene(plates) {
 
 /**
  * The storey's parts, in scene px from a plate's top-left — the drawing's, carrying no fact. The shaft
- * stands at the plate's RIGHT; since card#7343 r4's fix round the plate's label stands BESIDE the building
- * (`lobby/label-paint.js`) wherever there is room, so it no longer routinely crosses the shaft or the cab
- * the way the r1-r3 on-plate placement did — that placement survives only as the fallback, still capable
- * of landing over the shaft or the cab, and still legible there because of the backing `label-paint.js`
- * paints each visible span on.
+ * stands at the plate's RIGHT; the plate's label stands beside the building wherever there is room
+ * (`lobby/label-paint.js`, FLOOR.md § 4.1), falling back to standing on the plate — where it can land
+ * over the shaft or the cab, and stays legible there because of the backing `label-paint.js` paints each
+ * visible span on.
  */
 const STOREY = {
     skirting: 836,

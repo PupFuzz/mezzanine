@@ -33,6 +33,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { shownLabel } from '../Support/shown-label.mjs';
 
 const dir = process.argv[2];
 
@@ -92,37 +93,12 @@ const { plateRow } = await import(pathToFileURL(join(dir, '..', 'lobby', 'plate-
 const { showLabels } = await import(pathToFileURL(join(dir, '..', 'lobby', 'label-paint.js')).href);
 const payload = JSON.parse(readFileSync(0, 'utf8'));
 
-/**
- * `showLabels()` run against a stand-in `#lobby-floors` — the custom properties it writes, read back as
- * plain values (never a `var()` string: this IS the write, not a reference to it).
- */
-function shownLabel(camera) {
-    const props = new Map();
-    const floorsEl = { style: { setProperty: (k, v) => props.set(k, v) }, dataset: {} };
-
-    showLabels(floorsEl, camera);
-
-    return {
-        zoom: camera.zoom,
-        scale: props.has('--label-scale') ? Number(props.get('--label-scale')) : null,
-        side: floorsEl.dataset.labelSide ?? null,
-        left: props.has('--label-left') ? Number.parseFloat(props.get('--label-left')) : null,
-        width: props.has('--label-width') ? Number.parseFloat(props.get('--label-width')) : null,
-        lines: props.has('--label-lines') ? Number(props.get('--label-lines')) : null,
-        ink: props.get('--label-ink') ?? null,
-        textInk: props.get('--label-text-ink') ?? null,
-        backing: props.get('--label-backing') ?? null,
-        halo: props.get('--label-halo') ?? null,
-        align: props.get('--label-align') ?? null,
-    };
-}
-
 if (payload.show_labels !== undefined) {
-    process.stdout.write(JSON.stringify({ show_labels: payload.show_labels.map(shownLabel) }));
+    process.stdout.write(JSON.stringify({ show_labels: payload.show_labels.map((camera) => shownLabel(showLabels, camera)) }));
 } else {
     process.stdout.write(JSON.stringify({
         frames: payload.frames.map(({ building, scene, camera }) => ({
-            label: shownLabel(camera),
+            label: shownLabel(showLabels, camera),
             rows: building.plates.map((plate) => serialise(
                 plateRow(doc, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at),
             )),
