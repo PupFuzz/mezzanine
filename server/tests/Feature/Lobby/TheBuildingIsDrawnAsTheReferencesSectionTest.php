@@ -71,6 +71,11 @@ class TheBuildingIsDrawnAsTheReferencesSectionTest extends TestCase
             'a ground lobby outside the building\'s extent' => ['w: PLATE_W + PLATE_INSET * 2, h: ROOF_H + PLATE_H * plates.length + GROUND_H }', 'w: PLATE_W + PLATE_INSET * 2, h: ROOF_H + PLATE_H * plates.length }', 'the ground lobby'],
             // A plate off the building's left edge: `labelMax()` would read the wrong left edge.
             'a plate off the building\'s left edge' => ['rect: { x: PLATE_INSET, y: ROOF_H + plate.level * PLATE_H,', 'rect: { x: PLATE_INSET + 40, y: ROOF_H + plate.level * PLATE_H,', 'left edge'],
+            // The ground lobby's shaft placed from the extent's left edge, not the plates' (design review
+            // r3, row 16 F-A): it jogs `PLATE_INSET` off the storeys' shaft.
+            'the ground lobby\'s shaft off the storeys\' column' => ['...ground(extent, scene.plates[0].rect.x),', '...ground(extent, extent.x),', 'one column'],
+            // The cab drawn off the doors' centre.
+            'the cab off the shaft\'s column' => ['const CAB_SHAFT = shaftAt(0);', 'const CAB_SHAFT = shaftAt(24);', 'off the doors\' column centre'],
             // textLength/lengthAdjust reintroduced on the roof sign (design review r2, row 16 F4):
             // distorts an unshipped Quicksand's fallback glyphs — r1's own defect (F3), returning.
             'textLength reintroduced on the roof sign' => [
@@ -151,13 +156,98 @@ class TheBuildingIsDrawnAsTheReferencesSectionTest extends TestCase
             }
         }
 
+        array_push($defects, ...$this->shaftDefects($dir));
+
         return array_values(array_unique($defects));
+    }
+
+    /**
+     * Design review r3 F-A: the elevator is ONE shaft, top to bottom — every storey's shaft, the ground
+     * lobby's, and the cab riding in it stand in one column. Every rect filled with the shaft's colour
+     * shares one x and one width, every rect filled with the doors' colour likewise, every door's centre
+     * line stands on those doors' centre, and the cab — `CAB` under `cabStyle()`'s translation, at every
+     * plate — is centred on the doors too. The colours are read from `INK` in the source, never restated.
+     *
+     * @return list<string>
+     */
+    private function shaftDefects(?string $dir = null): array
+    {
+        $source = (string) file_get_contents(($dir ?? $this->moduleDir()).'/building-scene.js');
+        $ink = [];
+
+        foreach (['shaft', 'door', 'doorEdge'] as $name) {
+            $this->assertSame(1, preg_match("/^    {$name}: '(#[0-9a-f]{6})',$/m", $source, $m), "INK.{$name} did not parse");
+            $ink[$name] = $m[1];
+        }
+
+        $defects = [];
+
+        foreach (self::HEIGHTS as $n) {
+            $plates = $this->plates($n, 'a', '1 working');
+            $cabs = array_map(static fn (int $level): array => ['plates' => $plates, 'level' => $level, 'ms' => 0], range(0, $n - 1));
+            $out = $this->probe(['buildings' => [$plates], 'cabs' => $cabs], $dir, self::PROBE);
+            $shafts = $doors = $lines = [];
+
+            foreach ($out['buildings'][0]['art']['shapes'] as $shape) {
+                $a = $shape['attrs'];
+
+                if ($shape['el'] === 'rect' && ($a['fill'] ?? null) === $ink['shaft']) {
+                    $shafts[] = [$a['x'], $a['width']];
+                } elseif ($shape['el'] === 'rect' && ($a['fill'] ?? null) === $ink['door']) {
+                    $doors[] = [$a['x'], $a['width']];
+                } elseif ($shape['el'] === 'line' && ($a['stroke'] ?? null) === $ink['doorEdge']) {
+                    $lines[] = $a['x1'];
+                }
+            }
+
+            // One per storey and one in the ground lobby — fewer, and "one column" would be vacuous.
+            if (count($shafts) !== $n + 1 || count($doors) !== $n + 1) {
+                $defects[] = sprintf('%d floors draw %d shafts and %d elevator doors, not one each per storey and the ground lobby', $n, count($shafts), count($doors));
+
+                continue;
+            }
+
+            if (count(array_unique(array_map('json_encode', $shafts))) !== 1) {
+                $defects[] = "the elevator shaft does not stand in one column ({$n} floors): ".json_encode($shafts);
+            }
+
+            if (count(array_unique(array_map('json_encode', $doors))) !== 1) {
+                $defects[] = "the elevator doors do not stand in one column ({$n} floors): ".json_encode($doors);
+            }
+
+            $centre = $doors[0][0] + $doors[0][1] / 2;
+
+            foreach ($lines as $x) {
+                if (abs($x - $centre) > 1e-9) {
+                    $defects[] = "an elevator door's centre line stands at {$x}, off the doors' column centre {$centre} ({$n} floors)";
+                }
+            }
+
+            $frame = null;
+
+            foreach ($out['cab'] as $shape) {
+                if ($shape['el'] === 'rect' && ($shape['attrs']['fill'] ?? null) === 'none') {
+                    $frame = $shape['attrs'];
+                }
+            }
+
+            foreach ($out['cabs'] as $level => $cab) {
+                $this->assertSame(1, preg_match('/translate\(([-\d.]+)px,/', $cab['style']['transform'] ?? '', $t), "the cab at plate {$level} has no translation");
+                $x = $frame === null ? null : (float) $t[1] + $frame['x'] + $frame['width'] / 2;
+
+                if ($x === null || abs($x - $centre) > 1e-9) {
+                    $defects[] = "the cab at plate {$level} is centred at ".json_encode($x).", off the doors' column centre {$centre} ({$n} floors)";
+                }
+            }
+        }
+
+        return $defects;
     }
 
     /**
      * One building of `$n` plates: drawn, its box the extent, its words the scenery's own, the roof sign
      * above the top plate and the ground lobby below the bottom one — both inside the extent — and every
-     * plate at the extent's left edge and width.
+     * plate at one left edge, inset symmetrically inside the extent.
      *
      * @return list<string>
      */

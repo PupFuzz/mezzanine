@@ -7,8 +7,9 @@ use Tests\TestCase;
 /**
  * **A render whose own await outlasts a ride never draws the cab on the floor the ride just left —**
  * **mid-ride, and after it has arrived.** `docs/design/FLOOR.md` Appendix B row 16 (card#7343); the
- * impl review's r2 MAJOR finding (the third attempt at this: r1's `riding`-gated `resolveCab()` fixed
- * `main.js`'s own `cab` variable but not the DRAWN cab, and was wrong under reduced motion besides).
+ * impl review's r2 MAJOR finding, answered by re-deriving it upstream: the r1 fix round's `riding`-gated
+ * `resolveCab()` fixed `main.js`'s own `cab` variable but not the DRAWN cab, and was wrong under reduced
+ * motion besides.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE ROOT CAUSE, AND THE WHOLE FIX. `lobby-screen.js`'s `render()` used to take `cab` as a plain
@@ -48,7 +49,7 @@ class TheDrawnCabNeverStalesTest extends TestCase
 
     public function test_red_a_cab_captured_before_the_awaits(): void
     {
-        // The exact shape r1 and r2 each got wrong in turn: `cabNow()` called once, BEFORE the awaits,
+        // The defect's own shape, as it stood before this fix: the cab read once, BEFORE the awaits,
         // and its result threaded through to `draw()` instead of a second, late call. Calling `cabNow()`
         // again at the end alone would be harmless (it would just re-read the current value) — the plant
         // has to stop `draw()` from ever reading it late, which is the one thing that must never happen.

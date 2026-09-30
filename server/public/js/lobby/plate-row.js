@@ -51,24 +51,25 @@
  * `text-shadow` stacked behind its glyphs, never because of what stands behind it, and never by hiding
  * what stands behind it either: the arches, the shaft and the cab stay visible through it. The halo is
  * set on this same element (an INHERITED CSS property, so every descendant text carries it too), so it
- * is counter-scaled with the text and never scaled by the scene; its colour and the contrast it clears
- * for both the link and the body text are `building-scene.js`'s `LABEL_HALO`.
+ * is counter-scaled with the text and never scaled by the scene. Its colour, `building-scene.js`'s
+ * `LABEL_HALO`, clears 4.5:1 against the link and the body text as a colour pair; legibility over the
+ * drawing's darker parts rests on the stack's density, `LABEL_HALO_RADII`, and no contrast over the
+ * drawing itself is measured.
  *
  * ⛔ THE PLATE'S ACCESSIBLE NAME IS WHAT IT WAS: the link carries the name, ` — ` and the summary, in
  * that order, as it always did — the separator VISUALLY HIDDEN now that the two sit on lines of their own, and
  * still read. The rooms and the cab's word stay outside the link, as they were.
  */
 
-import { LABEL_FONT, LABEL_HALO } from './building-scene.js';
+import { LABEL_FONT, LABEL_HALO, LABEL_HALO_RADII } from './building-scene.js';
 
 /**
- * The halo itself: `LABEL_HALO` stacked at four blur radii, each TWICE — a single CSS `text-shadow`
- * blur is translucent (a Gaussian falloff, not a solid fill), so one layer leaves the glyphs' edges
- * thin and the busy drawing showing faintly through; repeating each radius doubles its opacity, which
- * is the standard way to fake a denser, more solid-reading halo from `text-shadow` alone. Built once,
- * here, rather than on every row `plateRow()` builds.
+ * The halo itself: one zero-offset `text-shadow` layer of `LABEL_HALO` per radius in
+ * `LABEL_HALO_RADII` — why the stack is dense, and why each radius is repeated (two layers of opacity
+ * *a* composite to 1 − (1 − *a*)²), is that figure's docblock. Built once, here, rather than on every
+ * row `plateRow()` builds.
  */
-const LABEL_TEXT_SHADOW = [1, 1, 2, 2, 3, 3, 4, 4].map((r) => `0 0 ${r}px ${LABEL_HALO}`).join(', ');
+const LABEL_TEXT_SHADOW = LABEL_HALO_RADII.map((r) => `0 0 ${r}px ${LABEL_HALO}`).join(', ');
 
 /**
  * Text kept for assistive technology and never painted — the conventional clip, since the page ships

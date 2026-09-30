@@ -160,7 +160,7 @@ export function buildingScene(plates) {
  * it (design review r1, card#7343 row 16). ⛔ AN OPAQUE BACKING IS REFUSED (design review r2, F1): a
  * plaque tried first, and blanked the drawing under it — arches read as rectangles, the cab's top
  * covered at 7+ floors, ~65% of a storey at ten. What keeps a label legible wherever it lands, without
- * hiding what it lands on, is a HALO on the text itself — `plate-row.js`'s `LABEL_HALO` below.
+ * hiding what it lands on, is a HALO on the text itself — `LABEL_HALO` and `LABEL_HALO_RADII` below.
  */
 const STOREY = {
     skirting: 836,
@@ -205,12 +205,28 @@ const INK = {
  * not the plate's, so at whole-building fit on three or more floors a label is routinely wider than its
  * plate and crosses the shaft, the cab or the plate below it — the halo is the label's own contrast
  * there, ON the glyphs rather than a box behind them, so the arches, the shaft and the cab stay visible
- * through it. Its contrast clears WCAG 2.1 SC 1.4.3's 4.5:1 against both the link's default blue
- * (#0000EE, ≈8.5:1) and the plate's own body text (black, ≈19.1:1) —
- * `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` computes and holds both, now read off
- * the halo's `textShadow` colour rather than a `backgroundColor`.
+ * through it. ⚠ WHAT IS PINNED AND WHAT IS NOT (impl review r3 #3, design review r3 F-B): this COLOUR
+ * clears WCAG 2.1 SC 1.4.3's 4.5:1 against both the link's default blue (#0000EE, ≈8.5:1) and the
+ * plate's own body text (black, ≈19.1:1) — `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`
+ * computes and holds both. That is a claim about the colour PAIR only: a blurred shadow is not an opaque
+ * backing, so what a glyph actually stands on is the halo blended over whatever the drawing puts there,
+ * and over the drawing's darker parts (the slab, #b27b56, is ≈2.6:1 against the link's blue) legibility
+ * rests on the STACK's density — `LABEL_HALO_RADII` below — which that test holds as built, and not on
+ * any contrast ratio measured over the drawing: none is (there is no renderer on the build host).
  */
 export const LABEL_HALO = INK.wall;
+
+/**
+ * The halo's stack — one zero-offset `text-shadow` layer of `LABEL_HALO` per entry, blurred by that many
+ * CSS px, each radius TWICE (design review r2 F1, r3 F-B). A single blurred layer is translucent — a
+ * Gaussian falloff, not a solid fill — so it leaves the glyphs' edges thin with the drawing showing
+ * through; two layers of opacity *a* composite to 1 − (1 − *a*)², denser than either, which is the
+ * standard way to make `text-shadow` alone read nearly solid at the glyph's edge, and the widening radii
+ * carry it out past the stroke. The label's legibility over the drawing rests on this density, which is
+ * why it is a named figure `ThePlateNameIsReadAtTheBodyTextSizeTest` reads — the built label must carry
+ * every layer, at these radii — rather than a literal inside `plate-row.js`. A figure of the drawing's.
+ */
+export const LABEL_HALO_RADII = Object.freeze([1, 1, 2, 2, 3, 3, 4, 4]);
 
 /** A shape: an SVG element name, its attributes, and the text it carries (only the roof sign's and the lobby's). */
 function shape(el, attrs, text = null) {
@@ -227,15 +243,38 @@ function plant(x, y, size) {
     ];
 }
 
+/**
+ * The elevator's column — its shaft and the doors in it — from the left edge of the column of plates it
+ * serves: every storey's, the ground lobby's and the cab's are this one column, so none of them can stand
+ * off the others (design review r3, card#7343 row 16 F-A: the ground lobby's shaft was placed from the
+ * extent's left edge while the storeys' was placed from the plates', and jogged `PLATE_INSET` left once
+ * the plates were inset). `storey()` passes its plate's left edge, `ground()` the plates' shared one, and
+ * `CAB` is drawn at `shaftAt(0)` — its plate's own left edge, which `cabStyle()` translates it to.
+ *
+ * @param {number} left the column's left edge, in scene px
+ */
+function shaftAt(left) {
+    const x = left + STOREY.shaft.x;
+    const door = left + STOREY.door.x;
+
+    return {
+        x,
+        w: STOREY.shaft.w,
+        mid: x + STOREY.shaft.w / 2,
+        door: { x: door, w: STOREY.door.w, mid: door + STOREY.door.w / 2 },
+    };
+}
+
 /** One storey at a plate's rect: wall, panels, skirting, floorboards, slab, shaft and its doors. */
 function storey(rect) {
     const { x, y, w } = rect;
+    const shaft = shaftAt(x);
     const shapes = [
         shape('rect', { x, y, width: w, height: STOREY.skirting, fill: INK.wall }),
     ];
 
     // Arched wall panels between the building's left wall and the shaft — moulding, identical on every storey.
-    for (let px = x + 96; px + 220 <= x + STOREY.shaft.x - 48; px += 300) {
+    for (let px = x + 96; px + 220 <= shaft.x - 48; px += 300) {
         shapes.push(shape('path', {
             d: `M ${px} ${y + STOREY.skirting - 60} L ${px} ${y + 380} Q ${px} ${y + 260} ${px + 110} ${y + 260} Q ${px + 220} ${y + 260} ${px + 220} ${y + 380} L ${px + 220} ${y + STOREY.skirting - 60} Z`,
             fill: INK.panel,
@@ -255,11 +294,11 @@ function storey(rect) {
         shape('rect', { x, y: y + STOREY.slab, width: w, height: PLATE_H - STOREY.slab, fill: INK.slab }),
         shape('rect', { x, y: y + STOREY.slab, width: w, height: 10, fill: INK.slabTop }),
         // The shaft, its guide rail, and this storey's doors with the lamp over them — lit alike on every storey.
-        shape('rect', { x: x + STOREY.shaft.x, y, width: STOREY.shaft.w, height: STOREY.skirting, fill: INK.shaft }),
-        shape('line', { x1: x + STOREY.shaft.x + STOREY.shaft.w / 2, y1: y, x2: x + STOREY.shaft.x + STOREY.shaft.w / 2, y2: y + STOREY.door.y - 24, stroke: INK.guide, 'stroke-width': 6, 'stroke-dasharray': '14 12' }),
-        shape('rect', { x: x + STOREY.door.x, y: y + STOREY.door.y, width: STOREY.door.w, height: STOREY.door.h, rx: 18, fill: INK.door, stroke: INK.doorEdge, 'stroke-width': 6 }),
-        shape('line', { x1: x + STOREY.door.x + STOREY.door.w / 2, y1: y + STOREY.door.y, x2: x + STOREY.door.x + STOREY.door.w / 2, y2: y + STOREY.door.y + STOREY.door.h, stroke: INK.doorEdge, 'stroke-width': 5 }),
-        shape('circle', { cx: x + STOREY.door.x + STOREY.door.w / 2, cy: y + STOREY.door.y - 40, r: 14, fill: INK.lamp }),
+        shape('rect', { x: shaft.x, y, width: shaft.w, height: STOREY.skirting, fill: INK.shaft }),
+        shape('line', { x1: shaft.mid, y1: y, x2: shaft.mid, y2: y + STOREY.door.y - 24, stroke: INK.guide, 'stroke-width': 6, 'stroke-dasharray': '14 12' }),
+        shape('rect', { x: shaft.door.x, y: y + STOREY.door.y, width: shaft.door.w, height: STOREY.door.h, rx: 18, fill: INK.door, stroke: INK.doorEdge, 'stroke-width': 6 }),
+        shape('line', { x1: shaft.door.mid, y1: y + STOREY.door.y, x2: shaft.door.mid, y2: y + STOREY.door.y + STOREY.door.h, stroke: INK.doorEdge, 'stroke-width': 5 }),
+        shape('circle', { cx: shaft.door.mid, cy: y + STOREY.door.y - 40, r: 14, fill: INK.lamp }),
     );
 
     return shapes;
@@ -288,18 +327,25 @@ function roof(extent) {
     ];
 }
 
-/** The ground lobby under the bottom plate: its wall, the entrance, the lobby's own name, plants and the ground. */
-function ground(extent) {
+/**
+ * The ground lobby under the bottom plate: its wall, the entrance, the lobby's own name, plants and the
+ * ground — spanning the extent, with the elevator's shaft and doors in the plates' column (`shaftAt()`).
+ *
+ * @param {{x: number, y: number, w: number, h: number}} extent the building's
+ * @param {number} column the plates' shared left edge, which the shaft is placed from
+ */
+function ground(extent, column) {
     const { x, w } = extent;
+    const shaft = shaftAt(column);
     const top = extent.y + extent.h - GROUND_H;
     const floor = top + GROUND_H - 80;
     const doors = { x: x + 560, w: 360, h: 300 };
 
     return [
         shape('rect', { x, y: top, width: w, height: GROUND_H - 80, fill: INK.wall }),
-        shape('rect', { x: x + STOREY.shaft.x, y: top, width: STOREY.shaft.w, height: GROUND_H - 80, fill: INK.shaft }),
-        shape('rect', { x: x + STOREY.door.x, y: floor - STOREY.door.h, width: STOREY.door.w, height: STOREY.door.h, rx: 18, fill: INK.door, stroke: INK.doorEdge, 'stroke-width': 6 }),
-        shape('line', { x1: x + STOREY.door.x + STOREY.door.w / 2, y1: floor - STOREY.door.h, x2: x + STOREY.door.x + STOREY.door.w / 2, y2: floor, stroke: INK.doorEdge, 'stroke-width': 5 }),
+        shape('rect', { x: shaft.x, y: top, width: shaft.w, height: GROUND_H - 80, fill: INK.shaft }),
+        shape('rect', { x: shaft.door.x, y: floor - STOREY.door.h, width: shaft.door.w, height: STOREY.door.h, rx: 18, fill: INK.door, stroke: INK.doorEdge, 'stroke-width': 6 }),
+        shape('line', { x1: shaft.door.mid, y1: floor - STOREY.door.h, x2: shaft.door.mid, y2: floor, stroke: INK.doorEdge, 'stroke-width': 5 }),
         // The entrance: two glass doors under an arch, and the welcome mat before them.
         shape('path', { d: `M ${doors.x} ${floor} L ${doors.x} ${floor - doors.h + 90} Q ${doors.x + doors.w / 2} ${floor - doors.h - 60} ${doors.x + doors.w} ${floor - doors.h + 90} L ${doors.x + doors.w} ${floor} Z`, fill: INK.glass, stroke: INK.skirting, 'stroke-width': 12 }),
         shape('line', { x1: doors.x + doors.w / 2, y1: floor - doors.h + 20, x2: doors.x + doors.w / 2, y2: floor, stroke: INK.skirting, 'stroke-width': 8 }),
@@ -341,10 +387,13 @@ export function buildingArt(scene) {
             shape('rect', { x: extent.x, y: extent.y + ROOF_H - 40, width: extent.w, height: extent.h - ROOF_H + 40 - 80, rx: 28, fill: INK.shell }),
             ...scene.plates.flatMap(({ rect }) => storey(rect)),
             ...roof(extent),
-            ...ground(extent),
+            ...ground(extent, scene.plates[0].rect.x),
         ],
     };
 }
+
+/** The cab's own column: `shaftAt()` at its plate's left edge, where `cabStyle()` translates it. */
+const CAB_SHAFT = shaftAt(0);
 
 /**
  * The cab, in scene px from its plate's top-left: a frame around that storey's doors, a lamp on top and
@@ -353,9 +402,9 @@ export function buildingArt(scene) {
  * *the elevator is here* in words.
  */
 export const CAB = Object.freeze([
-    shape('line', { x1: STOREY.shaft.x + STOREY.shaft.w / 2, y1: 0, x2: STOREY.shaft.x + STOREY.shaft.w / 2, y2: STOREY.door.y - 32, stroke: INK.sign, 'stroke-width': 5 }),
-    shape('rect', { x: STOREY.door.x - 14, y: STOREY.door.y - 32, width: STOREY.door.w + 28, height: STOREY.door.h + 46, rx: 26, fill: 'none', stroke: '#f2b84b', 'stroke-width': 14 }),
-    shape('rect', { x: STOREY.door.x + STOREY.door.w / 2 - 30, y: STOREY.door.y - 52, width: 60, height: 22, rx: 11, fill: '#f2b84b' }),
+    shape('line', { x1: CAB_SHAFT.mid, y1: 0, x2: CAB_SHAFT.mid, y2: STOREY.door.y - 32, stroke: INK.sign, 'stroke-width': 5 }),
+    shape('rect', { x: CAB_SHAFT.door.x - 14, y: STOREY.door.y - 32, width: CAB_SHAFT.door.w + 28, height: STOREY.door.h + 46, rx: 26, fill: 'none', stroke: '#f2b84b', 'stroke-width': 14 }),
+    shape('rect', { x: CAB_SHAFT.door.mid - 30, y: STOREY.door.y - 52, width: 60, height: 22, rx: 11, fill: '#f2b84b' }),
 ]);
 
 /**
