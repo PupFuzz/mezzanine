@@ -1028,9 +1028,10 @@ and two on the plate. How each is done is the code's own docblocks'.
    and the rooms line each have `var(--label-backing)` as their background colour. (held by:
    T::test_green_showlabels_written_values_match_a_hand_computed_camera_at_every_side;
    T::test_green_every_plate_row_is_built_to_the_construction_contract)
-7. **Three lines, in order.** In T's frames, line 1 is the name link, whose text is the name alone, with
-   the cue after it and outside it on the cab's plate and on no other; line 2 is the summary; line 3 is
-   the rooms line, present only where the plate names more than one room or a room with no seats reported.
+7. **Three lines, in order.** In T's frames, line 1 is the name link, its `textContent` set to the name
+   alone, with the cue after it and outside it on the cab's plate and on no other; line 2 is the summary
+   link, its `textContent` set to the summary; line 3 is the rooms line, present only where the plate
+   names more than one room or a room with no seats reported.
    (held by: T::test_green_every_plate_row_is_built_to_the_construction_contract)
 8. **Set not to wrap.** In T's frames, the name link, the cue, the summary link and the rooms line are each
    set `white-space: nowrap`, `text-overflow: ellipsis` and `overflow: hidden`. (held by:
@@ -1062,10 +1063,10 @@ and two on the plate. How each is done is the code's own docblocks'.
     cue after the name link on line 1, the rooms line on line 3 — and nothing from the label down to
     either carries `aria-hidden`. (held by:
     T::test_green_every_plate_row_is_built_to_the_construction_contract)
-17. **What a screen reader reads.** A screen reader reads the name link's `aria-label`, then the cue, then
-    the rooms line, and never the summary link on its own — a line the budget clips included (claims 7,
-    14, 15 and 16 hold the structure this rests on). (declared, unchecked: not wired — a check could read
-    the browser's accessibility tree; none is built)
+17. **What a screen reader reads.** A screen reader reads the name link's `aria-label`, then the cue where
+    there is one, then the rooms line where one is built, and never the summary link on its own — a line
+    the budget clips included (claims 7, 14, 15 and 16 hold the structure this rests on). (declared,
+    unchecked: not wired — a check could read the browser's accessibility tree; none is built)
 18. **The focus ring.** In T's frames, both links set a negative `outline-offset`. (held by:
     T::test_green_every_plate_row_is_built_to_the_construction_contract)
 19. **The link's colour is on the link.** In T's frames, the name link's own `color` is

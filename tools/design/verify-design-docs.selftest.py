@@ -839,7 +839,7 @@ PLANTS = [
         r"(\n- \*\*card#7343\*\* — )(\*\*The lobby's)( elevator ride)",
         "restate",
         "§ 4.1's first claim copied into the card#7343 CHANGELOG bullet (card#7343 r6, G14 leg (a))",
-        "G14: a label-contract term outside section 4.1 — docs/CHANGELOG.md",
+        "G14: a label-contract term outside section 4.1's claim region — docs/CHANGELOG.md",
     ),
     (
         # card#7343 r6, G14 leg (b): a § 4.1 claim whose `(held by: …)` is deleted names no check.

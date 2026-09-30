@@ -58,8 +58,8 @@ export const LABEL_GAP_PX = 8;
  * the flex row's own gap plus room for a few characters of even the shortest name before it is worth
  * showing beside the building at all — pinned to that measured content width, never estimated.
  * `tools/design/lobby-label-contrast.browser.mjs`'s own `cueUnreachable()` check (with `PLANTS.cueWidth`,
- * which shrinks this constant below the cue's own measured width) is what catches the cue growing past
- * it unnoticed.
+ * which shrinks this constant below the cue's own measured width), run by hand, measures over its own
+ * `RUNS` whether the cue has grown past it.
  *
  * ⭐ WHY A DESKTOP WINDOW ROUTINELY FALLS BACK TOO: the camera's own CLAMP (`wire/camera.js`'s `clamp()`)
  * keeps the framed extent fully in view — at a high enough zoom, the clamp pushes the shell's own left

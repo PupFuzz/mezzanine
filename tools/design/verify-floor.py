@@ -3196,7 +3196,7 @@ else:
         fail.append("G14: no `- **card#7343**` bullet in docs/CHANGELOG.md or docs/changelog/ — leg (a)'s "
                     "CHANGELOG half read nothing")
     for h in g14_hits:
-        fail.append(f"G14: a label-contract term outside section 4.1 — {h}; the contract is section "
+        fail.append(f"G14: a label-contract term outside section 4.1's claim region — {h}; the contract is section "
                     f"4.1's alone, so point at it instead")
 
     body = lines[g14_head[3]:g14_head[4]]
