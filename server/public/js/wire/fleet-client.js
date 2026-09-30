@@ -366,8 +366,8 @@ export class FleetClient {
     #snapshotReads = 0;
 
     /**
-     * @param {Function} fetchImpl the browser's own `fetch`, unbound — called as a plain function
-     *   through `wire/building.js`'s `request()`
+     * @param {Function} fetchImpl the page's `fetch` (`wire/live-page.js`, which owns what its response
+     *   carries) — called as a plain function through `wire/building.js`'s `request()`
      * @param {Function} EventSourceImpl constructed as `new EventSourceImpl('/api/fleet/stream')`;
      *   a browser's `EventSource` satisfies it
      * @param {{now: function(): number}} clockImpl read when a record line is written and when an

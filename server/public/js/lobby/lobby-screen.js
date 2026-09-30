@@ -342,7 +342,7 @@ function within(outer, inner) {
  * The lobby, started — the shape its page and the harness both drive.
  *
  * @param {object} client a `FleetClient`
- * @param {Function} fetchImpl the browser's own `fetch`, unbound — `wire/building.js`'s injection
+ * @param {Function} fetchImpl the page's `fetch` (`wire/live-page.js`) — `wire/building.js`'s injection
  * @param {function(object): void} draw receives each lobby frame
  * @param {{surface: {width: number, height: number}, reduce?: boolean}} options `LobbyScreen`'s
  * @returns {{render: function(string|null): Promise<void>, refresh: function(): Promise<void>, draw: function(string|null): void,

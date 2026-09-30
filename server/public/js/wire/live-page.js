@@ -20,8 +20,10 @@
  * exposes a drained journal rather than a callback (`FleetClient#takeWire`), so the page is what
  * knows an apply happened; each hook below only asks for a render, and the render drains.
  *
- * ⛔ THIS FILE DECIDES NOTHING ABOUT WHAT IS DRAWN, and nothing in it is exercised headlessly: it is
- * the browser's globals and nothing else. Every decision is the screen's the page hands `render` to.
+ * ⛔ THIS FILE DECIDES NOTHING ABOUT WHAT IS DRAWN: it is the browser's globals and nothing else.
+ * Every decision is the screen's the page hands `render` to. Its fetch is the one part a probe drives
+ * (`tests/Feature/Floor/page-fetch-probe.mjs`, over shimmed globals and a real `Response`), because
+ * what that response carries is what every consumer of it reads.
  */
 
 import { FleetClient } from './fleet-client.js';
@@ -73,13 +75,25 @@ export function livePage(render) {
         }
     }
 
-    /** The browser's `fetch`, with a render asked for once each response body has been read. */
+    /**
+     * The browser's `fetch`, with a render asked for once each response body has been read.
+     *
+     * ⛔ THE RESPONSE IT HANDS BACK HAS EXACTLY THE MEMBERS THE PROBES' FAKE HAS — `status`, `ok`,
+     * and a body read as `json()` (every API read, through `wire/building.js`'s `request()`) or as
+     * `text()` (a tileset, `floor/tileset.js`'s loader), each asking for a render once it settles.
+     * The client probes drive its consumers through `tests/Feature/Support/scripted-fetch.mjs`, so a
+     * member that fake has and this one lacks is green there and a TypeError here — which is how both
+     * tilesets failed on the page while every probe passed (card#7341).
+     * `Tests\Feature\Floor\TheHarnessFetchIsNoWiderThanThePagesTest` reds when the two member sets
+     * differ, reading both off the objects themselves.
+     */
     function pageFetch(path, init) {
         return fetch(path, init).then(
             (response) => ({
                 status: response.status,
                 ok: response.ok,
                 json: () => response.json().finally(requestRender),
+                text: () => response.text().finally(requestRender),
             }),
             (error) => {
                 requestRender();

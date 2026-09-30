@@ -27,6 +27,18 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **The floor page draws its room tiles again.** Since the room drawing landed (Appendix
+  B row 14, slice A, in 0.6.0), the floor page loaded neither tileset: the page's fetch
+  (`server/public/js/wire/live-page.js`) handed its consumers a response with `json()` and no `text()`,
+  and the tileset loader reads a tileset as text, so both tilesets failed with *response.text is not a
+  function*, no tile of the room was drawn and every desk showed F14's placeholder with *some art
+  failed to load* on the status strip — contrary to 0.6.0's entry for that slice. The page's response
+  now carries `text()`, which asks for a render once it is read, as `json()` does. The probes had
+  passed because their fake fetch (`server/tests/Feature/Support/scripted-fetch.mjs`) gave its
+  response a `text()` the page's lacked; `Tests\Feature\Floor\TheHarnessFetchIsNoWiderThanThePagesTest`
+  now reds when the fake's response and the page's differ in any member, and drives the tileset
+  loader over the page's own fetch against a real `Response`, each check watched to fail on the
+  unfixed wrapper.
 - **`bin/change-pr-body.py` no longer writes AI attribution into a PR body.** The generated body
   ends on its `Built:` and `**Coordinated in:**` lines: the `Generated with Claude Code` model line
   and the session link are gone, and so are the `--agent` and `--session-url` options that filled

@@ -70,6 +70,9 @@ export function scriptedFetch(responses, { schedule, clock } = {}) {
             body = { ...body, server_time: at };
         }
 
+        // ⛔ EXACTLY THE MEMBERS THE PAGE'S RESPONSE HAS (`wire/live-page.js`'s `pageFetch`), no more:
+        // a member only this fake has is a probe that passes over a page that throws.
+        // `Tests\Feature\Floor\TheHarnessFetchIsNoWiderThanThePagesTest` reds when the two differ.
         return {
             status: next.status,
             ok: next.status >= 200 && next.status < 300,
