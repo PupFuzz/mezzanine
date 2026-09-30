@@ -119,8 +119,10 @@ final class UserProvisioning
      *     mechanism doing this elsewhere.
      *   · REMEMBER-ME IS LIVE END TO END. The checkbox in `resources/views/auth/login.blade.php`,
      *     `rememberToken()` on the users migration, and `App\Auth\ActiveUserProvider` resolving a
-     *     user BY that token. A stolen remember cookie therefore re-authenticates after the reset
-     *     and mints a fresh session, which is the same access back through a second door.
+     *     user BY that token. Since laravel/framework 13.31 `SessionGuard::userFromRecaller()`
+     *     refuses a cookie whose embedded password hash no longer matches, so a password write
+     *     already voids old remember cookies; rotating the token below is the application's own
+     *     guard for the same property, independent of that framework version.
      *
      * ⛔ EVERY ROW GOES, INCLUDING THE ONE THIS REQUEST IS ON. "Log the other devices out but keep
      * mine" is not available to a recovery act: a stolen session cookie IS this session's id, so
