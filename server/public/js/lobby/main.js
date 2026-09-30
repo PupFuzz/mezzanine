@@ -28,13 +28,15 @@
  * ⭐ THE CAMERA AT BUILDING SCALE AND THE RIDE'S ARRIVAL ARE THE SCREEN's (Appendix B row 16, slice A,
  * card#7343); this file supplies the building's drawing surface — a clipping drawing only while there
  * is a building to draw (`building-scene.js`'s `surfaceStyle()`) — stands each plate at the rect the
- * screen's scene gives it (`plate-row.js`'s row) over the building `building-scene.js` draws — the roof and
- * its sign, a storey under each plate, the ground lobby and the cab (slice B) — shows the screen's camera
- * on the plates and the drawing as one
- * transform — each plate's text, its name and its status line, counter-scaled from that same camera,
- * so it is read at the page's body text size at every zoom (the operator's rulings, `building-scene.js`'s
- * `LABEL_FONT`), standing BESIDE the plate where there is room for it and falling back onto it where
- * there is not (`building-scene.js`'s `labelSide()`, card#7343 r3's fix round) — and wires the wheel,
+ * screen's scene gives it (`plate-row.js`'s row, built ONCE and carrying no geometry of its own) over the
+ * building `building-scene.js` draws — the roof and its sign, a storey under each plate, the ground lobby
+ * and the cab (slice B) — shows the screen's camera on the plates and the drawing as one transform, and
+ * paints every plate's label from that SAME camera (`label-paint.js`'s `showLabels()`, called from
+ * `view()` on every camera this page shows — fit, wheel, key, drag, every glide step, resize — card#7343
+ * r3's fix round, the operator's ruling 2026-09-30, option A): read at the page's body text size at every
+ * zoom, standing BESIDE the building where there is room for it and falling back onto the plate where
+ * there is not, and repainted live enough that neither can ever go stale between a render and the camera
+ * moves that follow it — and wires the wheel,
  * the drag, the keys, the zoom buttons, the keyboard's focus on a
  * plate, the whole-building control and the ride to the screen's camera acts — none of which renders.
  * A ride's click moves the cab — the page's `cab`, set to the stop `ride()` names — glides the camera to
@@ -52,8 +54,9 @@ import { cameraGestures } from '../wire/camera-gestures.js';
 import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
 import { framesNothing } from '../wire/camera.js';
 import { startLobbyScreen } from './lobby-screen.js';
-import { labelLines, labelMax, labelMaxLeft, labelScale, labelSide, surfaceStyle } from './building-scene.js';
+import { surfaceStyle } from './building-scene.js';
 import { buildingDrawing, keepDrawing, paintBuilding } from './building-paint.js';
+import { showLabels } from './label-paint.js';
 import { plateRow } from './plate-row.js';
 import { holdPlateLinks } from './ride-hold.js';
 
@@ -127,19 +130,15 @@ const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out')
  * zoom — `wire/camera.js`'s `view`, as a CSS transform. Nothing framed is no transform at all: the list
  * as it flows, which is how a lobby with no plate reads (§ 9 F17's rooms, or no install).
  *
- * ⛔ THE SAME CAMERA SETS THE PLATES' TEXT's COUNTER-SCALE (`building-scene.js`'s `labelScale()`, the
- * operator's rulings), as `--label-scale` on the plates, which every plate label's own transform reads
- * (`plate-row.js`). One camera, one write: a plate's name and status line are moved by the camera and
- * never scaled by it, at fit, after a wheel, a key or a drag, on every step of a glide and after a
- * resize, because each of them is shown through this function.
- *
- * ⛔ AND WHAT IS VISIBLE IS THE LABELS' WIDTH AND SIDE (card#7343 r4b's ruling, then r3's fix round,
- * 2026-09-30, option A: the labels moved BESIDE the building). `labelPlan()` below reads the same camera
- * this function shows and hands `paint()`'s `renderBuilding()` the one decision every plate's label
- * shares that render: `building-scene.js`'s `labelSide()` (beside the plate, or the fallback onto it),
- * `labelMaxLeft()`/`labelMax()` for whichever side that is, and `labelLines()`, the storey's own budget
- * for the optional lines `plate-row.js` drops in order. A label's px are screen px under its
- * counter-scale, so a label no wider than its width is one a pan can always bring wholly into view.
+ * ⛔ THE SAME CAMERA PAINTS THE PLATES' LABELS (card#7343 r4's fix round, replacing the r1–r3 mechanism —
+ * the operator's ruling 2026-09-30, option A: the labels stand BESIDE the building). `label-paint.js`'s
+ * `showLabels()` is called here, on EVERY camera this function shows — fit, wheel, key, drag, every glide
+ * step, resize — and is the ONLY function that ever writes a plate's label geometry or paint: it decides
+ * the counter-scale, the side (beside the building, or the fallback onto the plate), the width, the line
+ * budget and the ink, all as CSS custom properties on `#lobby-floors` that `plate-row.js`'s rows read
+ * through `var()`s and never anything of their own. Because it runs on every camera shown rather than
+ * only on a feed render, a plate's label can never go stale between a render and the camera moves that
+ * follow it — the root cause both r3 review rounds named for the mechanism this replaces.
  *
  * ⛔ AND THE CAMERA IS OFFERED ONLY WHILE IT FRAMES SOMETHING (card#7343 r4b, the seat's ruling, and
  * comment 7692): the keys, the zoom buttons, the whole-building control and the building's tab stop —
@@ -158,21 +157,8 @@ function view(camera) {
     floors.style.transform = framed
         ? `scale(${camera.zoom}) translate(${-camera.x}px, ${-camera.y}px)`
         : '';
-    floors.style.setProperty('--label-scale', String(labelScale(camera)));
+    showLabels(floors, camera);
     offerKeys(el('lobby-building'), zoomButtons, screen.camera());
-}
-
-/**
- * ⭐ WHERE A PLATE's LABEL STANDS (card#7343 r3's fix round, the operator's ruling 2026-09-30, option A):
- * `building-scene.js`'s `labelSide()` over the SAME camera `view()` shows, computed once per render and
- * handed to every `plateRow()` call — `'left'`, beside the building, wrapped within `labelMaxLeft()`; or
- * the fallback, `'plate'`, wrapped within the unchanged `labelMax()`. `labelLines()` is the same camera's
- * own storey height, read once, for the drop order every plate's own optional lines share.
- */
-function labelPlan(camera) {
-    const side = labelSide(camera);
-
-    return { side, maxWidth: side === 'left' ? labelMaxLeft(camera) : labelMax(camera), lines: labelLines(camera), zoom: camera.zoom };
 }
 
 const { show, glideTo, current } = cameraView(view);
@@ -232,7 +218,7 @@ function list(id, lines) {
  * ⚠ THE STACK IS DRAWN FIRST-AT-THE-TOP, which is the reference artifact's direction and not a
  * ruling in the document — see `building-model.js`.
  */
-function renderBuilding(building, scene, sky, unclaimed, riding, camera) {
+function renderBuilding(building, scene, sky, unclaimed, riding) {
     const rows = el('lobby-floors');
 
     // Every row but the building's drawing, which stays so the cab can glide (see `drawing`).
@@ -244,9 +230,6 @@ function renderBuilding(building, scene, sky, unclaimed, riding, camera) {
     rows.style.height = scene?.extent ? `${scene.extent.h}px` : '';
     // The roof, the storeys, the ground lobby and the cab at the viewer's stop — nothing with no building.
     painted = paintBuilding(document, { drawing, art, scenery, windows, cabNode }, scene, building.elevator.level, cabGlide, painted, sky);
-
-    // Where every plate's label stands this render (card#7343 r3's fix round) — one decision, shared.
-    const label = labelPlan(camera);
 
     // § 9 F17's cold start: no layout was ever loaded, so no floor is composed and each install
     // the client holds is listed as a room with no floor claimed — every seat still reachable
@@ -269,9 +252,9 @@ function renderBuilding(building, scene, sky, unclaimed, riding, camera) {
     }
 
     // Each plate stands at the rect the scene gives it (`level` indexes the stack and the scene alike),
-    // its name and its status line one label over it at the page's body text size (`plate-row.js`).
+    // its label built once (`plate-row.js`) and painted entirely through `view()`'s own `showLabels()`.
     for (const plate of building.plates) {
-        rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at, label));
+        rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at));
     }
 
     const ride = el('lobby-elevator');
@@ -336,9 +319,8 @@ function paint(frame) {
     // it is a drawing, A17's sky fills it behind the building, at the phase the screen last set. Applied
     // BEFORE `surface()` is read below, because that style is what can change the surface's own measured
     // size (`surfaceStyle()`'s `height`) — the render may just have made the surface a drawing, or stopped
-    // it being one, and the camera and every plate's label placement are both sized off it as it now
-    // stands (card#7343 r3's fix round: the label's side needs the SAME final camera `view()` shows,
-    // which needs this read first, which needs this style applied first).
+    // it being one, and the camera below is sized off it as it now stands, not as it stood before this
+    // render's own style change.
     Object.assign(el('lobby-building').style, surfaceStyle(frame.scene, frame.sky));
 
     const size = surface();
@@ -346,10 +328,11 @@ function paint(frame) {
         ? frame.camera
         : screen.resize(size);
 
-    renderBuilding(building, frame.scene, frame.sky, summary.unclaimed, frame.riding, camera);
+    renderBuilding(building, frame.scene, frame.sky, summary.unclaimed, frame.riding);
 
     // A render never moves the viewer: a glide in flight keeps its step, and otherwise the plates show
-    // the screen's camera, which the render left where the viewer put it.
+    // the screen's camera, which the render left where the viewer put it — and `view()` paints every
+    // plate's label from THIS same camera (`label-paint.js`'s `showLabels()`), never a stale plan.
     view(current(camera));
 
     // § 9 F17's statement, in its own region beside F4/F5's store statement.

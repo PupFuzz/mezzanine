@@ -3,133 +3,105 @@
  * building's scene, and the text it carries. `docs/design/FLOOR.md § 4.1`, Appendix B row 16 (card#7343).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ IT DECIDES NO FACT. Every string is `building-model.js`'s plate — its `name` (§ 4.6: the label,
- * else the key), its `summary`, its `rooms`, its `href` — and whether the cab is here is the building's
- * `elevator.at`, which the page passes in; where the plate stands is `building-scene.js`'s rect, and
- * where its LABEL stands — beside the plate, or falling back onto it — is `building-scene.js`'s
- * `labelSide()`/`labelMaxLeft()`/`labelMax()`/`labelLines()`, read once and handed in as `label` (card#7343
- * r3's fix round). What this module owns is how those are put into elements, and it is a module rather
- * than lines of the page because that is the part the plate's text size depends on: the harness builds
- * these very rows under `node` with a stand-in `document`
- * (`Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`), so where the text sits under the
- * camera's transform is read off the shipped construction rather than off a copy of it.
+ * ⛔ IT DECIDES NO FACT, AND NO GEOMETRY EITHER (card#7343 r4's fix round, replacing the r1–r3
+ * mechanism). Every string is `building-model.js`'s plate — its `name` (§ 4.6: the label, else the
+ * key), its `summary`, its `rooms`, its `href` — and whether the cab is here is the building's
+ * `elevator.at`, which the page passes in; where the plate stands is `building-scene.js`'s rect. Where
+ * its LABEL stands, how wide it is, how many lines show and what it is painted in are NONE of this
+ * module's business any more: `plateRow()` builds ONE static shape, EVERY property read through a
+ * `var()` `lobby/label-paint.js`'s `showLabels()` writes on `#lobby-floors` — never a number or a colour
+ * computed here from `plate`, `rect` or a camera. This is the structural fix the round exists for: a
+ * plate's row, once built, needs no rebuild for its label to track the camera, because nothing about the
+ * label lives in what this module builds — it lives entirely in the custom properties `showLabels()`
+ * rewrites on every `view()`.
  *
- * ⛔ THE PLATE'S TEXT IS READ AT THE PAGE'S BODY TEXT SIZE — ITS NAME AND ITS STATUS LINE BOTH (operator
- * rulings on card#7343, 2026-09-27: F1 for the name, r2 for the status line). The lobby exists to pick a
- * floor, and at whole-building fit a plate is small — a storey's proportions, height-bound, so the more
- * floors the smaller. So all of a plate's text is ONE label the camera MOVES and never SCALES: set at
- * `building-scene.js`'s `LABEL_FONT` (the page's base size, `1rem`) under `scale(var(--label-scale))`,
- * the counter-scale `lobby/main.js`'s `view()` writes from the camera it shows.
+ * ⛔ THE PLATE'S TEXT IS READ AT THE PAGE'S BODY TEXT SIZE (operator rulings on card#7343, 2026-09-27):
+ * `label-paint.js`'s `LABEL_FONT` (the page's base size, `1rem`) under `scale(var(--label-scale))`, the
+ * counter-scale `lobby/main.js`'s `view()` writes (through `showLabels()`) from the camera it shows.
  *
- * ⭐ THE LABEL STANDS BESIDE THE BUILDING — card#7343 r3's fix round, the operator's ruling 2026-09-30,
- * option A: *"the lobby's floor labels move BESIDE the building, as the ratified reference does"*
- * (`docs/design/floor-preview/floor-preview.html`'s per-storey name, drawn to the left of its storey,
- * `text-anchor="end"`, never over the drawing). `label.side === 'left'` stands the label's right edge at
- * the plate's own left edge, `LABEL_GAP_PX` real px clear of it, and grows LEFT, wrapped within
- * `label.maxWidth` — `building-scene.js`'s `labelMaxLeft()`, what is visible to the plate's left — text
- * right-aligned, as the reference's own placement reads. ⛔ NOT `right: '100%'` OF THE PLATE'S `<li>`
- * — that box-model solve was tried first and produced a WRONG position (a real-px `right` mixed with the
- * containing block's own SCENE-px width, so the ancestor's `scale(camera.zoom)` placed it wrong at every
- * zoom below the ceiling): `left` is set directly, in SCENE px, below — the code's own comment there
- * derives why. ⛔ THE FALLBACK, `label.side === 'plate'` (the operator's own words:
- * *"On a screen with no room beside the building (phone width), labels fall back to sitting over the
- * plate"*): the SAME placement this module carried before r3 — the label's left edge AT the plate's own
- * top-left, growing right, wrapped within `label.maxWidth` — now `building-scene.js`'s `labelMax()`,
- * unchanged — and left-aligned. `building-scene.js`'s `labelSide()` decides which, from the camera the
- * page shows; this module reads only its answer, never the camera.
+ * ⭐ THE LABEL STANDS BESIDE THE BUILDING (the operator's ruling, 2026-09-30, option A): `--label-left`
+ * (`label-paint.js`) stands the label's right edge a fixed gap clear of the SHELL's own left edge and it
+ * grows LEFT, wrapped within `--label-width`, right-aligned (`--label-align`), as the reference's own
+ * `text-anchor="end"` placement reads. ⛔ THE FALLBACK, `data-label-side="plate"` (a TEST HOOK ONLY — this
+ * module reads no attribute, only `var()`s; the operator's own words: *"On a screen with no room beside
+ * the building (phone width), labels fall back to sitting over the plate"*): `--label-left` is `0` and
+ * `--label-align` is `'left'`, so the SAME styles below read as the label's ORIGINAL on-plate placement,
+ * left-aligned at the plate's own top-left, with no branch in this module at all — the fallback is not a
+ * second shape `plateRow()` builds, it is the SAME shape under different numbers.
  *
- * ⛔ EITHER WAY THE LABEL STANDS AT THE PLATE's TOP, GROWING DOWN (card#7343 r3b, the seat's ruling,
- * unchanged by r3's fix round — beside or on the plate, only the label's X axis moved): the name, the
- * label's first line, stands at the plate's top edge whatever the label's height; a label taller than its
- * plate runs down over the plate below it (fallback mode) or past its OWN storey's own height (beside
- * mode, where `label.lines`' drop order below is what keeps that from happening), and the clip cuts a
- * fallback label's last lines first at the building's own bottom edge.
+ * ⭐ THREE LINES, DETERMINISTIC, WHOLE-LINE CLIPPED (design review P2, replacing the r1–r3 mechanism's
+ * JS item-count budget, which counted OPTIONAL SPANS rather than wrapped lines and let a long rooms line
+ * overlap the plate below regardless): each line is `white-space: nowrap; overflow: hidden; text-overflow:
+ * ellipsis` — a fixed row of text that never wraps and never grows taller than one line, with its FULL
+ * text always in the DOM. Line 1 is the NAME, with *the elevator is here* riding the SAME line on the
+ * cab's plate (a flex row: the link `flex: 0 1 auto; min-width: 0`, so it shrinks and ellipsizes FIRST;
+ * the cue `flex: 0 0 auto`, so it never shrinks and never ellipsizes away — design review P2's own
+ * example shape). Line 2 is the summary. Line 3 is the rooms, where the plate names any. The label's own
+ * box is `max-height: calc(var(--label-lines) * {LINE_PX}px); overflow: clip` (never `hidden` — design
+ * review's refute round: `hidden` can make a clipped box independently SCROLLABLE, reachable by a focus
+ * move or find-in-page in some browsers, which `clip` never is) — `--label-lines` (`label-paint.js`)
+ * decides how many of the three lines are not clipped away, floored at `1` so line 1 (the name and the
+ * cab's own cue) never disappears; DOM priority is the drop order, so a storey too short for the summary
+ * or the rooms line clips them from the BOTTOM, never the name.
  *
- * ⭐ NO LABEL OVERLAPS ANOTHER (card#7343 r3's ruling): a label beside the building never runs taller than
- * its OWN storey (`PLATE_H` at the camera's zoom), because it never shows more than `label.lines` of its
- * four possible lines — the name and the summary always, then the rooms line, then *the elevator is
- * here*, in that FIXED drop order (`building-scene.js`'s `labelLines()`'s own docblock says why this
- * order). A line beyond the budget is not REMOVED — it is VISUALLY HIDDEN (`VISUALLY_HIDDEN`, the same
- * clip the separator already used), so it is still in the DOM and still read by assistive technology:
- * *the elevator is here*, the line the ruling names by name as needing to *"remain perceivable somehow"*
- * for the storey that holds the cab, remains perceivable to anyone reading the page with a screen reader
- * even on a storey too short to show it — the cab's own drawn position in the shaft (`building-scene.js`'s
- * `CAB`) is what a SIGHTED viewer reads there instead, which is why the elevator's own line is the LAST
- * one this order keeps: it is the one line whose fact is drawn twice.
+ * ⛔ THE NAME-ONLY BOUND, IN LINES OF THE VIEWER'S FONT, NOT PX OR FLOOR COUNTS (design review P2: state
+ * this honestly in FLOOR.md § 4.1, which does — this module's own note is the same fact). `--label-lines`
+ * is floored at `1`, never `0`, but the label's OWN `max-height` is still exactly `1 × {LINE_PX}px` at
+ * that floor — so on a storey whose own on-screen height is SHORTER than one line of the viewer's font,
+ * the label's box (line 1 alone) runs past the storey's own bottom edge and can overlap the plate below
+ * it. This is the SAME "no rule chooses what the lobby does then" case the r1–r3 mechanism already
+ * declared at the two-lines-never-dropped floor; the floor is `1` line now rather than `2`, so it is
+ * REACHED LESS OFTEN, never removed.
  *
- * ⛔ THE LABEL CARRIES ITS OWN HALO AND A BACKING, NEVER A BOX ON THE LABEL ITSELF (design review r2,
- * card#7343 row 16 F1, replacing r1's opaque plaque, which blanked the drawing under it): beside the
- * building a label sits over A17's dim backdrop (`building-scene.js`'s `surfaceStyle()`); falling back
- * onto the plate it can sit over the windows, the shaft or the cab — either way, legible because of a
- * wall-coloured `text-shadow` stacked behind its glyphs AND a near-opaque wall-coloured backing behind
- * each visible text SPAN (`LABEL_BACKING`, one box per line, `box-decoration-break: clone`), never because
- * of what stands behind it, and never by hiding what stands behind it either: the LABEL's own box carries
- * neither, so between and past its text spans the drawing (or the backdrop) still shows. The halo is set
- * on the label element (an INHERITED CSS property, so every descendant text carries it too); the backing
- * is set per visible span. Both are counter-scaled with the text and never scaled by the scene. The
- * halo's colour, `building-scene.js`'s `LABEL_HALO`, clears 4.5:1 against the link and the body text as a
- * colour pair; the backing's contrast over the rendered drawing AND over A17's backdrop, at every phase,
- * is MEASURED on pixels by `tools/design/lobby-label-contrast.browser.mjs`, which also measures that no
- * label pixel covers the building drawing where `label.side === 'left'`.
+ * ⭐ NEITHER A DROPPED LINE NOR THE CUE IS REMOVED FROM THE ACCESSIBILITY TREE. `overflow: clip` hides a
+ * clipped line VISUALLY; it stays a normal DOM node, read by a screen reader in ordinary document order
+ * regardless of whether the line-count budget currently shows it — so the rooms line, when a storey is
+ * too short to show it, is still announced to anyone reading the page with a screen reader, exactly as
+ * the summary and the name are on every storey.
  *
- * ⛔ THE PLATE'S ACCESSIBLE NAME IS WHAT IT WAS: the link carries the name, ` — ` and the summary, in
- * that order, as it always did — the separator VISUALLY HIDDEN now that the two sit on lines of their own,
- * and still read. The rooms and the cab's word stay outside the link, as they were.
+ * ⛔ THE LINK's ACCESSIBLE NAME IS THE PLATE'S NAME ALONE (a disclosed change from the r1–r3 mechanism's
+ * contract, which concatenated the summary into the link too): the cue rides line 1 beside the link but
+ * OUTSIDE it (design review P2's own instruction, preserving the one part of the old contract that still
+ * applies — the cue was always outside the link), and the summary is now its own line, ALSO outside the
+ * link, for a structural reason rather than a style choice — a flex row's items are each ONE line tall,
+ * and the link would need to span two lines (name, then summary) to keep the summary inside it, which
+ * breaks line 1's own one-line flex layout with the cue. The summary and the rooms line are still
+ * ordinary DOM text, read by a screen reader in sequence right after the link, exactly as the rooms line
+ * and the cue already were outside the link in the r1–r3 mechanism — only the summary's position in that
+ * ordering is new. `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` holds this reading order
+ * and the link's accessible name.
+ *
+ * ⛔ THE HALO AND THE BACKING ARE `label-paint.js`'s VALUES, READ THROUGH `var()`s, NEVER COMPUTED HERE:
+ * `--label-halo` (a thin dark wash beside the building, guarding a glyph against a bright star pixel
+ * behind it; `none` falling back, where the near-opaque backing already holds contrast) is set on the
+ * label element (an INHERITED CSS property, so every descendant text carries it); `--label-backing` (the
+ * per-line background — `transparent` beside, P3: "no backing"; the wall's near-opaque cream falling
+ * back) and the two inks (`--label-ink` for the link, `--label-text-ink` for the summary, the rooms line
+ * and the cue) are set per element, because `color` for the link must be set DIRECTLY on the `<a>` rather
+ * than merely inherited — a value the browser's own `:visited` rule could otherwise beat (a `:visited`
+ * rule TARGETS the element directly and wins over an INHERITED value, even though it never wins over a
+ * value set directly on the element itself) — so gold survives a visited link exactly as an unvisited one.
  */
 
-import { LABEL_BACKING, LABEL_FONT, LABEL_HALO, LABEL_HALO_RADII } from './building-scene.js';
-
-/**
- * The halo itself: one zero-offset `text-shadow` layer of `LABEL_HALO` per radius in
- * `LABEL_HALO_RADII` — why the stack is dense, and why each radius is repeated (two layers of opacity
- * *a* composite to 1 − (1 − *a*)²), is that figure's docblock. Built once, here, rather than on every
- * row `plateRow()` builds.
- */
-const LABEL_TEXT_SHADOW = LABEL_HALO_RADII.map((r) => `0 0 ${r}px ${LABEL_HALO}`).join(', ');
+import { LABEL_FONT, LABEL_LINE_PX } from './label-paint.js';
 
 /**
- * The backing each of the label's visible text spans stands on (card#7343 r1, the seat's ruling R2): the
- * wall's colour behind the TEXT, one box per line (`box-decoration-break: clone`) — so a label that runs off
- * its plate, over a dark window or the sky behind the building, still stands on the wall's colour, and the
- * drawing shows between the lines and past their ends. Never on the label's own box: that plaque blanked
- * the drawing (design review r1). `LABEL_BACKING`'s docblock says what is measured over it.
+ * The small inset every visible line stands on, every side: room for the halo's blur and the focus
+ * ring not to be cut by the label's own `overflow: clip` (design review P2), and — falling back, where
+ * the backing is opaque — room so a glyph's own rendered ink, which can sit a few px past its line box's
+ * edge and still read as part of the same word, does not fall outside the backing onto whatever is
+ * behind it. Horizontal only, per P3's own instruction, so a shorter line never looks padded above or
+ * below its neighbour.
  */
-const TEXT_BACKING = {
-    backgroundColor: LABEL_BACKING,
-    boxDecorationBreak: 'clone',
-    webkitBoxDecorationBreak: 'clone',
-    // ⛔ A SMALL PADDING, EVERY SIDE (card#7343 r3's fix round MINOR 3): with none, the backing's own box
-    // is the span's LINE BOX alone, and a glyph's own rendered ink can sit close enough to that box's
-    // edge that a few px beyond it — still legible space a viewer's eye reads as part of the same word —
-    // falls OUTSIDE the backing, onto whatever is behind it. `tools/design/lobby-label-contrast.browser
-    // .mjs` measures a ring 2–3 px out from every glyph pixel for exactly this reason; this padding is
-    // what keeps that ring inside the backing rather than past its edge.
-    padding: '5px',
-};
+const LINE_PAD = '0 5px';
 
-/**
- * The fixed gap between a beside label's right edge and the plate's own left edge, in real CSS px —
- * small and non-zero so the rendered pixels never touch regardless of rounding. Real, the same frame
- * `LABEL_MIN_PX` and `label.maxWidth` already live in: `plateRow()`'s own docblock, at its `left`, says
- * why turning this back into a SCENE quantity (dividing by `label.zoom`) is what makes it real rather
- * than assuming it already is.
- */
-const LABEL_GAP_PX = 8;
-
-/**
- * Text kept for assistive technology and never painted — the conventional clip, since the page ships
- * no stylesheet to put a class in.
- */
-const VISUALLY_HIDDEN = {
-    position: 'absolute',
-    width: '1px',
-    height: '1px',
-    margin: '-1px',
-    padding: '0',
-    border: '0',
+/** Every visible line's shared shape — a fixed row of text, never wrapped, ellipsized rather than clipped mid-glyph. */
+const LINE_STYLE = {
     overflow: 'hidden',
-    clipPath: 'inset(50%)',
     whiteSpace: 'nowrap',
+    textOverflow: 'ellipsis',
+    padding: LINE_PAD,
+    backgroundColor: 'var(--label-backing)',
 };
 
 /**
@@ -142,7 +114,7 @@ const VISUALLY_HIDDEN = {
  * @param {{x: number, y: number, w: number, h: number}} rect where `building-scene.js` stands it
  * @param {boolean} here whether the elevator's cab is at this plate
  */
-export function plateRow(doc, plate, rect, here, label) {
+export function plateRow(doc, plate, rect, here) {
     const row = doc.createElement('li');
 
     // The key the keyboard's focus reports back to the screen (`lobby/main.js`'s focus-into-view).
@@ -155,137 +127,84 @@ export function plateRow(doc, plate, rect, here, label) {
         height: `${rect.h}px`,
     });
 
-    const beside = label.side === 'left';
-    const labelEl = doc.createElement('div');
+    const label = doc.createElement('div');
 
-    Object.assign(labelEl.style, {
+    Object.assign(label.style, {
         position: 'absolute',
-        // ⛔ AT THE PLATE's TOP, GROWING DOWN, EITHER WAY (card#7343 r3b's ruling, unchanged by r3's fix
-        // round): the name, the label's first line, stands at the plate's top edge whatever the label's
-        // height. Falling back, its LEFT edge stands AT the plate's own top-left and it grows right,
-        // left-aligned, as it always did — what falls past the surface's edge first there is its last
-        // lines, the status line's.
-        //
-        // ⛔ BESIDE, `left` IS A SCENE-PX NUMBER, NEVER A REAL-PX ONE LIKE `width` BELOW (card#7343 r3's
-        // fix round — the bug its own history is worth stating, because the fix is not obvious from the
-        // result). This element's OWN `transform: scale(labelScale)` is what makes a REAL-px number
-        // (`label.maxWidth`, `LABEL_FONT`) render at that many SCREEN px regardless of the camera's zoom
-        // — but that cancellation holds ONLY for a length INSIDE this element's own box (its width, its
-        // font), read off the fixed point its `transformOrigin` anchors (`'0 0'`, this element's own
-        // pre-transform top-left) and NEVER MOVED by this element's own transform. `left`/`top` are NOT
-        // inside that box — they are where the ANCESTOR `<ul>`'s `scale(camera.zoom)` places this
-        // element's own anchor POINT, the same one `rect.x`/`rect.y` are placed by — so a `left` meant to
-        // read as `label.maxWidth` REAL px would, read as a SCENE quantity by that ancestor, land at only
-        // `label.maxWidth · camera.zoom` real px: correct at the ceiling zoom (≈1), wrong (and shrinking
-        // further) at every zoom below it — which is every whole-building fit this round exists for. So
-        // `left` is `label.maxWidth` (plus the gap) turned back into SCENE px by DIVIDING by the same
-        // `camera.zoom` the ancestor is about to multiply it by, undoing that division exactly and
-        // landing the label's right edge `LABEL_GAP_PX` real px clear of the plate's own left edge — real
-        // px, because `LABEL_GAP_PX` is divided by the SAME zoom for the SAME reason.
         top: '0',
-        ...(beside
-            ? { left: `${-(label.maxWidth + LABEL_GAP_PX) / label.zoom}px`, textAlign: 'right' }
-            : { left: '0' }),
+        left: 'var(--label-left)',
+        width: 'var(--label-width)',
+        maxHeight: `calc(var(--label-lines) * ${LABEL_LINE_PX}px)`,
+        overflow: 'clip',
+        overflowClipMargin: '4px',
         fontSize: LABEL_FONT,
-        // ⛔ WRAPPED WITHIN WHAT IS VISIBLE (card#7343 r3, r4b, and r3's fix round): the label's px are
-        // screen px (the counter-scale), so a label no wider than `label.maxWidth` — `building-scene.js`'s
-        // `labelMaxLeft()` beside the building, or its `labelMax()` falling back onto the plate — never
-        // wider than the surface, is one a pan can always bring wholly into view.
-        //
-        // ⛔ BESIDE, THE WIDTH IS FIXED, NEVER `max-width`: with `left` ALREADY placing this element's own
-        // right edge exactly `LABEL_GAP_PX` clear of the plate (the docblock above), an auto/shrink-to-fit
-        // width would still need SOME 'available width' figure to shrink-to-fit against, and the only one
-        // this element's own containing block (the `<li>`) can state is ITS OWN, unrelated to the real px
-        // this element is meant to read at — so `width` is set directly, the SAME `label.maxWidth` real-px
-        // number `maxWidth` used before r3, and short text (most floor names) sits right-aligned inside it
-        // rather than filling it — invisible, since only the SPANS carry a backing, never this box.
-        whiteSpace: 'normal',
-        overflowWrap: 'anywhere',
-        [beside ? 'width' : 'maxWidth']: `${label.maxWidth}px`,
-        // The counter-scale about the label's own top-left, so the scaled label's top stays on the
-        // plate's top edge whichever way it grows (its OWN box is already sized/positioned by `right`
-        // or `left` above before this transform is ever applied).
+        lineHeight: `${LABEL_LINE_PX}px`,
         transformOrigin: '0 0',
         transform: 'scale(var(--label-scale))',
-        // ⛔ THE HALO, NEVER A BOX ON THE LABEL ITSELF (design review r2, card#7343 row 16 F1): a
-        // wall-coloured `text-shadow` stacked behind the glyphs, set here so it is counter-scaled with the
-        // text and never scaled by the scene, and inherited by every descendant span — the name, the
-        // summary, the rooms and the cab's word alike. No background, no padding, no radius on the label
-        // ITSELF: the drawing (or A17's backdrop) shows between and past its text spans, which carry their
-        // own backing (`TEXT_BACKING`).
-        textShadow: LABEL_TEXT_SHADOW,
+        textShadow: 'var(--label-halo)',
     });
 
-    // § 4.1: "one row per floor, THE ROW BEING THE LINK to the floor".
+    // § 4.1: "one row per floor, THE ROW BEING THE LINK to the floor". Line 1: shrinks and ellipsizes
+    // before the cue does (`flex: 0 1 auto; min-width: 0`), never grows past its own content width
+    // (`flex-grow: 0`) so a short name sits snug against the cue rather than stretched away from it.
     const link = doc.createElement('a');
 
     link.href = plate.href;
+    link.textContent = plate.name;
+    Object.assign(link.style, LINE_STYLE, {
+        display: 'block',
+        flex: '0 1 auto',
+        minWidth: '0',
+        color: 'var(--label-ink)',
+    });
 
-    const name = doc.createElement('span');
+    const line1 = doc.createElement('div');
 
-    // § 4.6 (card#9273): the floor reads as its LABEL where the layout gives it one, else as its key.
-    // The link is the key either way. A line of its own: the status line stands under it.
-    name.textContent = plate.name;
-    // A line of its own, as wide as its text: its backing hugs the name rather than spanning the label.
-    // Beside the building, `textAlign: 'right'` (on `labelEl`, below) moves INLINE content but not this
-    // BLOCK one — a block child with a fit-content width sits at its parent's own left edge regardless
-    // of the parent's `text-align` — so beside, `marginLeft: 'auto'` pushes it to the label's right edge
-    // (where its own text-align then reads, matching the reference's `text-anchor="end"`) the same way a
-    // block-level auto margin always has; falling back, the label is left-aligned and the name already
-    // sits where it should.
-    Object.assign(name.style, { display: 'block', width: 'fit-content', ...(beside ? { marginLeft: 'auto' } : {}) }, TEXT_BACKING);
+    Object.assign(line1.style, {
+        display: 'flex',
+        alignItems: 'baseline',
+        justifyContent: 'var(--label-align)',
+        gap: '0.25em',
+    });
+    line1.append(link);
 
-    const separator = doc.createElement('span');
+    if (here) {
+        // § 4.5: "Colour is never the only carrier of a fact" — so the cab is a word, never dropped
+        // (design review P2: "never ellipsizes away").
+        const cue = doc.createElement('span');
 
-    separator.textContent = ' — ';
-    Object.assign(separator.style, VISUALLY_HIDDEN);
+        cue.textContent = ' — the elevator is here';
+        Object.assign(cue.style, LINE_STYLE, {
+            display: 'block',
+            flex: '0 0 auto',
+            color: 'var(--label-text-ink)',
+        });
+        line1.append(cue);
+    }
 
-    const summary = doc.createElement('span');
+    // Line 2: the summary — outside the link (this module's own docblock says why), still read right
+    // after it in ordinary document order.
+    const summary = doc.createElement('div');
 
     // § 2.1 row 5: the per-floor count is labelled as a count of the seats THE CLIENT HOLDS.
     summary.textContent = plate.summary === '' ? 'no seats held' : plate.summary;
-    Object.assign(summary.style, TEXT_BACKING);
-    link.append(name, separator, summary);
+    Object.assign(summary.style, LINE_STYLE, { textAlign: 'var(--label-align)', color: 'var(--label-text-ink)' });
 
-    // ⛔ THE DROP ORDER — name, summary, rooms, *the elevator is here* (card#7343 r3's ruling, this
-    // module's own docblock): the name and the summary are on the LINK and are never dropped; rooms and
-    // the cab's word are built here in that priority order, and `label.lines` — `building-scene.js`'s
-    // `labelLines()`, the storey's own height divided into lines — decides how many of them, beyond the
-    // two required, are VISUALLY shown. A dropped one is not removed: it is `VISUALLY_HIDDEN`, so it is
-    // still in the DOM and still read by assistive technology — the elevator's own line, dropped last of
-    // the two (this order's whole point), is also the one line a sighted viewer still reads another way,
-    // off the cab's own drawn position in the shaft.
-    const optional = [];
+    label.append(line1, summary);
 
+    // Line 3: the rooms, where the plate names any — dropped last of the three by `--label-lines`'s own
+    // DOM-order priority (never removed: `overflow: clip` hides it visually, not from the accessibility tree).
     if (plate.rooms.length > 1 || plate.rooms.some((room) => !room.reported)) {
-        const rooms = doc.createElement('span');
+        const rooms = doc.createElement('div');
 
         rooms.textContent = ' — rooms: ' + plate.rooms
             .map((room) => `${room.install_id} (${room.form}${room.reported ? '' : ' — no seats reported for this room'})`)
             .join(', ');
-        optional.push(rooms);
+        Object.assign(rooms.style, LINE_STYLE, { textAlign: 'var(--label-align)', color: 'var(--label-text-ink)' });
+        label.append(rooms);
     }
 
-    if (here) {
-        // § 4.5: "Colour is never the only carrier of a fact" — so the cab is a word.
-        const cab = doc.createElement('span');
-
-        cab.textContent = ' — the elevator is here';
-        optional.push(cab);
-    }
-
-    const shown = Math.max(0, label.lines - 2);
-
-    optional.forEach((span, i) => {
-        Object.assign(span.style, TEXT_BACKING);
-
-        if (i >= shown) {
-            Object.assign(span.style, VISUALLY_HIDDEN);
-        }
-    });
-
-    labelEl.append(link, ...optional);
-    row.append(labelEl);
+    row.append(label);
 
     return row;
 }

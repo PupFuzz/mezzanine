@@ -65,15 +65,18 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   zoom or pan writes an animation-log row, and a render leaves the camera where the viewer put it. Each
   plate's name, and under it its status line — the seat counts, the rooms and *the elevator is here* — is
   drawn at the page's own body text size and keeps that size at every zoom, so a plate can be read with the
-  whole building in view. Each label stands beside its plate, to the left of the building, and never over
-  the drawing — so no label pixel ever covers the shell, the windows, the shaft or the cab wherever there
-  is room for it. On a screen too narrow for that (a phone, or the elevator ride zoomed in on one plate),
-  the label falls back to standing on the plate as before, wrapping within what is visible of the drawing
-  to the right of its left edge, and stays legible there on its own pale backing. Where a plate on the
-  screen is too short for its whole label, the rooms line drops first and then *the elevator is here* — the
-  floor's name and its summary always stay, so every plate keeps its accessible name — and a dropped line
-  is not removed for a screen reader: it stays available to one even while nothing is drawn for it, so the
-  elevator's plate is still named to an assistive-technology user at any zoom. With no floor layout loaded, the
+  whole building in view. Each label stands beside its plate, to the left of the building, in warm gold text,
+  and never over the drawing — so no label pixel ever covers the shell, the windows, the shaft or the cab
+  wherever there is room for it. On a screen too narrow for that (a phone, or the elevator ride zoomed in on
+  one plate), the label falls back to standing on the plate as before, in dark text on its own pale backing.
+  Each line of a label — the name (with *the elevator is here* riding the same line, on the floor that holds
+  the cab), the seat counts, and the rooms — is a single line that ellipsizes rather than wraps if it runs
+  long; where a plate on the screen is too short for its whole label, the rooms line drops first and then the
+  seat counts — the floor's name, and the elevator cue where it applies, always stay on the first line, so
+  every plate keeps its accessible name and the cab's own floor keeps its cue. A dropped line is not removed
+  for a screen reader: it stays available to one even while nothing is drawn for it, so a floor's seat counts
+  or its rooms are still read to an assistive-technology user at any zoom, right after the plate's own link.
+  With no floor layout loaded, the
   lobby's list of rooms flows in the page as it did before, rather than in the building's fixed-height
   drawing, and the mouse wheel, the arrow keys, text selection and a press on a room's link all work on it
   as they did before, with the zoom buttons and *Whole building* hidden and the building out of the tab
@@ -113,12 +116,19 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   a drag that ends over a desk or a floor plate is never a click on it. AT-D3-21's building half is
   `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`, the shared wiring is driven
   under `node` by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`, and the plates' text size is
-  held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`, which now also holds that a
-  beside label never reaches its own plate's left edge — a geometric guarantee CI can check with no
-  browser. `tools/design/lobby-label-contrast.browser.mjs` now also measures how much of the building a
-  label's box covers (asserted zero wherever a label stands beside it) and how much any two labels'
-  boxes overlap, alongside the contrast it already measured, over renders at 3, 5, 7 and 10 floors, two
-  window sizes, every sky phase, zoomed to one plate and at phone width.
+  held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`. A plate's label geometry and
+  paint are now decided by one function, `lobby/label-paint.js`'s `showLabels()`, called every time the
+  camera moves rather than only when the fleet's own render happens, so a wheel, a drag or an elevator
+  glide can never leave a label planned for a camera the viewer has already left; the test holds that a
+  beside label never reaches the building's own outer wall — a geometric guarantee CI can check with no
+  browser — and that `showLabels()`'s own written values match a hand-computed camera with no render
+  built at all. `tools/design/lobby-label-contrast.browser.mjs` renders at the page's own served surface
+  sizes now (the viewport less the browser's own default margin, at the drawing's own height), measures
+  how much of the building a label's box covers (asserted zero wherever a label stands beside it), how
+  much any two labels' boxes overlap, and that no visible line is cut through its own glyphs or leaves
+  the elevator's cue unreachable, alongside the contrast it already measured, over floor counts from 1 to
+  16, five window sizes, every sky phase, a wheel between two renders, zoomed to one plate and at phone
+  width.
 
 ## [0.6.0] — 2026-09-29
 

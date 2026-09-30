@@ -250,8 +250,8 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     public function test_red_a_lobby_that_loads_the_animation_log_in_any_import_form(string $line, string $reason): void
     {
         $dir = $this->mutatedModules([self::DRAWING,
-            "import { framesNothing } from '../wire/camera.js';\n",
-            "import { framesNothing } from '../wire/camera.js';\n{$line}\n"]);
+            "import { skyPaint } from '../floor/floor-layout.js';\n",
+            "import { skyPaint } from '../floor/floor-layout.js';\n{$line}\n"]);
 
         $defects = $this->graphDefects(dirname($dir));
 

@@ -103,12 +103,11 @@
  *      "lobby_renders": [ {at, frame, label} ], "camera_acts": [ {at, act, before, after, glide_ms} ] — on
  *      the lobby, each act also carrying `label: {after, mid}`, and a ride's `ride: {cab, route, resolves_to}`
  *      — `resolves_to` the floor the floor page's `resolveRoute()` finds for the route over the building the
- *      lobby drew — or `null` when the ride was refused. A `label` is the transform a plate's label is
- *      shown under, `{zoom, scale, max}` — the camera's zoom (the plates' `scale(zoom)`), its
- *      `lobby/building-scene.js` `labelScale()` (the label's own counter-scale) and `labelMax()` (the width
- *      in screen px it wraps within, `lobby/main.js`'s `--label-max`) — under the frame's camera,
- *      the camera an act leaves, and (`mid`, `null` for an act that does not glide) the camera the page
- *      shows halfway through the act's glide; and each ride step's (`ride`, `arrive`, `return`) `riding:
+ *      lobby drew — or `null` when the ride was refused. A `label` is `lobby/label-paint.js`'s
+ *      `showLabels()`, read back off the custom properties it writes for this camera — `{zoom, scale, side,
+ *      left, width, lines, ink, textInk, backing, halo, align}` — under the frame's camera, the camera an
+ *      act leaves, and (`mid`, `null` for an act that does not glide) the camera the page shows halfway
+ *      through the act's glide; and each ride step's (`ride`, `arrive`, `return`) `riding:
  *      {accessor, frame}` — the screen's `riding()` after the step, beside the `riding` of the last frame
  *      drawn —
  *      "animation_log": [ <§ 11 rows> ] }`
@@ -223,26 +222,36 @@ const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'sta
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
 const { healthCounters } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-model.js')).href);
-const { labelLines, labelMax, labelMaxLeft, labelScale, labelSide } = await import(pathToFileURL(join(dir, '..', 'lobby', 'building-scene.js')).href);
+const { showLabels } = await import(pathToFileURL(join(dir, '..', 'lobby', 'label-paint.js')).href);
 const { between } = await import(pathToFileURL(join(dir, 'camera.js')).href);
 
 /**
- * The transform a plate's label is shown under on a lobby camera, as `lobby/main.js` shows it (Appendix
- * B row 16, the operator's rulings): the camera's zoom the plates are shown at, and the label's own
- * counter-scale — and the width it wraps within, `--label-max` (card#7343 r4b). The label's font and what
- * sits inside it are `lobby/plate-row.js`'s, read off the row.
- */
-/**
- * A camera's plate-label geometry, for the harness's own recording: `zoom`/`scale` unconditional (every
- * plate's font-size arithmetic reads the same one regardless of where the label stands), and — since
- * card#7343 r3's fix round moved the DEFAULT placement beside the building — `side`/`max`/`lines`, the
- * SAME decision `lobby/main.js`'s own `labelPlan()` makes over this camera (`labelSide()`, then
- * `labelMaxLeft()` beside it or `labelMax()` falling back onto the plate, and `labelLines()`'s budget).
+ * A camera's plate-label geometry and paint, for the harness's own recording — `label-paint.js`'s
+ * `showLabels()`, the SHIPPED module's ONE primitive (card#7343 r4's fix round; this replaces the r1–r3
+ * mechanism's own `plateLabel()`, which read four separate `building-scene.js` functions this module no
+ * longer exports), called against a stand-in element (a bare `style`/`dataset` pair, the same shape
+ * `showLabels()` needs and nothing more) so this probe reads back exactly the custom properties the
+ * shipped page would write on `#lobby-floors`, never a re-derivation of its own.
  */
 function plateLabel(camera) {
-    const side = labelSide(camera);
+    const props = new Map();
+    const el = { style: { setProperty: (k, v) => props.set(k, v) }, dataset: {} };
 
-    return { zoom: camera.zoom, scale: labelScale(camera), side, max: side === 'left' ? labelMaxLeft(camera) : labelMax(camera), lines: labelLines(camera) };
+    showLabels(el, camera);
+
+    return {
+        zoom: camera.zoom,
+        scale: props.has('--label-scale') ? Number(props.get('--label-scale')) : null,
+        side: el.dataset.labelSide ?? null,
+        left: props.get('--label-left') ?? null,
+        width: props.get('--label-width') ?? null,
+        lines: props.has('--label-lines') ? Number(props.get('--label-lines')) : null,
+        ink: props.get('--label-ink') ?? null,
+        textInk: props.get('--label-text-ink') ?? null,
+        backing: props.get('--label-backing') ?? null,
+        halo: props.get('--label-halo') ?? null,
+        align: props.get('--label-align') ?? null,
+    };
 }
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
