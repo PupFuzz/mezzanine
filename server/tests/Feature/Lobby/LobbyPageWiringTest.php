@@ -266,12 +266,44 @@ class LobbyPageWiringTest extends TestCase
         // ⛔ NEITHER `renderBuilding()` NOR `paint()` WRITES ANY LABEL GEOMETRY (P5's own ask): `showLabels()`
         // is the ONE writer, called only from `view()` — a second writer growing back beside it, even one
         // that agrees with it, is exactly the shape the round's whole redesign exists to make impossible.
+        $this->assertSame(1, preg_match('/function view\(.*?\n\}\n/s', $js, $vw), 'view() did not parse out of main.js');
         $this->assertSame(1, preg_match('/function renderBuilding\(.*?\n\}\n/s', $js, $rb), 'renderBuilding() did not parse out of main.js');
         $this->assertSame(1, preg_match('/function paint\(.*?\n\}\n/s', $js, $pt), 'paint() did not parse out of main.js');
         $this->assertStringNotContainsString('setProperty', $rb[0], 'renderBuilding() writes a custom property — label geometry belongs to showLabels() alone');
         $this->assertStringNotContainsString('setProperty', $pt[0], 'paint() writes a custom property — label geometry belongs to showLabels() alone');
         $this->assertStringNotContainsString('--label-', $rb[0], 'renderBuilding() names a --label- property directly');
         $this->assertStringNotContainsString('--label-', $pt[0], 'paint() names a --label- property directly');
+
+        // ⛔ card#7343 r4 review MAJOR 3: `cameraDefects()`'s own `'plate text'` needles above check
+        // `showLabels(` is present SOMEWHERE in the file, never that it is called FROM `view()`'s own
+        // body — a mutation that MOVES the call into `paint()` (still present, just relocated, so every
+        // substring needle above still matches) stayed green against it, leaving r3 M1's own root cause
+        // (a writer that runs only on render, never on every camera move) unguarded. This is the guard
+        // that actually reads WHERE the call sits: `showLabels(` inside `view()`'s own extracted body, and
+        // forbidden from `paint()`'s and `renderBuilding()`'s — both already extracted above. Checked
+        // against `stripLineComments()`: `view()`'s own body — and `main.js`'s prose generally — mentions
+        // `showLabels()` BY NAME in a `//` comment explaining what it does, which is not a second call.
+        $this->assertStringContainsString('showLabels(', $this->stripLineComments($vw[0]), 'view() does not call showLabels() — a camera move would leave every label as it was');
+        $this->assertStringNotContainsString('showLabels(', $this->stripLineComments($pt[0]), 'paint() calls showLabels() — a second writer, even one that agrees with view()\'s, is the shape r3 M1 exists to make impossible');
+        $this->assertStringNotContainsString('showLabels(', $this->stripLineComments($rb[0]), 'renderBuilding() calls showLabels() — a second writer, even one that agrees with view()\'s, is the shape r3 M1 exists to make impossible');
+
+        // CONTROL — the call MOVED into paint() rather than removed: still present in the file (every
+        // substring needle above still matches), so only a check that reads WHERE it sits catches this.
+        $movedIntoPaint = str_replace(
+            ['    showLabels(floors, camera);', 'view(current(camera));'],
+            ['', "view(current(camera));\n    showLabels(floors, camera);"],
+            $js,
+        );
+        $this->assertNotSame($movedIntoPaint, $js, "the moved-call control's anchor is gone — it mutated nothing");
+        $this->assertArrayNotHasKey('plate text', $this->cameraDefects($movedIntoPaint),
+            'the moved-call control is meant to stay green under the OLD substring-anywhere check — every needle is still present, just relocated; '.
+            'if this now fails, cameraDefects() itself changed and this proof of the r4 review MAJOR is stale');
+        $this->assertSame(1, preg_match('/function view\(.*?\n\}\n/s', $movedIntoPaint, $vwMoved), 'view() did not parse out of the moved-call mutation');
+        $this->assertSame(1, preg_match('/function paint\(.*?\n\}\n/s', $movedIntoPaint, $ptMoved), 'paint() did not parse out of the moved-call mutation');
+        $this->assertStringNotContainsString('showLabels(', $this->stripLineComments($vwMoved[0]),
+            "CONTROL (showLabels() moved into paint()) did not bite — view() still calls it after the mutation");
+        $this->assertStringContainsString('showLabels(', $this->stripLineComments($ptMoved[0]),
+            'the moved-call control\'s anchor put the call somewhere paint() does not parse it back out of');
 
 
         // CONTROL — the surface's style never applied: the page keeps whatever box it started with (r3).
@@ -598,6 +630,17 @@ class LobbyPageWiringTest extends TestCase
     private function mainJs(): string
     {
         return (string) file_get_contents($this->moduleDir().'/main.js');
+    }
+
+    /**
+     * A JS source snippet with every `//` line comment blanked (the code before it kept, verbatim) — so a
+     * containment check reads only executable text, never prose that names a function descriptively. This
+     * module's own comments write `showLabels()` in backticks to explain what a line does; a check for
+     * "does this body call `showLabels(`" must not fire on that sentence.
+     */
+    private function stripLineComments(string $js): string
+    {
+        return (string) preg_replace('#//[^\n]*#', '', $js);
     }
 
     /**

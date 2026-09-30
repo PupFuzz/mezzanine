@@ -48,10 +48,10 @@
 //   fallback (`side === 'plate'`) is the operator's own accepted case and is reported, never asserted at 0.
 //   **Overlap** — every PAIR of plates' label boxes against each other: the intersection's area, which
 //   must be `0` regardless of which side the labels stand on.
-//   **No line sliced** — every VISIBLE line (the name+cue row, the summary, the rooms line) is either
-//   WHOLLY inside the label's own clipped box or WHOLLY outside it (invisible) — never cut through its
-//   own glyphs' middle, which `overflow: clip` at a `max-height` that is not an exact multiple of the
-//   line's own rendered height would produce.
+//   **No line sliced (r5's fix round, item 4 — judged from RENDERED PIXELS, not a bounding-rect
+//   heuristic: r4 review m4, "checker footprint ≠ painted")** — every glyph-diff pixel `MEASURE` finds
+//   (the SAME diff pass contrast already runs) must sit at or above its own label's `clip-path` bottom
+//   edge; any that don't are pixels the clip should never have let paint show.
 //   **The cue stays reachable** — on the cab's own plate, the cue's own rect lies wholly inside the
 //   label's unclipped (fully-shown) region, so *the elevator is here* is never itself the line a short
 //   storey slices.
@@ -59,11 +59,13 @@
 // ⛔ NO BROWSER IS A FAILURE, NEVER A SKIP, AND IT IS NOT WIRED IN CI (a stock runner carries no
 // Chromium — `.github/workflows/design-doc-verifiers.yml` names both browser gates and why). Run by hand.
 //
-// ⛔ THE SELFTEST PLANTS ONE DEFECT PER CHECK AND REQUIRES EACH TO RED ON ITS OWN, FOR ITS OWN REASON: no
-// backing at all (contrast); the beside-the-building gap inverted, so a label's box runs into the
-// building (coverage); and the per-storey line budget ignored, so every optional line always shows,
-// which — at floor counts tall enough that this round exists for — makes adjacent labels overlap AND
-// slices a line where the forced budget outgrows the storey (overlap and line-integrity, one plant).
+// ⛔ THE SELFTEST PLANTS ONE DEFECT PER CHECK AND REQUIRES EACH TO RED ON ITS OWN, FOR ITS OWN REASON (r5's
+// fix round, item 4 — closing two gaps r4 review found: the slice check reded only via overlap, and the
+// cue-reachable check had no plant at all): no backing at all (contrast); the beside-the-building gap
+// inverted, coverage; the per-storey line budget ignored (overlap — which, at floor counts tall enough
+// for this round to exist, ALSO slices as a documented side effect, so it is not this round's own proof of
+// the slice check); the label's own clip-path bled on the bottom too (sliced lines, alone — never via
+// overlap); and the side threshold shrunk below the cue's own measured width (cue-reachable).
 
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -83,6 +85,18 @@ const PLANTS = {
   contrast: ["backgroundColor: 'var(--label-backing)',\n", ''],
   coverage: ['export const LABEL_GAP_PX = 8;', 'export const LABEL_GAP_PX = -400;'],
   overlap: ['return Math.max(1, Math.floor((PLATE_H * camera.zoom) / LABEL_LINE_PX));', 'return 4;'],
+  // r5's fix round (item 4): a plant that bites the SLICE check ALONE — the overlap control above also
+  // slices (a forced 4-line budget outgrows a short storey), so it proved nothing about the slice check
+  // on its own. This one widens the clip's OWN bottom bleed instead of touching the line budget at all,
+  // reproducing r4 review MAJOR 2's exact shape (glyph paint past the label's own clip edge) with no
+  // effect on how many lines are budgeted or on any other plate's own box, so it cannot trip overlap.
+  slice: ["clipPath: 'inset(-4px -4px 0 -4px)',", "clipPath: 'inset(-4px -4px -12px -4px)',"],
+  // r5's fix round (item 4): a plant for the cue-reachable check, which `label-paint.js`'s own docblock
+  // had claimed a control for before one existed. Shrinking the side threshold well below the cue's own
+  // measured width (≈189px) puts some run's beside label narrower than the cue's unshrinkable content,
+  // pushing it past the label's own left edge — reachable ONLY by this specific narrow-width shape, never
+  // by `LABEL_GAP_PX` or the line budget, so it cannot trip coverage, overlap or the slice check.
+  cueWidth: ['export const LABEL_SIDE_MIN_PX = 240;', 'export const LABEL_SIDE_MIN_PX = 50;'],
 };
 
 function findChrome() {
@@ -224,27 +238,50 @@ async function browser(chrome, width, height) {
   };
 }
 
-// In the page: every visible text span of every plate label, its text colour and its line boxes.
-const SPANS = `(() => [...document.querySelectorAll('li[data-floor] a, li[data-floor] span, li[data-floor] div')]
-  .filter((s) => s.children.length === 0 && getComputedStyle(s).clipPath !== 'inset(50%)' && s.textContent.trim() !== '')
-  .map((s) => ({ text: s.textContent.trim(), color: getComputedStyle(s).color,
-    rects: [...s.getClientRects()].map((r) => ({ l: Math.floor(r.left), t: Math.floor(r.top), r: Math.ceil(r.right), b: Math.ceil(r.bottom) }))
-      .filter((r) => r.r > r.l && r.b > r.t) })))()`;
-
 // In the page: each plate's own outer label box, the building's own drawn box, every VISIBLE line's own
-// rect (for the no-sliced-line and cue-reachable checks), and which of them holds the cab's cue.
+// rect AND colour (for contrast, the no-sliced-line and the cue-reachable checks), and which of them
+// holds the cab's cue. ⛔ r5's fix round: ONE query builds both the label geometry AND the per-line
+// colour/rect data `MEASURE` needs — the r4-round tool queried these SEPARATELY (`SPANS`, a flat list
+// with no owning label; `BOXES`, grouped by label but with no colour), so a glyph pixel had no way to
+// know WHICH label's own clip edge it must be judged against — every beside label shares nearly the same
+// horizontal span, so the slice check silently matched a floor's own glyph against a DIFFERENT floor's
+// label above it, flagging nearly every glyph on every run as "sliced". Each line now carries its own
+// owning label's box directly, so the pixel loop below checks a pixel against the ONE label it belongs
+// to, never the whole building's worth of labels.
 const BOXES = `(() => {
   const rect = (r) => ({ l: r.left, t: r.top, r: r.right, b: r.bottom });
   const labels = [...document.querySelectorAll('li[data-floor]')].map((li) => {
     const label = li.querySelector(':scope > div');
+    const box = rect(label.getBoundingClientRect());
     const lines = [...label.querySelectorAll('a, div, span')]
       .filter((el) => el.children.length === 0 && getComputedStyle(el).clipPath !== 'inset(50%)' && el.textContent.trim() !== '')
-      .map((el) => ({ text: el.textContent.trim(), isCue: el.tagName === 'SPAN', box: rect(el.getBoundingClientRect()) }));
-    return { floor: li.dataset.floor, box: rect(label.getBoundingClientRect()), lines };
+      .map((el) => ({ text: el.textContent.trim(), isCue: el.tagName === 'SPAN', color: getComputedStyle(el).color,
+        box: rect(el.getBoundingClientRect()),
+        rects: [...el.getClientRects()].map((r) => ({ l: Math.floor(r.left), t: Math.floor(r.top), r: Math.ceil(r.right), b: Math.ceil(r.bottom) }))
+          .filter((r) => r.r > r.l && r.b > r.t) }));
+    return { floor: li.dataset.floor, box, lines };
   });
   const svg = document.querySelector('#lobby-building svg');
   return { labels, building: svg ? rect(svg.getBoundingClientRect()) : null, side: window.__labelSide };
 })()`;
+
+/**
+ * Every visible line, flattened out of `boxes.labels`, each carrying its OWN label's box (`labelBox`) —
+ * what `MEASURE` judges a glyph-diff pixel's slicing against. Never the whole label list: a pixel judged
+ * against every label rather than the one it belongs to is the bug r5's fix round closed (this
+ * function's own docblock, at `BOXES`).
+ */
+function labeledLines(boxes) {
+  const out = [];
+
+  for (const label of boxes.labels) {
+    for (const line of label.lines) {
+      out.push({ text: line.text, color: line.color, rects: line.rects, labelBox: label.box, floor: label.floor });
+    }
+  }
+
+  return out;
+}
 
 // ⛔ THE LINK's OWN UNDERLINE IS NOT THE GLYPH: `<a>` draws `text-decoration: underline` in ITS OWN
 // colour (`text-decoration-color` defaults to that element's `currentcolor`, never a descendant's), so
@@ -266,24 +303,6 @@ function wholeInside(inner, outer, slack = 0.6) {
   return inner.t >= outer.t - slack && inner.b <= outer.b + slack && inner.l >= outer.l - slack && inner.r <= outer.r + slack;
 }
 
-/** Every VISIBLE line either wholly inside its label's own box or wholly outside it (invisible) — never sliced. */
-function slicedLines(boxes) {
-  const bad = [];
-
-  for (const label of boxes.labels) {
-    for (const line of label.lines) {
-      const inside = wholeInside(line.box, label.box);
-      const outside = line.box.t >= label.box.b - 0.6 || line.box.b <= label.box.t + 0.6 || line.box.r <= label.box.l + 0.6 || line.box.l >= label.box.r + 0.6;
-
-      if (!inside && !outside) {
-        bad.push({ floor: label.floor, text: line.text });
-      }
-    }
-  }
-
-  return bad;
-}
-
 /** On the cab's own plate, the cue's rect must lie wholly inside its label's own (unclipped) box. */
 function cueUnreachable(boxes) {
   const bad = [];
@@ -299,8 +318,15 @@ function cueUnreachable(boxes) {
   return bad;
 }
 
-// In the page: decode both captures and read the ratio at every glyph pixel AND its ring.
-const MEASURE = (a, b, spans, surface) => `(async () => {
+// In the page: decode both captures and read the ratio at every glyph pixel AND its ring — and, in the
+// SAME pass (r5's fix round, item 4: judge slicing from rendered pixels, not a bounding-rect heuristic —
+// r4 review m4, "checker footprint ≠ painted"), whether that glyph-diff pixel sits BELOW its OWN line's
+// OWN label's clip edge (`span.labelBox.b`, attached per line by `labeledLines()` — never a global list
+// of every label, which a nearby FLOOR's box would false-positive against: every beside label shares
+// nearly the same horizontal span, so a pixel checked against the wrong label's `box.b` is a defect this
+// tool minted on its own first attempt, caught empirically against the SHIPPED, believed-correct code —
+// canon #9's own case for seeing a check fail for the RIGHT reason before trusting it).
+const MEASURE = (a, b, spans, surface, labels) => `(async () => {
   const load = (src) => new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = src; });
   const [ia, ib] = await Promise.all([load(${JSON.stringify(a)}), load(${JSON.stringify(b)})]);
   const px = (img) => { const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
@@ -312,7 +338,8 @@ const MEASURE = (a, b, spans, surface) => `(async () => {
   const RING = [];
   for (const r of [2, 3]) for (let a = 0; a < 8; a += 1) RING.push([Math.round(r * Math.cos(a * Math.PI / 4)), Math.round(r * Math.sin(a * Math.PI / 4))]);
   const surf = ${JSON.stringify(surface)};
-  const ratios = []; const worst = [];
+  const allLabels = ${JSON.stringify(labels)};
+  const ratios = []; const worst = []; let slicedPixels = 0; const slicedFloors = new Set(); const sliceSamples = [];
   for (const span of ${JSON.stringify(spans)}) {
     const [r, g, b] = span.color.match(/\\d+(\\.\\d+)?/g).map(Number);
     const fg = L(r, g, b);
@@ -333,10 +360,35 @@ const MEASURE = (a, b, spans, surface) => `(async () => {
           const i = (y * W + x) * 4;
           const diff = Math.abs(A.data[i] - B.data[i]) + Math.abs(A.data[i + 1] - B.data[i + 1]) + Math.abs(A.data[i + 2] - B.data[i + 2]);
           if (diff <= 24) continue;
+          // r5's fix round: a glyph-diff pixel past THIS span's OWN label's bottom clip edge is a
+          // CANDIDATE — paint the clip should never have let through, since the label's own clip-path
+          // bottom inset is 0, exactly at max-height. But a span's own LAYOUT rect (getBoundingClientRect,
+          // never affected by clip-path) routinely overlaps the ADJACENT plate's own label below it once
+          // storeys pack tight enough for this round's own line budget to matter — found empirically,
+          // against the SHIPPED, believed-correct code (canon #9): a candidate pixel that also falls
+          // inside some OTHER label's own box is that label's own legitimate, correctly-clipped content,
+          // never THIS span's bleed-through, and is excluded rather than misattributed.
+          if (y >= span.labelBox.b + 0.6) {
+            let explainedElsewhere = false;
+            for (const lb of allLabels) {
+              if (lb.floor === span.floor) continue;
+              if (x >= lb.box.l - 0.6 && x < lb.box.r + 0.6 && y >= lb.box.t - 0.6 && y < lb.box.b + 0.6) { explainedElsewhere = true; break; }
+            }
+            if (!explainedElsewhere) {
+              slicedPixels += 1; slicedFloors.add(span.floor);
+              if (sliceSamples.length < 3) sliceSamples.push({ text: span.text, floor: span.floor, x, y, overshoot: +(y - span.labelBox.b).toFixed(2) });
+            }
+          }
           let worstBg = bgAt(x, y);
           for (const [dx, dy] of RING) {
             const rx = x + dx, ry = y + dy;
-            if (rx < 0 || ry < 0 || rx >= W || ry >= H) continue;
+            // r5's fix round (r4 review m7): bounded to the SURFACE, not the full image — a ring sample
+            // landing in the page's own white body margin (outside the #lobby-building element) read as
+            // an artificially light "background", producing the roughly 1.1:1 wheel artefact at the
+            // surface's own top-left corner. A sample the surface does not cover answers nothing about
+            // what a glyph here stands on and is skipped, exactly as the primary pixel's own
+            // surface-edge inset already is.
+            if (rx < surf.l || ry < surf.t || rx >= surf.r || ry >= surf.b) continue;
             const bg = bgAt(rx, ry);
             if (Math.abs(fg - bg) < Math.abs(fg - worstBg)) worstBg = bg;
           }
@@ -349,7 +401,7 @@ const MEASURE = (a, b, spans, surface) => `(async () => {
   }
   ratios.sort((p, q) => p - q);
   return { glyphs: ratios.length, min: ratios[0] ?? null, p01: ratios[Math.floor(ratios.length * 0.01)] ?? null,
-    under: ratios.filter((v) => v < ${MIN_RATIO}).length, worst };
+    under: ratios.filter((v) => v < ${MIN_RATIO}).length, worst, slicedPixels, slicedFloors: [...slicedFloors], sliceSamples };
 })()`;
 
 /** A viewport (W×H) and the SURFACE it is expected to produce — asserted, never assumed, per run. */
@@ -372,7 +424,8 @@ RUNS.push({ floors: 3, phase: 'night', zoom: 'fit', w: 375, h: 812 });
  * ONE dedicated scenario for the overlap AND slicing controls alone: 14 floors, tall enough
  * (`linesFor()` floors at its minimum, 1) that the line budget's own protection is what keeps
  * `plate-row.js`'s realistic content from overlapping or slicing at all; `plant` (or `null`) is
- * `serve()`'s own shape.
+ * `serve()`'s own shape. Slicing is judged from RENDERED PIXELS (r5's fix round, item 4) — the same
+ * drawn/bare diff `judge()` uses — so this scenario captures both screenshots too, not just the boxes.
  */
 async function runOverlapScenario(chrome, plant) {
   const server = await serve(plant);
@@ -380,17 +433,43 @@ async function runOverlapScenario(chrome, plant) {
   try {
     const base = `http://127.0.0.1:${server.address().port}/index.html`;
     await b.load(`${base}?floors=14&phase=day&zoom=fit&w=1440&h=900`);
+    const surfaceEl = await b.evaluate("(() => { const r = document.getElementById('lobby-building').getBoundingClientRect(); return { w: r.width, h: r.height, l: r.left, t: r.top, r: r.right, b: r.bottom }; })()");
     const boxes = await b.evaluate(BOXES);
+    const drawn = await b.shot();
+    await b.evaluate(HIDE_TEXT);
+    const bare = await b.shot();
+    const m = await b.evaluate(MEASURE(drawn, bare, labeledLines(boxes), surfaceEl, boxes.labels.map((l) => ({ floor: l.floor, box: l.box }))));
     let overlap = 0;
     for (let i = 0; i < boxes.labels.length; i += 1) {
       for (let j = i + 1; j < boxes.labels.length; j += 1) overlap += overlapArea(boxes.labels[i].box, boxes.labels[j].box);
     }
-    return { overlap: +overlap.toFixed(2), sliced: slicedLines(boxes).length, side: boxes.side };
+    return { overlap: +overlap.toFixed(2), sliced: m.slicedPixels, slicedFloors: m.slicedFloors, side: boxes.side };
   } finally {
     b.close();
     server.close();
   }
 }
+
+/**
+ * ⭐ r5's fix round (item 5): ACCEPTED RESIDUALS, declared by name and reason rather than chased to
+ * zero or left to fail the tool's exit code silently. `maxUnder` bounds how many under-4.5:1 glyph
+ * pixels the run may carry and still `ok` — any pixel past that bound, or any OTHER run's failure, still
+ * reds. Matched by run parameters (never by a live pixel count, which would let a residual silently grow).
+ */
+const RESIDUALS = [
+  {
+    what: 'a single night-sky star pixel directly behind "Floor 9"\'s own glyph',
+    reason: 'real (the star IS brighter than the sky around it), negligible: one pixel measured, capped at 3 for run-to-run anti-aliasing jitter',
+    match: (run) => run.floors === 10 && run.phase === 'night' && run.w === 1440 && run.h === 900,
+    maxUnder: 3,
+  },
+  {
+    what: 'the phone-width fallback\'s own descender ring',
+    reason: 'anti-aliasing at the fallback\'s hard text edge across several glyphs with descenders (g/y/p), not a backing/ink defect — 52 measured, capped at 60 for jitter',
+    match: (run) => run.w === 375 && run.h === 812,
+    maxUnder: 60,
+  },
+];
 
 /** Every run, measured; each result carries `ok`. */
 async function judge(chrome, plant) {
@@ -405,12 +484,12 @@ async function judge(chrome, plant) {
         await b.load(`${base}?${q}`);
         const surfaceEl = await b.evaluate("(() => { const r = document.getElementById('lobby-building').getBoundingClientRect(); return { w: r.width, h: r.height, l: r.left, t: r.top, r: r.right, b: r.bottom }; })()");
         const surface = { w: surfaceEl.w, h: surfaceEl.h };
-        const spans = await b.evaluate(SPANS);
         const boxes = await b.evaluate(BOXES);
+        const spans = labeledLines(boxes);
         const drawn = await b.shot();
         await b.evaluate(HIDE_TEXT);
         const bare = await b.shot();
-        const m = await b.evaluate(MEASURE(drawn, bare, spans, surfaceEl));
+        const m = await b.evaluate(MEASURE(drawn, bare, spans, surfaceEl, boxes.labels.map((l) => ({ floor: l.floor, box: l.box }))));
 
         let covered = 0;
         if (boxes.building) for (const l of boxes.labels) covered += overlapArea(l.box, boxes.building);
@@ -418,16 +497,17 @@ async function judge(chrome, plant) {
         for (let i = 0; i < boxes.labels.length; i += 1) {
           for (let j = i + 1; j < boxes.labels.length; j += 1) overlap += overlapArea(boxes.labels[i].box, boxes.labels[j].box);
         }
-        const sliced = slicedLines(boxes);
         const unreachable = cueUnreachable(boxes);
 
         const population = run.zoom === 'plate' ? 1 : run.floors;
         const measured = spans.length >= population * 2 && m.glyphs > 200 * population && boxes.building !== null;
         const side = boxes.side;
+        const residual = RESIDUALS.find((res) => res.match(run));
+        const acceptedUnder = residual ? residual.maxUnder : 0;
         results.push({
           ...run, surface, side, spans: spans.length, ...m, covered: +covered.toFixed(2), overlap: +overlap.toFixed(2),
-          sliced: sliced.length, unreachable: unreachable.length, measured,
-          ok: measured && m.under === 0 && overlap === 0 && sliced.length === 0 && unreachable.length === 0 && (side !== 'left' || covered === 0),
+          unreachable: unreachable.length, measured, residual: residual ? residual.what : null,
+          ok: measured && m.under <= acceptedUnder && overlap === 0 && m.slicedPixels === 0 && unreachable.length === 0 && (side !== 'left' || covered === 0),
         });
       } finally {
         b.close();
@@ -441,8 +521,10 @@ async function judge(chrome, plant) {
 
 const report = (r) => `${r.ok ? 'PASS' : 'FAIL'}  ${String(r.floors).padStart(2)} floors ${String(r.w) + 'x' + r.h} → surface ${r.surface.w}x${r.surface.h} ${r.zoom.padEnd(5)} ${r.phase.padEnd(5)} side=${(r.side ?? 'none').padEnd(5)}  `
   + `${r.spans} spans, ${r.glyphs} glyph px, min ${r.min?.toFixed(2)}:1, p1 ${r.p01?.toFixed(2)}:1, under ${MIN_RATIO}: ${r.under}, `
-  + `covered ${r.covered}px², overlap ${r.overlap}px², sliced ${r.sliced}, cue-unreachable ${r.unreachable}`
-  + `${r.measured ? '' : '  — NOT MEASURED (too few spans, glyph pixels, or no building box)'}${r.worst.length ? `  e.g. ${JSON.stringify(r.worst)}` : ''}`;
+  + `covered ${r.covered}px², overlap ${r.overlap}px², sliced-px ${r.slicedPixels}, cue-unreachable ${r.unreachable}`
+  + `${r.measured ? '' : '  — NOT MEASURED (too few spans, glyph pixels, or no building box)'}${r.worst.length ? `  e.g. ${JSON.stringify(r.worst)}` : ''}`
+  + `${r.sliceSamples.length ? `  sliced e.g. ${JSON.stringify(r.sliceSamples)}` : ''}`
+  + `${r.residual ? `  ACCEPTED RESIDUAL: ${r.residual}` : ''}`;
 
 const chrome = findChrome();
 if (chrome === null) {
@@ -457,27 +539,40 @@ for (const r of shipped) console.log(report(r));
 let failed = shipped.some((r) => !r.ok);
 
 if (argOf('--selftest') !== null || process.argv.includes('--selftest')) {
-  for (const [check, [anchor, replacement]] of Object.entries({ contrast: PLANTS.contrast, coverage: PLANTS.coverage })) {
-    const planted = await judge(chrome, { file: ['lobby', check === 'coverage' ? 'label-paint.js' : 'plate-row.js'], anchor, replacement });
+  const judgePlants = { contrast: ['plate-row.js', PLANTS.contrast], coverage: ['label-paint.js', PLANTS.coverage], cueWidth: ['label-paint.js', PLANTS.cueWidth] };
+
+  for (const [check, [file, [anchor, replacement]]] of Object.entries(judgePlants)) {
+    const planted = await judge(chrome, { file: ['lobby', file], anchor, replacement });
     console.log(`── CONTROL (${check}): must FAIL`);
     for (const r of planted) console.log(report(r));
 
     const bit = check === 'contrast' ? planted.every((r) => r.measured) && planted.some((r) => r.under > 0)
-      : planted.some((r) => r.side === 'left' && r.covered > 0);
+      : check === 'coverage' ? planted.some((r) => r.side === 'left' && r.covered > 0)
+      : planted.some((r) => r.unreachable > 0); // cueWidth
 
     console.log(bit ? `CONTROL CAUGHT (${check})` : `CONTROL NOT CAUGHT (${check}) — the check cannot tell a correct render from this planted one`);
     failed = failed || !bit;
   }
 
-  // The overlap AND slicing controls share one scenario and one plant (the header's own reasoning).
-  console.log('── CONTROL (overlap / sliced lines): must FAIL');
+  // r5's fix round (item 4): ONE defect per check, each proven to bite ALONE. The overlap plant (a
+  // forced 4-line budget) ALSO slices as a side effect — documented, not hidden — but the slice check's
+  // OWN control (`PLANTS.slice`, a widened bottom clip-path bleed) must bite the slice signal with the
+  // overlap signal still clean, or it has proven nothing this check could not already claim via overlap.
+  console.log('── CONTROL (overlap): must FAIL');
   const shipped14 = await runOverlapScenario(chrome, null);
-  const planted14 = await runOverlapScenario(chrome, { file: ['lobby', 'label-paint.js'], anchor: PLANTS.overlap[0], replacement: PLANTS.overlap[1] });
-  console.log(`shipped: overlap ${shipped14.overlap}px², sliced ${shipped14.sliced}, side=${shipped14.side}`);
-  console.log(`planted: overlap ${planted14.overlap}px², sliced ${planted14.sliced}, side=${planted14.side}`);
-  const overlapBit = shipped14.overlap === 0 && shipped14.sliced === 0 && (planted14.overlap > 0 || planted14.sliced > 0);
-  console.log(overlapBit ? 'CONTROL CAUGHT (overlap / sliced lines)' : 'CONTROL NOT CAUGHT (overlap / sliced lines) — the check cannot tell a correct render from this planted one');
+  const overlapPlanted = await runOverlapScenario(chrome, { file: ['lobby', 'label-paint.js'], anchor: PLANTS.overlap[0], replacement: PLANTS.overlap[1] });
+  console.log(`shipped: overlap ${shipped14.overlap}px², sliced-px ${shipped14.sliced}, side=${shipped14.side}`);
+  console.log(`planted: overlap ${overlapPlanted.overlap}px², sliced-px ${overlapPlanted.sliced}, side=${overlapPlanted.side}`);
+  const overlapBit = shipped14.overlap === 0 && shipped14.sliced === 0 && overlapPlanted.overlap > 0;
+  console.log(overlapBit ? 'CONTROL CAUGHT (overlap)' : 'CONTROL NOT CAUGHT (overlap) — the check cannot tell a correct render from this planted one');
   failed = failed || !overlapBit;
+
+  console.log('── CONTROL (sliced lines, own plant, never via overlap): must FAIL');
+  const slicePlanted = await runOverlapScenario(chrome, { file: ['lobby', 'plate-row.js'], anchor: PLANTS.slice[0], replacement: PLANTS.slice[1] });
+  console.log(`planted: overlap ${slicePlanted.overlap}px², sliced-px ${slicePlanted.sliced}, floors ${JSON.stringify(slicePlanted.slicedFloors)}, side=${slicePlanted.side}`);
+  const sliceBit = slicePlanted.sliced > 0 && slicePlanted.overlap === 0;
+  console.log(sliceBit ? 'CONTROL CAUGHT (sliced lines)' : 'CONTROL NOT CAUGHT (sliced lines) — either it did not bite, or it bit through overlap rather than on its own');
+  failed = failed || !sliceBit;
 }
 
 console.log(failed ? 'FAIL' : 'PASS');

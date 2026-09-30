@@ -41,15 +41,24 @@ if (dir === undefined) {
     process.exit(2);
 }
 
-/** A stand-in element: the members `plate-row.js` may use, and nothing that lays anything out. */
+/**
+ * A stand-in element: the members `plate-row.js` may use, and nothing that lays anything out.
+ * `setAttribute` (r4 review round: the accessible-name chain) stores into `attrs`, read back by
+ * `serialise()` alongside `id` and `tabIndex` — both real, reflected DOM/IDL properties, so plain
+ * assignment (`el.id = …`, `el.tabIndex = …`) is what the shipped module does too.
+ */
 function element(tag) {
     const node = {
         tag,
         style: {},
         dataset: {},
+        attrs: {},
         children: [],
         append(...nodes) {
             node.children.push(...nodes);
+        },
+        setAttribute(name, value) {
+            node.attrs[name] = String(value);
         },
     };
 
@@ -70,7 +79,10 @@ function serialise(node) {
         tag: node.tag,
         style: { ...node.style },
         ...(node.href === undefined ? {} : { href: node.href }),
+        ...(node.id === undefined ? {} : { id: node.id }),
+        ...(node.tabIndex === undefined ? {} : { tabIndex: node.tabIndex }),
         ...(node.textContent === undefined ? {} : { text: node.textContent }),
+        attrs: { ...node.attrs },
         dataset: { ...node.dataset },
         children: node.children.map(serialise),
     };

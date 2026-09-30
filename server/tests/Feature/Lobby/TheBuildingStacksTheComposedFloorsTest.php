@@ -561,8 +561,13 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
 
         // ⛔ CONTROL 18 — each half reverted to the key, in the shipped file, one at a time: the
         // plate drawn from `plate.floor` again, and the button offering `elevator.next`. The same
-        // predicate is run over each mutated copy, so what is watched failing is this check.
-        $keyedPlate = str_replace('plate.name;', 'plate.floor;', $js);
+        // predicate is run over each mutated copy, so what is watched failing is this check. ⚠ r5's
+        // fix round (card#7343): `plate-row.js` gained a SECOND `plate.name` read (the accessible-name
+        // `aria-label`, beside the link's own `textContent`) — `labelMissingFrom()`'s own check is
+        // substring-anywhere, so reverting only the FIRST occurrence left the second still matching
+        // `str_contains($js, 'plate.name')`, and this control stopped proving anything. Every occurrence
+        // is reverted together, or the control mutates a JS the page no longer runs.
+        $keyedPlate = str_replace('plate.name', 'plate.floor', $js);
         $keyedButton = str_replace('elevator.destination}', 'elevator.next}', $js);
 
         $this->assertNotSame($keyedPlate, $js, "CONTROL 18's plate anchor is gone — it mutated nothing");

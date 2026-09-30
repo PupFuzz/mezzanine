@@ -34,64 +34,74 @@
  * overlap the plate below regardless): each line is `white-space: nowrap; overflow: hidden; text-overflow:
  * ellipsis` — a fixed row of text that never wraps and never grows taller than one line, with its FULL
  * text always in the DOM. Line 1 is the NAME, with *the elevator is here* riding the SAME line on the
- * cab's plate (a flex row: the link `flex: 0 1 auto; min-width: 0`, so it shrinks and ellipsizes FIRST;
- * the cue `flex: 0 0 auto`, so it never shrinks and never ellipsizes away — design review P2's own
- * example shape). Line 2 is the summary. Line 3 is the rooms, where the plate names any. The label's own
- * box is `max-height: calc(var(--label-lines) * {LINE_PX}px); overflow: clip` (never `hidden` — design
- * review's refute round: `hidden` can make a clipped box independently SCROLLABLE, reachable by a focus
- * move or find-in-page in some browsers, which `clip` never is) — `--label-lines` (`label-paint.js`)
- * decides how many of the three lines are not clipped away, floored at `1` so line 1 (the name and the
- * cab's own cue) never disappears; DOM priority is the drop order, so a storey too short for the summary
- * or the rooms line clips them from the BOTTOM, never the name.
+ * cab's plate. Line 2 is the summary. Line 3 is the rooms, where the plate names any. **Each line is now
+ * the SAME shape (card#7343 r4 review m5, design + impl): a flex row (`lineRow()`) whose ONE text-bearing
+ * child shrinks and ellipsizes (`flex: 0 1 auto; min-width: 0`) — never a full-width block.** The r4
+ * shape used a full-width `<div>` for lines 2–3, so their backing (`background-color`) painted a bar the
+ * width of the WHOLE label, crossing the windows, the shaft and the sky in the fallback; the shared line
+ * shape makes every line's backing hug its own text, exactly as line 1's already did.
  *
- * ⛔ THE NAME-ONLY BOUND, IN LINES OF THE VIEWER'S FONT, NOT PX OR FLOOR COUNTS (design review P2: state
- * this honestly in FLOOR.md § 4.1, which does — this module's own note is the same fact). `--label-lines`
- * is floored at `1`, never `0`, but the label's OWN `max-height` is still exactly `1 × {LINE_PX}px` at
- * that floor — so on a storey whose own on-screen height is SHORTER than one line of the viewer's font,
- * the label's box (line 1 alone) runs past the storey's own bottom edge and can overlap the plate below
- * it. This is the SAME "no rule chooses what the lobby does then" case the r1–r3 mechanism already
- * declared at the two-lines-never-dropped floor; the floor is `1` line now rather than `2`, so it is
- * REACHED LESS OFTEN, never removed.
+ * ⛔ THE LABEL's OWN BOX IS `max-height: calc(var(--label-lines) * {LINE_PX}px)`, CLIPPED BY `clip-path`,
+ * NEVER `overflow` (card#7343 r4 review MAJOR 2, both rounds: a plaque tried `overflow: clip` with
+ * `overflow-clip-margin: 4px` for the halo's and the focus ring's own breathing room — but
+ * `overflow-clip-margin` pushes the clip boundary OUT ON EVERY SIDE, including the BOTTOM, so at floor
+ * counts where a storey affords only one line, the NEXT (clipped-away) line's own glyph tops and halo
+ * painted through the 4px gap between `max-height` and where the clip actually cut — a real, rendered
+ * defect, proven by an A/B render, not a theoretical one). `clip-path: inset(-4px -4px 0 -4px)` clips
+ * the SAME box — 4px of bleed on the top and both sides (so a glyph's own halo, and a focused link's own
+ * outline, are not cut where they sit close to the label's own edges), `0` on the bottom, exactly at
+ * `max-height`'s own edge, where the NEXT line must never show through. `clip-path` needs no `overflow`
+ * property at all: it clips an element's own rendered content — text, shadows, descendants — to the
+ * shape given, independent of `overflow`, and it is never independently scrollable the way `overflow:
+ * hidden`/`auto` can be (the concern that ruled out `hidden` in the first place) — `inset()`'s own
+ * reference box is the element's border box, so the bottom edge tracks `max-height` exactly as `overflow`
+ * would have, and only the asymmetry (bleed on three sides, none on the fourth) is new.
  *
- * ⭐ NEITHER A DROPPED LINE NOR THE CUE IS REMOVED FROM THE ACCESSIBILITY TREE. `overflow: clip` hides a
+ * ⭐ NEITHER A DROPPED LINE NOR THE CUE IS REMOVED FROM THE ACCESSIBILITY TREE. `clip-path` hides a
  * clipped line VISUALLY; it stays a normal DOM node, read by a screen reader in ordinary document order
  * regardless of whether the line-count budget currently shows it — so the rooms line, when a storey is
  * too short to show it, is still announced to anyone reading the page with a screen reader, exactly as
  * the summary and the name are on every storey.
  *
- * ⛔ THE LINK's ACCESSIBLE NAME IS THE PLATE'S NAME ALONE (a disclosed change from the r1–r3 mechanism's
- * contract, which concatenated the summary into the link too): the cue rides line 1 beside the link but
- * OUTSIDE it (design review P2's own instruction, preserving the one part of the old contract that still
- * applies — the cue was always outside the link), and the summary is now its own line, ALSO outside the
- * link, for a structural reason rather than a style choice — a flex row's items are each ONE line tall,
- * and the link would need to span two lines (name, then summary) to keep the summary inside it, which
- * breaks line 1's own one-line flex layout with the cue. The summary and the rooms line are still
- * ordinary DOM text, read by a screen reader in sequence right after the link, exactly as the rooms line
- * and the cue already were outside the link in the r1–r3 mechanism — only the summary's position in that
- * ordering is new. `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` holds this reading order
- * and the link's accessible name.
+ * ⭐ THE LINK's ACCESSIBLE NAME IS THE NAME AND THE SUMMARY TOGETHER (the operator's ruling, card#7343,
+ * 2026-09-30, option A, opq-1790766555-81d4 — restoring the r1–r3 mechanism's own contract, which card#7343
+ * r4's fix round had DROPPED to "the name alone" for a reason its own review round found FALSE: nothing
+ * about the flex-row line shape actually requires it): *"The link announces the name with its summary
+ * (e.g. 'Floor 2, 4 seats · 3 live'), and clicking the summary also opens the floor. Do it without
+ * changing the layout."* Two elements, no layout change: the name `<a>` carries `aria-label`, set to the
+ * literal string `` `${name}, ${summary}` `` — replacing the link's own text-derived name entirely, so a
+ * screen reader announces exactly that one string. ⚠ `aria-labelledby` (naming itself, a hidden separator
+ * span and the summary) was tried first and REFUTED empirically, not assumed sound: a Chromium
+ * accessibility-tree read showed "Floor 2 , 4 seats · 3 live" — `aria-labelledby` joins every referenced
+ * id's own name with ONE forced space regardless of what the referenced text itself is, so no separator
+ * text can remove the stray space before the comma; `aria-label` gives this module byte-for-byte control
+ * instead. The summary (line 2) is a SECOND `<a>` to the SAME `href`, `tabindex="-1"` (never a second tab
+ * stop) and `aria-hidden="true"` (never announced a second time, since the name link's `aria-label` has
+ * already read this text as part of ONE accessible name) — clickable, because it is a real link, without
+ * duplicating either the keyboard stop or the announcement. The cue and the rooms line stay OUTSIDE both
+ * links, exactly as before: the cue is the cab's own fact and the rooms line is read in ordinary document
+ * order right after the (one, combined) accessible name. `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`
+ * holds the accessible name and reds a name link whose summary drops out of it.
  *
  * ⛔ THE HALO AND THE BACKING ARE `label-paint.js`'s VALUES, READ THROUGH `var()`s, NEVER COMPUTED HERE:
  * `--label-halo` (a thin dark wash beside the building, guarding a glyph against a bright star pixel
  * behind it; `none` falling back, where the near-opaque backing already holds contrast) is set on the
  * label element (an INHERITED CSS property, so every descendant text carries it); `--label-backing` (the
  * per-line background — `transparent` beside, P3: "no backing"; the wall's near-opaque cream falling
- * back) and the two inks (`--label-ink` for the link, `--label-text-ink` for the summary, the rooms line
- * and the cue) are set per element, because `color` for the link must be set DIRECTLY on the `<a>` rather
- * than merely inherited — a value the browser's own `:visited` rule could otherwise beat (a `:visited`
- * rule TARGETS the element directly and wins over an INHERITED value, even though it never wins over a
- * value set directly on the element itself) — so gold survives a visited link exactly as an unvisited one.
+ * back) and the two inks (`--label-ink` for the two links, `--label-text-ink` for the rooms line and the
+ * cue) are set per element, because `color` for a link must be set DIRECTLY on the `<a>` rather than
+ * merely inherited — a value the browser's own `:visited` rule could otherwise beat (a `:visited` rule
+ * TARGETS the element directly and wins over an INHERITED value, even though it never wins over a value
+ * set directly on the element itself) — so gold survives a visited link exactly as an unvisited one.
  */
 
 import { LABEL_FONT, LABEL_LINE_PX } from './label-paint.js';
 
 /**
- * The small inset every visible line stands on, every side: room for the halo's blur and the focus
- * ring not to be cut by the label's own `overflow: clip` (design review P2), and — falling back, where
- * the backing is opaque — room so a glyph's own rendered ink, which can sit a few px past its line box's
- * edge and still read as part of the same word, does not fall outside the backing onto whatever is
- * behind it. Horizontal only, per P3's own instruction, so a shorter line never looks padded above or
- * below its neighbour.
+ * The small inset every visible line stands on, every side: room for a glyph's own rendered ink, which
+ * can sit a few px past its line box's edge and still read as part of the same word, so it does not fall
+ * outside the backing (falling back) onto whatever is behind it. Horizontal only, per P3's own
+ * instruction, so a shorter line never looks padded above or below its neighbour.
  */
 const LINE_PAD = '0 5px';
 
@@ -103,6 +113,28 @@ const LINE_STYLE = {
     padding: LINE_PAD,
     backgroundColor: 'var(--label-backing)',
 };
+
+/**
+ * One line: a flex row, never wider than the label (`justify-content: var(--label-align)` positions its
+ * one child at the label's own beside/fallback edge), so a line shorter than the label's own width never
+ * paints a backing bar past its own text (card#7343 r4 review m5).
+ */
+function lineRow(doc) {
+    const row = doc.createElement('div');
+
+    Object.assign(row.style, { display: 'flex', alignItems: 'baseline', justifyContent: 'var(--label-align)', gap: '0.25em' });
+
+    return row;
+}
+
+/** One line's text-bearing element — shrinks and ellipsizes, carries the backing and its own ink. */
+function textEl(doc, tag, ink) {
+    const el = doc.createElement(tag);
+
+    Object.assign(el.style, LINE_STYLE, { display: 'block', flex: '0 1 auto', minWidth: '0', color: ink });
+
+    return el;
+}
 
 /**
  * The plate's `<li>`, standing at `rect` in the building's scene px, carrying its label.
@@ -135,8 +167,7 @@ export function plateRow(doc, plate, rect, here) {
         left: 'var(--label-left)',
         width: 'var(--label-width)',
         maxHeight: `calc(var(--label-lines) * ${LABEL_LINE_PX}px)`,
-        overflow: 'clip',
-        overflowClipMargin: '4px',
+        clipPath: 'inset(-4px -4px 0 -4px)',
         fontSize: LABEL_FONT,
         lineHeight: `${LABEL_LINE_PX}px`,
         transformOrigin: '0 0',
@@ -144,64 +175,72 @@ export function plateRow(doc, plate, rect, here) {
         textShadow: 'var(--label-halo)',
     });
 
+    // § 2.1 row 5: the per-floor count is labelled as a count of the seats THE CLIENT HOLDS.
+    const summaryText = plate.summary === '' ? 'no seats held' : plate.summary;
+
     // § 4.1: "one row per floor, THE ROW BEING THE LINK to the floor". Line 1: shrinks and ellipsizes
     // before the cue does (`flex: 0 1 auto; min-width: 0`), never grows past its own content width
     // (`flex-grow: 0`) so a short name sits snug against the cue rather than stretched away from it.
-    const link = doc.createElement('a');
+    const link = textEl(doc, 'a', 'var(--label-ink)');
 
     link.href = plate.href;
     link.textContent = plate.name;
-    Object.assign(link.style, LINE_STYLE, {
-        display: 'block',
-        flex: '0 1 auto',
-        minWidth: '0',
-        color: 'var(--label-ink)',
-    });
+    // The operator's ruling: the name and the summary are ONE accessible name, e.g. "Floor 2, 4 seats ·
+    // 3 live". ⚠ `aria-labelledby` (the first attempt, empirically tested — a Chromium accessibility-tree
+    // read, never assumed) does NOT give this string: a screen reader joins every referenced id's own
+    // name with ONE forced space, so a hidden ", " separator comes out "Floor 2 , 4 seats..." — a stray
+    // space before the comma no amount of separator-text tuning can remove, because the join itself, not
+    // the referenced text, inserts that space. `aria-label` sets the accessible name to a literal string
+    // this module controls byte-for-byte instead, replacing the link's own text-derived name entirely
+    // (never announced twice) and matching the ruling's own punctuation exactly.
+    link.setAttribute('aria-label', `${plate.name}, ${summaryText}`);
 
-    const line1 = doc.createElement('div');
+    const line1 = lineRow(doc);
 
-    Object.assign(line1.style, {
-        display: 'flex',
-        alignItems: 'baseline',
-        justifyContent: 'var(--label-align)',
-        gap: '0.25em',
-    });
     line1.append(link);
 
     if (here) {
         // § 4.5: "Colour is never the only carrier of a fact" — so the cab is a word, never dropped
-        // (design review P2: "never ellipsizes away").
-        const cue = doc.createElement('span');
+        // (design review P2: "never ellipsizes away"), and stays OUTSIDE both links and the accessible
+        // name they build, as it always has.
+        const cue = textEl(doc, 'span', 'var(--label-text-ink)');
 
         cue.textContent = ' — the elevator is here';
-        Object.assign(cue.style, LINE_STYLE, {
-            display: 'block',
-            flex: '0 0 auto',
-            color: 'var(--label-text-ink)',
-        });
+        cue.style.flex = '0 0 auto';
         line1.append(cue);
     }
 
-    // Line 2: the summary — outside the link (this module's own docblock says why), still read right
-    // after it in ordinary document order.
-    const summary = doc.createElement('div');
+    // Line 2: the summary — a SECOND link to the SAME floor (the operator's ruling: "clicking the
+    // summary also opens the floor"), out of the tab order and never announced on its own: the name
+    // link's `aria-label` has already read this text as part of ONE accessible name.
+    const summaryLink = textEl(doc, 'a', 'var(--label-text-ink)');
 
-    // § 2.1 row 5: the per-floor count is labelled as a count of the seats THE CLIENT HOLDS.
-    summary.textContent = plate.summary === '' ? 'no seats held' : plate.summary;
-    Object.assign(summary.style, LINE_STYLE, { textAlign: 'var(--label-align)', color: 'var(--label-text-ink)' });
+    summaryLink.href = plate.href;
+    summaryLink.tabIndex = -1;
+    summaryLink.setAttribute('aria-hidden', 'true');
+    summaryLink.textContent = summaryText;
 
-    label.append(line1, summary);
+    const line2 = lineRow(doc);
+
+    line2.append(summaryLink);
+
+    label.append(line1, line2);
 
     // Line 3: the rooms, where the plate names any — dropped last of the three by `--label-lines`'s own
-    // DOM-order priority (never removed: `overflow: clip` hides it visually, not from the accessibility tree).
+    // DOM-order priority (never removed: `clip-path` hides it visually, not from the accessibility tree).
     if (plate.rooms.length > 1 || plate.rooms.some((room) => !room.reported)) {
-        const rooms = doc.createElement('div');
+        // `div`, never `span` — the browser tool's own `isCue` reads a line's tag (`tools/design/
+        // lobby-label-contrast.browser.mjs`'s `BOXES`), and the cue is the only `span` a label ever holds.
+        const rooms = textEl(doc, 'div', 'var(--label-text-ink)');
 
         rooms.textContent = ' — rooms: ' + plate.rooms
             .map((room) => `${room.install_id} (${room.form}${room.reported ? '' : ' — no seats reported for this room'})`)
             .join(', ');
-        Object.assign(rooms.style, LINE_STYLE, { textAlign: 'var(--label-align)', color: 'var(--label-text-ink)' });
-        label.append(rooms);
+
+        const line3 = lineRow(doc);
+
+        line3.append(rooms);
+        label.append(line3);
     }
 
     row.append(label);

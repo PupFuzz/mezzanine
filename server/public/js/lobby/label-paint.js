@@ -30,15 +30,17 @@
  *   `--label-left`   the label's `left`, in SCENE px (`plate-row.js`'s own docblock, at its `left`,
  *                    derives why this must be a SCENE quantity and not a real one). ⚠ NOT in the design
  *                    review's own P1 list, which asked for a live CSS `calc()` referencing only
- *                    `--label-width` and `--label-scale`. That calc cannot ALSO yield exactly `0` for the
- *                    fallback while `--label-width` serves as both sides' `width` (the algebra is
- *                    verified in this module's own tests) — so this module writes the RESOLVED offset
- *                    directly instead. It is still the ONE writer, still rewritten fresh on every
- *                    `view()`, so the staleness this whole round exists to remove is unaffected by the
- *                    change; what changes is only which layer (JS here, rather than the browser's CSS
- *                    engine) performs one division that was always going to happen every render either
- *                    way. This also makes the value independently testable by a `node` CI probe with no
- *                    CSS engine at all (P5's own ask) — a raw `calc()` string cannot be.
+ *                    `--label-width` and `--label-scale`. ⚠ r4 review round: this module's own text used
+ *                    to claim such a `calc()` “cannot ALSO yield exactly 0 for the fallback” — FALSE, a
+ *                    0/1 side flag folded into the same expression can select `0` exactly. The real reason
+ *                    this module resolves the offset in JS rather than a live `calc()` is TESTABILITY and
+ *                    ONE WRITER: a raw `calc()` string is not independently checkable by a `node` CI probe
+ *                    with no CSS engine at all (P5's own ask), while this module's own tests read back a
+ *                    plain number; and every OTHER property here is already a value THIS module computes
+ *                    fresh on every `view()`, so folding `left` into the same shape keeps one mechanism
+ *                    (JS, rewritten every camera) rather than splitting the arithmetic across JS and the
+ *                    browser's own CSS engine. Staleness is unaffected either way: this is still the ONE
+ *                    writer, still rewritten fresh on every `view()`.
  *   `--label-width`  the label's `width`, in real px — the beside room (to `sideFor()`'s threshold) or
  *                    the fallback's own room on the plate (today's old `labelMax()`, unchanged reasoning).
  *   `--label-lines`  how many of the label's lines are not clipped away — `linesFor()`.
@@ -105,8 +107,10 @@ export const LABEL_GAP_PX = 8;
  * cue's own measured width plus the flex row's `0.25em` gap plus room for a few characters of even the
  * shortest name before it is worth showing beside the building at all — rounded up for slack. A figure of
  * the drawing's, carrying no fact, and NOT an estimate the way the r1–r3 mechanism's minimum was: it is
- * pinned to the one content width that must fit, with a control that reds if the cue ever grows past it
- * unnoticed.
+ * pinned to the one content width that must fit. `tools/design/lobby-label-contrast.browser.mjs`'s own
+ * `cueUnreachable()` check (r4 review round: this claimed a control before one existed — PLANTS.cueWidth
+ * now shrinks `LABEL_SIDE_MIN_PX` below the cue's own measured width and the tool's selftest asserts that
+ * plant reds on the cue-reachable check alone) is what catches the cue growing past this width unnoticed.
  *
  * ⭐ WHY A DESKTOP WINDOW ROUTINELY FALLS BACK TOO (design review P4: say honestly that zoomed desktop
  * views use the fallback, and why): the camera's own CLAMP (`wire/camera.js`'s `clamp()`) keeps the
@@ -144,8 +148,11 @@ export const LABEL_DARK_INK = '#241a10';
  * colour transitions but measurable at a HARD one — `tools/design/lobby-label-contrast.browser.mjs`,
  * run at phone width at night, caught pixels under 4.5:1 exactly where a fallback label crosses the
  * shell's own drawn edge (a sharp colour boundary the r1–r3 mechanism's own render matrix never
- * happened to put a label astride). `0.985` leaves the same 8% of visible bleed at under 2%, clean at
- * every boundary the tool now runs across.
+ * happened to put a label astride). `0.985` leaves the same 8% of visible bleed at under 2%. ⚠ r4 review
+ * round declared residuals, named rather than chased to zero: a night-sky star pixel behind "Floor 9"'s
+ * glyph and a phone-width fallback descender's own ring — both measured, both left as accepted findings
+ * in the tool's `RESIDUALS` list with the reason each is negligible; every OTHER failure the tool's
+ * contrast check finds still reds it.
  */
 export const LABEL_BACKING = rgba(INK.wall, 0.985);
 
@@ -164,8 +171,11 @@ export const LABEL_BACKING = rgba(INK.wall, 0.985);
  * not cover a 3px ring sample — the coverage has to reach as far as the ring does, not merely "thin and
  * present". This is `LABEL_HALO_RADII`-shaped: `[1, 1, 2, 2, 3, 3, 4, 4]`, the SAME stack the r1 wall
  * halo used (each radius twice, "two layers of one opacity compose denser than either"), reaching 4px —
- * clear of the ring's own 3px — which the tool now holds clean at every phase and every floor count it
- * runs, including the ring itself.
+ * clear of the ring's own 3px. ⚠ r4 review round declared residuals, named rather than chased to zero: a
+ * night-sky star pixel directly behind "Floor 9"'s own glyph (real, negligible — a single pixel) and the
+ * phone-width fallback's own descender ring (probable anti-aliasing artefact at the fallback's hard text
+ * edge) — both in the tool's `RESIDUALS` list with the reason each is accepted; every OTHER failure the
+ * tool's contrast check finds still reds it.
  */
 export const LABEL_HALO_BESIDE = [1, 1, 2, 2, 3, 3, 4, 4].map((r) => `0 0 ${r}px ${SKY_GROUND}`).join(', ');
 

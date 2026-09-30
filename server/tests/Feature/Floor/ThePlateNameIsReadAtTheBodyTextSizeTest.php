@@ -43,12 +43,20 @@ use Tests\TestCase;
  * and sets no font size of its own, so its body text is at the root's size — `1rem`. The plate label's
  * font is held to exactly that, and the page is held to setting no other.
  *
- * ⛔ THE LINK's ACCESSIBLE NAME IS THE PLATE'S NAME ALONE (a disclosed change from the r1–r3 mechanism,
- * whose link carried the name AND the summary) — `plate-row.js`'s own docblock derives why: a flex row
- * that lets the cab's cue ride the SAME line as the name needs the name to be exactly one flex item, and
- * the summary is now its own separate line. The summary, the rooms line and the cue are read by a screen
- * reader in ordinary document order right after the link, whether or not the line-budget currently shows
- * them — `overflow: clip` hides a clipped line VISUALLY, never from the accessibility tree.
+ * ⭐ THE LINK's ACCESSIBLE NAME IS THE NAME AND THE SUMMARY TOGETHER (the operator's ruling, card#7343,
+ * 2026-09-30, option A, opq-1790766555-81d4 — RESTORING the r1–r3 mechanism's own contract, which card#7343
+ * r4's fix round had dropped to "the name alone" for a reason its own review round found FALSE: nothing
+ * about the flex-row line shape actually required it). `plate-row.js`'s own docblock derives the mechanism,
+ * including why `aria-labelledby` (the first attempt) was REFUTED empirically rather than assumed sound —
+ * a Chromium accessibility-tree read showed a stray space before the comma, forced by how that attribute
+ * joins referenced names, no separator text could remove: the name link's own `textContent` stays the name
+ * alone (visually, and for `constructionDefects()`'s own structural check below), but it carries
+ * `aria-label`, a literal string this module controls byte-for-byte, replacing the link's text-derived name
+ * entirely — and the summary (line 2) is a SECOND link to the SAME `href`, `tabindex="-1"` and
+ * `aria-hidden="true"`, clickable without being a second tab stop or a duplicate announcement. The rooms line and the cue stay OUTSIDE both links,
+ * read by a screen reader in ordinary document order right after the (one, combined) accessible name,
+ * whether or not the line-budget currently shows them — `clip-path` hides a clipped line VISUALLY, never
+ * from the accessibility tree.
  *
  * ⛔ NO LABEL COVERS THE BUILDING'S SHELL WHEREVER IT STANDS BESIDE IT, AND NO LABEL OVERLAPS ANOTHER
  * (the operator's own properties, both r3 rounds' MAJOR findings): the shell-edge check compares the
@@ -98,9 +106,15 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         }
     }
 
+    /**
+     * card#7343 r4 review round: the −400 control was so extreme it would have bitten on almost any
+     * check; `LABEL_GAP_PX = -1` is the smallest change that still eats the stated gap without running
+     * the label INTO the shell by much, so it only bites if the guard actually holds the STATED 8px gap
+     * rather than merely "does not overlap".
+     */
     public function test_red_a_label_that_runs_into_the_building(): void
     {
-        $dir = $this->mutatedModules([self::PAINT, 'export const LABEL_GAP_PX = 8;', 'export const LABEL_GAP_PX = -400;']);
+        $dir = $this->mutatedModules([self::PAINT, 'export const LABEL_GAP_PX = 8;', 'export const LABEL_GAP_PX = -1;']);
 
         $this->assertNotSame([], $this->labelOutsideBuildingDefects($this->replay(self::RUNS[3], $dir), $dir),
             'CONTROL (a label that runs into the building) did not bite');
@@ -195,6 +209,12 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             $this->assertSame($side, $got['side'], "[{$what}] side");
             $this->assertEqualsWithDelta(1 / $camera['zoom'], $got['scale'], self::EPSILON, "[{$what}] scale");
 
+            // r5 review round: "asserting every written property" was false for the fallback branch —
+            // only `left`/`align` were held there. Every property `showLabels()` writes is now asserted on
+            // BOTH branches; `textInk`/`backing`/`halo` are held to the STRUCTURAL contract `label-paint.js`'s
+            // own docblock states (beside: a different ink for text than the link, no backing, a halo;
+            // falling back: the SAME dark ink for both, a near-opaque backing, no halo) rather than a
+            // hand-duplicated colour literal, which would restate the very constants this test reads back.
             if ($side === 'left') {
                 $width = max(0.0, $shellLeft - $gap);
                 $left = -$plateInset - ($width + $gap) / $camera['zoom'];
@@ -202,9 +222,16 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
                 $this->assertEqualsWithDelta($left, $got['left'], self::EPSILON, "[{$what}] left");
                 $this->assertSame('#ffcf7d', $got['ink'], "[{$what}] ink");
                 $this->assertSame('right', $got['align'], "[{$what}] align");
+                $this->assertNotSame($got['ink'], $got['textInk'], "[{$what}] beside: textInk should differ from the link's own ink");
+                $this->assertSame('transparent', $got['backing'], "[{$what}] beside: backing should be transparent");
+                $this->assertNotSame('none', $got['halo'], "[{$what}] beside: halo should be set");
             } else {
                 $this->assertEqualsWithDelta(0.0, $got['left'], self::EPSILON, "[{$what}] left");
                 $this->assertSame('left', $got['align'], "[{$what}] align");
+                $this->assertNotSame(0.0, $got['width'], "[{$what}] fallback: width should be a real figure, not 0");
+                $this->assertSame($got['ink'], $got['textInk'], "[{$what}] fallback: ink and textInk should be the same dark colour");
+                $this->assertNotSame('transparent', $got['backing'], "[{$what}] fallback: backing should be the near-opaque cream, not transparent");
+                $this->assertSame('none', $got['halo'], "[{$what}] fallback: halo should be none — the opaque backing needs no halo under it");
             }
 
             $lines = max(1, (int) floor(($plateH * $camera['zoom']) / $linePx));
@@ -269,17 +296,23 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     public static function rowPlants(): array
     {
         return [
-            'the link carries the summary too' => ["link.textContent = plate.name;", "link.textContent = plate.name + ' — ' + plate.summary;", 'accessible name'],
-            'a status line outside the label — the camera would never counter-scale it' => ["    label.append(line1, summary);", "    label.append(line1);\n    row.append(summary);"],
+            'the link\'s own text carries the summary too (redundant with aria-label, and visually wrong)' =>
+                ["link.textContent = plate.name;", "link.textContent = plate.name + ' — ' + plate.summary;", 'link text'],
+            'the summary drops out of the accessible name (the operator\'s ruling, undone)' =>
+                ['link.setAttribute(\'aria-label\', `${plate.name}, ${summaryText}`);', 'link.setAttribute(\'aria-label\', plate.name);', 'aria-label'],
+            'the summary link is a second tab stop' => ['summaryLink.tabIndex = -1;', '', 'tab stop'],
+            'the summary link is announced a second time' => ["summaryLink.setAttribute('aria-hidden', 'true');", '', 'announced a second time'],
+            'the summary link does not open the same floor' => ['summaryLink.href = plate.href;', "summaryLink.href = plate.href + '?x';", 'the same floor'],
+            'a status line outside the label — the camera would never counter-scale it' => ["    label.append(line1, line2);", "    label.append(line1);\n    row.append(line2);"],
             'a name that does not ellipsize' => ["    whiteSpace: 'nowrap',\n", '', 'does not ellipsize'],
-            'the summary before the name' => ['    label.append(line1, summary);', '    label.append(summary, line1);', 'is not on line 1'],
+            'the summary before the name' => ['    label.append(line1, line2);', '    label.append(line2, line1);', 'aria-label'],
             'a cue inside the link' => ['        line1.append(cue);', '        link.append(cue);', 'carries no cue'],
-            'a label that does not clip whole lines' => ["overflow: 'clip',", "overflow: 'hidden',", 'overflow'],
+            'a label that does not clip whole lines' => ["clipPath: 'inset(-4px -4px 0 -4px)',", '', 'no clip'],
             'a label with no line budget' => ['maxHeight: `calc(var(--label-lines) * ${LABEL_LINE_PX}px)`,'."\n", '', 'no line budget'],
             'a label with no width to fit within' => ["width: 'var(--label-width)',\n", '', 'no width'],
             'a label at a left of its own' => ["left: 'var(--label-left)',", "left: '0px',", 'a left of its own'],
             'a label with no halo' => ["textShadow: 'var(--label-halo)',", '', 'no halo'],
-            'a link whose colour is not the variable' => ["color: 'var(--label-ink)',", "color: '#ffcf7d',", 'colour is not the variable'],
+            'a link whose colour is not the variable' => ["const link = textEl(doc, 'a', 'var(--label-ink)');", "const link = textEl(doc, 'a', '#ffcf7d');", 'colour is not the variable'],
         ];
     }
 
@@ -459,8 +492,10 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
                 $defects[] = "the plate {$plate['floor']}'s label has no line budget (max-height does not read --label-lines)";
             }
 
-            if (($style['overflow'] ?? null) !== 'clip') {
-                $defects[] = "the plate {$plate['floor']}'s label's overflow is not clip — {$style['overflow']}";
+            // card#7343 r4 review MAJOR 2: `overflow: clip` + `overflow-clip-margin` let the NEXT line's
+            // own glyph tops paint through; `clip-path` replaces both, bled on three sides only.
+            if (($style['clipPath'] ?? null) !== 'inset(-4px -4px 0 -4px)') {
+                $defects[] = "the plate {$plate['floor']}'s label has no clip (clip-path is not inset(-4px -4px 0 -4px))";
             }
 
             if (($style['textShadow'] ?? null) !== 'var(--label-halo)') {
@@ -490,14 +525,18 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             };
 
             $link = $line1['children'][0] ?? null;
+            $expectedSummaryText = $plate['summary'] === '' ? 'no seats held' : $plate['summary'];
 
             if (($link['tag'] ?? null) !== 'a') {
                 $defects[] = "the plate {$plate['floor']}'s line 1 does not start with the link";
             } else {
                 $ellipsized($link);
 
+                // The link's OWN text stays the name alone — the operator's ruling joins the summary into
+                // the accessible name through `aria-label`, never by concatenating it into the link's own
+                // visible text (which would show it twice: once here, once on line 2).
                 if (($link['text'] ?? null) !== $plate['name']) {
-                    $defects[] = "the plate {$plate['floor']}'s link text is not its name alone — accessible name changed";
+                    $defects[] = "the plate {$plate['floor']}'s link text is not its name alone — link text";
                 }
 
                 if (($link['style']['color'] ?? null) !== 'var(--label-ink)') {
@@ -506,6 +545,16 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
 
                 if (($link['style']['backgroundColor'] ?? null) !== 'var(--label-backing)') {
                     $defects[] = "the plate {$plate['floor']}'s link has no backing";
+                }
+
+                // The operator's ruling (2026-09-30, opq-1790766555-81d4): the accessible name is the name
+                // AND the summary, together, in the exact punctuation the ruling's own example uses —
+                // `aria-label` (empirically chosen over `aria-labelledby`, `plate-row.js`'s own docblock
+                // says why) is a literal string this test can compare byte-for-byte.
+                $ariaLabel = $link['attrs']['aria-label'] ?? null;
+
+                if ($ariaLabel !== "{$plate['name']}, {$expectedSummaryText}") {
+                    $defects[] = "the plate {$plate['floor']}'s link does not name the summary through aria-label — aria-label is '{$ariaLabel}'";
                 }
             }
 
@@ -521,33 +570,55 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
                 $defects[] = "the plate {$plate['floor']} does not hold the cab but line 1 carries a cue";
             }
 
-            $summaryDiv = $label['children'][1] ?? null;
-            $expectedSummary = $plate['summary'] === '' ? 'no seats held' : $plate['summary'];
+            $line2 = $label['children'][1] ?? null;
 
-            if (($summaryDiv['text'] ?? null) !== $expectedSummary) {
-                $defects[] = "the plate {$plate['floor']}'s line 2 is not on line 2 (its summary)";
+            if (($line2['tag'] ?? null) !== 'div' || ($line2['style']['display'] ?? null) !== 'flex') {
+                $defects[] = "the plate {$plate['floor']}'s line 2 is not on line 2 — no flex row found second";
             } else {
-                $ellipsized($summaryDiv);
+                $summaryLink = $line2['children'][0] ?? null;
+                $expectedSummary = $plate['summary'] === '' ? 'no seats held' : $plate['summary'];
 
-                if (($summaryDiv['style']['backgroundColor'] ?? null) !== 'var(--label-backing)') {
-                    $defects[] = "the plate {$plate['floor']}'s summary has no backing";
+                if (($summaryLink['tag'] ?? null) !== 'a' || ($summaryLink['text'] ?? null) !== $expectedSummary) {
+                    $defects[] = "the plate {$plate['floor']}'s line 2 is not on line 2 (its summary)";
+                } else {
+                    $ellipsized($summaryLink);
+
+                    if (($summaryLink['style']['backgroundColor'] ?? null) !== 'var(--label-backing)') {
+                        $defects[] = "the plate {$plate['floor']}'s summary has no backing";
+                    }
+
+                    // The operator's ruling: "clicking the summary also opens the floor" — a second link to
+                    // the SAME floor, never a second tab stop, never announced a second time.
+                    if (($summaryLink['href'] ?? null) !== ($link['href'] ?? null)) {
+                        $defects[] = "the plate {$plate['floor']}'s summary link does not open the same floor as the name link";
+                    }
+
+                    if (($summaryLink['tabIndex'] ?? null) !== -1) {
+                        $defects[] = "the plate {$plate['floor']}'s summary link is a second tab stop (tabIndex is not -1)";
+                    }
+
+                    if (($summaryLink['attrs']['aria-hidden'] ?? null) !== 'true') {
+                        $defects[] = "the plate {$plate['floor']}'s summary link is announced a second time (aria-hidden is not true)";
+                    }
                 }
             }
 
             $needsRooms = count($plate['rooms']) > 1 || array_any($plate['rooms'], static fn (array $r): bool => ! $r['reported']);
-            $roomsDiv = $label['children'][2] ?? null;
+            $line3 = $label['children'][2] ?? null;
 
             if ($needsRooms) {
-                if ($roomsDiv === null || ! str_starts_with((string) ($roomsDiv['text'] ?? ''), ' — rooms: ')) {
+                $roomsSpan = ($line3['tag'] ?? null) === 'div' ? ($line3['children'][0] ?? null) : null;
+
+                if ($roomsSpan === null || ! str_starts_with((string) ($roomsSpan['text'] ?? ''), ' — rooms: ')) {
                     $defects[] = "the plate {$plate['floor']} names rooms but line 3 does not carry them";
                 } else {
-                    $ellipsized($roomsDiv);
+                    $ellipsized($roomsSpan);
 
-                    if (($roomsDiv['style']['backgroundColor'] ?? null) !== 'var(--label-backing)') {
+                    if (($roomsSpan['style']['backgroundColor'] ?? null) !== 'var(--label-backing)') {
                         $defects[] = "the plate {$plate['floor']}'s rooms line has no backing";
                     }
                 }
-            } elseif ($roomsDiv !== null) {
+            } elseif ($line3 !== null) {
                 $defects[] = "the plate {$plate['floor']} names no rooms worth a line but line 3 exists";
             }
         }
@@ -558,8 +629,14 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     /**
      * `showLabels()`'s OWN `left`/`width`, read off the probe (never re-derived from the row's `var()`
      * strings — those are checked structurally, in `constructionDefects()`), against the SHELL's own
-     * edge: `PLATE_INSET + left + width / zoom` must never exceed `0` — the shell's own scene-x — wherever
-     * `side === 'left'`. The fallback's own containment is the plate's, unchecked here (it is the
+     * edge: `PLATE_INSET + left + width / zoom` must never run past `-gap / zoom` — the shell's own
+     * scene-x, LESS the STATED gap — wherever `side === 'left'`. ⚠ r4 review round: the earlier check here
+     * asserted only `> 0` (no overlap), which holds for ANY positive gap, including one far short of the
+     * DOCUMENTED 8px — so a control that shrank the gap without pushing the label INTO the shell passed
+     * silently. `$gap` is read from the SHIPPED source, never `$dir` (a mutated build's own gap): the guard
+     * must hold the STATED contract even when the code under test computes a different one, or a mutation
+     * to `LABEL_GAP_PX` could never disagree with a check that re-derives its own expectation from the
+     * same mutated constant. The fallback's own containment is the plate's, unchecked here (it is the
      * accepted case, per the operator's ruling).
      *
      * @return list<string>
@@ -567,6 +644,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     private function labelOutsideBuildingDefects(array $result, ?string $dir = null): array
     {
         $plateInset = $this->sourceConstant(self::SCENE, 'PLATE_INSET', $dir);
+        $gap = $this->sourceConstant(self::PAINT, 'LABEL_GAP_PX');
         $defects = [];
 
         foreach ($this->rows($result, $dir) as [$plate, , , $label]) {
@@ -575,9 +653,11 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             }
 
             $rightScene = $plateInset + $label['left'] + $label['width'] / $label['zoom'];
+            $heldGap = -$gap / $label['zoom'];
 
-            if ($rightScene > self::EPSILON) {
-                $defects[] = "the plate {$plate['floor']}'s label's right edge runs {$rightScene} scene px past the shell";
+            if ($rightScene > $heldGap + self::EPSILON) {
+                $defects[] = sprintf("the plate %s's label's right edge stands %.4f scene px clear of the shell, short of the stated %d px gap (%.4f scene px)",
+                    $plate['floor'], -$rightScene, (int) $gap, $heldGap);
             }
         }
 
