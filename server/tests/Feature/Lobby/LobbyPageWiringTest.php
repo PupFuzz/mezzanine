@@ -262,21 +262,19 @@ class LobbyPageWiringTest extends TestCase
         $this->assertArrayHasKey('plate text', $this->cameraDefects($scaled),
             'CONTROL (a plate text the camera scales) did not bite');
 
-        // CONTROL — a label with no width to wrap within (card#7343 r3): `--label-max` never written.
-        $unbounded = str_replace("    floors.style.setProperty('--label-max', `\${labelMax(camera)}px`);\n", '', $js);
-        $this->assertNotSame($unbounded, $js, "the label-width control's anchor is gone — it mutated nothing");
+        // CONTROL — a plate built with no label plan at all (card#7343 r3's fix round): `labelPlan()`
+        // never called, so `plateRow()` reads `undefined` where `label` belongs.
+        $unbounded = str_replace('const label = labelPlan(camera);', 'const label = undefined;', $js);
+        $this->assertNotSame($unbounded, $js, "the label-plan control's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('plate text', $this->cameraDefects($unbounded),
-            'CONTROL (a label width never written) did not bite');
+            'CONTROL (no label plan handed to the plates) did not bite');
 
-        // CONTROL — the label's width the whole surface's again (the r3 value r4b refined): at a height-bound
-        // fit, a label then runs past the surface's right edge (`building-scene.js`'s `labelMax()`).
-        $surfaceWide = str_replace('`${labelMax(camera)}px`', '`${camera.surface.width}px`', $js);
-        $this->assertNotSame($surfaceWide, $js, "the visible-width control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('plate text', $this->cameraDefects($surfaceWide),
-            'CONTROL (a label wrapped within the whole surface, not what is visible of it) did not bite');
 
         // CONTROL — the surface's style never applied: the page keeps whatever box it started with (r3).
-        $unstyled = str_replace("    Object.assign(el('lobby-building').style, surfaceStyle(scene, sky));\n", '', $js);
+        // ⛔ MOVED, card#7343 r3's fix round: applied BEFORE `surface()` is read (the render may just have
+        // made the surface a drawing, or stopped it being one), so the label plan and the camera both size
+        // off the surface as it now stands, not as it stood before this render's own style change.
+        $unstyled = str_replace("    Object.assign(el('lobby-building').style, surfaceStyle(frame.scene, frame.sky));\n", '', $js);
         $this->assertNotSame($unstyled, $js, "the surface control's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('surface', $this->cameraDefects($unstyled),
             'CONTROL (a surface style never applied) did not bite');
@@ -288,7 +286,7 @@ class LobbyPageWiringTest extends TestCase
             'CONTROL (a camera sized to the old surface) did not bite');
 
         // CONTROL — a plate drawn by the page itself rather than by `plate-row.js`, which the size test builds.
-        $inline = str_replace('rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at));',
+        $inline = str_replace('rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at, label));',
             "rows.append(document.createElement('li'));", $js);
         $this->assertNotSame($inline, $js, "the plate-row control's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('plate text', $this->cameraDefects($inline),
@@ -500,7 +498,7 @@ class LobbyPageWiringTest extends TestCase
             // disabled while the frame says a ride is in flight, and the page coming back ends it.
             // … and the hold protects the glide only (r2-4): arriving asks for the route, then ends the hold.
             'ride in flight' => ['}, { commit: true });', 'ride.disabled = building.elevator.next === null || riding;',
-                'renderBuilding(building, frame.scene, frame.sky, summary.unclaimed, frame.riding);',
+                'renderBuilding(building, frame.scene, frame.sky, summary.unclaimed, frame.riding, camera);',
                 "window.addEventListener('pageshow', (event) => {\n    if (event.persisted) {\n        screen.returned();",
                 "        window.location.assign(ride.route);\n        screen.returned();\n        screen.draw(cab);\n    }, { commit: true });",
                 // … and the committed ride wins over a plate link clicked during it (card#7343 r3b): the hold
@@ -521,12 +519,15 @@ class LobbyPageWiringTest extends TestCase
             // The size those make is `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`'s.
             // The r2 ruling extends it to the status line: both are `plate-row.js`'s one label, which the size
             // test builds; what only this file can hold is that the page stands that module's rows.
-            'plate text' => ["import { labelMax, labelScale, surfaceStyle } from './building-scene.js';", "import { plateRow } from './plate-row.js';",
+            'plate text' => ["import { labelLines, labelMax, labelMaxLeft, labelScale, labelSide, surfaceStyle } from './building-scene.js';", "import { plateRow } from './plate-row.js';",
                 "floors.style.setProperty('--label-scale', String(labelScale(camera)));",
-                // … and the r4b ruling: the label wraps within what is visible of the surface, `labelMax()`
-                // of the camera `view()` shows, which the size test holds at fit.
-                "floors.style.setProperty('--label-max', `\${labelMax(camera)}px`);",
-                'rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at));'],
+                // … and card#7343 r3's fix round: one decision per render, `labelPlan()`, over the SAME
+                // camera `view()` shows — beside the building where `labelSide()` finds room, wrapped within
+                // `labelMaxLeft()`/`labelMax()`, else the fallback onto the plate — held by
+                // `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` at every framing it drives.
+                'function labelPlan(camera) {', "return { side, maxWidth: side === 'left' ? labelMaxLeft(camera) : labelMax(camera), lines: labelLines(camera), zoom: camera.zoom };",
+                'const label = labelPlan(camera);',
+                'rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at, label));'],
             // The keyboard and the zoom buttons (card#7343 r2-2): the floor's, through the one module.
             // … the camera as it stands, so every key is the browser's while it frames nothing, and the keys
             // and the zoom buttons offered from the camera `view()` shows (card#7343 r4b).
@@ -543,9 +544,11 @@ class LobbyPageWiringTest extends TestCase
             // `building-scene.js`'s `surfaceStyle()`, applied on every render, and the camera sized to the
             // surface the render leaves. What the style is for each scene is
             // `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest`'s.
-            'surface' => ["import { labelMax, labelScale, surfaceStyle } from './building-scene.js';",
-                // … with § 6.2 A17's sky, as the screen last set it, behind the building (card#7343's ruling).
-                "Object.assign(el('lobby-building').style, surfaceStyle(scene, sky));",
+            'surface' => ["import { labelLines, labelMax, labelMaxLeft, labelScale, labelSide, surfaceStyle } from './building-scene.js';",
+                // … with § 6.2 A17's sky, as the screen last set it, behind the building (card#7343's ruling),
+                // applied BEFORE `surface()` is read (card#7343 r3's fix round: the label plan and the camera
+                // both size off the surface as THIS render leaves it, never as it stood before).
+                "Object.assign(el('lobby-building').style, surfaceStyle(frame.scene, frame.sky));",
                 ': screen.resize(size);', 'view(current(camera));'],
             'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
             // Appendix B row 16, slice B: the building's drawing — `building-scene.js`'s shapes, painted under

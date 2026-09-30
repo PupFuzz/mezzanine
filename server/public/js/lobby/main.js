@@ -33,7 +33,9 @@
  * on the plates and the drawing as one
  * transform — each plate's text, its name and its status line, counter-scaled from that same camera,
  * so it is read at the page's body text size at every zoom (the operator's rulings, `building-scene.js`'s
- * `LABEL_FONT`), and wrapped within what is visible of the surface (`building-scene.js`'s `labelMax()`) — and wires the wheel, the drag, the keys, the zoom buttons, the keyboard's focus on a
+ * `LABEL_FONT`), standing BESIDE the plate where there is room for it and falling back onto it where
+ * there is not (`building-scene.js`'s `labelSide()`, card#7343 r3's fix round) — and wires the wheel,
+ * the drag, the keys, the zoom buttons, the keyboard's focus on a
  * plate, the whole-building control and the ride to the screen's camera acts — none of which renders.
  * A ride's click moves the cab — the page's `cab`, set to the stop `ride()` names — glides the camera to
  * the plate (or cuts, under `prefers-reduced-motion`) and then ARRIVES: the page goes to the route the
@@ -50,7 +52,7 @@ import { cameraGestures } from '../wire/camera-gestures.js';
 import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
 import { framesNothing } from '../wire/camera.js';
 import { startLobbyScreen } from './lobby-screen.js';
-import { labelMax, labelScale, surfaceStyle } from './building-scene.js';
+import { labelLines, labelMax, labelMaxLeft, labelScale, labelSide, surfaceStyle } from './building-scene.js';
 import { buildingDrawing, keepDrawing, paintBuilding } from './building-paint.js';
 import { plateRow } from './plate-row.js';
 import { holdPlateLinks } from './ride-hold.js';
@@ -131,13 +133,13 @@ const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out')
  * never scaled by it, at fit, after a wheel, a key or a drag, on every step of a glide and after a
  * resize, because each of them is shown through this function.
  *
- * ⛔ AND WHAT IS VISIBLE IS THE LABELS' WIDTH (card#7343 r4b, the seat's ruling, refining r3's surface
- * width): `--label-max`, the width each plate label wraps within (`plate-row.js`), is `building-scene.js`'s
- * `labelMax()` of the same camera — the surface to the right of the plates' on-screen left edge, never
- * wider than the surface and never narrower than its `LABEL_MIN_PX`. A label's px are screen px under its
- * counter-scale, so at whole-building fit a label reads to its end without a pan wherever at least that
- * minimum is visible beside the plates, and a label no wider than the surface is one a pan can always
- * bring wholly into view.
+ * ⛔ AND WHAT IS VISIBLE IS THE LABELS' WIDTH AND SIDE (card#7343 r4b's ruling, then r3's fix round,
+ * 2026-09-30, option A: the labels moved BESIDE the building). `labelPlan()` below reads the same camera
+ * this function shows and hands `paint()`'s `renderBuilding()` the one decision every plate's label
+ * shares that render: `building-scene.js`'s `labelSide()` (beside the plate, or the fallback onto it),
+ * `labelMaxLeft()`/`labelMax()` for whichever side that is, and `labelLines()`, the storey's own budget
+ * for the optional lines `plate-row.js` drops in order. A label's px are screen px under its
+ * counter-scale, so a label no wider than its width is one a pan can always bring wholly into view.
  *
  * ⛔ AND THE CAMERA IS OFFERED ONLY WHILE IT FRAMES SOMETHING (card#7343 r4b, the seat's ruling, and
  * comment 7692): the keys, the zoom buttons, the whole-building control and the building's tab stop —
@@ -157,8 +159,20 @@ function view(camera) {
         ? `scale(${camera.zoom}) translate(${-camera.x}px, ${-camera.y}px)`
         : '';
     floors.style.setProperty('--label-scale', String(labelScale(camera)));
-    floors.style.setProperty('--label-max', `${labelMax(camera)}px`);
     offerKeys(el('lobby-building'), zoomButtons, screen.camera());
+}
+
+/**
+ * ⭐ WHERE A PLATE's LABEL STANDS (card#7343 r3's fix round, the operator's ruling 2026-09-30, option A):
+ * `building-scene.js`'s `labelSide()` over the SAME camera `view()` shows, computed once per render and
+ * handed to every `plateRow()` call — `'left'`, beside the building, wrapped within `labelMaxLeft()`; or
+ * the fallback, `'plate'`, wrapped within the unchanged `labelMax()`. `labelLines()` is the same camera's
+ * own storey height, read once, for the drop order every plate's own optional lines share.
+ */
+function labelPlan(camera) {
+    const side = labelSide(camera);
+
+    return { side, maxWidth: side === 'left' ? labelMaxLeft(camera) : labelMax(camera), lines: labelLines(camera), zoom: camera.zoom };
 }
 
 const { show, glideTo, current } = cameraView(view);
@@ -218,22 +232,21 @@ function list(id, lines) {
  * ⚠ THE STACK IS DRAWN FIRST-AT-THE-TOP, which is the reference artifact's direction and not a
  * ruling in the document — see `building-model.js`.
  */
-function renderBuilding(building, scene, sky, unclaimed, riding) {
+function renderBuilding(building, scene, sky, unclaimed, riding, camera) {
     const rows = el('lobby-floors');
 
     // Every row but the building's drawing, which stays so the cab can glide (see `drawing`).
     keepDrawing(rows, drawing);
 
-    // The surface is a drawing that clips only while there is a building to draw; with none — § 9 F17's
-    // cold start, or no install — it is no box at all and the list flows in the page (card#7343 r3). While
-    // it is a drawing, A17's sky fills it behind the building, at the phase the screen last set.
-    Object.assign(el('lobby-building').style, surfaceStyle(scene, sky));
     // The plates stand where the scene puts them (Appendix B row 16); with none, the list flows.
     rows.style.position = scene?.extent ? 'relative' : '';
     rows.style.width = scene?.extent ? `${scene.extent.w}px` : '';
     rows.style.height = scene?.extent ? `${scene.extent.h}px` : '';
     // The roof, the storeys, the ground lobby and the cab at the viewer's stop — nothing with no building.
     painted = paintBuilding(document, { drawing, art, scenery, windows, cabNode }, scene, building.elevator.level, cabGlide, painted, sky);
+
+    // Where every plate's label stands this render (card#7343 r3's fix round) — one decision, shared.
+    const label = labelPlan(camera);
 
     // § 9 F17's cold start: no layout was ever loaded, so no floor is composed and each install
     // the client holds is listed as a room with no floor claimed — every seat still reachable
@@ -258,7 +271,7 @@ function renderBuilding(building, scene, sky, unclaimed, riding) {
     // Each plate stands at the rect the scene gives it (`level` indexes the stack and the scene alike),
     // its name and its status line one label over it at the page's body text size (`plate-row.js`).
     for (const plate of building.plates) {
-        rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at));
+        rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at, label));
     }
 
     const ride = el('lobby-elevator');
@@ -318,13 +331,22 @@ function paint(frame) {
         cab = building.elevator.at;
     }
 
-    renderBuilding(building, frame.scene, frame.sky, summary.unclaimed, frame.riding);
-    // The render may just have made the surface a drawing, or stopped it being one (`surfaceStyle()`), so
-    // the camera is sized to the surface as it now stands — a camera still at fit stays at fit.
+    // The surface is a drawing that clips only while there is a building to draw; with none — § 9 F17's
+    // cold start, or no install — it is no box at all and the list flows in the page (card#7343 r3). While
+    // it is a drawing, A17's sky fills it behind the building, at the phase the screen last set. Applied
+    // BEFORE `surface()` is read below, because that style is what can change the surface's own measured
+    // size (`surfaceStyle()`'s `height`) — the render may just have made the surface a drawing, or stopped
+    // it being one, and the camera and every plate's label placement are both sized off it as it now
+    // stands (card#7343 r3's fix round: the label's side needs the SAME final camera `view()` shows,
+    // which needs this read first, which needs this style applied first).
+    Object.assign(el('lobby-building').style, surfaceStyle(frame.scene, frame.sky));
+
     const size = surface();
     const camera = size.width === frame.camera.surface.width && size.height === frame.camera.surface.height
         ? frame.camera
         : screen.resize(size);
+
+    renderBuilding(building, frame.scene, frame.sky, summary.unclaimed, frame.riding, camera);
 
     // A render never moves the viewer: a glide in flight keeps its step, and otherwise the plates show
     // the screen's camera, which the render left where the viewer put it.

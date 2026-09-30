@@ -223,7 +223,7 @@ const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'sta
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
 const { healthCounters } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-model.js')).href);
-const { labelMax, labelScale } = await import(pathToFileURL(join(dir, '..', 'lobby', 'building-scene.js')).href);
+const { labelLines, labelMax, labelMaxLeft, labelScale, labelSide } = await import(pathToFileURL(join(dir, '..', 'lobby', 'building-scene.js')).href);
 const { between } = await import(pathToFileURL(join(dir, 'camera.js')).href);
 
 /**
@@ -232,8 +232,17 @@ const { between } = await import(pathToFileURL(join(dir, 'camera.js')).href);
  * counter-scale — and the width it wraps within, `--label-max` (card#7343 r4b). The label's font and what
  * sits inside it are `lobby/plate-row.js`'s, read off the row.
  */
+/**
+ * A camera's plate-label geometry, for the harness's own recording: `zoom`/`scale` unconditional (every
+ * plate's font-size arithmetic reads the same one regardless of where the label stands), and — since
+ * card#7343 r3's fix round moved the DEFAULT placement beside the building — `side`/`max`/`lines`, the
+ * SAME decision `lobby/main.js`'s own `labelPlan()` makes over this camera (`labelSide()`, then
+ * `labelMaxLeft()` beside it or `labelMax()` falling back onto the plate, and `labelLines()`'s budget).
+ */
 function plateLabel(camera) {
-    return { zoom: camera.zoom, scale: labelScale(camera), max: labelMax(camera) };
+    const side = labelSide(camera);
+
+    return { zoom: camera.zoom, scale: labelScale(camera), side, max: side === 'left' ? labelMaxLeft(camera) : labelMax(camera), lines: labelLines(camera) };
 }
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');

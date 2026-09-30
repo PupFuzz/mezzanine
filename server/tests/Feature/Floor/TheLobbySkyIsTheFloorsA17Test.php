@@ -110,6 +110,25 @@ class TheLobbySkyIsTheFloorsA17Test extends TestCase
         $this->assertSame([], $this->windowDefects());
     }
 
+    /**
+     * card#7343 r3's fix round MINOR 4 (design review, both rounds): `SKY_PAINT` is the reference's own
+     * `SKY` table, field for field — parsed out of `floor-preview.html` rather than copied here, so a
+     * change to the reference moves what this test expects instead of silently drifting from it.
+     */
+    public function test_green_sky_paint_matches_the_references_own_sky_table(): void
+    {
+        $this->assertSame([], $this->skyPaintDriftDefects());
+    }
+
+    /** The drift check itself, watched red against a planted mismatch — a stop that would pass silently otherwise. */
+    public function test_red_sky_paint_drifted_from_the_reference(): void
+    {
+        $dir = $this->mutatedModules([self::DRIVER, "night: Object.freeze({ top: '#141c3a', bot: '#25335e', stars: true, moon: true, sun: false, sun_y: null, city_lit: 0.8, flat: false }),",
+            "night: Object.freeze({ top: '#141c3b', bot: '#25335e', stars: true, moon: true, sun: false, sun_y: null, city_lit: 0.8, flat: false }),"]);
+
+        $this->assertNotSame([], $this->skyPaintDriftDefects($dir), 'CONTROL (a SKY_PAINT entry drifted from the reference) did not bite');
+    }
+
     public function test_green_the_lobby_holds_the_floors_driver_and_decides_no_phase_of_its_own(): void
     {
         $this->assertSame([], $this->sourceDefects($this->jsRoot()));
@@ -451,6 +470,113 @@ class TheLobbySkyIsTheFloorsA17Test extends TestCase
 
         if (! str_contains($painter, "import { SKY_PAINT } from './floor-layout.js';") || preg_match('/\.sky-\w+\{fill:#/', $painter) === 1) {
             $defects[] = 'floor/painter.js paints its windows\' sky from a palette of its own, not `floor-layout.js`\'s `SKY_PAINT`';
+        }
+
+        return $defects;
+    }
+
+    /**
+     * The reference's own `SKY` object (`floor-preview.html`'s), parsed as `{phase: {top,bot,stars,moon,
+     * sun,sunY,cityLit}}` — `sunY`/`cityLit` read `null`/`0` where the reference's own object omits them
+     * (`unset`, `night`'s `sunY`, `day`'s/`dawn`'s/`dusk`'s `moon`-less entries carry no `cityLit` key for
+     * `night` alone… the reference states every key on every entry it needs, so a missing key here is a
+     * parse failure, never a silent default).
+     *
+     * @return array<string, array{top: string, bot: string, stars: bool, moon: bool, sun: bool, sunY: ?float, cityLit: float}>
+     */
+    private function referenceSky(): array
+    {
+        $html = (string) file_get_contents(realpath(__DIR__.'/../../../../docs/design/floor-preview/floor-preview.html'));
+
+        $this->assertSame(1, preg_match('/const SKY=\{(.*?)\n\};/s', $html, $m), "the reference's SKY table did not parse");
+
+        $entries = [];
+
+        preg_match_all('/(\w+):\{([^}]*)\}/', $m[1], $rows, PREG_SET_ORDER);
+
+        foreach ($rows as [, $phase, $body]) {
+            $fields = [];
+
+            foreach (explode(',', $body) as $pair) {
+                [$key, $value] = explode(':', $pair, 2);
+                $fields[trim($key)] = trim($value);
+            }
+
+            $entries[$phase] = [
+                'top' => trim($fields['top'] ?? '', '"'),
+                'bot' => trim($fields['bot'] ?? '', '"'),
+                'stars' => ($fields['stars'] ?? 'false') === 'true',
+                'moon' => ($fields['moon'] ?? 'false') === 'true',
+                'sun' => ($fields['sun'] ?? 'false') === 'true',
+                'sunY' => isset($fields['sunY']) ? (float) $fields['sunY'] : null,
+                'cityLit' => isset($fields['cityLit']) ? (float) $fields['cityLit'] : 0.0,
+            ];
+        }
+
+        $this->assertSame(['night', 'dawn', 'day', 'dusk', 'unset'], array_keys($entries), "the reference's SKY table's phases did not parse as expected");
+
+        return $entries;
+    }
+
+    /**
+     * `floor/floor-layout.js`'s `SKY_PAINT`, parsed the same shape as `referenceSky()` — `sun_y`/`city_lit`
+     * read as `null`/`0.0` where `SKY_PAINT`'s own entry states them that way, `flat` read but not
+     * compared (the reference carries no such key; `SKY_PAINT`'s own `unset.flat` is asserted `true`
+     * elsewhere, in `windowDefects()`'s and `paintDefects()`'s own reads of it).
+     *
+     * @return array<string, array{top: string, bot: string, stars: bool, moon: bool, sun: bool, sunY: ?float, cityLit: float}>
+     */
+    private function skyPaint(?string $dir = null): array
+    {
+        $source = (string) file_get_contents(($dir === null ? $this->jsRoot() : dirname($dir)).'/floor/floor-layout.js');
+
+        $this->assertSame(1, preg_match('/export const SKY_PAINT = Object\.freeze\(\{(.*?)\n\}\);/s', $source, $m), 'SKY_PAINT did not parse');
+
+        $entries = [];
+
+        preg_match_all('/(\w+): Object\.freeze\(\{([^}]*)\}\),/', $m[1], $rows, PREG_SET_ORDER);
+
+        foreach ($rows as [, $phase, $body]) {
+            $fields = [];
+
+            foreach (explode(',', $body) as $pair) {
+                [$key, $value] = explode(':', $pair, 2);
+                $fields[trim($key)] = trim($value);
+            }
+
+            $entries[$phase] = [
+                'top' => trim($fields['top'] ?? '', " '"),
+                'bot' => trim($fields['bot'] ?? '', " '"),
+                'stars' => trim($fields['stars'] ?? '') === 'true',
+                'moon' => trim($fields['moon'] ?? '') === 'true',
+                'sun' => trim($fields['sun'] ?? '') === 'true',
+                'sunY' => trim($fields['sun_y'] ?? '') === 'null' ? null : (float) $fields['sun_y'],
+                'cityLit' => (float) ($fields['city_lit'] ?? 0),
+            ];
+        }
+
+        $this->assertSame(['night', 'dawn', 'day', 'dusk', 'unset'], array_keys($entries), 'SKY_PAINT\'s phases did not parse as expected');
+
+        return $entries;
+    }
+
+    /**
+     * `SKY_PAINT` against `referenceSky()`, field by field, for every phase the reference states one for
+     * (`unset` is the reference's own null render, § 6.5, and is compared too — `SKY_PAINT`'s `unset` is
+     * this document's, but its colours and flags are the reference's `unset` entry all the same).
+     *
+     * @return list<string>
+     */
+    private function skyPaintDriftDefects(?string $dir = null): array
+    {
+        $reference = $this->referenceSky();
+        $shipped = $this->skyPaint($dir);
+        $defects = [];
+
+        foreach ($reference as $phase => $fields) {
+            if (($shipped[$phase] ?? null) !== $fields) {
+                $defects[] = "SKY_PAINT.{$phase} is ".json_encode($shipped[$phase] ?? null).", not the reference's ".json_encode($fields);
+            }
         }
 
         return $defects;

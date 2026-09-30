@@ -6,17 +6,25 @@
  *
  * ⛔ IT IMPORTS THE SHIPPED MODULE AND RE-IMPLEMENTS NOTHING. The module directory is argv[2] — the
  * shipped `public/js/wire` or a MUTATED COPY of the tree it sits in — and the row module is read from
- * `../lobby/plate-row.js` beside it, so a planted control re-mints its defect in the real code.
+ * `../lobby/plate-row.js` beside it, so a planted control re-mints its defect in the real code. The one
+ * exception, `labelPlan()` below, is not a defect surface: it is `lobby/main.js`'s OWN three-line
+ * composition of `building-scene.js`'s exported `labelSide()`/`labelMaxLeft()`/`labelMax()`/
+ * `labelLines()`, copied here so the probe can hand `plateRow()` the SAME shape `main.js` does without
+ * this file importing `main.js` itself (a DOM entry, which builds no rows of its own to read back).
  *
- * stdin — JSON: `{ "frames": [ { "building", "scene" } … ] }` — lobby frames the harness drew
- *   (`fleet-client-probe.mjs`'s `lobby_renders[].frame`), each with the building composed; or
- *   `{ "label_max": [ camera … ] }` — cameras (`{surface, bounds, zoom, x, y}`), each handed to
- *   `lobby/building-scene.js`'s `labelMax()`, the width a label wraps within (card#7343 r4b).
- * stdout — JSON: `{ "frames": [ { "rows": [ <node> … ] } … ] }`, a row per plate in the building's
- *   order, each node
+ * stdin — JSON: `{ "frames": [ { "building", "scene", "camera" } … ] }` — lobby frames the harness drew
+ *   (`fleet-client-probe.mjs`'s `lobby_renders[].frame`, `camera` its own `frame.camera`), each with the
+ *   building composed, one row per plate built under `labelPlan(camera)`'s decision; or
+ *   `{ "label_plan": [ camera … ] }` — cameras (`{surface, bounds, zoom, x, y}`), each handed to EVERY
+ *   geometry function `building-scene.js` exports for this — `labelMax()`, `labelMaxLeft()`,
+ *   `labelSide()`, `labelLines()` — separately, for a test that reads each function's OWN answer rather
+ *   than only the composed decision `labelPlan()` picks between them.
+ * stdout — JSON: `{ "frames": [ { "rows": [ <node> … ], "label": <labelPlan(camera)> } … ] }`, a row
+ *   per plate in the building's order, each node
  *   `{ "tag", "style": {…}, "href"?, "text"?, "children": [ <node | {"text"}> … ] }` — `text` an
  *   element's own `textContent` where the module set one, a child `{"text"}` a text node; or, for
- *   `label_max`, `{ "label_max": [ px … ] }`, one per camera.
+ *   `label_plan`, `{ "label_plan": [ { "max", "maxLeft", "side", "lines" } … ] }`, one per camera —
+ *   `labelMax()`, `labelMaxLeft()`, `labelSide()`, `labelLines()` of it, in that order.
  *
  * Any throw exits non-zero with the message on stderr.
  */
@@ -68,17 +76,33 @@ function serialise(node) {
 }
 
 const { plateRow } = await import(pathToFileURL(join(dir, '..', 'lobby', 'plate-row.js')).href);
-const { labelMax } = await import(pathToFileURL(join(dir, '..', 'lobby', 'building-scene.js')).href);
+const { labelLines, labelMax, labelMaxLeft, labelSide } = await import(pathToFileURL(join(dir, '..', 'lobby', 'building-scene.js')).href);
 const payload = JSON.parse(readFileSync(0, 'utf8'));
 
-if (payload.label_max !== undefined) {
-    process.stdout.write(JSON.stringify({ label_max: payload.label_max.map((camera) => labelMax(camera)) }));
+/** `lobby/main.js`'s own `labelPlan()` — see this file's header for why it is copied rather than imported. */
+function labelPlan(camera) {
+    const side = labelSide(camera);
+
+    return { side, maxWidth: side === 'left' ? labelMaxLeft(camera) : labelMax(camera), lines: labelLines(camera), zoom: camera.zoom };
+}
+
+if (payload.label_plan !== undefined) {
+    process.stdout.write(JSON.stringify({
+        label_plan: payload.label_plan.map((camera) => ({
+            max: labelMax(camera), maxLeft: labelMaxLeft(camera), side: labelSide(camera), lines: labelLines(camera),
+        })),
+    }));
 } else {
     process.stdout.write(JSON.stringify({
-        frames: payload.frames.map(({ building, scene }) => ({
-            rows: building.plates.map((plate) => serialise(
-                plateRow(doc, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at),
-            )),
-        })),
+        frames: payload.frames.map(({ building, scene, camera }) => {
+            const label = labelPlan(camera);
+
+            return {
+                label,
+                rows: building.plates.map((plate) => serialise(
+                    plateRow(doc, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at, label),
+                )),
+            };
+        }),
     }));
 }

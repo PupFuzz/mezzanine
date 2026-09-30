@@ -64,16 +64,16 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   `prefers-reduced-motion` every camera move cuts rather than glides. None of it is fleet state: no ride,
   zoom or pan writes an animation-log row, and a render leaves the camera where the viewer put it. Each
   plate's name, and under it its status line — the seat counts, the rooms and *the elevator is here* — is
-  drawn over the plate at the page's own body text size and keeps that size at every zoom, so a plate can
-  be read with the whole building in view. The label wraps within what is visible of the building's
-  drawing to the right of its plate's left edge — never wider than the drawing, and never narrower than a
-  readable minimum unless the drawing is — so with the whole building in view a label reads to its end
-  without panning on any drawing wide enough to show that minimum beside the plates, and on a narrow or
-  browser-zoomed window a long status line takes more lines rather than running out of sight. Each label
-  starts at the top of its plate and grows down, so the top floor's name is always inside the drawing with
-  the whole building in view. On a building tall enough that a plate on the screen is shorter than its
-  label's lines, neighbouring plates' labels overlap at that view, and the bottom floor's last status
-  lines can run past the drawing's bottom edge until the viewer zooms in. With no floor layout loaded, the
+  drawn at the page's own body text size and keeps that size at every zoom, so a plate can be read with the
+  whole building in view. Each label stands beside its plate, to the left of the building, and never over
+  the drawing — so no label pixel ever covers the shell, the windows, the shaft or the cab wherever there
+  is room for it. On a screen too narrow for that (a phone, or the elevator ride zoomed in on one plate),
+  the label falls back to standing on the plate as before, wrapping within what is visible of the drawing
+  to the right of its left edge, and stays legible there on its own pale backing. Where a plate on the
+  screen is too short for its whole label, the rooms line drops first and then *the elevator is here* — the
+  floor's name and its summary always stay, so every plate keeps its accessible name — and a dropped line
+  is not removed for a screen reader: it stays available to one even while nothing is drawn for it, so the
+  elevator's plate is still named to an assistive-technology user at any zoom. With no floor layout loaded, the
   lobby's list of rooms flows in the page as it did before, rather than in the building's fixed-height
   drawing, and the mouse wheel, the arrow keys, text selection and a press on a room's link all work on it
   as they did before, with the zoom buttons and *Whole building* hidden and the building out of the tab
@@ -97,8 +97,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   it follows the viewer's clock, moves only when a feed heartbeat arrives — never on a timer or a poll —
   and stops when the feed dies, just as the floor's windows do, and it steps to a new phase rather than
   fading, with reduced motion or without. Every sky on both pages is painted from one table in
-  `floor/floor-layout.js`, so the floor's windows now show the same gradients as the lobby's instead of
-  flat colours. A floor's name and status line now sit on a pale backing, one box per line, so they stay
+  `floor/floor-layout.js`, so the floor's windows now show that table's gradient instead of flat colours
+  — the lobby's own windows read the same table further, adding the stars, the moon, the sun and the lit
+  city the floor's windows do not draw. A floor's name and status line now sit on a pale backing, one box per line, so they stay
   readable where they run over a dark window or off the plate onto the night sky;
   `tools/design/lobby-label-contrast.browser.mjs` measures that contrast in a headless browser and is run
   by hand, not in CI. That sky is
@@ -112,7 +113,12 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   a drag that ends over a desk or a floor plate is never a click on it. AT-D3-21's building half is
   `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`, the shared wiring is driven
   under `node` by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`, and the plates' text size is
-  held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`.
+  held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`, which now also holds that a
+  beside label never reaches its own plate's left edge — a geometric guarantee CI can check with no
+  browser. `tools/design/lobby-label-contrast.browser.mjs` now also measures how much of the building a
+  label's box covers (asserted zero wherever a label stands beside it) and how much any two labels'
+  boxes overlap, alongside the contrast it already measured, over renders at 3, 5, 7 and 10 floors, two
+  window sizes, every sky phase, zoomed to one plate and at phone width.
 
 ## [0.6.0] — 2026-09-29
 

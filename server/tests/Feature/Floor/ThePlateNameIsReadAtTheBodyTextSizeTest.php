@@ -161,6 +161,51 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     }
 
     /**
+     * card#7343 r3's fix round MINOR 2 (impl + design review, r2): AT FIT WITH ROOM, every plate's BUILT
+     * label box lies outside the building's own box — read off `plate-row.js`'s own construction, never
+     * re-derived from the camera alone (`visibleDefects()`'s is that re-derivation, and is a DIFFERENT,
+     * weaker property: that `labelMaxLeft()` answers a usable width, not that the SHIPPED style keeps it
+     * there).
+     */
+    public function test_green_the_built_label_lies_outside_the_building_at_fit_with_room(): void
+    {
+        foreach (self::RUNS as $run) {
+            $this->assertSame([], $this->labelOutsideBuildingDefects($this->replay($run)), "[{$run}]");
+        }
+    }
+
+    /** A gap large enough negative that the label's right edge runs past the plate's own left edge, into the building. */
+    public function test_red_a_label_that_runs_into_the_building(): void
+    {
+        $dir = $this->mutatedModules([self::ROW, 'const LABEL_GAP_PX = 8;', 'const LABEL_GAP_PX = -400;']);
+        $defects = $this->labelOutsideBuildingDefects($this->replay(self::RUNS[0], $dir), $dir);
+
+        $this->assertNotSame([], $defects, 'CONTROL (a label that runs into the building) did not bite');
+    }
+
+    /**
+     * card#7343 r3's fix round MINOR 2's other half: every VISIBLE text span carries `LABEL_BACKING` — the
+     * property the fallback's own legibility rests on (design review r2: the halo alone measured under
+     * WCAG 2.1 SC 1.4.3's 4.5:1 at scale), and the property beside the building relies on too, over A17's
+     * dim backdrop.
+     */
+    public function test_green_every_visible_span_carries_the_backing(): void
+    {
+        foreach (self::RUNS as $run) {
+            $this->assertSame([], $this->backingDefects($this->rows($this->replay($run))), "[{$run}]");
+        }
+    }
+
+    /** The backing removed from a visible span — a control on the property MINOR 2 makes load-bearing. */
+    public function test_red_a_span_with_no_backing(): void
+    {
+        $dir = $this->mutatedModules([self::ROW, '        Object.assign(span.style, TEXT_BACKING);', '']);
+
+        $this->assertNotSame([], $this->backingDefects($this->rows($this->replay(self::RUNS[0], $dir), $dir), $dir),
+            'CONTROL (a span with no backing) did not bite');
+    }
+
+    /**
      * Each defect planted in `labelMax()`, and which check it must red: the r3 width (the whole surface) and a
      * left edge read backwards run a label past the surface's right edge at fit; an unclamped width, a width
      * with no minimum and a minimum that outgrows the surface break the clamp.
@@ -169,29 +214,26 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
      */
     public static function labelMaxPlants(): array
     {
-        $body = '    return Math.min(width, Math.max(LABEL_MIN_PX, width - left));';
+        $body = '    return Math.min(width, Math.max(LABEL_MIN_PX, width - plateScreenLeft(camera)));';
 
         return [
-            'the whole surface\'s width, as r3 had it' => [$body, '    return width;', 'visible'],
-            'the plates\' left edge read backwards' => ['    const left = (camera.bounds.x + PLATE_INSET - camera.x) * camera.zoom;', '    const left = (camera.x - camera.bounds.x - PLATE_INSET) * camera.zoom;', 'visible'],
-            'a width wider than the surface' => [$body, '    return Math.max(LABEL_MIN_PX, width - left);', 'clamp'],
-            'a width with no minimum' => [$body, '    return Math.min(width, width - left);', 'clamp'],
-            'a minimum wider than the surface' => [$body, '    return Math.max(LABEL_MIN_PX, Math.min(width, width - left));', 'clamp'],
+            // card#7343 r3's fix round: the shipped runs (`self::RUNS`) now stand their labels BESIDE the
+            // building (`labelMaxLeft()`, not `labelMax()`), so a defect in `labelMax()` alone no longer
+            // reaches them — `labelMaxDefects()` is what still exercises `labelMax()` in isolation, over
+            // cameras chosen for each of its branches, regardless of which side an actual run happens to use.
+            'the whole surface\'s width, as r3 had it' => [$body, '    return width;'],
+            'the plates\' left edge read backwards' => ["function plateScreenLeft(camera) {\n    return (camera.bounds.x + PLATE_INSET - camera.x) * camera.zoom;\n}",
+                "function plateScreenLeft(camera) {\n    return (camera.x - camera.bounds.x - PLATE_INSET) * camera.zoom;\n}"],
+            'a width wider than the surface' => [$body, '    return Math.max(LABEL_MIN_PX, width - plateScreenLeft(camera));'],
+            'a width with no minimum' => [$body, '    return Math.min(width, width - plateScreenLeft(camera));'],
+            'a minimum wider than the surface' => [$body, '    return Math.max(LABEL_MIN_PX, Math.min(width, width - plateScreenLeft(camera)));'],
         ];
     }
 
     #[DataProvider('labelMaxPlants')]
-    public function test_red_each_label_width_defect(string $anchor, string $replacement, string $check): void
+    public function test_red_each_label_width_defect(string $anchor, string $replacement): void
     {
         $dir = $this->mutatedModules([self::SCENE, $anchor, $replacement]);
-
-        if ($check === 'visible') {
-            foreach (self::RUNS as $run) {
-                $this->assertNotSame([], $this->visibleDefects($this->replay($run, $dir)), "[{$run}] CONTROL (a label past the surface's right edge) did not bite");
-            }
-
-            return;
-        }
 
         $this->assertNotSame([], $this->labelMaxDefects($dir), 'CONTROL (the label width\'s clamp broken) did not bite');
     }
@@ -282,18 +324,18 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     {
         return [
             // The r2 ruling's own red: the status line left in the plate, which the camera scales.
-            'a status line the camera scales' => ["    label.append(link, ...status);\n    row.append(label);", "    label.append(link);\n    row.append(label, ...status);", 'on the screen, not the body text size'],
-            'a status line at a figure of its own' => ['        status.push(cab);', "        cab.style.fontSize = '48px';\n        status.push(cab);", 'a size of its own'],
-            'a name on the status line, not above it' => ["Object.assign(name.style, { display: 'block', width: 'fit-content' }, TEXT_BACKING);", "Object.assign(name.style, { width: 'fit-content' }, TEXT_BACKING);", 'is not a line of its own'],
+            'a status line the camera scales' => ["    labelEl.append(link, ...optional);\n    row.append(labelEl);", "    labelEl.append(link);\n    row.append(labelEl, ...optional);", 'on the screen, not the body text size'],
+            'a status line at a figure of its own' => ['        optional.push(cab);', "        cab.style.fontSize = '48px';\n        optional.push(cab);", 'a size of its own'],
+            'a name on the status line, not above it' => ["Object.assign(name.style, { display: 'block', width: 'fit-content', ...(beside ? { marginLeft: 'auto' } : {}) }, TEXT_BACKING);", "Object.assign(name.style, { width: 'fit-content', ...(beside ? { marginLeft: 'auto' } : {}) }, TEXT_BACKING);", 'is not a line of its own'],
             'the status line first' => ['    link.append(name, separator, summary);', '    link.append(summary, separator, name);', 'is not the name'],
             'a separator painted between the lines' => ["    Object.assign(separator.style, VISUALLY_HIDDEN);\n", '', 'is painted'],
             'a plate whose accessible name lost its separator' => ['    link.append(name, separator, summary);', '    link.append(name, summary);', 'accessible name'],
             // The r3 ruling's reds: a status line wider than the surface must wrap within it, or the drawing's
             // clip hides its end from every pan.
             'a label that does not wrap' => ["        whiteSpace: 'normal',\n", "        whiteSpace: 'nowrap',\n", 'does not wrap within the surface'],
-            'a status line that does not wrap' => ['        status.push(rooms);', "        rooms.style.whiteSpace = 'nowrap';\n        status.push(rooms);", 'does not wrap within the surface'],
-            'a label with no width to wrap within' => ["        maxWidth: 'var(--label-max)',\n", '', 'can run wider than the surface'],
-            'a label wrapped at a width of its own' => ["maxWidth: 'var(--label-max)'", "maxWidth: '1280px'", 'can run wider than the surface'],
+            'a status line that does not wrap' => ['        optional.push(rooms);', "        rooms.style.whiteSpace = 'nowrap';\n        optional.push(rooms);", 'does not wrap within the surface'],
+            'a label with no width to wrap within' => ["        [beside ? 'width' : 'maxWidth']: `\${label.maxWidth}px`,\n", '', 'can run wider than intended'],
+            'a label wrapped at a width of its own' => ["[beside ? 'width' : 'maxWidth']: `\${label.maxWidth}px`,", "[beside ? 'width' : 'maxWidth']: '1280px',", 'can run wider than intended'],
             'a word that never breaks' => ["        overflowWrap: 'anywhere',\n", '', 'a word wider than the surface'],
             // Design review r2, row 16 F1: the label carries its own halo, inside the same counter-scaled
             // element, so a label crossing the shaft or the cab at whole-building fit stays legible without
@@ -409,8 +451,10 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         $shown = [];
         $radii = $this->haloRadii($dir);
 
-        foreach ($rows as [$plate, $row]) {
-            array_push($defects, ...$this->readingDefects($plate, $row), ...$this->wrapDefects($plate, $row), ...$this->haloDefects($plate, $row, $radii));
+        array_push($defects, ...$this->backingDefects($rows, $dir));
+
+        foreach ($rows as [$plate, $row, , $side, $maxWidth]) {
+            array_push($defects, ...$this->readingDefects($plate, $row), ...$this->wrapDefects($plate, $row, $side, $maxWidth), ...$this->haloDefects($plate, $row, $radii));
 
             foreach ($this->texts($row) as $t) {
                 if ($t['hidden']) {
@@ -485,17 +529,17 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     }
 
     /**
-     * card#7343 r3 (the seat's ruling): a plate's label wraps within the surface. The label is no wider than
-     * `--label-max` — `building-scene.js`'s `labelMax()`, never wider than the surface (r4b), which
-     * `lobby/main.js`'s `view()` writes (held by `Tests\Feature\Lobby\LobbyPageWiringTest`) — and its px are
-     * screen px under its one counter-scale (the size check), so a pan can bring the whole of it into view;
-     * every painted text in it may wrap, and a word longer than that width breaks rather than running past it.
-     * Nothing here lays text out, so a line wider than the surface is not measured: what is held is that no
-     * painted text can be one.
+     * card#7343 r3 (the seat's ruling), and r3's fix round: a plate's label wraps within `label.maxWidth`
+     * — a REAL px figure a caller (`main.js`'s `labelPlan()`) computed for THIS render, set here as a
+     * literal `width` (beside the building) or `maxWidth` (falling back onto the plate) — and its px are
+     * screen px under its one counter-scale (the size check), so a pan can bring the whole of it into
+     * view; every painted text in it may wrap, and a word longer than that width breaks rather than
+     * running past it. Nothing here lays text out, so a line wider than the surface is not measured:
+     * what is held is that no painted text can be one.
      *
      * @return list<string>
      */
-    private function wrapDefects(array $plate, array $row): array
+    private function wrapDefects(array $plate, array $row, string $side, float $maxWidth): array
     {
         $label = $this->find($row, static fn (array $n): bool => ($n['style']['transform'] ?? null) === self::COUNTER_SCALE);
 
@@ -504,10 +548,14 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         }
 
         $defects = [];
+        $property = $side === 'left' ? 'width' : 'maxWidth';
 
-        if (($label['style']['maxWidth'] ?? null) !== 'var(--label-max)') {
-            $defects[] = "the plate {$plate['floor']}'s label is not bounded by `--label-max`, so it can run wider than the surface: "
-                .json_encode($label['style']['maxWidth'] ?? null);
+        if (! isset($label['style'][$property]) || ! preg_match('/^-?\d+(\.\d+)?px$/', $label['style'][$property])) {
+            $defects[] = "the plate {$plate['floor']}'s label is not bounded by an explicit `{$property}`, so it can run wider than intended: "
+                .json_encode($label['style'][$property] ?? null);
+        } elseif (abs((float) $label['style'][$property] - $maxWidth) > 1e-6) {
+            $defects[] = "the plate {$plate['floor']}'s label is not bounded by this render's own `{$property}` ({$label['style'][$property]}, not "
+                .sprintf('%.4fpx', $maxWidth).'), so it can run wider than intended';
         }
 
         if (! in_array($label['style']['overflowWrap'] ?? null, ['anywhere', 'break-word'], true)) {
@@ -662,17 +710,36 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         $camera = $fit['frame']['camera'];
         $this->assertTrue($camera['fitted'], 'the first frame that drew the building is not at fit');
         $width = $camera['surface']['width'];
+        $side = $fit['label']['side'];
+        $max = $fit['label']['max'];
         $defects = [];
         $inset = false;
 
         foreach ($fit['frame']['scene']['plates'] as $plate) {
             $left = ($plate['rect']['x'] - $camera['x']) * $camera['zoom'];
             $inset = $inset || $left > 1e-6;
-            $right = $left + $fit['label']['max'];
+
+            // card#7343 r3's fix round (the operator's ruling, option A): AT FIT WITH ROOM the label
+            // stands BESIDE the plate — never past its own left edge, which `labelOutsideBuildingDefects()`
+            // holds over the BUILT style, not the harness's own recomputation. What THIS clause still
+            // holds — because it is a property of the harness's camera reading alone, unaffected by which
+            // side the label stands on — is that `labelMax()`/`labelMaxLeft()` never answers a NEGATIVE or
+            // zero width while `labelSide()` reads that same side as usable.
+            if ($side === 'left') {
+                if ($max <= 0) {
+                    $defects[] = "at whole-building fit `labelSide()` reads 'left' for the plate {$plate['floor']} but `labelMaxLeft()` answers {$max} — no room to place a label that side at all";
+                }
+
+                continue;
+            }
+
+            // The fallback (card#7343 r3's accepted case, e.g. no room beside the building): the SAME
+            // right-growing wrap r4b ruled, unchanged — a label ends at or before the surface's right edge.
+            $right = $left + $max;
 
             if ($right > $width + 1e-6) {
-                $defects[] = sprintf("at whole-building fit the plate %s's label may run to %.1f px, past the surface's right edge at %d px (its left edge at %.1f px, --label-max %.1f px)",
-                    $plate['floor'], $right, $width, $left, $fit['label']['max']);
+                $defects[] = sprintf("at whole-building fit the plate %s's label may run to %.1f px, past the surface's right edge at %d px (its left edge at %.1f px, its width %.1f px)",
+                    $plate['floor'], $right, $width, $left, $max);
             }
         }
 
@@ -684,10 +751,108 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     }
 
     /**
-     * `labelMax()` on a camera for each branch of its clamp, each held to the rule the seat ruled: the visible
-     * width to the right of the plates' on-screen left edge, at most the surface's width, at least
-     * `LABEL_MIN_PX` — read from the module — unless the surface is narrower still; and the surface's width for
-     * a camera that frames nothing.
+     * card#7343 r3's fix round, MINOR 2 (impl + design review, r2): AT FIT WITH ROOM (`label.side ===
+     * 'left'`), every plate's BUILT label box lies OUTSIDE the building's own box — never covering it —
+     * read off the row `plate-row.js` actually constructs (`plate-row-probe.mjs`), not re-derived. A
+     * label's box, in the SAME scene-px frame its plate's own `rect` lives in, is `[style.left,
+     * style.left + style.width]` (`style.left` a SCENE quantity per `plate-row.js`'s own docblock,
+     * `style.width` a REAL-px one that this check must therefore convert BACK to scene units — dividing
+     * by the SAME `camera.zoom` — before comparing the two): the label's right edge must be at or before
+     * the plate's own left edge (`rect.x`).
+     *
+     * @return list<string>
+     */
+    private function labelOutsideBuildingDefects(array $result, ?string $dir = null): array
+    {
+        $fit = null;
+        $label = null;
+
+        foreach ($result['lobby_renders'] as $r) {
+            if (($r['frame']['building']['composed'] ?? false) === true) {
+                $fit = $r['frame'];
+                $label = $r['label'];
+
+                break;
+            }
+        }
+
+        if ($fit === null) {
+            return ['the run never drew the building at fit'];
+        }
+
+        if ($label['side'] !== 'left') {
+            return ['the run never drew a label beside the building — the clause measured nothing'];
+        }
+
+        $zoom = $fit['camera']['zoom'];
+        $built = $this->probe(['frames' => [['building' => $fit['building'], 'scene' => $fit['scene'], 'camera' => $fit['camera']]]],
+            $dir, __DIR__.'/plate-row-probe.mjs')['frames'][0]['rows'];
+        $defects = [];
+
+        foreach ($built as $i => $row) {
+            $plate = $fit['building']['plates'][$i];
+            $label = $this->find($row, static fn (array $n): bool => ($n['style']['transform'] ?? null) === self::COUNTER_SCALE);
+
+            if ($label === null) {
+                $defects[] = "the plate {$plate['floor']} has no counter-scaled label — the outside-building clause read nothing";
+
+                continue;
+            }
+
+            $left = $this->px($label['style']['left'] ?? null, 'the label\'s left');
+            $width = $this->px($label['style']['width'] ?? null, 'the label\'s width');
+            $rightScene = $left + $width / $zoom;
+
+            if ($rightScene > 1e-6) {
+                $defects[] = sprintf("the plate %s's label runs %.4f scene px PAST its own plate's left edge — into the building",
+                    $plate['floor'], $rightScene);
+            }
+        }
+
+        return $defects;
+    }
+
+    /**
+     * card#7343 r3's fix round, MINOR 2's other half: whatever placement the label falls back to, every
+     * VISIBLE text span (never a `VISUALLY_HIDDEN` one — that one carries no fact a sighted viewer reads,
+     * the contrast clause is not about it) stands on `building-scene.js`'s `LABEL_BACKING` — the property
+     * the fallback's own legibility rests on, since the halo alone measured below WCAG 2.1 SC 1.4.3's
+     * 4.5:1 at scale (design review, r2). Beside the building the SAME property holds — nothing here is
+     * conditioned on `label.side` — because `plate-row.js` sets it on every visible span regardless of
+     * which side the label stands on.
+     *
+     * @return list<string>
+     */
+    private function backingDefects(array $rows, ?string $dir = null): array
+    {
+        $source = (string) file_get_contents(($dir ?? $this->moduleDir()).'/'.self::SCENE);
+        $this->assertSame(1, preg_match("/export const LABEL_BACKING = rgba\(INK\.wall, ([\d.]+)\);/", $source, $m), 'LABEL_BACKING did not parse');
+        $defects = [];
+
+        foreach ($rows as [$plate, $row]) {
+            foreach ($this->texts($row) as $t) {
+                if ($t['hidden'] || trim($t['text']) === '') {
+                    continue;
+                }
+
+                if (($t['background'] ?? '') === '') {
+                    $defects[] = "the plate {$plate['floor']}'s {$this->partOf($t['text'], $plate)} carries no backing — `backgroundColor` is empty";
+                }
+            }
+        }
+
+        return $defects;
+    }
+
+    /**
+     * `labelMax()`, `labelMaxLeft()`, `labelSide()` and `labelLines()` on a camera for each branch each
+     * function reads (card#7343 r3's fix round): `labelMax()` unchanged since r4b (never wider than the
+     * surface, never narrower than `LABEL_MIN_PX` unless the surface itself is); `labelMaxLeft()` the same
+     * plate-edge geometry mirrored to the LEFT, floored at `0` rather than `LABEL_MIN_PX` — `labelSide()`
+     * is what reads that floor, not this function; `labelSide()` itself, `'left'` at or above `LABEL_MIN_PX`
+     * of room and `'plate'` below it, at the SAME plate-edge geometry both `labelMax*()` read; and
+     * `labelLines()`, the storey's own height (`PLATE_H` at the camera's zoom) divided by `LABEL_LINE_PX`,
+     * floored at `2` and capped at `4`.
      *
      * @return list<string>
      */
@@ -696,30 +861,70 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         $source = (string) file_get_contents(($dir ?? $this->moduleDir()).'/'.self::SCENE);
         $this->assertSame(1, preg_match('/export const LABEL_MIN_PX = (\d+);/', $source, $m), 'LABEL_MIN_PX did not parse');
         $min = (int) $m[1];
-        // Design review r2 F2: `labelMax()` reads a plate's own left edge, `bounds.x + PLATE_INSET`, not
-        // the extent's `bounds.x` alone — read from the source rather than restated, as `$min` is above.
+        // Design review r2 F2: `labelMax()`/`labelMaxLeft()` read a plate's own left edge,
+        // `bounds.x + PLATE_INSET`, not the extent's `bounds.x` alone — read from the source rather than
+        // restated, as `$min` is above.
         $this->assertSame(1, preg_match('/export const PLATE_INSET = (\d+);/', $source, $mi), 'PLATE_INSET did not parse');
         $inset = (int) $mi[1];
+        $this->assertSame(1, preg_match('/export const LABEL_LINE_PX = (\d+);/', $source, $ml), 'LABEL_LINE_PX did not parse');
+        $line = (int) $ml[1];
+        $this->assertSame(1, preg_match('/export const PLATE_H = (\d+);/', $source, $mh), 'PLATE_H did not parse');
+        $plateH = (int) $mh[1];
         $camera = static fn (int $width, ?int $boundsX, float $zoom, float $x): array => [
             'surface' => ['width' => $width, 'height' => 800],
             'bounds' => $boundsX === null ? null : ['x' => $boundsX, 'y' => 0, 'w' => 1600, 'h' => 2000],
             'zoom' => $zoom, 'x' => $x, 'y' => 0,
         ];
-        // [what, the camera, the width the rule gives it]
+        // [what, the camera, [expected max, expected maxLeft, expected side, expected lines]]
         $cases = [
-            // left = (bounds.x + PLATE_INSET - x) * zoom — the plates' own on-screen left edge.
-            [sprintf('a height-bound fit: the plates inset by %s px', (0 + $inset + 800) * 0.4), $camera(1280, 0, 0.4, -800), 1280 - (0 + $inset + 800) * 0.4],
-            ['the plates\' left edge off the surface\'s left', $camera(1280, 0, 1, 400), 1280],
-            ['the plates\' left edge near the surface\'s right', $camera(1280, 0, 1, -(1280 - $min / 2)), $min],
-            ['a surface narrower than the minimum', $camera((int) ($min / 2), 0, 1, 0), (int) ($min / 2)],
-            ['a camera that frames nothing', $camera(1280, null, 1, 0), 1280],
+            // left = (bounds.x + PLATE_INSET - x) * zoom — the plates' own on-screen left edge, read by
+            // both `labelMax()` (space to ITS right) and `labelMaxLeft()` (space to its left) alike.
+            [sprintf('a height-bound fit: the plates inset by %s px', (0 + $inset + 800) * 0.4), $camera(1280, 0, 0.4, -800),
+                [1280 - (0 + $inset + 800) * 0.4, (0 + $inset + 800) * 0.4, 'left', 4]],
+            ['the plates\' left edge off the surface\'s left', $camera(1280, 0, 1, 400), [1280, 0.0, 'plate', 4]],
+            ['the plates\' left edge near the surface\'s right', $camera(1280, 0, 1, -(1280 - $min / 2)), [$min, $inset + 1280 - $min / 2, 'left', 4]],
+            ['a surface narrower than the minimum', $camera((int) ($min / 2), 0, 1, 0), [(int) ($min / 2), (int) ($inset), 'plate', 4]],
+            ['a camera that frames nothing', $camera(1280, null, 1, 0), [1280, 0.0, 'plate', 4]],
+            // `labelMaxLeft()` just short of `LABEL_MIN_PX` reads `'plate'`; the SAME geometry one px over
+            // reads `'left'` — the threshold `labelSide()` alone owns, at the SAME figure `labelMax()`'s own
+            // clamp floors at. `x = PLATE_INSET - space` is what puts `plateScreenLeft()` (`labelMaxLeft()`'s
+            // own reading) at exactly `space`.
+            ['the room beside the plates one px short of the minimum', $camera(2000, 0, 1, $inset - ($min - 1)), [2000 - ($min - 1), (float) ($min - 1), 'plate', 4]],
+            ['the room beside the plates exactly the minimum', $camera(2000, 0, 1, $inset - $min), [2000 - $min, (float) $min, 'left', 4]],
+            // `labelLines()`: the storey's own height (`PLATE_H` at the camera's zoom) divided by
+            // `LABEL_LINE_PX`, each case's zoom chosen so the division lands just inside the next bucket —
+            // `x` a huge negative figure so `labelSide()` stays `'left'` at every one of these zooms and
+            // `lines` is the only field the case's own arithmetic is about (`null`: not checked here).
+            ['a storey short of two lines\' worth of height', $camera(2000, 0, ($line * 2 - 1) / $plateH, -1_000_000), [null, null, 'left', 2]],
+            ['a storey of exactly three lines\' worth of height', $camera(2000, 0, ($line * 3) / $plateH, -1_000_000), [null, null, 'left', 3]],
+            ['a storey of far more than four lines\' worth of height', $camera(2000, 0, ($line * 9) / $plateH, -1_000_000), [null, null, 'left', 4]],
         ];
-        $got = $this->probe(['label_max' => array_column($cases, 1)], $dir, __DIR__.'/plate-row-probe.mjs')['label_max'];
+        $got = $this->probe(['label_plan' => array_column($cases, 1)], $dir, __DIR__.'/plate-row-probe.mjs')['label_plan'];
         $defects = [];
 
-        foreach ($cases as $i => [$what, , $expected]) {
-            if (abs(($got[$i] ?? -1) - $expected) > 1e-6) {
-                $defects[] = sprintf('for %s, --label-max is %s, not %s', $what, json_encode($got[$i] ?? null), $expected);
+        foreach ($cases as $i => [$what, , [$max, $maxLeft, $side, $lines]]) {
+            $g = $got[$i] ?? null;
+
+            if ($g === null) {
+                $defects[] = "for {$what}, the probe answered nothing";
+
+                continue;
+            }
+
+            if ($max !== null && abs($g['max'] - $max) > 1e-6) {
+                $defects[] = sprintf('for %s, labelMax() is %s, not %s', $what, json_encode($g['max']), $max);
+            }
+
+            if ($maxLeft !== null && abs($g['maxLeft'] - $maxLeft) > 1e-6) {
+                $defects[] = sprintf('for %s, labelMaxLeft() is %s, not %s', $what, json_encode($g['maxLeft']), $maxLeft);
+            }
+
+            if ($g['side'] !== $side) {
+                $defects[] = sprintf('for %s, labelSide() is %s, not %s', $what, json_encode($g['side']), json_encode($side));
+            }
+
+            if ($g['lines'] !== $lines) {
+                $defects[] = sprintf('for %s, labelLines() is %s, not %s', $what, json_encode($g['lines']), $lines);
             }
         }
 
@@ -753,7 +958,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         }
 
         $this->assertTrue($fit['camera']['fitted'], 'the first frame that drew the building is not at fit');
-        $built = $this->probe(['frames' => [['building' => $fit['building'], 'scene' => $fit['scene']]]], $dir, __DIR__.'/plate-row-probe.mjs')['frames'][0]['rows'];
+        $built = $this->probe(['frames' => [['building' => $fit['building'], 'scene' => $fit['scene'], 'camera' => $fit['camera']]]], $dir, __DIR__.'/plate-row-probe.mjs')['frames'][0]['rows'];
         $camera = $fit['camera'];
         $zoom = $camera['zoom'];
         $scale = 1 / $zoom;
@@ -832,9 +1037,11 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     }
 
     /**
-     * Every drawn frame's plates, built by the shipped `lobby/plate-row.js`: `[plate, row, here]` per plate.
+     * Every drawn frame's plates, built by the shipped `lobby/plate-row.js`: `[plate, row, here, side]` per
+     * plate — `side` the ONE label-plan decision (`main.js`'s `labelPlan()`, mirrored in the probe) that
+     * render's own camera made, the same for every plate in it.
      *
-     * @return list<array{0: array, 1: array, 2: bool}>
+     * @return list<array{0: array, 1: array, 2: bool, 3: string}>
      */
     private function rows(array $result, ?string $dir = null): array
     {
@@ -847,13 +1054,13 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             return [];
         }
 
-        $built = $this->probe(['frames' => array_map(static fn (array $f): array => ['building' => $f['building'], 'scene' => $f['scene']], $frames)],
+        $built = $this->probe(['frames' => array_map(static fn (array $f): array => ['building' => $f['building'], 'scene' => $f['scene'], 'camera' => $f['camera']], $frames)],
             $dir, __DIR__.'/plate-row-probe.mjs')['frames'];
         $rows = [];
 
         foreach ($frames as $i => $f) {
             foreach ($f['building']['plates'] as $j => $plate) {
-                $rows[] = [$plate, $built[$i]['rows'][$j], $plate['floor'] === $f['building']['elevator']['at']];
+                $rows[] = [$plate, $built[$i]['rows'][$j], $plate['floor'] === $f['building']['elevator']['at'], $built[$i]['label']['side'], $built[$i]['label']['maxWidth']];
             }
         }
 
@@ -866,7 +1073,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
      * hidden, the `display` of the element that holds it, and whether the nearest `whiteSpace` on the path
      * lets its lines break.
      *
-     * @return list<array{text: string, font: ?string, counter: int, other: list<string>, hidden: bool, display: ?string, wraps: bool}>
+     * @return list<array{text: string, font: ?string, counter: int, other: list<string>, hidden: bool, display: ?string, wraps: bool, background: ?string}>
      */
     private function texts(array $node, ?string $font = null, int $counter = 0, array $other = [], bool $hidden = false, bool $wraps = true): array
     {
@@ -884,8 +1091,9 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
 
         $hidden = $hidden || (($style['clipPath'] ?? null) === 'inset(50%)' && ($style['width'] ?? null) === '1px'
             && ($style['height'] ?? null) === '1px' && ($style['overflow'] ?? null) === 'hidden');
+        $background = $style['backgroundColor'] ?? null;
         $found = [];
-        $here = ['font' => $font, 'counter' => $counter, 'other' => $other, 'hidden' => $hidden, 'display' => $style['display'] ?? null, 'wraps' => $wraps];
+        $here = ['font' => $font, 'counter' => $counter, 'other' => $other, 'hidden' => $hidden, 'display' => $style['display'] ?? null, 'wraps' => $wraps, 'background' => $background];
 
         if (isset($node['text']) && $node['text'] !== '') {
             $found[] = ['text' => $node['text']] + $here;

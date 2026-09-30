@@ -109,18 +109,29 @@ export function labelScale(camera) {
 export const LABEL_MIN_PX = 320;
 
 /**
- * The width a plate's label wraps within, in CSS px on the screen — `lobby/main.js`'s `--label-max` (the
- * seat's r4b ruling on card#7343, refining r3's "the surface's width"): what is VISIBLE of the surface to
- * the right of the plates' on-screen left edge, so at whole-building fit — where a height-bound fit insets
- * the building from the surface's left edge — a label reads to its end without a pan wherever at least
- * `LABEL_MIN_PX` is visible to the right of the plates. Clamped: never wider than the surface, so a pan
- * can always bring the whole label into view (a plate whose left edge is off the surface's left), and
- * never narrower than `LABEL_MIN_PX` (a plate panned towards the surface's right edge), unless the
- * surface itself is narrower still. ⛔ A PLATE STANDS `PLATE_INSET` IN FROM THE EXTENT's LEFT EDGE, NOT
- * ON IT (design review r2, F2: the frame shows as the outer wall around the plates, which stand inside
- * it) — so this reads the plate's OWN left edge, `camera.bounds.x + PLATE_INSET`, and never
- * `camera.bounds.x` alone, which is the FRAME's edge and would over-count the width available by one
- * margin. A camera that frames nothing has no plate, and its labels — none — wrap within the surface.
+ * A plate's own left edge (`PLATE_INSET` in from the extent), in real CSS px on the screen — negative, or
+ * past the surface's own width, once a pan or a zoom has carried it there. ⛔ A PLATE STANDS `PLATE_INSET`
+ * IN FROM THE EXTENT's LEFT EDGE, NOT ON IT (design review r2, F2: the frame shows as the outer wall
+ * around the plates, which stand inside it) — so this reads the plate's OWN left edge,
+ * `camera.bounds.x + PLATE_INSET`, and never `camera.bounds.x` alone, which is the FRAME's edge and would
+ * over-count the width available on either side of it by one margin. `labelMax()` reads this as the space
+ * to its RIGHT (r3/r4b's own placement); `labelMaxLeft()` (card#7343 r3's fix round, the operator's ruling
+ * option A) reads it as the space to its LEFT, where a plate's label now stands.
+ */
+function plateScreenLeft(camera) {
+    return (camera.bounds.x + PLATE_INSET - camera.x) * camera.zoom;
+}
+
+/**
+ * ⛔ SUPERSEDED AS A PLATE's DEFAULT PLACEMENT (card#7343 r3's fix round, the operator's ruling
+ * 2026-09-30, option A) — kept for the FALLBACK a plate's label falls back to when there is no room
+ * BESIDE it (`labelSide()`): the width a plate's label wraps within when it stands ON the plate, in CSS
+ * px on the screen — what is VISIBLE of the surface to the right of the plate's on-screen left edge, so
+ * a label reads to its end without a pan wherever at least `LABEL_MIN_PX` is visible to the right of the
+ * plates. Clamped: never wider than the surface, so a pan can always bring the whole label into view (a
+ * plate whose left edge is off the surface's left), and never narrower than `LABEL_MIN_PX` (a plate
+ * panned towards the surface's right edge), unless the surface itself is narrower still. A camera that
+ * frames nothing has no plate, and its labels — none — wrap within the surface.
  *
  * @param {{surface: {width: number}, bounds: {x: number}|null, zoom: number, x: number}} camera a
  *        `wire/camera.js` camera — the one the plates are shown under
@@ -132,9 +143,77 @@ export function labelMax(camera) {
         return width;
     }
 
-    const left = (camera.bounds.x + PLATE_INSET - camera.x) * camera.zoom;
+    return Math.min(width, Math.max(LABEL_MIN_PX, width - plateScreenLeft(camera)));
+}
 
-    return Math.min(width, Math.max(LABEL_MIN_PX, width - left));
+/**
+ * ⭐ THE SPACE BESIDE THE BUILDING, in real CSS px — where a plate's label stands (card#7343 r3's fix
+ * round, the operator's ruling 2026-09-30, option A: *"the lobby's floor labels move BESIDE the building,
+ * as the ratified reference does"* — `docs/design/floor-preview/floor-preview.html`'s each-storey name,
+ * drawn to the left of its storey, never over the drawing). What is visible of the surface to the LEFT of
+ * the plate's own on-screen left edge — `0` where the plate's own edge is at or past the surface's left
+ * edge (a pan, or a camera zoomed to fill the surface with one plate — the ride's own aspect, card#7343
+ * r3), because there is nothing there to stand a label in. Unlike `labelMax()`, never clamped to a
+ * minimum: `labelSide()` is what decides whether this much room is enough to use at all, and a caller
+ * that placed a label here anyway on too little of it would run the label onto the building it must
+ * never cover.
+ *
+ * @param {{surface: {width: number}, bounds: {x: number}|null, zoom: number, x: number}} camera a
+ *        `wire/camera.js` camera — the one the plates are shown under
+ */
+export function labelMaxLeft(camera) {
+    if (framesNothing(camera)) {
+        return 0;
+    }
+
+    return Math.max(0, plateScreenLeft(camera));
+}
+
+/**
+ * Whether there is room to stand a plate's label BESIDE the building (`'left'`) — card#7343 r3's default —
+ * or whether it falls back to standing ON the plate (`'plate'`, the SAME placement `labelMax()` and this
+ * module carried before r3, and the fallback the operator's ruling explicitly accepts: *"On a screen with
+ * no room beside the building (phone width), labels fall back to sitting over the plate"*). The threshold
+ * is `LABEL_MIN_PX` — the SAME WCAG reflow floor `labelMax()` already reads a minimum from, re-read here as
+ * what a side needs to be usable at all: less room than that and even a short floor name would wrap
+ * narrower than WCAG's own reflow minimum, which is not a readable label. Two framings read `'plate'` for
+ * the same reason, not two different ones: a narrow (phone-width) surface, and a camera zoomed to fill the
+ * surface with one plate (the ride's own aspect — `PLATE_W`/`PLATE_H`'s 1.6 ratio matches the harness's own
+ * 1280 × 800 surface exactly, so a ride there frames its plate with NO margin on any side at all).
+ *
+ * @param {object} camera a `wire/camera.js` camera — the one the plates are shown under
+ * @returns {'left'|'plate'}
+ */
+export function labelSide(camera) {
+    return labelMaxLeft(camera) >= LABEL_MIN_PX ? 'left' : 'plate';
+}
+
+/**
+ * How many CSS px one line of the plate label's own body text roughly takes — 1.25× `LABEL_FONT`'s `1rem`,
+ * a typical browser's own line-height for body text with none set of its own (a figure of the drawing's,
+ * chosen so `labelLines()` below has a unit to divide a storey's own height by; nothing here lays text
+ * out, so this estimate is what the browser render `tools/design/lobby-label-contrast.browser.mjs` checks
+ * empirically for overlap, not a measurement taken here).
+ */
+export const LABEL_LINE_PX = 20;
+
+/**
+ * How many of a plate's label's lines fit within its OWN storey's height without reaching the plate below
+ * it (card#7343 r3's no-label-overlaps-another-label ruling): the name and the summary always (`2`, never
+ * dropped — `plate-row.js`'s drop order), plus room for the rooms line and *the elevator is here* in that
+ * priority order, one more each, as the storey's OWN height in real CSS px — `PLATE_H` at the camera's
+ * zoom — divides by `LABEL_LINE_PX`. Floored at `2` (never below the two lines that are never dropped) and
+ * capped at `4` (there are only four possible lines); a camera framing nothing has no plate to overflow, so
+ * every line shows.
+ *
+ * @param {object} camera a `wire/camera.js` camera — the one the plates are shown under
+ */
+export function labelLines(camera) {
+    if (framesNothing(camera)) {
+        return 4;
+    }
+
+    return Math.max(2, Math.min(4, Math.floor((PLATE_H * camera.zoom) / LABEL_LINE_PX)));
 }
 
 /** The roof and its sign, above the top plate, in scene px — the drawing's, carrying no fact. */
@@ -210,19 +289,20 @@ const INK = {
 /**
  * The plate label's halo — the storey's own wall colour (`INK.wall`), stacked as several zero-offset,
  * blurred `text-shadow`s behind the label's text (design review r2, card#7343 row 16 F1, replacing r1's
- * opaque plaque, which blanked the drawing under it): `labelMax()` is the surface's visible width and
- * not the plate's, so at whole-building fit on three or more floors a label is routinely wider than its
- * plate and crosses the shaft, the cab or the plate below it — the halo is the label's own contrast
- * there, ON the glyphs rather than a box behind them, so the arches, the shaft and the cab stay visible
- * through it. ⚠ WHAT IS PINNED AND WHAT IS NOT (impl review r3 #3, design review r3 F-B): this COLOUR
- * clears WCAG 2.1 SC 1.4.3's 4.5:1 against both the link's default blue (#0000EE, ≈8.5:1) and the
- * plate's own body text (black, ≈19.1:1) — `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`
- * computes and holds both. That is a claim about the colour PAIR only: a blurred shadow is not an opaque
- * backing, so what a glyph actually stands on is the halo blended over whatever the drawing puts there,
- * and over the drawing's darker parts (the slab, #b27b56, is ≈2.6:1 against the link's blue) and over the
- * sky behind the building, which a label wider than its plate crosses (card#7343), the halo alone is not
- * enough — the design review of card#7343 r1 measured it at ≈1.8:1 there — so each text span also stands
- * on `LABEL_BACKING`, below, and it is THAT, measured on rendered pixels, that holds the text's contrast.
+ * opaque plaque, which blanked the drawing under it): set on the label so it is counter-scaled with the
+ * text and never scaled by the scene, ON the glyphs rather than a box behind them, so whatever it stands
+ * over stays visible through it. ⚠ WHAT IS PINNED AND WHAT IS NOT (impl review r3 #3, design review r3
+ * F-B): this COLOUR clears WCAG 2.1 SC 1.4.3's 4.5:1 against both the link's default blue (#0000EE,
+ * ≈8.5:1) and the plate's own body text (black, ≈19.1:1) —
+ * `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` computes and holds both. That is a claim
+ * about the colour PAIR only: a blurred shadow is not an opaque backing, so what a glyph actually stands
+ * on is the halo blended over whatever is behind it — the drawing, falling back onto the plate
+ * (`labelSide()`'s fallback, card#7343 r3's fix round), or A17's dim backdrop, standing beside it (the
+ * SAME fix round's default placement) — and the halo alone is not enough over either: the design review
+ * measured it at ≈1.8:1 over the drawing at scale (r1) and this round's own review measured a SIMILAR
+ * shortfall over the backdrop, so each text span also stands on `LABEL_BACKING`, below, and it is THAT,
+ * measured on rendered pixels by `tools/design/lobby-label-contrast.browser.mjs`, that holds the text's
+ * contrast in both placements.
  */
 export const LABEL_HALO = INK.wall;
 
