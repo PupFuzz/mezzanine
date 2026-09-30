@@ -63,18 +63,10 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   cancels does not leave the lobby stuck; coming back with the browser's Back button works too. Under
   `prefers-reduced-motion` every camera move cuts rather than glides. None of it is fleet state: no ride,
   zoom or pan writes an animation-log row, and a render leaves the camera where the viewer put it. Each
-  plate's name, and under it its status line — the seat counts, the rooms and *the elevator is here* — is
-  drawn over the plate at the page's own body text size and keeps that size at every zoom, so a plate can
-  be read with the whole building in view. The label wraps within what is visible of the building's
-  drawing to the right of its plate's left edge — never wider than the drawing, and never narrower than a
-  readable minimum unless the drawing is — so with the whole building in view a label reads to its end
-  without panning on any drawing wide enough to show that minimum beside the plates, and on a narrow or
-  browser-zoomed window a long status line takes more lines rather than running out of sight. Each label
-  starts at the top of its plate and grows down, so the top floor's name is always inside the drawing with
-  the whole building in view. On a building tall enough that a plate on the screen is shorter than its
-  label's lines, neighbouring plates' labels overlap at that view, and the bottom floor's last status
-  lines can run past the drawing's bottom edge until the viewer zooms in. With no floor layout loaded, the
-  lobby's list of rooms flows in the page as it did before, rather than in the building's fixed-height
+  floor's name and status line are now readable with the whole building in view, and a floor's link
+  announces its name together with its seat counts, e.g. "Floor 2, 4 seats · 3 live" — clicking the seat
+  counts also opens that floor. FLOOR.md § 4.1 states what the label does. With no floor layout loaded,
+  the lobby's list of rooms flows in the page as it did before, rather than in the building's fixed-height
   drawing, and the mouse wheel, the arrow keys, text selection and a press on a room's link all work on it
   as they did before, with the zoom buttons and *Whole building* hidden and the building out of the tab
   order: on either page the camera takes a wheel, a key, a press or a drag only while it frames something,
@@ -87,10 +79,22 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   with its entrance, and the elevator cab in its shaft at the floor it is on. *Ride the elevator* glides
   the cab to the next floor together with the camera, and cuts it there under `prefers-reduced-motion`;
   the whole-building view takes in the roof and the ground lobby. The drawing is scenery: it shows no
-  fleet state, every floor of one building is drawn alike, and each plate's name and status line read over
-  it as before. The lobby draws no sky: a sky there would have to come from the floor's heartbeat-driven
-  room clock, which the lobby does not run, so the lobby keeps the plain page background.
-  `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` holds the drawing.
+  fleet state, and every floor of one building is drawn alike. `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` holds the drawing.
+  Each floor plate's arched windows now show the time of day, as the reference's windows do: the sky's
+  gradient at full strength, stars and a moon at night, the sun by day, at dawn and at dusk, and a city
+  roofline whose windows light up after dark. Behind the building the rest of the drawing shows the same
+  sky, dimmed as in the reference. Until the page has been live, the windows and the backdrop show a flat
+  sky with no stars, sun, moon or lit windows. It is the floor's own sky value on the floor's own driver:
+  it follows the viewer's clock, moves only when a feed heartbeat arrives — never on a timer or a poll —
+  and stops when the feed dies, just as the floor's windows do, and it steps to a new phase rather than
+  fading, with reduced motion or without. Every sky on both pages is painted from one table in
+  `floor/floor-layout.js`, so the floor's windows now show that table's gradient instead of flat colours
+  — the lobby's own windows read the same table further, adding the stars, the moon, the sun and the lit
+  city the floor's windows do not draw. That sky is
+  the lobby's one animation: each heartbeat writes one A17 row to the page's animation log and nothing
+  else. Both pages now take their animation log from `wire/live-page.js`, which bounds it with FLOOR.md
+  § 12's retention figure, and the floor screen and the lobby share one sky driver, `RoomClock` in
+  `floor/floor-layout.js`. `Tests\Feature\Floor\TheLobbySkyIsTheFloorsA17Test` holds the sky.
   The shared camera (`wire/camera.js`) gained `focusOn()`, a zoom to one rect inside what is framed, and
   the floor page and the lobby share one glide through `wire/camera-view.js`, one wheel-and-drag wiring
   through `wire/camera-gestures.js` and one keyboard-and-zoom-button wiring through `wire/camera-keys.js`:

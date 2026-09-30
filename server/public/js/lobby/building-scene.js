@@ -4,11 +4,13 @@
  * `docs/design/FLOOR.md` Appendix B row 16, slice A (card#7343).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ GEOMETRY AND NOTHING ELSE. A plate here is its key and a rect, and its text's size on the screen is
- * `LABEL_FONT` under `labelScale()` (below; `plate-row.js` sets it); every fact the plate carries —
- * its name, its rooms, its summary, its link — is `building-model.js`'s `plates()`, which this module
- * reads for the stack position alone (`level`) and never re-derives. So the cross-section still reads
- * no field the table does not and recounts nothing (row 16; AT-D3-15 stays at row 9).
+ * ⛔ GEOMETRY AND NOTHING ELSE. A plate here is its key and a rect; every fact the plate carries — its
+ * name, its rooms, its summary, its link — is `building-model.js`'s `plates()`, which this module reads
+ * for the stack position alone (`level`) and never re-derives. So the cross-section still reads no field
+ * the table does not and recounts nothing (row 16; AT-D3-15 stays at row 9). ⛔ NO LABEL KNOWLEDGE EITHER:
+ * a plate's label — its font, its counter-scale, its side, its width, its line budget and its paint — is
+ * `lobby/label-paint.js`'s (FLOOR.md § 4.1 states the contract), not this one's; this module exports
+ * `PLATE_INSET` and `INK` for it to read rather than holding a second copy of either.
  *
  * ⛔ THE STACK RUNS FIRST-AT-THE-TOP, because `level` is an index into § 4.1's ascending order and the
  * ratified reference draws the first of it at the top (`building-model.js`'s `plates()` says why that is
@@ -34,15 +36,24 @@
  * lobby under the bottom plate; `cabStyle()` stands the cab in its shaft at the viewer's plate. ⛔ SCENERY
  * CARRYING NO FACT: `buildingArt()` reads the scene's rects and nothing else — no plate's key, name,
  * summary or rooms — so two buildings of one height draw the same building
- * (`Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest`). ⛔ NO SKY AND NO CLOCK: § 4.1
- * — the lobby draws no wall clock, and no sky (the seat's ruling, card#7343, recorded at § 4.1): a sky
- * would be § 6.2 A17's, on A17's driver, and the lobby loads no module that fires A17 (it holds no
- * animation log, Appendix B row 16), so this drawing has no window a sky would show through. The roof
- * and the ground lobby stand inside the scene's `extent`, so the whole-building framing — the first
- * framing and the whole-building control — shows them.
+ * (`Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest`). The roof and the ground lobby
+ * stand inside the scene's `extent`, so the whole-building framing — the first framing and the
+ * whole-building control — shows them.
+ *
+ * ⭐ THE SKY IN THE WINDOWS AND BEHIND THE BUILDING, AND NO CLOCK (the operator's ruling on card#7343,
+ * 2026-09-30; § 4.1; the seat's ruling R1 of its r1 fix round). The time of day is carried by each
+ * storey's WINDOWS, as the reference's windows carry it: `windowArt()` fills the four arches with the
+ * phase's sky at full strength. `surfaceStyle()` paints the rest of the drawing surface — all of it the
+ * building does not cover, at every zoom — with the same sky in the reference's dim treatment, the foil
+ * behind the windows: the phase's gradient at `SKY_OPACITY` under `SKY_WASH`, with stars at night
+ * (`docs/design/floor-preview/floor-preview.html`'s building). Both read ONE table,
+ * `floor/floor-layout.js`'s `SKY_PAINT`, which the floor's windows read too. ⛔ THE PHASE IS NOT DECIDED HERE: it is § 6.2 A17's value, set by the floor's own driver on a
+ * delivered `feed.heartbeat` (`lobby-screen.js`'s frame `sky`), so this module maps a phase to paint and
+ * reads no clock. ⛔ NO TRANSITION, in either of A17's columns: the sky STEPS to its new value (§ 6.2
+ * A17, § 6.4). The lobby still draws no wall clock — that element is the floor's room render (§ 4.1).
  */
 
-import { framesNothing } from '../wire/camera.js';
+import { skyPaint } from '../floor/floor-layout.js';
 
 /** A plate's width in scene px. */
 export const PLATE_W = 1600;
@@ -60,73 +71,6 @@ export const PLATE_H = 1000;
  */
 export const PLATE_INSET = 24;
 
-/**
- * ⛔ A PLATE'S TEXT IS DRAWN AT A FIXED SCREEN SIZE, AND THAT SIZE IS THE PAGE'S OWN (operator rulings on
- * card#7343, 2026-09-27, Appendix B row 16: F1 for the name, then r2 for its status line — the summary,
- * the rooms and the cab's word). The lobby exists to pick a floor, so a plate is read before any zoom:
- * at whole-building fit a plate shrinks — a storey's proportions, height-bound, so the more floors the
- * smaller — and text drawn in scene px would shrink with it. So the name and the status line are one
- * label over the plate that the camera MOVES and never SCALES: `LABEL_FONT` is the lobby page's base
- * font size — `1rem`, the root's size, which the page's body text is set in because the page ships no
- * stylesheet that sets another (`Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` reds if
- * one arrives) — and `labelScale()` is the counter-scale that undoes the camera's zoom on it. The
- * product is the one the page draws: text at `LABEL_FONT`, under the camera's `scale(zoom)`, under the
- * label's own `scale(labelScale(camera))`, is `LABEL_FONT` on the screen at every zoom — at fit, after a
- * wheel, a key or a drag, mid-glide and after a resize. No figure is chosen here: the size is the
- * viewer's own base size.
- *
- * ⚠ § 12's zoom-to-read rule is the FLOOR's, and it does not carry over to a plate's text.
- */
-export const LABEL_FONT = '1rem';
-
-/**
- * The scale a plate's label is drawn at inside the camera's transform: the inverse of its zoom, so the
- * text's size on the screen is `LABEL_FONT` whatever the camera does (`LABEL_FONT`'s ruling).
- *
- * @param {{zoom: number}} camera a `wire/camera.js` camera — the one the plates are shown under
- */
-export function labelScale(camera) {
-    return 1 / camera.zoom;
-}
-
-/**
- * The narrowest a plate's label is ever wrapped to, in CSS px: 320, the width WCAG 2.1's Reflow criterion
- * (SC 1.4.10) requires content to read at without scrolling in two dimensions — "a width equivalent to
- * 320 CSS pixels" (w3.org/WAI/WCAG21/Understanding/reflow.html, read 2026-09-29) — so a label wrapped
- * this narrow is still text laid out at a width the web's own reflow rule treats as readable. A figure
- * of the drawing's, carrying no fact.
- */
-export const LABEL_MIN_PX = 320;
-
-/**
- * The width a plate's label wraps within, in CSS px on the screen — `lobby/main.js`'s `--label-max` (the
- * seat's r4b ruling on card#7343, refining r3's "the surface's width"): what is VISIBLE of the surface to
- * the right of the plates' on-screen left edge, so at whole-building fit — where a height-bound fit insets
- * the building from the surface's left edge — a label reads to its end without a pan wherever at least
- * `LABEL_MIN_PX` is visible to the right of the plates. Clamped: never wider than the surface, so a pan
- * can always bring the whole label into view (a plate whose left edge is off the surface's left), and
- * never narrower than `LABEL_MIN_PX` (a plate panned towards the surface's right edge), unless the
- * surface itself is narrower still. ⛔ A PLATE STANDS `PLATE_INSET` IN FROM THE EXTENT's LEFT EDGE, NOT
- * ON IT (design review r2, F2: the frame shows as the outer wall around the plates, which stand inside
- * it) — so this reads the plate's OWN left edge, `camera.bounds.x + PLATE_INSET`, and never
- * `camera.bounds.x` alone, which is the FRAME's edge and would over-count the width available by one
- * margin. A camera that frames nothing has no plate, and its labels — none — wrap within the surface.
- *
- * @param {{surface: {width: number}, bounds: {x: number}|null, zoom: number, x: number}} camera a
- *        `wire/camera.js` camera — the one the plates are shown under
- */
-export function labelMax(camera) {
-    const width = camera.surface.width;
-
-    if (framesNothing(camera)) {
-        return width;
-    }
-
-    const left = (camera.bounds.x + PLATE_INSET - camera.x) * camera.zoom;
-
-    return Math.min(width, Math.max(LABEL_MIN_PX, width - left));
-}
-
 /** The roof and its sign, above the top plate, in scene px — the drawing's, carrying no fact. */
 export const ROOF_H = 360;
 
@@ -138,7 +82,9 @@ export const GROUND_H = 520;
  * building's rect — the roof, every plate and the ground lobby, `PLATE_INSET` wider on each side than a
  * plate so the frame shows as the outer wall around them (design review r2, F2); `null` when there is no
  * plate to frame — and each plate's `rect` at its `level`, under the roof, standing `PLATE_INSET` in from
- * the extent's left edge — `labelMax()` reads it there, not the extent's own (`camera.bounds.x`).
+ * the extent's left edge — `label-paint.js` reads a plate's label position from this module's own
+ * `PLATE_INSET`, not from a plate's `rect.x` directly, so it can measure to the SHELL (the extent's own
+ * left edge) rather than to the plate's.
  *
  * @param {Array<{floor: string, level: number}>} plates `building-model.js`'s `plates()`, in its order
  */
@@ -154,13 +100,7 @@ export function buildingScene(plates) {
 
 /**
  * The storey's parts, in scene px from a plate's top-left — the drawing's, carrying no fact. The shaft
- * stands at the plate's RIGHT, so a label no wider than its own plate sits over the plain wall — but
- * `labelMax()` is the SURFACE's visible width, not the plate's, so at whole-building fit on three or more
- * floors every label is wider than its plate and routinely crosses the shaft, the cab and the plate below
- * it (design review r1, card#7343 row 16). ⛔ AN OPAQUE BACKING IS REFUSED (design review r2, F1): a
- * plaque tried first, and blanked the drawing under it — arches read as rectangles, the cab's top
- * covered at 7+ floors, ~65% of a storey at ten. What keeps a label legible wherever it lands, without
- * hiding what it lands on, is a HALO on the text itself — `LABEL_HALO` and `LABEL_HALO_RADII` below.
+ * stands at the plate's RIGHT; where a plate's label stands is FLOOR.md § 4.1's (`lobby/label-paint.js`).
  */
 const STOREY = {
     skirting: 836,
@@ -170,11 +110,10 @@ const STOREY = {
     door: { x: 1316, y: 420, w: 192, h: 416 },
 };
 
-/** The palette — § 10.4's warm and whimsical, in the drawing's own figures. */
-const INK = {
+/** The palette — § 10.4's warm and whimsical, in the drawing's own figures — shared with `label-paint.js`'s own paint values, which read it rather than holding a second copy. */
+export const INK = {
     shell: '#e7b98f',
     wall: '#fcf3e4',
-    panel: '#f6e5cd',
     skirting: '#c98f63',
     floor: '#e2b07c',
     plank: '#c9925f',
@@ -199,38 +138,16 @@ const INK = {
 };
 
 /**
- * The plate label's halo — the storey's own wall colour (`INK.wall`), stacked as several zero-offset,
- * blurred `text-shadow`s behind the label's text (design review r2, card#7343 row 16 F1, replacing r1's
- * opaque plaque, which blanked the drawing under it): `labelMax()` is the surface's visible width and
- * not the plate's, so at whole-building fit on three or more floors a label is routinely wider than its
- * plate and crosses the shaft, the cab or the plate below it — the halo is the label's own contrast
- * there, ON the glyphs rather than a box behind them, so the arches, the shaft and the cab stay visible
- * through it. ⚠ WHAT IS PINNED AND WHAT IS NOT (impl review r3 #3, design review r3 F-B): this COLOUR
- * clears WCAG 2.1 SC 1.4.3's 4.5:1 against both the link's default blue (#0000EE, ≈8.5:1) and the
- * plate's own body text (black, ≈19.1:1) — `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`
- * computes and holds both. That is a claim about the colour PAIR only: a blurred shadow is not an opaque
- * backing, so what a glyph actually stands on is the halo blended over whatever the drawing puts there,
- * and over the drawing's darker parts (the slab, #b27b56, is ≈2.6:1 against the link's blue) legibility
- * rests on the STACK's density — `LABEL_HALO_RADII` below — which that test holds as built, and not on
- * any contrast ratio measured over the drawing: none is (there is no renderer on the build host).
+ * A shape: an SVG element name, its attributes, and the text it carries (only the roof sign's and the
+ * lobby's) — or, for a paint server (`windowArt()`'s gradient), the shapes it holds.
  */
-export const LABEL_HALO = INK.wall;
-
-/**
- * The halo's stack — one zero-offset `text-shadow` layer of `LABEL_HALO` per entry, blurred by that many
- * CSS px, each radius TWICE (design review r2 F1, r3 F-B). A single blurred layer is translucent — a
- * Gaussian falloff, not a solid fill — so it leaves the glyphs' edges thin with the drawing showing
- * through; two layers of opacity *a* composite to 1 − (1 − *a*)², denser than either, which is the
- * standard way to make `text-shadow` alone read nearly solid at the glyph's edge, and the widening radii
- * carry it out past the stroke. The label's legibility over the drawing rests on this density, which is
- * why it is a named figure `ThePlateNameIsReadAtTheBodyTextSizeTest` reads — the built label must carry
- * every layer, at these radii — rather than a literal inside `plate-row.js`. A figure of the drawing's.
- */
-export const LABEL_HALO_RADII = Object.freeze([1, 1, 2, 2, 3, 3, 4, 4]);
-
-/** A shape: an SVG element name, its attributes, and the text it carries (only the roof sign's and the lobby's). */
 function shape(el, attrs, text = null) {
     return text === null ? { el, attrs } : { el, attrs, text };
+}
+
+/** A shape that holds other shapes — `<defs>`, a gradient and its stops. */
+function parent(el, attrs, children) {
+    return { el, attrs, children };
 }
 
 /** A potted plant standing on `y` at `x` — the roof garden's and the ground lobby's. */
@@ -265,7 +182,7 @@ function shaftAt(left) {
     };
 }
 
-/** One storey at a plate's rect: wall, panels, skirting, floorboards, slab, shaft and its doors. */
+/** One storey at a plate's rect: wall, skirting, floorboards, slab, shaft and its doors (its windows are `windowArt()`'s). */
 function storey(rect) {
     const { x, y, w } = rect;
     const shaft = shaftAt(x);
@@ -273,13 +190,8 @@ function storey(rect) {
         shape('rect', { x, y, width: w, height: STOREY.skirting, fill: INK.wall }),
     ];
 
-    // Arched wall panels between the building's left wall and the shaft — moulding, identical on every storey.
-    for (let px = x + 96; px + 220 <= shaft.x - 48; px += 300) {
-        shapes.push(shape('path', {
-            d: `M ${px} ${y + STOREY.skirting - 60} L ${px} ${y + 380} Q ${px} ${y + 260} ${px + 110} ${y + 260} Q ${px + 220} ${y + 260} ${px + 220} ${y + 380} L ${px + 220} ${y + STOREY.skirting - 60} Z`,
-            fill: INK.panel,
-        }));
-    }
+    // The arched windows between the building's left wall and the shaft are `windowArt()`'s: they carry
+    // A17's sky, so they are painted from the phase and not with the scenery, which reads the rects alone.
 
     shapes.push(
         shape('rect', { x, y: y + STOREY.skirting, width: w, height: STOREY.floor - STOREY.skirting, fill: INK.skirting }),
@@ -392,6 +304,169 @@ export function buildingArt(scene) {
     };
 }
 
+/**
+ * The storey's windows, in scene px from a plate's left and top edges: four arches between the building's
+ * left wall and the shaft, where the moulded wall panels stood before the windows carried the sky.
+ */
+const WINDOW = {
+    first: 96,
+    step: 300,
+    w: 220,
+    top: 260,
+    spring: 380,
+    bottom: STOREY.skirting - 60,
+};
+
+/** The one gradient every lobby window is filled with — the phase's `top` to `bot`, down each arch. */
+export const WINDOW_SKY_ID = 'lobby-window-sky';
+
+/** The window frame's colour and the city's inks — the reference window's own (`floor-preview.html`'s `floorBody()`). */
+const WINDOW_INK = {
+    frame: '#4a5670',
+    star: '#e8ecff',
+    moon: '#fff3cf',
+    sun: '#ffe9a3',
+    lit: '#ffcf7d',
+    cityFlat: '#454b63',
+    cityNight: '#1b2547',
+    cityDay: '#5a7086',
+};
+
+/** One arch's outline — the path the window's sky fills and its frame strokes. */
+function archPath(px, y) {
+    const { w, top, spring, bottom } = WINDOW;
+
+    return `M ${px} ${y + bottom} L ${px} ${y + spring} Q ${px} ${y + top} ${px + w / 2} ${y + top} Q ${px + w} ${y + top} ${px + w} ${y + spring} L ${px + w} ${y + bottom} Z`;
+}
+
+/** The colour `fraction` of the way from `a` to `b`, both `#rrggbb` — the sky at a height in the window. */
+function mix(a, b, fraction) {
+    const [x, y] = [a, b].map((hex) => Number.parseInt(hex.slice(1), 16));
+    const channel = (shift) => Math.round(((x >> shift) & 255) + (((y >> shift) & 255) - ((x >> shift) & 255)) * fraction);
+
+    return `#${[16, 8, 0].map((shift) => channel(shift).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Every window of every plate, as `{ px, y, index }` — `index` its place in its storey's row, from the left. */
+function windowsOf(scene) {
+    return scene.plates.flatMap(({ rect }) => {
+        const out = [];
+        const last = shaftAt(rect.x).x - 48;
+
+        for (let px = rect.x + WINDOW.first, index = 0; px + WINDOW.w <= last; px += WINDOW.step, index += 1) {
+            out.push({ px, y: rect.y, index });
+        }
+
+        return out;
+    });
+}
+
+/** One window: its sky, the phase's stars, the city's roofline with its lit windows, the sun or the moon, and the frame. */
+function windowShapes({ px, y, index }, sky) {
+    const { w, top, bottom } = WINDOW;
+    const h = bottom - top;
+    const shapes = [shape('path', { d: archPath(px, y), fill: `url(#${WINDOW_SKY_ID})` })];
+
+    if (sky.stars) {
+        for (let i = 0; i < 7; i += 1) {
+            shapes.push(shape('circle', { cx: px + 26 + ((i * 67) % (w - 52)), cy: y + top + 70 + ((i * 37) % 170), r: 4 + (i % 2) * 2, fill: WINDOW_INK.star, opacity: 0.8 }));
+        }
+    }
+
+    for (let i = 0; i < 6; i += 1) {
+        const bx = px + 10 + i * 34;
+        const bh = 70 + ((i * 13) % 26) * 3;
+
+        shapes.push(shape('rect', {
+            x: bx,
+            y: y + bottom - bh,
+            width: 24,
+            height: bh,
+            fill: sky.flat ? WINDOW_INK.cityFlat : sky.city_lit > 0 ? WINDOW_INK.cityNight : WINDOW_INK.cityDay,
+            opacity: sky.city_lit > 0 ? 1 : 0.75,
+        }));
+
+        if (sky.city_lit > 0) {
+            shapes.push(
+                shape('rect', { x: bx + 4, y: y + bottom - bh + 12, width: 7, height: 7, fill: WINDOW_INK.lit, opacity: sky.city_lit }),
+                shape('rect', { x: bx + 13, y: y + bottom - bh + 26, width: 7, height: 7, fill: WINDOW_INK.lit, opacity: sky.city_lit * 0.7 }),
+            );
+        }
+    }
+
+    // One moon and one sun per storey, each in its own window, as the reference draws one of each per floor.
+    if (sky.moon && index === 2) {
+        const cx = px + w * 0.66;
+        const cy = y + top + 110;
+
+        shapes.push(
+            shape('circle', { cx, cy, r: 30, fill: WINDOW_INK.moon, opacity: 0.95 }),
+            // The crescent's bite is the sky's own colour at that height, so it reads as sky and not as a disc.
+            shape('circle', { cx: cx - 12, cy: cy - 10, r: 25, fill: mix(sky.top, sky.bot, (cy - y - top) / h) }),
+        );
+    }
+
+    if (sky.sun && index === 1) {
+        const cy = y + top + h * sky.sun_y;
+
+        shapes.push(
+            shape('circle', { cx: px + w / 2, cy, r: 34, fill: WINDOW_INK.sun }),
+            shape('circle', { cx: px + w / 2, cy, r: 48, fill: WINDOW_INK.sun, opacity: 0.25 }),
+        );
+    }
+
+    shapes.push(
+        shape('path', { d: archPath(px, y), fill: 'none', stroke: WINDOW_INK.frame, 'stroke-width': 10 }),
+        shape('line', { x1: px + w / 2, y1: y + top, x2: px + w / 2, y2: y + bottom, stroke: WINDOW_INK.frame, 'stroke-width': 3 }),
+    );
+
+    return shapes;
+}
+
+/**
+ * THE PLATES' WINDOWS, CARRYING THE TIME OF DAY (card#7343 r1, the seat's ruling R1): every storey's four
+ * arched windows filled with A17's sky at FULL strength — the reference's windows (`floor-preview.html`'s
+ * `floorBody()`), which is where the reference carries the time; the dim backdrop behind the building
+ * (`skyBackground()`) is only its foil. The paint is `floor-layout.js`'s `SKY_PAINT` entry for the phase,
+ * the one table the floor's windows read too.
+ *
+ * ⭐ WHAT IS TAKEN FROM THE REFERENCE's WINDOW, AND WHAT IS NOT. Taken, because each fits an arch at lobby
+ * scale and each is part of how the reference says the time: the gradient `top` to `bot`; seven stars per
+ * window at night; the city's roofline — six blocks, lit windows at the phase's `city_lit`, the flat unlit
+ * ink when `unset`; ONE moon per storey at night and ONE sun per storey at the phase's `sun_y`, each in its
+ * own window as the reference draws one of each per floor; the frame and its mullion. Left out: nothing of
+ * the reference's window content — only its rectangle, which is the lobby's arch here, and its size, which
+ * is scaled to the arch.
+ *
+ * ⛔ `unset` (no live feed yet, § 6.5) is the reference's flat treatment: its flat gradient, no stars, no
+ * sun, no moon and an unlit city — never a plausible time of day. ⛔ THE PHASE IS A17's VALUE and is not
+ * decided here; this reads the scene's rects and the phase, and nothing of any plate — two buildings of one
+ * height at one phase have the same windows.
+ *
+ * @param {{extent: object|null, plates: Array<{rect: object}>}|null} scene `buildingScene()`'s
+ * @param {string|null} phase § 6.2 A17's sky phase — `lobby-screen.js`'s frame `sky`
+ * @returns {{shapes: Array<object>}|null} `null` where no building is drawn
+ */
+export function windowArt(scene, phase) {
+    if ((scene?.extent ?? null) === null) {
+        return null;
+    }
+
+    const sky = skyPaint(phase);
+
+    return {
+        shapes: [
+            parent('defs', {}, [
+                parent('linearGradient', { id: WINDOW_SKY_ID, x1: 0, y1: 0, x2: 0, y2: 1 }, [
+                    shape('stop', { offset: 0, 'stop-color': sky.top }),
+                    shape('stop', { offset: 1, 'stop-color': sky.bot }),
+                ]),
+            ]),
+            ...windowsOf(scene).flatMap((window) => windowShapes(window, sky)),
+        ],
+    };
+}
+
 /** The cab's own column: `shaftAt()` at its plate's left edge, where `cabStyle()` translates it. */
 const CAB_SHAFT = shaftAt(0);
 
@@ -435,20 +510,76 @@ export function cabStyle(scene, level, ms) {
 /** The drawing surface's height while it draws a building — the drawing's, carrying no fact. */
 export const SURFACE_H = '70vh';
 
+/** The reference's dim treatment: the sky's gradient at this opacity, under `SKY_WASH` … */
+export const SKY_OPACITY = 0.45;
+
+/** … a wash of the reference's night ink at `.55`, over the reference drawing's own ground, `SKY_GROUND`. */
+export const SKY_WASH = 'rgba(18, 20, 31, 0.55)';
+
+/** The ground the reference paints its sky over (`floor-preview.html`'s drawing surface). */
+export const SKY_GROUND = '#1a1724';
+
+/** The night's stars, as points on the surface in percent of its size — after the reference's scatter, 26 of them. */
+const STARS = Object.freeze(Array.from({ length: 26 }, (_, i) => Object.freeze({
+    x: ((i * 181) % 1000) / 10,
+    y: ((i * 97) % 1000) / 10,
+    r: 1.2 + (i % 2),
+})));
+
+/** A `#rrggbb` at `alpha`, as CSS — exported so `label-paint.js` builds its own paint from `INK` rather than a second copy of this conversion. */
+export function rgba(hex, alpha) {
+    const n = Number.parseInt(hex.slice(1), 16);
+
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+/**
+ * The sky behind the building for a phase, as the surface's CSS background: the stars at night, over the
+ * wash, over the phase's gradient at `SKY_OPACITY`, over `SKY_GROUND` — `unset`'s when `phase` is `null`
+ * (no live feed yet, § 6.5). The paint is `floor-layout.js`'s `SKY_PAINT`, the one table every sky reads;
+ * this is the reference's FOIL behind the building, dimmed, and the time of day is carried by the windows
+ * (`windowArt()`), which show the same entry at full strength.
+ *
+ * @param {string|null} phase § 6.2 A17's sky phase — `lobby-screen.js`'s frame `sky`
+ */
+export function skyBackground(phase) {
+    const sky = skyPaint(phase);
+    const stars = sky.stars
+        ? STARS.map((s) => `radial-gradient(circle at ${s.x}% ${s.y}%, rgba(232, 236, 255, 0.5) ${s.r}px, transparent ${s.r + 0.6}px)`)
+        : [];
+
+    return {
+        backgroundColor: SKY_GROUND,
+        backgroundImage: [
+            ...stars,
+            `linear-gradient(${SKY_WASH}, ${SKY_WASH})`,
+            `linear-gradient(to bottom, ${rgba(sky.top, SKY_OPACITY)}, ${rgba(sky.bot, SKY_OPACITY)})`,
+        ].join(', '),
+    };
+}
+
 /**
  * `#lobby-building`'s style for a scene: the clipping drawing surface the camera looks in when the scene
- * has an extent, and nothing — the list flowing in the page — when it has none or there is no scene.
- * Every member is set either way, so a lobby whose building goes away stops clipping.
+ * has an extent — the sky of `phase` filling it behind the building (`skyBackground()`) — and nothing — the
+ * list flowing in the page — when it has none or there is no scene. Every member is set either way, so a
+ * lobby whose building goes away stops clipping and loses its sky.
+ *
+ * ⛔ `transition` IS ALWAYS `none`: A17's sky steps to its new value in both of its columns (§ 6.2 A17,
+ * § 6.4), so no cross-fade between two phases is ever drawn — with motion or without.
  *
  * @param {{extent: object|null}|null} scene `buildingScene()`'s, or `null` where nothing is composed
+ * @param {string|null} phase § 6.2 A17's sky phase — `lobby-screen.js`'s frame `sky`
  */
-export function surfaceStyle(scene) {
+export function surfaceStyle(scene, phase) {
     const drawn = (scene?.extent ?? null) !== null;
+    const sky = drawn ? skyBackground(phase) : { backgroundColor: '', backgroundImage: '' };
 
     return {
         height: drawn ? SURFACE_H : '',
         overflow: drawn ? 'hidden' : '',
         touchAction: drawn ? 'none' : '',
         cursor: drawn ? 'grab' : '',
+        ...sky,
+        transition: 'none',
     };
 }

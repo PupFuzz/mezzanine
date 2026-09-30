@@ -22,8 +22,8 @@ use Tests\TestCase;
  *
  * ⛔ AND THE TWO THINGS ROW 8 SAYS THE PAGE MUST CARRY THAT NOTHING ELSE CAN CHECK: that the client
  * protocol is constructed WITH its scheduler — a real `EventSource` without the stream recovery
- * inherits the browser's own reconnect (row 8's ⛔) — and that the animation log is constructed with
- * § 12's retention figure (§ 14 item 26), re-derived from § 12 rather than copied here.
+ * inherits the browser's own reconnect (row 8's ⛔) — and that the animation log is `wire/live-page.js`'s,
+ * constructed with § 12's retention figure (§ 14 item 26), re-derived from § 12 rather than copied here.
  *
  * ⛔ WIDENED TO THE PAINTER's ELEMENTS (Appendix B row 14, card#7341 step 11): the page's drawing is
  * `public/js/floor/painter.js`'s, which addresses the view's drawing element itself, so the ids it
@@ -146,10 +146,17 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('recovery', $this->bindingDefects($bypassed),
             'CONTROL (the page constructing a protocol of its own beside wire/live-page.js) did not bite');
 
-        $unbounded = str_replace('createAnimationLog(ANIMATION_LOG_RETENTION)', 'createAnimationLog()', $js);
-        $this->assertNotSame($unbounded, $js);
-        $this->assertArrayHasKey('retention', $this->bindingDefects($unbounded),
+        // The log's construction moved to `wire/live-page.js` when the lobby became its second page
+        // (card#7343), so the bound's plants are planted THERE, and a third is the page walking around it.
+        $unbounded = str_replace('log: createAnimationLog(ANIMATION_LOG_RETENTION)', 'log: createAnimationLog()', $livePage);
+        $this->assertNotSame($unbounded, $livePage);
+        $this->assertArrayHasKey('retention', $this->pageLogDefects($js, $unbounded),
             'CONTROL (the log constructed with no bound) did not bite');
+
+        $ownLog = str_replace('startFloorScreen(client, pageFetch, clock, log, paint, {', 'startFloorScreen(client, pageFetch, clock, createAnimationLog(), paint, {', $js);
+        $this->assertNotSame($ownLog, $js);
+        $this->assertArrayHasKey('retention', $this->bindingDefects($ownLog),
+            'CONTROL (the page constructing an unbounded log of its own beside wire/live-page.js) did not bite');
 
         $misaddressed = str_replace("getElementById('floor-drawing')", "getElementById('floor-drawinq')", $this->painterJs());
         $this->assertNotSame($misaddressed, $this->painterJs());
@@ -280,9 +287,9 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('viewport', $this->cameraDefects($blind),
             'CONTROL (a screen handed no viewport) did not bite');
 
-        $drifted = str_replace('const ANIMATION_LOG_RETENTION = 2000;', 'const ANIMATION_LOG_RETENTION = 5000;', $js);
-        $this->assertNotSame($drifted, $js);
-        $this->assertArrayHasKey('retention', $this->bindingDefects($drifted),
+        $drifted = (string) preg_replace('/export const ANIMATION_LOG_RETENTION = \d+;/', 'export const ANIMATION_LOG_RETENTION = 5000;', $livePage);
+        $this->assertNotSame($drifted, $livePage);
+        $this->assertArrayHasKey('retention', $this->pageLogDefects($js, $drifted),
             'CONTROL (a retention figure that is not § 12\'s) did not bite');
     }
 
@@ -317,18 +324,7 @@ class FloorPageWiringTest extends TestCase
     /** @return array<string, string> */
     private function bindingDefects(string $js): array
     {
-        $defects = $this->livePageDefects($js);
-
-        $this->assertSame(1, preg_match('/^\| The floor page\'s animation-log retention \| \*\*([\d,]+) rows\*\*/m', $this->floorMd(), $m),
-            '§ 12\'s retention row did not parse');
-
-        if (preg_match('/const ANIMATION_LOG_RETENTION = (\d+);/', $js, $c) !== 1
-            || (int) $c[1] !== (int) str_replace(',', '', $m[1])
-            || ! str_contains($js, 'createAnimationLog(ANIMATION_LOG_RETENTION)')) {
-            $defects['retention'] = 'the animation log is not constructed with § 12\'s retention figure';
-        }
-
-        return $defects;
+        return [...$this->livePageDefects($js), ...$this->pageLogDefects($js)];
     }
 
     /** @return array<string, string> */

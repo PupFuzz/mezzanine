@@ -253,6 +253,39 @@ trait DrivesAShippedClientModule
     }
 
     /**
+     * Whether a page's animation log is the one `wire/live-page.js` constructs with § 12's *A page's
+     * animation-log retention* (§ 14 item 26) — the figure re-derived from § 12, never copied here.
+     *
+     * ⚠ HOISTED HERE AT ITS SECOND CALLER (card#7343): the floor page constructed its log itself with
+     * the figure beside it, and the lobby became the log's second page when its sky became § 6.2 A17's,
+     * so the construction moved to `wire/live-page.js` and each page's wiring test asks the same two
+     * questions — does the entry take its log from `livePage()` and construct none of its own, and does
+     * `livePage()` construct it with § 12's figure — of the two files handed in, so a control can plant
+     * the defect in either.
+     *
+     * @return array<string, string> `['retention' => why]`, or empty
+     */
+    protected function pageLogDefects(string $entryJs, ?string $livePageJs = null): array
+    {
+        $livePageJs ??= (string) file_get_contents($this->jsRoot().'/wire/live-page.js');
+
+        $this->assertSame(1, preg_match('/^\| A page\'s animation-log retention \| \*\*([\d,]+) rows\*\*/m', $this->floorMd(), $m),
+            '§ 12\'s retention row did not parse');
+
+        if (preg_match('/\blog\s*\}\s*=\s*livePage\(/', $entryJs) !== 1 || str_contains($entryJs, 'createAnimationLog(')) {
+            return ['retention' => 'the page does not take its animation log from wire/live-page.js'];
+        }
+
+        if (preg_match('/export const ANIMATION_LOG_RETENTION = (\d+);/', $livePageJs, $c) !== 1
+            || (int) $c[1] !== (int) str_replace(',', '', $m[1])
+            || ! str_contains($livePageJs, 'log: createAnimationLog(ANIMATION_LOG_RETENTION)')) {
+            return ['retention' => 'the animation log is not constructed with § 12\'s retention figure'];
+        }
+
+        return [];
+    }
+
+    /**
      * One module's source with its comments removed — what a SOURCE-LEVEL bound is checked over,
      * so a comment that NAMES a forbidden identifier is not mistaken for code that reads it.
      *

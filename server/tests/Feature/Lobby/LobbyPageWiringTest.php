@@ -87,6 +87,26 @@ class LobbyPageWiringTest extends TestCase
         $this->assertSame([], $this->livePageDefects($this->mainJs()));
     }
 
+    /**
+     * § 14 item 26 on the lobby (card#7343): its sky is § 6.2 A17's, so it writes an A17 row on every
+     * `feed.heartbeat` — through the page's log, which `wire/live-page.js` bounds with § 12's figure.
+     */
+    public function test_the_page_takes_its_animation_log_bounded_from_live_page(): void
+    {
+        $this->assertSame([], $this->pageLogDefects($this->mainJs()));
+    }
+
+    /**
+     * card#7343 r1 (impl review MINOR 1): the page holds the log without importing it, so the import-graph
+     * walk (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`) cannot see a row written through it here.
+     * What holds it is this: in `main.js`'s code the page's `log` is named exactly twice — taken from
+     * `livePage()` and handed to `startLobbyScreen()` — and used nowhere else.
+     */
+    public function test_the_page_hands_the_log_to_the_screen_and_uses_it_nowhere_else(): void
+    {
+        $this->assertSame([], $this->logUseDefects($this->mainJs()));
+    }
+
     public function test_the_page_serves_the_module_and_every_import_resolves(): void
     {
         $this->assertStringContainsString('type="module"', $this->lobbyPage());
@@ -236,27 +256,44 @@ class LobbyPageWiringTest extends TestCase
         $this->assertArrayHasKey('gestures', $this->cameraDefects($copied),
             'CONTROL (a gesture copy beside wire/camera-gestures.js) did not bite');
 
-        // CONTROL — a plate's text the camera scales: its counter-scale never written from the camera.
-        $scaled = str_replace("    floors.style.setProperty('--label-scale', String(labelScale(camera)));\n", '', $js);
-        $this->assertNotSame($scaled, $js, "the plate-text control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('plate text', $this->cameraDefects($scaled),
-            'CONTROL (a plate text the camera scales) did not bite');
+        // CONTROL — a plate's label never painted from the camera at all (card#7343 r4's fix round):
+        // `showLabels()` never called by `view()`, so a camera move leaves every label as it was.
+        $unlabelled = str_replace('    showLabels(floors, camera);', '', $js);
+        $this->assertNotSame($unlabelled, $js, "the label-paint control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('plate text', $this->cameraDefects($unlabelled),
+            'CONTROL (showLabels() never called from view()) did not bite');
 
-        // CONTROL — a label with no width to wrap within (card#7343 r3): `--label-max` never written.
-        $unbounded = str_replace("    floors.style.setProperty('--label-max', `\${labelMax(camera)}px`);\n", '', $js);
-        $this->assertNotSame($unbounded, $js, "the label-width control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('plate text', $this->cameraDefects($unbounded),
-            'CONTROL (a label width never written) did not bite');
+        // ⛔ NEITHER `renderBuilding()` NOR `paint()` WRITES ANY LABEL GEOMETRY (P5's own ask): `showLabels()`
+        // is the ONE writer, called only from `view()` — a second writer growing back beside it, even one
+        // that agrees with it, is exactly the shape the round's whole redesign exists to make impossible.
+        // r6 review round (r5 review m8): the real assertion and the moved-call CONTROL below both USED
+        // TO check this by hand, as two separately written sets of assertions — so a change to what
+        // "correct placement" means had to be made twice, and the control could silently stop proving
+        // anything if only one copy was updated. `showLabelsPlacementDefects()` is the ONE predicate; both
+        // this assertion and the control below run the SAME call against it.
+        $this->assertSame([], $this->showLabelsPlacementDefects($js));
 
-        // CONTROL — the label's width the whole surface's again (the r3 value r4b refined): at a height-bound
-        // fit, a label then runs past the surface's right edge (`building-scene.js`'s `labelMax()`).
-        $surfaceWide = str_replace('`${labelMax(camera)}px`', '`${camera.surface.width}px`', $js);
-        $this->assertNotSame($surfaceWide, $js, "the visible-width control's anchor is gone — it mutated nothing");
-        $this->assertArrayHasKey('plate text', $this->cameraDefects($surfaceWide),
-            'CONTROL (a label wrapped within the whole surface, not what is visible of it) did not bite');
+        // CONTROL — the call MOVED into paint() rather than removed: still present in the file (every
+        // `cameraDefects()` substring needle still matches, since that check is substring-anywhere — r4
+        // review MAJOR 3), so only a check that reads WHERE the call sits catches this.
+        $movedIntoPaint = str_replace(
+            ['    showLabels(floors, camera);', 'view(current(camera));'],
+            ['', "view(current(camera));\n    showLabels(floors, camera);"],
+            $js,
+        );
+        $this->assertNotSame($movedIntoPaint, $js, "the moved-call control's anchor is gone — it mutated nothing");
+        $this->assertArrayNotHasKey('plate text', $this->cameraDefects($movedIntoPaint),
+            'the moved-call control is meant to stay green under the OLD substring-anywhere check — every needle is still present, just relocated; '.
+            'if this now fails, cameraDefects() itself changed and this proof of the r4 review MAJOR is stale');
+        $this->assertNotSame([], $this->showLabelsPlacementDefects($movedIntoPaint),
+            'CONTROL (showLabels() moved into paint()) did not bite');
+
 
         // CONTROL — the surface's style never applied: the page keeps whatever box it started with (r3).
-        $unstyled = str_replace("    Object.assign(el('lobby-building').style, surfaceStyle(scene));\n", '', $js);
+        // ⛔ MOVED, card#7343 r3's fix round: applied BEFORE `surface()` is read (the render may just have
+        // made the surface a drawing, or stopped it being one), so the camera below sizes off the surface
+        // as it now stands, not as it stood before this render's own style change.
+        $unstyled = str_replace("    Object.assign(el('lobby-building').style, surfaceStyle(frame.scene, frame.sky));\n", '', $js);
         $this->assertNotSame($unstyled, $js, "the surface control's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('surface', $this->cameraDefects($unstyled),
             'CONTROL (a surface style never applied) did not bite');
@@ -433,6 +470,40 @@ class LobbyPageWiringTest extends TestCase
         $this->assertNotSame($bypassed, $js, "CONTROL 12's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('recovery', $this->livePageDefects($bypassed),
             'CONTROL 12 did not bite: the page constructed its own protocol and the recovery check stayed clean');
+
+        // CONTROL 13 — the lobby constructing an unbounded log of its own for its sky's A17 rows (card#7343),
+        // beside the one `wire/live-page.js` constructs with § 12's retention.
+        $ownLog = str_replace('startLobbyScreen(client, pageFetch, clock, log, paint, {', 'startLobbyScreen(client, pageFetch, clock, createAnimationLog(), paint, {', $js);
+        $this->assertNotSame($ownLog, $js, "CONTROL 13's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('retention', $this->pageLogDefects($ownLog),
+            'CONTROL 13 did not bite: the page constructed an unbounded log and the retention check stayed clean');
+
+        // CONTROL 14 — the page writing a row through the log it holds, beside handing it to the screen.
+        $written = str_replace("client.start();\n", "log.edge({ animation_id: 'A14', cause: 'feed.heartbeat', install_id: null, seat_id: null, motion: true, at: 0 });\nclient.start();\n", $js);
+        $this->assertNotSame($written, $js, "CONTROL 14's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('log', $this->logUseDefects($written),
+            'CONTROL 14 did not bite: the page wrote a row through its log and the use check stayed clean');
+    }
+
+    /**
+     * Every use of the page's `log` in `main.js`'s code (comments blanked, and `log` as a name of its own —
+     * never inside `lobby-log` or after a `.`): exactly the two the page needs.
+     *
+     * @return array<string, string>
+     */
+    private function logUseDefects(string $js): array
+    {
+        $code = (string) preg_replace(['#/\*.*?\*/#s', '#(^|[^:\\\\])//[^\n]*#'], ['', '$1'], $js);
+        $uses = preg_match_all('/(?<![\w$.\-])log\b(?!-)/', $code);
+        $wanted = ['requestRender, log } = livePage(', 'startLobbyScreen(client, pageFetch, clock, log, paint, {'];
+
+        foreach ($wanted as $needle) {
+            if (! str_contains($code, $needle)) {
+                return ['log' => "the page does not name its log where it should (`{$needle}` is missing)"];
+            }
+        }
+
+        return $uses === count($wanted) ? [] : ['log' => "the page names its log {$uses} times, not the ".count($wanted).' it needs — a use beside handing it to the screen'];
     }
 
     /** @return array<string, string> */
@@ -446,7 +517,7 @@ class LobbyPageWiringTest extends TestCase
             // disabled while the frame says a ride is in flight, and the page coming back ends it.
             // … and the hold protects the glide only (r2-4): arriving asks for the route, then ends the hold.
             'ride in flight' => ['}, { commit: true });', 'ride.disabled = building.elevator.next === null || riding;',
-                'renderBuilding(building, frame.scene, summary.unclaimed, frame.riding);',
+                'renderBuilding(building, frame.scene, frame.sky, summary.unclaimed, frame.riding);',
                 "window.addEventListener('pageshow', (event) => {\n    if (event.persisted) {\n        screen.returned();",
                 "        window.location.assign(ride.route);\n        screen.returned();\n        screen.draw(cab);\n    }, { commit: true });",
                 // … and the committed ride wins over a plate link clicked during it (card#7343 r3b): the hold
@@ -461,17 +532,12 @@ class LobbyPageWiringTest extends TestCase
                 "building.addEventListener('scroll', unscroll);",
                 "    node.scrollTop = 0;\n    node.scrollLeft = 0;"],
             'resize' => ['show(screen.resize(surface()))'],
-            // The F1 ruling (card#7343): a plate's name at the page's body text size, moved by the camera and
-            // never scaled by it — `building-scene.js`'s font and counter-scale, written from the SAME camera
-            // `view()` shows, and the name still first in the plate's link, so its accessible name is unchanged.
-            // The size those make is `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`'s.
-            // The r2 ruling extends it to the status line: both are `plate-row.js`'s one label, which the size
-            // test builds; what only this file can hold is that the page stands that module's rows.
-            'plate text' => ["import { labelMax, labelScale, surfaceStyle } from './building-scene.js';", "import { plateRow } from './plate-row.js';",
-                "floors.style.setProperty('--label-scale', String(labelScale(camera)));",
-                // … and the r4b ruling: the label wraps within what is visible of the surface, `labelMax()`
-                // of the camera `view()` shows, which the size test holds at fit.
-                "floors.style.setProperty('--label-max', `\${labelMax(camera)}px`);",
+            // A plate's label (FLOOR.md § 4.1 states the contract), held by
+            // `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` at every framing it drives;
+            // what only this file can hold is that the page stands `plate-row.js`'s rows and calls
+            // `showLabels()` — the ONE writer — from `view()`.
+            'plate text' => ["import { surfaceStyle } from './building-scene.js';", "import { showLabels } from './label-paint.js';", "import { plateRow } from './plate-row.js';",
+                '    showLabels(floors, camera);',
                 'rows.append(plateRow(document, plate, scene.plates[plate.level].rect, plate.floor === building.elevator.at));'],
             // The keyboard and the zoom buttons (card#7343 r2-2): the floor's, through the one module.
             // … the camera as it stands, so every key is the browser's while it frames nothing, and the keys
@@ -489,8 +555,11 @@ class LobbyPageWiringTest extends TestCase
             // `building-scene.js`'s `surfaceStyle()`, applied on every render, and the camera sized to the
             // surface the render leaves. What the style is for each scene is
             // `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest`'s.
-            'surface' => ["import { labelMax, labelScale, surfaceStyle } from './building-scene.js';",
-                "Object.assign(el('lobby-building').style, surfaceStyle(scene));",
+            'surface' => ["import { surfaceStyle } from './building-scene.js';",
+                // … with § 6.2 A17's sky, as the screen last set it, behind the building (card#7343's ruling),
+                // applied BEFORE `surface()` is read (the camera below sizes off the surface as THIS render
+                // leaves it, never as it stood before).
+                "Object.assign(el('lobby-building').style, surfaceStyle(frame.scene, frame.sky));",
                 ': screen.resize(size);', 'view(current(camera));'],
             'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
             // Appendix B row 16, slice B: the building's drawing — `building-scene.js`'s shapes, painted under
@@ -498,9 +567,9 @@ class LobbyPageWiringTest extends TestCase
             // and the cab gliding over the ride's glide (none under reduced motion) and cut on every other
             // render. What the shapes and the cab's style are is `TheBuildingIsDrawnAsTheReferencesSectionTest`'s.
             'building drawing' => ["import { buildingDrawing, keepDrawing, paintBuilding } from './building-paint.js';",
-                "const { drawing, art, scenery, cabNode } = buildingDrawing(document);",
+                'const { drawing, art, scenery, windows, cabNode } = buildingDrawing(document);',
                 "    keepDrawing(rows, drawing);\n",
-                "    paintedBox = paintBuilding(document, { drawing, art, scenery, cabNode }, scene, building.elevator.level, cabGlide, paintedBox);\n",
+                "    painted = paintBuilding(document, { drawing, art, scenery, windows, cabNode }, scene, building.elevator.level, cabGlide, painted, sky);\n",
                 "    cabGlide = ride.glide_ms;\n    screen.draw(cab);",
                 "        cabGlide = 0;\n        window.location.assign(ride.route);"],
             // Impl review r2 (card#7343 row 16): the page reads `cab` through a THUNK, so `lobby-screen.js`'s
@@ -542,6 +611,65 @@ class LobbyPageWiringTest extends TestCase
     private function mainJs(): string
     {
         return (string) file_get_contents($this->moduleDir().'/main.js');
+    }
+
+    /**
+     * A JS source snippet with every `//` line comment blanked (the code before it kept, verbatim) — so a
+     * containment check reads only executable text, never prose that names a function descriptively. This
+     * module's own comments write `showLabels()` in backticks to explain what a line does; a check for
+     * "does this body call `showLabels(`" must not fire on that sentence.
+     */
+    private function stripLineComments(string $js): string
+    {
+        return (string) preg_replace('#//[^\n]*#', '', $js);
+    }
+
+    /**
+     * `showLabels()` is called from `view()`'s own body, and from neither `renderBuilding()` nor `paint()`,
+     * which also call no `setProperty` and name no `--label-` property (P5's own ask; `showLabels()` is the
+     * ONE writer). The ONE predicate for "is the call placed correctly": the real assertion and the
+     * moved-call CONTROL both run THIS, so a change to what "correct" means cannot update one and leave
+     * the other silently checking a stale rule (r6 review round, r5 review m8).
+     *
+     * @return list<string>
+     */
+    private function showLabelsPlacementDefects(string $js): array
+    {
+        $defects = [];
+
+        $this->assertSame(1, preg_match('/function view\(.*?\n\}\n/s', $js, $vw), 'view() did not parse out of main.js');
+        $this->assertSame(1, preg_match('/function renderBuilding\(.*?\n\}\n/s', $js, $rb), 'renderBuilding() did not parse out of main.js');
+        $this->assertSame(1, preg_match('/function paint\(.*?\n\}\n/s', $js, $pt), 'paint() did not parse out of main.js');
+
+        if (! str_contains($this->stripLineComments($vw[0]), 'showLabels(')) {
+            $defects[] = 'view() does not call showLabels() — a camera move would leave every label as it was';
+        }
+
+        if (str_contains($this->stripLineComments($pt[0]), 'showLabels(')) {
+            $defects[] = 'paint() calls showLabels() — a second writer, even one that agrees with view()\'s, is the shape r3 M1 exists to make impossible';
+        }
+
+        if (str_contains($this->stripLineComments($rb[0]), 'showLabels(')) {
+            $defects[] = 'renderBuilding() calls showLabels() — a second writer, even one that agrees with view()\'s, is the shape r3 M1 exists to make impossible';
+        }
+
+        if (str_contains($pt[0], 'setProperty')) {
+            $defects[] = 'paint() writes a custom property — label geometry belongs to showLabels() alone';
+        }
+
+        if (str_contains($rb[0], 'setProperty')) {
+            $defects[] = 'renderBuilding() writes a custom property — label geometry belongs to showLabels() alone';
+        }
+
+        if (str_contains($pt[0], '--label-')) {
+            $defects[] = 'paint() names a --label- property directly';
+        }
+
+        if (str_contains($rb[0], '--label-')) {
+            $defects[] = 'renderBuilding() names a --label- property directly';
+        }
+
+        return $defects;
     }
 
     /**

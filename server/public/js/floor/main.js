@@ -15,9 +15,9 @@
  * held without the stream recovery inherits the browser's own reconnect, which re-runs none of
  * § 2.2's steps 1–5; the wiring test reds if this page stops constructing it there.
  *
- * ⛔ THE TWO BOUNDS A PAGE NEEDS AND THE HARNESS MUST NOT HAVE ARE APPLIED HERE: the animation log is
- * constructed with § 12's retention (`ANIMATION_LOG_RETENTION`, § 14 item 26), and the protocol
- * holds its coordination envelopes to § 5.7's cap on its own (§ 14 item 25).
+ * ⛔ THE TWO BOUNDS A PAGE NEEDS AND THE HARNESS MUST NOT HAVE ARE APPLIED FOR IT: the animation log
+ * is `wire/live-page.js`'s, constructed with § 12's retention (`ANIMATION_LOG_RETENTION`, § 14 item
+ * 26), and the protocol holds its coordination envelopes to § 5.7's cap on its own (§ 14 item 25).
  *
  * ⛔ A RENDER FOLLOWS EVERY THING THAT CAN CHANGE WHAT THE PROTOCOL HOLDS, coalesced into one
  * `screen.render()` at a time (`wire/live-page.js` says why). The 1 s age tick re-draws the desks'
@@ -52,7 +52,6 @@
  */
 
 import { livePage } from '../wire/live-page.js';
-import { createAnimationLog } from '../wire/animation-log.js';
 import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
 import { renderDrillDown } from '../drilldown/main.js';
@@ -61,9 +60,6 @@ import { cameraView } from '../wire/camera-view.js';
 import { cameraGestures } from '../wire/camera-gestures.js';
 import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
 import { deskListRow } from '../desk/desk-list.js';
-
-/** § 12's *The floor page's animation-log retention* — the page's bound, and no one else's. */
-const ANIMATION_LOG_RETENTION = 2000;
 
 /** A missing element throws rather than being guarded past — the lobby's rule, for its reason. */
 function el(id) {
@@ -132,7 +128,7 @@ function surface() {
     return { width: root.clientWidth, height: window.innerHeight };
 }
 
-const { client, clock, fetch: pageFetch, requestRender } = livePage(() => screen.render());
+const { client, clock, fetch: pageFetch, requestRender, log } = livePage(() => screen.render());
 
 /** § 4.4's two URL shapes for this page, the floor segment first. */
 function routeOf(floor, seat) {
@@ -299,7 +295,7 @@ function paint(frame) {
     list('floor-log', client.eventLog);
 }
 
-const screen = startFloorScreen(client, pageFetch, clock, createAnimationLog(ANIMATION_LOG_RETENTION), paint, {
+const screen = startFloorScreen(client, pageFetch, clock, log, paint, {
     floor: root.dataset.floor,
     seat: root.dataset.seat === '' ? null : root.dataset.seat,
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,

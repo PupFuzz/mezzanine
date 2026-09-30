@@ -65,7 +65,9 @@
  *                                               //  "wheel", "x", "y", "delta_y" } | { "act": "zoom",
  *                                               //  "notches" } | { "act": "drag", "dx", "dy" } | {
  *                                               //  "act": "focus", "floor" } | { "act": "resize",
- *                                               //  "width", "height" } ] }` — the ride control (the
+ *                                               //  "width", "height" } ], "local_hours": N,
+ *                                               //  "local_minutes": N }` — the last two the viewer's
+ *                                               //  civil time for the sky, as the floor's — the ride control (the
  *                                               //  viewer's cab moved to the stop it returns and the
  *                                               //  lobby DRAWN, as the page draws it; nothing
  *                                               //  drained), the ride's glide arriving (the page
@@ -101,12 +103,11 @@
  *      "lobby_renders": [ {at, frame, label} ], "camera_acts": [ {at, act, before, after, glide_ms} ] — on
  *      the lobby, each act also carrying `label: {after, mid}`, and a ride's `ride: {cab, route, resolves_to}`
  *      — `resolves_to` the floor the floor page's `resolveRoute()` finds for the route over the building the
- *      lobby drew — or `null` when the ride was refused. A `label` is the transform a plate's label is
- *      shown under, `{zoom, scale, max}` — the camera's zoom (the plates' `scale(zoom)`), its
- *      `lobby/building-scene.js` `labelScale()` (the label's own counter-scale) and `labelMax()` (the width
- *      in screen px it wraps within, `lobby/main.js`'s `--label-max`) — under the frame's camera,
- *      the camera an act leaves, and (`mid`, `null` for an act that does not glide) the camera the page
- *      shows halfway through the act's glide; and each ride step's (`ride`, `arrive`, `return`) `riding:
+ *      lobby drew — or `null` when the ride was refused. A `label` is `lobby/label-paint.js`'s
+ *      `showLabels()`, read back off the custom properties it writes for this camera — `{zoom, scale, side,
+ *      left, width, lines, ink, textInk, backing, halo, align}` — under the frame's camera, the camera an
+ *      act leaves, and (`mid`, `null` for an act that does not glide) the camera the page shows halfway
+ *      through the act's glide; and each ride step's (`ride`, `arrive`, `return`) `riding:
  *      {accessor, frame}` — the screen's `riding()` after the step, beside the `riding` of the last frame
  *      drawn —
  *      "animation_log": [ <§ 11 rows> ] }`
@@ -203,6 +204,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { scriptedFetch } from '../Support/scripted-fetch.mjs';
+import { shownLabel } from '../Support/shown-label.mjs';
 
 const dir = process.argv[2];
 
@@ -221,18 +223,15 @@ const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'sta
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
 const { healthCounters } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-model.js')).href);
-const { labelMax, labelScale } = await import(pathToFileURL(join(dir, '..', 'lobby', 'building-scene.js')).href);
+const { showLabels } = await import(pathToFileURL(join(dir, '..', 'lobby', 'label-paint.js')).href);
 const { between } = await import(pathToFileURL(join(dir, 'camera.js')).href);
 
 /**
- * The transform a plate's label is shown under on a lobby camera, as `lobby/main.js` shows it (Appendix
- * B row 16, the operator's rulings): the camera's zoom the plates are shown at, and the label's own
- * counter-scale — and the width it wraps within, `--label-max` (card#7343 r4b). The label's font and what
- * sits inside it are `lobby/plate-row.js`'s, read off the row.
+ * A camera's plate-label geometry and paint, for the harness's own recording — `Support/shown-label.mjs`'s
+ * `shownLabel()`, shared with `plate-row-probe.mjs` (card#7343 r6's fix round, r5 review item 9: the two
+ * probes' own copies had drifted in format), bound to this probe's own `showLabels()` import.
  */
-function plateLabel(camera) {
-    return { zoom: camera.zoom, scale: labelScale(camera), max: labelMax(camera) };
-}
+const plateLabel = (camera) => shownLabel(showLabels, camera);
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const furniture = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'furniture-box.js')).href);
@@ -293,6 +292,17 @@ console.log(JSON.stringify({
     // function, for AT-D3-14's panel half (`health_counters: [<counters>|null, …]`).
     health_counters: (fx.health_counters ?? []).map((counters) => healthCounters(counters)),
 }, null, 2));
+
+/**
+ * The viewer's civil time for § 4.2's clock and sky, on the floor or the lobby (`floor` or `lobby` in the
+ * scenario): its own `local_hours`/`local_minutes` where it states them, else the scenario clock read as
+ * UTC — see the header's *the viewer's civil time is the scenario's*.
+ */
+function viewerTime(run) {
+    return (ms) => (run.local_hours === undefined
+        ? { hours: new Date(ms).getUTCHours(), minutes: new Date(ms).getUTCMinutes() }
+        : { hours: run.local_hours, minutes: run.local_minutes ?? 0 });
+}
 
 async function replay(scenario) {
     rejections = [];
@@ -566,9 +576,7 @@ async function replay(scenario) {
             floor: scenario.floor.key,
             seat: scenario.floor.seat ?? null,
             reduce: scenario.reduce === true,
-            local_time: (ms) => (scenario.floor.local_hours === undefined
-                ? { hours: new Date(ms).getUTCHours(), minutes: new Date(ms).getUTCMinutes() }
-                : { hours: scenario.floor.local_hours, minutes: scenario.floor.local_minutes ?? 0 }),
+            local_time: viewerTime(scenario.floor),
             viewport: scenario.floor.viewport ?? VIEWPORT_FLOOR,
             surface: scenario.floor.surface,
         });
@@ -676,9 +684,13 @@ async function replay(scenario) {
     }
 
     if (lobbyRun !== null) {
-        lobby = startLobbyScreen(client, buildingHttp.fetch, (frame) => {
+        lobby = startLobbyScreen(client, buildingHttp.fetch, clock, log, (frame) => {
             lobbyRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)), label: plateLabel(frame.camera) });
-        }, { surface: lobbyRun.surface ?? VIEWPORT_FLOOR, reduce: scenario.reduce === true });
+        }, {
+            surface: lobbyRun.surface ?? VIEWPORT_FLOOR,
+            reduce: scenario.reduce === true,
+            local_time: viewerTime(lobbyRun),
+        });
     }
 
     // Appendix B row 16's camera acts on the lobby, each an event on the scenario queue, recorded with

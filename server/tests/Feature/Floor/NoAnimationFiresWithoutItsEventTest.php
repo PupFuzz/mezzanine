@@ -566,7 +566,8 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
      *
      * ⚠ A RUN WRITTEN FOR THE FLOOR SCREEN OR THE LOBBY IS REPLAYED UNDER THE DESK FLOOR — the same
      * bytes on another page. AT-D3-1 reads the desk floor's log and its per-render records, the lobby
-     * writes no animation log at all, and `fx-snapshot-4`'s `lobby_over` is the run that reaches
+     * writes A17 rows alone (its sky, card#7343 — `TheLobbySkyIsTheFloorsA17Test`), and `fx-snapshot-4`'s
+     * `lobby_over` is the run that reaches
      * § 11's (1) through § 2.3 row 4's `snapshot` literal.
      *
      * @return array<string, array<string, mixed>>

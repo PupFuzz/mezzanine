@@ -88,6 +88,7 @@ async function runScenario(scenario) {
     const { surfaceStyle } = await import(url('building-scene.js'));
     const { Building } = await import(url('../wire/building.js'));
     const { FleetClient } = await import(url('../wire/fleet-client.js'));
+    const { createAnimationLog } = await import(url('../wire/animation-log.js'));
 
     // ⚠ THE SCRIPTED FETCH IS `../Support/scripted-fetch.mjs`, HOISTED AT ITS SECOND CALLER
     // (card#7341 step 3). This probe scripts no response with a `delay_ms` and passes no `schedule`,
@@ -103,13 +104,14 @@ async function runScenario(scenario) {
 
     // No scheduler: this client recovers nothing, so a refused cold read stays refused and the
     // run is exactly the steps it scripts.
-    const client = new FleetClient(fetchImpl, SilentEventSource, { now: () => 0 });
+    const clock = { now: () => 0 };
+    const client = new FleetClient(fetchImpl, SilentEventSource, clock);
     const surface = new Building(fetchImpl);
     // The building's drawing surface (Appendix B row 16's camera): this probe asks what the entry
     // fetches and composes and moves no camera, so the surface is § 12's viewport floor, the size the
     // harness states for a page that names none (`../Floor/fleet-client-probe.mjs`).
     const { VIEWPORT_FLOOR } = await import(url('../floor/floor-screen.js'));
-    const screen = new LobbyScreen(client, surface, { surface: VIEWPORT_FLOOR });
+    const screen = new LobbyScreen(client, surface, clock, createAnimationLog(), { surface: VIEWPORT_FLOOR });
     const rendered = scenario.rendered ?? [];
     const records = [];
     const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -161,7 +163,7 @@ async function runScenario(scenario) {
             building: frame.building,
             // `#lobby-building`'s own style over this frame's scene — a clipping drawing only while
             // there is a building to draw (card#7343 r3), the style `lobby/main.js` applies.
-            surface: surfaceStyle(frame.scene),
+            surface: surfaceStyle(frame.scene, frame.sky),
             discrepancy: frame.discrepancy,
             failure: frame.failure,
         });

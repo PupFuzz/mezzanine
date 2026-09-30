@@ -25,7 +25,8 @@ use Tests\TestCase;
  *    frame never wider than the extent the whole-building fit frames exactly (design review r1, F4) — so
  *    the whole-building framing shows all of them; and every plate stands at ONE consistent left edge,
  *    inset symmetrically inside the extent so the frame shows as the outer wall around it (design review
- *    r2, F2) — `labelMax()` reads that inset left edge, and never the extent's own.
+ *    r2, F2) — `label-paint.js` reads that inset (`PLATE_INSET`) against the extent's own edge, never a
+ *    plate's `rect.x` directly, so a plate's label is measured to the SHELL and not to the plate.
  *  · THE CAB GLIDES WITH THE RIDE ONLY: at the plate it stands at, over the ride's `glide_ms` — `wire/camera.js`'s
  *    `glideMs()` — and cut under `prefers-reduced-motion` and on every other render (`cabDefects()`).
  *
@@ -69,7 +70,7 @@ class TheBuildingIsDrawnAsTheReferencesSectionTest extends TestCase
             'a roof outside the building\'s extent' => ['extent: plates.length === 0 ? null : { x: 0, y: 0,', 'extent: plates.length === 0 ? null : { x: 0, y: ROOF_H,', 'the roof sign'],
             // The ground lobby outside the framing.
             'a ground lobby outside the building\'s extent' => ['w: PLATE_W + PLATE_INSET * 2, h: ROOF_H + PLATE_H * plates.length + GROUND_H }', 'w: PLATE_W + PLATE_INSET * 2, h: ROOF_H + PLATE_H * plates.length }', 'the ground lobby'],
-            // A plate off the building's left edge: `labelMax()` would read the wrong left edge.
+            // A plate off the building's left edge: `label-paint.js` would measure its label from the wrong edge.
             'a plate off the building\'s left edge' => ['rect: { x: PLATE_INSET, y: ROOF_H + plate.level * PLATE_H,', 'rect: { x: PLATE_INSET + 40, y: ROOF_H + plate.level * PLATE_H,', 'left edge'],
             // The ground lobby's shaft placed from the extent's left edge, not the plates' (design review
             // r3, row 16 F-A): it jogs `PLATE_INSET` off the storeys' shaft.
@@ -280,8 +281,9 @@ class TheBuildingIsDrawnAsTheReferencesSectionTest extends TestCase
         // Design review r2 F2: every plate stands at the SAME left edge, inset from the extent's own —
         // never the extent's left edge itself, which is now the frame's, showing as the wall around them
         // (`PLATE_INSET`) — and the two margins either side of a plate are equal, so the frame reads as
-        // one even wall and not a wider gap on one side. `labelMax()` reads a plate's own left edge, not
-        // the extent's; no figure is repeated here, only the relationship its inputs must hold.
+        // one even wall and not a wider gap on one side. `label-paint.js` reads the SHELL's own edge (the
+        // extent's) for a beside label and a plate's own edge for the fallback; no figure is repeated
+        // here, only the relationship its inputs must hold.
         $plateLeft = null;
 
         foreach ($plates as $p) {
@@ -291,7 +293,7 @@ class TheBuildingIsDrawnAsTheReferencesSectionTest extends TestCase
             $rightMargin = $extent['x'] + $extent['w'] - ($r['x'] + $r['w']);
 
             if ($r['x'] !== $plateLeft) {
-                $defects[] = "the plate {$p['floor']} does not stand at the same left edge as the rest of the stack ({$r['x']} vs {$plateLeft}) — labelMax() reads one left edge for the whole building";
+                $defects[] = "the plate {$p['floor']} does not stand at the same left edge as the rest of the stack ({$r['x']} vs {$plateLeft}) — label-paint.js reads one left edge for the whole building";
             }
 
             if ($leftMargin <= 0 || abs($leftMargin - $rightMargin) > 1e-9) {

@@ -34,8 +34,19 @@
  *
  * ⛔ THE JOURNAL IS DRAINED HERE, on every render. The protocol keeps a wire journal a renderer drains
  * (`FleetClient#takeWire`); a page that never drained it would grow it without bound. The lobby reads
- * only its `building.layout` entries — nothing on this screen animates (§ 6.5, and § 4.1's plates
- * carry no § 6.2 row).
+ * its `building.layout` entries, and its `feed.heartbeat` and `feed.established` entries for the sky —
+ * and nothing else on this screen animates (§ 6.5, and § 4.1's plates carry no § 6.2 row).
+ *
+ * ⭐ THE SKY BEHIND THE BUILDING IS § 6.2 A17's, ON A17's DRIVER (the operator's ruling on card#7343,
+ * 2026-09-30; § 4.1, A17: *"On the lobby it is this row or nothing"*). Its value is the floor's own —
+ * `floor/floor-layout.js`'s `RoomClock`, which sets `roomTick()`'s value on a delivered `feed.heartbeat`
+ * or the feed's establishment and on nothing else — and its firing is the floor's own, through the one
+ * animation set, which this screen constructs drawing A17 alone (`edgeRows`): a heartbeat writes one
+ * A17 row, and no delta, retirement or camera act writes any. So the sky follows the VIEWER's clock,
+ * steps only on the heartbeat — never on a timer, a poll or the 1 s tick — and freezes when the feed
+ * dies, as the floor's windows do (§ 9 F1). The frame's `sky` is painted in the plates' windows and, dimmed,
+ * behind the building (`building-scene.js`'s `windowArt()` and `surfaceStyle()`). Under `prefers-reduced-motion` A17's row is logged without
+ * motion and the sky steps exactly as it does with motion: both columns of A17 are one step, no tween.
  *
  * ⭐ THE CAMERA AT BUILDING SCALE AND THE RIDE'S ARRIVAL — Appendix B row 16, slice A (card#7343). This
  * screen holds row 15's camera (`../wire/camera.js`) as `floor/floor-screen.js` holds it on the floor:
@@ -69,13 +80,19 @@
  * at fit moves nothing.
  *
  * ⛔ NAVIGATION IS NEVER STATE (§ 4.5, § 4.6's elevator row). A ride, a zoom and a pan draw nothing,
- * drain nothing and fetch nothing; this screen holds no animation log and loads nothing that could write
- * one or start anything through the animation set (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`
- * holds the lobby page's whole import graph to that). A glide is the viewer's, and under
- * `prefers-reduced-motion` it is a cut: `glide_ms` is `0`, for the cab and the camera alike.
+ * drain nothing and fetch nothing, and write no animation-log row: the one path to the log on this
+ * screen is `render()`'s A17 over a drained journal (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`
+ * holds the camera acts to an unchanged log — a ride planted to write a row through this set reds it — and
+ * the lobby page's whole import graph to that one path; `LobbyPageWiringTest` holds `lobby/main.js`, which
+ * holds the page's log without importing it, to handing it here and using it nowhere else).
+ * A glide is the viewer's, and under `prefers-reduced-motion` it is a cut: `glide_ms` is `0`, for the cab
+ * and the camera alike.
  */
 
 import { Building } from '../wire/building.js';
+import { AnimationSet } from '../wire/animation-set.js';
+import { correctedNowMs } from '../wire/duration.js';
+import { RoomClock } from '../floor/floor-layout.js';
 import { createCamera, fit, focusOn, frameOn, glideMs, panBy, resize, unframe, wheel, zoomStep } from '../wire/camera.js';
 import { failureRender } from '../wire/failure-render.js';
 import { statusStrip } from '../floor/status-strip.js';
@@ -87,6 +104,14 @@ export class LobbyScreen {
     #client;
 
     #building;
+
+    #clock;
+
+    /** § 6.2 A17's driver — the floor's (`floor-layout.js`'s `RoomClock`) — whose `sky` is drawn behind the building. */
+    #room;
+
+    /** The animation set, drawing A17 alone (`edgeRows`): the lobby's one § 6.2 row. */
+    #set;
 
     /** Whether the entry's layout request (§ 4.4) has been made — after the first applied snapshot. */
     #layoutAsked = false;
@@ -109,14 +134,21 @@ export class LobbyScreen {
     /**
      * @param {object} client a `FleetClient`
      * @param {object} building a `wire/building.js` `Building`
-     * @param {{surface: {width: number, height: number}, reduce?: boolean}} options the building's drawing
-     *        surface in CSS px, and whether the viewer prefers reduced motion
+     * @param {{now: function(): number}} clock the browser's own clock
+     * @param {object} log `wire/animation-log.js`'s `createAnimationLog()`
+     * @param {{surface: {width: number, height: number}, reduce?: boolean, local_time?: Function}} options the
+     *        building's drawing surface in CSS px, whether the viewer prefers reduced motion, and the viewer's
+     *        civil time for the sky (`floor-screen.js`'s `local_time`, for its reason; the viewer's own `Date`
+     *        when not stated)
      */
-    constructor(client, building, options) {
+    constructor(client, building, clock, log, options) {
         this.#client = client;
         this.#building = building;
+        this.#clock = clock;
         this.#camera = createCamera(options.surface);
         this.#reduce = options.reduce === true;
+        this.#room = new RoomClock(clock, options.local_time);
+        this.#set = new AnimationSet(log, { reduce: this.#reduce, edgeRows: ['A17'] });
     }
 
     /** The camera as it stands — the viewer's head, as data. */
@@ -144,7 +176,9 @@ export class LobbyScreen {
      * @param {function(): (string|null)} cabNow the viewer's elevator stop, read fresh at draw time
      */
     async render(cabNow) {
-        for (const entry of this.#client.takeWire()) {
+        const journal = this.#client.takeWire();
+
+        for (const entry of journal) {
             if (entry.t === 'building.layout' && await this.#building.applyLayout(entry)) {
                 this.#layoutAsked = true;
             }
@@ -154,6 +188,11 @@ export class LobbyScreen {
             this.#layoutAsked = true;
             await this.#building.fetchLayout();
         }
+
+        // § 6.2 A17 over the drained journal — the floor's driver and the floor's firing, read at draw
+        // time as the floor reads them (`floor-screen.js`'s `#drawFrame`).
+        this.#room.take(journal);
+        this.#set.edges(journal, correctedNowMs(this.#client.clockOffsetMs, this.#clock.now()));
 
         return this.draw(cabNow());
     }
@@ -210,6 +249,8 @@ export class LobbyScreen {
             building,
             scene,
             camera: this.#camera,
+            // § 6.2 A17's sky phase as last set, drawn behind the building — `null` until a live feed.
+            sky: this.#room.tick?.sky ?? null,
             // A ride in flight: the page disables the ride control until it has arrived.
             riding: this.#riding !== null,
             // § 4.1's words over the protocol's own pair — and silence while no check can run.
@@ -352,15 +393,17 @@ function within(outer, inner) {
  *
  * @param {object} client a `FleetClient`
  * @param {Function} fetchImpl the page's `fetch` (`wire/live-page.js`) — `wire/building.js`'s injection
+ * @param {{now: function(): number}} clock the browser's own clock
+ * @param {object} log `wire/animation-log.js`'s `createAnimationLog()` — the page's, bounded (`wire/live-page.js`)
  * @param {function(object): void} draw receives each lobby frame
- * @param {{surface: {width: number, height: number}, reduce?: boolean}} options `LobbyScreen`'s
+ * @param {{surface: {width: number, height: number}, reduce?: boolean, local_time?: Function}} options `LobbyScreen`'s
  * @returns {{render: function(function(): (string|null)): Promise<void>, refresh: function(): Promise<void>, draw: function(string|null): void,
  *            ride: function(): object|null, returned: function(): void, riding: function(): boolean, wholeBuilding: function(): object,
  *            focusPlate: function(string): object|null, wheel: Function, zoomStep: Function, drag: Function,
  *            resize: Function, camera: function(): object}}
  */
-export function startLobbyScreen(client, fetchImpl, draw, options) {
-    const screen = new LobbyScreen(client, new Building(fetchImpl), options);
+export function startLobbyScreen(client, fetchImpl, clock, log, draw, options) {
+    const screen = new LobbyScreen(client, new Building(fetchImpl), clock, log, options);
 
     return {
         // `cabNow` is a thunk, read after render()'s own awaits — LobbyScreen#render's docblock.

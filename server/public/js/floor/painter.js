@@ -30,6 +30,7 @@
  */
 
 import { FONT, LINE } from './desk-layout.js';
+import { SKY_PAINT } from './floor-layout.js';
 
 /** The furniture box and the desk sprite — `resources/floor/furniture-box.js`, by the asset route. */
 export const FURNITURE_MODULE = '/art/floor/furniture-box.js';
@@ -47,7 +48,7 @@ const SVG = 'http://www.w3.org/2000/svg';
 const STYLE = `
 text{font:${FONT};fill:#3b2f2a}
 .wall{fill:#f3e6d4}.window{fill:#cfe6f5;stroke:#8a6f5a;stroke-width:3}
-.sky-night{fill:#27324d}.sky-dawn{fill:#f6c9a8}.sky-day{fill:#bfe3f7}.sky-dusk{fill:#e8a07a}.sky-unset{fill:#ddd}
+${Object.keys(SKY_PAINT).map((phase) => `.sky-${phase}{fill:url(#sky-${phase})}`).join('')}
 .clock-face{fill:#fffaf2;stroke:#8a6f5a;stroke-width:3}.clock.unset .clock-face{stroke-dasharray:6 4}
 .hand{stroke:#3b2f2a;stroke-linecap:round}.hand.hour{stroke-width:4}.hand.minute{stroke-width:2}
 .pixel{image-rendering:pixelated}
@@ -346,6 +347,16 @@ export function createPainter({ characters, failed, select }) {
         const pattern = node('pattern', { id: 'hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, node('defs', {}, svg));
 
         node('rect', { width: 3, height: 6, fill: '#8a6f5a' }, pattern);
+
+        // The windows' sky, one gradient per phase — `floor-layout.js`'s `SKY_PAINT`, the one phase→paint
+        // table the lobby's windows and backdrop read too (card#7343 r1): the reference's window gradient,
+        // `top` to `bot`. The window's class names the phase (`sky-*` above), so the scene decides nothing new.
+        for (const [phase, paint] of Object.entries(SKY_PAINT)) {
+            const gradient = node('linearGradient', { id: `sky-${phase}`, x1: 0, y1: 0, x2: 0, y2: 1 }, pattern.parentNode);
+
+            node('stop', { offset: 0, 'stop-color': paint.top }, gradient);
+            node('stop', { offset: 1, 'stop-color': paint.bot }, gradient);
+        }
 
         const band = scene.band;
 
