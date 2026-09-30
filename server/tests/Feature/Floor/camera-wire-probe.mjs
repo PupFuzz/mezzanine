@@ -25,12 +25,14 @@
  *    buttons, with acts that record their arguments and the same camera. Each event is `{ "type",
  *    …members }`, dispatched cancelable on the drawing — or, with `"on": "zoom_in"` / `"zoom_out"`, on
  *    that button; `reframe` as above.
- *  · `{ "offer": [bool, …] }` — `offerKeys()` on a stand-in drawing and two stand-in buttons, once per
+ *  · `{ "offer": [bool, …] }` — `offerKeys()` on a stand-in drawing and three stand-in buttons (the zoom
+ *    buttons and the page's framing control), each starting withdrawn as both pages' markup does, once per
  *    entry with a camera that frames a scene (`true`) or nothing (`false`), logging after each whether
- *    each button is hidden and the drawing's `aria-keyshortcuts` (`null` when it has none).
+ *    each button is hidden, the drawing's `aria-keyshortcuts` and `tabindex` (`null` when it has none), and
+ *    `writes` — how many writes `offerKeys()` has made to the drawing and the buttons so far.
  * stdout — JSON: `{ "log": [ … ] }` — for `view`, each camera applied, named `from` / `to` / `other`
- * or `between`, and each `done` run, in order; for `gestures` and `keys`, each act, show and pointer
- * capture, and for each event whether it was `default_prevented`, had its propagation stopped, and the
+ * or `between`, and each `done` run, in order; for `gestures` and `keys`, each act, show, pointer
+ * capture and capture released (`release`), and for each event whether it was `default_prevented`, had its propagation stopped, and the
  * drawing's `user-select` after it (`user_select`, `""` when none is set) and its prefixed
  * `-webkit-user-select` (`webkit_user_select`, likewise).
  *
@@ -110,13 +112,35 @@ if (payload.view !== undefined) {
         }
     }
 } else if (payload.offer !== undefined) {
+    let writes = 0;
     const attributes = new Map();
     const element = {
-        setAttribute: (name, value) => attributes.set(name, String(value)),
-        removeAttribute: (name) => attributes.delete(name),
+        hasAttribute: (name) => attributes.has(name),
+        getAttribute: (name) => attributes.get(name) ?? null,
+        setAttribute: (name, value) => {
+            writes += 1;
+            attributes.set(name, String(value));
+        },
+        removeAttribute: (name) => {
+            writes += 1;
+            attributes.delete(name);
+        },
     };
-    // A button the page's markup starts hidden, as both pages' do.
-    const buttons = { zoomIn: { hidden: true }, zoomOut: { hidden: true } };
+    // A button the page's markup starts hidden, as both pages' do; every write to it is counted.
+    const button = () => {
+        let hidden = true;
+
+        return {
+            get hidden() {
+                return hidden;
+            },
+            set hidden(value) {
+                writes += 1;
+                hidden = value;
+            },
+        };
+    };
+    const buttons = { zoomIn: button(), zoomOut: button(), fit: button() };
 
     for (const framed of payload.offer) {
         offerKeys(element, buttons, { bounds: framed ? { x: 0, y: 0, w: 1600, h: 2000 } : null });
@@ -124,7 +148,10 @@ if (payload.view !== undefined) {
             framed,
             zoom_in_hidden: buttons.zoomIn.hidden,
             zoom_out_hidden: buttons.zoomOut.hidden,
+            fit_hidden: buttons.fit.hidden,
             keyshortcuts: attributes.get('aria-keyshortcuts') ?? null,
+            tabindex: attributes.get('tabindex') ?? null,
+            writes,
         });
     }
 } else if (payload.gestures !== undefined || payload.keys !== undefined) {
@@ -134,6 +161,7 @@ if (payload.view !== undefined) {
     element.style = {};
     element.getBoundingClientRect = () => ({ left: 10, top: 20 });
     element.setPointerCapture = (id) => log.push({ capture: id });
+    element.releasePointerCapture = (id) => log.push({ release: id });
 
     const acts = {
         wheel: (point, delta) => ({ act: 'wheel', point, delta }),

@@ -20,7 +20,8 @@
  *    selects text and is never captured, and a press that moves on a room's link and is released there
  *    follows it. The gates: the wheel, the `dragstart`, the press (its `user-select`, and so every drag and
  *    capture after it), the move (a press that began framed stops panning the moment nothing is — no
- *    capture and no drag) and the click-after-drag veto. On the floor the camera frames the floor's extent
+ *    capture taken, a capture it already holds released, and no drag; card#7343 c7692 item 3) and the
+ *    click-after-drag veto. On the floor the camera frames the floor's extent
  *    from the first frame that has one, so a drawn floor's every gesture is handled as before; its camera
  *    frames nothing before that frame, under the list view (where the drawing is hidden), and on a floor
  *    with nothing measurable on it (no map held and no desk — `floor-screen.js`), and there the events,
@@ -130,6 +131,11 @@ export function cameraGestures(element, acts, show) {
 
         // Gate: nothing framed any more — the press ends here, uncaptured, and pans nothing.
         if (unframed()) {
+            // A press that has panned holds the pointer captured: let it go, so the release and its click
+            // land on what is under the pointer rather than on the drawing (card#7343 c7692 item 3).
+            if (drag.moved) {
+                element.releasePointerCapture(event.pointerId);
+            }
             release();
 
             return;
@@ -169,7 +175,10 @@ export function cameraGestures(element, acts, show) {
 
         dragged = false;
 
-        // Gate: nothing framed any more — the click is the browser's, and follows the link it is on.
+        // Gate: nothing framed any more — the click is the browser's. It follows the link it is on when the
+        // press was never captured or moved again once nothing was framed (the move gate released it); a
+        // press released still captured — it panned, and never moved after the frame went — clicks the
+        // drawing, which follows nothing.
         if (unframed()) {
             return;
         }

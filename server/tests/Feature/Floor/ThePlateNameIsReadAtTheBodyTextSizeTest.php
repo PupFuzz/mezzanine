@@ -173,7 +173,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
 
         return [
             'the whole surface\'s width, as r3 had it' => [$body, '    return width;', 'visible'],
-            'the plates\' left edge read backwards' => ['    const left = (camera.bounds.x - camera.x) * camera.zoom;', '    const left = (camera.x - camera.bounds.x) * camera.zoom;', 'visible'],
+            'the plates\' left edge read backwards' => ['    const left = (camera.bounds.x + PLATE_INSET - camera.x) * camera.zoom;', '    const left = (camera.x - camera.bounds.x - PLATE_INSET) * camera.zoom;', 'visible'],
             'a width wider than the surface' => [$body, '    return Math.max(LABEL_MIN_PX, width - left);', 'clamp'],
             'a width with no minimum' => [$body, '    return Math.min(width, width - left);', 'clamp'],
             'a minimum wider than the surface' => [$body, '    return Math.max(LABEL_MIN_PX, Math.min(width, width - left));', 'clamp'],
@@ -295,6 +295,14 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             'a label with no width to wrap within' => ["        maxWidth: 'var(--label-max)',\n", '', 'can run wider than the surface'],
             'a label wrapped at a width of its own' => ["maxWidth: 'var(--label-max)'", "maxWidth: '1280px'", 'can run wider than the surface'],
             'a word that never breaks' => ["        overflowWrap: 'anywhere',\n", '', 'a word wider than the surface'],
+            // Design review r2, row 16 F1: the label carries its own halo, inside the same counter-scaled
+            // element, so a label crossing the shaft or the cab at whole-building fit stays legible without
+            // hiding what it crosses (r1's opaque plaque, refused).
+            'a label with no halo' => ["        textShadow: LABEL_TEXT_SHADOW,\n", '', 'no halo'],
+            // Design review r3 F-B: the halo's density, not only its colour — one layer, or every radius
+            // stripped to nothing, keeps the colour green and loses what makes it legible over the drawing.
+            'a single-layer halo' => ['const LABEL_TEXT_SHADOW = LABEL_HALO_RADII.map(', 'const LABEL_TEXT_SHADOW = LABEL_HALO_RADII.slice(-1).map(', 'not the stack'],
+            'a halo with its radii stripped' => ['.map((r) => `0 0 ${r}px ${LABEL_HALO}`)', '.map(() => `0 0 0px ${LABEL_HALO}`)', 'not the stack'],
         ];
     }
 
@@ -306,6 +314,16 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
 
         $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, $reason)),
             "the planted defect did not bite for its reason ({$reason}): ".json_encode($defects));
+    }
+
+    /** A halo too dark to contrast the plate's own link and body text — WCAG 2.1 SC 1.4.3's 4.5:1 unmet. */
+    public function test_red_a_halo_with_low_contrast(): void
+    {
+        $dir = $this->mutatedModules([self::SCENE, 'export const LABEL_HALO = INK.wall;', 'export const LABEL_HALO = INK.sign;']);
+        $defects = $this->sizeDefects($this->replay(self::RUNS[0], $dir), $dir);
+
+        $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, 'WCAG')),
+            'CONTROL (a halo with low contrast) did not bite: '.json_encode($defects));
     }
 
     /** A page that sets its body text size — `1rem` is then no longer it. */
@@ -389,9 +407,10 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         }
 
         $shown = [];
+        $radii = $this->haloRadii($dir);
 
         foreach ($rows as [$plate, $row]) {
-            array_push($defects, ...$this->readingDefects($plate, $row), ...$this->wrapDefects($plate, $row));
+            array_push($defects, ...$this->readingDefects($plate, $row), ...$this->wrapDefects($plate, $row), ...$this->haloDefects($plate, $row, $radii));
 
             foreach ($this->texts($row) as $t) {
                 if ($t['hidden']) {
@@ -505,6 +524,116 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     }
 
     /**
+     * `building-scene.js`'s `LABEL_HALO_RADII`, read from the source rather than restated — the stack the
+     * built label must carry, layer for layer (design review r3 F-B). It must itself be a STACK: at least
+     * two layers, every radius a blur — a one-layer or zero-radius declaration would make the as-built
+     * check below vacuous, so it is refused here rather than trusted.
+     *
+     * @return list<float>
+     */
+    private function haloRadii(?string $dir = null): array
+    {
+        $source = (string) file_get_contents(($dir ?? $this->moduleDir()).'/'.self::SCENE);
+        $this->assertSame(1, preg_match('/export const LABEL_HALO_RADII = Object\.freeze\(\[([^\]]*)\]\);/', $source, $m), 'LABEL_HALO_RADII did not parse');
+        $radii = array_map('floatval', array_map('trim', explode(',', $m[1])));
+        $this->assertGreaterThan(1, count($radii), 'LABEL_HALO_RADII declares no stack: '.$m[1]);
+        $this->assertGreaterThan(0.0, min($radii), 'LABEL_HALO_RADII declares an unblurred layer: '.$m[1]);
+
+        return $radii;
+    }
+
+    /**
+     * card#7343 row 16 design review r2 F1, pinned by r3 F-B: the plate's label carries its own halo — a
+     * `text-shadow`, set on the same counter-scaled element as the text, so it scales with the text and
+     * never with the scene, and NEVER a background: a box was tried first (r1) and blanked the drawing
+     * under it. Two things are held, and they are different claims. The COLOUR's contrast against both
+     * the link's default colour and the plate's own body text clears WCAG 2.1 SC 1.4.3's 4.5:1, computed
+     * rather than eyeballed — a claim about the colour pair only. The halo's legibility over the drawing's
+     * darker parts rests on the stack's DENSITY instead, so the built `textShadow` must be every layer of
+     * `LABEL_HALO_RADII`, in order, each zero-offset, blurred at its radius and in the halo's colour — a
+     * single layer or radii stripped to nothing would keep the colour and lose the density. No contrast
+     * over the drawing itself is measured: there is no renderer here.
+     *
+     * @param  list<float>  $radii  `haloRadii()`
+     * @return list<string>
+     */
+    private function haloDefects(array $plate, array $row, array $radii): array
+    {
+        $label = $this->find($row, static fn (array $n): bool => ($n['style']['transform'] ?? null) === self::COUNTER_SCALE);
+
+        if ($label === null) {
+            return ["the plate {$plate['floor']} has no counter-scaled label — the halo clause read nothing"];
+        }
+
+        $shadow = $label['style']['textShadow'] ?? '';
+
+        if ($shadow === '' || preg_match('/#[0-9a-fA-F]{6}/', $shadow, $m) !== 1) {
+            return ["the plate {$plate['floor']}'s label carries no halo (`textShadow` is ".json_encode($shadow).')'];
+        }
+
+        $halo = $m[0];
+        $defects = [];
+
+        if (($label['style']['backgroundColor'] ?? '') !== '') {
+            $defects[] = "the plate {$plate['floor']}'s label still carries a background — the halo is meant to replace it, not sit beside it";
+        }
+
+        $layers = array_map('trim', explode(',', $shadow));
+        $built = [];
+
+        foreach ($layers as $layer) {
+            if (preg_match('/^0(?:px)? 0(?:px)? ([\d.]+)px (#[0-9a-fA-F]{6})$/', $layer, $l) !== 1 || strcasecmp($l[2], $halo) !== 0) {
+                $defects[] = "the plate {$plate['floor']}'s halo has a layer that is not a zero-offset blur in the halo's colour: ".json_encode($layer);
+
+                continue;
+            }
+
+            $built[] = (float) $l[1];
+        }
+
+        if ($built !== $radii) {
+            $defects[] = sprintf("the plate %s's halo is not the stack LABEL_HALO_RADII declares — %d layer(s) at radii %s, not %d at %s",
+                $plate['floor'], count($built), json_encode($built), count($radii), json_encode($radii));
+        }
+
+        foreach (['#0000EE' => 'the link', '#000000' => 'the body text'] as $fg => $what) {
+            $ratio = $this->contrast($halo, $fg);
+
+            if ($ratio < 4.5) {
+                $defects[] = sprintf("the plate %s's halo (%s) contrasts %s (%s) at %.2f:1, under WCAG 2.1 SC 1.4.3's 4.5:1",
+                    $plate['floor'], $halo, $what, $fg, $ratio);
+            }
+        }
+
+        return $defects;
+    }
+
+    /** WCAG 2.1's relative luminance (§ 1.4.3, Appendix G) of a `#rrggbb` colour. */
+    private function luminance(string $hex): float
+    {
+        $hex = ltrim($hex, '#');
+        $lin = static function (int $c): float {
+            $c /= 255;
+
+            return $c <= 0.03928 ? $c / 12.92 : (($c + 0.055) / 1.055) ** 2.4;
+        };
+
+        return 0.2126 * $lin((int) hexdec(substr($hex, 0, 2)))
+            + 0.7152 * $lin((int) hexdec(substr($hex, 2, 2)))
+            + 0.0722 * $lin((int) hexdec(substr($hex, 4, 2)));
+    }
+
+    /** WCAG 2.1's contrast ratio (§ 1.4.3) between two `#rrggbb` colours, ≥ 1. */
+    private function contrast(string $a, string $b): float
+    {
+        [$lighter, $darker] = $this->luminance($a) > $this->luminance($b)
+            ? [$this->luminance($a), $this->luminance($b)]
+            : [$this->luminance($b), $this->luminance($a)];
+
+        return ($lighter + 0.05) / ($darker + 0.05);
+    }
+
+    /**
      * card#7343 r4b: at whole-building fit, every plate's label — no wider than `--label-max`, in screen px
      * under its counter-scale — ends at or before the surface's right edge: the plate's on-screen left edge
      * (its scene `x` under the fit camera) plus the width the harness recorded for that camera. The run must
@@ -565,6 +694,10 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         $source = (string) file_get_contents(($dir ?? $this->moduleDir()).'/'.self::SCENE);
         $this->assertSame(1, preg_match('/export const LABEL_MIN_PX = (\d+);/', $source, $m), 'LABEL_MIN_PX did not parse');
         $min = (int) $m[1];
+        // Design review r2 F2: `labelMax()` reads a plate's own left edge, `bounds.x + PLATE_INSET`, not
+        // the extent's `bounds.x` alone — read from the source rather than restated, as `$min` is above.
+        $this->assertSame(1, preg_match('/export const PLATE_INSET = (\d+);/', $source, $mi), 'PLATE_INSET did not parse');
+        $inset = (int) $mi[1];
         $camera = static fn (int $width, ?int $boundsX, float $zoom, float $x): array => [
             'surface' => ['width' => $width, 'height' => 800],
             'bounds' => $boundsX === null ? null : ['x' => $boundsX, 'y' => 0, 'w' => 1600, 'h' => 2000],
@@ -572,7 +705,8 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         ];
         // [what, the camera, the width the rule gives it]
         $cases = [
-            ['a height-bound fit: the building inset by 320 px', $camera(1280, 0, 0.4, -800), 1280 - 320],
+            // left = (bounds.x + PLATE_INSET - x) * zoom — the plates' own on-screen left edge.
+            [sprintf('a height-bound fit: the plates inset by %s px', (0 + $inset + 800) * 0.4), $camera(1280, 0, 0.4, -800), 1280 - (0 + $inset + 800) * 0.4],
             ['the plates\' left edge off the surface\'s left', $camera(1280, 0, 1, 400), 1280],
             ['the plates\' left edge near the surface\'s right', $camera(1280, 0, 1, -(1280 - $min / 2)), $min],
             ['a surface narrower than the minimum', $camera((int) ($min / 2), 0, 1, 0), (int) ($min / 2)],
@@ -583,7 +717,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
 
         foreach ($cases as $i => [$what, , $expected]) {
             if (abs(($got[$i] ?? -1) - $expected) > 1e-6) {
-                $defects[] = sprintf('for %s, --label-max is %s, not %d', $what, json_encode($got[$i] ?? null), $expected);
+                $defects[] = sprintf('for %s, --label-max is %s, not %s', $what, json_encode($got[$i] ?? null), $expected);
             }
         }
 

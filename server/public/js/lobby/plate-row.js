@@ -27,20 +27,49 @@
  * more lines rather than running past the surface's edge, where the drawing's clip would hide it from
  * every pan. The label stands at the plate's TOP-LEFT corner and grows down from it (card#7343 r3b, the
  * seat's ruling), so a floor's name — the label's first line — is on its plate's top
- * edge however many lines the wrap makes. Two plates' labels can meet only where a plate on the screen is
- * shorter than its label's lines; a label then runs down over the plate below it, and the bottom plate's
- * below the building's bottom edge, so what the surface's clip cuts first is a label's last lines — the
- * status line's. A name is reached only where a plate on the screen is shorter than the name's own lines,
- * past the point where labels meet (a plate shorter than the name's lines, not all of the label's). Anchored at the bottom instead, a label taller than its plate ran
- * up past the building's top edge, and the clip cut the top floor's name first (Appendix B row 16,
- * decision 38).
+ * edge however many lines the wrap makes. The bottom-most plate's label meets the SURFACE's own clip
+ * (`#lobby-building`'s `overflow: hidden`) where it runs past the building's bottom edge, so what that
+ * hard cut takes first is a label's last lines — the status line's; a name is cut only further past that
+ * point, where a plate on the screen is shorter than the name's own lines. Anchored at the bottom
+ * instead, a label taller than its plate ran up past the building's top edge, and the clip cut the top
+ * floor's name first (Appendix B row 16, decision 38).
+ *
+ * ⛔ TWO PLATES' LABELS TANGLE, NEITHER CLEANLY HIDDEN (design review r2, card#7343 row 16 F3, re-derived
+ * after r1's plaque was refused): plates are appended TOP-TO-BOTTOM (`main.js`'s `renderBuilding()`), so
+ * in the DOM stacking `position: absolute` siblings with no `z-index` get, a LOWER plate's `<li>` —
+ * appended LATER — paints OVER an UPPER plate's overflowing label wherever the two coincide, on a plate
+ * on the screen shorter than its own label's lines. With no box behind either (the halo above), the
+ * upper plate's overflow is not erased there — it is still drawn, UNDERNEATH, so the two labels'
+ * glyphs interleave rather than one replacing the other. This is UNCHANGED by which end a label is
+ * anchored at: the later `<li>` always wins the paint order; the anchor only decides which line risks
+ * the tangle (a status line reaching down, or — anchored at the bottom — a name reaching up).
+ *
+ * ⛔ THE LABEL CARRIES ITS OWN HALO, NEVER A BOX (design review r2, card#7343 row 16 F1, replacing r1's
+ * opaque plaque — which blanked the drawing under it): `labelMax()` is the surface's visible width and
+ * not the plate's, so at whole-building fit on three or more floors a label is routinely wider than its
+ * plate and crosses the shaft, the cab or the plate below it — legible there because of a wall-coloured
+ * `text-shadow` stacked behind its glyphs, never because of what stands behind it, and never by hiding
+ * what stands behind it either: the arches, the shaft and the cab stay visible through it. The halo is
+ * set on this same element (an INHERITED CSS property, so every descendant text carries it too), so it
+ * is counter-scaled with the text and never scaled by the scene. Its colour, `building-scene.js`'s
+ * `LABEL_HALO`, clears 4.5:1 against the link and the body text as a colour pair; legibility over the
+ * drawing's darker parts rests on the stack's density, `LABEL_HALO_RADII`, and no contrast over the
+ * drawing itself is measured.
  *
  * ⛔ THE PLATE'S ACCESSIBLE NAME IS WHAT IT WAS: the link carries the name, ` — ` and the summary, in
  * that order, as it always did — the separator VISUALLY HIDDEN now that the two sit on lines of their own, and
  * still read. The rooms and the cab's word stay outside the link, as they were.
  */
 
-import { LABEL_FONT } from './building-scene.js';
+import { LABEL_FONT, LABEL_HALO, LABEL_HALO_RADII } from './building-scene.js';
+
+/**
+ * The halo itself: one zero-offset `text-shadow` layer of `LABEL_HALO` per radius in
+ * `LABEL_HALO_RADII` — why the stack is dense, and why each radius is repeated (two layers of opacity
+ * *a* composite to 1 − (1 − *a*)²), is that figure's docblock. Built once, here, rather than on every
+ * row `plateRow()` builds.
+ */
+const LABEL_TEXT_SHADOW = LABEL_HALO_RADII.map((r) => `0 0 ${r}px ${LABEL_HALO}`).join(', ');
 
 /**
  * Text kept for assistive technology and never painted — the conventional clip, since the page ships
@@ -102,6 +131,11 @@ export function plateRow(doc, plate, rect, here) {
         // The counter-scale about that same corner, so the scaled label's top stays on the plate's top edge.
         transformOrigin: '0 0',
         transform: 'scale(var(--label-scale))',
+        // ⛔ THE HALO, NEVER A BOX (design review r2, card#7343 row 16 F1): a wall-coloured `text-shadow`
+        // stacked behind the glyphs, set here so it is counter-scaled with the text and never scaled by
+        // the scene, and inherited by every descendant span — the name, the summary, the rooms and the
+        // cab's word alike. No background, no padding, no radius: the drawing under it stays visible.
+        textShadow: LABEL_TEXT_SHADOW,
     });
 
     // § 4.1: "one row per floor, THE ROW BEING THE LINK to the floor".

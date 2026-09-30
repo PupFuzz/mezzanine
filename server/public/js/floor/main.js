@@ -105,8 +105,11 @@ function list(id, lines) {
 
 const root = el('floor');
 
-/** The drawing's zoom buttons — handed to `wire/camera-keys.js` to wire, and offered by it on every render. */
-const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out') };
+/**
+ * The drawing's zoom buttons — handed to `wire/camera-keys.js` to wire — and its framing control, *Fit the
+ * floor*: all three offered by `offerKeys()` on every render (card#7343 comment 7692).
+ */
+const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit') };
 
 let lastFrame = null;
 
@@ -277,8 +280,9 @@ function paint(frame) {
     el('floor-drawing').dataset.dimmed = String(frame.failure.sign_in !== null);
     el('floor-camera').hidden = !drawn || frame.scene === null;
     el('floor-desks-heading').hidden = drawn;
-    // The keys and the zoom buttons are offered only while the camera frames the floor (card#7343 r4b):
-    // with nothing framed they do nothing, so the buttons are hidden and the drawing names no keys.
+    // The camera is offered only while it frames the floor (card#7343 r4b, comment 7692): with nothing
+    // framed its controls do nothing, so the zoom buttons and *Fit the floor* are hidden and the drawing is
+    // no tab stop and names no keys.
     offerKeys(el('floor-drawing'), zoomButtons, frame.camera);
 
     if (drawn) {

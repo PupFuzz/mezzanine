@@ -35,46 +35,57 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   coord 0.58.0 reds it. `bin/change-pr-body.selftest.py` plants those lines back and shows that
   linter reds each one.
 - **card#7343** — **The lobby's elevator ride now arrives at the floor, and the lobby has the floor's
-  camera at building scale** (FLOOR.md Appendix B row 16, slice A). The lobby opens with every floor
-  plate in view; the wheel zooms and a drag pans the building, and a *Whole building* control brings
-  every plate back into view. The building takes keyboard focus like the floor's drawing: `+` and `-`
-  zoom, the arrow keys pan, and *Zoom in* and *Zoom out* buttons sit beside *Whole building* — which
-  is also how a touch screen zooms it. Tabbing to a floor plate that is out of view brings the camera
-  to it. *Ride the elevator* moves the cab to the next floor, zooms the camera to that floor's plate
-  and then opens `/floor/{key}` — the floor's key, also on a floor the operator has labelled, so the
-  link does not change when a label does. The click commits the ride: the ride control is disabled
-  until the camera has reached the floor, and a wheel, a key, a zoom button, a drag, a window resize
-  or the *Whole building* control during the ride takes the viewer straight to the floor instead of
-  stopping it halfway; tabbing to a plate during the ride leaves it gliding, and clicking a floor plate
-  while the ride is gliding — or pressing Enter on one — does not open that floor, so a ride whose
-  glide is under way arrives where it was going. Once the page has asked for the floor the controls work again, so a navigation
-  the browser cancels does not leave the lobby stuck; coming back with the browser's Back button
-  works too. Under `prefers-reduced-motion` every camera move cuts rather than glides. None of it is
-  fleet state: no ride, zoom or pan writes an animation-log row, and a render leaves the camera where
-  the viewer put it. Each plate's name, and under it its status line — the seat counts, the rooms and
-  *the elevator is here* — is drawn over the plate at the page's own body text size and keeps that
-  size at every zoom, so a plate can be read with the whole building in view. The label wraps within
-  what is visible of the building's drawing to the right of its plate's left edge — never wider than
-  the drawing, and never narrower than a readable minimum unless the drawing is — so with the whole
-  building in view a label reads to its end without panning on any drawing wide enough to show that
-  minimum beside the plates, and on a narrow or browser-zoomed window a long status line takes more
-  lines rather than running out of sight. Each label starts at the top of its plate and grows down, so the top floor's name is always inside the drawing with the whole building in view. On a
-  building tall enough that a plate on the screen is shorter than its label's lines, neighbouring
-  plates' labels overlap at that view, and the bottom floor's last status lines can run past the
-  drawing's bottom edge until the viewer zooms in. With no floor layout loaded, the lobby's list of
-  rooms flows in the page as it did before, rather than in the building's fixed-height drawing, and
-  the mouse wheel, the arrow keys, text selection and a press on a room's link all work on it as they
-  did before, with the zoom buttons hidden: on either page the camera takes a wheel, a key, a press or
-  a drag only while it frames something, and otherwise leaves the event to the browser. A press on a
-  framed drawing starts no native drag and selects no text. Drawing each plate as the reference's
-  section, with the roof sign, ground lobby and sky, is slice B.
-  The shared camera (`wire/camera.js`) gained `focusOn()`, a zoom to one rect inside what is framed,
-  and the floor page and the lobby share one glide through `wire/camera-view.js`, one wheel-and-drag
-  wiring through `wire/camera-gestures.js` and one keyboard-and-zoom-button wiring through
-  `wire/camera-keys.js`: a drag that ends over a desk or a floor plate is never a click on it.
-  AT-D3-21's building half is `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`,
-  the shared wiring is driven under `node` by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`,
-  and the plates' text size is held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`.
+  camera at building scale** (FLOOR.md Appendix B row 16, slice A). The lobby opens with every floor plate
+  in view; the wheel zooms and a drag pans the building, and a *Whole building* control brings every plate
+  back into view. The building takes keyboard focus like the floor's drawing: `+` and `-` zoom, the arrow
+  keys pan, and *Zoom in* and *Zoom out* buttons sit beside *Whole building* — which is also how a touch
+  screen zooms it. Tabbing to a floor plate that is out of view brings the camera to it. *Ride the
+  elevator* moves the cab to the next floor, zooms the camera to that floor's plate and then opens
+  `/floor/{key}` — the floor's key, also on a floor the operator has labelled, so the link does not change
+  when a label does. The click commits the ride: the ride control is disabled until the camera has reached
+  the floor, and a wheel, a key, a zoom button, a drag, a window resize or the *Whole building* control
+  during the ride takes the viewer straight to the floor instead of stopping it halfway; tabbing to a
+  plate during the ride leaves it gliding, and clicking a floor plate while the ride is gliding — or
+  pressing Enter on one — does not open that floor, so a ride whose glide is under way arrives where it
+  was going. Once the page has asked for the floor the controls work again, so a navigation the browser
+  cancels does not leave the lobby stuck; coming back with the browser's Back button works too. Under
+  `prefers-reduced-motion` every camera move cuts rather than glides. None of it is fleet state: no ride,
+  zoom or pan writes an animation-log row, and a render leaves the camera where the viewer put it. Each
+  plate's name, and under it its status line — the seat counts, the rooms and *the elevator is here* — is
+  drawn over the plate at the page's own body text size and keeps that size at every zoom, so a plate can
+  be read with the whole building in view. The label wraps within what is visible of the building's
+  drawing to the right of its plate's left edge — never wider than the drawing, and never narrower than a
+  readable minimum unless the drawing is — so with the whole building in view a label reads to its end
+  without panning on any drawing wide enough to show that minimum beside the plates, and on a narrow or
+  browser-zoomed window a long status line takes more lines rather than running out of sight. Each label
+  starts at the top of its plate and grows down, so the top floor's name is always inside the drawing with
+  the whole building in view. On a building tall enough that a plate on the screen is shorter than its
+  label's lines, neighbouring plates' labels overlap at that view, and the bottom floor's last status
+  lines can run past the drawing's bottom edge until the viewer zooms in. With no floor layout loaded, the
+  lobby's list of rooms flows in the page as it did before, rather than in the building's fixed-height
+  drawing, and the mouse wheel, the arrow keys, text selection and a press on a room's link all work on it
+  as they did before, with the zoom buttons and *Whole building* hidden and the building out of the tab
+  order: on either page the camera takes a wheel, a key, a press or a drag only while it frames something,
+  and otherwise leaves the event to the browser and offers none of its controls — on the floor too, where
+  *Fit the floor* is hidden and the drawing is out of the tab order until the camera frames the floor. A
+  press on a framed drawing starts no native drag and selects no text, and a drag that is under way when
+  the drawing stops framing lets go of the pointer at its next move.
+  Slice B draws the building itself, in the reference's warm, rounded style and sharp at every zoom: a
+  roof with a *MEZZANINE* sign, each floor plate as a storey with its elevator doors, a ground-floor lobby
+  with its entrance, and the elevator cab in its shaft at the floor it is on. *Ride the elevator* glides
+  the cab to the next floor together with the camera, and cuts it there under `prefers-reduced-motion`;
+  the whole-building view takes in the roof and the ground lobby. The drawing is scenery: it shows no
+  fleet state, every floor of one building is drawn alike, and each plate's name and status line read over
+  it as before. The lobby draws no sky: a sky there would have to come from the floor's heartbeat-driven
+  room clock, which the lobby does not run, so the lobby keeps the plain page background.
+  `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` holds the drawing.
+  The shared camera (`wire/camera.js`) gained `focusOn()`, a zoom to one rect inside what is framed, and
+  the floor page and the lobby share one glide through `wire/camera-view.js`, one wheel-and-drag wiring
+  through `wire/camera-gestures.js` and one keyboard-and-zoom-button wiring through `wire/camera-keys.js`:
+  a drag that ends over a desk or a floor plate is never a click on it. AT-D3-21's building half is
+  `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`, the shared wiring is driven
+  under `node` by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`, and the plates' text size is
+  held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`.
 
 ## [0.6.0] — 2026-09-29
 

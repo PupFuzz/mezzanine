@@ -18,12 +18,16 @@
  *
  * ⛔ NO ANIMATION. § 6.5: "a snapshot never animates", and § 4.1's plates carry no § 6.2 row — so
  * there is nothing here to suppress, stated because the next reader adding a transition to a
- * re-render is the person this line is for.
+ * re-render is the person this line is for. The one transition on this page is the cab's, and it is
+ * the ride's: navigation, over the ride's own glide, and cut on every render that is no ride (the
+ * building's `drawing`, below).
  *
  * ⭐ THE CAMERA AT BUILDING SCALE AND THE RIDE'S ARRIVAL ARE THE SCREEN's (Appendix B row 16, slice A,
  * card#7343); this file supplies the building's drawing surface — a clipping drawing only while there
  * is a building to draw (`building-scene.js`'s `surfaceStyle()`) — stands each plate at the rect the
- * screen's scene gives it (`plate-row.js`'s row), shows the screen's camera on the plates as one
+ * screen's scene gives it (`plate-row.js`'s row) over the building `building-scene.js` draws — the roof and
+ * its sign, a storey under each plate, the ground lobby and the cab (slice B) — shows the screen's camera
+ * on the plates and the drawing as one
  * transform — each plate's text, its name and its status line, counter-scaled from that same camera,
  * so it is read at the page's body text size at every zoom (the operator's rulings, `building-scene.js`'s
  * `LABEL_FONT`), and wrapped within what is visible of the surface (`building-scene.js`'s `labelMax()`) — and wires the wheel, the drag, the keys, the zoom buttons, the keyboard's focus on a
@@ -44,6 +48,7 @@ import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
 import { framesNothing } from '../wire/camera.js';
 import { startLobbyScreen } from './lobby-screen.js';
 import { labelMax, labelScale, surfaceStyle } from './building-scene.js';
+import { buildingDrawing, keepDrawing, paintBuilding } from './building-paint.js';
 import { plateRow } from './plate-row.js';
 import { holdPlateLinks } from './ride-hold.js';
 
@@ -106,8 +111,11 @@ function unscroll() {
     node.scrollLeft = 0;
 }
 
-/** The building's zoom buttons — handed to `wire/camera-keys.js` to wire, and offered by it on every camera shown. */
-const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out') };
+/**
+ * The building's zoom buttons — handed to `wire/camera-keys.js` to wire — and its framing control, the
+ * whole-building control: all three offered by `offerKeys()` on every camera shown (card#7343 c7692).
+ */
+const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out'), fit: el('lobby-whole-building') };
 
 /**
  * One camera on the plates: the scene point at the camera's `x`, `y` at the surface's top-left, at its
@@ -128,8 +136,10 @@ const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out')
  * minimum is visible beside the plates, and a label no wider than the surface is one a pan can always
  * bring wholly into view.
  *
- * ⛔ AND THE KEYS AND THE ZOOM BUTTONS ARE OFFERED ONLY WHILE THE CAMERA FRAMES SOMETHING (card#7343 r4b,
- * the seat's ruling): `wire/camera-keys.js`'s `offerKeys()`, from the same camera.
+ * ⛔ AND THE CAMERA IS OFFERED ONLY WHILE IT FRAMES SOMETHING (card#7343 r4b, the seat's ruling, and
+ * comment 7692): the keys, the zoom buttons, the whole-building control and the building's tab stop —
+ * `wire/camera-keys.js`'s `offerKeys()`, from the screen's camera, which every gate reads, and never a
+ * glide's step towards it: a building that stops framing mid-glide withdraws them at once.
  */
 function view(camera) {
     const framed = !framesNothing(camera);
@@ -145,10 +155,37 @@ function view(camera) {
         : '';
     floors.style.setProperty('--label-scale', String(labelScale(camera)));
     floors.style.setProperty('--label-max', `${labelMax(camera)}px`);
-    offerKeys(el('lobby-building'), zoomButtons, camera);
+    offerKeys(el('lobby-building'), zoomButtons, screen.camera());
 }
 
 const { show, glideTo, current } = cameraView(view);
+
+/**
+ * ⭐ THE BUILDING's DRAWING — Appendix B row 16, slice B (card#7343): the roof and its sign, each plate as a
+ * storey of the reference's section, the ground lobby, and the cab in its shaft, all `building-scene.js`'s
+ * (`buildingArt()`, `CAB`, `cabStyle()`) and painted here deciding nothing, as `floor/painter.js` paints the
+ * floor's scene. One `<svg>` in the first row of `#lobby-floors`, so the camera's one transform moves and
+ * scales it with the plates; the plates' rows stand after it, so each plate's label reads over its storey
+ * and is never scaled by it (`plate-row.js`). Scenery carrying no fact: hidden from assistive technology,
+ * never a pointer's target, and painted from the scene's rects alone.
+ *
+ * ⛔ IT IS KEPT ACROSS RENDERS — `renderBuilding()` replaces every other row and never this one
+ * (`building-paint.js`'s `keepDrawing()`) — because the cab GLIDES: a ride sets `cabGlide` to its
+ * `glide_ms` before it draws the cab at its next stop, and a CSS transition carries the cab there over
+ * the ride's glide, which a row rebuilt on the render would cut. Arriving sets it back to `0`, so every
+ * other render — a snapshot, a delta, a re-seated cab — cuts the cab to where it stands, and under
+ * `prefers-reduced-motion` the ride's glide is `0` and the cab cuts too. The ride is navigation (§ 4.6's
+ * elevator row): the glide writes no animation-log row and starts nothing through the set, and the lobby
+ * loads no module that could. The construction, the keeping and the painting are `building-paint.js`'s —
+ * DOM operations extracted so a node probe can drive them (`Tests\Feature\Lobby\TheBuildingDrawingKeepsItsElementTest`).
+ */
+const { drawing, art, scenery, cabNode } = buildingDrawing(document);
+
+/** How long the cab may take to its stop on the next render — a ride's `glide_ms` while it is in flight, else `0`. */
+let cabGlide = 0;
+
+/** The building box the scenery was last painted for, so a render that changed no box repaints none. */
+let paintedBox = null;
 
 /** A list element rebuilt from lines the model has already decided the text of. */
 function list(id, lines) {
@@ -180,7 +217,9 @@ function list(id, lines) {
 function renderBuilding(building, scene, unclaimed, riding) {
     const rows = el('lobby-floors');
 
-    rows.textContent = '';
+    // Every row but the building's drawing, which stays so the cab can glide (see `drawing`).
+    keepDrawing(rows, drawing);
+
     // The surface is a drawing that clips only while there is a building to draw; with none — § 9 F17's
     // cold start, or no install — it is no box at all and the list flows in the page (card#7343 r3).
     Object.assign(el('lobby-building').style, surfaceStyle(scene));
@@ -188,6 +227,8 @@ function renderBuilding(building, scene, unclaimed, riding) {
     rows.style.position = scene?.extent ? 'relative' : '';
     rows.style.width = scene?.extent ? `${scene.extent.w}px` : '';
     rows.style.height = scene?.extent ? `${scene.extent.h}px` : '';
+    // The roof, the storeys, the ground lobby and the cab at the viewer's stop — nothing with no building.
+    paintedBox = paintBuilding(document, { drawing, art, scenery, cabNode }, scene, building.elevator.level, cabGlide, paintedBox);
 
     // § 9 F17's cold start: no layout was ever loaded, so no floor is composed and each install
     // the client holds is listed as a room with no floor claimed — every seat still reachable
@@ -260,8 +301,14 @@ function paint(frame) {
 
     const building = frame.building;
 
-    // The cab is re-seated on what the model RESOLVED it to, so a stranded cab reports itself once
-    // and the next render is an ordinary one. An uncomposed lobby (§ 9 F17) resolved nothing.
+    // The cab is re-seated on what the model RESOLVED it to, so a stranded cab reports itself once and
+    // the next render is an ordinary one. This is safe now that `cab` is never stale here (impl review
+    // r2, card#7343 row 16): `livePage(() => screen.render(() => cab))` reads `cab` through a thunk
+    // `lobby-screen.js`'s `render()` calls only after its own awaits, so `building` above was already
+    // composed from whatever `cab` was at THIS draw — `elevator.at` echoes it back unchanged unless the
+    // ride's own floor is gone (the stranded case this reseat exists for), so a ride in flight needs no
+    // special case here at all: it never diverges from the model. An uncomposed lobby (§ 9 F17) resolved
+    // nothing either way.
     if (building.composed) {
         cab = building.elevator.at;
     }
@@ -294,7 +341,7 @@ function paint(frame) {
     }
 }
 
-const { client, fetch: pageFetch, requestRender } = livePage(() => screen.render(cab));
+const { client, fetch: pageFetch, requestRender } = livePage(() => screen.render(() => cab));
 const screen = startLobbyScreen(client, pageFetch, paint, {
     surface: surface(),
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -332,8 +379,11 @@ el('lobby-elevator').addEventListener('click', () => {
     }
 
     cab = ride.cab;
+    // The cab glides to its stop with the camera — over the ride's glide, which is none under reduced motion.
+    cabGlide = ride.glide_ms;
     screen.draw(cab);
     glideTo(ride.from, ride.to, ride.glide_ms, () => {
+        cabGlide = 0;
         window.location.assign(ride.route);
         screen.returned();
         screen.draw(cab);

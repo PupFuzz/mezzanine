@@ -123,7 +123,7 @@ async function runScenario(scenario) {
                 client.start();
                 // The page's first render, which runs before the snapshot has answered — and what
                 // had been asked for by then, which is § 4.4's "then" made observable.
-                const first = screen.render(payload.cab ?? null);
+                const first = screen.render(() => payload.cab ?? null);
 
                 beforeSnapshot = [...requests];
                 await first;
@@ -148,7 +148,7 @@ async function runScenario(scenario) {
 
         // The page renders after every settled event; the render is what makes the entry's layout
         // request once a snapshot has applied.
-        const frame = await screen.render(payload.cab ?? null);
+        const frame = await screen.render(() => payload.cab ?? null);
 
         records.push({
             requests: [...requests],

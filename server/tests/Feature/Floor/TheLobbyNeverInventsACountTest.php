@@ -54,8 +54,8 @@ class TheLobbyNeverInventsACountTest extends TestCase
 
     /** RED — the lobby's own trigger back beside the protocol's: one disagreement, two fetches. */
     private const OWN_TRIGGER = ['../lobby/lobby-screen.js',
-        "        return this.draw(cab);\n    }",
-        "        const frame = this.draw(cab);\n\n        if (frame.discrepancy !== null && this.ownTrigger !== true) {\n            this.ownTrigger = true;\n            await this.#client.refresh();\n        }\n\n        return frame;\n    }"];
+        "        return this.draw(cabNow());\n    }",
+        "        const frame = this.draw(cabNow());\n\n        if (frame.discrepancy !== null && this.ownTrigger !== true) {\n            this.ownTrigger = true;\n            await this.#client.refresh();\n        }\n\n        return frame;\n    }"];
 
     /** RED — the budget as a poll: its memory removed, so a repeated pair is fetched again. */
     private const POLL = ['../wire/discrepancy-budget.js',
