@@ -87,6 +87,15 @@ class LobbyPageWiringTest extends TestCase
         $this->assertSame([], $this->livePageDefects($this->mainJs()));
     }
 
+    /**
+     * § 14 item 26 on the lobby (card#7343): its sky is § 6.2 A17's, so it writes an A17 row on every
+     * `feed.heartbeat` — through the page's log, which `wire/live-page.js` bounds with § 12's figure.
+     */
+    public function test_the_page_takes_its_animation_log_bounded_from_live_page(): void
+    {
+        $this->assertSame([], $this->pageLogDefects($this->mainJs()));
+    }
+
     public function test_the_page_serves_the_module_and_every_import_resolves(): void
     {
         $this->assertStringContainsString('type="module"', $this->lobbyPage());
@@ -256,7 +265,7 @@ class LobbyPageWiringTest extends TestCase
             'CONTROL (a label wrapped within the whole surface, not what is visible of it) did not bite');
 
         // CONTROL — the surface's style never applied: the page keeps whatever box it started with (r3).
-        $unstyled = str_replace("    Object.assign(el('lobby-building').style, surfaceStyle(scene));\n", '', $js);
+        $unstyled = str_replace("    Object.assign(el('lobby-building').style, surfaceStyle(scene, sky));\n", '', $js);
         $this->assertNotSame($unstyled, $js, "the surface control's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('surface', $this->cameraDefects($unstyled),
             'CONTROL (a surface style never applied) did not bite');
@@ -433,6 +442,13 @@ class LobbyPageWiringTest extends TestCase
         $this->assertNotSame($bypassed, $js, "CONTROL 12's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('recovery', $this->livePageDefects($bypassed),
             'CONTROL 12 did not bite: the page constructed its own protocol and the recovery check stayed clean');
+
+        // CONTROL 13 — the lobby constructing an unbounded log of its own for its sky's A17 rows (card#7343),
+        // beside the one `wire/live-page.js` constructs with § 12's retention.
+        $ownLog = str_replace('startLobbyScreen(client, pageFetch, clock, log, paint, {', 'startLobbyScreen(client, pageFetch, clock, createAnimationLog(), paint, {', $js);
+        $this->assertNotSame($ownLog, $js, "CONTROL 13's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('retention', $this->pageLogDefects($ownLog),
+            'CONTROL 13 did not bite: the page constructed an unbounded log and the retention check stayed clean');
     }
 
     /** @return array<string, string> */
@@ -446,7 +462,7 @@ class LobbyPageWiringTest extends TestCase
             // disabled while the frame says a ride is in flight, and the page coming back ends it.
             // … and the hold protects the glide only (r2-4): arriving asks for the route, then ends the hold.
             'ride in flight' => ['}, { commit: true });', 'ride.disabled = building.elevator.next === null || riding;',
-                'renderBuilding(building, frame.scene, summary.unclaimed, frame.riding);',
+                'renderBuilding(building, frame.scene, frame.sky, summary.unclaimed, frame.riding);',
                 "window.addEventListener('pageshow', (event) => {\n    if (event.persisted) {\n        screen.returned();",
                 "        window.location.assign(ride.route);\n        screen.returned();\n        screen.draw(cab);\n    }, { commit: true });",
                 // … and the committed ride wins over a plate link clicked during it (card#7343 r3b): the hold
@@ -490,7 +506,8 @@ class LobbyPageWiringTest extends TestCase
             // surface the render leaves. What the style is for each scene is
             // `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest`'s.
             'surface' => ["import { labelMax, labelScale, surfaceStyle } from './building-scene.js';",
-                "Object.assign(el('lobby-building').style, surfaceStyle(scene));",
+                // … with § 6.2 A17's sky, as the screen last set it, behind the building (card#7343's ruling).
+                "Object.assign(el('lobby-building').style, surfaceStyle(scene, sky));",
                 ': screen.resize(size);', 'view(current(camera));'],
             'reduced motion' => ["reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches"],
             // Appendix B row 16, slice B: the building's drawing — `building-scene.js`'s shapes, painted under

@@ -365,6 +365,64 @@ export function roomTick(localMs, readLocal = civilTime) {
     });
 }
 
+/**
+ * § 6.2 A17's DRIVER — the one place `roomTick()` is ever evaluated, held by every surface that draws
+ * A17's value: the floor's room render (`floor/floor-screen.js`) and the lobby's sky behind the building
+ * (`lobby/lobby-screen.js`, card#7343: *"On the lobby it is this row or nothing"*). Hoisted here at its
+ * second caller so the two surfaces cannot disagree on WHEN the value is set.
+ *
+ * ⛔ § 6.5's PROPERTY, AND NOT A LIST OF RENDERS: the value is set by a render that establishes or
+ * re-establishes a LIVE feed, and by nothing else. A `feed.heartbeat` is what A17 FIRES on (§ 6.2);
+ * what SETS the value with no log row at all is the ESTABLISHMENT the protocol journals
+ * (`feed.established`) — the connect sequence's snapshot, and the first message on a re-opened stream.
+ * Before either the value is `null` and is rendered as having none: "a plausible time on a page that
+ * has never been live is exactly the zero that rule refuses".
+ *
+ * ⛔ A POLL SETS NOTHING (§ 6.5, § 9 F1; AT-D3-6's Fourth RED), AND NEITHER DOES A TIMER OR THE 1 s TICK
+ * (§ 2.5, § 6.3). A poll's rows are a full snapshot in the journal like any other, and they are
+ * deliberately not what is read here: "the poll IS the timer" the amendment removed, so a surface that
+ * set the value on one would advance the clock — and step the sky — every 10 s of a dead feed. `take()`
+ * is called with a drained journal and reads the viewer's clock only when that journal says so.
+ */
+export class RoomClock {
+    #clock;
+
+    #readLocal;
+
+    #tick = null;
+
+    /**
+     * @param {{now: function(): number}} clock the browser's own clock
+     * @param {function(number): {hours: number, minutes: number}} [readLocal] the viewer's civil time
+     *        (`roomTick()`'s), the platform's own when not stated
+     */
+    constructor(clock, readLocal) {
+        this.#clock = clock;
+        this.#readLocal = readLocal;
+    }
+
+    /** `roomTick()`'s value as last set, or `null` until a render that established a LIVE feed. */
+    get tick() {
+        return this.#tick;
+    }
+
+    /**
+     * One drained journal: the value re-evaluated for the viewer's current time if the journal carries
+     * a `feed.heartbeat` or the feed's establishment, and left exactly as it was otherwise.
+     *
+     * @param {Array<object>} journal `FleetClient#takeWire()`'s entries
+     */
+    take(journal) {
+        const set = journal.some((entry) => entry.t === 'feed.heartbeat' || entry.t === 'feed.established');
+
+        if (set) {
+            this.#tick = roomTick(this.#clock.now(), this.#readLocal);
+        }
+
+        return this.#tick;
+    }
+}
+
 /** The viewer's civil hours and minutes, from the platform's own zone handling. */
 function civilTime(localMs) {
     const d = new Date(localMs);

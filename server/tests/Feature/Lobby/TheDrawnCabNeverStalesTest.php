@@ -54,8 +54,8 @@ class TheDrawnCabNeverStalesTest extends TestCase
         // again at the end alone would be harmless (it would just re-read the current value) — the plant
         // has to stop `draw()` from ever reading it late, which is the one thing that must never happen.
         $dir = $this->mutatedModules(['lobby-screen.js',
-            "    async render(cabNow) {\n        for (const entry of this.#client.takeWire()) {",
-            "    async render(cabNow) {\n        const cab = cabNow();\n\n        for (const entry of this.#client.takeWire()) {",
+            "    async render(cabNow) {\n        const journal = this.#client.takeWire();",
+            "    async render(cabNow) {\n        const cab = cabNow();\n        const journal = this.#client.takeWire();",
         ]);
         $js = (string) file_get_contents($dir.'/lobby-screen.js');
         $this->assertStringContainsString('return this.draw(cabNow());', $js,

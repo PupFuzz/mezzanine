@@ -65,7 +65,9 @@
  *                                               //  "wheel", "x", "y", "delta_y" } | { "act": "zoom",
  *                                               //  "notches" } | { "act": "drag", "dx", "dy" } | {
  *                                               //  "act": "focus", "floor" } | { "act": "resize",
- *                                               //  "width", "height" } ] }` — the ride control (the
+ *                                               //  "width", "height" } ], "local_hours": N,
+ *                                               //  "local_minutes": N }` — the last two the viewer's
+ *                                               //  civil time for the sky, as the floor's — the ride control (the
  *                                               //  viewer's cab moved to the stop it returns and the
  *                                               //  lobby DRAWN, as the page draws it; nothing
  *                                               //  drained), the ride's glide arriving (the page
@@ -293,6 +295,17 @@ console.log(JSON.stringify({
     // function, for AT-D3-14's panel half (`health_counters: [<counters>|null, …]`).
     health_counters: (fx.health_counters ?? []).map((counters) => healthCounters(counters)),
 }, null, 2));
+
+/**
+ * The viewer's civil time for § 4.2's clock and sky, on the floor or the lobby (`floor` or `lobby` in the
+ * scenario): its own `local_hours`/`local_minutes` where it states them, else the scenario clock read as
+ * UTC — see the header's *the viewer's civil time is the scenario's*.
+ */
+function viewerTime(run) {
+    return (ms) => (run.local_hours === undefined
+        ? { hours: new Date(ms).getUTCHours(), minutes: new Date(ms).getUTCMinutes() }
+        : { hours: run.local_hours, minutes: run.local_minutes ?? 0 });
+}
 
 async function replay(scenario) {
     rejections = [];
@@ -566,9 +579,7 @@ async function replay(scenario) {
             floor: scenario.floor.key,
             seat: scenario.floor.seat ?? null,
             reduce: scenario.reduce === true,
-            local_time: (ms) => (scenario.floor.local_hours === undefined
-                ? { hours: new Date(ms).getUTCHours(), minutes: new Date(ms).getUTCMinutes() }
-                : { hours: scenario.floor.local_hours, minutes: scenario.floor.local_minutes ?? 0 }),
+            local_time: viewerTime(scenario.floor),
             viewport: scenario.floor.viewport ?? VIEWPORT_FLOOR,
             surface: scenario.floor.surface,
         });
@@ -676,9 +687,13 @@ async function replay(scenario) {
     }
 
     if (lobbyRun !== null) {
-        lobby = startLobbyScreen(client, buildingHttp.fetch, (frame) => {
+        lobby = startLobbyScreen(client, buildingHttp.fetch, clock, log, (frame) => {
             lobbyRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)), label: plateLabel(frame.camera) });
-        }, { surface: lobbyRun.surface ?? VIEWPORT_FLOOR, reduce: scenario.reduce === true });
+        }, {
+            surface: lobbyRun.surface ?? VIEWPORT_FLOOR,
+            reduce: scenario.reduce === true,
+            local_time: viewerTime(lobbyRun),
+        });
     }
 
     // Appendix B row 16's camera acts on the lobby, each an event on the scenario queue, recorded with

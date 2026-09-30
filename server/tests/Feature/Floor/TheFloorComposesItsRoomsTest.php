@@ -635,7 +635,9 @@ class TheFloorComposesItsRoomsTest extends TestCase
      */
     public function test_red_a_room_set_on_every_render_shows_a_time_on_a_page_that_was_never_live(): void
     {
-        $always = $this->mutatedModules([self::FLOOR_SCREEN,
+        // A17's driver is `floor-layout.js`'s `RoomClock` since the lobby's sky became its second holder
+        // (card#7343), so the plant is planted there.
+        $always = $this->mutatedModules([self::FLOOR_LAYOUT,
             '        if (set) {',
             '        if (true) {',
         ]);

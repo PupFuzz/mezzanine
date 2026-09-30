@@ -16,11 +16,14 @@
  * discrepancy trigger is the protocol's alone: this page issues no snapshot fetch of its own, so one
  * disagreement costs one request, not two.
  *
- * ⛔ NO ANIMATION. § 6.5: "a snapshot never animates", and § 4.1's plates carry no § 6.2 row — so
- * there is nothing here to suppress, stated because the next reader adding a transition to a
- * re-render is the person this line is for. The one transition on this page is the cab's, and it is
- * the ride's: navigation, over the ride's own glide, and cut on every render that is no ride (the
- * building's `drawing`, below).
+ * ⛔ NO ANIMATION BUT A17's SKY. § 6.5: "a snapshot never animates", and § 4.1's plates carry no § 6.2
+ * row — so there is nothing here to suppress, stated because the next reader adding a transition to a
+ * re-render is the person this line is for. The one § 6.2 row this page draws is A17's: the sky behind
+ * the building (the operator's ruling on card#7343), whose value the screen sets on a delivered
+ * `feed.heartbeat` and which this page paints as a STEP — `building-scene.js`'s `surfaceStyle()`, with
+ * no transition — through the page's bounded animation log (`wire/live-page.js`). The one transition on
+ * this page is the cab's, and it is the ride's: navigation, over the ride's own glide, and cut on every
+ * render that is no ride (the building's `drawing`, below).
  *
  * ⭐ THE CAMERA AT BUILDING SCALE AND THE RIDE'S ARRIVAL ARE THE SCREEN's (Appendix B row 16, slice A,
  * card#7343); this file supplies the building's drawing surface — a clipping drawing only while there
@@ -175,8 +178,8 @@ const { show, glideTo, current } = cameraView(view);
  * the ride's glide, which a row rebuilt on the render would cut. Arriving sets it back to `0`, so every
  * other render — a snapshot, a delta, a re-seated cab — cuts the cab to where it stands, and under
  * `prefers-reduced-motion` the ride's glide is `0` and the cab cuts too. The ride is navigation (§ 4.6's
- * elevator row): the glide writes no animation-log row and starts nothing through the set, and the lobby
- * loads no module that could. The construction, the keeping and the painting are `building-paint.js`'s —
+ * elevator row): the glide writes no animation-log row and starts nothing through the set — the lobby's
+ * one path to the log is the screen's A17 over a drained journal, which no ride drains. The construction, the keeping and the painting are `building-paint.js`'s —
  * DOM operations extracted so a node probe can drive them (`Tests\Feature\Lobby\TheBuildingDrawingKeepsItsElementTest`).
  */
 const { drawing, art, scenery, cabNode } = buildingDrawing(document);
@@ -214,15 +217,16 @@ function list(id, lines) {
  * ⚠ THE STACK IS DRAWN FIRST-AT-THE-TOP, which is the reference artifact's direction and not a
  * ruling in the document — see `building-model.js`.
  */
-function renderBuilding(building, scene, unclaimed, riding) {
+function renderBuilding(building, scene, sky, unclaimed, riding) {
     const rows = el('lobby-floors');
 
     // Every row but the building's drawing, which stays so the cab can glide (see `drawing`).
     keepDrawing(rows, drawing);
 
     // The surface is a drawing that clips only while there is a building to draw; with none — § 9 F17's
-    // cold start, or no install — it is no box at all and the list flows in the page (card#7343 r3).
-    Object.assign(el('lobby-building').style, surfaceStyle(scene));
+    // cold start, or no install — it is no box at all and the list flows in the page (card#7343 r3). While
+    // it is a drawing, A17's sky fills it behind the building, at the phase the screen last set.
+    Object.assign(el('lobby-building').style, surfaceStyle(scene, sky));
     // The plates stand where the scene puts them (Appendix B row 16); with none, the list flows.
     rows.style.position = scene?.extent ? 'relative' : '';
     rows.style.width = scene?.extent ? `${scene.extent.w}px` : '';
@@ -313,7 +317,7 @@ function paint(frame) {
         cab = building.elevator.at;
     }
 
-    renderBuilding(building, frame.scene, summary.unclaimed, frame.riding);
+    renderBuilding(building, frame.scene, frame.sky, summary.unclaimed, frame.riding);
     // The render may just have made the surface a drawing, or stopped it being one (`surfaceStyle()`), so
     // the camera is sized to the surface as it now stands — a camera still at fit stays at fit.
     const size = surface();
@@ -341,8 +345,8 @@ function paint(frame) {
     }
 }
 
-const { client, fetch: pageFetch, requestRender } = livePage(() => screen.render(() => cab));
-const screen = startLobbyScreen(client, pageFetch, paint, {
+const { client, clock, fetch: pageFetch, requestRender, log } = livePage(() => screen.render(() => cab));
+const screen = startLobbyScreen(client, pageFetch, clock, log, paint, {
     surface: surface(),
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
 });

@@ -88,9 +88,16 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   the cab to the next floor together with the camera, and cuts it there under `prefers-reduced-motion`;
   the whole-building view takes in the roof and the ground lobby. The drawing is scenery: it shows no
   fleet state, every floor of one building is drawn alike, and each plate's name and status line read over
-  it as before. The lobby draws no sky: a sky there would have to come from the floor's heartbeat-driven
-  room clock, which the lobby does not run, so the lobby keeps the plain page background.
-  `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` holds the drawing.
+  it as before. `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` holds the drawing.
+  Behind the building, filling the rest of the drawing, the lobby draws the floor windows' sky — dimmed as
+  in the reference, with stars at night, and a flat starless sky until the page has been live. It is the
+  floor's own sky value on the floor's own driver: it follows the viewer's clock, moves only when a feed
+  heartbeat arrives — never on a timer or a poll — and stops when the feed dies, just as the floor's
+  windows do, and it steps to a new phase rather than fading, with reduced motion or without. That sky is
+  the lobby's one animation: each heartbeat writes one A17 row to the page's animation log and nothing
+  else. Both pages now take their animation log from `wire/live-page.js`, which bounds it with FLOOR.md
+  § 12's retention figure, and the floor screen and the lobby share one sky driver, `RoomClock` in
+  `floor/floor-layout.js`. `Tests\Feature\Floor\TheLobbySkyIsTheFloorsA17Test` holds the sky.
   The shared camera (`wire/camera.js`) gained `focusOn()`, a zoom to one rect inside what is framed, and
   the floor page and the lobby share one glide through `wire/camera-view.js`, one wheel-and-drag wiring
   through `wire/camera-gestures.js` and one keyboard-and-zoom-button wiring through `wire/camera-keys.js`:

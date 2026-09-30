@@ -37,19 +37,24 @@ use Tests\TestCase;
  * keyboard's focus on a plate not wholly in view glides the camera to it, and a focus on a plate already
  * in view — every plate, at fit — or on a key no plate has moves nothing.
  *
- * ⛔ THE LOG CLAUSE HAS ITS TEETH IN THE IMPORT GRAPH, AND THIS SAYS WHY. The lobby holds no animation
- * log — it animates nothing (§ 6.5; § 4.1's plates carry no § 6.2 row) — so the harness's log is empty
- * with the camera acts and without them, and no plant inside the lobby can reach it. What makes *the
- * animation log gains no row* true is that no module the lobby page loads can write one or start
- * anything through the set; that is asserted over the page's whole import graph from `lobby/main.js`.
+ * ⛔ THE LOG CLAUSE HAS ITS TEETH IN THE IMPORT GRAPH, AND THIS SAYS WHY. The lobby's one § 6.2 row is A17
+ * — its sky behind the building, fired by each `feed.heartbeat` (the operator's ruling on card#7343,
+ * 2026-09-30; § 4.1's plates carry no § 6.2 row) — so the harness's log holds the run's heartbeats' A17
+ * rows, and the SAME rows with the camera acts and without them. What makes *the animation log gains no
+ * row* true of a camera act is that the lobby reaches the log and the set by exactly ONE path — the page's
+ * bounded log from `wire/live-page.js`, handed to `lobby/lobby-screen.js`, the one module that constructs
+ * the set, drawing A17 alone (`TheLobbySkyIsTheFloorsA17Test` holds the rows that set writes) — and no
+ * other module the page loads can write a row or start anything through it; that is asserted over the
+ * page's whole import graph from `lobby/main.js`, as its edges into the two modules.
  * The walk reads, in each module's code (its comments blanked), every string-literal specifier after
  * `from`, after a bare `import` and inside `import(` — single quotes, double quotes, or a backtick with no
  * `${` (`Tests\Feature\Support\ModuleSpecifiers`) — and follows each that starts `./` or `../`; every
  * other specifier — an absolute path, a URL, a bare name, a template with `${`, an `import(` of anything
  * but one literal — is a DEFECT it cannot follow, never one it skips (card#7343 r2-1). Its REDs plant the
- * import in each form, each held to the reason it must red for: reaching the log or the set, or a
- * specifier the walk cannot follow. The replayed log comparison stays as the harness's own reading of the
- * GREEN, beside the discriminating control § 11 names.
+ * import in each form into the building's drawing (`lobby/building-scene.js`), each held to the reason it
+ * must red for: reaching the log or the set off the one path, or a specifier the walk cannot follow. The
+ * replayed log comparison stays as the harness's own reading of the GREEN, beside the discriminating
+ * control § 11 names.
  *
  * ⚠ WHAT THIS DOES NOT HOLD: the plate drawn as the reference's section, the cab drawn and glided, the
  * roof sign and the ground lobby — Appendix B row 16's slice B, whose drawing reads no plate's field
@@ -73,6 +78,18 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     private const FOCUS = 'building_focus';
 
     private const SCREEN = '../lobby/lobby-screen.js';
+
+    /** The module the import-form REDs are planted in — one the lobby page loads that is on neither path. */
+    private const DRAWING = '../lobby/building-scene.js';
+
+    /**
+     * The lobby page's one path to the log and the set (card#7343): importer => the module it may load.
+     * `live-page.js` constructs the page's bounded log; `lobby-screen.js` constructs the set over it.
+     */
+    private const PATH = [
+        'wire/live-page.js' => 'wire/animation-log.js',
+        'lobby/lobby-screen.js' => 'wire/animation-set.js',
+    ];
 
     private const EPSILON = 1e-6;
 
@@ -139,7 +156,7 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $this->assertSame([], $this->logDefects(self::RUN));
     }
 
-    public function test_green_no_module_the_lobby_page_loads_can_write_the_log_or_start_the_set(): void
+    public function test_green_no_module_the_lobby_page_loads_but_the_one_path_can_write_the_log_or_start_the_set(): void
     {
         $this->assertSame([], $this->graphDefects($this->jsRoot()));
     }
@@ -191,8 +208,8 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     }
 
     /**
-     * The logged ride: the lobby given the animation log to write a ride into, or the set to start one
-     * through — planted once per specifier form: after `from` (an import, a re-export), after a bare
+     * The logged ride: the lobby's drawing given the animation log to write a ride into, or the set to
+     * start one through, off the one path (`PATH`) — planted once per specifier form: after `from` (an import, a re-export), after a bare
      * `import`, and inside `import(`, in single quotes, double quotes and a backtick; and as an absolute
      * `/js/…` path, a URL, a bare name, a template with `${`, a variable and a concatenation. Each
      * control is held to the REASON it reds: a relative literal reds because the walk followed it to
@@ -229,14 +246,23 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     #[DataProvider('importForms')]
     public function test_red_a_lobby_that_loads_the_animation_log_in_any_import_form(string $line, string $reason): void
     {
-        $dir = $this->mutatedModules([self::SCREEN,
-            "import { buildingScene } from './building-scene.js';\n",
-            "import { buildingScene } from './building-scene.js';\n{$line}\n"]);
+        $dir = $this->mutatedModules([self::DRAWING,
+            "import { framesNothing } from '../wire/camera.js';\n",
+            "import { framesNothing } from '../wire/camera.js';\n{$line}\n"]);
 
         $defects = $this->graphDefects(dirname($dir));
 
         $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, $reason)),
             "CONTROL (the lobby loading the log or the set by `{$line}`) did not bite for its reason ({$reason}): ".json_encode($defects));
+    }
+
+    /** The one path gone — the lobby screen no longer loads the set — is a walk holding nothing, not a clean one. */
+    public function test_red_a_lobby_whose_one_path_to_the_set_is_gone(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, "import { AnimationSet } from '../wire/animation-set.js';\n", '']);
+
+        $this->assertNotSame([], array_filter($this->graphDefects(dirname($dir)), static fn (string $d): bool => str_contains($d, 'no longer loads')),
+            'CONTROL (the lobby screen no longer loading the set) did not bite for its reason');
     }
 
     /** A commented-out import is no import: the walk reads code, and documentation naming a module does not red. */
@@ -871,8 +897,10 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     /**
      * Every module the lobby page loads, from `lobby/main.js` through every specifier each module names
-     * (`ModuleSpecifiers::of()`) — and a defect for each that is the animation log or the animation set,
-     * the only two ways to write a row or start one, and for each specifier the walk cannot follow.
+     * (`ModuleSpecifiers::of()`) — and a defect for each import of the animation log or the animation set,
+     * the only two ways to write a row or start one, by any module but its one importer on `PATH`, for
+     * each module on `PATH` that no longer loads its one (the path the lobby's A17 rides is gone, so the
+     * walk would be holding nothing), and for each specifier the walk cannot follow.
      *
      * ⛔ AN UNFOLLOWABLE SPECIFIER IS A DEFECT, NEVER SKIPPED (card#7343 r2-1). An absolute `/js/…` path,
      * a URL, a bare name, a template with `${` or an `import(` of a variable loads a module this walk
@@ -886,6 +914,7 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $seen = [];
         $queue = ['lobby/main.js'];
         $defects = [];
+        $edges = [];
 
         while ($queue !== []) {
             $file = array_shift($queue);
@@ -906,17 +935,28 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
                     continue;
                 }
 
-                $queue[] = $this->normalise(dirname($file).'/'.$s['specifier']);
+                $target = $this->normalise(dirname($file).'/'.$s['specifier']);
+                $edges[] = [$file, $target];
+                $queue[] = $target;
             }
         }
 
         $this->assertContains('lobby/lobby-screen.js', array_keys($seen), 'the walk never reached the lobby screen — it read nothing');
         $this->assertContains('wire/camera.js', array_keys($seen), 'the walk never reached the camera — it read nothing');
 
-        return [...$defects, ...array_values(array_map(
-            static fn (string $f): string => "the lobby page loads {$f}, which writes the animation log or starts the set",
-            array_filter(array_keys($seen), static fn (string $f): bool => in_array(basename($f), ['animation-log.js', 'animation-set.js'], true)),
-        ))];
+        foreach ($edges as [$from, $to]) {
+            if (in_array(basename($to), ['animation-log.js', 'animation-set.js'], true) && (self::PATH[$from] ?? null) !== $to) {
+                $defects[] = "{$from} loads {$to}, which writes the animation log or starts the set off the lobby's one path to it";
+            }
+        }
+
+        foreach (self::PATH as $from => $to) {
+            if (! in_array([$from, $to], $edges, true)) {
+                $defects[] = "{$from} no longer loads {$to} — the lobby's one path to the log is not the one this walk holds";
+            }
+        }
+
+        return $defects;
     }
 
     private function normalise(string $path): string

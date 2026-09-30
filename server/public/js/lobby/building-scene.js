@@ -34,12 +34,18 @@
  * lobby under the bottom plate; `cabStyle()` stands the cab in its shaft at the viewer's plate. ⛔ SCENERY
  * CARRYING NO FACT: `buildingArt()` reads the scene's rects and nothing else — no plate's key, name,
  * summary or rooms — so two buildings of one height draw the same building
- * (`Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest`). ⛔ NO SKY AND NO CLOCK: § 4.1
- * — the lobby draws no wall clock, and no sky (the seat's ruling, card#7343, recorded at § 4.1): a sky
- * would be § 6.2 A17's, on A17's driver, and the lobby loads no module that fires A17 (it holds no
- * animation log, Appendix B row 16), so this drawing has no window a sky would show through. The roof
- * and the ground lobby stand inside the scene's `extent`, so the whole-building framing — the first
- * framing and the whole-building control — shows them.
+ * (`Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest`). The roof and the ground lobby
+ * stand inside the scene's `extent`, so the whole-building framing — the first framing and the
+ * whole-building control — shows them.
+ *
+ * ⭐ THE SKY BEHIND THE BUILDING, AND NO CLOCK (the operator's ruling on card#7343, 2026-09-30; § 4.1).
+ * `surfaceStyle()` paints the drawing surface — all of it the building does not cover, at every zoom —
+ * with the sky of the phase it is handed, in the reference's dim treatment: the phase's gradient at
+ * `SKY_OPACITY` under `SKY_WASH`, with stars at night (`docs/design/floor-preview/floor-preview.html`'s
+ * building). ⛔ THE PHASE IS NOT DECIDED HERE: it is § 6.2 A17's value, set by the floor's own driver on a
+ * delivered `feed.heartbeat` (`lobby-screen.js`'s frame `sky`), so this module maps a phase to paint and
+ * reads no clock. ⛔ NO TRANSITION, in either of A17's columns: the sky STEPS to its new value (§ 6.2
+ * A17, § 6.4). The lobby still draws no wall clock — that element is the floor's room render (§ 4.1).
  */
 
 import { framesNothing } from '../wire/camera.js';
@@ -210,7 +216,8 @@ const INK = {
  * plate's own body text (black, ≈19.1:1) — `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`
  * computes and holds both. That is a claim about the colour PAIR only: a blurred shadow is not an opaque
  * backing, so what a glyph actually stands on is the halo blended over whatever the drawing puts there,
- * and over the drawing's darker parts (the slab, #b27b56, is ≈2.6:1 against the link's blue) legibility
+ * and over the drawing's darker parts (the slab, #b27b56, is ≈2.6:1 against the link's blue) and over the
+ * sky behind the building, which a label wider than its plate crosses (card#7343), legibility
  * rests on the STACK's density — `LABEL_HALO_RADII` below — which that test holds as built, and not on
  * any contrast ratio measured over the drawing: none is (there is no renderer on the build host).
  */
@@ -436,19 +443,87 @@ export function cabStyle(scene, level, ms) {
 export const SURFACE_H = '70vh';
 
 /**
+ * The sky's paint per § 4.2 phase — the reference's own `SKY` table (`floor-preview.html`), top and bottom
+ * of its gradient, and whether the phase has stars. `unset` is the reference's null render (§ 6.5): the
+ * sky of a page that has never been live — flat, starless, no time of day at all, never a plausible one.
+ * Figures of the drawing's, carrying no fact: the fact is the phase.
+ */
+export const SKY = Object.freeze({
+    night: Object.freeze({ top: '#141c3a', bot: '#25335e', stars: true }),
+    dawn: Object.freeze({ top: '#3a3a6e', bot: '#e8927c', stars: false }),
+    day: Object.freeze({ top: '#8fc4e8', bot: '#cfe6f2', stars: false }),
+    dusk: Object.freeze({ top: '#4a3a6e', bot: '#f0a86a', stars: false }),
+    unset: Object.freeze({ top: '#2a2f42', bot: '#39405a', stars: false }),
+});
+
+/** The reference's dim treatment: the sky's gradient at this opacity, under `SKY_WASH` … */
+export const SKY_OPACITY = 0.45;
+
+/** … a wash of the reference's night ink at `.55`, over the reference drawing's own ground, `SKY_GROUND`. */
+export const SKY_WASH = 'rgba(18, 20, 31, 0.55)';
+
+/** The ground the reference paints its sky over (`floor-preview.html`'s drawing surface). */
+export const SKY_GROUND = '#1a1724';
+
+/** The night's stars, as points on the surface in percent of its size — the reference's own scatter, 26 of them. */
+const STARS = Object.freeze(Array.from({ length: 26 }, (_, i) => Object.freeze({
+    x: ((i * 181) % 1000) / 10,
+    y: ((i * 97) % 1000) / 10,
+    r: 1.2 + (i % 2),
+})));
+
+/** A `#rrggbb` at `alpha`, as CSS. */
+function rgba(hex, alpha) {
+    const n = Number.parseInt(hex.slice(1), 16);
+
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+/**
+ * The sky behind the building for a phase, as the surface's CSS background: the stars at night, over the
+ * wash, over the phase's gradient at `SKY_OPACITY`, over `SKY_GROUND` — `unset`'s when `phase` is `null`
+ * (no live feed yet, § 6.5).
+ *
+ * @param {string|null} phase § 6.2 A17's sky phase — `lobby-screen.js`'s frame `sky`
+ */
+export function skyBackground(phase) {
+    const sky = SKY[phase ?? 'unset'];
+    const stars = sky.stars
+        ? STARS.map((s) => `radial-gradient(circle at ${s.x}% ${s.y}%, rgba(232, 236, 255, 0.5) ${s.r}px, transparent ${s.r + 0.6}px)`)
+        : [];
+
+    return {
+        backgroundColor: SKY_GROUND,
+        backgroundImage: [
+            ...stars,
+            `linear-gradient(${SKY_WASH}, ${SKY_WASH})`,
+            `linear-gradient(to bottom, ${rgba(sky.top, SKY_OPACITY)}, ${rgba(sky.bot, SKY_OPACITY)})`,
+        ].join(', '),
+    };
+}
+
+/**
  * `#lobby-building`'s style for a scene: the clipping drawing surface the camera looks in when the scene
- * has an extent, and nothing — the list flowing in the page — when it has none or there is no scene.
- * Every member is set either way, so a lobby whose building goes away stops clipping.
+ * has an extent — the sky of `phase` filling it behind the building (`skyBackground()`) — and nothing — the
+ * list flowing in the page — when it has none or there is no scene. Every member is set either way, so a
+ * lobby whose building goes away stops clipping and loses its sky.
+ *
+ * ⛔ `transition` IS ALWAYS `none`: A17's sky steps to its new value in both of its columns (§ 6.2 A17,
+ * § 6.4), so no cross-fade between two phases is ever drawn — with motion or without.
  *
  * @param {{extent: object|null}|null} scene `buildingScene()`'s, or `null` where nothing is composed
+ * @param {string|null} phase § 6.2 A17's sky phase — `lobby-screen.js`'s frame `sky`
  */
-export function surfaceStyle(scene) {
+export function surfaceStyle(scene, phase) {
     const drawn = (scene?.extent ?? null) !== null;
+    const sky = drawn ? skyBackground(phase) : { backgroundColor: '', backgroundImage: '' };
 
     return {
         height: drawn ? SURFACE_H : '',
         overflow: drawn ? 'hidden' : '',
         touchAction: drawn ? 'none' : '',
         cursor: drawn ? 'grab' : '',
+        ...sky,
+        transition: 'none',
     };
 }

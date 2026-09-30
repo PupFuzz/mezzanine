@@ -42,6 +42,7 @@ const url = (file) => pathToFileURL(join(dir, file)).href;
 const { LobbyScreen } = await import(url('lobby-screen.js'));
 const { Building } = await import(url('../wire/building.js'));
 const { FleetClient, FEED_VERSION } = await import(url('../wire/fleet-client.js'));
+const { createAnimationLog } = await import(url('../wire/animation-log.js'));
 
 const SNAPSHOT = { api_version: 1, server_time: '2025-01-01T00:00:00.000Z', fleet: { seats_total: 0, seats_live: 0 }, installs: [] };
 const LAYOUT_V1 = { layout: { layout_version: 1, floors: [{ floor: 'a', rooms: [] }, { floor: 'b', rooms: [] }] }, rooms: [] };
@@ -85,9 +86,10 @@ async function run(releaseAt) {
         close() {}
     }
 
-    const client = new FleetClient(fetchImpl, CapturingEventSource, { now: () => 0 });
+    const clock = { now: () => 0 };
+    const client = new FleetClient(fetchImpl, CapturingEventSource, clock);
     const building = new Building(fetchImpl);
-    const screen = new LobbyScreen(client, building, { surface: { width: 1280, height: 800 } });
+    const screen = new LobbyScreen(client, building, clock, createAnimationLog(), { surface: { width: 1280, height: 800 } });
 
     client.start();
     await settle();
