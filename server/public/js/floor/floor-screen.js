@@ -1229,7 +1229,8 @@ function splitKey(key) {
  * The floor, started — the shape a page (Appendix B step 8) and the probe both drive.
  *
  * @param {object} client a `FleetClient`
- * @param {Function} fetchImpl the browser's own `fetch`, unbound — `wire/building.js`'s injection
+ * @param {Function} fetchImpl the page's `fetch` (`wire/live-page.js`) — `wire/building.js`'s injection,
+ *   and the tileset loader's
  * @param {{now: function(): number}} clock
  * @param {object} log the animation log every § 6.2 row is recorded in
  * @param {function(object): void} draw receives each floor frame
