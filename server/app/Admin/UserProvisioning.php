@@ -173,8 +173,9 @@ final class UserProvisioning
                 $user->password = $password;
 
                 // The two credentials the old password bought, taken back in the same transaction
-                // that replaces it — see the docblock for why each one outlives the hash and why
-                // this one deletes the current session's row too.
+                // that replaces it — see the docblock for why the session row outlives the hash,
+                // why the token is rotated anyway, and why this one deletes the current session's
+                // row too.
                 $user->setRememberToken(Str::random(60));
 
                 DB::table(config('session.table', 'web_sessions'))
