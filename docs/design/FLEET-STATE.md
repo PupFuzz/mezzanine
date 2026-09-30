@@ -3475,7 +3475,7 @@ difference is the whole of the rule the framing paragraph above states. `eventSt
 `$event = 'update'` and reads an event name off the yielded value **only** when that value is
 `instanceof \Illuminate\Http\StreamedEvent`, whose constructor is `(string $event, mixed $data)`
 (`Illuminate\Routing\ResponseFactory::eventStream()` and `Illuminate\Http\StreamedEvent`,
-laravel/framework v13.26.1, read at source in this tree). So a builder who follows this block
+laravel/framework v13.26.1, read at source; unchanged through v13.34.0). So a builder who follows this block
 literally and yields the bare envelope ships `event: update` on **every** message, the client's one
 `addEventListener("mezzanine", …)` ([FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)) never
 fires, and the floor renders F19 against a stream that opened perfectly — the same failure the
@@ -3618,7 +3618,7 @@ suspended generator, so no line after the pending `yield` ever runs*, and that r
 on its own. `eventStream()` tests `connection_aborted()` at the **TOP of its loop body**, so a `break`
 there is reached only after `foreach` has already resumed the generator past its pending `yield` — the
 lines after the `yield` DO run, on that reading (`Illuminate\Routing\ResponseFactory::eventStream()`,
-laravel/framework v13.26.1, the `composer.lock` pin, read at source in the card#9287 maintainer round;
+laravel/framework v13.26.1, the `composer.lock` pin at the time, read at source in the card#9287 maintainer round and unchanged through v13.34.0;
 this repository carries no `vendor/` tree, so the read is cited rather than repeated here). What
 actually keeps them from running is that with `ignore_user_abort` off PHP **terminates the script** at
 the aborted write, and the generator is destroyed rather than resumed. ⛔ **So the conclusion is right
