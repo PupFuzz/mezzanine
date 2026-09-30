@@ -28,10 +28,10 @@
 import { LABEL_FONT, LABEL_LINE_PX } from './label-paint.js';
 
 /**
- * The small inset every visible line stands on, every side: room for a glyph's own rendered ink, which
- * can sit a few px past its line box's edge and still read as part of the same word, so it does not fall
- * outside the backing (falling back) onto whatever is behind it. Horizontal only, so a shorter line never
- * looks padded above or below its neighbour.
+ * The inset every visible line's backing extends past its text, LEFT AND RIGHT ONLY: room for a glyph's
+ * own rendered ink, which can sit a few px past its line box's side edge, to stay on the backing (falling
+ * back). There is no vertical inset, so a shorter line never looks padded above or below its neighbour —
+ * and so the backing ends exactly at the line box's top and bottom edges.
  */
 const LINE_PAD = '0 5px';
 

@@ -63,21 +63,10 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   cancels does not leave the lobby stuck; coming back with the browser's Back button works too. Under
   `prefers-reduced-motion` every camera move cuts rather than glides. None of it is fleet state: no ride,
   zoom or pan writes an animation-log row, and a render leaves the camera where the viewer put it. Each
-  plate's name, and under it its status line — the seat counts, the rooms and *the elevator is here* — is
-  drawn at the page's own body text size and keeps that size at every zoom, so a plate can be read with the
-  whole building in view. Each label stands beside its plate, to the left of the building, in warm gold text,
-  and never over the drawing — so no label pixel ever covers the shell, the windows, the shaft or the cab
-  wherever there is room for it. On a screen too narrow for that (a phone, or the elevator ride zoomed in on
-  one plate), the label falls back to standing on the plate as before, in dark text on its own pale backing.
-  Each line of a label — the name (with *the elevator is here* riding the same line, on the floor that holds
-  the cab), the seat counts, and the rooms — is a single line that ellipsizes rather than wraps if it runs
-  long; where a plate on the screen is too short for its whole label, the rooms line drops first and then the
-  seat counts — the floor's name, and the elevator cue where it applies, always stay on the first line, so
-  every plate keeps its accessible name and the cab's own floor keeps its cue. A dropped line is not removed
-  for a screen reader: it stays available to one even while nothing is drawn for it, so a floor's seat counts
-  or its rooms are still read to an assistive-technology user at any zoom, right after the plate's own link.
-  With no floor layout loaded, the
-  lobby's list of rooms flows in the page as it did before, rather than in the building's fixed-height
+  floor's name and status line are now readable with the whole building in view, and a floor's link
+  announces its name together with its seat counts, e.g. "Floor 2, 4 seats · 3 live" — clicking the seat
+  counts also opens that floor. FLOOR.md § 4.1 states what the label does. With no floor layout loaded,
+  the lobby's list of rooms flows in the page as it did before, rather than in the building's fixed-height
   drawing, and the mouse wheel, the arrow keys, text selection and a press on a room's link all work on it
   as they did before, with the zoom buttons and *Whole building* hidden and the building out of the tab
   order: on either page the camera takes a wheel, a key, a press or a drag only while it frames something,
@@ -90,8 +79,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   with its entrance, and the elevator cab in its shaft at the floor it is on. *Ride the elevator* glides
   the cab to the next floor together with the camera, and cuts it there under `prefers-reduced-motion`;
   the whole-building view takes in the roof and the ground lobby. The drawing is scenery: it shows no
-  fleet state, every floor of one building is drawn alike, and each plate's name and status line read over
-  it as before. `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` holds the drawing.
+  fleet state, and every floor of one building is drawn alike. `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` holds the drawing.
   Each floor plate's arched windows now show the time of day, as the reference's windows do: the sky's
   gradient at full strength, stars and a moon at night, the sun by day, at dawn and at dusk, and a city
   roofline whose windows light up after dark. Behind the building the rest of the drawing shows the same
@@ -102,10 +90,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   fading, with reduced motion or without. Every sky on both pages is painted from one table in
   `floor/floor-layout.js`, so the floor's windows now show that table's gradient instead of flat colours
   — the lobby's own windows read the same table further, adding the stars, the moon, the sun and the lit
-  city the floor's windows do not draw. A floor's name and status line now sit on a pale backing, one box per line, so they stay
-  readable where they run over a dark window or off the plate onto the night sky;
-  `tools/design/lobby-label-contrast.browser.mjs` measures that contrast in a headless browser and is run
-  by hand, not in CI. That sky is
+  city the floor's windows do not draw. That sky is
   the lobby's one animation: each heartbeat writes one A17 row to the page's animation log and nothing
   else. Both pages now take their animation log from `wire/live-page.js`, which bounds it with FLOOR.md
   § 12's retention figure, and the floor screen and the lobby share one sky driver, `RoomClock` in
@@ -116,12 +101,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   a drag that ends over a desk or a floor plate is never a click on it. AT-D3-21's building half is
   `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`, the shared wiring is driven
   under `node` by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`, and the plates' text size is
-  held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`. A wheel, a drag or an elevator
-  glide can never leave a label planned for a camera the viewer has already left. A floor's link now
-  announces its name with its seat counts together, e.g. "Floor 2, 4 seats · 3 live"; clicking the seat
-  counts also opens that floor, the same as clicking the name. Contrast, placement and overlap are held on
-  rendered pixels by `tools/design/lobby-label-contrast.browser.mjs`, run by hand — see FLOOR.md § 4.1 for
-  the full contract.
+  held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`.
 
 ## [0.6.0] — 2026-09-29
 

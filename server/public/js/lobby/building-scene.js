@@ -100,10 +100,7 @@ export function buildingScene(plates) {
 
 /**
  * The storey's parts, in scene px from a plate's top-left — the drawing's, carrying no fact. The shaft
- * stands at the plate's RIGHT; the plate's label stands beside the building wherever there is room
- * (`lobby/label-paint.js`, FLOOR.md § 4.1), falling back to standing on the plate — where it can land
- * over the shaft or the cab, and stays legible there because of the backing `label-paint.js` paints each
- * visible span on.
+ * stands at the plate's RIGHT; where a plate's label stands is FLOOR.md § 4.1's (`lobby/label-paint.js`).
  */
 const STOREY = {
     skirting: 836,

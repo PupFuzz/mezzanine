@@ -103,6 +103,14 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     }
 
     /** Every status part is drawn somewhere in the runs — else the status clause read a line with nothing on it. */
+    /** Every plate row every run draws, against `constructionDefects()` — the green its row plants below red. */
+    public function test_green_every_plate_row_is_built_to_the_construction_contract(): void
+    {
+        foreach (self::RUNS as $run) {
+            $this->assertSame([], $this->constructionDefects($this->rows($this->replay($run))), "[{$run}]");
+        }
+    }
+
     public function test_green_the_runs_draw_every_part_of_the_status_line(): void
     {
         foreach (self::RUNS as $run) {
@@ -293,6 +301,11 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             'a label at a left of its own' => ["left: 'var(--label-left)',", "left: '0px',", 'a left of its own'],
             'a label with no halo' => ["textShadow: 'var(--label-halo)',", '', 'no halo'],
             'a link whose colour is not the variable' => ["const link = textEl(doc, 'a', 'var(--label-ink)');", "const link = textEl(doc, 'a', '#ffcf7d');", 'colour is not the variable'],
+            'the summary link underlined' => ["summaryLink.style.textDecoration = 'none';", '', 'underlined'],
+            'the name link\'s focus ring drawn outside its box' => ["    link.style.outlineOffset = '-2px';", '', 'name link\'s outline-offset'],
+            'the summary link\'s focus ring drawn outside its box' => ["summaryLink.style.outlineOffset = '-2px';", '', 'summary link\'s outline-offset'],
+            'the cue hidden from assistive technology' => ["        cue.style.flex = '0 0 auto';", "        cue.style.flex = '0 0 auto';\n        cue.setAttribute('aria-hidden', 'true');", 'hidden from assistive technology'],
+            'the rooms line hidden from assistive technology' => ['        line3.append(rooms);', "        line3.append(rooms);\n        line3.setAttribute('aria-hidden', 'true');", 'hidden from assistive technology'],
         ];
     }
 
@@ -433,14 +446,14 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     }
 
     /**
-     * Every built row against the STRUCTURAL contract `plate-row.js`'s own docblock states: the link's
-     * text is the plate's name alone, the cue rides line 1 beside it (never inside the link, never absent
-     * on the cab's plate, never present elsewhere), the summary is line 2 and the rooms line, where the
-     * plate names any, is line 3 — in that DOM order, so a screen reader reaches them in that sequence
-     * regardless of the line budget — every visible line clips whole (`overflow: clip`, a line budget, a
-     * width to fit within), carries the backing property and the halo property, and the link's own colour
-     * is set directly (never merely inherited — the `:visited` reasoning `plate-row.js`'s own docblock
-     * gives).
+     * Every built row's structure, as `plate-row.js` sets it: the label reads `var(--label-left)`,
+     * `var(--label-width)`, a `max-height` over `--label-lines`, `clip-path: inset(-4px -4px 0 -4px)` and
+     * `text-shadow: var(--label-halo)`; line 1 is the name link (its text the name alone, its `aria-label`
+     * the name and the summary, its colour `var(--label-ink)`) with the cue beside it on the cab's plate
+     * only; line 2 is the summary link (same `href`, `tabIndex` -1, `aria-hidden`, `text-decoration: none`);
+     * line 3 is the rooms line where the plate names any; both links' `outline-offset` is `-2px`; every
+     * line is `nowrap` + `ellipsis` + `overflow: hidden` and carries `var(--label-backing)`; and nothing on
+     * the path to the cue or the rooms line carries `aria-hidden`. What the label must do is FLOOR.md § 4.1.
      *
      * @param  list<array{0: array, 1: array, 2: bool, 3: array}>  $rows
      * @return list<string>
@@ -533,6 +546,10 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
                     $defects[] = "the plate {$plate['floor']}'s link has no backing";
                 }
 
+                if (($link['style']['outlineOffset'] ?? null) !== '-2px') {
+                    $defects[] = "the plate {$plate['floor']}'s name link's outline-offset is not -2px — its focus ring can fall outside the label's clip";
+                }
+
                 // The operator's ruling (2026-09-30, opq-1790766555-81d4): the accessible name is the name
                 // AND the summary, together, in the exact punctuation the ruling's own example uses —
                 // `aria-label` (empirically chosen over `aria-labelledby`, `plate-row.js`'s own docblock
@@ -545,6 +562,15 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             }
 
             $cue = $line1['children'][1] ?? null;
+            $line3 = $label['children'][2] ?? null;
+
+            // The cue and the rooms line reach a screen reader as ordinary text: nothing from the label
+            // down to either carries `aria-hidden` (the summary link alone is hidden, above).
+            foreach (['the label' => $label, 'line 1' => $line1, 'the cue' => $cue, 'line 3' => $line3, 'the rooms line' => $line3['children'][0] ?? null] as $what => $node) {
+                if ($node !== null && array_key_exists('aria-hidden', $node['attrs'] ?? [])) {
+                    $defects[] = "the plate {$plate['floor']}'s {$what} is hidden from assistive technology (aria-hidden)";
+                }
+            }
 
             if ($here) {
                 if ($cue === null || ($cue['text'] ?? null) !== ' — the elevator is here') {
@@ -586,11 +612,18 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
                     if (($summaryLink['attrs']['aria-hidden'] ?? null) !== 'true') {
                         $defects[] = "the plate {$plate['floor']}'s summary link is announced a second time (aria-hidden is not true)";
                     }
+
+                    if (($summaryLink['style']['textDecoration'] ?? null) !== 'none') {
+                        $defects[] = "the plate {$plate['floor']}'s summary link is underlined (text-decoration is not none)";
+                    }
+
+                    if (($summaryLink['style']['outlineOffset'] ?? null) !== '-2px') {
+                        $defects[] = "the plate {$plate['floor']}'s summary link's outline-offset is not -2px — its focus ring can fall outside the label's clip";
+                    }
                 }
             }
 
             $needsRooms = count($plate['rooms']) > 1 || array_any($plate['rooms'], static fn (array $r): bool => ! $r['reported']);
-            $line3 = $label['children'][2] ?? null;
 
             if ($needsRooms) {
                 $roomsSpan = ($line3['tag'] ?? null) === 'div' ? ($line3['children'][0] ?? null) : null;

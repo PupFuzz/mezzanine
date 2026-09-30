@@ -56,8 +56,11 @@
 // with its neighbours, which masks the slice check's own signal there by the declared blind spot below,
 // so this plant is not this check's own proof); the label's own clip-path bled on the bottom too (sliced
 // lines, alone — never via overlap); the side threshold shrunk below the cue's own measured width
-// (cue-reachable); and the fallback backing dimmed well past its own contrast floor, on a DIFFERENT line
-// than any declared residual (phone residual — proving a new defect still reds despite an accepted one).
+// (cue-reachable); and the fallback backing at alpha 0.4 on every fallback line (phone residual — a new
+// defect still reds on a run that also carries an accepted one). Each browser control's predicate is
+// also run against the shipped render, a no-op plant, and must NOT catch there. `residualSplit()` is
+// checked on synthetic samples with no browser: its declared line and band hold, another line, another
+// band or one past the cap red.
 //
 // ⚠ DECLARED BLIND SPOT, LEFT — NOT CHEAP TO CLOSE: the slice check's own neighbour-exclusion (`MEASURE`'s
 // per-pixel loop, "explainedElsewhere") was added to stop a genuine false positive — a glyph pixel that is
@@ -98,10 +101,10 @@ const PLANTS = {
   // pushing it past the label's own left edge — reachable ONLY by this specific narrow-width shape, never
   // by `LABEL_GAP_PX` or the line budget, so it cannot trip coverage, overlap or the slice check.
   cueWidth: ['export const LABEL_SIDE_MIN_PX = 240;', 'export const LABEL_SIDE_MIN_PX = 50;'],
-  // r6's fix round (R3): a NEW under-threshold pixel on the phone run, on a DIFFERENT span than the
-  // declared residual's (the name line, never the rooms line) — proving the residual's span+y-band key
-  // actually discriminates: this defect must still red despite the phone run ALSO carrying its accepted
-  // residual, because `residualSplit()` only ever explains samples matching the declared span AND band.
+  // The fallback backing at alpha 0.4 — every line of every FALLBACK label (the phone run's among them)
+  // stands on a see-through backing, so the phone run gains under-threshold samples on lines and y-bands
+  // its declared residual does not name, and must red despite also carrying that residual.
+  // `residualSplitControls()` below is what shows the span+y-band key itself discriminates.
   phoneResidual: ['export const LABEL_BACKING = rgba(INK.wall, 0.985);', 'export const LABEL_BACKING = rgba(INK.wall, 0.4);'],
 };
 
@@ -493,10 +496,12 @@ const RESIDUALS = [
     cap: 3,
   },
   {
-    what: 'the phone-width fallback\'s own rooms-line descender ring',
-    reason: 'anti-aliasing at a descender\'s own hard edge ("reported" in the rooms line) once the summary '
-      + 'link\'s underline is no longer counted as a glyph pixel (R2 dropped it; R3 makes both captures '
-      + 'agree on decoration) — not a backing/ink defect',
+    what: 'the phone-width fallback\'s rooms line: a ring sample past its backing\'s bottom edge',
+    reason: 'measured, not inferred: the glyph pixels (x 172-174, y 264) stand on the backing (bare capture '
+      + '≈ rgb(249,240,226)); the ring\'s 3px sample straight below them, y 267, lies past the line box\'s '
+      + 'bottom edge (y ≈ 267.09 — `plate-row.js`\'s LINE_PAD is \'0 5px\', no vertical room) on the '
+      + 'night scene (≈ rgb(24,34,67)), and the dark ink reads ≈ 1.1:1 against THAT pixel, not against '
+      + 'anything the glyph stands on',
     match: (run) => run.w === 375 && run.h === 812,
     text: '— rooms: alpha (office), beta (office — no seats reported for this room)',
     yBand: [263, 265],
@@ -506,9 +511,10 @@ const RESIDUALS = [
 
 /**
  * Every under-threshold sample this run produced, split into what a declared residual explains and what
- * it does not — the residual's own `match`, `text` and `yBand` must ALL agree, never the run alone.
+ * it does not — the residual's own `match`, `text` and `yBand` must ALL agree, never the run alone —
+ * and whether the run's contrast holds: nothing unexplained, and no more explained than the cap.
  *
- * @return {{ explained: number, unexplained: Array<{text: string, y: number}>, declared: ?object }}
+ * @return {{ explained: number, unexplained: Array<{text: string, y: number}>, declared: ?object, ok: boolean }}
  */
 function residualSplit(run, underSamples) {
   const declared = RESIDUALS.find((res) => res.match(run));
@@ -523,7 +529,37 @@ function residualSplit(run, underSamples) {
     }
   }
 
-  return { explained: explained.length, unexplained, declared: declared ?? null };
+  const ok = unexplained.length === 0 && (declared === undefined || explained.length <= declared.cap);
+
+  return { explained: explained.length, unexplained, declared: declared ?? null, ok };
+}
+
+/**
+ * `residualSplit()` on synthetic samples, no browser: for each declared residual, N samples on its own
+ * line inside its band must hold, and the SAME N samples moved to another line, or out of the band, must
+ * red — the span+y-band key discriminating, shown directly. N is the residual's own cap.
+ *
+ * @return {string[]} one line per control that did not behave
+ */
+function residualSplitControls() {
+  const bad = [];
+
+  for (const res of RESIDUALS) {
+    const run = RUNS.find((r) => res.match(r));
+    if (run === undefined) { bad.push(`${res.what}: no run in RUNS matches it — the residual declares nothing measured`); continue; }
+    const n = res.cap;
+    const inBand = Array.from({ length: n }, () => ({ text: res.text, y: res.yBand[0] }));
+    const otherLine = Array.from({ length: n }, () => ({ text: res.text + ' (another line)', y: res.yBand[0] }));
+    const outOfBand = Array.from({ length: n }, () => ({ text: res.text, y: res.yBand[1] + 1 }));
+    const overCap = Array.from({ length: n + 1 }, () => ({ text: res.text, y: res.yBand[0] }));
+
+    if (!residualSplit(run, inBand).ok) bad.push(`${res.what}: ${n} samples on its own line inside its band red`);
+    if (residualSplit(run, otherLine).ok) bad.push(`${res.what}: ${n} samples on another line hold`);
+    if (residualSplit(run, outOfBand).ok) bad.push(`${res.what}: ${n} samples one row past its band hold`);
+    if (residualSplit(run, overCap).ok) bad.push(`${res.what}: ${n + 1} samples, one past its cap, hold`);
+  }
+
+  return bad;
 }
 
 /** Every run, measured; each result carries `ok`. */
@@ -558,8 +594,7 @@ async function judge(chrome, plant) {
         const population = run.zoom === 'plate' ? 1 : run.floors;
         const measured = spans.length >= population * 2 && m.glyphs > 200 * population && boxes.building !== null;
         const side = boxes.side;
-        const { explained, unexplained, declared } = residualSplit(run, m.underSamples);
-        const residualOk = declared === null ? unexplained.length === 0 : unexplained.length === 0 && explained <= declared.cap;
+        const { explained, unexplained, declared, ok: residualOk } = residualSplit(run, m.underSamples);
         results.push({
           ...run, surface, side, spans: spans.length, ...m, covered: +covered.toFixed(2), overlap: +overlap.toFixed(2),
           unreachable: unreachable.length, measured, residual: declared ? declared.what : null, residualExplained: explained, residualUnexplained: unexplained,
@@ -583,6 +618,16 @@ const report = (r) => `${r.ok ? 'PASS' : 'FAIL'}  ${String(r.floors).padStart(2)
   + `${r.residual ? `  ACCEPTED RESIDUAL (${r.residualExplained}): ${r.residual}` : ''}`
   + `${r.residualUnexplained?.length ? `  UNEXPLAINED under-threshold: ${JSON.stringify(r.residualUnexplained.slice(0, 5))}` : ''}`;
 
+const selftest = argOf('--selftest') !== null || process.argv.includes('--selftest');
+
+if (selftest) {
+  const bad = residualSplitControls();
+  console.log('── CONTROL (residualSplit, synthetic samples): the declared line and band hold; another line, another band or one past the cap red');
+  for (const b of bad) console.log(`CONTROL NOT CAUGHT (residualSplit) — ${b}`);
+  console.log(bad.length === 0 ? 'CONTROL CAUGHT (residualSplit)' : 'CONTROL NOT CAUGHT (residualSplit)');
+  if (bad.length > 0) process.exitCode = 1;
+}
+
 const chrome = findChrome();
 if (chrome === null) {
   console.error('FAIL — no Chromium: pass --chrome <path>, set $CHROME, or install one under ~/.cache/ms-playwright. A missing browser is a failure, never a skip.');
@@ -593,9 +638,9 @@ const shipped = await judge(chrome, null);
 console.log('── the shipped lobby labels — contrast, coverage, overlap, line integrity');
 for (const r of shipped) console.log(report(r));
 
-let failed = shipped.some((r) => !r.ok);
+let failed = shipped.some((r) => !r.ok) || process.exitCode === 1;
 
-if (argOf('--selftest') !== null || process.argv.includes('--selftest')) {
+if (selftest) {
   const judgePlants = {
     contrast: ['plate-row.js', PLANTS.contrast],
     coverage: ['label-paint.js', PLANTS.coverage],
@@ -603,18 +648,30 @@ if (argOf('--selftest') !== null || process.argv.includes('--selftest')) {
     phoneResidual: ['label-paint.js', PLANTS.phoneResidual],
   };
 
+  // What each control counts as caught. Every predicate is also run against the SHIPPED results — a
+  // no-op plant — and must NOT catch there, so a predicate that holds whatever is planted reds here.
+  const bites = {
+    contrast: (rs) => rs.some((r) => !r.ok && r.residualUnexplained.length > 0),
+    coverage: (rs) => rs.some((r) => r.side === 'left' && r.covered > 0),
+    cueWidth: (rs) => rs.some((r) => r.unreachable > 0),
+    // The phone run itself must carry an UNEXPLAINED sample and red — more samples its residual's cap
+    // could absorb would not count.
+    phoneResidual: (rs) => rs.some((r) => r.w === 375 && r.h === 812 && r.residualUnexplained.length > 0 && !r.ok),
+  };
+
+  for (const check of Object.keys(judgePlants)) {
+    const vacuous = bites[check](shipped);
+    console.log(vacuous ? `CONTROL VACUOUS (${check}) — its predicate already holds on the shipped render, so it would catch any plant, or none`
+      : `CONTROL NOT VACUOUS (${check}) — its predicate does not hold on the shipped render`);
+    failed = failed || vacuous;
+  }
+
   for (const [check, [file, [anchor, replacement]]] of Object.entries(judgePlants)) {
     const planted = await judge(chrome, { file: ['lobby', file], anchor, replacement });
     console.log(`── CONTROL (${check}): must FAIL`);
     for (const r of planted) console.log(report(r));
 
-    const bit = check === 'contrast' ? planted.every((r) => r.measured) && planted.some((r) => r.under > 0)
-      : check === 'coverage' ? planted.some((r) => r.side === 'left' && r.covered > 0)
-      : check === 'cueWidth' ? planted.some((r) => r.unreachable > 0)
-      // phoneResidual (R3): the phone run specifically must carry an UNEXPLAINED under-threshold sample
-      // (never just "more under-threshold pixels", which the declared residual's own cap could still
-      // absorb if this check were run-keyed rather than span+band-keyed) and must not be `ok`.
-      : planted.some((r) => r.w === 375 && r.h === 812 && r.residualUnexplained.length > 0 && !r.ok);
+    const bit = bites[check](planted);
 
     console.log(bit ? `CONTROL CAUGHT (${check})` : `CONTROL NOT CAUGHT (${check}) — the check cannot tell a correct render from this planted one`);
     failed = failed || !bit;

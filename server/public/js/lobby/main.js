@@ -31,14 +31,11 @@
  * screen's scene gives it (`plate-row.js`'s row, built ONCE and carrying no geometry of its own) over the
  * building `building-scene.js` draws — the roof and its sign, a storey under each plate, the ground lobby
  * and the cab (slice B) — shows the screen's camera on the plates and the drawing as one transform, and
- * paints every plate's label from that SAME camera (`label-paint.js`'s `showLabels()`, called from
- * `view()` on every camera this page shows — fit, wheel, key, drag, every glide step, resize — card#7343
- * r3's fix round, the operator's ruling 2026-09-30, option A): read at the page's body text size at every
- * zoom, standing BESIDE the building where there is room for it and falling back onto the plate where
- * there is not, and repainted live enough that neither can ever go stale between a render and the camera
- * moves that follow it — and wires the wheel,
- * the drag, the keys, the zoom buttons, the keyboard's focus on a
- * plate, the whole-building control and the ride to the screen's camera acts — none of which renders.
+ * paints every plate's label from that SAME camera: `label-paint.js`'s `showLabels()`, called from
+ * `view()` on every camera this page shows — fit, wheel, key, drag, every glide step, resize (what the
+ * label does is FLOOR.md § 4.1's) — and wires the wheel, the drag, the keys, the zoom buttons, the
+ * keyboard's focus on a plate, the whole-building control and the ride to the screen's camera acts —
+ * none of which renders.
  * A ride's click moves the cab — the page's `cab`, set to the stop `ride()` names — glides the camera to
  * the plate (or cuts, under `prefers-reduced-motion`) and then ARRIVES: the page goes to the route the
  * screen handed back, `/floor/{key}`, which the floor page serves on a cold start. The click commits
@@ -165,8 +162,8 @@ const { show, glideTo, current } = cameraView(view);
  * storey of the reference's section, the ground lobby, and the cab in its shaft, all `building-scene.js`'s
  * (`buildingArt()`, `CAB`, `cabStyle()`) and painted here deciding nothing, as `floor/painter.js` paints the
  * floor's scene. One `<svg>` in the first row of `#lobby-floors`, so the camera's one transform moves and
- * scales it with the plates; the plates' rows stand after it, so each plate's label reads over its storey
- * and is never scaled by it (`plate-row.js`). Scenery carrying no fact: hidden from assistive technology,
+ * scales it with the plates; the plates' rows stand after it in `#lobby-floors` (a plate's label is
+ * FLOOR.md § 4.1's). Scenery carrying no fact: hidden from assistive technology,
  * never a pointer's target, and painted from the scene's rects alone.
  *
  * ⛔ IT IS KEPT ACROSS RENDERS — `renderBuilding()` replaces every other row and never this one
