@@ -32,9 +32,9 @@ use Tests\TestCase;
  * `paint()`/`renderBuilding()` writing NO label geometry — is `Tests\Feature\Lobby\LobbyPageWiringTest`'s.
  *
  * ⚠ WHAT THIS DOES NOT HOLD: nothing here lays out or paints — there is no browser on the build host —
- * so that a browser actually clips at `max-height`, ellipsizes at the right width, and paints the ink and
- * the backing this file only checks are REFERENCED, is `tools/design/lobby-label-contrast.browser.mjs`'s,
- * run by hand.
+ * so what a browser renders from the properties this file only checks are REFERENCED is unheld here.
+ * `tools/design/lobby-label-contrast.browser.mjs`, run by hand, measures some of it on rendered pixels;
+ * which of its checks holds which claim is FLOOR.md § 4.1's.
  */
 class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
 {
@@ -102,7 +102,6 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             'CONTROL (a label that overlaps the plate below it) did not bite');
     }
 
-    /** Every status part is drawn somewhere in the runs — else the status clause read a line with nothing on it. */
     /** Every plate row every run draws, against `constructionDefects()` — the green its row plants below red. */
     public function test_green_every_plate_row_is_built_to_the_construction_contract(): void
     {
@@ -111,6 +110,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         }
     }
 
+    /** Every status part is drawn somewhere in the runs — else the status clause read a line with nothing on it. */
     public function test_green_the_runs_draw_every_part_of_the_status_line(): void
     {
         foreach (self::RUNS as $run) {
@@ -185,9 +185,9 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
 
             // r5 review round: "asserting every written property" was false for the fallback branch —
             // only `left`/`align` were held there. Every property `showLabels()` writes is now asserted on
-            // BOTH branches; `textInk`/`backing`/`halo` are held to the STRUCTURAL contract `label-paint.js`'s
-            // own docblock states (beside: a different ink for text than the link, no backing, a halo;
-            // falling back: the SAME dark ink for both, a near-opaque backing, no halo) rather than a
+            // BOTH branches; `textInk`/`backing`/`halo` are held as relations (beside: a text ink other than
+            // the link's, a `transparent` backing, a halo other than `none`; falling back: both inks the
+            // source's `LABEL_DARK_INK`, a backing other than `transparent`, a halo of `none`) rather than a
             // hand-duplicated colour literal, which would restate the very constants this test reads back.
             if ($side === 'left') {
                 $width = max(0.0, $shellLeft - $gap);
@@ -451,9 +451,10 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
      * `text-shadow: var(--label-halo)`; line 1 is the name link (its text the name alone, its `aria-label`
      * the name and the summary, its colour `var(--label-ink)`) with the cue beside it on the cab's plate
      * only; line 2 is the summary link (same `href`, `tabIndex` -1, `aria-hidden`, `text-decoration: none`);
-     * line 3 is the rooms line where the plate names any; both links' `outline-offset` is `-2px`; every
-     * line is `nowrap` + `ellipsis` + `overflow: hidden` and carries `var(--label-backing)`; and nothing on
-     * the path to the cue or the rooms line carries `aria-hidden`. What the label must do is FLOOR.md § 4.1.
+     * line 3 is the rooms line where the plate names any; both links' `outline-offset` is `-2px`; the name
+     * link, the summary link, the rooms line and the cue are `nowrap` + `ellipsis` + `overflow: hidden`, and
+     * all but the cue carry `var(--label-backing)`; and nothing on the path to the cue or the rooms line
+     * carries `aria-hidden`. What the label must do is FLOOR.md § 4.1.
      *
      * @param  list<array{0: array, 1: array, 2: bool, 3: array}>  $rows
      * @return list<string>
@@ -503,8 +504,8 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
                 continue;
             }
 
-            // Every visible line is deterministic and whole-line clipped (FLOOR.md § 4.1): never
-            // wrapped, ellipsized at its own trailing edge rather than clipped mid-glyph.
+            // A text-bearing element is set `nowrap`, `text-overflow: ellipsis` and `overflow: hidden`
+            // (FLOOR.md § 4.1); what a browser renders from them is not read here.
             $ellipsized = static function (?array $node) use (&$defects, $plate): void {
                 if ($node === null) {
                     return;
@@ -564,8 +565,8 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             $cue = $line1['children'][1] ?? null;
             $line3 = $label['children'][2] ?? null;
 
-            // The cue and the rooms line reach a screen reader as ordinary text: nothing from the label
-            // down to either carries `aria-hidden` (the summary link alone is hidden, above).
+            // Nothing from the label down to the cue or the rooms line carries `aria-hidden` (the summary
+            // link alone is hidden, below); what a screen reader then reads is FLOOR.md § 4.1's declared claim.
             foreach (['the label' => $label, 'line 1' => $line1, 'the cue' => $cue, 'line 3' => $line3, 'the rooms line' => $line3['children'][0] ?? null] as $what => $node) {
                 if ($node !== null && array_key_exists('aria-hidden', $node['attrs'] ?? [])) {
                     $defects[] = "the plate {$plate['floor']}'s {$what} is hidden from assistive technology (aria-hidden)";

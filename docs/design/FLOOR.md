@@ -998,36 +998,48 @@ exists to pick a floor before any zoom ([decision 37](#13-decisions-taken-revisa
 operator's rulings on card#7343, 2026-09-27 and 2026-09-30 option A). Each claim below names the check
 that holds it: **T** is `server/tests/Feature/Floor/ThePlateNameIsReadAtTheBodyTextSizeTest.php`, and
 **B** is `tools/design/lobby-label-contrast.browser.mjs`, run by hand in headless Chromium over its own
-`RUNS` (no browser in CI). How each is done is the code's own docblocks'.
+`RUNS` (no browser in CI). *T's frames* are the frames T's runs draw, with the row built for each plate
+in them; *T's cameras* are the three T's `showLabels()` test computes by hand, one beside the building
+and two on the plate. How each is done is the code's own docblocks'.
 
-1. **Size.** Every text of a label — name, summary, rooms line, cue — is shown at `LABEL_FONT` on the screen at
-   whole-building fit, after a wheel, and halfway through a whole-building glide and a ride, at every
-   stack height T's runs draw; no camera changes it. (held by: T::test_green_the_name_and_status_line_are_the_body_text_size_at_fit_after_a_wheel_and_mid_glide_at_every_stack_height,
+1. **Size.** Every text of a label — name, summary, rooms line, cue — is `LABEL_FONT` on the screen, by
+   T's arithmetic over the rows built in T's frames, at whole-building fit, after a wheel, and halfway
+   through a whole-building glide and a ride, at every stack height T's runs draw; no camera changes it. (held by: T::test_green_the_name_and_status_line_are_the_body_text_size_at_fit_after_a_wheel_and_mid_glide_at_every_stack_height,
    over the camera acts `fleet-client-probe.mjs` records)
 2. **The page's own size.** The lobby page sets no text size of its own, so `LABEL_FONT` is the viewer's
    body text size. (held by: T::test_green_the_lobby_page_sets_no_text_size_of_its_own)
-3. **Which side.** A label stands beside the building, left of its shell, where the room left of the
-   shell is at least `LABEL_SIDE_MIN_PX`; otherwise it stands on its plate, at the plate's left edge.
+3. **Which side.** At T's cameras, `showLabels()` picks the side beside the building, left of its shell
+   (a `data-label-side` of `left`), at the one camera that leaves more than `LABEL_SIDE_MIN_PX` of room
+   left of the shell, and the plate's side, with a `--label-left` of `0`, at the two that leave less.
    (held by: T::test_green_showlabels_written_values_match_a_hand_computed_camera_at_every_side)
-4. **Beside, clear of the building.** A beside label's right edge stands at least `LABEL_GAP_PX` clear of
-   the shell's left edge, and in B's runs its box meets the drawn building nowhere. (held by:
-   T::test_green_the_label_lies_outside_the_shell_wherever_it_stands_beside_the_building; B check 'coverage')
-5. **Beside, on the backdrop.** A beside label has a `transparent` backing and a halo, its link in
-   `LABEL_GOLD` and its other text in a second ink, right-aligned. (held by:
+4. **Beside, clear of the building.** Wherever a label stands beside the building in T's frames, and at
+   T's beside camera, its right edge, as `showLabels()` writes `--label-left` and `--label-width`, stands
+   at least `LABEL_GAP_PX` clear of the shell's left edge; in B's runs where labels stand beside the
+   building, no label's box meets the drawn building. (held by:
+   T::test_green_the_label_lies_outside_the_shell_wherever_it_stands_beside_the_building;
+   T::test_green_showlabels_written_values_match_a_hand_computed_camera_at_every_side; B check 'coverage')
+5. **Beside, on the backdrop.** At T's beside camera, `showLabels()` sets `--label-backing` to
+   `transparent`, `--label-halo` to a value other than `none`, `--label-ink` to `LABEL_GOLD`,
+   `--label-text-ink` to a value other than `--label-ink`'s, and `--label-align` to `right`. (held by:
    T::test_green_showlabels_written_values_match_a_hand_computed_camera_at_every_side)
-6. **The backing is the fallback's alone.** A label on its plate has its link and its text in
-   `LABEL_DARK_INK`, a backing that is not `transparent`, no halo, left-aligned; the name link, the summary and
-   the rooms line each carry that backing. (held by:
+6. **The backing is the fallback's alone.** At T's two fallback cameras, `showLabels()` sets `--label-ink`
+   and `--label-text-ink` to `LABEL_DARK_INK`, `--label-backing` to a value other than `transparent`,
+   `--label-halo` to `none` and `--label-align` to `left`; in T's frames, the name link, the summary link
+   and the rooms line each have `var(--label-backing)` as their background colour. (held by:
    T::test_green_showlabels_written_values_match_a_hand_computed_camera_at_every_side;
    T::test_green_every_plate_row_is_built_to_the_construction_contract)
-7. **Three lines, in order.** Line 1 is the name link, whose visible text is the name alone, with the
-   cue beside it and outside it on the cab's plate and on no other; line 2 is the summary; line 3 is the
-   rooms line, present only where the plate names more than one room or a room with no seats reported.
+7. **Three lines, in order.** In T's frames, line 1 is the name link, whose text is the name alone, with
+   the cue after it and outside it on the cab's plate and on no other; line 2 is the summary; line 3 is
+   the rooms line, present only where the plate names more than one room or a room with no seats reported.
    (held by: T::test_green_every_plate_row_is_built_to_the_construction_contract)
-8. **No line wraps.** Each line is set `nowrap`, with an ellipsis at its trailing edge. (held by:
+8. **Set not to wrap.** In T's frames, the name link, the cue, the summary link and the rooms line are each
+   set `white-space: nowrap`, `text-overflow: ellipsis` and `overflow: hidden`. (held by:
    T::test_green_every_plate_row_is_built_to_the_construction_contract)
-9. **The line budget.** A label shows `max(1, ⌊storey height on screen ÷ LABEL_LINE_PX⌋)` lines and
-   clips the rest from the bottom; a label of more than one line is never taller than its storey.
+9. **The line budget.** At T's cameras, `showLabels()` sets `--label-lines` to
+   `max(1, ⌊storey height on screen ÷ LABEL_LINE_PX⌋)`; in T's frames, the label's `max-height` reads
+   `--label-lines`, its `clip-path` is the one inset `constructionDefects()` names, with no bleed at the
+   bottom, and a label of more than one line has `lines × LABEL_LINE_PX` no greater than its storey's
+   height on the screen.
    (held by: T::test_green_showlabels_written_values_match_a_hand_computed_camera_at_every_side;
    T::test_green_no_labels_own_line_budget_runs_it_taller_than_its_storey;
    T::test_green_every_plate_row_is_built_to_the_construction_contract)
@@ -1040,27 +1052,27 @@ that holds it: **T** is `server/tests/Feature/Floor/ThePlateNameIsReadAtTheBodyT
 12. **No overlap.** In B's runs no two plates' label boxes intersect. (held by: B check 'overlap')
 13. **The cue is shown whole.** On the cab's plate the cue lies wholly inside its label's box in every
     B run. (held by: B check 'cueWidth')
-14. **The accessible name.** The name link's `aria-label` is the name, a comma and a space, and the
-    summary — *no seats held* where the plate holds none — e.g. *Floor 2, 4 seats · 3 live*. (held by:
+14. **The accessible name.** In T's frames, the name link's `aria-label` is the name, a comma and a space,
+    and the summary — *no seats held* where the plate holds none — e.g. *Floor 2, 4 seats · 3 live*.
+    (held by: T::test_green_every_plate_row_is_built_to_the_construction_contract)
+15. **The summary link is `aria-hidden`.** In T's frames, the summary line is a second link with the name
+    link's `href`, a `tabIndex` of `-1`, `aria-hidden` set to `true` and `text-decoration: none`. (held by:
     T::test_green_every_plate_row_is_built_to_the_construction_contract)
-15. **The summary reaches assistive technology only through that name.** The summary line is a second
-    link to the same floor, so clicking it opens the floor; it is out of the tab order, `aria-hidden`, and
-    not underlined. (held by: T::test_green_every_plate_row_is_built_to_the_construction_contract)
-16. **The cue and the rooms line are read in document order.** Both sit outside both links, and nothing
-    from the label down to either carries `aria-hidden`, so a screen reader reads the name link's
-    `aria-label`, then the cue, then the rooms line. (held by:
+16. **The cue and the rooms line, in document order.** In T's frames, both sit outside both links — the
+    cue after the name link on line 1, the rooms line on line 3 — and nothing from the label down to
+    either carries `aria-hidden`. (held by:
     T::test_green_every_plate_row_is_built_to_the_construction_contract)
-17. **A clipped line is still read.** A line the budget clips stays in the document, hidden by
-    `clip-path` alone. (declared, unchecked: whether a screen reader reads text a `clip-path` hides is
-    the browser's behaviour, and no check here drives a screen reader)
-18. **The focus ring.** Both links draw their focus ring inside their own box (a negative
-    `outline-offset`). (held by:
+17. **What a screen reader reads.** A screen reader reads the name link's `aria-label`, then the cue, then
+    the rooms line, and never the summary link on its own — a line the budget clips included (claims 7,
+    14, 15 and 16 hold the structure this rests on). (declared, unchecked: not wired — a check could read
+    the browser's accessibility tree; none is built)
+18. **The focus ring.** In T's frames, both links set a negative `outline-offset`. (held by:
     T::test_green_every_plate_row_is_built_to_the_construction_contract)
-19. **A visited link keeps its ink.** The name link's colour is set on the link itself as
+19. **The link's colour is on the link.** In T's frames, the name link's own `color` is
     `var(--label-ink)`. (held by: T::test_green_every_plate_row_is_built_to_the_construction_contract)
-20. **One writer, on every camera.** `lobby/main.js`'s `view()` calls `label-paint.js`'s `showLabels()`,
-    and neither its `paint()` nor its `renderBuilding()` calls it, calls `setProperty` or names a
-    `--label-` property; a camera that frames nothing gets no label write. (held by:
+20. **One writer.** `lobby/main.js`'s `view()` calls `label-paint.js`'s `showLabels()`, and neither its
+    `paint()` nor its `renderBuilding()` calls it, calls `setProperty` or names a `--label-` property; a
+    camera that frames nothing gets no label write. (held by:
     `server/tests/Feature/Lobby/LobbyPageWiringTest.php`::test_the_page_wires_the_ride_and_the_building_camera_to_the_screen,
     through its `showLabelsPlacementDefects()`; T::test_green_showlabels_writes_nothing_when_the_camera_frames_nothing)
 21. **Contrast.** In every one of B's `RUNS`, every glyph pixel B measures on every visible line — it
@@ -5856,7 +5868,8 @@ belongs in its own round.
 | **G10 null-render closure** | [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s `Null? yes` column — all 39 members — set-differenced against [§ 5.6](#56-the-null-render-for-every-nullable-member)'s table in **both** directions: a nullable member with no stated null render, and a null render for a member D2 does not mark nullable. Plus § 12's own published count of that population against the column it counts | **tool-checked** |
 | **G11 a worked example against the rule statement that governs it** | **The class is [§ 7.1](#71-the-render-per-state)'s stated convention made checkable**, and it now holds **two** facts, each with its own owning table and its own instances. **(a) The composed `api_error_type` line:** [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s twelve member/phrase pairs, re-derived from that table, against the two sites that render one — [§ 7.1](#71-the-render-per-state)'s `stalled` **worked instance**, which must carry a member **verbatim** with that member's phrase **beside** it, and [§ 5.1](#51-the-desk)'s *rendered verbatim* row, whose illustration must be a **member** and never one of the phrases. The instance that shipped: the cell published *API error — rate limit* — the phrase with the raw value elided — against five statements including its own **Never** column, and nothing could difference the two sites because the **composition** was published at neither. **(b) WHERE the `activity_state` currency label is drawn:** the placement phrase is re-derived from [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s five `activity_state` rows — which must **agree with each other**, or the rule is reported as disagreeing with itself and no instance is judged — and every worked instance elsewhere in the document must state that same placement. Its population is found **structurally**, not listed: any table cell carrying a *was:* span or naming the `activity state` in words. The instance that shipped: [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s `catching_up` and `disabled` rows read *in the label only* — a **one**-element reading under which a `catching_up` desk draws `activity.last_event_time` twice — and § 7.6's own `link_state` row had drifted with them. Every predicate is **fed its own defect on every run** and must reject it, because a comparison only ever shown agreeing is not evidence it can disagree; the placement predicate's defect arm builds its counter-example by substituting a preposition the rule does **not** use, chosen from the recognizer's own alternation, so the tool stores no answer | **tool-checked**, with **three** stated limits. *(1)* It holds each fact at the sites that **render** it in a table, and cannot see one minted in **prose**. *(2)* **This table's own rows are excluded by role**, and the exclusion is a finding rather than a convenience: a row documenting a guard necessarily **quotes the defect it guards** — the (b) row above quotes *in the label only* in order to say what was wrong — so a recognizer that read it would **fail on the correction and pass a silent fix**, getting redder the more honestly the defect is written up. It fired exactly that way on this row before the carve-out existed. § 12 renders nothing, so nothing is lost; G9 excludes the same rows by the same role. *(3)* **The placement leg asks whether a cell CONTRADICTS § 7.6, never whether it states the placement at all**, so a cell re-wording the placement out of the recognizer's vocabulary escapes by matching nothing. The stricter tier was written and **removed**: it red on § 7.1's own `catching_up` cell, which says the form is drawn *under this line* while pointing at § 7.3 and § 7.6 — correct, and a **mention** rather than a placement, which no structural test here can tell apart. Enforcing the literal would have made a style rule that reds on a careful paraphrase and passes a careless overwrite |
 | **G12 the duration format** | [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s seven clauses re-implemented as a function, and **every row of that section's boundary table reproduced** — the capability control, since a formatter that agreed with nothing would pass the two legs below by rejecting everything. Then the legs: every duration-shaped token inside a **rendered string** — § 2.4's own Verbatim column and [§ 7.1](#71-the-render-per-state)'s Label line cells, read as the published span rather than as cell prose — must be a **fixed point** of the function, so *11m 00s*, *2h 6m* and *0m 50s* red where *11m*, *2h 06m* and *50s* pass; and § 7.1's `stale` and `offline` cells are re-derived **arithmetically** from the timestamp in their own span and the corrected clock their own prose states, so a worked pair that stops describing one moment reds. What it does NOT reach is a duration in **prose**, which is the same residue G9 has and for the same reason | ✅ |
-| **G14 the lobby label's one statement** | [§ 4.1](#41-the-lobby--the-building-summary)'s plate label, two legs: the label-contract vocabulary `verify-floor.py`'s G14 names, found anywhere in this document outside § 4.1 or in a `card#7343` bullet of the CHANGELOG, reds; and every numbered claim of § 4.1 must end with the check that holds it or a declaration that none does, each test method it names must exist in the file it names, and each contrast-tool control it names must exist in that tool | **tool-checked** — never whether a claim is true, or whether the check it names asserts it, which is a reviewer's |
+| **G13 an empty-desk Never cell, scoped** | the comment block at G13 in `tools/design/verify-floor.py`, which states what it reads, what it reds on and what it cannot do | **tool-checked** |
+| **G14 the lobby label's one statement** | [§ 4.1](#41-the-lobby--the-building-summary)'s plate label, two legs: the label-contract vocabulary `verify-floor.py`'s G14 names, found anywhere in this document outside § 4.1's claim region (its lead-in through its last numbered claim) or in a `card#7343` bullet of the CHANGELOG, reds; and every numbered claim of § 4.1 must end with the check that holds it or a declaration that none does, each test method it names must exist in the file it names, and each contrast-tool control it names must exist in that tool | **tool-checked** — never whether a claim is true, or whether the check it names asserts it, which is a reviewer's; nor a paraphrase that uses no listed term, an unnumbered bullet inside the claim region, or code and test docblocks, `tools/design/README.md` and the tool headers |
 | Whether a rendering is *good* | — | **hand-verified**, and it is a review question this document cannot mechanise: the tool checks that every rendered fact has a field and every **claim-bearing** animation has an event, never that the floor is legible — and **never** that decorative motion ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)) stays inside its bound, which no gate reaches at all |
 | Whether a **Cited** number matches what D2 says | — | **hand-verified**: the tool checks the number's presence at its D3 home, not its truth at D2's |
 

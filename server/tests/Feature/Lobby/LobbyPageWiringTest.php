@@ -625,8 +625,8 @@ class LobbyPageWiringTest extends TestCase
     }
 
     /**
-     * `showLabels()` is called from `view()`'s own body, and from nowhere else in `main.js` —
-     * `renderBuilding()`/`paint()` write no label geometry at all (P5's own ask; `showLabels()` is the
+     * `showLabels()` is called from `view()`'s own body, and from neither `renderBuilding()` nor `paint()`,
+     * which also call no `setProperty` and name no `--label-` property (P5's own ask; `showLabels()` is the
      * ONE writer). The ONE predicate for "is the call placed correctly": the real assertion and the
      * moved-call CONTROL both run THIS, so a change to what "correct" means cannot update one and leave
      * the other silently checking a stale rule (r6 review round, r5 review m8).

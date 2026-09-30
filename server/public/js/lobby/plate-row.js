@@ -160,7 +160,8 @@ export function plateRow(doc, plate, rect, here) {
     label.append(line1, line2);
 
     // Line 3: the rooms, where the plate names any — dropped last of the three by `--label-lines`'s own
-    // DOM-order priority (never removed: `clip-path` hides it visually, not from the accessibility tree).
+    // DOM-order priority (never removed from the document: `clip-path` hides it; whether a screen reader
+    // still reads a clipped line is FLOOR.md § 4.1's declared, unchecked claim).
     if (plate.rooms.length > 1 || plate.rooms.some((room) => !room.reported)) {
         // `div`, never `span` — the browser tool's own `isCue` reads a line's tag (`tools/design/
         // lobby-label-contrast.browser.mjs`'s `BOXES`), and the cue is the only `span` a label ever holds.

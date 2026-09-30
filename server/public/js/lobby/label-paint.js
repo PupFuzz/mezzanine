@@ -13,14 +13,13 @@
  * whatever camera `showLabels()` was last called with, including mid-glide, with no rebuild.
  *
  * ⭐ THE PROPERTIES WRITTEN, all on `#lobby-floors`: `--label-scale` (the counter-scale); `--label-left`
- * and `--label-width` (the label's position and size, in the units `plate-row.js`'s own docblock, at its
- * `left`, derives why each must be — resolved here in JS rather than a live CSS `calc()`, for testability
- * without a CSS engine and to keep one writer, one mechanism); `--label-lines` (`linesFor()` — how many
- * lines are not clipped away); `--label-ink` (the link's colour); `--label-text-ink` (the summary, rooms
- * and cue's colour); `--label-backing`; `--label-halo`; `--label-align` (read by `plate-row.js` as both
- * `text-align` and `justify-content` — modern CSS Box Alignment accepts `left`/`right` for both, so one
- * value serves both); and `data-label-side`, a TEST HOOK ONLY — nothing here reads it back, and
- * `plate-row.js` reads no attribute, only `var()`s.
+ * and `--label-width` (the label's position and size — `leftFor()` and `widthFor()` below state their
+ * arithmetic and units; resolved here in JS rather than a live CSS `calc()`, for testability without a
+ * CSS engine and to keep one writer, one mechanism); `--label-lines` (`linesFor()` — how many lines are
+ * not clipped away); `--label-ink` (the link's colour); `--label-text-ink` (the summary, rooms and cue's
+ * colour); `--label-backing`; `--label-halo`; `--label-align` (read by `plate-row.js` as each line's
+ * `justify-content`, and nowhere else); and `data-label-side`, a TEST HOOK ONLY — nothing here reads it
+ * back, and `plate-row.js` reads no attribute, only `var()`s.
  *
  * ⛔ ONE STOREY HEIGHT FOR EVERY PLATE: `building-scene.js`'s `buildingScene()` gives every plate
  * `rect.h = PLATE_H`, uniformly — there is no overflow strip in the building's own drawing (that concept
@@ -90,10 +89,11 @@ export const LABEL_DARK_INK = '#241a10';
 /**
  * The backing behind each of a plate label's visible lines, falling back onto the plate — the wall's
  * colour, very nearly opaque: what a glyph stands on is then the backing, whatever the drawing puts under
- * it. The opacity is MEASURED, not argued: `tools/design/lobby-label-contrast.browser.mjs` catches any
- * value that lets rendered pixels bleed under 4.5:1 at a hard colour boundary the drawing produces (the
- * shell's own drawn edge, a storey seam). The tool declares any residual it finds by name and reason
- * rather than exiting non-zero on a finding already understood and accepted; every other failure reds it.
+ * it. The opacity is MEASURED, not argued: `tools/design/lobby-label-contrast.browser.mjs` measures, over
+ * its own `RUNS`, whether rendered pixels bleed under its `MIN_RATIO` at a hard colour boundary the
+ * drawing produces (the shell's own drawn edge, a storey seam). The tool declares any residual it finds
+ * by name and reason rather than exiting non-zero on a finding already understood and accepted; every
+ * other failure reds it.
  */
 export const LABEL_BACKING = rgba(INK.wall, 0.985);
 
@@ -154,11 +154,11 @@ function widthFor(camera, side) {
 }
 
 /**
- * The label's own `left`, in SCENE px — `plate-row.js`'s own docblock, at its `left`, derives the full
- * arithmetic; in short, `-PLATE_INSET` (the plate's own inset from the shell, subtracted so the SHELL is
- * what `width` + `LABEL_GAP_PX` is measured clear of) minus `(width + LABEL_GAP_PX)` turned back into
- * scene px by dividing by the SAME zoom the ancestor `#lobby-floors` is about to multiply it by. `0`
- * falling back: the label's left edge stands AT the plate's own top-left, as it always has.
+ * The label's own `left`, in SCENE px (the units `plate-row.js`'s row stands in): beside, `-PLATE_INSET`
+ * (the plate's own inset from the shell, subtracted so the SHELL is what `width` + `LABEL_GAP_PX` is
+ * measured clear of) minus `(width + LABEL_GAP_PX)` turned back into scene px by dividing by the SAME
+ * zoom the ancestor `#lobby-floors` is about to multiply it by. `0` falling back: the label's left edge
+ * stands AT the plate's own top-left.
  */
 function leftFor(camera, side, width) {
     return side === 'left' ? -PLATE_INSET - (width + LABEL_GAP_PX) / camera.zoom : 0;

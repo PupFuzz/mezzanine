@@ -69,7 +69,8 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                timestamp in their own span and the corrected clock
                                                their own prose states
   G13 an empty-desk Never cell, scoped          the comment block at G13 below
-  G14 the lobby label's one statement           a label-contract term outside section 4.1 or in the
+  G14 the lobby label's one statement           a label-contract term outside section 4.1's claim
+                                               region (lead-in through the last claim) or in the
                                                card#7343 CHANGELOG bullet; a section 4.1 claim that
                                                names no check, or names one that does not exist
 
@@ -3128,7 +3129,8 @@ else:
 # went false on each round the label changed.  Two legs, both re-derived on every run:
 #
 #   (a) NO COPY.  The label-contract vocabulary below must not appear in this document outside
-#       section 4.1, nor in any `- **card#7343**` bullet of docs/CHANGELOG.md or docs/changelog/.
+#       section 4.1's claim region -- the `**The plate label.**` lead-in through the last numbered
+#       claim -- nor in any `- **card#7343**` bullet of docs/CHANGELOG.md or docs/changelog/.
 #       A POINTER to section 4.1 needs none of these words; there is deliberately no exemption for
 #       a sentence that links to section 4.1, because the copy this leg exists against (row 16's,
 #       before r6) restated the contract AND linked to it.
@@ -3138,7 +3140,9 @@ else:
 #
 # ⚠ WHAT IT CANNOT DO: judge that a claim is TRUE, or that the check it names asserts what the claim
 # says -- the claim-to-assertion table is a reviewer's.  And the vocabulary is a list, so a copy in
-# words none of it uses passes; the list is the one the r6 sweep found copies in.
+# words none of it uses passes; the list is the one the r6 sweep found copies in.  Out of scope: a
+# paraphrase that uses no listed term; an unnumbered bullet inside the claim region (exempt with it);
+# and code or test docblocks, tools/design/README.md and the tool headers, which this leg never reads.
 G14_TERMS = re.compile(
     r"LABEL_[A-Z_]+|--label-[a-z-]+|\bshowLabels\b|\bsideFor\b|\blinesFor\b|\bLINE_PAD\b"
     r"|label-paint\.js|plate-row\.js|clip-path|outline-offset|text-decoration"
@@ -3146,13 +3150,29 @@ G14_TERMS = re.compile(
     r"|ellipsiz\w*|body text size|\bhalo\b|warm gold|three-line clip)")
 G14_ANCHOR = "41-the-lobby--the-building-summary"
 g14_head = BY_ANCHOR.get(G14_ANCHOR)
-g14_hits, g14_bullets, g14_claims, g14_refs = [], 0, [], 0
+g14_hits, g14_bullets, g14_claims, g14_refs, g14_span = [], 0, [], 0, (0, 0)
 if g14_head is None:
     fail.append(f"G14: no section anchored `{G14_ANCHOR}` — the label contract's one statement was "
                 f"not found, so neither leg could run")
 else:
+    # The exemption is the claim region alone: from the `**The plate label.**` lead-in through the last
+    # line of the last numbered claim.  The rest of section 4.1 (the table, the sky paragraph) is scanned.
+    # A section with no lead-in exempts nothing, so every claim's own vocabulary reds below.
+    for i in range(g14_head[3], g14_head[4]):
+        if lines[i].startswith("**The plate label.**"):
+            j, last = i, i
+            while j < g14_head[4]:
+                if re.match(r"^\d+\. ", lines[j]):
+                    last = j
+                elif last > i and lines[j].startswith("   ") and lines[j].strip():
+                    last = j
+                elif last > i and lines[j].strip():
+                    break
+                j += 1
+            g14_span = (i, last + 1)
+            break
     for i, line in enumerate(lines):
-        if g14_head[3] <= i < g14_head[4]:
+        if g14_span[0] <= i < g14_span[1]:
             continue
         for m in G14_TERMS.finditer(line):
             g14_hits.append(f"FLOOR.md L{i + 1}: `{m.group(0)}`")
@@ -3359,8 +3379,10 @@ print(f"G13 the empty-desk Never cells, scoped to the client's own confirmation 
       f"CLEAN over the same obligation published absolutely one appendix away")
 print(f"G14 the lobby's plate label, one statement: {len(g14_claims)} numbered claims in section 4.1, "
       f"{g14_refs} check references resolved; label-contract terms outside it — in this document and in "
-      f"{g14_bullets} card#7343 CHANGELOG bullet(s) — {len(g14_hits)}. NOT MECHANIZED: whether a claim is "
-      f"true, and whether the check it names asserts it")
+      f"{g14_bullets} card#7343 CHANGELOG bullet(s) — {len(g14_hits)}; exempt: FLOOR.md "
+      f"L{g14_span[0] + 1}-L{g14_span[1]}, the claim region. NOT MECHANIZED: whether a claim is true, and "
+      f"whether the check it names asserts it; a paraphrase with no listed term; an unnumbered bullet "
+      f"inside the claim region; code and test docblocks, tools/design/README.md and the tool headers")
 print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's SEMANTIC half — an obligation "
       "upstream addresses to the render layer in none of the recognizer's phrasings cannot be found "
       "by grep; the rows above are its members, printed rather than counted, and naming them is not "
