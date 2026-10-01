@@ -27,6 +27,8 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-01
+
 - **card#7341** — **The floor page draws its room tiles again.** Since the room drawing landed (Appendix
   B row 14, slice A, in 0.6.0), the floor page loaded neither tileset: the page's fetch
   (`server/public/js/wire/live-page.js`) handed its consumers a response with `json()` and no `text()`,
