@@ -1,8 +1,8 @@
 {
-  "note": "docs/design/FLOOR.md Appendix B row 15's camera and capability-floor runs (card#7341) — AT-D3-21's floor half. Every run replays § 11's fixtures byte for byte — `fx-snapshot-4` through `fx-scene.json`'s `scene_default` and `scene_overflow` (the shipped default map, `@json:`), `fx-gap`'s resync pair, `fx-layout-acts`' `room.map`, `fx-drilldown`'s `fleet.health`, `fx-degraded`'s snapshot and `fx-floor-plan`'s failing room map — at a viewport each run states (`floor.viewport`, CSS px) and with the viewer's camera acts on the scenario clock (`floor.camera`, `fleet-client-probe.mjs`'s header). F is § 12's viewport floor, and the test holds each run's stated viewport to the figure § 12 states. ⭐ And Appendix B row 16's building half (card#7343): `building_rides` and `building_rides_reduced` are `fx-snapshot-4` under a layout of two floors — `aimla`, unlabelled, and `zeta`, labelled *the annex*, a room the fleet reports no seat for — entered at the lobby with the building's drawing surface stated (`lobby.surface`), then the viewer riding to the labelled floor, riding to the other, and asking for the whole building (`lobby.camera`) — the page back from the back-forward cache (`return`) after each ride, since a ride leaves the lobby — with a heartbeat drawn between the second ride and the whole-building control; the second run is the first under `prefers-reduced-motion`. `building_ride_in_flight` is the same entry with a ride in flight interrupted by a second ride, a wheel, a key's zoom, a drag, a focused plate and the whole-building control, then arriving and the lobby's controls working again; `building_focus` is the same entry with the keyboard's focus on plates in and out of view.",
+  "note": "docs/design/FLOOR.md Appendix B row 15's camera runs (card#7341) — AT-D3-21's floor half. Every run replays § 11's fixtures byte for byte — `fx-snapshot-4` through `fx-scene.json`'s `scene_default` and `scene_overflow` (the shipped default map, `@json:`), `fx-gap`'s resync pair, `fx-layout-acts`' `room.map`, `fx-drilldown`'s `fleet.health`, `fx-degraded`'s snapshot and `fx-floor-plan`'s failing room map — at a viewport each run states (`floor.viewport`, CSS px) and with the viewer's camera acts on the scenario clock (`floor.camera`, `fleet-client-probe.mjs`'s header). F is § 12's reference viewport: the test holds every run entered at F to the figure § 12 states, and every any-size run to a window smaller than F in at least one dimension (§ 4.5: the room is drawn at every size, card#7341's 2026-10-01 ruling). ⭐ And Appendix B row 16's building half (card#7343): `building_rides` and `building_rides_reduced` are `fx-snapshot-4` under a layout of two floors — `aimla`, unlabelled, and `zeta`, labelled *the annex*, a room the fleet reports no seat for — entered at the lobby with the building's drawing surface stated (`lobby.surface`), then the viewer riding to the labelled floor, riding to the other, and asking for the whole building (`lobby.camera`) — the page back from the back-forward cache (`return`) after each ride, since a ride leaves the lobby — with a heartbeat drawn between the second ride and the whole-building control; the second run is the first under `prefers-reduced-motion`. `building_ride_in_flight` is the same entry with a ride in flight interrupted by a second ride, a wheel, a key's zoom, a drag, a focused plate and the whole-building control, then arriving and the lobby's controls working again; `building_focus` is the same entry with the keyboard's focus on plates in and out of view.",
   "runs": {
     "camera_floor": {
-      "note": "AT-D3-21's floor half, the camera leg (Appendix B row 15): `fx-snapshot-4`'s four seats on the SHIPPED default map (`@json:`, the file itself) at a viewport of § 12's viewport floor, F. The viewer zooms with the wheel at a stated cursor point, drags by a stated offset, fits the floor, zooms in again three notches, drags, drags far past the floor's edge (the clamp), and drags once more — then the fleet sends a `seat.delta` (1000 ms), a `seat.delta` past a gap that resyncs the seat by fetch (2000 ms, `fx-gap`'s pair and its seat response), a `room.map` that re-fetches the room at version 4 (2500 ms, `fx-layout-acts`' message), and ends the stream (3000 ms), so the recovery reconnects and applies a second full snapshot. Every frame after the last camera act must carry the camera that act left. With the camera acts removed (an override of the page conditions) it is the discriminating control: the scene at fit and the log carrying exactly the messages' rows.",
+      "note": "AT-D3-21's floor half, the camera leg (Appendix B row 15): `fx-snapshot-4`'s four seats on the SHIPPED default map (`@json:`, the file itself) at a viewport of § 12's reference viewport, F. The viewer zooms with the wheel at a stated cursor point, drags by a stated offset, fits the floor, zooms in again three notches, drags, drags far past the floor's edge (the clamp), and drags once more — then the fleet sends a `seat.delta` (1000 ms), a `seat.delta` past a gap that resyncs the seat by fetch (2000 ms, `fx-gap`'s pair and its seat response), a `room.map` that re-fetches the room at version 4 (2500 ms, `fx-layout-acts`' message), and ends the stream (3000 ms), so the recovery reconnects and applies a second full snapshot. Every frame after the last camera act must carry the camera that act left. With the camera acts removed (an override of the page conditions) it is the discriminating control: the scene at fit and the log carrying exactly the messages' rows.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -1441,8 +1441,8 @@
         ]
       }
     },
-    "camera_short": {
-      "note": "AT-D3-21's floor half, the capability-floor leg: `scene_default` entered at F, zoomed in, then the viewport shrunk to F less one pixel in WIDTH (the route must render the list view — no map, no camera — one row per seat), grown back to F (the floor again, at fit, with no row for it), zoomed in again, shrunk to F less one pixel in HEIGHT, and grown back.",
+    "camera_resize": {
+      "note": "AT-D3-21's floor half, the resize leg: `scene_default` entered at § 12's reference viewport, zoomed in, then the window shrunk to a phone's 390 × 700 (the room still drawn, the viewer's zoom kept and the floor in view), grown back to the reference (the same), zoomed in again, shrunk to a low 1,280 × 240, and grown back — with no animation-log row for any of it.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -1847,8 +1847,8 @@
           {
             "at_ms": 100,
             "act": "resize",
-            "width": 1279,
-            "height": 800
+            "width": 390,
+            "height": 700
           },
           {
             "at_ms": 200,
@@ -1867,7 +1867,7 @@
             "at_ms": 400,
             "act": "resize",
             "width": 1280,
-            "height": 799
+            "height": 240
           },
           {
             "at_ms": 500,
@@ -1878,8 +1878,8 @@
         ]
       }
     },
-    "camera_entry_short_width": {
-      "note": "AT-D3-21's floor half: `scene_default` ENTERED at F less one pixel in width — the route renders the list view from its first frame, and never a floor scaled down to fit (the third RED's defect).",
+    "camera_entry_narrow": {
+      "note": "AT-D3-21's floor half, the any-size leg (§ 4.5, the operator's ruling of 2026-10-01 on card#7341): `scene_default` ENTERED in a phone-sized window, 390 × 700 CSS px — narrower than the room — and the route draws the room from its first frame at fit, the whole floor in view; the wheel zooms about the cursor, the zoom buttons' step zooms in, a drag pans by its offset, a drag far past the floor is clamped with the floor still in view, and fit-floor frames it whole again.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -2254,7 +2254,7 @@
         ]
       },
       "messages": [],
-      "until_ms": 100,
+      "until_ms": 1000,
       "floor": {
         "key": "aimla",
         "local_hours": 9,
@@ -2270,13 +2270,43 @@
           }
         },
         "viewport": {
-          "width": 1279,
-          "height": 800
-        }
+          "width": 390,
+          "height": 700
+        },
+        "camera": [
+          {
+            "at_ms": 200,
+            "act": "wheel",
+            "x": 300,
+            "y": 350,
+            "delta_y": -100
+          },
+          {
+            "at_ms": 250,
+            "act": "zoom",
+            "notches": 2
+          },
+          {
+            "at_ms": 300,
+            "act": "drag",
+            "dx": 20,
+            "dy": -10
+          },
+          {
+            "at_ms": 400,
+            "act": "drag",
+            "dx": -100000,
+            "dy": -100000
+          },
+          {
+            "at_ms": 500,
+            "act": "fit"
+          }
+        ]
       }
     },
-    "camera_entry_short_height": {
-      "note": "AT-D3-21's floor half: `scene_default` ENTERED at F less one pixel in height — the route renders the list view from its first frame, and never a floor scaled down to fit (the third RED's defect).",
+    "camera_entry_low": {
+      "note": "AT-D3-21's floor half, the any-size leg: `scene_default` ENTERED in a wide, low window, 1,280 × 240 CSS px — lower than the room at its width's fit — and the route draws the room from its first frame at fit; the same camera acts as `camera_entry_narrow`, each doing what it does at any size.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -2651,7 +2681,7 @@
         ]
       },
       "messages": [],
-      "until_ms": 100,
+      "until_ms": 1000,
       "floor": {
         "key": "aimla",
         "local_hours": 9,
@@ -2668,12 +2698,42 @@
         },
         "viewport": {
           "width": 1280,
-          "height": 799
-        }
+          "height": 240
+        },
+        "camera": [
+          {
+            "at_ms": 200,
+            "act": "wheel",
+            "x": 900,
+            "y": 120,
+            "delta_y": -100
+          },
+          {
+            "at_ms": 250,
+            "act": "zoom",
+            "notches": 2
+          },
+          {
+            "at_ms": 300,
+            "act": "drag",
+            "dx": 20,
+            "dy": -10
+          },
+          {
+            "at_ms": 400,
+            "act": "drag",
+            "dx": -100000,
+            "dy": -100000
+          },
+          {
+            "at_ms": 500,
+            "act": "fit"
+          }
+        ]
       }
     },
-    "camera_degraded_short_width": {
-      "note": "AT-D3-21's floor half: `fx-degraded`'s snapshot (its `degraded_static` run, byte for byte) on the floor route, entered at F less one pixel in width, over `scene_default`'s building, map and tilesets — the list view, one row per seat. What each row SAYS (the `fold_lag` seat's lag line, the `catching_up` seat's currency label, the `config_invalid` seat's *sending nothing* note) is the list module's, Appendix B row 15's slice A.",
+    "camera_degraded_narrow": {
+      "note": "AT-D3-21's floor half: `fx-degraded`'s snapshot (its `degraded_static` run, byte for byte) on the floor route, entered in a phone-sized window (390 × 700), over `scene_default`'s building, map and tilesets — the room drawn with a desk for every seat, and the list view (the desks as text, below the drawing) one row per seat. What each row SAYS (the `fold_lag` seat's lag line, the `catching_up` seat's currency label, the `config_invalid` seat's *sending nothing* note) is the list module's, Appendix B row 15's slice A.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -3190,13 +3250,13 @@
           }
         },
         "viewport": {
-          "width": 1279,
-          "height": 800
+          "width": 390,
+          "height": 700
         }
       }
     },
-    "camera_degraded_short_height": {
-      "note": "AT-D3-21's floor half: `fx-degraded`'s snapshot (its `degraded_static` run, byte for byte) on the floor route, entered at F less one pixel in height, over `scene_default`'s building, map and tilesets — the list view, one row per seat. What each row SAYS (the `fold_lag` seat's lag line, the `catching_up` seat's currency label, the `config_invalid` seat's *sending nothing* note) is the list module's, Appendix B row 15's slice A.",
+    "camera_degraded_low": {
+      "note": "AT-D3-21's floor half: `fx-degraded`'s snapshot on the floor route, entered in a wide, low window (1,280 × 240) — the room drawn with a desk for every seat, and the list view one row per seat, as `camera_degraded_narrow`.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -3714,7 +3774,7 @@
         },
         "viewport": {
           "width": 1280,
-          "height": 799
+          "height": 240
         }
       }
     },

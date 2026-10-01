@@ -1956,21 +1956,22 @@ else:
                                 f"and the shipped default is the map every unauthored room renders")
             g8e_grid += f"; {len(_mobjs)} `desks` objects held at least the box"
 
-# ---- G8f. section 12's VIEWPORT arithmetic, re-derived from the map, the box and the viewport floor ----
+# ---- G8f. section 12's VIEWPORT arithmetic, re-derived from the map, the box and the reference viewport ----
 # The viewport row restates, in prose, how wide the shipped default is in furniture boxes and what the
-# camera's fit zoom is at the viewport floor.  Until PR #232's round-1 review that cell CLAIMED to be
+# camera's fit zoom is at the reference viewport (a size the fit is measured at, and no minimum since the
+# operator's ruling of 2026-10-01 on card#7341: section 4.5 draws the floor at every viewport size).  Until PR #232's round-1 review that cell CLAIMED to be
 # gate-bound while three planted edits to it exited 0 (MAJOR-2).  This leg is the binding: the row
 # count and the boxes per row are re-derived from the map's `desks` objects (grouped by `y`), the box
-# from G8e, the grid from G8b, and the viewport floor from section 12's own row, and each figure the
+# from G8e, the grid from G8b, and the reference viewport from section 12's own row, and each figure the
 # cell states -- `R rows of N furniture boxes: N × W px = P px`, `on a grid **G px wide**`, `fit zoom is
 # **V ÷ G ≈ Z**` -- is recomputed and held.  A figure the cell states in another form is a CONTROL red,
 # not a skip.
 sec12_text = section_text("12-every-number-and-where-it-comes-from") or ""
-VIEW_ROW = r"^\| Floor viewport floor \| \*\*([\d,]+) × ([\d,]+) CSS px\*\* \|(.*)$"
+VIEW_ROW = r"^\| Floor reference viewport \| \*\*([\d,]+) × ([\d,]+) CSS px\*\* \|(.*)$"
 m_view = re.search(VIEW_ROW, sec12_text, re.M)
 g8f = "NOT MEASURED"
 if not m_view:
-    fail.append("G8 CONTROL: section 12's `Floor viewport floor` row no longer carries `**W × H CSS px**` as "
+    fail.append("G8 CONTROL: section 12's `Floor reference viewport` row no longer carries `**W × H CSS px**` as "
                 "its Number cell, so the viewport arithmetic has no viewport to be re-derived against")
 elif _box is None or not g8_maps:
     fail.append("G8: section 12's viewport arithmetic could not be re-derived — the box or the map was not "
@@ -2014,7 +2015,7 @@ else:
             for _name, (_stated, _real) in _want.items():
                 if _stated != _real:
                     fail.append(f"G8: section 12's viewport cell states {_name} = {_stated:,} and the map, the box "
-                                f"and the viewport floor re-derive {_real:,} — the cell's arithmetic drifted from "
+                                f"and the reference viewport re-derive {_real:,} — the cell's arithmetic drifted from "
                                 f"what it is stated to be computed from (`{_mrel}`, `{_brel}`)")
             if m_fit.group(3) != f"{_fit:.2f}":
                 fail.append(f"G8: section 12's viewport cell states a fit zoom of {m_fit.group(3)} and "
@@ -3324,7 +3325,7 @@ print(f"    G8 the shipped default's grid: {g8e_grid}. MEASURED means `width × 
       f"object was held at least the box above.")
 print(f"    G8 section 12's viewport arithmetic: {g8f}. MEASURED means the rows, the boxes per row, the desk "
       f"across, the grid width and the fit zoom the viewport cell states were each recomputed from the map, "
-      f"the box and the row's own viewport floor and held equal.")
+      f"the box and the row's own reference viewport and held equal.")
 print(f"    G8 the worked floors laid at the furniture box: {g8g}. Each figure section 4.6's two rows and D2 "
       f"§ 8.7 state was re-derived from the box above, the rows' own tile counts and the worked JSON, and held.")
 print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase pairs re-derived from "

@@ -23,7 +23,7 @@
  *    capture taken, a capture it already holds released, and no drag; card#7343 c7692 item 3) and the
  *    click-after-drag veto. On the floor the camera frames the floor's extent
  *    from the first frame that has one, so a drawn floor's every gesture is handled as before; its camera
- *    frames nothing before that frame, under the list view (where the drawing is hidden), and on a floor
+ *    frames nothing before that frame and on a floor
  *    with nothing measurable on it (no map held and no desk — `floor-screen.js`), and there the events,
  *    which moved nothing, are the browser's too;
  *  · the wheel zooms about the cursor, carrying the event's `deltaMode` and `ctrlKey` (a pinch) with

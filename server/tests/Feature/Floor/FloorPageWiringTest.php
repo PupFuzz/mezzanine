@@ -30,7 +30,7 @@ use Tests\TestCase;
  * addresses join the entry's in the both-directions check, and the entry must construct the painter
  * from that module — a painter nobody constructs addresses nothing and would pass vacuously.
  *
- * ⛔ AND TO THE CAMERA's (Appendix B row 15): the entry hands the screen the viewer's viewport and
+ * ⛔ AND TO THE CAMERA's (Appendix B row 15): the entry hands the screen the drawing surface's size and
  * wires the wheel and the drag through `wire/camera-gestures.js` (the lobby's too since card#7343 r1)
  * and the keyboard and the zoom buttons through `wire/camera-keys.js` (the lobby's too since card#7343
  * r2-2) — the rules of both — `deltaMode` and `ctrlKey`, the primary button only, the end on a
@@ -74,8 +74,8 @@ class FloorPageWiringTest extends TestCase
         $this->assertSame([], $this->painterDefects($this->mainJs()));
     }
 
-    /** Appendix B row 15: the viewport reaches the screen and every viewer act reaches the camera. */
-    public function test_the_entry_wires_the_viewport_and_the_viewers_acts_to_the_screens_camera(): void
+    /** Appendix B row 15: the surface's size reaches the screen and every viewer act reaches the camera. */
+    public function test_the_entry_wires_the_surface_and_the_viewers_acts_to_the_screens_camera(): void
     {
         $this->assertSame([], $this->cameraDefects($this->mainJs()));
     }
@@ -210,7 +210,7 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('gestures', $this->cameraDefects($copied),
             'CONTROL (the page wiring a pointer gesture of its own beside the shared module) did not bite');
 
-        $stale = str_replace("    screen.resize(viewport(), surface());\n    show(screen.camera());\n", "    screen.resize(viewport(), surface());\n", $js);
+        $stale = str_replace("    screen.resize(surface());\n    show(screen.camera());\n", "    screen.resize(surface());\n", $js);
         $this->assertNotSame($stale, $js);
         $this->assertArrayHasKey('resize', $this->cameraDefects($stale),
             'CONTROL (a resize that leaves a glide running over the old surface) did not bite');
@@ -282,10 +282,10 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('buttons', $this->cameraDefects($fitless),
             'CONTROL (Fit the floor never offered or withdrawn with the camera) did not bite');
 
-        $blind = str_replace('    viewport: viewport(),', '', $js);
+        $blind = str_replace('    surface: surface(),', '', $js);
         $this->assertNotSame($blind, $js);
-        $this->assertArrayHasKey('viewport', $this->cameraDefects($blind),
-            'CONTROL (a screen handed no viewport) did not bite');
+        $this->assertArrayHasKey('surface', $this->cameraDefects($blind),
+            'CONTROL (a screen handed no surface) did not bite');
 
         $drifted = (string) preg_replace('/export const ANIMATION_LOG_RETENTION = \d+;/', 'export const ANIMATION_LOG_RETENTION = 5000;', $livePage);
         $this->assertNotSame($drifted, $livePage);
@@ -332,11 +332,11 @@ class FloorPageWiringTest extends TestCase
     {
         $defects = [];
         $wired = [
-            'viewport' => ['viewport: viewport(),', 'screen.resize(viewport(), surface())'],
+            'surface' => ['surface: surface(),', 'screen.resize(surface())'],
             // … and the camera as it stands, so the wheel is the page's scroll while it frames nothing (card#7343 r3b).
             'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel,', 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
             'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
-            'resize' => ["    screen.resize(viewport(), surface());\n    show(screen.camera());\n"],
+            'resize' => ["    screen.resize(surface());\n    show(screen.camera());\n"],
             // … and the camera as it stands, so every key is the browser's while it frames nothing (card#7343 r4b).
             'keyboard' => ["import { cameraKeys, offerKeys } from '../wire/camera-keys.js';", 'cameraKeys(drawing, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);'],
             // … and the zoom buttons, *Fit the floor* and the drawing's keys and tab stop offered from each

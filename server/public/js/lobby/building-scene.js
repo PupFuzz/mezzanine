@@ -26,8 +26,8 @@
  * nothing (card#7343 r3b, r4b).
  *
  * ⛔ THE NUMBERS ARE THE DRAWING's (§ 10.4's last bullet): a plate's size carries no fact. The plate is
- * a storey's proportion — the reference's storey has about the proportions of § 12's viewport
- * floor — so a zoom to one plate fills the surface rather than panning a strip across it.
+ * a storey's proportion — the reference's storey has about the proportions of § 12's reference
+ * viewport — so a zoom to one plate fills the surface rather than panning a strip across it.
  *
  * ⭐ THE PLATE DRAWN AS THE REFERENCE's SECTION — slice B (card#7343). `buildingArt()` is the building
  * the plates stand in, as data the page paints and decides nothing about (`lobby/main.js`'s painter, as

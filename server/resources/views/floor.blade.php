@@ -24,12 +24,13 @@
         `public/js/floor/painter.js` paints from the floor screen's scene (`floor/scene.js`) — tiles,
         desks, the band, the thread line — and `#floor-art` is § 9 F14's strip line.
 
-        ⭐ UNDER THE CAMERA (Appendix B row 15): at or above § 12's viewport floor the drawing fills the
+        ⭐ UNDER THE CAMERA (Appendix B row 15), AT EVERY WINDOW SIZE (§ 4.5; the operator's ruling of
+        2026-10-01 on card#7341 — no minimum size and no substitute view): the drawing fills the
         section's width and the viewport's height and the camera frames it — wheel to zoom, drag to
         pan, `+`/`-` or `#floor-zoom-in`/`#floor-zoom-out` to zoom about the centre, the arrow keys to
         pan, `#floor-fit` to frame the whole floor, and the whole-building link to `/`, § 4.4's lobby
-        route. Below the floor the drawing and its controls are hidden and `#floor-desks` is § 4.5's
-        list view: each desk's row (Appendix B row 15, slice A: `public/js/desk/desk-list.js`), every
+        route. Below the drawing `#floor-desks` is § 4.5's list view, the desks as text beside the
+        drawing: each desk's row (Appendix B row 15, slice A: `public/js/desk/desk-list.js`), every
         fact the desk model emits as lines of text. The status strip, the failure statements and the
         sign-in prompt are page chrome outside the camera.
     --}}
