@@ -807,7 +807,7 @@ nothing obliges a change PR to carry a section — so what it leaves a PR into `
 | the scope line | always — one line, FIRST, naming the range this merges against its base, with the command that re-prints it and never a tally of it |
 | `## Highlights` | whenever anything about the change has an installer-visible face |
 | `## Upgrade warnings` | **only** when the installer cannot deploy or upgrade correctly without an action. Absent that need there is no section, not an empty one |
-| `Built:`, `**Coordinated in:**`, the attribution trailer | always — machine-read, and the installer POV does not reach them |
+| `Built:`, `**Coordinated in:**` | always, last — machine-read, and the installer POV does not reach them. Nothing follows them: no AI-attribution trailer (below) |
 
 Everything this repository used to put in a body keeps its obligation and changes its home:
 
@@ -852,23 +852,27 @@ class here until `bin/change-pr-body.py` (card#9801). Use it, then fill the mark
 ```
 python3 bin/change-pr-body.py \
   --built 'dispatched (coder ×N / mechanic ×M)' --coordinated-in 'card#NNNN' \
-  --agent 'implemented by the mezzanine `coder` subagent' \
-  --session-url '<this session URL>' > /tmp/body.md      # add --upgrade-warnings only if needed
+  > /tmp/body.md                                          # add --upgrade-warnings only if needed
 python3 bin/pr-body-lint.py --body-file /tmp/body.md      # must be rc 0 BEFORE `gh pr create`
 ```
 
 It refuses rather than guessing: `--built` and `--coordinated-in` are required (a count nothing
-recorded is a fabricated attestation), a detached HEAD and an empty range are refused by name, and
-no session URL is invented. The judgement sections come out as `<!-- AUTHOR: … -->` markers — the
+recorded is a fabricated attestation), and a detached HEAD and an empty range are refused by name. The judgement sections come out as `<!-- AUTHOR: … -->` markers — the
 same marker `release-pr-body` leaves — so `grep '<!-- AUTHOR:'` finds an unfilled body of either
 kind. **A RELEASE PR still uses `release-pr-body`**; this tool emits no version, no bundled table
 and no artifact checklist, and is wrong for one.
 
 ⛔ **A PR BODY DOES NOT OPEN WITH A `FROM:` LINE.** Operator directive, 2026-09-17, fleet-wide with no
-per-repo exemption; the linter's `attribution-line` rule reds it. Which agent produced the work is
-recorded beside the Claude Code model-attribution line in the trailer instead. A third body field
-naming the producing agent is coming; its spelling is not yet agreed across the fleet, so do not
-invent one.
+per-repo exemption; the linter's `attribution-line` rule reds it.
+
+⛔ **A PR BODY CARRIES NO AI ATTRIBUTION** — no line naming the AI model (the `Generated with Claude
+Code` footer included), no Claude session link, no Claude `Co-Authored-By` trailer. The operator's
+standing instruction of 2026-09-27 (framework card#10673) covers every GitHub-bound text, and
+upstream's linter carries it as the `ai-attribution` rule from coord 0.58.0 on. It supersedes the
+2026-09-17 practice of recording the producing agent beside the Claude Code model line, so
+`bin/change-pr-body.py` no longer has `--agent` or `--session-url`. The agent's identity gets no
+body line in their place: upstream attributes a PR by the roster's repo binding (`docs/protocol-spec.md`
+§ Addressing), and which subagent roles built the change is on `Built:`. Do not invent a field for it.
 
 ⚠ **A REGENERATED BODY DROPS `Built:` AND `Coordinated in:`, SILENTLY** — that is the defect card#9767
 opened on, and it has already made one peer's careful API-level verification false. After regenerating

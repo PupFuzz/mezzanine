@@ -22,8 +22,8 @@ use Tests\TestCase;
  *
  * ⛔ AND THE TWO THINGS ROW 8 SAYS THE PAGE MUST CARRY THAT NOTHING ELSE CAN CHECK: that the client
  * protocol is constructed WITH its scheduler — a real `EventSource` without the stream recovery
- * inherits the browser's own reconnect (row 8's ⛔) — and that the animation log is constructed with
- * § 12's retention figure (§ 14 item 26), re-derived from § 12 rather than copied here.
+ * inherits the browser's own reconnect (row 8's ⛔) — and that the animation log is `wire/live-page.js`'s,
+ * constructed with § 12's retention figure (§ 14 item 26), re-derived from § 12 rather than copied here.
  *
  * ⛔ WIDENED TO THE PAINTER's ELEMENTS (Appendix B row 14, card#7341 step 11): the page's drawing is
  * `public/js/floor/painter.js`'s, which addresses the view's drawing element itself, so the ids it
@@ -31,8 +31,13 @@ use Tests\TestCase;
  * from that module — a painter nobody constructs addresses nothing and would pass vacuously.
  *
  * ⛔ AND TO THE CAMERA's (Appendix B row 15): the entry hands the screen the viewer's viewport and
- * wires the wheel (the event's `deltaMode` and `ctrlKey` with its `deltaY`), the drag (the primary button only, and
- * ended by a `pointercancel` or by a move with that button no longer held), the keyboard, the zoom buttons, the fit-floor control and a resize (which
+ * wires the wheel and the drag through `wire/camera-gestures.js` (the lobby's too since card#7343 r1)
+ * and the keyboard and the zoom buttons through `wire/camera-keys.js` (the lobby's too since card#7343
+ * r2-2) — the rules of both — `deltaMode` and `ctrlKey`, the primary button only, the end on a
+ * `pointercancel` or a buttonless move, which key zooms and which way an arrow pans — are held and
+ * planted by `TheCameraWireIsOneForBothPagesTest`, and here only that the entry hands those modules its
+ * drawing, its zoom buttons and the screen's acts, with no copy of its own — and the fit-floor control
+ * and a resize (which
  * re-shows the camera at once, stopping a glide) to the screen's camera acts — a camera no event
  * reaches is a floor that never moves and would pass AT-D3-21, which drives the acts directly. And the
  * drawing is reachable: it takes focus, and neither it nor the painter's `<svg>` is an image, whose
@@ -141,10 +146,17 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('recovery', $this->bindingDefects($bypassed),
             'CONTROL (the page constructing a protocol of its own beside wire/live-page.js) did not bite');
 
-        $unbounded = str_replace('createAnimationLog(ANIMATION_LOG_RETENTION)', 'createAnimationLog()', $js);
-        $this->assertNotSame($unbounded, $js);
-        $this->assertArrayHasKey('retention', $this->bindingDefects($unbounded),
+        // The log's construction moved to `wire/live-page.js` when the lobby became its second page
+        // (card#7343), so the bound's plants are planted THERE, and a third is the page walking around it.
+        $unbounded = str_replace('log: createAnimationLog(ANIMATION_LOG_RETENTION)', 'log: createAnimationLog()', $livePage);
+        $this->assertNotSame($unbounded, $livePage);
+        $this->assertArrayHasKey('retention', $this->pageLogDefects($js, $unbounded),
             'CONTROL (the log constructed with no bound) did not bite');
+
+        $ownLog = str_replace('startFloorScreen(client, pageFetch, clock, log, paint, {', 'startFloorScreen(client, pageFetch, clock, createAnimationLog(), paint, {', $js);
+        $this->assertNotSame($ownLog, $js);
+        $this->assertArrayHasKey('retention', $this->bindingDefects($ownLog),
+            'CONTROL (the page constructing an unbounded log of its own beside wire/live-page.js) did not bite');
 
         $misaddressed = str_replace("getElementById('floor-drawing')", "getElementById('floor-drawinq')", $this->painterJs());
         $this->assertNotSame($misaddressed, $this->painterJs());
@@ -161,50 +173,70 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('painter', $this->painterDefects($unpainted),
             'CONTROL (an entry that never constructs the painter) did not bite');
 
-        $unwheeled = str_replace('show(screen.wheel(', 'show(screen.camera(', $js);
+        $unwheeled = str_replace('wheel: screen.wheel', 'wheel: screen.camera', $js);
         $this->assertNotSame($unwheeled, $js);
         $this->assertArrayHasKey('wheel', $this->cameraDefects($unwheeled),
             'CONTROL (a wheel that never reaches the camera) did not bite');
 
-        $modeless = str_replace('{ deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }', '{ deltaY: event.deltaY, ctrlKey: event.ctrlKey }', $js);
-        $this->assertNotSame($modeless, $js);
-        $this->assertArrayHasKey('wheel', $this->cameraDefects($modeless),
-            'CONTROL (a wheel whose deltaMode never reaches the camera) did not bite');
+        $undragged = str_replace('drag: screen.drag, camera: screen.camera }', 'drag: screen.camera, camera: screen.camera }', $js);
+        $this->assertNotSame($undragged, $js);
+        $this->assertArrayHasKey('drag', $this->cameraDefects($undragged),
+            'CONTROL (a drag that never reaches the camera) did not bite');
 
-        $pinchless = str_replace('{ deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }', '{ deltaY: event.deltaY, deltaMode: event.deltaMode }', $js);
-        $this->assertNotSame($pinchless, $js);
-        $this->assertArrayHasKey('wheel', $this->cameraDefects($pinchless),
-            'CONTROL (a wheel whose ctrlKey — a pinch — never reaches the camera) did not bite');
+        // card#7343 r3b: the gestures ask the screen's camera whether it frames the floor; one that never
+        // does leaves every wheel over the drawn floor to the page's scroll.
+        $unframed = str_replace('cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);',
+            'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: () => ({ bounds: null }) }, show);', $js);
+        $this->assertNotSame($unframed, $js);
+        $this->assertArrayHasKey('wheel', $this->cameraDefects($unframed),
+            'CONTROL (a wheel handed a camera that frames nothing) did not bite');
 
-        $uncancelled = str_replace("drawing.addEventListener('pointercancel'", "drawing.addEventListener('pointerleave'", $js);
-        $this->assertNotSame($uncancelled, $js);
-        $this->assertArrayHasKey('drag', $this->cameraDefects($uncancelled),
-            'CONTROL (a drag no pointercancel ends) did not bite');
+        // card#7343 r4b: the keys ask the same camera, so one that never frames leaves every key over the
+        // drawn floor to the browser; and the keys and the zoom buttons are offered from the frame's camera.
+        $keysUnframed = str_replace('{ zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }', '{ zoomStep: screen.zoomStep, drag: screen.drag, camera: () => ({ bounds: null }) }', $js);
+        $this->assertNotSame($keysUnframed, $js);
+        $this->assertArrayHasKey('keyboard', $this->cameraDefects($keysUnframed),
+            'CONTROL (keys handed a camera that frames nothing) did not bite');
 
-        $unreleased = str_replace('if (drag === null || (event.buttons & 1) === 0) {', 'if (drag === null) {', $js);
-        $this->assertNotSame($unreleased, $js);
-        $this->assertArrayHasKey('drag', $this->cameraDefects($unreleased),
-            'CONTROL (a drag a buttonless move does not end — its pointerup was released outside) did not bite');
+        $unoffered = str_replace("    offerKeys(el('floor-drawing'), zoomButtons, frame.camera);\n", '', $js);
+        $this->assertNotSame($unoffered, $js);
+        $this->assertArrayHasKey('buttons', $this->cameraDefects($unoffered),
+            'CONTROL (keys and zoom buttons never offered) did not bite');
 
-        $anyButton = str_replace('if (!event.isPrimary || event.button !== 0) {', 'if (false) {', $js);
-        $this->assertNotSame($anyButton, $js);
-        $this->assertArrayHasKey('drag', $this->cameraDefects($anyButton),
-            'CONTROL (a drag any button starts) did not bite');
+        // The gestures are wire/camera-gestures.js's, whose own defects TheCameraWireIsOneForBothPagesTest
+        // plants and watches red; what can drift here is a page growing its own copy back beside it.
+        $copied = str_replace('cameraKeys(drawing, ', "drawing.addEventListener('pointermove', () => {});\ncameraKeys(drawing, ", $js);
+        $this->assertNotSame($copied, $js);
+        $this->assertArrayHasKey('gestures', $this->cameraDefects($copied),
+            'CONTROL (the page wiring a pointer gesture of its own beside the shared module) did not bite');
 
         $stale = str_replace("    screen.resize(viewport(), surface());\n    show(screen.camera());\n", "    screen.resize(viewport(), surface());\n", $js);
         $this->assertNotSame($stale, $js);
         $this->assertArrayHasKey('resize', $this->cameraDefects($stale),
             'CONTROL (a resize that leaves a glide running over the old surface) did not bite');
 
-        $keyless = str_replace("drawing.addEventListener('keydown'", "drawing.addEventListener('keyup-never'", $js);
+        // The keys and the zoom buttons are wire/camera-keys.js's since card#7343 r2-2, whose own defects —
+        // the ones this file planted in the inline copy — TheCameraWireIsOneForBothPagesTest plants and
+        // watches red; what can drift here is the entry's hand-off, and a copy growing back beside it.
+        $keyless = str_replace('cameraKeys(drawing, ', "cameraKeys(el('floor-desks'), ", $js);
         $this->assertNotSame($keyless, $js);
         $this->assertArrayHasKey('keyboard', $this->cameraDefects($keyless),
-            'CONTROL (a keyboard that never reaches the camera) did not bite');
+            'CONTROL (a keyboard handed an element that is not the drawing) did not bite');
 
-        $buttonless = str_replace("el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));", "el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.camera());", $js);
+        $buttonless = str_replace("zoomIn: el('floor-zoom-in')", "zoomIn: el('floor-fit')", $js);
         $this->assertNotSame($buttonless, $js);
         $this->assertArrayHasKey('buttons', $this->cameraDefects($buttonless),
             'CONTROL (a zoom button that never reaches the camera) did not bite');
+
+        foreach ([
+            'a keydown of its own' => "drawing.addEventListener('keydown', () => {});\n",
+            'a zoom button of its own' => "el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));\n});\n",
+        ] as $what => $copy) {
+            $keyCopy = str_replace('cameraKeys(drawing, ', $copy.'cameraKeys(drawing, ', $js);
+            $this->assertNotSame($keyCopy, $js);
+            $this->assertArrayHasKey('keys', $this->cameraDefects($keyCopy),
+                "CONTROL (the page wiring {$what} beside wire/camera-keys.js) did not bite");
+        }
 
         $painter = $this->painterJs();
         $imaged = str_replace("class: 'floor-scene', role: 'group'", "class: 'floor-scene', role: 'img'", $painter);
@@ -232,19 +264,32 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('refocus', $this->exposureDefects($html, $unguarded),
             'CONTROL (a rebuild that moves focus into the drawing whether or not the keyboard was in it) did not bite');
 
-        $unfocusable = str_replace(' tabindex="0" aria-keyshortcuts', ' aria-keyshortcuts', $html);
-        $this->assertNotSame($unfocusable, $html);
-        $this->assertArrayHasKey('focus', $this->exposureDefects($unfocusable, $painter),
-            'CONTROL (a drawing the keyboard cannot reach) did not bite');
+        // card#7343 comment 7692 item 1: the drawing's tab stop is `offerKeys()`'s, offered only while the camera
+        // frames the floor, so the markup offers none — a drawing the keyboard cannot reach is now planted in
+        // `offerKeys()` itself, `TheCameraWireIsOneForBothPagesTest`'s offer defects.
+        $tabbed = str_replace(' aria-label="the room drawing" data-dimmed', ' aria-label="the room drawing" tabindex="0" data-dimmed', $html);
+        $this->assertNotSame($tabbed, $html);
+        $this->assertArrayHasKey('focus', $this->exposureDefects($tabbed, $painter),
+            'CONTROL (a drawing that is a tab stop before any camera frames it) did not bite');
+
+        $fitShown = str_replace('id="floor-fit" hidden>', 'id="floor-fit">', $html);
+        $this->assertNotSame($fitShown, $html);
+        $this->assertArrayHasKey('fit', $this->exposureDefects($fitShown, $painter),
+            'CONTROL (Fit the floor shown before any camera frames the floor) did not bite');
+
+        $fitless = str_replace("fit: el('floor-fit') }", "fit: el('floor-zoom-out') }", $js);
+        $this->assertNotSame($fitless, $js);
+        $this->assertArrayHasKey('buttons', $this->cameraDefects($fitless),
+            'CONTROL (Fit the floor never offered or withdrawn with the camera) did not bite');
 
         $blind = str_replace('    viewport: viewport(),', '', $js);
         $this->assertNotSame($blind, $js);
         $this->assertArrayHasKey('viewport', $this->cameraDefects($blind),
             'CONTROL (a screen handed no viewport) did not bite');
 
-        $drifted = str_replace('const ANIMATION_LOG_RETENTION = 2000;', 'const ANIMATION_LOG_RETENTION = 5000;', $js);
-        $this->assertNotSame($drifted, $js);
-        $this->assertArrayHasKey('retention', $this->bindingDefects($drifted),
+        $drifted = (string) preg_replace('/export const ANIMATION_LOG_RETENTION = \d+;/', 'export const ANIMATION_LOG_RETENTION = 5000;', $livePage);
+        $this->assertNotSame($drifted, $livePage);
+        $this->assertArrayHasKey('retention', $this->pageLogDefects($js, $drifted),
             'CONTROL (a retention figure that is not § 12\'s) did not bite');
     }
 
@@ -279,18 +324,7 @@ class FloorPageWiringTest extends TestCase
     /** @return array<string, string> */
     private function bindingDefects(string $js): array
     {
-        $defects = $this->livePageDefects($js);
-
-        $this->assertSame(1, preg_match('/^\| The floor page\'s animation-log retention \| \*\*([\d,]+) rows\*\*/m', $this->floorMd(), $m),
-            '§ 12\'s retention row did not parse');
-
-        if (preg_match('/const ANIMATION_LOG_RETENTION = (\d+);/', $js, $c) !== 1
-            || (int) $c[1] !== (int) str_replace(',', '', $m[1])
-            || ! str_contains($js, 'createAnimationLog(ANIMATION_LOG_RETENTION)')) {
-            $defects['retention'] = 'the animation log is not constructed with § 12\'s retention figure';
-        }
-
-        return $defects;
+        return [...$this->livePageDefects($js), ...$this->pageLogDefects($js)];
     }
 
     /** @return array<string, string> */
@@ -299,13 +333,16 @@ class FloorPageWiringTest extends TestCase
         $defects = [];
         $wired = [
             'viewport' => ['viewport: viewport(),', 'screen.resize(viewport(), surface())'],
-            'wheel' => ["drawing.addEventListener('wheel'", 'show(screen.wheel(', '{ deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }'],
-            'drag' => ["drawing.addEventListener('pointermove'", 'show(screen.drag(', 'if (!event.isPrimary || event.button !== 0) {',
-                "drawing.addEventListener('pointercancel'", 'if (drag === null || (event.buttons & 1) === 0) {'],
+            // … and the camera as it stands, so the wheel is the page's scroll while it frames nothing (card#7343 r3b).
+            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel,', 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
+            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
             'resize' => ["    screen.resize(viewport(), surface());\n    show(screen.camera());\n"],
-            'keyboard' => ["drawing.addEventListener('keydown'", 'show(screen.zoomStep(KEY_ZOOM[event.key]))', 'show(screen.drag(...KEY_PAN[event.key]))'],
-            'buttons' => ["el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));",
-                "el('floor-zoom-out').addEventListener('click', () => {\n    show(screen.zoomStep(-1));"],
+            // … and the camera as it stands, so every key is the browser's while it frames nothing (card#7343 r4b).
+            'keyboard' => ["import { cameraKeys, offerKeys } from '../wire/camera-keys.js';", 'cameraKeys(drawing, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);'],
+            // … and the zoom buttons, *Fit the floor* and the drawing's keys and tab stop offered from each
+            // frame's camera (card#7343 r4b, comment 7692).
+            'buttons' => ["const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit') };",
+                "    offerKeys(el('floor-drawing'), zoomButtons, frame.camera);"],
             'fit' => ["el('floor-fit').addEventListener('click'", 'screen.fitFloor()'],
         ];
 
@@ -315,6 +352,16 @@ class FloorPageWiringTest extends TestCase
                     $defects[$act] = "the entry does not wire the {$act} to the screen's camera (`{$needle}` is missing)";
                 }
             }
+        }
+
+        // One gesture wiring for both pages (card#7343 r1): a pointer, wheel or drag listener here is a copy.
+        if (preg_match("/addEventListener\\('(wheel|pointerdown|pointermove|pointerup|pointercancel|dragstart)'/", $js, $m) === 1) {
+            $defects['gestures'] = "the entry wires a {$m[1]} of its own beside wire/camera-gestures.js";
+        }
+
+        // And one key wiring (card#7343 r2-2): a keydown listener, or a zoom step of the entry's own, is a copy.
+        if (preg_match("/addEventListener\\('keydown'|\\.zoomStep\\(/", $js, $m) === 1) {
+            $defects['keys'] = "the entry wires `{$m[0]}` of its own beside wire/camera-keys.js";
         }
 
         return $defects;
@@ -329,8 +376,14 @@ class FloorPageWiringTest extends TestCase
             return ['focus' => 'the page declares no #floor-drawing'];
         }
 
-        if (! str_contains($m[1], 'tabindex="0"')) {
-            $defects['focus'] = 'the drawing takes no keyboard focus, so its keys reach nothing';
+        // card#7343 comment 7692 item 1: `offerKeys()` makes the drawing a tab stop once its camera frames the
+        // floor, and the markup starts with it withdrawn — the early return `offerKeys()` takes reads that.
+        if (str_contains($m[1], 'tabindex')) {
+            $defects['focus'] = 'the drawing is a tab stop in the markup, before any camera frames it — `offerKeys()` offers it';
+        }
+
+        if (preg_match('/<button type="button" id="floor-fit"([^>]*)>/', $html, $fit) !== 1 || preg_match('/(^|\s)hidden(\s|$)/', $fit[1]) !== 1) {
+            $defects['fit'] = 'Fit the floor is shown in the markup, before any camera frames the floor — `offerKeys()` offers it';
         }
 
         if (str_contains($m[1], 'role="img"')) {

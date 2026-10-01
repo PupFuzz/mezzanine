@@ -85,9 +85,9 @@
             fit-floor control and the whole-building link, shown only while the drawn floor is.
         --}}
         <nav id="floor-camera" aria-label="the camera" hidden>
-            <button type="button" id="floor-zoom-in">Zoom in</button>
-            <button type="button" id="floor-zoom-out">Zoom out</button>
-            <button type="button" id="floor-fit">Fit the floor</button>
+            <button type="button" id="floor-zoom-in" hidden>Zoom in</button>
+            <button type="button" id="floor-zoom-out" hidden>Zoom out</button>
+            <button type="button" id="floor-fit" hidden>Fit the floor</button>
             <a href="{{ url('/') }}">Whole building</a>
         </nav>
 
@@ -95,10 +95,13 @@
             Appendix B row 14's room drawing — the painter's SVG, empty until the art modules answer —
             under row 15's camera: the section's width by the viewport's height, which is the surface
             `main.js` hands the camera. It takes focus so the keyboard reaches the camera: `+`/`-` zoom
-            about its centre and the arrow keys pan (`aria-keyshortcuts` names them); the desks inside
+            about its centre and the arrow keys pan (it is a tab stop, `aria-keyshortcuts` names them, and
+            the zoom buttons and *Fit the floor* show, only while the camera frames the floor:
+            `public/js/wire/camera-keys.js`'s `offerKeys()`, card#7343 r4b and comment 7692 — so the markup
+            starts with none of them); the desks inside
             it are buttons of their own, which is why the drawing is a group and never an image.
         --}}
-        <div id="floor-drawing" role="group" aria-label="the room drawing" tabindex="0" aria-keyshortcuts="+ - ArrowUp ArrowDown ArrowLeft ArrowRight" data-dimmed="false" style="width: 100%; height: 100vh; overflow: hidden; touch-action: none; cursor: grab"></div>
+        <div id="floor-drawing" role="group" aria-label="the room drawing" data-dimmed="false" style="width: 100%; height: 100vh; overflow: hidden; touch-action: none; cursor: grab"></div>
 
         <h3 id="floor-desks-heading">Desks</h3>
         <ul id="floor-desks" aria-labelledby="floor-desks-heading" data-dimmed="false">

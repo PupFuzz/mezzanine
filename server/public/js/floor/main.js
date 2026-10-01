@@ -15,9 +15,9 @@
  * held without the stream recovery inherits the browser's own reconnect, which re-runs none of
  * § 2.2's steps 1–5; the wiring test reds if this page stops constructing it there.
  *
- * ⛔ THE TWO BOUNDS A PAGE NEEDS AND THE HARNESS MUST NOT HAVE ARE APPLIED HERE: the animation log is
- * constructed with § 12's retention (`ANIMATION_LOG_RETENTION`, § 14 item 26), and the protocol
- * holds its coordination envelopes to § 5.7's cap on its own (§ 14 item 25).
+ * ⛔ THE TWO BOUNDS A PAGE NEEDS AND THE HARNESS MUST NOT HAVE ARE APPLIED FOR IT: the animation log
+ * is `wire/live-page.js`'s, constructed with § 12's retention (`ANIMATION_LOG_RETENTION`, § 14 item
+ * 26), and the protocol holds its coordination envelopes to § 5.7's cap on its own (§ 14 item 25).
  *
  * ⛔ A RENDER FOLLOWS EVERY THING THAT CAN CHANGE WHAT THE PROTOCOL HOLDS, coalesced into one
  * `screen.render()` at a time (`wire/live-page.js` says why). The 1 s age tick re-draws the desks'
@@ -32,14 +32,16 @@
  * them; row 8's page-side `deskLine()` is gone.
  *
  * ⛔ THE CAPABILITY FLOOR AND THE CAMERA ARE THE SCREEN's (Appendix B row 15, § 4.5); this file supplies
- * the viewport and the drawing surface's size, wires the wheel, the drag, the keyboard, the zoom buttons
- * and the fit-floor control to the screen's camera acts, and sets the drawing's view from the camera
+ * the viewport and the drawing surface's size, wires the wheel and the drag (through
+ * `wire/camera-gestures.js`) and the keyboard and the zoom buttons (through `wire/camera-keys.js`),
+ * both of which the lobby shares, and the fit-floor control to the screen's camera acts, and sets the drawing's view from the camera
  * each returns — a camera act renders nothing. Below § 12's viewport floor the frame is the list view
  * and this file paints the desk list — `paintDesks()`, over `deskListRow()` — and hides the drawing;
  * at or above it, the drawing under the camera and no list. The whole-building control is a link to
  * `/` (§ 4.4's lobby route), never a second scale drawn here.
  * A glide is the page's alone — the camera's state is already its destination — and under
- * `prefers-reduced-motion` the screen hands back no glide at all, so the view cuts.
+ * `prefers-reduced-motion` the screen hands back no glide at all, so the view cuts. How a glide steps
+ * is `wire/camera-view.js`'s, which the lobby's glide shares (Appendix B row 16).
  *
  * ⛔ THE DRILL-DOWN IS OPENED FROM A DESK AND CLOSED TO THE FLOOR WITHOUT LEAVING THE PAGE (§ 4, § 4.3;
  * Appendix B row 10). Selecting a desk pushes `/floor/{floor}/{seat_id}` (§ 4.4) into the browser's
@@ -50,16 +52,14 @@
  */
 
 import { livePage } from '../wire/live-page.js';
-import { createAnimationLog } from '../wire/animation-log.js';
 import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
 import { renderDrillDown } from '../drilldown/main.js';
 import { createPainter, loadArt, measurer } from './painter.js';
-import { PAN_STEP_PX, between } from '../wire/camera.js';
+import { cameraView } from '../wire/camera-view.js';
+import { cameraGestures } from '../wire/camera-gestures.js';
+import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
 import { deskListRow } from '../desk/desk-list.js';
-
-/** § 12's *The floor page's animation-log retention* — the page's bound, and no one else's. */
-const ANIMATION_LOG_RETENTION = 2000;
 
 /** A missing element throws rather than being guarded past — the lobby's rule, for its reason. */
 function el(id) {
@@ -101,17 +101,22 @@ function list(id, lines) {
 
 const root = el('floor');
 
+/**
+ * The drawing's zoom buttons — handed to `wire/camera-keys.js` to wire — and its framing control, *Fit the
+ * floor*: all three offered by `offerKeys()` on every render (card#7343 comment 7692).
+ */
+const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit') };
+
 let lastFrame = null;
 
 /** `floor/painter.js`'s painter, once the art modules have answered (Appendix B row 14). */
 let painter = null;
 
 /**
- * The camera the drawing shows right now — the screen's, or a glide's step towards it — and the
- * glide's frame request, if one is running (Appendix B row 15).
+ * The camera the drawing shows right now — the screen's, or a glide's step towards it (Appendix B row
+ * 15) — shown through `wire/camera-view.js`: `show()` at once, `glideTo()` over a glide's length.
  */
-let shown = null;
-let glide = null;
+const { show, glideTo, current } = cameraView((camera) => painter?.view(camera));
 
 /** The viewer's viewport in CSS px — what § 4.5's capability floor reads. */
 function viewport() {
@@ -123,40 +128,7 @@ function surface() {
     return { width: root.clientWidth, height: window.innerHeight };
 }
 
-/** Show a camera on the drawing, stopping any glide in flight. */
-function show(camera) {
-    if (glide !== null) {
-        cancelAnimationFrame(glide);
-        glide = null;
-    }
-
-    shown = camera;
-    painter?.view(camera);
-}
-
-/** The fit-floor control's move: a glide of the given length to `to`, or a cut when it is none. */
-function glideTo(from, to, ms) {
-    show(from);
-
-    if (ms === 0) {
-        show(to);
-
-        return;
-    }
-
-    const start = performance.now();
-    const step = (now) => {
-        const t = Math.min(1, (now - start) / ms);
-
-        shown = between(from, to, t);
-        painter?.view(shown);
-        glide = t < 1 ? requestAnimationFrame(step) : null;
-    };
-
-    glide = requestAnimationFrame(step);
-}
-
-const { client, clock, fetch: pageFetch, requestRender } = livePage(() => screen.render());
+const { client, clock, fetch: pageFetch, requestRender, log } = livePage(() => screen.render());
 
 /** § 4.4's two URL shapes for this page, the floor segment first. */
 function routeOf(floor, seat) {
@@ -304,12 +276,15 @@ function paint(frame) {
     el('floor-drawing').dataset.dimmed = String(frame.failure.sign_in !== null);
     el('floor-camera').hidden = !drawn || frame.scene === null;
     el('floor-desks-heading').hidden = drawn;
+    // The camera is offered only while it frames the floor (card#7343 r4b, comment 7692): with nothing
+    // framed its controls do nothing, so the zoom buttons and *Fit the floor* are hidden and the drawing is
+    // no tab stop and names no keys.
+    offerKeys(el('floor-drawing'), zoomButtons, frame.camera);
 
     if (drawn) {
         // A render never moves the viewer: a glide in flight keeps its step, and otherwise the drawing
         // shows the screen's camera, which the render left where the viewer put it.
-        shown = glide === null ? frame.camera : shown;
-        painter?.paint(frame.scene ?? null, shown);
+        painter?.paint(frame.scene ?? null, current(frame.camera));
     } else {
         show(frame.camera);
         painter?.paint(null, frame.camera);
@@ -320,7 +295,7 @@ function paint(frame) {
     list('floor-log', client.eventLog);
 }
 
-const screen = startFloorScreen(client, pageFetch, clock, createAnimationLog(ANIMATION_LOG_RETENTION), paint, {
+const screen = startFloorScreen(client, pageFetch, clock, log, paint, {
     floor: root.dataset.floor,
     seat: root.dataset.seat === '' ? null : root.dataset.seat,
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -384,98 +359,15 @@ el('floor-panel-more').addEventListener('click', () => {
 
 // Appendix B row 15: the viewer's camera. The wheel zooms about the cursor in proportion to its scroll
 // (a trackpad's small deltas and a pinch — a wheel event with `ctrlKey`, which the camera scales by its
-// `PINCH_GAIN` — through the same path), a drag with the primary button pans, and the keyboard and the
-// zoom buttons zoom about the drawing's centre and pan by a step; none renders — each sets the
-// drawing's view from the camera the screen hands back.
+// `PINCH_GAIN` — through the same path) and a drag with the primary button pans, both wired by
+// `wire/camera-gestures.js`; the keyboard and the zoom buttons zoom about the drawing's centre and pan
+// by a step, wired by `wire/camera-keys.js` — both modules the lobby's too. None renders — each sets
+// the drawing's view from the camera the screen hands back, and each leaves its event to the browser
+// while the camera frames nothing (card#7343 r4b).
 const drawing = el('floor-drawing');
-let drag = null;
-let dragged = false;
 
-drawing.addEventListener('wheel', (event) => {
-    event.preventDefault();
-
-    const r = drawing.getBoundingClientRect();
-
-    show(screen.wheel({ x: event.clientX - r.left, y: event.clientY - r.top }, { deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }));
-}, { passive: false });
-drawing.addEventListener('pointerdown', (event) => {
-    // Only the primary pointer's primary button drags: a right-click's menu or a second finger never
-    // starts a pan that no `pointerup` of its own would end.
-    if (!event.isPrimary || event.button !== 0) {
-        return;
-    }
-
-    dragged = false;
-    drag = { x: event.clientX, y: event.clientY, moved: false };
-});
-drawing.addEventListener('pointermove', (event) => {
-    // A move with the primary button no longer held ends the drag: a press near the drawing's edge
-    // that left it before capture was taken (at 4 px) is released outside, where this element never
-    // hears the `pointerup`, and the next buttonless move back over the drawing would otherwise pan.
-    if (drag === null || (event.buttons & 1) === 0) {
-        drag = null;
-
-        return;
-    }
-
-    const dx = event.clientX - drag.x;
-    const dy = event.clientY - drag.y;
-
-    if (!drag.moved && Math.hypot(dx, dy) < 4) {
-        return;
-    }
-
-    if (!drag.moved) {
-        drag.moved = true;
-        drawing.setPointerCapture(event.pointerId);
-    }
-
-    drag.x = event.clientX;
-    drag.y = event.clientY;
-    show(screen.drag(dx, dy));
-});
-drawing.addEventListener('pointerup', () => {
-    dragged = drag?.moved === true;
-    drag = null;
-});
-// A pointer the browser took back — a touch turned into a scroll, a lost window — ends the drag and
-// is no click either.
-drawing.addEventListener('pointercancel', () => {
-    dragged = false;
-    drag = null;
-});
-// A drag that moved is not a click on the desk it ended over.
-drawing.addEventListener('click', (event) => {
-    if (dragged) {
-        event.stopPropagation();
-        dragged = false;
-    }
-}, { capture: true });
-// The keyboard's camera, on the focusable drawing: `+`/`=` in and `-` out about its centre, the arrow
-// keys a pan by `PAN_STEP_PX` — the view moves the way the arrow points. A key with a modifier is the
-// browser's (Ctrl + is the page zoom) and passes through.
-const KEY_ZOOM = { '+': 1, '=': 1, '-': -1, '_': -1 };
-const KEY_PAN = { ArrowLeft: [PAN_STEP_PX, 0], ArrowRight: [-PAN_STEP_PX, 0], ArrowUp: [0, PAN_STEP_PX], ArrowDown: [0, -PAN_STEP_PX] };
-
-drawing.addEventListener('keydown', (event) => {
-    if (event.ctrlKey || event.metaKey || event.altKey) {
-        return;
-    }
-
-    if (event.key in KEY_ZOOM) {
-        event.preventDefault();
-        show(screen.zoomStep(KEY_ZOOM[event.key]));
-    } else if (event.key in KEY_PAN) {
-        event.preventDefault();
-        show(screen.drag(...KEY_PAN[event.key]));
-    }
-});
-el('floor-zoom-in').addEventListener('click', () => {
-    show(screen.zoomStep(1));
-});
-el('floor-zoom-out').addEventListener('click', () => {
-    show(screen.zoomStep(-1));
-});
+cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);
+cameraKeys(drawing, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);
 el('floor-fit').addEventListener('click', () => {
     const { from, to, glide_ms: ms } = screen.fitFloor();
 

@@ -77,14 +77,15 @@ trait DrivesAShippedClientModule
     }
 
     /**
-     * Drive the client model over a payload and return what it rendered.
+     * Drive the client model over a payload and return what it rendered — through this rig's probe, or
+     * through `$script`, another probe over the same module directory.
      *
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    protected function probe(array $payload, ?string $moduleDir = null): array
+    protected function probe(array $payload, ?string $moduleDir = null, ?string $script = null): array
     {
-        [$status, $stdout, $stderr] = $this->runProbe($payload, $moduleDir);
+        [$status, $stdout, $stderr] = $this->runProbe($payload, $moduleDir, $script);
 
         $this->assertSame(0, $status, "the client probe failed:\n".$stderr);
 
@@ -101,12 +102,12 @@ trait DrivesAShippedClientModule
      * @param  array<string, mixed>  $payload
      * @return array{int, string, string}
      */
-    protected function runProbe(array $payload, ?string $moduleDir = null): array
+    protected function runProbe(array $payload, ?string $moduleDir = null, ?string $script = null): array
     {
         $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
 
         $process = proc_open(
-            ['node', $this->probeScript(), $moduleDir ?? $this->moduleDir()],
+            ['node', $script ?? $this->probeScript(), $moduleDir ?? $this->moduleDir()],
             $descriptors,
             $pipes,
         );
@@ -188,9 +189,7 @@ trait DrivesAShippedClientModule
         $found = 0;
 
         foreach ((array) glob($dir.'/*.js') as $file) {
-            preg_match_all("/from '(\.\.?\/[A-Za-z0-9._\/-]+)'/", (string) file_get_contents((string) $file), $m);
-
-            foreach ($m[1] as $import) {
+            foreach ($this->relativeImports((string) file_get_contents((string) $file)) as $import) {
                 $found++;
                 $this->assertFileExists($dir.'/'.$import,
                     basename((string) $file).' imports a module that is not there');
@@ -198,6 +197,28 @@ trait DrivesAShippedClientModule
         }
 
         return $found;
+    }
+
+    /**
+     * The relative module specifiers a module's source loads — `ModuleSpecifiers::of()`'s FOLLOWABLE
+     * ones: a string literal starting `./` or `../` after `from`, after a bare `import` or inside
+     * `import(`, in single quotes, double quotes or a backtick with no `${`, comments not read.
+     *
+     * ⚠ THIS IS THE RESOLVE CHECK's POPULATION, AND IT IS NOT THE WHOLE OF WHAT A MODULE LOADS. A
+     * specifier this cannot follow — an absolute path, a URL, a bare name, a template with `${`, an
+     * `import(` of a variable (`floor/painter.js` loads the art modules that way, by the asset route) —
+     * is outside the question *does this relative import name a file that is there*, and is not
+     * returned here. A walk that must know EVERYTHING a module loads — the lobby's import-graph bound —
+     * reads `ModuleSpecifiers::of()` itself and treats each unfollowable specifier as a defect.
+     *
+     * @return list<string>
+     */
+    protected function relativeImports(string $source): array
+    {
+        return array_values(array_map(
+            static fn (array $s): string => (string) $s['specifier'],
+            array_filter(ModuleSpecifiers::of($source), static fn (array $s): bool => $s['followable']),
+        ));
     }
 
     /**
@@ -226,6 +247,39 @@ trait DrivesAShippedClientModule
         if (preg_match('/new FleetClient\(\s*\w+,\s*\w+,\s*\w+,\s*timers\s*\)/', $livePageJs) !== 1
             || preg_match('/const timers = \{\s*after:/', $livePageJs) !== 1) {
             return ['recovery' => 'the client protocol is not constructed with its scheduler'];
+        }
+
+        return [];
+    }
+
+    /**
+     * Whether a page's animation log is the one `wire/live-page.js` constructs with § 12's *A page's
+     * animation-log retention* (§ 14 item 26) — the figure re-derived from § 12, never copied here.
+     *
+     * ⚠ HOISTED HERE AT ITS SECOND CALLER (card#7343): the floor page constructed its log itself with
+     * the figure beside it, and the lobby became the log's second page when its sky became § 6.2 A17's,
+     * so the construction moved to `wire/live-page.js` and each page's wiring test asks the same two
+     * questions — does the entry take its log from `livePage()` and construct none of its own, and does
+     * `livePage()` construct it with § 12's figure — of the two files handed in, so a control can plant
+     * the defect in either.
+     *
+     * @return array<string, string> `['retention' => why]`, or empty
+     */
+    protected function pageLogDefects(string $entryJs, ?string $livePageJs = null): array
+    {
+        $livePageJs ??= (string) file_get_contents($this->jsRoot().'/wire/live-page.js');
+
+        $this->assertSame(1, preg_match('/^\| A page\'s animation-log retention \| \*\*([\d,]+) rows\*\*/m', $this->floorMd(), $m),
+            '§ 12\'s retention row did not parse');
+
+        if (preg_match('/\blog\s*\}\s*=\s*livePage\(/', $entryJs) !== 1 || str_contains($entryJs, 'createAnimationLog(')) {
+            return ['retention' => 'the page does not take its animation log from wire/live-page.js'];
+        }
+
+        if (preg_match('/export const ANIMATION_LOG_RETENTION = (\d+);/', $livePageJs, $c) !== 1
+            || (int) $c[1] !== (int) str_replace(',', '', $m[1])
+            || ! str_contains($livePageJs, 'log: createAnimationLog(ANIMATION_LOG_RETENTION)')) {
+            return ['retention' => 'the animation log is not constructed with § 12\'s retention figure'];
         }
 
         return [];

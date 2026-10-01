@@ -251,9 +251,8 @@ jobs:
       # vendored linter, then mutates that output once per rule to show the green discriminates —
       # over a rule set READ OUT of the linter's source, so a re-vendor that adds a rule reds here
       # for under-coverage instead of leaving a stale "one per rule" claim standing.
-      # ⚠ The claim is about the SKELETON, not about any body built from it: `--agent` and
-      # `--session-url` are pass-through and unjudged (the suite pins two values that red), and
-      # the author's own prose is wider still — which is why the step above exists.
+      # ⚠ The claim is about the SKELETON, not about any body built from it: the author's own
+      # prose goes on top of it — which is why the step above exists.
       # It also grades `CLAUDE.md`'s `change-pr-body:house-map` against the linter's own
       # `ALLOWED_H2`, so the map an author reads cannot drift from the judge that grades them.
       # It stages its own git repository per case and needs no network and no credential — a CI

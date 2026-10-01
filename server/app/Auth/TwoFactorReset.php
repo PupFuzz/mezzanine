@@ -35,10 +35,10 @@ use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
  * AN OMISSION — the neighbouring act, `App\Admin\UserProvisioning::update()`, does both when it
  * writes a password, and this is the argument for why the same code here would be mechanism for a
  * property already held.
- *   · A password change needs them because a live session and a remember cookie both survive the
- *     hash: nothing in the framework removes a `web_sessions` row when the password changes, and
- *     `AuthenticateSession` is not on this application's middleware stack. That class's docblock
- *     measured both.
+ *   · A password change needs them because a live session survives the hash: nothing in the
+ *     framework removes a `web_sessions` row when the password changes, and `AuthenticateSession`
+ *     is not on this application's middleware stack. That class's docblock measured it. (A remember
+ *     cookie is voided by the hash change itself since laravel/framework 13.31.)
  *   · Clearing the ENROLMENT is different in kind: `two_factor_confirmed_at` is read from the
  *     `users` row by `EnsureTwoFactorSatisfied` on EVERY request, so the instant this act nulls
  *     it, every existing session — and any session a remember cookie subsequently mints — is

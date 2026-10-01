@@ -342,6 +342,15 @@ export class AnimationSet {
 
     #reduce;
 
+    /**
+     * The `edge` rows this surface draws — every one when the constructing caller names none. The lobby
+     * names `['A17']` (card#7343): its sky behind the building is A17's value and the lobby draws no
+     * other § 6.2 row — no feed pulse, no desk, no thread — so a heartbeat on the lobby writes an A17
+     * row and nothing else, and a delta writes none (§ 6.2 A17: *"On the lobby it is this row or
+     * nothing"*).
+     */
+    #edgeRows;
+
     /** key → the open `held` episode: `{ episode_id, animation_id, motion }`. */
     #episodes = new Map();
 
@@ -354,12 +363,14 @@ export class AnimationSet {
     /**
      * @param {object} log  `wire/animation-log.js`'s `createAnimationLog()` — the one instrument
      *                      every row below is written through
-     * @param {{reduce?: boolean}} [options]  § 6.4's condition, as a page reads it from
-     *                      `prefers-reduced-motion`: a rendering, never a degradation
+     * @param {{reduce?: boolean, edgeRows?: Array<string>}} [options]  `reduce` is § 6.4's condition,
+     *                      as a page reads it from `prefers-reduced-motion`: a rendering, never a
+     *                      degradation; `edgeRows` the `edge` rows the surface draws (`#edgeRows`)
      */
     constructor(log, options = {}) {
         this.#log = log;
         this.#reduce = options.reduce === true;
+        this.#edgeRows = options.edgeRows === undefined ? null : new Set(options.edgeRows);
     }
 
     /** Whether this set draws § 6.4's reduced-motion form of every row. */
@@ -527,8 +538,15 @@ export class AnimationSet {
         }
     }
 
-    /** Every `edge` row goes through here, so `motion` has one answer for the whole class. */
+    /**
+     * Every `edge` row goes through here, so `motion` has one answer for the whole class — and so does
+     * whether the surface draws the row at all (`#edgeRows`).
+     */
     #edge(animationId, cause, installId, seatId, at) {
+        if (this.#edgeRows !== null && !this.#edgeRows.has(animationId)) {
+            return;
+        }
+
         this.#log.edge({
             animation_id: animationId,
             cause,

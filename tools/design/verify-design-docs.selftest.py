@@ -148,6 +148,11 @@ because a gate can only be proven on a defect of its own class:
             -- replace the first hyphen of the anchored name with an underscore, which is the class
                "a name was malformed into a shape the gate's token does not read".  Also #164 round 1:
                G5's undeclared-fixture control read only `fx-` names, so `fx_gap` was invisible to it.
+  `restate` -- insert § 4.1's first numbered claim, read out of FLOOR.md, before the anchored span,
+               which is the class "the lobby label's contract was copied outside its one statement".
+               card#7343 is why this exists: every round before r6 re-minted a false copy of that
+               contract somewhere else.  One plant per surface the guard reads (FLOOR.md, the
+               CHANGELOG bullet).  `point` is its HOLD: a pointer to § 4.1, which must not red.
   `embolden`
             -- wrap the anchored span in `**`, which is the class "a status marker was written in
                the form a parse reads as a name".  card#7341 Q9 is why this exists: G5 registers
@@ -816,6 +821,53 @@ PLANTS = [
         "read (card#7341 step 3, pass-6 MAJOR 4)",
         "Appendix A's U5 states the off-versus-gone obligation as discharged",
     ),
+    (
+        # card#7343 r6, G14 leg (a).  The label contract is § 4.1's alone; a copy of one of its claims
+        # outside it -- the shape every earlier round re-minted -- must red.  Inserted into § 4.2's
+        # opening sentence, the first section after § 4.1.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\n### 4\.2 The floor\n\n)(One \*\*floor\*\*)(, which since)",
+        "restate",
+        "§ 4.1's first claim copied into § 4.2 (card#7343 r6, G14 leg (a))",
+        "G14: a label-contract term outside section 4.1",
+    ),
+    (
+        # card#7343 r6, G14 leg (a), the CHANGELOG half: the same copy in the card's CHANGELOG bullet.
+        "verify-floor.py",
+        "docs/CHANGELOG.md",
+        r"(\n- \*\*card#7343\*\* — )(\*\*The lobby's)( elevator ride)",
+        "restate",
+        "§ 4.1's first claim copied into the card#7343 CHANGELOG bullet (card#7343 r6, G14 leg (a))",
+        "G14: a label-contract term outside section 4.1's claim region — docs/CHANGELOG.md",
+    ),
+    (
+        # card#7343 r6, G14 leg (b): a § 4.1 claim whose `(held by: …)` is deleted names no check.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\n2\. \*\*[^\n]*(?:\n   [^\n]*)*?)( \(held by: [^\n]*\))(\n)",
+        "drop",
+        "the `(held by: …)` of § 4.1's second claim (card#7343 r6, G14 leg (b))",
+        "ends with neither",
+    ),
+    (
+        # card#7343 r6, G14 leg (b): a claim naming a test method the file does not carry.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\(held by: T::)(test_green_the_lobby_page_sets_no_text_size_of_its_own)(\))",
+        "rename",
+        "the test method § 4.1's second claim names (card#7343 r6, G14 leg (b))",
+        "which is not a method",
+    ),
+    (
+        # card#7343 r6, G14 leg (b): a claim naming a contrast-tool control that does not exist.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(held by: B check ')(overlap)(')",
+        "rename",
+        "the contrast-tool control a § 4.1 claim names (card#7343 r6, G14 leg (b))",
+        "reports no control for",
+    ),
 ]
 
 # PLANTS' shape plus a premise; the substring is the failure a WRONG gate would print, which the
@@ -829,6 +881,17 @@ PLANTS = [
 # `premise_plant`, the plant kind that proves what its destructive mutation relies on, which must
 # exist in PLANTS.  Neither, or both, fails the harness.
 HOLDS = [
+    (
+        # card#7343 r6, G14 leg (a) against a POINTER.  A sentence outside § 4.1 that points at it is
+        # the correct form; a guard keyed on the section's vocabulary too broadly would red it.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\n### 4\.2 The floor\n\n)(One \*\*floor\*\*)(, which since)",
+        "point",
+        "a pointer to § 4.1 inserted into § 4.2, which G14 leg (a) must not read as a copy (card#7343 r6)",
+        "G14: a label-contract term outside section 4.1",
+        {"adds_only": True},
+    ),
     (
         # card#9320, G8's REVERSE leg.  Rewrites the anchored counter's sole writer outside § 7.2 and
         # § 11 into the fence idiom, so the bare-imperative form is its ONLY writer -- the `unwrite`
@@ -893,6 +956,14 @@ MUTATIONS = {
                              + m.group(3)),
     "separator": lambda m: m.group(1) + m.group(2).replace("-", "_", 1) + m.group(3),
     "embolden": lambda m: m.group(1) + "**" + m.group(2) + "**" + m.group(3),
+    # § 4.1's first numbered claim, bold title and all, read out of FLOOR.md in the checkout -- the
+    # plant copies whatever that claim says today and stores none of it.
+    "restate": lambda m: (m.group(1) + re.search(r"\n### 4\.1 [^\n]*\n.*?\n1\. (\*\*[^\n]*)",
+                                                 (ROOT / "docs/design/FLOOR.md").read_text(encoding="utf-8"),
+                                                 re.S).group(1) + " "
+                          + m.group(2) + m.group(3)),
+    "point": lambda m: (m.group(1) + "A plate's label is [§ 4.1](#41-the-lobby--the-building-summary)'s. "
+                        + m.group(2) + m.group(3)),
 }
 
 # The spawning kinds.  Each reads the column, its width and its table out of the anchored migration

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """D3 verification gate: docs/design/FLOOR.md.
 
-TWELVE guard classes, G1-G12, one per defect class this document can carry that a reader will not
+Guard classes G1 onward, one per defect class this document can carry that a reader will not
 reliably catch.  Every population below is RE-DERIVED on each run -- from this document's own
 tables, or from docs/design/FLEET-STATE.md (D2) and docs/design/EVENT-SCHEMA.md (D1) -- and never
 from a list stored here.  A number or a member list written into a checker is one free to disagree
@@ -68,6 +68,11 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                two dark rows re-derived ARITHMETICALLY from the
                                                timestamp in their own span and the corrected clock
                                                their own prose states
+  G13 an empty-desk Never cell, scoped          the comment block at G13 below
+  G14 the lobby label's one statement           a label-contract term outside section 4.1's claim
+                                               region (lead-in through the last claim) or in the
+                                               card#7343 CHANGELOG bullet; a section 4.1 claim that
+                                               names no check, or names one that does not exist
 
 Two things are NOT mechanizable and say so in the output rather than reporting a clean over a
 population they never measured (canon: a clean result over an unnamed population reports where the
@@ -3116,6 +3121,129 @@ else:
                             "absolute at the very row that cites the scoped section as its proof")
 
 
+# ---- G14. the lobby's plate label has ONE statement, and every claim in it names what holds it ----
+#
+# card#7343 r6's fix round.  Section 4.1 is the only statement of what a lobby plate's label does.
+# Every round of card#7343 before it re-wrote that contract in prose certified by its writer, and a
+# copy elsewhere -- Appendix B row 16, decisions 37 and 38, the sky paragraph, the CHANGELOG entry --
+# went false on each round the label changed.  Two legs, both re-derived on every run:
+#
+#   (a) NO COPY.  The label-contract vocabulary below must not appear in this document outside
+#       section 4.1's claim region -- the `**The plate label.**` lead-in through the last numbered
+#       claim -- nor in any `- **card#7343**` bullet of docs/CHANGELOG.md or docs/changelog/.
+#       A POINTER to section 4.1 needs none of these words; there is deliberately no exemption for
+#       a sentence that links to section 4.1, because the copy this leg exists against (row 16's,
+#       before r6) restated the contract AND linked to it.
+#   (b) EVERY CLAIM NAMES ITS CHECK.  Each numbered claim of section 4.1 ends with `(held by: ...)` or
+#       `(declared, unchecked: ...)`, and each `<file>::<method>` it names is a method in that file,
+#       and each `B check '<name>'` is a control the contrast tool reports as caught.
+#
+# ⚠ WHAT IT CANNOT DO: judge that a claim is TRUE, or that the check it names asserts what the claim
+# says -- the claim-to-assertion table is a reviewer's.  And the vocabulary is a list, so a copy in
+# words none of it uses passes; the list is the one the r6 sweep found copies in.  Out of scope: a
+# paraphrase that uses no listed term; an unnumbered bullet inside the claim region (exempt with it);
+# and code or test docblocks, tools/design/README.md and the tool headers, which this leg never reads.
+G14_TERMS = re.compile(
+    r"LABEL_[A-Z_]+|--label-[a-z-]+|\bshowLabels\b|\bsideFor\b|\blinesFor\b|\bLINE_PAD\b"
+    r"|label-paint\.js|plate-row\.js|clip-path|outline-offset|text-decoration"
+    r"|(?i:beside the building|summary link|\bbacking\b|\breads? over\b|the elevator is here"
+    r"|ellipsiz\w*|body text size|\bhalo\b|warm gold|three-line clip)")
+G14_ANCHOR = "41-the-lobby--the-building-summary"
+g14_head = BY_ANCHOR.get(G14_ANCHOR)
+g14_hits, g14_bullets, g14_claims, g14_refs, g14_span = [], 0, [], 0, (0, 0)
+if g14_head is None:
+    fail.append(f"G14: no section anchored `{G14_ANCHOR}` — the label contract's one statement was "
+                f"not found, so neither leg could run")
+else:
+    # The exemption is the claim region alone: from the `**The plate label.**` lead-in through the last
+    # line of the last numbered claim.  The rest of section 4.1 (the table, the sky paragraph) is scanned.
+    # A section with no lead-in exempts nothing, so every claim's own vocabulary reds below.
+    for i in range(g14_head[3], g14_head[4]):
+        if lines[i].startswith("**The plate label.**"):
+            j, last = i, i
+            while j < g14_head[4]:
+                if re.match(r"^\d+\. ", lines[j]):
+                    last = j
+                elif last > i and lines[j].startswith("   ") and lines[j].strip():
+                    last = j
+                elif last > i and lines[j].strip():
+                    break
+                j += 1
+            g14_span = (i, last + 1)
+            break
+    for i, line in enumerate(lines):
+        if g14_span[0] <= i < g14_span[1]:
+            continue
+        for m in G14_TERMS.finditer(line):
+            g14_hits.append(f"FLOOR.md L{i + 1}: `{m.group(0)}`")
+    g14_logs = [ROOT / "docs/CHANGELOG.md"] + sorted((ROOT / "docs/changelog").glob("*.md"))
+    for path in g14_logs:
+        src = path.read_text().split("\n")
+        i = 0
+        while i < len(src):
+            if not src[i].startswith("- **card#7343**"):
+                i += 1
+                continue
+            g14_bullets += 1
+            j = i + 1
+            while j < len(src) and not re.match(r"^(- |#)", src[j]):
+                j += 1
+            for k in range(i, j):
+                for m in G14_TERMS.finditer(src[k]):
+                    g14_hits.append(f"{path.relative_to(ROOT)} L{k + 1}: `{m.group(0)}`")
+            i = j
+    if g14_bullets == 0:
+        fail.append("G14: no `- **card#7343**` bullet in docs/CHANGELOG.md or docs/changelog/ — leg (a)'s "
+                    "CHANGELOG half read nothing")
+    for h in g14_hits:
+        fail.append(f"G14: a label-contract term outside section 4.1's claim region — {h}; the contract is section "
+                    f"4.1's alone, so point at it instead")
+
+    body = lines[g14_head[3]:g14_head[4]]
+    aliases = dict(re.findall(r"\*\*([A-Z])\*\* is `([^`]+)`", "\n".join(body)))
+    for alias in ("T", "B"):
+        if alias not in aliases or not (ROOT / aliases[alias]).is_file():
+            fail.append(f"G14: section 4.1 does not name an existing file as **{alias}** — the claims' "
+                        f"references to it resolve to nothing")
+    claim, cur = [], None
+    for line in body:
+        m = re.match(r"^(\d+)\. ", line)
+        if m:
+            cur = [m.group(1), line]
+            claim.append(cur)
+        elif cur is not None and line.startswith("   ") and line.strip():
+            cur[1] += " " + line.strip()
+        elif not line.strip():
+            cur = None
+    g14_claims = claim
+    if not claim:
+        fail.append("G14: section 4.1 carries no numbered claim — leg (b) read nothing")
+    for no, text in claim:
+        tail = re.search(r"\((held by|declared, unchecked): ([^()]*(?:\([^()]*\)[^()]*)*)\)\s*$", text)
+        if tail is None:
+            fail.append(f"G14: section 4.1 claim {no} ends with neither `(held by: …)` nor "
+                        f"`(declared, unchecked: …)` — a claim no check holds is deleted or declared")
+            continue
+        if tail.group(1) != "held by":
+            continue
+        for path, meth in re.findall(r"`?([\w./]+|[A-Z])`?::(\w+)", tail.group(2)):
+            f = ROOT / aliases.get(path, path)
+            g14_refs += 1
+            if not f.is_file() or not re.search(rf"function {re.escape(meth)}\(", f.read_text()):
+                fail.append(f"G14: section 4.1 claim {no} names `{path}::{meth}`, which is not a method "
+                            f"of {f.relative_to(ROOT) if f.is_file() else path}")
+        for name in re.findall(r"\bB check '([^']+)'", tail.group(2)):
+            g14_refs += 1
+            b = ROOT / aliases.get("B", "")
+            src = b.read_text() if b.is_file() else ""
+            if f"CONTROL CAUGHT ({name})" not in src and not re.search(rf"\n\s+{re.escape(name)}: \(rs\) =>", src):
+                fail.append(f"G14: section 4.1 claim {no} names B check '{name}', which the contrast tool "
+                            f"reports no control for")
+        if not re.search(r"::|\bB check '", tail.group(2)):
+            fail.append(f"G14: section 4.1 claim {no} says `held by` and names no `<file>::<method>` and no "
+                        f"`B check '<name>'`")
+
+
 # ------------------------------------------------------------------ report ----
 print(f"anchors: {len(doc_anchors)}; links checked: {n_links}; severed tables: {n_table_breaks}")
 print(f"D2 populations re-derived (none written into this checker): "
@@ -3249,6 +3377,12 @@ print(f"G13 the empty-desk Never cells, scoped to the client's own confirmation 
       f"{sorted(s for s, ok in g13_seen.items() if ok)}; Appendix A's U5 discharge cell scoped: "
       f"{g13_u5}. The U5 leg is why this is not two cells: a gate reading only 7.1's table returned "
       f"CLEAN over the same obligation published absolutely one appendix away")
+print(f"G14 the lobby's plate label, one statement: {len(g14_claims)} numbered claims in section 4.1, "
+      f"{g14_refs} check references resolved; label-contract terms outside it — in this document and in "
+      f"{g14_bullets} card#7343 CHANGELOG bullet(s) — {len(g14_hits)}; exempt: FLOOR.md "
+      f"L{g14_span[0] + 1}-L{g14_span[1]}, the claim region. NOT MECHANIZED: whether a claim is true, and "
+      f"whether the check it names asserts it; a paraphrase with no listed term; an unnumbered bullet "
+      f"inside the claim region; code and test docblocks, tools/design/README.md and the tool headers")
 print("NOT MECHANIZED, and read by a human instead: (a) Appendix A's SEMANTIC half — an obligation "
       "upstream addresses to the render layer in none of the recognizer's phrasings cannot be found "
       "by grep; the rows above are its members, printed rather than counted, and naming them is not "

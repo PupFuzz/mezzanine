@@ -42,9 +42,9 @@
 # gate's subject is PR metadata, so a retitle changes none of its inputs.
 #
 # ---------------------------------------------------------------------------------------------
-# WHAT IS DELIBERATELY NOT WIRED HERE, AND WHY — two of the six gates in `tools/design/`.
-# Both are excluded for the SAME reason and it is not squeamishness: each is fail-closed on a
-# binary a stock runner does not carry, so wiring either reds every PR on correct work. A gate
+# WHAT IS DELIBERATELY NOT WIRED HERE, AND WHY — the gates in `tools/design/` named below.
+# Each is excluded for the SAME reason and it is not squeamishness: each is fail-closed on a
+# binary a stock runner does not carry, so wiring any of them reds every PR on correct work. A gate
 # that reds on correct work gets disabled, which costs more than the hole it closes.
 #
 #   `verify-harness-facts.py`  — re-derives D1's harness facts from the INSTALLED Claude Code
@@ -56,8 +56,10 @@
 #       or `~/.cache/ms-playwright` and a FAILURE (never a skip) when absent. A stock
 #       `ubuntu-latest` satisfies none of those three, and pointing `$CHROME` at a runner path
 #       this change cannot verify is exactly the assumption that would red-lock CI.
+#   `lobby-label-contrast.browser.mjs` — the same browser, resolved the same way (card#7343):
+#       absent for the same reason.
 #
-# ⛔ NEITHER IS WIRED AS A SKIP. The card's own argument: an "N/A" that reads green re-mints this
+# ⛔ NONE IS WIRED AS A SKIP. The card's own argument: an "N/A" that reads green re-mints this
 # very defect one layer down — a check reported as passed that never ran. They are absent and
 # NAMED, here and in `tools/design/README.md`, which is the surface a reader checks.
 

@@ -38,6 +38,9 @@ class TheFeedDyingIsVisibleWithinFortyFiveSecondsTest extends TestCase
 
     private const LIVES = 'feed_lives';
 
+    /** § 6.2 A17's driver — `RoomClock`, which the floor screen and the lobby's sky both hold (card#7343). */
+    private const DRIVER = '../floor/floor-layout.js';
+
     private const FEED_DOWN = 'feed down — polling';
 
     /**
@@ -60,22 +63,22 @@ class TheFeedDyingIsVisibleWithinFortyFiveSecondsTest extends TestCase
         "        case 'down':\n            return LIVE;\n"];
 
     /** Third RED — the clock back on a timer: re-read whenever 10 s of the VIEWER's clock have passed. */
-    private const TIMER = ['../floor/floor-screen.js',
+    private const TIMER = [self::DRIVER,
         "        if (set) {\n            this.#tick = roomTick(",
         "        if (set || this.#clock.now() - (this.lastSetAt ?? 0) >= 10000) {\n            this.lastSetAt = this.#clock.now();\n            this.#tick = roomTick("];
 
     /** Fourth RED — the room set on the poll: a poll's snapshot rows read as an establishment. */
-    private const ON_POLL = ['../floor/floor-screen.js',
+    private const ON_POLL = [self::DRIVER,
         "entry.t === 'feed.heartbeat' || entry.t === 'feed.established');",
         "entry.t === 'feed.heartbeat' || entry.t === 'feed.established' || entry.t === 'snapshot');"];
 
     /** Fifth RED — the accessible text set by the FIRING alone, never by the establishing render. */
-    private const TEXT_BY_FIRING = ['../floor/floor-screen.js',
-        "        if (set) {\n            this.#tick = roomTick(this.#clock.now(), this.#options.local_time);\n        }",
+    private const TEXT_BY_FIRING = [self::DRIVER,
+        "        if (set) {\n            this.#tick = roomTick(this.#clock.now(), this.#readLocal);\n        }",
         "        if (journal.some((entry) => entry.t === 'feed.heartbeat')) {\n"
-        ."            this.#tick = roomTick(this.#clock.now(), this.#options.local_time);\n"
+        ."            this.#tick = roomTick(this.#clock.now(), this.#readLocal);\n"
         ."        } else if (set) {\n"
-        ."            this.#tick = { ...roomTick(this.#clock.now(), this.#options.local_time), text: null };\n"
+        ."            this.#tick = { ...roomTick(this.#clock.now(), this.#readLocal), text: null };\n"
         .'        }'];
 
     public function test_green_the_floor_says_the_feed_died_keeps_its_ages_growing_and_stops_its_clock(): void

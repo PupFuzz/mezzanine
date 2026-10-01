@@ -79,7 +79,7 @@ import {
     mapDesks,
     mapGrid,
     placeRooms,
-    roomTick,
+    RoomClock,
 } from './floor-layout.js';
 
 /**
@@ -214,8 +214,8 @@ export class FloorScreen {
     /** install_id → the slot assignment the last render drew, for § 3.3's displacement. */
     #placed = new Map();
 
-    /** § 4.2's wall clock and sky, `null` until a render that established a LIVE feed (§ 6.5). */
-    #tick = null;
+    /** § 4.2's wall clock and sky — A17's driver (`floor-layout.js`'s `RoomClock`), `null` until a LIVE feed (§ 6.5). */
+    #room;
 
     /**
      * The `post_ref`s whose A19/A20 rows have been written, so a redelivery draws nothing new —
@@ -277,6 +277,7 @@ export class FloorScreen {
         this.#panel = new DrillDownPanel(client);
         this.#viewport = sizeOf(options.viewport);
         this.#camera = createCamera(options.surface ?? this.#viewport);
+        this.#room = new RoomClock(clock, options.local_time);
     }
 
     /**
@@ -737,7 +738,9 @@ export class FloorScreen {
         // failed layout request into a floor with no fleet on it.
         const deskFrame = this.#desks.renderWith(journal);
 
-        this.#setRoom(journal);
+        // § 6.2 A17's value — set by the heartbeat or the feed's establishment and by nothing else
+        // (`floor-layout.js`'s `RoomClock`, the driver the lobby's sky shares).
+        this.#room.take(journal);
 
         if (composed === null) {
             // F17's cold start: no layout was ever read, so nothing is composed. The installs the
@@ -752,7 +755,7 @@ export class FloorScreen {
                     install_id: install.install_id,
                     floor_claimed: false,
                 }))),
-                room: this.#tick,
+                room: this.#room.tick,
                 desks: deskFrame,
                 notices: Object.freeze([]),
                 ...narration,
@@ -770,7 +773,7 @@ export class FloorScreen {
                 // § 4.4 row 3's redirect, decided here and performed by whatever owns the URL.
                 redirect: route.redirect,
                 rooms: Object.freeze([]),
-                room: this.#tick,
+                room: this.#room.tick,
                 desks: deskFrame,
                 notices: route.redirect === null
                     ? Object.freeze([`the floor ${this.#segment} is not in the building`])
@@ -780,31 +783,6 @@ export class FloorScreen {
         }
 
         return this.#drawFloor(route.floor, deskFrame, failure, journal, at, narration);
-    }
-
-    /**
-     * § 6.5's property, and not a list of renders: A17's wall clock and sky are set by a render that
-     * establishes or re-establishes a LIVE feed, and by nothing else.
-     *
-     * A `feed.heartbeat` is what A17 FIRES on (§ 6.2). What SETS the value with no log row at all is
-     * the ESTABLISHMENT the protocol journals (`feed.established`): the connect sequence's snapshot,
-     * and the first message on a re-opened stream — a successful reconnect. Before either the room has
-     * no value and is rendered as having none: "a plausible time on a page that has never been live is
-     * exactly the zero that rule refuses".
-     *
-     * ⛔ A POLL SETS NOTHING (§ 6.5, § 9 F1; AT-D3-6's Fourth RED). A poll's rows are a full snapshot
-     * in the journal like any other, and they are deliberately not what is read here: "the poll IS the
-     * timer" the amendment removed, so a client that set the room on one would advance the clock every
-     * 10 s of a dead feed. Only the protocol can tell a live feed coming back from a read it made
-     * because the feed is down, which is why the establishment is its journal line and not a guess
-     * from the rows.
-     */
-    #setRoom(journal) {
-        const set = journal.some((entry) => entry.t === 'feed.heartbeat' || entry.t === 'feed.established');
-
-        if (set) {
-            this.#tick = roomTick(this.#clock.now(), this.#options.local_time);
-        }
     }
 
     /** One composed floor: its rooms placed, its desks slotted, its band, and its lines. */
@@ -952,7 +930,7 @@ export class FloorScreen {
             // § 4.2: ONE back-wall band for the floor, spanning its whole extent, inside no room's
             // map and inside no hallway's. A floor of five offices has one clock over all five.
             band: backWallBand(placement.extent),
-            room: this.#tick,
+            room: this.#room.tick,
             rooms: Object.freeze(rooms),
             draw_order: placement.draw_order,
             overlaps: placement.overlaps,
@@ -1229,7 +1207,8 @@ function splitKey(key) {
  * The floor, started — the shape a page (Appendix B step 8) and the probe both drive.
  *
  * @param {object} client a `FleetClient`
- * @param {Function} fetchImpl the browser's own `fetch`, unbound — `wire/building.js`'s injection
+ * @param {Function} fetchImpl the page's `fetch` (`wire/live-page.js`) — `wire/building.js`'s injection,
+ *   and the tileset loader's
  * @param {{now: function(): number}} clock
  * @param {object} log the animation log every § 6.2 row is recorded in
  * @param {function(object): void} draw receives each floor frame

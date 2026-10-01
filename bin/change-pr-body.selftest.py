@@ -8,7 +8,7 @@ has quietly stopped complying is byte-indistinguishable from one that never did.
 reads the generator's source and agrees with it: every case drives the REAL generator as a REAL
 subprocess against a STAGED repository, and pipes its real output into the REAL vendored linter.
 
-THE FIVE ARMS, AND WHY THEY ARE KEPT APART.
+THE ARMS, AND WHY THEY ARE KEPT APART.
   * § 1 CONTROL — the generator's own output passes `bin/pr-body-lint.py` clean. This is the
     claim; everything else exists so that a green here means something.
   * § 2 RED — one mutation per case, applied to that same passing body, each naming the ONE rule
@@ -16,6 +16,14 @@ THE FIVE ARMS, AND WHY THEY ARE KEPT APART.
     which is the exact failure mode a vendored judge can drift into. Its DENOMINATOR — which
     rules exist — is read out of the linter's source, never counted here, so a re-vendor that
     adds a rule reds this arm for under-coverage instead of leaving it quietly incomplete.
+  * § 2b UPSTREAM AI-ATTRIBUTION — the lines the operator's 2026-09-27 instruction forbids (the
+    Claude Code model line this generator used to emit, a session link, a co-author trailer),
+    planted back into the body and judged by the newest cached coord linter (0.58.0 or later),
+    which has the `ai-attribution` rule the vendored copy does not yet carry. That linter is read
+    from the plugin cache (`CPB_UPSTREAM_LINT` overrides the path, and an override naming no file
+    FAILS) and is NOT vendored here, so where it is absent — a CI runner — the arm prints
+    `NOT RUN` by name instead of passing; § 4's whole-body pattern check still runs there. Once the
+    vendored copy carries the rule, § 2 drives the same mutations against it on every run.
   * § 3 REFUSALS (rc 2) — the inputs the generator must decline instead of inventing. A
     generator that invents a `Built:` value produces a fabricated attestation, which is worse
     than the gap it fills, so the refusal is the behaviour under test and not an edge case.
@@ -158,26 +166,30 @@ def generate(work: Path, *extra: str) -> subprocess.CompletedProcess:
     return subprocess.run(argv, cwd=work, capture_output=True, text=True)
 
 
-def lint(body: str) -> tuple[int, dict]:
-    proc = subprocess.run([sys.executable, str(LINT), "--body-file=-", "--json"],
+def lint(body: str, linter: Path = LINT) -> tuple[int, dict]:
+    proc = subprocess.run([sys.executable, str(linter), "--body-file=-", "--json"],
                           input=body, capture_output=True, text=True)
     if proc.returncode not in (0, 1):
-        raise AssertionError(f"pr-body-lint could not judge the body (rc {proc.returncode}): "
+        raise AssertionError(f"{linter} could not judge the body (rc {proc.returncode}): "
                              f"{proc.stderr}")
     return proc.returncode, json.loads(proc.stdout)
 
 
-def rules(body: str) -> list[str]:
-    _, verdict = lint(body)
+def rules(body: str, linter: Path = LINT) -> list[str]:
+    _, verdict = lint(body, linter)
     return sorted({f["rule"] for f in verdict["findings"]})
+
+
+def rule_ids(linter: Path) -> set[str]:
+    """The rule ids a linter can emit, read out of its source — see § 2 for why never retyped."""
+    return set(re.findall(r'Finding\("([a-z-]+)"', linter.read_text(encoding="utf-8")))
 
 
 # ── § 1 CONTROL — the generator's output meets the standard ───────────────────────────────────
 print("\n§ 1 CONTROL — the generated skeleton is judged by the real vendored linter")
 
 WORK = stage()
-run = generate(WORK, "--agent", "implemented by the mezzanine `coder` subagent",
-               "--session-url", "https://claude.ai/code/session_EXAMPLE")
+run = generate(WORK)
 eq("the generator exits 0 on an ordinary change branch", 0, run.returncode)
 BODY = run.stdout
 eq("  … and its body is CLEAN against `bin/pr-body-lint.py`", [], rules(BODY))
@@ -227,6 +239,27 @@ MUTANTS = (
                      "## Highlights\n\n- CI is green at 4f2a91c.\n"),
      ["live-state-reading"]),
 )
+
+# The lines the operator's 2026-09-27 instruction (card#10673) keeps off every GitHub-bound text,
+# each planted where this generator used to write its attribution trailer — the first is that
+# trailer's exact old spelling. Driven by § 2 when the vendored linter carries `ai-attribution`,
+# and by § 2b against the newest cached coord linter either way.
+AI_LINES = (
+    ("the Claude Code model line this generator used to emit is put back",
+     "🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+     " — implemented by the mezzanine `coder` subagent"),
+    ("a Claude session link is put back", "https://claude.ai/code/session_EXAMPLE"),
+    ("a Claude co-author trailer is put back", "Co-Authored-By: Claude <noreply@anthropic.com>"),
+)
+AI_MUTANTS = tuple(
+    (what, lambda b, line=line: plant(b, COORD + "\n", COORD + "\n\n" + line + "\n"),
+     ["ai-attribution"])
+    for what, line in AI_LINES)
+
+LINT_RULE_IDS = rule_ids(LINT)
+if "ai-attribution" in LINT_RULE_IDS:
+    MUTANTS += AI_MUTANTS
+
 for what, mutate, want in MUTANTS:
     eq(f"{what} → reds", want, rules(mutate(BODY)))
 
@@ -237,7 +270,6 @@ for what, mutate, want in MUTANTS:
 # the linter's own source — the same refusal to retype a set that makes this file IMPORT
 # `ALLOWED_H2` instead of listing it — and the control below proves the reader discriminates,
 # because a regex that matched nothing would make this check vacuously green.
-LINT_RULE_IDS = set(re.findall(r'Finding\("([a-z-]+)"', LINT.read_text(encoding="utf-8")))
 eq("CONTROL: the rule-id derivation actually finds rules in the linter's source",
    True, len(LINT_RULE_IDS) >= 5 and "heading-not-allowed" in LINT_RULE_IDS)
 eq("  … and every rule the vendored linter can emit has a mutation that provokes it",
@@ -249,6 +281,40 @@ eq("  … with no mutation claiming a rule the linter does not have",
 # was being mutated — a `plant()` anchor that stopped matching would have raised, but an anchor
 # that matched a DIFFERENT occurrence would not.
 eq("META-CONTROL: the body under mutation is still the clean one", [], rules(BODY))
+
+
+# ── § 2b UPSTREAM AI-ATTRIBUTION — the newest cached coord linter, from the plugin cache ─────
+print("\n§ 2b UPSTREAM AI-ATTRIBUTION — the generated body against the cached coord `ai-attribution`")
+
+# The newest cached coord release, not a pinned one: a pin to 0.58.0 would turn this arm into a
+# silent NOT RUN on the first plugin update. An explicit CPB_UPSTREAM_LINT that names no file is
+# an operator error and FAILS — only the absent-by-default case (a CI runner) is NOT RUN.
+def _newest_cached_lint() -> Path:
+    root = Path.home() / ".claude/plugins/cache/agent-board-framework/coord"
+    found = [(tuple(int(n) for n in d.name.split(".")), d / "templates/bin/pr-body-lint.py")
+             for d in (root.iterdir() if root.is_dir() else ())
+             if re.fullmatch(r"\d+\.\d+\.\d+", d.name)]
+    return max(found)[1] if found else root / "<none cached>/templates/bin/pr-body-lint.py"
+
+
+UPSTREAM_OVERRIDE = os.environ.get("CPB_UPSTREAM_LINT")
+UPSTREAM_LINT = Path(UPSTREAM_OVERRIDE) if UPSTREAM_OVERRIDE else _newest_cached_lint()
+if UPSTREAM_OVERRIDE and not UPSTREAM_LINT.is_file():
+    bad(f"CPB_UPSTREAM_LINT names {UPSTREAM_LINT}, which is not a file — an explicit override "
+        f"that resolves to nothing is a misconfiguration, not an absent linter")
+elif not UPSTREAM_LINT.is_file():
+    print(f"  NOT RUN — no upstream linter at {UPSTREAM_LINT} (set CPB_UPSTREAM_LINT). The "
+          f"`ai-attribution` judgement of this body is UNVERIFIED on this run"
+          + (" — § 2 drove it against the vendored linter." if "ai-attribution" in LINT_RULE_IDS
+             else "."))
+else:
+    # CONTROL: the arm judges nothing unless the linter it reads actually has the rule.
+    eq(f"CONTROL: {UPSTREAM_LINT.name} at that path carries the `ai-attribution` rule",
+       True, "ai-attribution" in rule_ids(UPSTREAM_LINT))
+    eq("the generated body is CLEAN against it — no model line, no session link",
+       [], rules(BODY, UPSTREAM_LINT))
+    for what, mutate, want in AI_MUTANTS:
+        eq(f"{what} → reds", want, rules(mutate(BODY), UPSTREAM_LINT))
 
 
 # ── § 3 REFUSALS — what it declines rather than invents ───────────────────────────────────────
@@ -281,13 +347,11 @@ refused("a `**Coordinated in:**` value spanning lines is refused",
         subprocess.run([sys.executable, str(GEN), "--built", "in-session",
                         "--coordinated-in", "card#9801\ncard#9802"],
                        cwd=WORK, capture_output=True, text=True), "spans more than one line")
-# The same shape across the other one-line fields — the sibling audit, driven rather than argued.
-refused("an `--agent` spanning lines is refused, not welded into the trailer",
-        generate(WORK, "--agent", "the coder\nFROM: somebody"),
-        "--agent spans more than one line")
-refused("a `--session-url` spanning lines likewise",
-        generate(WORK, "--session-url", "https://example.invalid/a\nhttps://example.invalid/b"),
-        "--session-url spans more than one line")
+# The options that wrote AI attribution into the body are GONE, so a caller still passing one is
+# refused by argparse rather than having it dropped silently or written anywhere.
+for _removed in ("--agent", "--session-url"):
+    refused(f"the removed `{_removed}` option is refused, not accepted and ignored",
+            generate(WORK, _removed, "x"), "unrecognized arguments: %s" % _removed)
 
 # ⛔ GIT'S OWN WORDS REACH THE REFUSAL. The cause here is NOT one of this program's four named
 # causes, and before `Git.said()` existed it was reported as one of them ("this is not a git
@@ -367,24 +431,24 @@ eq("  … with a sha beside it, so a stale tip is visible",
 contains("  … and the stale-base consequence is stated, not left to be inferred",
          "widens the range", run.stderr)
 
-# ⛔ THE PASS-THROUGH RESIDUE, MEASURED RATHER THAN CLAIMED. The header says the SKELETON passes
-# and that `--agent` / `--session-url` are unjudged; these two cases are what makes that
-# qualification a fact. They must NOT be "fixed" by validating the fields here — the emit/judge
-# separation is the design, and the lint step is the answer.
-poisoned = generate(WORK, "--agent", "CI is green at 4f2a91c")
-eq("an `--agent` carrying a live-state reading passes THROUGH and reds the linter",
-   ["live-state-reading"], rules(poisoned.stdout))
-poisoned_url = generate(WORK, "--session-url", "FROM: mezzanine-solo")
-eq("a `--session-url` carrying an attribution line does the same",
-   ["attribution-line"], rules(poisoned_url.stdout))
-contains("  … which is why the checklist names the fields as unjudged",
-         "passed through UNJUDGED", run.stderr)
-no_url = generate(WORK)
-contains("a missing --session-url is NAMED rather than invented",
-         "NO session URL", no_url.stderr)
-absent("  … and no URL is fabricated in the body", "claude.ai/code/session", no_url.stdout)
-contains("the producing agent is recorded beside the model line, not as a `FROM:` line",
-         "[Claude Code](https://claude.com/claude-code) — implemented by the mezzanine", BODY)
+# ⛔ THE BODY ENDS ON THE MACHINE LINES. Nothing follows `**Coordinated in:**` — the slot the
+# Claude Code model line and the session link used to fill stays empty rather than being filled
+# with an agent line nobody agreed a spelling for. Asserted on the text as well as by § 2b,
+# because § 2b does not run where the upstream linter is absent.
+eq("the body's last line is `**Coordinated in:**` — no attribution trailer after it",
+   COORD, BODY.rstrip("\n").splitlines()[-1])
+# … and nowhere else in the body either. The last-line check only guards the old trailer slot; this
+# is the placement-independent half, and it runs on every runner (CI included) because it needs
+# no upstream linter. Patterns are the three AI_LINES shapes, matched loosely.
+AI_ATTRIBUTION_RE = re.compile(
+    r"Generated with \[?Claude|claude\.com/claude-code|claude\.ai/code/session|"
+    r"Co-Authored-By:\s*Claude", re.I)
+eq("none of the three AI_LINES attribution shapes anywhere in the generated body (a subset of upstream `ai-attribution`)",
+   [], AI_ATTRIBUTION_RE.findall(BODY))
+eq("  CONTROL: the pattern catches every AI_LINES shape",
+   [True] * len(AI_LINES), [bool(AI_ATTRIBUTION_RE.search(line)) for _, line in AI_LINES])
+contains("the checklist names the verbatim fields as unjudged beyond one line",
+         "written VERBATIM", run.stderr)
 
 
 # ── § 5 HOUSE MAP — CLAUDE.md's mapping, held to the judge's own allowed set ───────────────────

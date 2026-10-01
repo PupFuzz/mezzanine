@@ -365,6 +365,64 @@ export function roomTick(localMs, readLocal = civilTime) {
     });
 }
 
+/**
+ * § 6.2 A17's DRIVER — the one place `roomTick()` is ever evaluated, held by every surface that draws
+ * A17's value: the floor's room render (`floor/floor-screen.js`) and the lobby's sky behind the building
+ * (`lobby/lobby-screen.js`, card#7343: *"On the lobby it is this row or nothing"*). Hoisted here at its
+ * second caller so the two surfaces cannot disagree on WHEN the value is set.
+ *
+ * ⛔ § 6.5's PROPERTY, AND NOT A LIST OF RENDERS: the value is set by a render that establishes or
+ * re-establishes a LIVE feed, and by nothing else. A `feed.heartbeat` is what A17 FIRES on (§ 6.2);
+ * what SETS the value with no log row at all is the ESTABLISHMENT the protocol journals
+ * (`feed.established`) — the connect sequence's snapshot, and the first message on a re-opened stream.
+ * Before either the value is `null` and is rendered as having none: "a plausible time on a page that
+ * has never been live is exactly the zero that rule refuses".
+ *
+ * ⛔ A POLL SETS NOTHING (§ 6.5, § 9 F1; AT-D3-6's Fourth RED), AND NEITHER DOES A TIMER OR THE 1 s TICK
+ * (§ 2.5, § 6.3). A poll's rows are a full snapshot in the journal like any other, and they are
+ * deliberately not what is read here: "the poll IS the timer" the amendment removed, so a surface that
+ * set the value on one would advance the clock — and step the sky — every 10 s of a dead feed. `take()`
+ * is called with a drained journal and reads the viewer's clock only when that journal says so.
+ */
+export class RoomClock {
+    #clock;
+
+    #readLocal;
+
+    #tick = null;
+
+    /**
+     * @param {{now: function(): number}} clock the browser's own clock
+     * @param {function(number): {hours: number, minutes: number}} [readLocal] the viewer's civil time
+     *        (`roomTick()`'s), the platform's own when not stated
+     */
+    constructor(clock, readLocal) {
+        this.#clock = clock;
+        this.#readLocal = readLocal;
+    }
+
+    /** `roomTick()`'s value as last set, or `null` until a render that established a LIVE feed. */
+    get tick() {
+        return this.#tick;
+    }
+
+    /**
+     * One drained journal: the value re-evaluated for the viewer's current time if the journal carries
+     * a `feed.heartbeat` or the feed's establishment, and left exactly as it was otherwise.
+     *
+     * @param {Array<object>} journal `FleetClient#takeWire()`'s entries
+     */
+    take(journal) {
+        const set = journal.some((entry) => entry.t === 'feed.heartbeat' || entry.t === 'feed.established');
+
+        if (set) {
+            this.#tick = roomTick(this.#clock.now(), this.#readLocal);
+        }
+
+        return this.#tick;
+    }
+}
+
 /** The viewer's civil hours and minutes, from the platform's own zone handling. */
 function civilTime(localMs) {
     const d = new Date(localMs);
@@ -387,4 +445,34 @@ export function skyPhase(hours) {
     }
 
     return hours < 21 ? 'dusk' : 'night';
+}
+
+/**
+ * Each phase `skyPhase()` decides, as PAINT — the one phase→paint table every sky on either page reads
+ * (card#7343 r1): the floor's windows (`floor/painter.js`), the lobby's plate windows and the lobby's dim
+ * backdrop behind the building (`lobby/building-scene.js`). It is the reference's own phase record
+ * (`docs/design/floor-preview/floor-preview.html`'s `SKY`), member for member: the window gradient's
+ * `top` and `bot`, whether the phase shows `stars`, a `moon` or a `sun` (at `sun_y`, a fraction of the
+ * window's height), and how lit the city's windows are (`city_lit`, `0` for none). `unset` is the
+ * reference's null render (§ 6.5): the sky of a page that has never been live — `flat`, starless,
+ * sunless, moonless and unlit, never a plausible time of day.
+ *
+ * ⛔ PAINT ONLY. Which phase an hour is stays `skyPhase()`'s; nothing here reads a clock.
+ */
+export const SKY_PAINT = Object.freeze({
+    night: Object.freeze({ top: '#141c3a', bot: '#25335e', stars: true, moon: true, sun: false, sun_y: null, city_lit: 0.8, flat: false }),
+    dawn: Object.freeze({ top: '#3a3a6e', bot: '#e8927c', stars: false, moon: false, sun: true, sun_y: 0.82, city_lit: 0.35, flat: false }),
+    day: Object.freeze({ top: '#8fc4e8', bot: '#cfe6f2', stars: false, moon: false, sun: true, sun_y: 0.28, city_lit: 0, flat: false }),
+    dusk: Object.freeze({ top: '#4a3a6e', bot: '#f0a86a', stars: false, moon: false, sun: true, sun_y: 0.86, city_lit: 0.55, flat: false }),
+    unset: Object.freeze({ top: '#2a2f42', bot: '#39405a', stars: false, moon: false, sun: false, sun_y: null, city_lit: 0, flat: true }),
+});
+
+/**
+ * A sky's paint for a phase — `SKY_PAINT`'s entry, `unset`'s when there is no phase (`null`: no live
+ * feed yet, § 6.5).
+ *
+ * @param {string|null} phase `skyPhase()`'s answer, as A17's value carries it
+ */
+export function skyPaint(phase) {
+    return SKY_PAINT[phase ?? 'unset'];
 }

@@ -205,6 +205,67 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
     }
 
     /**
+     * card#7343 r3 (the seat's ruling): `#lobby-building` is a fixed-height drawing that clips its plates
+     * only while there is a building to draw. With none — F17's cold start, its rooms listed with no floor
+     * claimed — the list flows in the page as the lobby's list always did: a clipping box whose scroll the
+     * camera holds at the origin would put every row past its fold out of sight and out of reach.
+     */
+    public function test_an_uncomposed_lobby_flows_in_the_page_and_only_a_drawn_building_clips(): void
+    {
+        $this->aComposedBuilding();
+
+        $snapshot = $this->served(self::SNAPSHOT);
+        $composed = [self::SNAPSHOT => [$snapshot], self::BUILDING => [$this->served(self::BUILDING)]];
+        $cold = [self::SNAPSHOT => [$snapshot], self::BUILDING => [['unreachable' => true]]];
+
+        [$drawn] = $this->scenario($composed, [['do' => 'enter']]);
+        $this->assertSame([], $this->surfaceDefects($drawn));
+
+        [$flowing] = $this->scenario($cold, [['do' => 'enter']]);
+        $this->assertNotSame([], $flowing['lobby']['unclaimed'], 'the cold start listed no room — the flow clause read nothing');
+        $this->assertSame([], $this->surfaceDefects($flowing));
+
+        // ⛔ CONTROL — the surface a clipping drawing whether or not there is a building: r3's regression.
+        $clipped = $this->mutatedModules(['building-scene.js', 'const drawn = (scene?.extent ?? null) !== null;', 'const drawn = true;']);
+        [$regressed] = $this->scenario($cold, [['do' => 'enter']], $clipped);
+
+        $this->assertNotSame([], $this->surfaceDefects($regressed),
+            'CONTROL (an uncomposed lobby clipped in a fixed box) did not bite');
+
+        // ⛔ CONTROL — a drawn building that never clips: the plates spill over the page under the camera.
+        $spilled = $this->mutatedModules(['building-scene.js', "overflow: drawn ? 'hidden' : '',", "overflow: '',"]);
+        [$unclipped] = $this->scenario($composed, [['do' => 'enter']], $spilled);
+
+        $this->assertNotSame([], $this->surfaceDefects($unclipped),
+            'CONTROL (a drawn building that never clips) did not bite');
+    }
+
+    /**
+     * What is wrong with a record's surface: a building drawn in a surface that neither holds a height nor
+     * clips, or a lobby with no building drawn in a surface that does either.
+     *
+     * @return list<string>
+     */
+    private function surfaceDefects(array $record): array
+    {
+        $surface = $record['surface'];
+        $drawn = $record['building']['composed'] && $record['building']['plates'] !== [];
+
+        if ($drawn) {
+            return array_values(array_filter([
+                $surface['height'] === '' ? 'a drawn building in a surface with no height of its own' : null,
+                $surface['overflow'] !== 'hidden' ? 'a drawn building whose surface does not clip it' : null,
+            ]));
+        }
+
+        return array_values(array_filter([
+            $surface['height'] !== '' ? "a lobby with no building drawn held in a {$surface['height']} box" : null,
+            $surface['overflow'] !== '' ? "a lobby with no building drawn clipped ({$surface['overflow']})" : null,
+            $surface['touchAction'] !== '' ? "a lobby with no building drawn refusing the page's touch scroll ({$surface['touchAction']})" : null,
+        ]));
+    }
+
+    /**
      * A refused snapshot is F4's render with nothing to compose, so the entry asks for no layout.
      */
     public function test_a_refused_snapshot_asks_for_no_layout(): void
