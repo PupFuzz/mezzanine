@@ -278,8 +278,8 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     public function test_red_a_render_that_frames_a_scene_with_no_extent(): void
     {
         $dir = $this->mutatedModules([self::FLOOR_SCREEN,
-            '} else if (scene !== null && scene.extent !== null) {',
-            '} else if (scene !== null) {']);
+            '        if (scene !== null && scene.extent !== null) {',
+            '        if (scene !== null) {']);
 
         $this->assertNotSame([], $this->nullExtentDefects($dir), 'CONTROL (a null extent framed) did not bite');
     }
@@ -753,10 +753,18 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
                 continue;
             }
 
+            // Once a render has drawn the room, every later render draws it too (renders in order; several
+            // can share one scenario millisecond, so the order is the index and never the time).
+            $drawing = false;
+
             foreach ($result['floor_renders'] as $r) {
-                if ($r['at'] >= $framed[0]['at'] && ($r['frame']['scene'] === null || $r['frame']['camera']['bounds'] === null)) {
+                $drawn = $r['frame']['scene'] !== null && $r['frame']['camera']['bounds'] !== null;
+
+                if ($drawing && ! $drawn) {
                     $defects[] = "[{$run}] the render at {$r['at']} ms stopped drawing the room";
                 }
+
+                $drawing = $drawing || $drawn;
             }
 
             $checks = [...$this->firstFramingDefects($result), ...$this->wheelDefects($result), ...$this->dragDefects($result)];
