@@ -1,6 +1,7 @@
 /**
- * THE LIST VIEW — `docs/design/FLOOR.md` Appendix B row 15 (slice A) and § 4.5's capability floor:
- * one seat as lines of text, every fact `desk/desk-render.js`'s `deskModel()` emits, no map.
+ * THE LIST VIEW — `docs/design/FLOOR.md` Appendix B row 15 (slice A) and § 4.5's second rule: one
+ * seat as lines of text, every fact `desk/desk-render.js`'s `deskModel()` emits, painted below the
+ * room drawing at every window size — beside the drawing, never in its place (§ 4.5's first rule).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THIS IS A HEADLESS MODEL AND NOT A PAGE FUNCTION. Row 8's text render was `floor/main.js`'s

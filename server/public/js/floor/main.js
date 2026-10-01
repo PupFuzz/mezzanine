@@ -27,17 +27,18 @@
  * imports the two art modules through the painter (the asset route's URLs), hands the screen the
  * scene's inputs once they answer, and paints each frame's scene; the painter reports every asset it
  * could not draw back to the screen, which is § 9 F14's placeholder and the strip's `art` line on the
- * next render. Below the drawing each desk is its row of the LIST VIEW (Appendix B row 15, slice A):
- * `desk/desk-list.js`'s `deskListRow()` decides every line from the desk model and this file paints
- * them; row 8's page-side `deskLine()` is gone.
+ * next render. Below the drawing each desk is also its row of the LIST VIEW (Appendix B row 15, slice A),
+ * the desks as text beside the drawing at every size: `desk/desk-list.js`'s `deskListRow()` decides
+ * every line from the desk model and this file paints them; row 8's page-side `deskLine()` is gone.
  *
- * ⛔ THE CAPABILITY FLOOR AND THE CAMERA ARE THE SCREEN's (Appendix B row 15, § 4.5); this file supplies
- * the viewport and the drawing surface's size, wires the wheel and the drag (through
+ * ⛔ THE CAMERA IS THE SCREEN's (Appendix B row 15, § 4.5); this file supplies
+ * the drawing surface's size, wires the wheel and the drag (through
  * `wire/camera-gestures.js`) and the keyboard and the zoom buttons (through `wire/camera-keys.js`),
  * both of which the lobby shares, and the fit-floor control to the screen's camera acts, and sets the drawing's view from the camera
- * each returns — a camera act renders nothing. Below § 12's viewport floor the frame is the list view
- * and this file paints the desk list — `paintDesks()`, over `deskListRow()` — and hides the drawing;
- * at or above it, the drawing under the camera and no list. The whole-building control is a link to
+ * each returns — a camera act renders nothing. The drawing is shown at every window size — there is no
+ * minimum and no substitute view (§ 4.5, the operator's ruling of 2026-10-01 on card#7341): a window
+ * smaller than the room is one the viewer pans and zooms across, and the desk list — `paintDesks()`,
+ * over `deskListRow()` — is painted below it at every size too. The whole-building control is a link to
  * `/` (§ 4.4's lobby route), never a second scale drawn here.
  * A glide is the page's alone — the camera's state is already its destination — and under
  * `prefers-reduced-motion` the screen hands back no glide at all, so the view cuts. How a glide steps
@@ -117,11 +118,6 @@ let painter = null;
  * 15) — shown through `wire/camera-view.js`: `show()` at once, `glideTo()` over a glide's length.
  */
 const { show, glideTo, current } = cameraView((camera) => painter?.view(camera));
-
-/** The viewer's viewport in CSS px — what § 4.5's capability floor reads. */
-function viewport() {
-    return { width: window.innerWidth, height: window.innerHeight };
-}
 
 /** The drawing surface: the floor section's width, the viewport's height (the view's stylesheet). */
 function surface() {
@@ -268,29 +264,20 @@ function paint(frame) {
         + (thread.unresolved.length > 0 ? ` — unresolved: ${thread.unresolved.join(', ')}` : '')
     ))));
 
-    // § 4.5's capability floor, decided by the screen: the drawing under the camera, or the list view.
-    const drawn = frame.capability === 'floor';
-
-    el('floor-drawing').hidden = !drawn;
     // § 9 F6/F7: the floor beneath the sign-in prompt is dimmed, never blanked — the drawing as the list.
     el('floor-drawing').dataset.dimmed = String(frame.failure.sign_in !== null);
-    el('floor-camera').hidden = !drawn || frame.scene === null;
-    el('floor-desks-heading').hidden = drawn;
+    el('floor-camera').hidden = frame.scene === null;
     // The camera is offered only while it frames the floor (card#7343 r4b, comment 7692): with nothing
     // framed its controls do nothing, so the zoom buttons and *Fit the floor* are hidden and the drawing is
     // no tab stop and names no keys.
     offerKeys(el('floor-drawing'), zoomButtons, frame.camera);
 
-    if (drawn) {
-        // A render never moves the viewer: a glide in flight keeps its step, and otherwise the drawing
-        // shows the screen's camera, which the render left where the viewer put it.
-        painter?.paint(frame.scene ?? null, current(frame.camera));
-    } else {
-        show(frame.camera);
-        painter?.paint(null, frame.camera);
-    }
+    // § 4.5: the room is drawn at every window size. A render never moves the viewer: a glide in flight
+    // keeps its step, and otherwise the drawing shows the screen's camera, which the render left where
+    // the viewer put it.
+    painter?.paint(frame.scene ?? null, current(frame.camera));
 
-    paintDesks(frame, drawn ? {} : frame.desks.desks);
+    paintDesks(frame, frame.desks.desks);
     paintPanel(frame.panel);
     list('floor-log', client.eventLog);
 }
@@ -299,7 +286,6 @@ const screen = startFloorScreen(client, pageFetch, clock, log, paint, {
     floor: root.dataset.floor,
     seat: root.dataset.seat === '' ? null : root.dataset.seat,
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-    viewport: viewport(),
     surface: surface(),
 });
 
@@ -309,11 +295,8 @@ startAgeTicker(screen.desks, clock, window, (readouts) => {
     if (lastFrame !== null) {
         const desks = screen.desks.view(readouts);
 
-        if (lastFrame.capability === 'floor') {
-            painter?.refresh(screen.sceneView(desks));
-        } else {
-            paintDesks(lastFrame, desks.desks);
-        }
+        painter?.refresh(screen.sceneView(desks));
+        paintDesks(lastFrame, desks.desks);
 
         paintPanel(screen.panelView(lastFrame.floor?.name ?? null));
     }
@@ -376,7 +359,7 @@ el('floor-fit').addEventListener('click', () => {
 // A resize re-shows the screen's camera at once — stopping a glide in flight, whose every later step
 // would otherwise be computed over the surface it started on — before the render it asks for.
 window.addEventListener('resize', () => {
-    screen.resize(viewport(), surface());
+    screen.resize(surface());
     show(screen.camera());
     requestRender();
 });

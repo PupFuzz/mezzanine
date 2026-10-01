@@ -6,17 +6,19 @@ use Tests\TestCase;
 
 /**
  * **AT-D3-21 — the camera moves the viewer and never the fleet, floor half.** `docs/design/FLOOR.md
- * § 11`, gated at Appendix B row 15 (card#7341): § 4.5's capability floor and its camera-is-navigation
+ * § 11`, gated at Appendix B row 15 (card#7341): § 4.5's any-size rule and its camera-is-navigation
  * rule, read from the floor screen's frames and its camera through the harness — `wire/camera.js`, the
- * camera, held and framed by `floor/floor-screen.js`, which also decides the capability floor.
+ * camera, held and framed by `floor/floor-screen.js`.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE RUNS ARE `fixtures/fx-camera.json`'s, each a byte-for-byte replay of § 11's fixtures at a
  * viewport it states, with the viewer's camera acts on the scenario clock (`fleet-client-probe.mjs`).
- * F is § 12's viewport floor, READ FROM § 12 here on every run and held against each run's stated
- * viewport — so a figure moved in the document reds this test until the fixture and
- * `floor-screen.js`'s `VIEWPORT_FLOOR` move with it, and a `VIEWPORT_FLOOR` moved alone reds the
- * capability clause (F must draw the floor, one pixel under it in either dimension the list).
+ * F is § 12's reference viewport — the size § 12's measurement of the camera's fit is taken at — READ
+ * FROM § 12 here on every run and held against each run entered at it, so a figure moved in the
+ * document reds this test until the fixture moves with it. F is no minimum: the any-size runs are
+ * entered in windows smaller than F in at least one dimension — a phone's 390 × 700 and a low
+ * 1,280 × 240 — and § 4.5 (the operator's ruling of 2026-10-01 on card#7341) requires the room drawn
+ * there under the camera, panned and zoomed exactly as at F, with no substitute view.
  *
  * ⛔ THE LOG CLAUSE COMPARES AGAINST THE SAME RUN WITH THE CAMERA ACTS REMOVED — § 11's discriminating
  * control: a client that never touches the camera reads the scene at fit and the log carrying exactly
@@ -26,8 +28,8 @@ use Tests\TestCase;
  * ⚠ WHAT THIS DOES NOT HOLD, AND WHERE IT IS: what a list-view row SAYS — the `fold_lag` seat's lag
  * line, the `catching_up` seat's currency label, the `config_invalid` seat's *sending nothing* note,
  * and § 11's fifth RED — is the list module's (row 15's list view, built beside `desk/desk-render.js`
- * with its own guard). This test holds that below the floor the route renders the list view, one row
- * per seat and no map, over the desk models every row is built from.
+ * with its own guard). This test holds that in a small window the route draws a desk for every seat
+ * AND carries the desk models the list view's rows are built from, one per seat.
  *
  * ⚠ AND WHAT NO TEST HERE CAN: that a wheel event or a drag in a browser reaches these acts. The page
  * half (`floor/main.js`) is wired to them and decides nothing, and there is no browser on the build
@@ -41,7 +43,7 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     private const OVERFLOW = 'camera_overflow';
 
-    private const SHORT = 'camera_short';
+    private const RESIZE = 'camera_resize';
 
     private const REDUCED = 'camera_reduced';
 
@@ -49,9 +51,10 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     private const NOTHING_MEASURABLE = 'camera_nothing_measurable';
 
-    private const ENTRY_SHORT = ['camera_entry_short_width', 'camera_entry_short_height'];
+    /** The any-size runs: entered in a window smaller than F, narrower in the first and lower in the second. */
+    private const ENTRY_SMALL = ['camera_entry_narrow', 'camera_entry_low'];
 
-    private const DEGRADED_SHORT = ['camera_degraded_short_width', 'camera_degraded_short_height'];
+    private const DEGRADED_SMALL = ['camera_degraded_narrow', 'camera_degraded_low'];
 
     private const CAMERA = 'camera.js';
 
@@ -59,23 +62,29 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     // ── GREEN ──────────────────────────────────────────────────────────────────────────────────
 
-    public function test_green_every_run_states_a_viewport_at_section_12s_floor_or_one_pixel_under_it(): void
+    public function test_green_every_run_states_a_viewport_at_section_12s_reference_or_a_window_smaller_than_it(): void
     {
-        [$w, $h] = $this->viewportFloor();
+        [$w, $h] = $this->referenceViewport();
 
-        foreach ([self::FLOOR, self::OVERFLOW, self::SHORT, self::REDUCED, self::PROPORTIONAL, self::NOTHING_MEASURABLE] as $run) {
+        foreach ([self::FLOOR, self::OVERFLOW, self::RESIZE, self::REDUCED, self::PROPORTIONAL, self::NOTHING_MEASURABLE] as $run) {
             $this->assertSame(['width' => $w, 'height' => $h], $this->fixture($run)['floor']['viewport'], "[{$run}] is not entered at F");
         }
 
-        foreach ([self::ENTRY_SHORT, self::DEGRADED_SHORT] as [$short_w, $short_h]) {
-            $this->assertSame(['width' => $w - 1, 'height' => $h], $this->fixture($short_w)['floor']['viewport'], "[{$short_w}]");
-            $this->assertSame(['width' => $w, 'height' => $h - 1], $this->fixture($short_h)['floor']['viewport'], "[{$short_h}]");
+        // Each pair: the first window narrower than F, the second lower — so each dimension is asked alone.
+        foreach ([self::ENTRY_SMALL, self::DEGRADED_SMALL] as [$narrow, $low]) {
+            $n = $this->fixture($narrow)['floor']['viewport'];
+            $l = $this->fixture($low)['floor']['viewport'];
+            $this->assertTrue($n['width'] < $w && $n['height'] < $h, "[{$narrow}] is not a window narrower and lower than F");
+            $this->assertTrue($l['width'] === $w && $l['height'] < $h, "[{$low}] is not a window as wide as F and lower");
         }
 
-        $resizes = array_values(array_filter($this->fixture(self::SHORT)['floor']['camera'], static fn (array $a): bool => $a['act'] === 'resize'));
-        $this->assertSame([[$w - 1, $h], [$w, $h], [$w, $h - 1], [$w, $h]],
-            array_map(static fn (array $a): array => [$a['width'], $a['height']], $resizes),
-            '[camera_short] does not shrink to F less one pixel in each dimension and grow back');
+        $resizes = array_values(array_filter($this->fixture(self::RESIZE)['floor']['camera'], static fn (array $a): bool => $a['act'] === 'resize'));
+        $this->assertCount(4, $resizes, '[camera_resize] does not shrink twice and grow back twice');
+
+        foreach ($resizes as $i => $a) {
+            $this->assertSame($i % 2 === 1, $a['width'] === $w && $a['height'] === $h,
+                "[camera_resize]'s resize #{$i} is not ".($i % 2 === 1 ? 'back to F' : 'a window smaller than F'));
+        }
     }
 
     public function test_green_the_first_render_frames_the_floor_at_fit_with_no_transition(): void
@@ -128,14 +137,20 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     public function test_green_the_log_gains_no_row_from_any_camera_act_and_the_rows_it_gains_are_the_messages_own(): void
     {
-        foreach ([self::FLOOR, self::SHORT, self::PROPORTIONAL] as $run) {
+        foreach ([self::FLOOR, self::RESIZE, self::PROPORTIONAL, ...self::ENTRY_SMALL] as $run) {
             $this->assertSame([], $this->logDefects($run), "[{$run}]");
         }
     }
 
-    public function test_green_below_the_floor_in_either_dimension_the_route_renders_the_list_view_and_grown_back_the_floor_at_fit(): void
+    /**
+     * § 4.5's first rule (the operator's ruling of 2026-10-01 on card#7341): in a window smaller than F
+     * in either dimension the route draws the room at fit from its first frame, and the camera pans and
+     * zooms it there as at F; every seat has its drawn desk and its desk model (the list view's row);
+     * and a window resized smaller and back keeps the room drawn and the viewer's zoom.
+     */
+    public function test_green_at_every_window_size_the_route_draws_the_room_and_the_camera_pans_and_zooms_it(): void
     {
-        $this->assertSame([], $this->capabilityDefects(), 'the capability floor');
+        $this->assertSame([], $this->anySizeDefects(), 'the any-size rule');
     }
 
     public function test_green_under_reduced_motion_the_camera_cuts_rather_than_glides(): void
@@ -176,12 +191,17 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $this->assertNotSame([], $this->survivalDefects($this->floorRun(self::FLOOR, $dir)), 'the second RED (a camera reset by every render) did not bite');
     }
 
-    /** § 11's third RED: one pixel under F, draw the floor scaled to fit. */
-    public function test_red_the_scaled_down_floor(): void
+    /**
+     * § 11's third RED: a minimum window size returns — below F the frame carries no scene, the list
+     * view standing in for the room. That is the capability floor this rule replaced, planted back.
+     */
+    public function test_red_the_substitute_view_below_a_minimum_size(): void
     {
-        $dir = $this->mutatedModules([self::FLOOR_SCREEN, "? 'floor' : 'list';", "? 'floor' : 'floor';"]);
+        $dir = $this->mutatedModules([self::FLOOR_SCREEN,
+            'const scene = this.#scene(frame, rows);',
+            'const scene = this.#camera.surface.width < 1280 || this.#camera.surface.height < 800 ? null : this.#scene(frame, rows);']);
 
-        $this->assertNotSame([], $this->capabilityDefects($dir), 'the third RED (a floor scaled down below F) did not bite');
+        $this->assertNotSame([], $this->anySizeDefects($dir), 'the third RED (a substitute view below a minimum size) did not bite');
     }
 
     /** § 11's fourth RED: fit-floor frames the floor's extent alone (card#7965). */
@@ -258,8 +278,8 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     public function test_red_a_render_that_frames_a_scene_with_no_extent(): void
     {
         $dir = $this->mutatedModules([self::FLOOR_SCREEN,
-            '} else if (scene !== null && scene.extent !== null) {',
-            '} else if (scene !== null) {']);
+            '        if (scene !== null && scene.extent !== null) {',
+            '        if (scene !== null) {']);
 
         $this->assertNotSame([], $this->nullExtentDefects($dir), 'CONTROL (a null extent framed) did not bite');
     }
@@ -305,11 +325,11 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     // ── The checks ─────────────────────────────────────────────────────────────────────────────
 
-    /** @return array{0: int, 1: int} § 12's viewport floor, read from the row on every run */
-    private function viewportFloor(): array
+    /** @return array{0: int, 1: int} § 12's reference viewport, read from the row on every run */
+    private function referenceViewport(): array
     {
-        $this->assertSame(1, preg_match('/^\| Floor viewport floor \| \*\*([\d,]+) × ([\d,]+) CSS px\*\* \|/m', $this->floorMd(), $m),
-            '§ 12\'s viewport-floor row did not parse');
+        $this->assertSame(1, preg_match('/^\| Floor reference viewport \| \*\*([\d,]+) × ([\d,]+) CSS px\*\* \|/m', $this->floorMd(), $m),
+            '§ 12\'s reference-viewport row did not parse');
 
         return [(int) str_replace(',', '', $m[1]), (int) str_replace(',', '', $m[2])];
     }
@@ -713,29 +733,82 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         return $defects;
     }
 
-    /** @return list<string> */
-    private function capabilityDefects(?string $dir = null): array
+    /**
+     * § 4.5's any-size rule, over the any-size runs, the degraded runs in the same windows and the
+     * resize run.
+     *
+     * @return list<string>
+     */
+    private function anySizeDefects(?string $dir = null): array
     {
         $defects = [];
 
-        foreach ([...self::ENTRY_SHORT, ...self::DEGRADED_SHORT] as $run) {
-            $seats = count($this->snapshotSeats($run));
+        foreach (self::ENTRY_SMALL as $run) {
+            $result = $this->floorRun($run, $dir);
+            $framed = $this->framed($result);
 
-            $renders = $this->floorRun($run, $dir)['floor_renders'];
+            if ($framed === []) {
+                $defects[] = "[{$run}] no frame drew the room — the route substituted something for it in a window this size";
 
-            foreach ($renders as $r) {
-                array_push($defects, ...$this->listDefects($r['frame'], $seats, "[{$run}] at {$r['at']} ms"));
+                continue;
             }
 
-            if (count($this->lastFloor(['floor_renders' => $renders])['desks']['desks']) !== $seats) {
-                $defects[] = "[{$run}] the list view's last render does not carry one row per seat";
+            // Once a render has drawn the room, every later render draws it too (renders in order; several
+            // can share one scenario millisecond, so the order is the index and never the time).
+            $drawing = false;
+
+            foreach ($result['floor_renders'] as $r) {
+                $drawn = $r['frame']['scene'] !== null && $r['frame']['camera']['bounds'] !== null;
+
+                if ($drawing && ! $drawn) {
+                    $defects[] = "[{$run}] the render at {$r['at']} ms stopped drawing the room";
+                }
+
+                $drawing = $drawing || $drawn;
+            }
+
+            $checks = [...$this->firstFramingDefects($result), ...$this->wheelDefects($result), ...$this->dragDefects($result)];
+            $fits = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => $a['act']['act'] === 'fit'));
+
+            if ($fits === []) {
+                $checks[] = 'the run fits nothing, so fit-floor was never asked';
+            } else {
+                $checks = [...$checks, ...$this->atFitDefects($fits[0]['after'], $framed[count($framed) - 1]['scene']['extent'], 'fit-floor')];
+            }
+
+            foreach ($checks as $d) {
+                $defects[] = "[{$run}] {$d}";
             }
         }
 
-        $result = $this->floorRun(self::SHORT, $dir);
-        $seats = count($this->snapshotSeats(self::SHORT));
-        $fit = $this->framed($result)[0]['camera'] ?? null;
+        foreach (self::DEGRADED_SMALL as $run) {
+            $seats = count($this->snapshotSeats($run));
+            $last = $this->lastFloor($this->floorRun($run, $dir));
+
+            if ($last['scene'] === null) {
+                $defects[] = "[{$run}] the last render draws no room";
+
+                continue;
+            }
+
+            if (count($last['scene']['desks']) !== $seats) {
+                $defects[] = sprintf('[%s] the room draws %d desks for %d seats', $run, count($last['scene']['desks']), $seats);
+            }
+
+            if (count($last['desks']['desks']) !== $seats) {
+                $defects[] = sprintf('[%s] the frame carries %d desk models for the list view for %d seats', $run, count($last['desks']['desks']), $seats);
+            }
+
+            array_push($defects, ...array_map(static fn (string $d): string => "[{$run}] {$d}",
+                $this->atFitDefects($last['camera'], $last['scene']['extent'], 'the room')));
+        }
+
+        $result = $this->floorRun(self::RESIZE, $dir);
         $resizes = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => $a['act']['act'] === 'resize'));
+
+        if ($resizes === []) {
+            $defects[] = '[camera_resize] the run resizes nothing';
+        }
 
         foreach ($resizes as $a) {
             $frame = null;
@@ -744,48 +817,32 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
                 $frame = $r['at'] === $a['at'] ? $r['frame'] : $frame;
             }
 
+            $where = sprintf('[camera_resize] at %d ms (%d × %d)', $a['at'], $a['act']['width'], $a['act']['height']);
+
             if ($frame === null) {
-                $defects[] = "no render followed the resize at {$a['at']} ms";
+                $defects[] = "{$where}: no render followed the resize";
 
                 continue;
             }
 
-            [$w, $h] = $this->viewportFloor();
-            $short = $a['act']['width'] < $w || $a['act']['height'] < $h;
+            if ($frame['scene'] === null || $frame['camera']['bounds'] === null) {
+                $defects[] = "{$where}: the route stopped drawing the room";
 
-            if ($short) {
-                array_push($defects, ...$this->listDefects($frame, $seats, "[camera_short] at {$a['at']} ms"));
-            } elseif ($frame['capability'] !== 'floor' || $frame['scene'] === null) {
-                $defects[] = "[camera_short] grown back at {$a['at']} ms, the route does not draw the floor";
-            } else {
-                array_push($defects, ...$this->atFitDefects($frame['camera'], $frame['scene']['extent'], "[camera_short] grown back at {$a['at']} ms"));
-
-                if ($fit !== null && abs($frame['camera']['zoom'] - $fit['zoom']) > self::EPSILON) {
-                    $defects[] = "[camera_short] grown back at {$a['at']} ms, the floor is not at the fit it was entered at";
-                }
+                continue;
             }
-        }
 
-        return $defects;
-    }
+            $camera = $frame['camera'];
 
-    /** @return list<string> */
-    private function listDefects(array $frame, int $seats, string $where): array
-    {
-        $defects = [];
+            if (! $this->inView($camera)) {
+                $defects[] = "{$where}: the floor is not in view";
+            }
 
-        if ($frame['capability'] !== 'list') {
-            $defects[] = "{$where}: below the viewport floor the route renders `{$frame['capability']}`, not the list view";
-        }
+            // A camera the viewer moved keeps its zoom across a resize, raised only to the new fit.
+            $kept = max($a['before']['zoom'], $this->fitZoom($camera['surface'], $camera['bounds']));
 
-        if ($frame['scene'] !== null || $frame['camera']['bounds'] !== null) {
-            $defects[] = "{$where}: the list view carries a map";
-        }
-
-        $rows = count($frame['desks']['desks']);
-
-        if ($rows !== 0 && $rows !== $seats) {
-            $defects[] = "{$where}: the list view has {$rows} rows for {$seats} seats";
+            if ($a['before']['fitted'] !== true && abs($camera['zoom'] - $kept) > self::EPSILON) {
+                $defects[] = sprintf('%s: the viewer\'s zoom %.4f became %.4f across the resize', $where, $a['before']['zoom'], $camera['zoom']);
+            }
         }
 
         return $defects;
@@ -831,7 +888,7 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $zoom = $first['camera']['zoom'];
         $px = (int) $f[1] * $zoom;
 
-        if (preg_match('/^\| Floor viewport floor \|[^\n]*?the camera\'s fit at this floor is \*\*([\d.]+)\*\*[^\n]*?draws the scene\'s (\d+) px text — the nameplate and the badges\' text at \*\*([\d.]+) CSS px\*\*/m', $md, $m) !== 1) {
+        if (preg_match('/^\| Floor reference viewport \|[^\n]*?the camera\'s fit at this viewport is \*\*([\d.]+)\*\*[^\n]*?draws the scene\'s (\d+) px text — the nameplate and the badges\' text at \*\*([\d.]+) CSS px\*\*/m', $md, $m) !== 1) {
             return ['§ 12\'s viewport row states no measurement in the form this check reads'];
         }
 
@@ -858,6 +915,12 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     private function toScene(array $camera, array $point): array
     {
         return ['x' => $camera['x'] + $point['x'] / $camera['zoom'], 'y' => $camera['y'] + $point['y'] / $camera['zoom']];
+    }
+
+    /** The zoom at which `$bounds` just fits `$surface` — `wire/camera.js`'s own fit, recomputed. */
+    private function fitZoom(array $surface, array $bounds): float
+    {
+        return min($surface['width'] / $bounds['w'], $surface['height'] / $bounds['h']);
     }
 
     private function contains(array $outer, array $inner): bool

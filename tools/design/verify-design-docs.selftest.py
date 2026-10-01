@@ -711,11 +711,11 @@ PLANTS = [
     ),
     (
         # PR #232 round 1, MAJOR-2 — G8f, section 12's viewport arithmetic.  Three figures the cell
-        # states are each recomputed from the map, the box and the viewport floor; each plant bumps
+        # states are each recomputed from the map, the box and the reference viewport; each plant bumps
         # one so the other two cannot cover for it.  The row count first.
         "verify-floor.py",
         "docs/design/FLOOR.md",
-        r"(\| Floor viewport floor \|[^\n]*?\*\*)(\d+)( rows? of \d+ furniture boxes:)",
+        r"(\| Floor reference viewport \|[^\n]*?\*\*)(\d+)( rows? of \d+ furniture boxes:)",
         "bump",
         "the row count the viewport cell states, which G8 re-derives from the shipped default's `desks` "
         "objects grouped by `y` (PR #232 round 1, MAJOR-2)",
@@ -724,7 +724,7 @@ PLANTS = [
     (
         "verify-floor.py",
         "docs/design/FLOOR.md",
-        r"(\| Floor viewport floor \|[^\n]*?furniture boxes: \d+ × [\d,]+ px = )([\d,]+)( px)",
+        r"(\| Floor reference viewport \|[^\n]*?furniture boxes: \d+ × [\d,]+ px = )([\d,]+)( px)",
         "bump",
         "the desk-across product the viewport cell states, which G8 re-derives as boxes per row × the "
         "furniture box's width (PR #232 round 1, MAJOR-2)",
@@ -733,9 +733,9 @@ PLANTS = [
     (
         "verify-floor.py",
         "docs/design/FLOOR.md",
-        r"(\| Floor viewport floor \|[^\n]*?fit zoom is \*\*[\d,]+ ÷ [\d,]+ ≈ 0\.)(\d+)(\*\*)",
+        r"(\| Floor reference viewport \|[^\n]*?fit zoom is \*\*[\d,]+ ÷ [\d,]+ ≈ 0\.)(\d+)(\*\*)",
         "bump",
-        "the fit zoom the viewport cell states, which G8 re-derives as the viewport floor over the shipped "
+        "the fit zoom the viewport cell states, which G8 re-derives as the reference viewport over the shipped "
         "default's grid width (PR #232 round 1, MAJOR-2)",
         "states a fit zoom of",
     ),

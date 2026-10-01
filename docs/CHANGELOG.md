@@ -27,6 +27,18 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#7341** — **The office floor page draws its room at every window size.** Until now a window smaller
+  than 1,280 × 800 CSS px got no drawing at all: the page replaced the room with a text list of the desks.
+  The operator ruled on 2026-10-01 that every screen displays at any browser size, so the room is now drawn
+  in a window of any size, at fit on entry, and the viewer pans it (drag, arrow keys) and zooms it (wheel,
+  trackpad pinch, `+`/`-`, the *Zoom in* and *Zoom out* buttons), with *Fit the floor* bringing the whole
+  floor back into view. The desk list stays on the page, below the drawing, at every window size — so on a
+  large screen it now appears below the room as well — and it carries every desk fact in full where the
+  drawing shortens a string to fit its desk. FLOOR.md § 4.5, § 12's reference-viewport row (renamed from
+  *Floor viewport floor*), § 13 row 14 and Appendix B row 15 record the ruling.
+  `Tests\Feature\Floor\TheCameraMovesTheViewerAndNeverTheFleetTest` enters the floor in a 390 × 700 and
+  a 1,280 × 240 window and requires the room drawn, panned and zoomed there; it fails on the previous code.
+
 ## [0.7.0] — 2026-10-01
 
 - **`laravel/framework` moves from 13.26.1 to 13.34.0** (#253), past Dependabot alert #1, an XSS in the

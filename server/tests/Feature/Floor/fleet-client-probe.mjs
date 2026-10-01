@@ -34,11 +34,12 @@
  *                      "panel": [ { "at_ms": N, //  the drill-down's USER actions, on the scenario
  *                        "action": "open" | "close" | "retry" | "more",   // clock: `open` names
  *                        "install_id": "…", "seat_id": "…" } ],           // the desk (§ 4.3)
- *                      "viewport": {width, height},  //  the viewer's viewport in CSS px (Appendix B
- *                                               //  row 15's capability floor) — absent, § 12's viewport
- *                                               //  floor itself (`VIEWPORT_FLOOR`), so every run written
- *                                               //  before row 15 draws the floor it always drew
- *                      "surface": {width, height},   //  the drawing's size, when not the viewport's
+ *                      "viewport": {width, height},  //  the viewer's window in CSS px, which is the
+ *                                               //  drawing surface the screen is handed (Appendix B
+ *                                               //  row 15) — absent, `HARNESS_SURFACE`
+ *                                               //  (`../Support/harness-surface.mjs`), the size every
+ *                                               //  run written before card#7341's 2026-10-01 ruling
+ *                                               //  was drawn at
  *                      "camera": [ { "at_ms": N,  //  the viewer's camera acts (row 15): `wheel` at a
  *                        "act": "wheel", "x", "y", "delta_y", "delta_mode"?, "ctrl_key"? } | { "act": "drag", "dx", "dy" }
  *                        | { "act": "zoom", "notches" } | { "act": "fit" } | { "act": "resize", "width", "height" } ] }
@@ -58,8 +59,7 @@
  *                                               //  another page) — or, for Appendix B row 16's camera
  *                                               //  at building scale, an object: `{ "surface":
  *                                               //  {width, height},` the building's drawing surface
- *                                               //  (absent, the harness's default 1280 × 800 —
- *                                               //  `VIEWPORT_FLOOR`), `"camera": [ { "at_ms": N,
+ *                                               //  (absent, `HARNESS_SURFACE`), `"camera": [ { "at_ms": N,
  *                                               //  "act": "ride" } | { "act": "arrive" } | { "act":
  *                                               //  "return" } | { "act": "building" } | { "act":
  *                                               //  "wheel", "x", "y", "delta_y" } | { "act": "zoom",
@@ -205,6 +205,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { scriptedFetch } from '../Support/scripted-fetch.mjs';
 import { shownLabel } from '../Support/shown-label.mjs';
+import { HARNESS_SURFACE } from '../Support/harness-surface.mjs';
 
 const dir = process.argv[2];
 
@@ -218,7 +219,7 @@ const { startAgeTicker } = await import(pathToFileURL(join(dir, 'age-readout.js'
 const { formatDuration } = await import(pathToFileURL(join(dir, 'duration.js')).href);
 const { createAnimationLog } = await import(pathToFileURL(join(dir, 'animation-log.js')).href);
 const { startDeskFloor } = await import(pathToFileURL(join(dir, '..', 'desk', 'desk-floor.js')).href);
-const { startFloorScreen, VIEWPORT_FLOOR, resolveRoute } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
+const { startFloorScreen, resolveRoute } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
 const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'status-strip.js')).href);
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
@@ -577,8 +578,7 @@ async function replay(scenario) {
             seat: scenario.floor.seat ?? null,
             reduce: scenario.reduce === true,
             local_time: viewerTime(scenario.floor),
-            viewport: scenario.floor.viewport ?? VIEWPORT_FLOOR,
-            surface: scenario.floor.surface,
+            surface: scenario.floor.viewport ?? HARNESS_SURFACE,
         });
     }
 
@@ -687,7 +687,7 @@ async function replay(scenario) {
         lobby = startLobbyScreen(client, buildingHttp.fetch, clock, log, (frame) => {
             lobbyRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)), label: plateLabel(frame.camera) });
         }, {
-            surface: lobbyRun.surface ?? VIEWPORT_FLOOR,
+            surface: lobbyRun.surface ?? HARNESS_SURFACE,
             reduce: scenario.reduce === true,
             local_time: viewerTime(lobbyRun),
         });

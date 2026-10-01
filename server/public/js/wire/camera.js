@@ -92,8 +92,9 @@ export function frameOn(camera, bounds) {
 }
 
 /**
- * Nothing framed any more — the route has left the drawn floor (the capability floor's list view).
- * The next framing is a first framing again, so a floor that comes back comes back at fit.
+ * Nothing framed any more — the lobby with no building to draw (`lobby/lobby-screen.js`: no snapshot
+ * yet, no layout held, or no plate). The next framing is a first framing again, so a building that
+ * comes back comes back at fit.
  */
 export function unframe(camera) {
     return settle({ ...camera, bounds: null, fitted: false });
