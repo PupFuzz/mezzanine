@@ -27,6 +27,8 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-01
+
 - **`laravel/framework` moves from 13.26.1 to 13.34.0** (#253), past Dependabot alert #1, an XSS in the
   framework's debug page. The debug page is served only while debug mode is on, and `bin/deploy.sh`
   refuses a `server/.env` whose `APP_DEBUG` is not `false`. From 13.31 the framework also checks a
