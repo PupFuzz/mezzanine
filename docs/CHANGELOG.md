@@ -27,6 +27,13 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **`laravel/framework` moves from 13.26.1 to 13.34.0** (#253), past Dependabot alert #1, an XSS in the
+  framework's debug page. The debug page is served only while debug mode is on, and `bin/deploy.sh`
+  refuses a `server/.env` whose `APP_DEBUG` is not `false`. From 13.31 the framework also checks a
+  remember-me cookie against the user's current password hash, so the cookie stops working when that
+  hash changes: after a password change, and after the automatic re-hash at the user's next password
+  login once `BCRYPT_ROUNDS` has changed. That signs the user's other remembered devices out. Sessions
+  and cookies issued before the upgrade stay signed in.
 - **card#7341** — **The floor page draws its room tiles again.** Since the room drawing landed (Appendix
   B row 14, slice A, in 0.6.0), the floor page loaded neither tileset: the page's fetch
   (`server/public/js/wire/live-page.js`) handed its consumers a response with `json()` and no `text()`,
@@ -64,8 +71,8 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   `prefers-reduced-motion` every camera move cuts rather than glides. None of it is fleet state: no ride,
   zoom or pan writes an animation-log row, and a render leaves the camera where the viewer put it. Each
   floor's name and status line are now readable with the whole building in view, and a floor's link
-  announces its name together with its seat counts, e.g. "Floor 2, 4 seats · 3 live" — clicking the seat
-  counts also opens that floor. FLOOR.md § 4.1 states what the label does. With no floor layout loaded,
+  announces its name together with its seat summary, e.g. "Floor 2, 2 working · 1 idle" — clicking the
+  seat summary also opens that floor. FLOOR.md § 4.1 states what the label does. With no floor layout loaded,
   the lobby's list of rooms flows in the page as it did before, rather than in the building's fixed-height
   drawing, and the mouse wheel, the arrow keys, text selection and a press on a room's link all work on it
   as they did before, with the zoom buttons and *Whole building* hidden and the building out of the tab

@@ -1054,7 +1054,7 @@ and two on the plate. How each is done is the code's own docblocks'.
 13. **The cue is shown whole.** On the cab's plate the cue lies wholly inside its label's box in every
     B run. (held by: B check 'cueWidth')
 14. **The accessible name.** In T's frames, the name link's `aria-label` is the name, a comma and a space,
-    and the summary — *no seats held* where the plate holds none — e.g. *Floor 2, 4 seats · 3 live*.
+    and the summary — *no seats held* where the plate holds none — e.g. *Floor 2, 2 working · 1 idle*.
     (held by: T::test_green_every_plate_row_is_built_to_the_construction_contract)
 15. **The summary link is `aria-hidden`.** In T's frames, the summary line is a second link with the name
     link's `href`, a `tabIndex` of `-1`, `aria-hidden` set to `true` and `text-decoration: none`. (held by:
