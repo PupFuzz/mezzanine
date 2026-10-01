@@ -28,12 +28,12 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 ## [Unreleased]
 
 - **`laravel/framework` moves from 13.26.1 to 13.34.0** (#253), past Dependabot alert #1, an XSS in the
-  framework's debug page. The debug page is served only with `APP_DEBUG=true`, and `bin/deploy.sh`
-  refuses a `server/.env` whose `APP_DEBUG` is not `false`. From 13.31 the framework also checks a remember-me cookie against the
-  user's current password hash, so the cookie stops working when that hash changes: after a password
-  change, and after the automatic re-hash at the user's next password login once `BCRYPT_ROUNDS` has
-  changed. That signs the user's other remembered devices out. Sessions and cookies issued before the
-  upgrade stay signed in.
+  framework's debug page. The debug page is served only while debug mode is on, and `bin/deploy.sh`
+  refuses a `server/.env` whose `APP_DEBUG` is not `false`. From 13.31 the framework also checks a
+  remember-me cookie against the user's current password hash, so the cookie stops working when that
+  hash changes: after a password change, and after the automatic re-hash at the user's next password
+  login once `BCRYPT_ROUNDS` has changed. That signs the user's other remembered devices out. Sessions
+  and cookies issued before the upgrade stay signed in.
 - **card#7341** — **The floor page draws its room tiles again.** Since the room drawing landed (Appendix
   B row 14, slice A, in 0.6.0), the floor page loaded neither tileset: the page's fetch
   (`server/public/js/wire/live-page.js`) handed its consumers a response with `json()` and no `text()`,
