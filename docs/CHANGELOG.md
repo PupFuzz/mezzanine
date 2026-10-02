@@ -27,6 +27,24 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11058** — **The desk reads at a glance: it draws the ruled set, and every other fact is in the
+  drill-down and the desk list.** Following the operator's ruling of 2026-10-02, each desk draws its
+  character (or the empty chair), the nameplate on a plate, a state chip with the state's word, the
+  label line, the currency label, the lag line, the context bar and its percentage, a badge row of two
+  (`config_invalid` and `fold_lag` first, then recognised badges in the wire's order), one flag
+  **⚠ +N** for every other unusual item, the interns, the quiet age, the hatch, the dimming and the task
+  bubble. No raw unrecognised string is drawn on the desk: the chip and the label line read
+  *unrecognised*, *unknown — unrecognised reason* or *API error — unrecognised*, and the currency label
+  *was: unrecognised (…)*; the raw values are in the drill-down and on the desk list. The action's start
+  and running time, the open-call count, the model label, the last event, the gauge's numerals and
+  source, the oldest-badge line, *sending nothing* and the interns' labels move off the desk to the
+  drill-down and the list. The desk list's second line now says whether the desk is *moving* or
+  *still*. The art is drawn in proportion (`xMidYMax meet`) and the art column is wider, so the
+  character stands at three times its pixel size. `TheNewDeskKeepsEveryLeafTest` holds every fact the
+  desk drew before this change to the drill-down and the list, and holds the desk to exactly the ruled
+  set, against a committed record of the desk as it was. FLOOR.md § 5.1 (*the glance set*), § 5.4,
+  § 7.1–§ 7.4, § 7.6, § 8, § 9, § 10.3, § 11, § 12 and § 13 record it.
+
 - **card#11058** — **The drill-down panel carries every fact the desk draws.** Opening a desk now shows
   the desk's own render on one line (its glyph, pose, lighting, whether it is moving or still, and
   *unconfirmed* for a seat the floor can no longer confirm), *sending nothing* on a `config_invalid` seat,
