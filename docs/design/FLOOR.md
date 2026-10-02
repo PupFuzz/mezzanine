@@ -1198,19 +1198,31 @@ part of a page, and this is the list of the others, in the order the page shows 
 (`fleet.seats_total` · `fleet.seats_live`, the lobby's own words from [§ 4.1](#41-the-lobby--the-building-summary)
 row 3, never recounted) and the way back to the lobby; the **status strip**, one row of chips in
 clusters — this page's own connection ([§ 5.5](#55-the-clients-own-narration)), the fleet's indicators,
-never aggregated ([§ 5.3](#53-the-fleet-on-both-screens)), and the room render's clock and sky; the
+never aggregated ([§ 5.3](#53-the-fleet-on-both-screens)), and the room render's clock and sky — each
+chip its WORDS alone, with no coloured state dot: a dot's colour would be a verdict on the value, and
+`server/public/js/floor/main.js` decides nothing, so a dot waits until the strip's model
+(`floor/status-strip.js`) carries a tone per chip, while a fixed colour would claim *ok* on a feed that is
+down ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s colour rule says a dot could never be the only
+carrier anyway); the
 **statements and notices** of [§ 9](#9-failure-paths-and-their-observables), each a bar present only
 while its condition holds; the **camera row** — the floor's name, and the camera's controls
 ([§ 4.5](#45-the-viewport-rule-and-the-camera)), outside the drawing so that no control covers a desk
 at fit; the **drawing**; and below it **the sections — the desks, the overflow, the coordination
 threads and this page's event log — each a `<details>` closed by default** (the operator's ruling on
-card#11045). The drill-down ([§ 4.3](#43-the-desk-drill-down-panel)) and the sign-in prompt are cards
-over the page, inside none of those sections. **The drawing's height is the viewport's height less the
-chrome shown above it**, between a floor and a ceiling and leaving the first section's summary in view;
-those three figures and the palette are `server/public/css/mezzanine.css`'s, the one stylesheet the
+card#11045). The drill-down ([§ 4.3](#43-the-desk-drill-down-panel)) is a card over the room, below the
+strip and the camera row so both stay in view while it is open; the sign-in prompt is a card centred on
+the window; neither is inside one of those sections. **The drawing's height is ALL the viewport's height
+the chrome shown above it leaves**, never under a floor and with no ceiling, less a reveal that keeps the
+first section's summary in view directly under the drawing — a ceiling left a tall window's remaining
+height empty between the room and the sections (card#11045 review r1);
+those two figures and the palette are `server/public/css/mezzanine.css`'s, the one stylesheet the
 layout links, and the camera's surface is the drawing's own box, re-read whenever the chrome above it
 changes ([§ 12](#12-every-number-and-where-it-comes-from)'s reference-viewport row says which surface
 its figure is). Only the chrome reflows in a narrow window; the drawing is the same at every size.
+`tools/design/floor-chrome.browser.mjs`, run by hand (no browser on the build host), renders this view
+under that sheet across a sweep of window sizes and reds on any gap between the drawing and the first
+section, a reveal that is not the sheet's, a drill-down over the strip or the camera row, or a drawing
+narrower than the page; `--selftest` plants each in a copy of the sheet and watches it red.
 
 ### 4.3 The desk drill-down panel
 

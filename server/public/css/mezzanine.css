@@ -21,12 +21,15 @@
  * each). Text sizes below are set on classes and ids, and on headings, summaries and controls.
  *
  * ⛔ THE FLOOR's DRAWING HEIGHT IS ONE MECHANISM, A FLEX COLUMN: on the floor page `main` is a column at
- * least `100dvh − --reveal` tall, and `#floor-drawing` takes whatever height the chrome above it leaves
- * (the header, the strip, any banner, statement or notice shown, the camera row), between its own
- * `min-height` and `max-height` below. The sections below the room sit just under that column, so the first
- * section's summary shows `--reveal` above the window's bottom edge. The camera's surface is the
- * drawing's own box (`main.js`'s `surface()`, re-read by a `ResizeObserver` on the drawing), so the
- * chrome growing or shrinking is a resize of the drawing the camera sees.
+ * least `100dvh − --reveal` tall, and the room's stage (`#floor-drawing` and the drill-down card over it)
+ * takes ALL the height the chrome above it leaves (the header, the strip, any banner, statement or notice
+ * shown, the camera row), never less than the drawing's own `min-height` and with NO ceiling — a ceiling
+ * left the rest of a tall window empty between the room and the sections (card#11045 review r1). The
+ * sections below the room hang from the column's bottom edge, which is the room's, so the first
+ * section's summary touches the drawing and shows `--reveal` above the window's bottom edge whenever the
+ * drawing is above its floor. `tools/design/floor-chrome.browser.mjs` measures both on a rendered page.
+ * The camera's surface is the drawing's own box (`main.js`'s `surface()`, re-read by a `ResizeObserver`
+ * on the drawing), so the chrome growing or shrinking is a resize of the drawing the camera sees.
  *
  * Scoping: the shell's rules are generic; the floor's sit under `#floor`, the lobby's under `.lobby`,
  * the console's under `.console-nav`; a sign-in page gets the shell and nothing else.
@@ -312,6 +315,26 @@ main > form:has(label) input:not([type="checkbox"]):not([type="radio"]) {
 
 /* ── The lobby ───────────────────────────────────────────────────────────────────────────────── */
 
+/*
+ * The lobby keeps the 8 px side margin its page had before this sheet — the surface width every run of
+ * `tools/design/lobby-label-contrast.browser.mjs` was measured at. The shell's wider gutter narrowed the
+ * building's drawing and moved its plate labels: a night star behind a label's glyph at 1,440 px, and at
+ * phone width a label falling back onto its plate under the contrast floor (card#11045 review r1). A
+ * different margin is a re-measurement by that tool, not an edit here.
+ */
+main > section.lobby {
+    margin-inline: 8px;
+}
+
+/*
+ * …and the building's plate labels keep the face they were measured in, the browser's own default: the
+ * shell's body face changed their glyphs and so which night-sky star stands behind which one (the same
+ * review). The labels' type is the lobby's to redesign, with that tool re-run; this sheet does not move it.
+ */
+.lobby #lobby-building {
+    font-family: initial;
+}
+
 /* A frame that takes no layout: a border would move the plates off the box the camera measures. */
 .lobby #lobby-building {
     border-radius: var(--radius);
@@ -374,8 +397,13 @@ main > form:has(label) input:not([type="checkbox"]):not([type="radio"]) {
 }
 
 #floor > * {
-    flex: 0 0 auto;
     margin: 0;
+}
+
+/* Every part of the column keeps its own height except the room's stage, which takes the rest — by
+   selector, so no rule order decides which of the two wins. */
+#floor > :not(.floor-stage) {
+    flex: 0 0 auto;
 }
 
 /* The header's floor half: the building's counts and the way to the lobby. */
@@ -504,11 +532,18 @@ main > form:has(label) input:not([type="checkbox"]):not([type="radio"]) {
     content: "\2302" / "";
 }
 
-/* The room — the leftover height of the column, the exterior dark around the drawn floor. */
+/* The room's stage — the leftover height of the column; the drawing fills it, the drill-down sits over it. */
+.floor-stage {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+/* The room — the exterior dark around the drawn floor. */
 #floor-drawing {
     flex: 1 1 0;
     min-height: 320px;
-    max-height: 1200px;
     width: 100%;
     overflow: hidden;
     touch-action: none;
@@ -585,10 +620,9 @@ main > form:has(label) input:not([type="checkbox"]):not([type="radio"]) {
     margin: 16px 0 0;
 }
 
-/* Cards over the floor: the sign-in prompt, centred; the drill-down, docked at the side. */
+/* Cards over the floor: the sign-in prompt, centred on the window; the drill-down, docked over the room. */
 #floor-signin,
 #floor-panel {
-    position: fixed;
     z-index: 20;
     box-sizing: border-box;
     border: 1px solid var(--line);
@@ -598,6 +632,7 @@ main > form:has(label) input:not([type="checkbox"]):not([type="radio"]) {
 }
 
 #floor-signin {
+    position: fixed;
     z-index: 30;
     inset: 0;
     margin: auto;
@@ -607,10 +642,11 @@ main > form:has(label) input:not([type="checkbox"]):not([type="radio"]) {
     border-left: 4px solid var(--alarm);
 }
 
-#floor-panel {
-    top: calc(var(--header-h) + 16px);
+.floor-stage > #floor-panel {
+    top: 12px;
+    position: absolute;
     right: 16px;
-    bottom: 16px;
+    bottom: 12px;
     width: min(460px, calc(100vw - 32px));
     padding: 12px 18px 18px;
     overflow-y: auto;
@@ -662,12 +698,12 @@ main > form:has(label) input:not([type="checkbox"]):not([type="radio"]) {
         font-size: 16px;
     }
 
-    #floor-panel {
+    .floor-stage > #floor-panel {
         top: auto;
         left: 8px;
         right: 8px;
         bottom: 8px;
         width: auto;
-        max-height: 75dvh;
+        max-height: calc(100% - 16px);
     }
 }

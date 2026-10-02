@@ -58,6 +58,8 @@
 #       this change cannot verify is exactly the assumption that would red-lock CI.
 #   `lobby-label-contrast.browser.mjs` — the same browser, resolved the same way (card#7343):
 #       absent for the same reason.
+#   `floor-chrome.browser.mjs` — the same browser, resolved the same way (card#11045): absent
+#       for the same reason, and it also runs `php` to render the floor view it lays out.
 #
 # ⛔ NONE IS WIRED AS A SKIP. The card's own argument: an "N/A" that reads green re-mints this
 # very defect one layer down — a check reported as passed that never ran. They are absent and
