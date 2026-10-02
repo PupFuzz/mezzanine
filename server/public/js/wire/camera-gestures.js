@@ -1,6 +1,6 @@
 /**
- * THE CAMERA'S GESTURES ON A PAGE — the wheel, the drag and the touch pinch, wired from one element to a
- * screen's camera acts. `docs/design/FLOOR.md` Appendix B rows 15 and 16, § 4.5 (the operator's ruling of
+ * THE CAMERA'S GESTURES ON A PAGE — the wheel, the drag, the touch pinch and Safari's trackpad pinch, wired
+ * from one element to a screen's camera acts. `docs/design/FLOOR.md` Appendix B rows 15 and 16, § 4.5 (the operator's ruling of
  * 2026-10-01 on card#11045: plain wheel pans, Ctrl+wheel and the pinch zoom, one finger drags).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -69,9 +69,30 @@
  *    native drag wherever an engine would start one — and change nothing else it does: a press there still pans, clicks and
  *    focuses exactly as before.
  *
- * ⚠ NOT VERIFIED ON A REAL DEVICE: the pinch and both wheels were driven with synthetic events in headless
- * Chromium (card#11045 PR-B); a real trackpad, a real touch screen and Safari were not. Safari may deliver
- * a trackpad pinch as its own `gesture*` events rather than as a Ctrl+wheel, and nothing here handles those.
+ *  · SAFARI'S TRACKPAD PINCH IS ITS OWN `gesturestart` / `gesturechange` / `gestureend` (card#11045 PR-C):
+ *    each carries the pinch's CUMULATIVE `scale` since its start and the cursor's `clientX` / `clientY`, which
+ *    hold still through the gesture (danburzo.ro/dom-gestures, "Anatomy of a gesture" and "Processing
+ *    Safari's gesture events"). Each `gesturechange` and the `gestureend` is the screen's `pinch()` — the act
+ *    whose `factor` is a ratio, where `zoom()` takes a wheel's `deltaY` — by its `scale` over the last
+ *    event's, from the last event's point to its own: about the cursor. Every gesture event over a framed
+ *    drawing is taken from the page (its page zoom and its tab overview), under the wheel's one gate, and a
+ *    lobby mid-ride answers as its `pinch()` does — the camera it holds. ⛔ ONE PINCH ZOOMS ONCE. macOS
+ *    Safari 15 and later ALSO send a Ctrl+wheel for the pinch (WebKit bug 225788) — but after each gesture
+ *    event, and only for one left unprevented: WebKit's own `LayoutTests/fast/events/gesture/
+ *    wheel-from-gesture.html` holds that a gesture event whose default is prevented is followed by no
+ *    wheel. So a framed drawing takes the pinch once, through the gesture, and an unframed one leaves both
+ *    to the browser. And iOS / iPadOS Safari fire `gesture*` for a touch screen's two-finger pinch as well
+ *    as its pointer events (danburzo.ro/dom-gestures, "Safari mobile: touch or gesture events?"): the
+ *    pointer pinch above zooms it, so a gesture event while a press is held moves nothing. A press, not a
+ *    second finger: a `gesturestart` zooms nothing whenever it comes, and a `gesturechange` follows the
+ *    fingers moving, by when the first finger's press is held, whichever of the second finger's
+ *    `pointerdown` and the `gesturestart` came first.
+ *
+ * ⚠ NOT VERIFIED ON A REAL DEVICE: the pinch, both wheels and Safari's gesture events were driven with
+ * synthetic events in headless browsers (card#11045 PR-B, PR-C); a real trackpad, a real touch screen, a
+ * real Mac's Safari and a real iPhone or iPad were not. The order of a touch pinch's first `pointerdown`
+ * and its `gesturestart` on iOS is read from how a touch begins, never seen; and a pinch that rotates as it
+ * scales may still open Safari's tab overview whatever is prevented (WebKit bug 233141, per danburzo).
  *
  * Driven under `node` with a stand-in element by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.
  */
@@ -162,6 +183,43 @@ export function cameraGestures(element, acts, show) {
         event.preventDefault();
         show(camera);
     }, { passive: false });
+
+    /**
+     * Safari's own pinch — `gesturestart`, `gesturechange`, `gestureend` (see the header). Each step is the
+     * screen's `pinch()` by the cumulative `scale` over the last event's, from the last event's point to this
+     * one's; `gesture` holds that last scale and point, `null` unless a gesture is under way. It is kept on
+     * every event, whatever the gates below decide, so the step after a skipped one is still incremental.
+     */
+    let gesture = null;
+
+    function onGesture(event) {
+        const was = gesture;
+        const at = local(event.clientX, event.clientY);
+
+        gesture = event.type === 'gestureend' ? null : { scale: event.scale, at };
+
+        // Gate: nothing framed — the gesture is the browser's, and so is the Ctrl+wheel Safari sends after it.
+        if (unframed()) {
+            return;
+        }
+
+        // Taken from the page: no page zoom, no tab overview — and no Ctrl+wheel after it, which Safari sends
+        // only for a gesture event left unprevented, so the wheel listener never zooms this pinch a second time.
+        event.preventDefault();
+
+        // A press held is a touch screen's finger, whose pinch the pointer events below already zoom by: the
+        // gesture iOS fires for the same two fingers moves nothing. A `gesturestart` has no scale to step from,
+        // and neither has a second `gestureend` (WebKit bug 233137, per danburzo).
+        if (drag !== null || was === null) {
+            return;
+        }
+
+        show(acts.pinch(was.at, at, event.scale / was.scale));
+    }
+
+    for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+        element.addEventListener(type, onGesture, { passive: false });
+    }
 
     element.addEventListener('pointerdown', (event) => {
         // Another pointer pressed while the press is down is its pinch's second finger.
