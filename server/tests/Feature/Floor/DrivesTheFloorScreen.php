@@ -175,7 +175,7 @@ trait DrivesTheFloorScreen
      * the table is stated over.
      *
      * ⛔ THE MODULUS IS PARSED FROM THE TABLE'S OWN HEADER, because that is where § 3.2 states `S`
-     * for the worked case (*`h mod 12`*) — so a map with another slot count, or a document that
+     * for the worked case (*`h mod 6`*) — so a map with another slot count, or a document that
      * re-worked its example, moves this expectation instead of drifting from it.
      *
      * @return array{slots: array<string, int>, modulus: int}

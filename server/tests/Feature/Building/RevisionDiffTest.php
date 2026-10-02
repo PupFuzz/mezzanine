@@ -99,7 +99,7 @@ class RevisionDiffTest extends TestCase
 
         $this->assertFalse($diff['structural']);
         $this->assertSame([], $diff['layers']);
-        $this->assertSame(['before' => 12, 'after' => null], $diff['slots']);
+        $this->assertSame(['before' => 6, 'after' => null], $diff['slots']);
         $this->assertSame(['-'], array_values(array_unique(array_column($diff['lines'], 'op'))));
     }
 

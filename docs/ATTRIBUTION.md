@@ -120,9 +120,9 @@ very fact it exists to check.
 | `resources/floor/tiles/floor-plane.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `2e5322d59fdd94b008a9a78749f685429641f5ebc7190b0f7b20292c6360465b` |
 | `resources/floor/tiles/floor-plane/planks.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `a76ffbcca697e69c47c50ba31a19ff87b19ca91b3c3e7d7b0b5665528b94374a` |
 | `resources/floor/tiles/floor-plane/rug.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `d888116b53e6e7ea7bc71ede5abda510d6951ce2f6c6a1e3711e45278fddd6ca` |
-| `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `28447dd7e8c0b77d8e5c881b12d90c958861505254b2ab20378fe7e11b291a15` |
+| `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `1d7d2c98b9b479efd45150fff0fa607188484418f57d95017bc375d4b04b780e` |
 | `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `90158ec868ded10645364bb62bb23993e634067b26bafafa3c38e1f581eae6b4` |
-| `resources/floor/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `551e001d897ac5e67435e81f6aec9539884f5f6c41c0bd11429b30e55f281bee` |
+| `resources/floor/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `065c71de48d40400a3ccd7e3dfefe35258184073f4b8c6dbfe1608525cc6a9fd` |
 <!-- asset-manifest:end -->
 
 **`portrait-art.js` is the one `licensed` row here, and that is the column doing its job.** It is

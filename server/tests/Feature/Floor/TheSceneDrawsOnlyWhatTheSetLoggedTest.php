@@ -119,6 +119,12 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
         $this->assertNotSame([], $this->decorativeDefects($this->sceneOf(self::ROOM, $onTheDesk)),
             'CONTROL (decoration drawn on a desk) did not bite');
 
+        $spilling = $this->mutatedModules(['../floor/scene.js',
+            'return Object.freeze({ cx: cell.x + cell.w / 2, cy: cell.y + ry, rx: cell.w / 2, ry });',
+            'return Object.freeze({ cx: cell.x + cell.w / 2, cy: cell.y + cell.h, rx: cell.w, ry: cell.h });']);
+        $this->assertNotSame([], $this->decorativeDefects($this->sceneOf(self::ROOM, $spilling)),
+            'CONTROL (a glow drawn twice its tile, centred on its foot) did not bite');
+
         $restless = $this->mutatedModules(['../floor/scene.js',
             'export const DECORATIVE_CYCLE_MS = 2400;', 'export const DECORATIVE_CYCLE_MS = 500;']);
         $this->assertNotSame([], $this->decorativeDefects($this->sceneOf(self::ROOM, $restless)),
@@ -253,6 +259,17 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
 
             if ($tile === null) {
                 $defects[] = 'a decoration is on no map tile that declares it one: '.json_encode($d);
+            }
+
+            // The glow the painter fills is INSIDE its tile (card#11045): a glow larger than its tile
+            // reaches past the room's grid wherever an author lays a lamp at its edge — under the floor,
+            // over the band, or onto a neighbour's room.
+            $g = $d['glow'] ?? null;
+
+            if (! is_array($g) || $g['rx'] <= 0 || $g['ry'] <= 0
+                || $g['cx'] - $g['rx'] < $d['x'] || $g['cx'] + $g['rx'] > $d['x'] + $d['w']
+                || $g['cy'] - $g['ry'] < $d['y'] || $g['cy'] + $g['ry'] > $d['y'] + $d['h']) {
+                $defects[] = 'a decoration\'s glow is not drawn inside its own tile: '.json_encode($d);
             }
         }
 

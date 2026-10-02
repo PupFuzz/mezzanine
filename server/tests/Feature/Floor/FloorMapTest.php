@@ -49,13 +49,13 @@ class FloorMapTest extends TestCase
     {
         $map = FloorMap::parse(FloorMapFixture::valid());
 
-        $this->assertSame(12, $map->slots);
+        $this->assertSame(6, $map->slots);
 
-        // The fixture lays its twelve slots side by side at the furniture box (§ 14 item 28(1)),
-        // so its grid is as many 32 px tiles as twelve boxes need — derived here from the box's
+        // The fixture lays its six slots side by side at the furniture box (§ 14 item 28(1)),
+        // so its grid is as many 32 px tiles as six boxes need — derived here from the box's
         // one source, as the fixture derives it, rather than typed.
         $box = FurnitureBox::current();
-        $tiles = (int) ceil(12 * $box->width / 32);
+        $tiles = (int) ceil(6 * $box->width / 32);
 
         $this->assertSame(['width' => $tiles, 'height' => 8, 'tilewidth' => 32, 'tileheight' => 32], $map->grid);
 
@@ -66,10 +66,10 @@ class FloorMapTest extends TestCase
 
         // The slots the walk admitted, as `App\Floor\DeskSlots` reads them: named as every
         // refusal names them, in the layer's order, each exactly the box.
-        $this->assertCount(12, $map->desks);
+        $this->assertCount(6, $map->desks);
         $this->assertSame(['name' => 'id 1', 'x' => 0.0, 'y' => 0.0, 'w' => (float) $box->width, 'h' => (float) $box->height], $map->desks[0]);
-        $this->assertSame('id 12', $map->desks[11]['name']);
-        $this->assertSame((float) (11 * $box->width), $map->desks[11]['x']);
+        $this->assertSame('id 6', $map->desks[5]['name']);
+        $this->assertSame((float) (5 * $box->width), $map->desks[5]['x']);
     }
 
     // ── card#9295's defect shape, HERE (card#9208 comment 4794) ─────────────────────────────
@@ -209,7 +209,7 @@ class FloorMapTest extends TestCase
         $objects['layers'][1]['objects'] = (object) ['1' => $objects['layers'][1]['objects'][0]];
         $this->refuses(FloorMapFixture::encode($objects), 'stores its `objects` as a JSON object rather than as the list of slots');
 
-        $this->assertSame(12, FloorMap::parse(FloorMapFixture::valid())->slots);
+        $this->assertSame(6, FloorMap::parse(FloorMapFixture::valid())->slots);
     }
 
     /**

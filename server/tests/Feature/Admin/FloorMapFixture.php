@@ -20,13 +20,13 @@ use App\Floor\FurnitureBox;
 final class FloorMapFixture
 {
     /** A map that passes every clause, with `$slots` desk objects. */
-    public static function valid(int $slots = 12): string
+    public static function valid(int $slots = 6): string
     {
         return self::encode(self::decoded($slots));
     }
 
     /** @return array<string, mixed> */
-    public static function decoded(int $slots = 12): array
+    public static function decoded(int $slots = 6): array
     {
         $objects = self::slots($slots);
 
