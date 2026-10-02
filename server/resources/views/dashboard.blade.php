@@ -82,7 +82,8 @@
             puts them, over the building it draws — the roof and its sign, a storey under each plate, the
             ground lobby and the cab (slice B, which `public/js/lobby/main.js` paints) — and the camera (`public/js/wire/camera.js`, held by `lobby-screen.js`) is one
             transform on `#lobby-floors` — every plate in view on entry and on the whole-building
-            control, one plate in view on a ride. Wheel to zoom, drag to pan; while it frames a building it takes focus, so `+`/`-`
+            control, one plate in view on a ride. The wheel or a two-finger scroll pans, Ctrl+wheel or a pinch zooms about the pointer,
+            and one finger or the mouse drags to pan (card#11045), as `#lobby-hint` says; while it frames a building it takes focus, so `+`/`-`
             or `#lobby-zoom-in`/`#lobby-zoom-out` zoom about its centre and the arrow keys pan — the floor
             drawing's keys and buttons, in its words (`public/js/wire/camera-keys.js` wires both pages) —
             and a plate the keyboard's focus lands on outside the view is brought into it. Nothing it
@@ -92,13 +93,14 @@
             rooms with no floor claimed — the list flows in the page, and the wheel, the keys and a press
             are the browser's; the zoom buttons and *Whole building* are hidden, and the building is no
             tab stop and names no `aria-keyshortcuts`, until a camera frames it (`camera-keys.js`'s
-            `offerKeys()`, card#7343 r4b and comment 7692), so the markup offers none of them.
+            `offerKeys()`, card#7343 r4b and comment 7692) — the hint with them — so the markup offers none of them.
         --}}
         <div id="lobby-building" role="group" aria-label="the building drawing">
             <ul id="lobby-floors" aria-labelledby="lobby-floors-heading" style="margin: 0; transform-origin: 0 0">
                 <li>waiting for the fleet snapshot</li>
             </ul>
         </div>
+        @include('partials.camera-hint', ['id' => 'lobby-hint'])
         <nav aria-label="the camera">
             <button type="button" id="lobby-zoom-in" hidden>Zoom in</button>
             <button type="button" id="lobby-zoom-out" hidden>Zoom out</button>

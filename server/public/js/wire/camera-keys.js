@@ -24,8 +24,10 @@
  *  · ⛔ NOTHING FRAMED, NOTHING OFFERED AND NOTHING TAKEN (card#7343 r4b, the seat's ruling — the same one
  *    gate as `camera-gestures.js`'s, `camera.js`'s `framesNothing()` over the screen's `camera()`). While
  *    the camera frames nothing, a key is the browser's — an arrow key scrolls the lobby's flowing list, as
- *    it did before the lobby had a camera — and nothing of the camera is offered: the zoom buttons and the
- *    page's framing control (the floor's *Fit the floor*, the lobby's *Whole building*) are hidden, the
+ *    it did before the lobby had a camera — and nothing of the camera is offered: the zoom buttons, the
+ *    page's framing control (the floor's *Fit the floor*, the lobby's *Whole building*) and the page's
+ *    gesture hint (*scroll to pan · ctrl+scroll or pinch to zoom …*, card#11045 — untrue of a page whose
+ *    wheel scrolls it) are hidden, the
  *    drawing is no tab stop, and it names no `aria-keyshortcuts`, so neither the keyboard nor assistive
  *    technology is sent to a camera that would do nothing (card#7343 comment 7692, items 1 and 2).
  *    `offerKeys()` puts all of it back once the camera frames something. The page's markup starts with
@@ -91,8 +93,8 @@ export function cameraKeys(element, buttons, acts, show) {
 }
 
 /**
- * The camera offered while it frames something, and withdrawn while it frames nothing: the zoom buttons
- * and the page's framing control shown or hidden, and the drawing a tab stop naming its
+ * The camera offered while it frames something, and withdrawn while it frames nothing: the zoom buttons,
+ * the page's framing control and its gesture hint shown or hidden, and the drawing a tab stop naming its
  * `aria-keyshortcuts`, or neither. A page calls it with the screen's camera — the one every gate reads,
  * and not a glide's step towards it (c7692 item 4) — on every camera it shows.
  *
@@ -102,8 +104,8 @@ export function cameraKeys(element, buttons, acts, show) {
  * hidden — which both pages' wiring tests hold, and because nothing but this function writes any of it.
  *
  * @param {Element} element the focusable drawing `cameraKeys()` was handed
- * @param {{zoomIn: HTMLElement, zoomOut: HTMLElement, fit: HTMLElement}} buttons the same zoom buttons, and
- *        the page's framing control
+ * @param {{zoomIn: HTMLElement, zoomOut: HTMLElement, fit: HTMLElement, hint: HTMLElement}} buttons the same
+ *        zoom buttons, the page's framing control, and the page's gesture hint
  * @param {{bounds: object|null}} camera the screen's camera as it stands
  */
 export function offerKeys(element, buttons, camera) {
@@ -116,6 +118,7 @@ export function offerKeys(element, buttons, camera) {
     buttons.zoomIn.hidden = !offered;
     buttons.zoomOut.hidden = !offered;
     buttons.fit.hidden = !offered;
+    buttons.hint.hidden = !offered;
 
     if (offered) {
         element.setAttribute('aria-keyshortcuts', KEY_SHORTCUTS);

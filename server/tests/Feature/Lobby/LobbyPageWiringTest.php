@@ -33,7 +33,7 @@ use Tests\TestCase;
  * `EventSource`).
  *
  * ⛔ AND THE BUILDING's CAMERA (Appendix B row 16, card#7343): that the page hands each viewer act to the
- * lobby screen — the ride and its arrival, the hold that keeps a plate link from outrunning it, the whole-building control, the wheel and the drag through
+ * lobby screen — the ride and its arrival, the hold that keeps a plate link from outrunning it, the whole-building control, the wheel (its pan and its Ctrl+zoom), the touch pinch and the drag through
  * `wire/camera-gestures.js`, the keys and the zoom buttons through `wire/camera-keys.js`, the keyboard's
  * focus on a plate — grows no copy of either shared module, stands `plate-row.js`'s rows and writes their
  * counter-scale from the camera it shows; and that the building takes focus with the floor's keys and
@@ -171,9 +171,9 @@ class LobbyPageWiringTest extends TestCase
             'CONTROL (a hold that outlives the glide) did not bite');
 
         // CONTROL — the gestures handed a camera that frames nothing (card#7343 r3b): every wheel over the
-        // drawn building would then scroll the page instead of zooming it.
-        $unframed = str_replace('cameraGestures(building, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);',
-            'cameraGestures(building, { wheel: screen.wheel, drag: screen.drag, camera: () => ({ bounds: null }) }, show);', $js);
+        // drawn building would then scroll the page instead of moving the camera.
+        $unframed = str_replace('cameraGestures(building, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);',
+            'cameraGestures(building, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: () => ({ bounds: null }) }, show);', $js);
         $this->assertNotSame($unframed, $js, "the framed-wheel control's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('wheel', $this->cameraDefects($unframed),
             'CONTROL (a wheel handed a camera that frames nothing) did not bite');
@@ -198,8 +198,22 @@ class LobbyPageWiringTest extends TestCase
         $this->assertArrayHasKey('keys', $this->cameraDefects($stepped),
             'CONTROL (the offer read off a glide step) did not bite');
 
+        // CONTROL — the plain wheel's pan, the Ctrl+wheel's zoom and the touch pinch each reach the screen (card#11045).
+        foreach (['pan', 'zoom', 'pinch'] as $act) {
+            $unwired = str_replace("{$act}: screen.{$act},", "{$act}: screen.camera,", $js);
+            $this->assertNotSame($unwired, $js, "the {$act} control's anchor is gone — it mutated nothing");
+            $this->assertArrayHasKey('wheel', $this->cameraDefects($unwired),
+                "CONTROL (a {$act} that never reaches the camera) did not bite");
+        }
+
+        // CONTROL — the gesture hint never offered or withdrawn with the camera (card#11045).
+        $hintless = str_replace("hint: el('lobby-hint') }", "hint: el('lobby-zoom-out') }", $js);
+        $this->assertNotSame($hintless, $js, "the hint offer control's anchor is gone — it mutated nothing");
+        $this->assertArrayHasKey('keys', $this->cameraDefects($hintless),
+            'CONTROL (a gesture hint never offered with the camera) did not bite');
+
         // CONTROL — the whole-building control never offered or withdrawn with the camera (card#7343 c7692 item 2).
-        $wholeless = str_replace("fit: el('lobby-whole-building') }", "fit: el('lobby-zoom-out') }", $js);
+        $wholeless = str_replace("fit: el('lobby-whole-building'),", "fit: el('lobby-zoom-out'),", $js);
         $this->assertNotSame($wholeless, $js, "the whole-building offer control's anchor is gone — it mutated nothing");
         $this->assertArrayHasKey('keys', $this->cameraDefects($wholeless),
             'CONTROL (a whole-building control never offered with the camera) did not bite');
@@ -361,6 +375,8 @@ class LobbyPageWiringTest extends TestCase
             'a zoom button shown in the markup' => ['id="lobby-zoom-in" hidden>', 'id="lobby-zoom-in">'],
             // card#7343 comment 7692 item 2: the whole-building control shown before any camera frames anything.
             'a whole-building control shown in the markup' => ['id="lobby-whole-building" hidden>', 'id="lobby-whole-building">'],
+            // card#11045: the gesture hint shown before any camera frames anything — untrue over the flowing list.
+            'a gesture hint shown in the markup' => ['id="lobby-hint" class="camera-hint" hidden>', 'id="lobby-hint" class="camera-hint">'],
             // card#7343 r3: a size or a clip in the markup holds the list in a box before and without a building.
             'a surface clipped in the markup' => ['aria-label="the building drawing">', 'aria-label="the building drawing" style="height: 70vh; overflow: hidden">'],
             'a zoom button in words of its own' => ['id="lobby-zoom-in" hidden>Zoom in<', 'id="lobby-zoom-in" hidden>Closer<'],
@@ -391,6 +407,10 @@ class LobbyPageWiringTest extends TestCase
 
         if (preg_match('/<button type="button" id="lobby-whole-building"([^>]*)>/', $html, $wb) !== 1 || preg_match('/(^|\s)hidden(\s|$)/', $wb[1]) !== 1) {
             $defects[] = 'the whole-building control is shown in the markup, before any camera frames anything — `offerKeys()` offers it';
+        }
+
+        if (preg_match('/<p id="lobby-hint"([^>]*)>/', $html, $hint) !== 1 || preg_match('/(^|\s)hidden(\s|$)/', $hint[1]) !== 1) {
+            $defects[] = 'the gesture hint is shown in the markup, before any camera frames anything — `offerKeys()` offers it';
         }
 
         // The surface's size and clip are `surfaceStyle()`'s, applied only while a building is drawn (r3).
@@ -525,8 +545,9 @@ class LobbyPageWiringTest extends TestCase
                 "import { holdPlateLinks } from './ride-hold.js';", 'holdPlateLinks(building, screen.riding);'],
             'whole-building' => ["el('lobby-whole-building').addEventListener('click'", 'screen.wholeBuilding()'],
             // … and the camera as it stands, so the wheel is the page's scroll while it frames nothing (card#7343 r3b).
-            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { wheel: screen.wheel,', 'cameraGestures(building, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
-            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
+            // card#11045: the wheel's two acts (a plain wheel's pan, a Ctrl+wheel's zoom) and the touch pinch.
+            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
+            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(building, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
             // The clipping surface is never scrolled out from under the camera (card#7343 r1).
             'scroll' => ["import { framesNothing } from '../wire/camera.js';", "function view(camera) {\n    const framed = !framesNothing(camera);\n\n    if (framed) {\n        unscroll();\n    }\n",
                 "building.addEventListener('scroll', unscroll);",
@@ -543,7 +564,7 @@ class LobbyPageWiringTest extends TestCase
             // … the camera as it stands, so every key is the browser's while it frames nothing, and the keys
             // and the zoom buttons offered from the camera `view()` shows (card#7343 r4b).
             'keys' => ["import { cameraKeys, offerKeys } from '../wire/camera-keys.js';",
-                "const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out'), fit: el('lobby-whole-building') };",
+                "const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out'), fit: el('lobby-whole-building'), hint: el('lobby-hint') };",
                 'cameraKeys(building, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);',
                 // … from the screen's camera, which every gate reads, never a glide's step (card#7343 c7692 item 4).
                 "    offerKeys(el('lobby-building'), zoomButtons, screen.camera());"],

@@ -32,7 +32,7 @@
  * every line from the desk model and this file paints them; row 8's page-side `deskLine()` is gone.
  *
  * ⛔ THE CAMERA IS THE SCREEN's (Appendix B row 15, § 4.5); this file supplies
- * the drawing surface's size — the drawing element's own box, re-read whenever it changes — wires the wheel and the drag (through
+ * the drawing surface's size — the drawing element's own box, re-read whenever it changes — wires the wheel, the drag and the pinch (through
  * `wire/camera-gestures.js`) and the keyboard and the zoom buttons (through `wire/camera-keys.js`),
  * both of which the lobby shares, and the fit-floor control to the screen's camera acts, and sets the drawing's view from the camera
  * each returns — a camera act renders nothing. The drawing is shown at every window size — there is no
@@ -103,10 +103,11 @@ function list(id, lines) {
 const root = el('floor');
 
 /**
- * The drawing's zoom buttons — handed to `wire/camera-keys.js` to wire — and its framing control, *Fit the
- * floor*: all three offered by `offerKeys()` on every render (card#7343 comment 7692).
+ * The drawing's zoom buttons — handed to `wire/camera-keys.js` to wire — its framing control, *Fit the
+ * floor*, and the gesture hint under the drawing (card#11045): all four offered by `offerKeys()` on every
+ * render (card#7343 comment 7692).
  */
-const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit') };
+const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit'), hint: el('floor-hint') };
 
 let lastFrame = null;
 
@@ -350,16 +351,17 @@ el('floor-panel-more').addEventListener('click', () => {
     screen.morePanel().then(requestRender);
 });
 
-// Appendix B row 15: the viewer's camera. The wheel zooms about the cursor in proportion to its scroll
-// (a trackpad's small deltas and a pinch — a wheel event with `ctrlKey`, which the camera scales by its
-// `PINCH_GAIN` — through the same path) and a drag with the primary button pans, both wired by
-// `wire/camera-gestures.js`; the keyboard and the zoom buttons zoom about the drawing's centre and pan
+// Appendix B row 15: the viewer's camera (§ 4.5, the operator's ruling of 2026-10-01 on card#11045). A
+// plain wheel or a trackpad's two-finger scroll pans; a Ctrl+wheel or a trackpad's pinch (a wheel event
+// with `ctrlKey`, which the camera scales by its `PINCH_GAIN`) zooms about the cursor in proportion to its
+// scroll; one finger or the primary button drags to pan, and two fingers pinch to zoom about their
+// midpoint — all wired by `wire/camera-gestures.js`; the keyboard and the zoom buttons zoom about the drawing's centre and pan
 // by a step, wired by `wire/camera-keys.js` — both modules the lobby's too. None renders — each sets
 // the drawing's view from the camera the screen hands back, and each leaves its event to the browser
 // while the camera frames nothing (card#7343 r4b).
 const drawing = el('floor-drawing');
 
-cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);
+cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);
 cameraKeys(drawing, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);
 el('floor-fit').addEventListener('click', () => {
     const { from, to, glide_ms: ms } = screen.fitFloor();

@@ -32,8 +32,8 @@
  * building `building-scene.js` draws — the roof and its sign, a storey under each plate, the ground lobby
  * and the cab (slice B) — shows the screen's camera on the plates and the drawing as one transform, and
  * paints every plate's label from that SAME camera: `label-paint.js`'s `showLabels()`, called from
- * `view()` on every camera this page shows — fit, wheel, key, drag, every glide step, resize (what the
- * label does is FLOOR.md § 4.1's) — and wires the wheel, the drag, the keys, the zoom buttons, the
+ * `view()` on every camera this page shows — fit, wheel, pinch, key, drag, every glide step, resize (what the
+ * label does is FLOOR.md § 4.1's) — and wires the wheel, the drag, the pinch, the keys, the zoom buttons, the
  * keyboard's focus on a plate, the whole-building control and the ride to the screen's camera acts —
  * none of which renders.
  * A ride's click moves the cab — the page's `cab`, set to the stop `ride()` names — glides the camera to
@@ -41,7 +41,7 @@
  * screen handed back, `/floor/{key}`, which the floor page serves on a cold start. The click commits
  * the ride: an interrupted glide cuts to the plate and arrives, the control is disabled until the
  * glide has arrived, and a plate link clicked meanwhile does not navigate. The glide is the viewer's,
- * and it steps through `wire/camera-view.js`; the wheel and the drag are `wire/camera-gestures.js`'s
+ * and it steps through `wire/camera-view.js`; the wheel, the drag and the pinch are `wire/camera-gestures.js`'s
  * and the keys and the zoom buttons `wire/camera-keys.js`'s — each the floor page's own.
  */
 
@@ -117,10 +117,11 @@ function unscroll() {
 }
 
 /**
- * The building's zoom buttons — handed to `wire/camera-keys.js` to wire — and its framing control, the
- * whole-building control: all three offered by `offerKeys()` on every camera shown (card#7343 c7692).
+ * The building's zoom buttons — handed to `wire/camera-keys.js` to wire — its framing control, the
+ * whole-building control, and the gesture hint under the building (card#11045): all four offered by
+ * `offerKeys()` on every camera shown (card#7343 c7692).
  */
-const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out'), fit: el('lobby-whole-building') };
+const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out'), fit: el('lobby-whole-building'), hint: el('lobby-hint') };
 
 /**
  * One camera on the plates: the scene point at the camera's `x`, `y` at the surface's top-left, at its
@@ -128,7 +129,7 @@ const zoomButtons = { zoomIn: el('lobby-zoom-in'), zoomOut: el('lobby-zoom-out')
  * as it flows, which is how a lobby with no plate reads (§ 9 F17's rooms, or no install).
  *
  * ⛔ THE SAME CAMERA PAINTS THE PLATES' LABELS (FLOOR.md § 4.1 states the contract). `label-paint.js`'s
- * `showLabels()` is called here, on EVERY camera this function shows — fit, wheel, key, drag, every glide
+ * `showLabels()` is called here, on EVERY camera this function shows — fit, wheel, pinch, key, drag, every glide
  * step, resize — and is the ONLY function that ever writes a plate's label geometry or paint, as CSS
  * custom properties on `#lobby-floors` that `plate-row.js`'s rows read through `var()`s and never anything
  * of their own. Because it runs on every camera shown rather than only on a feed render, a plate's label
@@ -366,7 +367,7 @@ el('lobby-refresh').addEventListener('click', () => {
  * rather than read off the button.
  *
  * ⛔ THE CLICK COMMITS THE RIDE, AND THE HOLD PROTECTS THE GLIDE (card#7343 r1 ruling; r2-4). The glide
- * is `camera-view.js`'s COMMITTED glide: a wheel, a key, a zoom button, a drag, a resize or the
+ * is `camera-view.js`'s COMMITTED glide: a wheel, a pinch, a key, a zoom button, a drag, a resize or the
  * whole-building control during it cuts it to the plate and arrives, and the ride control is disabled
  * from the click until the glide has arrived. A plate link clicked during it — by the pointer, or by the
  * keyboard's Enter, which is the same `click` — does not navigate: the committed ride wins
@@ -411,15 +412,17 @@ el('lobby-whole-building').addEventListener('click', () => {
     glideTo(from, to, ms);
 });
 
-// The wheel zooms about the cursor in proportion to its scroll, and a drag with the primary button pans,
-// wired by `wire/camera-gestures.js`; the keys zoom about the centre and pan by a step, and so do the
+// A plain wheel or a trackpad's two-finger scroll pans; a Ctrl+wheel or a trackpad's pinch zooms about the
+// cursor in proportion to its scroll; one finger or the primary button drags to pan, and two fingers pinch
+// to zoom about their midpoint (§ 4.5, the operator's ruling of 2026-10-01 on card#11045) — all wired by
+// `wire/camera-gestures.js`; the keys zoom about the centre and pan by a step, and so do the
 // zoom buttons, wired by `wire/camera-keys.js` — row 15's acts at building scale, each module the
 // floor's too. None renders; each shows the camera the screen hands back — and each leaves its event to
 // the browser while the camera frames nothing, the uncomposed list flowing in the page (card#7343 r4b).
 // A drag that moved is no click on the plate — the link — it ended over.
 const building = el('lobby-building');
 
-cameraGestures(building, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);
+cameraGestures(building, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);
 // The committed ride wins (card#7343 r3b): a plate link clicked while a ride is in flight does not navigate.
 holdPlateLinks(building, screen.riding);
 cameraKeys(building, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);

@@ -1,8 +1,8 @@
 {
-  "note": "docs/design/FLOOR.md Appendix B row 15's camera runs (card#7341) — AT-D3-21's floor half. Every run replays § 11's fixtures byte for byte — `fx-snapshot-4` through `fx-scene.json`'s `scene_default` and `scene_overflow` (the shipped default map, `@json:`), `fx-gap`'s resync pair, `fx-layout-acts`' `room.map`, `fx-drilldown`'s `fleet.health`, `fx-degraded`'s snapshot and `fx-floor-plan`'s failing room map — at a viewport each run states (`floor.viewport`, CSS px) and with the viewer's camera acts on the scenario clock (`floor.camera`, `fleet-client-probe.mjs`'s header). F is § 12's reference viewport: the test holds every run entered at F to the figure § 12 states, and every any-size run to a window smaller than F in at least one dimension (§ 4.5: the room is drawn at every size, card#7341's 2026-10-01 ruling). ⭐ And Appendix B row 16's building half (card#7343): `building_rides` and `building_rides_reduced` are `fx-snapshot-4` under a layout of two floors — `aimla`, unlabelled, and `zeta`, labelled *the annex*, a room the fleet reports no seat for — entered at the lobby with the building's drawing surface stated (`lobby.surface`), then the viewer riding to the labelled floor, riding to the other, and asking for the whole building (`lobby.camera`) — the page back from the back-forward cache (`return`) after each ride, since a ride leaves the lobby — with a heartbeat drawn between the second ride and the whole-building control; the second run is the first under `prefers-reduced-motion`. `building_ride_in_flight` is the same entry with a ride in flight interrupted by a second ride, a wheel, a key's zoom, a drag, a focused plate and the whole-building control, then arriving and the lobby's controls working again; `building_focus` is the same entry with the keyboard's focus on plates in and out of view.",
+  "note": "docs/design/FLOOR.md Appendix B row 15's camera runs (card#7341) — AT-D3-21's floor half. Every run replays § 11's fixtures byte for byte — `fx-snapshot-4` through `fx-scene.json`'s `scene_default` and `scene_overflow` (the shipped default map, `@json:`), `fx-gap`'s resync pair, `fx-layout-acts`' `room.map`, `fx-drilldown`'s `fleet.health`, `fx-degraded`'s snapshot and `fx-floor-plan`'s failing room map — at a viewport each run states (`floor.viewport`, CSS px) and with the viewer's camera acts on the scenario clock (`floor.camera`, `fleet-client-probe.mjs`'s header). F is § 12's reference viewport: the test holds every run entered at F to the figure § 12 states, and every any-size run to a window smaller than F in at least one dimension (§ 4.5: the room is drawn at every size, card#7341's 2026-10-01 ruling). ⭐ And Appendix B row 16's building half (card#7343): `building_rides` and `building_rides_reduced` are `fx-snapshot-4` under a layout of two floors — `aimla`, unlabelled, and `zeta`, labelled *the annex*, a room the fleet reports no seat for — entered at the lobby with the building's drawing surface stated (`lobby.surface`), then the viewer riding to the labelled floor, riding to the other, and asking for the whole building (`lobby.camera`) — the page back from the back-forward cache (`return`) after each ride, since a ride leaves the lobby — with a heartbeat drawn between the second ride and the whole-building control; the second run is the first under `prefers-reduced-motion`. `building_ride_in_flight` is the same entry with a ride in flight interrupted by a second ride, a Ctrl+wheel, a plain wheel, a touch pinch, a key's zoom, a drag, a focused plate and the whole-building control, then arriving and the lobby's controls working again; `building_focus` is the same entry with the keyboard's focus on plates in and out of view.",
   "runs": {
     "camera_floor": {
-      "note": "AT-D3-21's floor half, the camera leg (Appendix B row 15): `fx-snapshot-4`'s four seats on the SHIPPED default map (`@json:`, the file itself) at a viewport of § 12's reference viewport, F. The viewer zooms with the wheel at a stated cursor point, drags by a stated offset, fits the floor, zooms in again three notches, drags, drags far past the floor's edge (the clamp), and drags once more — then the fleet sends a `seat.delta` (1000 ms), a `seat.delta` past a gap that resyncs the seat by fetch (2000 ms, `fx-gap`'s pair and its seat response), a `room.map` that re-fetches the room at version 4 (2500 ms, `fx-layout-acts`' message), and ends the stream (3000 ms), so the recovery reconnects and applies a second full snapshot. Every frame after the last camera act must carry the camera that act left. With the camera acts removed (an override of the page conditions) it is the discriminating control: the scene at fit and the log carrying exactly the messages' rows.",
+      "note": "AT-D3-21's floor half, the camera leg (Appendix B row 15): `fx-snapshot-4`'s four seats on the SHIPPED default map (`@json:`, the file itself) at a viewport of § 12's reference viewport, F. The viewer zooms with a Ctrl+wheel at a stated cursor point, drags by a stated offset, fits the floor, zooms in again three notches, drags, drags far past the floor's edge (the clamp), and drags once more; then (card#11045: the plain wheel pans, Ctrl+wheel and the pinch zoom) zooms in six notches, pans with the plain wheel in pixel, line and page mode, pinches out and in about a stated midpoint, wheels far past the bottom edge (consumed, clamped) and again at it (released to the page — Q3), far past the right edge and again at it (released), and wheels diagonally at the right edge (consumed: the vertical axis still follows) — then the fleet sends a `seat.delta` (1000 ms), a `seat.delta` past a gap that resyncs the seat by fetch (2000 ms, `fx-gap`'s pair and its seat response), a `room.map` that re-fetches the room at version 4 (2500 ms, `fx-layout-acts`' message), and ends the stream (3000 ms), so the recovery reconnects and applies a second full snapshot. Every frame after the last camera act must carry the camera that act left. With the camera acts removed (an override of the page conditions) it is the discriminating control: the scene at fit and the log carrying exactly the messages' rows.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -930,7 +930,7 @@
         "camera": [
           {
             "at_ms": 200,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 900,
             "y": 450,
             "delta_y": -100
@@ -947,21 +947,21 @@
           },
           {
             "at_ms": 500,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 300,
             "y": 380,
             "delta_y": -100
           },
           {
             "at_ms": 510,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 300,
             "y": 380,
             "delta_y": -100
           },
           {
             "at_ms": 520,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 300,
             "y": 380,
             "delta_y": -100
@@ -983,6 +983,81 @@
             "act": "drag",
             "dx": 300,
             "dy": 20
+          },
+          {
+            "at_ms": 850,
+            "act": "zoom",
+            "notches": 6
+          },
+          {
+            "at_ms": 900,
+            "act": "scroll",
+            "delta_x": 40,
+            "delta_y": -30
+          },
+          {
+            "at_ms": 910,
+            "act": "scroll",
+            "delta_y": -2,
+            "delta_mode": 1
+          },
+          {
+            "at_ms": 920,
+            "act": "scroll",
+            "delta_x": -0.1,
+            "delta_mode": 2
+          },
+          {
+            "at_ms": 930,
+            "act": "pinch",
+            "from": {
+              "x": 640,
+              "y": 400
+            },
+            "to": {
+              "x": 600,
+              "y": 420
+            },
+            "factor": 1.25
+          },
+          {
+            "at_ms": 940,
+            "act": "pinch",
+            "from": {
+              "x": 600,
+              "y": 780
+            },
+            "to": {
+              "x": 600,
+              "y": 780
+            },
+            "factor": 0.8
+          },
+          {
+            "at_ms": 950,
+            "act": "scroll",
+            "delta_y": 100000
+          },
+          {
+            "at_ms": 960,
+            "act": "scroll",
+            "delta_y": 100000
+          },
+          {
+            "at_ms": 970,
+            "act": "scroll",
+            "delta_x": 100000
+          },
+          {
+            "at_ms": 980,
+            "act": "scroll",
+            "delta_x": 100000
+          },
+          {
+            "at_ms": 990,
+            "act": "scroll",
+            "delta_x": 40,
+            "delta_y": -30
           }
         ]
       }
@@ -1429,7 +1504,7 @@
         "camera": [
           {
             "at_ms": 50,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 200,
             "y": 300,
             "delta_y": -100
@@ -1839,7 +1914,7 @@
         "camera": [
           {
             "at_ms": 50,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
@@ -1858,7 +1933,7 @@
           },
           {
             "at_ms": 300,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
@@ -1879,7 +1954,7 @@
       }
     },
     "camera_entry_narrow": {
-      "note": "AT-D3-21's floor half, the any-size leg (§ 4.5, the operator's ruling of 2026-10-01 on card#7341): `scene_default` ENTERED in a phone-sized window, 390 × 700 CSS px — narrower than the room — and the route draws the room from its first frame at fit, the whole floor in view; the wheel zooms about the cursor, the zoom buttons' step zooms in, a drag pans by its offset, a drag far past the floor is clamped with the floor still in view, and fit-floor frames it whole again.",
+      "note": "AT-D3-21's floor half, the any-size leg (§ 4.5, the operator's ruling of 2026-10-01 on card#7341): `scene_default` ENTERED in a phone-sized window, 390 × 700 CSS px — narrower than the room — and the route draws the room from its first frame at fit, the whole floor in view; a Ctrl+wheel zooms about the cursor, the zoom buttons' step zooms in, a plain wheel pans and a touch pinch zooms about its midpoint (card#11045), a drag pans by its offset, a drag far past the floor is clamped with the floor still in view, and fit-floor frames it whole again.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -2276,7 +2351,7 @@
         "camera": [
           {
             "at_ms": 200,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 300,
             "y": 350,
             "delta_y": -100
@@ -2285,6 +2360,25 @@
             "at_ms": 250,
             "act": "zoom",
             "notches": 2
+          },
+          {
+            "at_ms": 260,
+            "act": "scroll",
+            "delta_x": -20,
+            "delta_y": -10
+          },
+          {
+            "at_ms": 270,
+            "act": "pinch",
+            "from": {
+              "x": 150,
+              "y": 100
+            },
+            "to": {
+              "x": 160,
+              "y": 100
+            },
+            "factor": 1.25
           },
           {
             "at_ms": 300,
@@ -2703,7 +2797,7 @@
         "camera": [
           {
             "at_ms": 200,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 900,
             "y": 120,
             "delta_y": -100
@@ -2712,6 +2806,25 @@
             "at_ms": 250,
             "act": "zoom",
             "notches": 2
+          },
+          {
+            "at_ms": 260,
+            "act": "scroll",
+            "delta_x": -20,
+            "delta_y": -10
+          },
+          {
+            "at_ms": 270,
+            "act": "pinch",
+            "from": {
+              "x": 150,
+              "y": 100
+            },
+            "to": {
+              "x": 160,
+              "y": 100
+            },
+            "factor": 1.25
           },
           {
             "at_ms": 300,
@@ -4177,7 +4290,7 @@
         "camera": [
           {
             "at_ms": 50,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
@@ -4190,7 +4303,7 @@
       }
     },
     "camera_proportional": {
-      "note": "AT-D3-21's floor half, the wheel's scale (round-1 finding F1 on PupFuzz/mezzanine#237): `scene_default` at F, and the wheel as a trackpad drives it — a burst of 25 pixel-mode events of 4 px each, one notch's scroll in all — then a line-mode event (3 lines), a page-mode event (one page out) and an accelerated pixel event of 250 px, then a pinch — a burst of small `ctrlKey` pixel events, each scaled by `PINCH_GAIN`, and one fast `ctrlKey` event that the gain takes past a notch — then the keyboard's zoom in and out about the centre. Every wheel event must zoom by `ZOOM_STEP` to the power of its scroll over a notch, `deltaMode` normalised, a pinch's scroll multiplied by `PINCH_GAIN` and one event holding at most one notch after it, and the burst by one notch in all — where a step per event takes it 25 steps, to the ceiling. The run stays between the fit and the ceiling throughout, so no zoom here is the range's clamp.",
+      "note": "AT-D3-21's floor half, the Ctrl+wheel's scale (round-1 finding F1 on PupFuzz/mezzanine#237; since card#11045 every zooming wheel is a Ctrl+wheel, each scaled by `PINCH_GAIN`): `scene_default` at F, and the Ctrl+wheel as a trackpad's pinch drives it — a burst of 25 pixel-mode events of 0.4 px each, one notch's scroll in all after the gain — then a line-mode event (3 lines), a page-mode event (one page out) and an accelerated pixel event of 250 px, then ten pixel events of 1 px (one notch in all) and one of 20 px that the gain takes past a notch — then the keyboard's zoom in and out about the centre. Every Ctrl+wheel event must zoom by `ZOOM_STEP` to the power of its scroll over a notch, `deltaMode` normalised, multiplied by `PINCH_GAIN` and one event holding at most one notch after it, and the burst by one notch in all — where a step per event takes it 25 steps, to the ceiling. The run stays between the fit and the ceiling throughout, so no zoom here is the range's clamp.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -4587,182 +4700,182 @@
         "camera": [
           {
             "at_ms": 50,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 51,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 52,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 53,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 54,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 55,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 56,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 57,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 58,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 59,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 60,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 61,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 62,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 63,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 64,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 65,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 66,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 67,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 68,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 69,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 70,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 71,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 72,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 73,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 74,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 100,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
             "delta_y": -3,
@@ -4770,7 +4883,7 @@
           },
           {
             "at_ms": 110,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 300,
             "y": 200,
             "delta_y": 1,
@@ -4778,98 +4891,87 @@
           },
           {
             "at_ms": 120,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 300,
             "y": 200,
             "delta_y": -250
           },
           {
             "at_ms": 130,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 131,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 132,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 133,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 134,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 135,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 136,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 137,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 138,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 139,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 150,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -20,
-            "ctrl_key": true
+            "delta_y": -20
           },
           {
             "at_ms": 200,
@@ -4885,7 +4987,7 @@
       }
     },
     "camera_nothing_measurable": {
-      "note": "AT-D3-21's floor half, a floor with nothing measurable on it (round-1 finding F4 on PupFuzz/mezzanine#237): `fx-snapshot-4`'s snapshot, byte for byte, beside a layout whose one floor holds one room the fleet reports no seat for (§ 4.6), and that room's map request failing as `fx-floor-plan`'s `plan_map_fails` fails it, byte for byte — no footprint, no desk, so the scene is drawn with no extent (`null`, as § 4.6's own extent is: no zero-sized box). The render must still paint — the status strip among it — with the camera unframed, and the viewer's acts on it move nothing.",
+      "note": "AT-D3-21's floor half, a floor with nothing measurable on it (round-1 finding F4 on PupFuzz/mezzanine#237): `fx-snapshot-4`'s snapshot, byte for byte, beside a layout whose one floor holds one room the fleet reports no seat for (§ 4.6), and that room's map request failing as `fx-floor-plan`'s `plan_map_fails` fails it, byte for byte — no footprint, no desk, so the scene is drawn with no extent (`null`, as § 4.6's own extent is: no zero-sized box). The render must still paint — the status strip among it — with the camera unframed, and the viewer's acts on it — a Ctrl+wheel, a plain wheel, a touch pinch, a zoom step, a drag and a fit — move nothing, and neither wheel is consumed: over a camera that frames nothing the wheel is the page's.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -5286,10 +5388,29 @@
         "camera": [
           {
             "at_ms": 50,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
+          },
+          {
+            "at_ms": 52,
+            "act": "scroll",
+            "delta_x": 10,
+            "delta_y": 40
+          },
+          {
+            "at_ms": 54,
+            "act": "pinch",
+            "from": {
+              "x": 640,
+              "y": 400
+            },
+            "to": {
+              "x": 600,
+              "y": 400
+            },
+            "factor": 1.5
           },
           {
             "at_ms": 60,
@@ -6227,7 +6348,7 @@
       "reduce": true
     },
     "building_ride_in_flight": {
-      "note": "Appendix B row 16's ride in flight (card#7343 r1 ruling: the click commits the ride; r2-4, the seat's ruling: the hold protects the glide only). The ride to the labelled floor, then — while its glide is in flight — a second click on the ride control, a wheel, a key's zoom, a drag, the keyboard's focus on the other plate and the whole-building control, each of which leaves the camera on the plate and none of which rides again; then the glide arrives and the page asks for the route (`arrive`) and the navigation does not complete, so the lobby stays — a wheel then moves the camera, and the ride to the other floor is taken.",
+      "note": "Appendix B row 16's ride in flight (card#7343 r1 ruling: the click commits the ride; r2-4, the seat's ruling: the hold protects the glide only). The ride to the labelled floor, then — while its glide is in flight — a second click on the ride control, a Ctrl+wheel, a plain wheel and a touch pinch (each leaving the camera on the plate, the two wheels consumed — card#11045), a key's zoom, a drag, the keyboard's focus on the other plate and the whole-building control, each of which leaves the camera on the plate and none of which rides again; then the glide arrives and the page asks for the route (`arrive`) and the navigation does not complete, so the lobby stays — a Ctrl+wheel then moves the camera, and the ride to the other floor is taken.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -6671,10 +6792,29 @@
           },
           {
             "at_ms": 2300,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
+          },
+          {
+            "at_ms": 2310,
+            "act": "scroll",
+            "delta_x": 30,
+            "delta_y": 120
+          },
+          {
+            "at_ms": 2320,
+            "act": "pinch",
+            "from": {
+              "x": 640,
+              "y": 400
+            },
+            "to": {
+              "x": 600,
+              "y": 380
+            },
+            "factor": 1.5
           },
           {
             "at_ms": 2350,
@@ -6702,7 +6842,7 @@
           },
           {
             "at_ms": 3200,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": 100

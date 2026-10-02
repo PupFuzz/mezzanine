@@ -15,7 +15,7 @@
  *
  * ⛔ A COMMITTED GLIDE IS FINISHED, NEVER ABANDONED (row 16, card#7343 r1 ruling: the click commits
  * the ride). The floor's fit and the lobby's whole-building glide are uncommitted, and whatever
- * interrupts them — a wheel, a drag, a resize — stops them where they are. The lobby's ride is
+ * interrupts them — a wheel the camera takes, a pinch, a drag, a resize — stops them where they are. The lobby's ride is
  * committed: an interruption cuts it to the plate and runs its arrival, so a ride the viewer clicked
  * always arrives. It is driven under `node` with a stubbed frame clock by
  * `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.

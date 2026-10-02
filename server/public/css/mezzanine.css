@@ -21,13 +21,13 @@
  * each). Text sizes below are set on classes and ids, and on headings, summaries and controls.
  *
  * ⛔ THE FLOOR's DRAWING HEIGHT IS ONE MECHANISM, A FLEX COLUMN: on the floor page `main` is a column at
- * least `100dvh − --reveal` tall, and the room's stage (`#floor-drawing` and the drill-down card over it)
- * takes ALL the height the chrome above it leaves (the header, the strip, any banner, statement or notice
- * shown, the camera row), never less than the drawing's own `min-height` and with NO ceiling — a ceiling
- * left the rest of a tall window empty between the room and the sections (card#11045 review r1). The
- * sections below the room hang from the column's bottom edge, which is the room's, so the first
- * section's summary touches the drawing and shows `--reveal` above the window's bottom edge whenever the
- * drawing is above its floor. `tools/design/floor-chrome.browser.mjs` measures both on a rendered page.
+ * least `100dvh − --reveal` tall, and the room's stage (`#floor-drawing`, the gesture hint's row under it,
+ * and the drill-down card over both) takes ALL the height the chrome above it leaves (the header, the
+ * strip, any banner, statement or notice shown, the camera row), the drawing never less than its own
+ * `min-height` and with NO ceiling — a ceiling left the rest of a tall window empty between the room and
+ * the sections (card#11045 review r1). The sections below the room hang from the column's bottom edge,
+ * which is the stage's, so the first section's summary touches the hint's row under the drawing and shows
+ * `--reveal` above the window's bottom edge whenever the drawing is above its floor. `tools/design/floor-chrome.browser.mjs` measures both on a rendered page.
  * The camera's surface is the drawing's own box (`main.js`'s `surface()`, re-read by a `ResizeObserver`
  * on the drawing), so the chrome growing or shrinking is a resize of the drawing the camera sees.
  *
@@ -551,6 +551,17 @@ main > section.lobby {
     background: radial-gradient(ellipse at center, var(--ground) 0%, var(--ground-deep) 75%);
 }
 
+/* The gesture hint's row under the drawing: its height kept whether the line is offered or not (card#11045). */
+.floor-hint-row {
+    flex: 0 0 24px;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--gutter);
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    box-sizing: border-box;
+}
+
 /* § 9 F6/F7: the floor under the sign-in prompt is dimmed, never blanked — the drawing and the list. */
 #floor [data-dimmed="true"] {
     opacity: 0.45;
@@ -665,9 +676,38 @@ main > section.lobby {
     color: var(--dim);
 }
 
+/* ── The camera's gesture hint — both pages, one line (card#11045, `resources/views/partials/camera-hint`) ── */
+
+.camera-hint {
+    margin: 0;
+    font-family: var(--face-mono);
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.camera-hint > .hint-short {
+    display: none;
+}
+
+.lobby .camera-hint {
+    margin-top: 6px;
+}
+
 /* ── Narrow windows — only the chrome reflows; the drawing is the same column (§ 4.5) ──────────── */
 
 @media (max-width: 600px) {
+    .camera-hint > .hint-long {
+        display: none;
+    }
+
+    .camera-hint > .hint-short {
+        display: inline;
+    }
+
     .app-header h1 {
         font-size: 18px;
     }

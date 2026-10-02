@@ -56,7 +56,7 @@
  * than the room is one the viewer pans and zooms across. The camera is held
  * HERE, beside the episode state, because the render that must leave it alone is this module's: every
  * `draw()` hands the camera the scene's extent and the camera keeps the viewer's zoom and pan (the
- * first framing alone fits), and the viewer's acts — `wheel()`, `zoomStep()`, `drag()`, `fitFloor()`
+ * first framing alone fits), and the viewer's acts — `pan()`, `zoom()`, `pinch()`, `zoomStep()`, `drag()`, `fitFloor()`
  * — move the camera and nothing else: they drain nothing, draw nothing and write no animation-log
  * row. A navigation act is never state (§ 4.5), and AT-D3-21 reds the day one of them reaches the log.
  */
@@ -72,7 +72,7 @@ import { buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
 import { buildScene } from './scene.js';
-import { createCamera, fit, frameOn, glideMs, panBy, resize, wheel, zoomStep } from '../wire/camera.js';
+import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, zoomStep } from '../wire/camera.js';
 import { TilesetLoader, tilesetUrl } from './tileset.js';
 import {
     assignSlots,
@@ -277,14 +277,43 @@ export class FloorScreen {
     }
 
     /**
-     * A wheel event — a notch, a trackpad's scroll or a pinch — at a point on the drawing surface: a
-     * zoom about that point in proportion to the scroll (§ 4.5; `wire/camera.js`'s `wheel()`).
+     * A plain wheel event — a mouse's notch or a trackpad's two-finger scroll: a pan, the view moving the
+     * way the page would scroll, and whether it consumed the event — not at an edge the view can pass no
+     * further the wheel's way, where the page scrolls on (§ 4.5; `wire/camera.js`'s `pan()`).
+     *
+     * @param {{deltaX?: number, deltaY?: number, deltaMode?: number}} delta
+     * @returns {{camera: object, consumed: boolean}}
+     */
+    pan(delta) {
+        const { camera, consumed } = pan(this.#camera, delta);
+
+        this.#camera = camera;
+
+        return { camera, consumed };
+    }
+
+    /**
+     * A Ctrl+wheel event — a mouse's Ctrl+notch or a trackpad's pinch — at a point on the drawing surface:
+     * a zoom about that point in proportion to the scroll (§ 4.5; `wire/camera.js`'s `zoom()`).
      *
      * @param {{x: number, y: number}} point
-     * @param {{deltaY: number, deltaMode?: number, ctrlKey?: boolean}} delta `ctrlKey` marks a pinch
+     * @param {{deltaY: number, deltaMode?: number}} delta
+     * @returns {{camera: object, consumed: boolean}}
      */
-    wheel(point, delta) {
-        this.#camera = wheel(this.#camera, point, delta);
+    zoom(point, delta) {
+        const { camera, consumed } = zoom(this.#camera, point, delta);
+
+        this.#camera = camera;
+
+        return { camera, consumed };
+    }
+
+    /**
+     * One step of a touch screen's two-finger pinch: a zoom by `factor` about the fingers' midpoint, which
+     * moved from `from` to `to` (§ 4.5; `wire/camera.js`'s `pinch()`).
+     */
+    pinch(from, to, factor) {
+        this.#camera = pinch(this.#camera, from, to, factor);
 
         return this.#camera;
     }
@@ -1221,7 +1250,9 @@ export function startFloorScreen(client, fetchImpl, clock, log, draw, options = 
         // page repaints the drawing's view from the camera each returns.
         resize: (surface) => screen.resize(surface),
         camera: () => screen.camera,
-        wheel: (point, delta) => screen.wheel(point, delta),
+        pan: (delta) => screen.pan(delta),
+        zoom: (point, delta) => screen.zoom(point, delta),
+        pinch: (from, to, factor) => screen.pinch(from, to, factor),
         zoomStep: (notches) => screen.zoomStep(notches),
         drag: (dx, dy) => screen.drag(dx, dy),
         fitFloor: () => screen.fitFloor(),
