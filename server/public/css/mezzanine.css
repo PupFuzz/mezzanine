@@ -1,0 +1,709 @@
+/*
+ * THE PAGE CHROME — card#11045 PR-A; `docs/design/FLOOR.md` § 4.2 (the floor page's chrome, top to bottom)
+ * and § 10.4 (this file is the palette's one home).
+ *
+ * ⛔ ONE SHEET, LINKED ONCE, FROM `resources/views/layouts/app.blade.php`, with `?v=<mtime>` so a deploy
+ * that changes it is never served from a browser's cache. No bundler and no build step: it is served
+ * static the way `public/js/floor/main.js` is. `Tests\Feature\ThePageChromeIsOneLinkedStylesheetTest`
+ * holds the link.
+ *
+ * ⛔ THE PALETTE LIVES HERE ONCE, AS CUSTOM PROPERTIES ON `:root`, AND THE FLOOR's DRAWING READS IT.
+ * `public/js/floor/painter.js`'s embedded style names every colour as `var(--scene-…)`; a token it reads
+ * that is not declared below resolves to nothing, so the same test reds on one.
+ *
+ * ⛔ `--door` / `--door-edge` ARE COPIES OF THE LOBBY's `INK.door` / `INK.doorEdge`
+ * (`public/js/lobby/building-scene.js`), which the lobby keeps as hex because it does arithmetic on its
+ * palette; the floor's elevator (card#11045 PR-D) reads these, and the same test reds when the two drift.
+ *
+ * ⛔ NO TEXT SIZE ON `:root`, `html`, `body`, `*` OR ON ANY TAG A LOBBY PLATE's LABEL IS BUILT FROM, AND
+ * NO `!important` TEXT SIZE. A plate's label is `1rem`, which must be the body text size
+ * (§ 4.1; `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest` reads this sheet and reds on
+ * each). Text sizes below are set on classes and ids, and on headings, summaries and controls.
+ *
+ * ⛔ THE FLOOR's DRAWING HEIGHT IS ONE MECHANISM, A FLEX COLUMN: on the floor page `main` is a column at
+ * least `100dvh − --reveal` tall, and the room's stage (`#floor-drawing` and the drill-down card over it)
+ * takes ALL the height the chrome above it leaves (the header, the strip, any banner, statement or notice
+ * shown, the camera row), never less than the drawing's own `min-height` and with NO ceiling — a ceiling
+ * left the rest of a tall window empty between the room and the sections (card#11045 review r1). The
+ * sections below the room hang from the column's bottom edge, which is the room's, so the first
+ * section's summary touches the drawing and shows `--reveal` above the window's bottom edge whenever the
+ * drawing is above its floor. `tools/design/floor-chrome.browser.mjs` measures both on a rendered page.
+ * The camera's surface is the drawing's own box (`main.js`'s `surface()`, re-read by a `ResizeObserver`
+ * on the drawing), so the chrome growing or shrinking is a resize of the drawing the camera sees.
+ *
+ * Scoping: the shell's rules are generic; the floor's sit under `#floor`, the lobby's under `.lobby`,
+ * the console's under `.console-nav`; a sign-in page gets the shell and nothing else.
+ */
+
+:root {
+    color-scheme: dark;
+
+    /* The page — dark, quiet chrome around a warm room (§ 10.4). */
+    --ground: #171a28;
+    --ground-deep: #10121c;
+    --panel: #1f2333;
+    --panel-2: #262b3e;
+    --line: #323850;
+    --ink: #eef0f6;
+    --dim: #aab1c6;
+    --faint: #707890;
+    --lamp: #ffcf7d;
+    --lamp-dim: #a8834e;
+    --warn: #f0b455;
+    --alarm: #d97b6c;
+
+    /* The floor's elevator, as the lobby's cab draws it — copies, held equal by a test (above). */
+    --door: #dbe5ee;
+    --door-edge: #9fb1c4;
+
+    /* The room drawing's palette — `public/js/floor/painter.js`'s classes read these. */
+    --scene-ink: #3b2f2a;
+    --scene-wall: #f3e6d4;
+    --scene-glass: #cfe6f5;
+    --scene-trim: #8a6f5a;
+    --scene-clock-face: #fffaf2;
+    --scene-chair: #b59a86;
+    --scene-monitor: #2d3342;
+    --scene-monitor-on: #7fd3c4;
+    --scene-monitor-dim: #4c6b73;
+    --scene-subagent: #e9a23b;
+    --scene-placeholder: #f1ece6;
+    --scene-placeholder-edge: #b8a99a;
+    --scene-side-table: #f7efe4;
+    --scene-side-table-edge: #d9c7b3;
+    --scene-stool: #c98b5b;
+    --scene-badge: #fde2c7;
+    --scene-badge-edge: #d9905a;
+    --scene-paper: #ffffff;
+    --scene-unrecognised: #bb3333;
+    --scene-gauge-track: #e8dfd4;
+    --scene-gauge-fill: #7fb069;
+    --scene-bubble-source: #7a6a60;
+    --scene-thread: #6b8fd6;
+    --scene-flash: #ffe9a8;
+
+    /* Type — system fallbacks until the faces are vendored (card#11045 Q5). */
+    --face-display: Quicksand, ui-rounded, system-ui, sans-serif;
+    --face-body: "IBM Plex Sans", system-ui, sans-serif;
+    --face-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+    /* Chrome measures. */
+    --header-h: 56px;
+    --gutter: clamp(12px, 2.5vw, 24px);
+    --radius: 10px;
+    --reveal: 56px;
+}
+
+/* ── The shell — every page ──────────────────────────────────────────────────────────────────── */
+
+/* Every `hidden` toggle the pages' scripts make wins over a display set below. */
+[hidden] {
+    display: none !important;
+}
+
+html {
+    background: var(--ground);
+}
+
+body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--face-body);
+    line-height: 1.45;
+}
+
+main {
+    padding-bottom: 32px;
+}
+
+main > :not(.app-header) {
+    margin-inline: var(--gutter);
+}
+
+.app-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 16px;
+    min-height: var(--header-h);
+    padding: 0 var(--gutter);
+    box-sizing: border-box;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+}
+
+.app-header h1 {
+    margin: 0;
+    margin-right: auto;
+    font-family: var(--face-display);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--lamp);
+    letter-spacing: 0.01em;
+}
+
+h2,
+h3,
+h4 {
+    font-family: var(--face-display);
+    color: var(--ink);
+}
+
+a {
+    color: var(--lamp);
+}
+
+a:visited {
+    color: var(--lamp);
+}
+
+:focus-visible {
+    outline: 2px solid var(--lamp);
+    outline-offset: 2px;
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+    color: var(--ink);
+}
+
+button,
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 30px;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--ink);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+button:hover,
+.pill:hover {
+    border-color: var(--lamp-dim);
+}
+
+button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+a.pill,
+a.pill:visited {
+    color: var(--ink);
+}
+
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+    box-sizing: border-box;
+    min-height: 36px;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--ground-deep);
+}
+
+form label {
+    display: block;
+    margin-top: 12px;
+    color: var(--dim);
+}
+
+form button[type="submit"] {
+    margin-top: 16px;
+}
+
+table {
+    border-collapse: collapse;
+}
+
+th,
+td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+}
+
+th {
+    color: var(--dim);
+}
+
+code,
+pre {
+    font-family: var(--face-mono);
+}
+
+[role="alert"] {
+    color: var(--ink);
+    background: color-mix(in srgb, var(--alarm) 30%, var(--panel));
+    border-left: 4px solid var(--alarm);
+    padding: 8px 12px;
+    border-radius: 6px;
+}
+
+main > [role="status"] {
+    padding: 8px 12px;
+    border-left: 4px solid var(--lamp-dim);
+    background: var(--panel);
+    border-radius: 6px;
+}
+
+/* Hidden from the eye, kept for a screen reader. */
+.visually-hidden {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* A sign-in page — the shell, with the form as a card. */
+main > form:has(label) {
+    max-width: 420px;
+    margin-top: 32px;
+    padding: 20px 24px 24px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+}
+
+main > form:has(label) input:not([type="checkbox"]):not([type="radio"]) {
+    width: 100%;
+}
+
+/* ── The console ─────────────────────────────────────────────────────────────────────────────── */
+
+.console-nav ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0;
+    padding: 0;
+    list-style: none;
+}
+
+.console-nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--ink);
+    text-decoration: none;
+}
+
+.console-nav a[aria-current="page"] {
+    border-color: var(--lamp);
+    color: var(--lamp);
+}
+
+/* ── The lobby ───────────────────────────────────────────────────────────────────────────────── */
+
+/*
+ * The lobby keeps the 8 px side margin its page had before this sheet — the surface width every run of
+ * `tools/design/lobby-label-contrast.browser.mjs` was measured at. The shell's wider gutter narrowed the
+ * building's drawing and moved its plate labels: a night star behind a label's glyph at 1,440 px, and at
+ * phone width a label falling back onto its plate under the contrast floor (card#11045 review r1). A
+ * different margin is a re-measurement by that tool, not an edit here.
+ */
+main > section.lobby {
+    margin-inline: 8px;
+}
+
+/*
+ * …and the building's plate labels keep the face they were measured in, the browser's own default: the
+ * shell's body face changed their glyphs and so which night-sky star stands behind which one (the same
+ * review). The labels' type is the lobby's to redesign, with that tool re-run; this sheet does not move it.
+ */
+.lobby #lobby-building {
+    font-family: initial;
+}
+
+/* A frame that takes no layout: a border would move the plates off the box the camera measures. */
+.lobby #lobby-building {
+    border-radius: var(--radius);
+    box-shadow: 0 0 0 1px var(--line);
+}
+
+.lobby nav[aria-label="the camera"] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 10px 0;
+}
+
+.lobby > p:not([role]),
+.lobby section[aria-labelledby="lobby-health-heading"] > p {
+    color: var(--dim);
+}
+
+.lobby section[aria-labelledby="lobby-health-heading"] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 18px;
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+}
+
+.lobby section[aria-labelledby="lobby-health-heading"] > h3 {
+    flex-basis: 100%;
+    margin: 4px 0;
+}
+
+.lobby section[aria-labelledby="lobby-health-heading"] > p {
+    margin: 0;
+    font-family: var(--face-mono);
+    font-size: 13px;
+}
+
+/* ── The floor ───────────────────────────────────────────────────────────────────────────────── */
+
+/* The flex column the drawing's height comes from (the header above, the room in the leftover). */
+.page-floor main {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - var(--reveal));
+    padding-bottom: 0;
+}
+
+.page-floor main > :not(.app-header) {
+    margin-inline: 0;
+}
+
+.page-floor main > #floor {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+#floor > * {
+    margin: 0;
+}
+
+/* Every part of the column keeps its own height except the room's stage, which takes the rest — by
+   selector, so no rule order decides which of the two wins. */
+#floor > :not(.floor-stage) {
+    flex: 0 0 auto;
+}
+
+/* The header's floor half: the building's counts and the way to the lobby. */
+.floor-counts {
+    margin: 0;
+    font-family: var(--face-mono);
+    font-size: 13px;
+    color: var(--dim);
+}
+
+/* § 9 F8's banner, full width over everything else on the floor. */
+#floor-banner {
+    border-radius: 0;
+    border-left-width: 6px;
+}
+
+/* The status strip: this page's connection | the fleet | the room's clock. */
+.floor-strip {
+    display: flex;
+    align-items: center;
+    gap: 6px 0;
+    min-height: 40px;
+    padding: 0 var(--gutter);
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: thin;
+}
+
+.floor-chips {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-inline: 16px;
+}
+
+.floor-chips:first-of-type {
+    padding-left: 0;
+}
+
+.floor-chips + .floor-chips {
+    border-left: 1px solid var(--line);
+}
+
+.floor-chips > p {
+    margin: 0;
+    font-family: var(--face-mono);
+    font-size: 13px;
+    color: var(--dim);
+}
+
+/* The statements and the notices — amber bars under the strip, only while their condition holds. */
+#floor-statement,
+#floor-kept,
+#floor-layout-statement,
+#floor-notices > li,
+#floor-rooms > li {
+    padding: 6px var(--gutter);
+    background: color-mix(in srgb, var(--warn) 18%, var(--panel));
+    border-bottom: 1px solid color-mix(in srgb, var(--warn) 45%, var(--panel));
+    color: var(--ink);
+}
+
+#floor-notices,
+#floor-rooms {
+    list-style: none;
+    padding: 0;
+}
+
+/* The camera row: the floor's name, and the camera's controls — outside the drawing, never over a desk. */
+.floor-camera-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    min-height: 44px;
+    padding: 4px var(--gutter);
+    box-sizing: border-box;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+}
+
+#floor-name {
+    margin: 0 auto 0 0;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+#floor-camera {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+#floor-camera > button,
+#floor-camera > .pill {
+    font-size: 14px;
+}
+
+/* Icons that draw no name of their own: the button's words stay its accessible name. */
+#floor-camera > #floor-zoom-in,
+#floor-camera > #floor-zoom-out {
+    width: 34px;
+    justify-content: center;
+    padding: 0;
+    font-size: 0;
+}
+
+#floor-zoom-in::before {
+    content: "+" / "";
+    font-size: 18px;
+}
+
+#floor-zoom-out::before {
+    content: "\2212" / "";
+    font-size: 18px;
+}
+
+#floor-fit::before {
+    content: "\2922" / "";
+}
+
+#floor-camera > .pill::before,
+.floor-home::before {
+    content: "\2302" / "";
+}
+
+/* The room's stage — the leftover height of the column; the drawing fills it, the drill-down sits over it. */
+.floor-stage {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+/* The room — the exterior dark around the drawn floor. */
+#floor-drawing {
+    flex: 1 1 0;
+    min-height: 320px;
+    width: 100%;
+    overflow: hidden;
+    touch-action: none;
+    cursor: grab;
+    background: radial-gradient(ellipse at center, var(--ground) 0%, var(--ground-deep) 75%);
+}
+
+/* § 9 F6/F7: the floor under the sign-in prompt is dimmed, never blanked — the drawing and the list. */
+#floor [data-dimmed="true"] {
+    opacity: 0.45;
+    filter: saturate(0.4);
+}
+
+/* The sections under the room, just below the column, closed by default. */
+.floor-below {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    padding: 0 var(--gutter) 32px;
+}
+
+.floor-section {
+    border-bottom: 1px solid var(--line);
+}
+
+.floor-section > summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.floor-section > summary::-webkit-details-marker {
+    display: none;
+}
+
+.floor-section > summary::before {
+    content: "\25B8" / "";
+    color: var(--dim);
+}
+
+.floor-section[open] > summary::before {
+    content: "\25BE" / "";
+}
+
+.floor-section > summary > h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.floor-section > :not(summary) {
+    margin: 0 0 16px;
+}
+
+.floor-section ul,
+.floor-section ol {
+    padding-left: 20px;
+    color: var(--dim);
+}
+
+#floor-desks > li {
+    margin-bottom: 10px;
+}
+
+#floor-desks > li > a {
+    font-weight: 700;
+}
+
+.floor-back {
+    margin: 16px 0 0;
+}
+
+/* Cards over the floor: the sign-in prompt, centred on the window; the drill-down, docked over the room. */
+#floor-signin,
+#floor-panel {
+    z-index: 20;
+    box-sizing: border-box;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+    box-shadow: 0 16px 48px rgb(0 0 0 / 0.45);
+}
+
+#floor-signin {
+    position: fixed;
+    z-index: 30;
+    inset: 0;
+    margin: auto;
+    width: min(420px, calc(100vw - 32px));
+    height: fit-content;
+    padding: 16px 20px;
+    border-left: 4px solid var(--alarm);
+}
+
+.floor-stage > #floor-panel {
+    top: 12px;
+    position: absolute;
+    right: 16px;
+    bottom: 12px;
+    width: min(460px, calc(100vw - 32px));
+    padding: 12px 18px 18px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+#floor-panel h4 {
+    margin: 16px 0 4px;
+    color: var(--lamp);
+}
+
+#floor-panel p,
+#floor-panel ul,
+#floor-panel ol {
+    margin: 4px 0;
+    color: var(--dim);
+}
+
+/* ── Narrow windows — only the chrome reflows; the drawing is the same column (§ 4.5) ──────────── */
+
+@media (max-width: 600px) {
+    .app-header h1 {
+        font-size: 18px;
+    }
+
+    .floor-counts {
+        flex-basis: 100%;
+        order: 3;
+        font-size: 12px;
+    }
+
+    #floor-name {
+        font-size: 17px;
+    }
+
+    #floor-camera > #floor-fit,
+    #floor-camera > .pill,
+    .app-header > .floor-home {
+        width: 34px;
+        justify-content: center;
+        padding: 0;
+        font-size: 0;
+    }
+
+    #floor-fit::before,
+    #floor-camera > .pill::before,
+    .floor-home::before {
+        margin: 0;
+        font-size: 16px;
+    }
+
+    .floor-stage > #floor-panel {
+        top: auto;
+        left: 8px;
+        right: 8px;
+        bottom: 8px;
+        width: auto;
+        max-height: calc(100% - 16px);
+    }
+}

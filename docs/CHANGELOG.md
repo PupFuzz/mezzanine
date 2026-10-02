@@ -27,6 +27,25 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11045** — **Every page now has a stylesheet: a dark page chrome around the warm room.** The app
+  linked no CSS until now, so every page rendered in the browser's default black-on-white. One plain
+  stylesheet, `server/public/css/mezzanine.css`, is linked from the shared layout with a `?v=` version
+  taken from the file's own modification time, so a deploy that changes it reaches browsers without a
+  cache flush; there is no build step. Every page keeps its title as the header's heading. On the floor
+  page the header carries the building's seat counts and the way back to the lobby; the status strip is
+  one row of chips in groups (this page's connection, the fleet, the room's clock and sky); notices
+  are amber bars under it; the floor's name and the camera's controls sit on a row above the drawing, never
+  over it. The drawing's height is now the window's height less the chrome shown above it, where it was
+  the whole window's, and the camera fits the drawing's own box — re-measured whenever a banner, a
+  statement or a notice appears or goes — so a pointer lands where it points at every window size. The
+  desk list, the overflow, the coordination threads and the event log are each a collapsible section,
+  closed when the page opens; the drill-down opens as a card over the floor. The floor's drawing takes
+  its colours from the same stylesheet, so the palette has one home. FLOOR.md § 4.2 (the chrome, top to
+  bottom), § 4.5 (the list view's section), § 10.4 (the palette's home) and § 12's reference-viewport
+  row (which surface its figure is measured on) record it.
+  `Tests\Feature\ThePageChromeIsOneLinkedStylesheetTest` and new checks in
+  `Tests\Feature\Floor\FloorPageWiringTest` fail on the previous code.
+
 - **card#7341** — **The office floor page draws its room at every window size.** Until now a window smaller
   than 1,280 × 800 CSS px got no drawing at all: the page replaced the room with a text list of the desks.
   The operator ruled on 2026-10-01 that every screen displays at any browser size, so the room is now drawn

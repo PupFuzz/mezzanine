@@ -86,6 +86,26 @@ class FloorPageWiringTest extends TestCase
         $this->assertSame([], $this->exposureDefects($this->floorPage(), $this->painterJs()));
     }
 
+    /**
+     * card#11045 PR-A (the operator's ruling; design review r3 MINOR-6): the sections below the room
+     * are `<details>`, closed by default, each holding its list root with the root's heading in its
+     * `<summary>`; the drill-down panel and the drawing are inside none of them.
+     */
+    public function test_the_sections_below_the_room_are_closed_details_and_the_panel_is_outside_them(): void
+    {
+        $this->assertSame([], $this->sectionDefects($this->floorPage()));
+    }
+
+    /**
+     * card#11045 PR-A: the header's building counts are the lobby's `fleetTotals()` — `fleet.seats_total`
+     * and `fleet.seats_live` read from the wire, never recounted (§ 4.1 row 3, AT-D3-15) — carried on the
+     * status strip the page already paints, and painted into `#floor-fleet-counts`.
+     */
+    public function test_the_header_counts_are_the_lobbys_totals_never_recounted(): void
+    {
+        $this->assertSame([], $this->countDefects($this->mainJs()));
+    }
+
     public function test_the_page_serves_the_entry_as_a_module_and_every_import_resolves(): void
     {
         $html = $this->floorPage();
@@ -287,6 +307,43 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('surface', $this->cameraDefects($blind),
             'CONTROL (a screen handed no surface) did not bite');
 
+        // card#11045 PR-A, design review r3 MAJOR-A: the camera's surface is the drawing's own box, re-read
+        // whenever that box changes — a surface read off the window fits a drawing the chrome has shortened.
+        $windowed = str_replace('return { width: box.clientWidth, height: box.clientHeight };', 'return { width: box.clientWidth, height: window.innerHeight };', $js);
+        $this->assertNotSame($windowed, $js);
+        $this->assertArrayHasKey('surface', $this->cameraDefects($windowed),
+            'CONTROL (a surface whose height is the window\'s, not the drawing\'s) did not bite');
+
+        $unobserved = str_replace('}).observe(drawing);', '});', $js);
+        $this->assertNotSame($unobserved, $js);
+        $this->assertArrayHasKey('surface', $this->cameraDefects($unobserved),
+            'CONTROL (a drawing whose size changes reach no camera) did not bite');
+
+        foreach ([
+            'a section left open' => ['<details class="floor-section">', '<details class="floor-section" open>'],
+            'a list root outside its section' => ['<ul id="floor-coord" aria-labelledby="floor-coord-heading" hidden></ul>', ''],
+            'a heading outside its summary' => ['<summary><h2 id="floor-log-heading">', '<summary><h2>'],
+        ] as $what => [$from, $to]) {
+            $planted = str_replace($from, $to, $html);
+            $this->assertNotSame($planted, $html, "the {$what} control's anchor is gone — it mutated nothing");
+            $this->assertNotSame([], $this->sectionDefects($planted), "CONTROL ({$what}) did not bite");
+        }
+
+        // Unclosed on purpose: the parser closes it at its parent's end, so the panel is inside it.
+        $panelled = str_replace('<section id="floor-panel"', '<details><summary>the panel</summary><section id="floor-panel"', $html);
+        $this->assertNotSame($panelled, $html);
+        $this->assertArrayHasKey('panel', $this->sectionDefects($panelled),
+            'CONTROL (the drill-down panel inside a section) did not bite');
+
+        $recounted = $this->mutatedModules(['status-strip.js', 'totals: fleetTotals(fleet),', "totals: '4 seats · 4 live',"]);
+        $this->assertArrayHasKey('totals', $this->countDefects($js, $recounted),
+            'CONTROL (header counts that are not the lobby\'s totals) did not bite');
+
+        $unpaintedCounts = str_replace("say('floor-fleet-counts', `building: \${strip.totals}`);", '', $js);
+        $this->assertNotSame($unpaintedCounts, $js);
+        $this->assertArrayHasKey('paint', $this->countDefects($unpaintedCounts),
+            'CONTROL (header counts never painted) did not bite');
+
         $drifted = (string) preg_replace('/export const ANIMATION_LOG_RETENTION = \d+;/', 'export const ANIMATION_LOG_RETENTION = 5000;', $livePage);
         $this->assertNotSame($drifted, $livePage);
         $this->assertArrayHasKey('retention', $this->pageLogDefects($js, $drifted),
@@ -332,7 +389,9 @@ class FloorPageWiringTest extends TestCase
     {
         $defects = [];
         $wired = [
-            'surface' => ['surface: surface(),', 'screen.resize(surface())'],
+            // … read off the drawing's own box and re-read on every change of it (card#11045 PR-A, MAJOR-A).
+            'surface' => ['surface: surface(),', 'screen.resize(surface())', "const box = el('floor-drawing');",
+                'return { width: box.clientWidth, height: box.clientHeight };', 'new ResizeObserver(() => {', '}).observe(drawing);'],
             // … and the camera as it stands, so the wheel is the page's scroll while it frames nothing (card#7343 r3b).
             'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel,', 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
             'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
@@ -410,6 +469,110 @@ class FloorPageWiringTest extends TestCase
         if ($noted === false || $rebuilt === false || $guarded === false || $restored === false
             || ! ($noted < $rebuilt && $rebuilt < $guarded && $guarded < $restored)) {
             $defects['refocus'] = 'the painter does not put focus back on the desk it rebuilt — noted before `host.replaceChildren(svg)`, and `.focus(` called on the rebuilt desk (or the drawing) after it, under `if (focusedKey !== null)`';
+        }
+
+        return $defects;
+    }
+
+    /** @return array<string, string> */
+    private function sectionDefects(string $html): array
+    {
+        $dom = new \DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        $dom->loadHTML($html);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        $defects = [];
+        $sections = ['floor-desks', 'floor-overflow', 'floor-coord', 'floor-log'];
+
+        foreach ($sections as $id) {
+            $root = $dom->getElementById($id);
+            $details = $root === null ? null : $this->ancestor($root, 'details');
+
+            if ($details === null) {
+                $defects[$id] = "#{$id} is not inside a <details>";
+
+                continue;
+            }
+
+            if ($details->hasAttribute('open')) {
+                $defects[$id] = "#{$id}'s <details> is open by default";
+            }
+
+            $summary = null;
+
+            foreach ($details->childNodes as $child) {
+                if ($child instanceof \DOMElement && $child->tagName === 'summary') {
+                    $summary = $child;
+
+                    break;
+                }
+            }
+
+            $heading = $root->getAttribute('aria-labelledby');
+
+            if ($summary === null || $heading === '' || ! $this->contains($summary, $heading)) {
+                $defects[$id] = "#{$id}'s heading (#{$heading}) is not in its <details>' <summary>";
+            }
+        }
+
+        foreach (['floor-panel', 'floor-drawing', 'floor-camera'] as $id) {
+            $node = $dom->getElementById($id);
+
+            if ($node === null || $this->ancestor($node, 'details') !== null) {
+                $defects[$id === 'floor-panel' ? 'panel' : $id] = "#{$id} is missing or inside a <details>";
+            }
+        }
+
+        return $defects;
+    }
+
+    private function ancestor(\DOMNode $node, string $tag): ?\DOMElement
+    {
+        for ($at = $node->parentNode; $at !== null; $at = $at->parentNode) {
+            if ($at instanceof \DOMElement && $at->tagName === $tag) {
+                return $at;
+            }
+        }
+
+        return null;
+    }
+
+    private function contains(\DOMElement $node, string $id): bool
+    {
+        foreach ($node->getElementsByTagName('*') as $child) {
+            if ($child->getAttribute('id') === $id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @return array<string, string> */
+    private function countDefects(string $js, ?string $jsRoot = null): array
+    {
+        $defects = [];
+
+        if (! str_contains($js, "say('floor-fleet-counts', `building: \${strip.totals}`);")) {
+            $defects['paint'] = 'the entry does not paint the strip\'s totals into #floor-fleet-counts';
+        }
+
+        $dir = $jsRoot ?? $this->moduleDir();
+        $script = 'const s = await import('.json_encode('file://'.$dir.'/status-strip.js').');'
+            .'const l = await import('.json_encode('file://'.dirname($dir).'/lobby/lobby-model.js').');'
+            .'const feed = { reload_required: false, signed_out: null, mode: "open", silent: false, last_message: null, connected: false, resyncs: 0 };'
+            .'const fleets = [{ seats_total: 9, seats_live: 8 }, { seats_total: 2, seats_live: 0 }, { db: "down" }, null];'
+            .'console.log(JSON.stringify(fleets.map((f) => [s.statusStrip(feed, f).totals, l.fleetTotals(f)])));';
+        $out = shell_exec('node --input-type=module -e '.escapeshellarg($script));
+
+        $this->assertIsString($out, 'node could not read the status strip');
+
+        foreach (json_decode($out, true) as [$strip, $lobby]) {
+            if ($strip !== $lobby) {
+                $defects['totals'] = "the strip's totals read `{$strip}` where the lobby's read `{$lobby}`";
+            }
         }
 
         return $defects;

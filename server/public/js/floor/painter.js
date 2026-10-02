@@ -41,40 +41,43 @@ export const CHARACTER_TREE = '/art/characters/index.js';
 const SVG = 'http://www.w3.org/2000/svg';
 
 /**
- * The drawing's own stylesheet — palette and the § 6.2 forms' keyframes, placed inside the SVG so
- * the drawing carries it wherever the camera takes it. Presentation only: every duration, reach and
+ * The drawing's own stylesheet — which palette token each class paints with, and the § 6.2 forms'
+ * keyframes, placed inside the SVG so the drawing carries it wherever the camera takes it. ⛔ NO COLOUR
+ * IS WRITTEN HERE: every one is a `var(--…)` token whose value is `public/css/mezzanine.css`'s `:root`,
+ * the palette's one home (card#11045; `ThePageChromeIsOneLinkedStylesheetTest` reds on a token that
+ * sheet does not declare, and on a hex colour here). Presentation only: every duration, reach and
  * step count is the scene's, set per element; nothing here decides WHETHER anything moves.
  */
 const STYLE = `
-text{font:${FONT};fill:#3b2f2a}
-.wall{fill:#f3e6d4}.window{fill:#cfe6f5;stroke:#8a6f5a;stroke-width:3}
+text{font:${FONT};fill:var(--scene-ink)}
+.wall{fill:var(--scene-wall)}.window{fill:var(--scene-glass);stroke:var(--scene-trim);stroke-width:3}
 ${Object.keys(SKY_PAINT).map((phase) => `.sky-${phase}{fill:url(#sky-${phase})}`).join('')}
-.clock-face{fill:#fffaf2;stroke:#8a6f5a;stroke-width:3}.clock.unset .clock-face{stroke-dasharray:6 4}
-.hand{stroke:#3b2f2a;stroke-linecap:round}.hand.hour{stroke-width:4}.hand.minute{stroke-width:2}
+.clock-face{fill:var(--scene-clock-face);stroke:var(--scene-trim);stroke-width:3}.clock.unset .clock-face{stroke-dasharray:6 4}
+.hand{stroke:var(--scene-ink);stroke-linecap:round}.hand.hour{stroke-width:4}.hand.minute{stroke-width:2}
 .pixel{image-rendering:pixelated}
-.chair{fill:#b59a86}.monitor{fill:#2d3342}.monitor.lit-on{fill:#7fd3c4}.monitor.lit-dimmed{fill:#4c6b73}
-.subagent-marker{fill:#e9a23b}.placeholder{fill:#f1ece6;stroke:#b8a99a;stroke-dasharray:4 3}
-.side-table{fill:#f7efe4;stroke:#d9c7b3}.stool{fill:#c98b5b}.stool.untitled{fill:none;stroke:#c98b5b}
-.lag-overlay{fill:url(#hatch);opacity:.6}
-.badge{fill:#fde2c7;stroke:#d9905a}.badge.unrecognised{fill:#fff;stroke:#b33;stroke-dasharray:3 2}
-.gauge-track{fill:#e8dfd4}.gauge-fill{fill:#7fb069}
-.bubble{fill:#fff;stroke:#8a6f5a}.bubble-tail{stroke:#8a6f5a}.bubble-source{fill:#7a6a60}
+.chair{fill:var(--scene-chair)}.monitor{fill:var(--scene-monitor)}.monitor.lit-on{fill:var(--scene-monitor-on)}.monitor.lit-dimmed{fill:var(--scene-monitor-dim)}
+.subagent-marker{fill:var(--scene-subagent)}.placeholder{fill:var(--scene-placeholder);stroke:var(--scene-placeholder-edge);stroke-dasharray:4 3}
+.side-table{fill:var(--scene-side-table);stroke:var(--scene-side-table-edge)}.stool{fill:var(--scene-stool)}.stool.untitled{fill:none;stroke:var(--scene-stool)}
+.lag-overlay{fill:url(#hatch);opacity:.6}.hatch{fill:var(--scene-trim)}
+.badge{fill:var(--scene-badge);stroke:var(--scene-badge-edge)}.badge.unrecognised{fill:var(--scene-paper);stroke:var(--scene-unrecognised);stroke-dasharray:3 2}
+.gauge-track{fill:var(--scene-gauge-track)}.gauge-fill{fill:var(--scene-gauge-fill)}
+.bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-tail{stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
 .lighting-dimmed{opacity:.72}.lighting-dark{opacity:.45}.lighting-desaturated{filter:saturate(.3)}
-.thread{fill:none;stroke:#6b8fd6;stroke-width:3}.thread.ended{stroke-dasharray:8 6;opacity:.6}
+.thread{fill:none;stroke:var(--scene-thread);stroke-width:3}.thread.ended{stroke-dasharray:8 6;opacity:.6}
 .thread.thread-moving{stroke-dasharray:4 8;stroke-linecap:round;animation-name:thread-flow;animation-iteration-count:infinite}
 @keyframes thread-flow{from{stroke-dashoffset:12}to{stroke-dashoffset:0}}
 .strip-header{font-weight:bold}
-.decor{fill:#ffcf7d;opacity:.25}.decor-moving{animation:decor ease-in-out infinite alternate}
+.decor{fill:var(--lamp);opacity:.25}.decor-moving{animation:decor ease-in-out infinite alternate}
 @keyframes decor{from{opacity:.12}to{opacity:.34}}
-.fx-ring{fill:none;stroke:#6b8fd6;stroke-width:4;transform-box:fill-box;transform-origin:center;transform:scale(0)}
+.fx-ring{fill:none;stroke:var(--scene-thread);stroke-width:4;transform-box:fill-box;transform-origin:center;transform:scale(0)}
 @keyframes ring-reach{from{transform:scale(0)}to{transform:scale(1)}}
 @keyframes ring-fade{from{transform:scale(1);opacity:1}to{transform:scale(1);opacity:0}}
 .fx-envelope{animation-name:travel;animation-fill-mode:forwards}
 @keyframes travel{from{transform:translate(var(--from-x),var(--from-y)) rotate(var(--heading))}to{transform:translate(var(--to-x),var(--to-y)) rotate(var(--heading))}}
-.fx-bead{transform:translate(var(--to-x),var(--to-y))}.envelope{fill:#fff;stroke:#6b8fd6}
-.fx-flash{fill:#ffe9a8;opacity:0;animation-name:flash}
+.fx-bead{transform:translate(var(--to-x),var(--to-y))}.envelope{fill:var(--scene-paper);stroke:var(--scene-thread)}
+.fx-flash{fill:var(--scene-flash);opacity:0;animation-name:flash}
 @keyframes flash{from{opacity:.8}to{opacity:0}}
-.fx-broadcast-marker{fill:none;stroke:#6b8fd6;stroke-width:3}
+.fx-broadcast-marker{fill:none;stroke:var(--scene-thread);stroke-width:3}
 `;
 
 /**
@@ -346,7 +349,7 @@ export function createPainter({ characters, failed, select }) {
 
         const pattern = node('pattern', { id: 'hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, node('defs', {}, svg));
 
-        node('rect', { width: 3, height: 6, fill: '#8a6f5a' }, pattern);
+        node('rect', { width: 3, height: 6, class: 'hatch' }, pattern);
 
         // The windows' sky, one gradient per phase — `floor-layout.js`'s `SKY_PAINT`, the one phase→paint
         // table the lobby's windows and backdrop read too (card#7343 r1): the reference's window gradient,
