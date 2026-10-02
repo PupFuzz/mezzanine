@@ -148,6 +148,25 @@ def c_named_job(s):
     return f
 
 
+def c_name_equals_id(s):
+    """A job `name:` whose value is exactly its id, bare or quoted, leaves the context equal to the id, so
+    it is no finding. Any other value is still one: a different string (c_named_job), an expression, an
+    empty value, a block scalar — the controls that the admission did not switch the rule off."""
+    same = {f"self{i}.yml": f"on:\n  pull_request:\njobs:\n  guard-{i}:\n    name: {q}guard-{i}{q}\n    runs-on: x\n"
+            for i, q in enumerate(("", "'", '"'))}
+    f, (rc, out, err) = [], run(s, workflows={**WORKFLOWS, **same})
+    expect(f, "name: equal to the job id (plain, single- and double-quoted) exits 0", rc == 0)
+    expect(f, "… and is no CONTEXT != JOB ID finding", "CONTEXT != JOB ID" not in out)
+    expect(f, "… and the ✓ line is printed", "✓ no job a pull_request runs declares" in out)
+    for label, val in (("an expression", "${{ github.job }}"), ("an empty value", ""), ("a block scalar", "|\n      guard"),
+                       ("an unmatched quote", "'guard"), ("a near miss", "guard-x")):
+        wfs = {**WORKFLOWS, "other.yml": f"on:\n  pull_request:\njobs:\n  guard:\n    name: {val}\n    runs-on: x\n"}
+        rc, out, err = run(s, workflows=wfs)
+        expect(f, f"CONTROL: a name: that is {label} exits nonzero", rc == 1)
+        expect(f, f"CONTROL: … naming it as a finding", "✗ CONTEXT != JOB ID — other.yml: job `guard` declares `name:`" in out)
+    return f
+
+
 SCHED = ("on:\n  schedule:\n    - cron: '17 6 * * *'\n  workflow_dispatch:\njobs:\n  caller:\n    strategy:\n"
          "      matrix:\n        ref: [main, dev]\n    uses: o/r/.github/workflows/callee.yml@dev\n")
 
@@ -298,7 +317,7 @@ def c_no_floor_invented(s):
     return f
 
 
-CASES = {c.__name__: c for c in (c_positive, c_empty_200, c_403, c_404, c_named_job, c_context_scope, c_flow_refused,
+CASES = {c.__name__: c for c in (c_positive, c_empty_200, c_403, c_404, c_named_job, c_name_equals_id, c_context_scope, c_flow_refused,
                                   c_paths_filtered,
                                   c_null_bypass, c_no_token_leak, c_token_refused, c_transport_header_error,
                                   c_transport_http_exception, c_every_instance, c_no_floor_invented)}
@@ -309,6 +328,11 @@ MUTANTS = [
     ("c_403", "            required[b] = None\n", "            required[b] = set()\n"),  # failed read = "nothing required"
     ("c_404", 'cell = "UNKNOWN" if r is None else', 'cell = "no" if r is None else'),
     ("c_named_job", 'CONTEXT_KEYS = ("name", "strategy", "uses")', 'CONTEXT_KEYS = ("strategy", "uses")'),
+    # the equal-name admission removed (every name: reds again), its quote handling removed, and widened
+    # to admit an expression
+    ("c_name_equals_id", '\n                                and not (s[1] == "name" and _names_itself(r[1], s[2]))', ""),
+    ("c_name_equals_id", 'if len(val) >= 2 and val[0] == val[-1] and val[0] in', "if False and"),
+    ("c_name_equals_id", "    return val == job\n", '    return val == job or val.startswith("${{")\n'),
     # both directions: the scope removed (a schedule-only caller reds again) and widened to every job
     # (a pull_request job's strategy:/uses: goes unreported)
     ("c_context_scope", "            if trig is None:\n                exempt +=", "            if False:\n                exempt +="),
