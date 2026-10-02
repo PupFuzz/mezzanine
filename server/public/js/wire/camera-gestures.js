@@ -47,7 +47,8 @@
  *    pointer moves the drag — a second finger's move never pans;
  *  · a move with the primary button no longer held ends the drag (a press released outside the element
  *    before capture was taken is never heard released), and so does a `pointercancel` — a pointer the
- *    browser took back, which is no click either;
+ *    browser took back, which is no click either — and a `lostpointercapture` of a pointer the press still
+ *    holds, a capture revoked with neither (card#11045);
  *  · A DRAG THAT MOVED IS NO CLICK — neither its handlers nor its default action. That is the one click
  *    policy, and it is the lobby's: a plate there is a link, and a drag ending over it must not follow
  *    it. The floor's inline copy only stopped the click's propagation, which was complete there only
@@ -272,6 +273,18 @@ export function cameraGestures(element, acts, show) {
     element.addEventListener('pointercancel', () => {
         dragged = false;
         release();
+    });
+
+    // A capture the browser revoked with no `pointerup` or `pointercancel` of its own — the element left the
+    // document, say — ends the press as a cancel does: otherwise the press stays held, and the next touch,
+    // under a new `pointerId`, is read as its pinch's second finger. Only a pointer the press still holds:
+    // a pinch's lifted finger loses its capture after its `pointerup` has already handed the drag to the
+    // other, and a press that ended normally loses its capture after `release()` — neither is ended twice,
+    // and the click-after-drag veto (`dragged`) is left as the `pointerup` set it.
+    element.addEventListener('lostpointercapture', (event) => {
+        if (drag !== null && (event.pointerId === drag.id || event.pointerId === pinch?.id)) {
+            release();
+        }
     });
 
     element.addEventListener('click', (event) => {
