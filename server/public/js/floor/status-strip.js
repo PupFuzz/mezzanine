@@ -16,12 +16,14 @@
  * the lobby shows", so this reads `lobby/lobby-model.js`'s `indicators()` over the `fleet{}` the
  * protocol holds, and the sweep and ingest instants come out exactly as the lobby draws them —
  * labelled timestamps, which is what § 14 item 17 leaves both screens with until a wording is chosen.
+ * The building's totals the floor's header carries (card#11045) are the lobby's `fleetTotals()` for the
+ * same reason, never a count of the desks this page holds.
  */
 
 import { clockTime } from '../wire/clock.js';
 import { notLiveSince } from '../wire/failure-render.js';
 import { NOT_REPORTED } from '../wire/null-render.js';
-import { indicators } from '../lobby/lobby-model.js';
+import { fleetTotals, indicators } from '../lobby/lobby-model.js';
 
 /** § 5.5's feed status, and § 9's own words for each failure row it names. */
 export const LIVE = 'live';
@@ -119,6 +121,9 @@ export function statusStrip(feed, fleet, options = {}) {
             ? `last message ${clockTime(feed.last_message?.server_time ?? null) ?? NOT_REPORTED}`
             : null,
         indicators: Object.freeze(indicators(fleet).map((row) => Object.freeze(row))),
+        // § 4.1 row 3 on the floor's header (card#11045): the building's `seats_total` / `seats_live`, the
+        // lobby's own words over the same `fleet{}` — read from the wire, never recounted (AT-D3-15).
+        totals: fleetTotals(fleet),
         // § 9 F14 — `null` while every asset drawn has loaded, never an empty string.
         art: options.art_failed === true ? ART_FAILED : null,
     });

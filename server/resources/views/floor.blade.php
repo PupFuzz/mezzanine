@@ -1,5 +1,16 @@
 @extends('layouts.app')
 @section('title', 'Mezzanine — floor')
+@section('page-class', 'page-floor')
+
+{{--
+    The header's right-hand side: the BUILDING's counts — `fleet.seats_total` · `fleet.seats_live`, the
+    lobby's own words, read from the wire and never recounted (§ 4.1 row 3; `main.js` paints the status
+    strip's `totals`) — and the way back to the lobby.
+--}}
+@section('header')
+    <p id="floor-fleet-counts" class="floor-counts">building: waiting for the fleet snapshot</p>
+    <a class="pill floor-home" href="{{ route('dashboard') }}">Back to the lobby</a>
+@endsection
 
 @section('content')
     {{--
@@ -26,19 +37,48 @@
 
         ⭐ UNDER THE CAMERA (Appendix B row 15), AT EVERY WINDOW SIZE (§ 4.5; the operator's ruling of
         2026-10-01 on card#7341 — no minimum size and no substitute view): the drawing fills the
-        section's width and the viewport's height and the camera frames it — wheel to zoom, drag to
+        section's width and the viewport height the chrome above it leaves (card#11045 PR-A) and the
+        camera frames it — wheel to zoom, drag to
         pan, `+`/`-` or `#floor-zoom-in`/`#floor-zoom-out` to zoom about the centre, the arrow keys to
         pan, `#floor-fit` to frame the whole floor, and the whole-building link to `/`, § 4.4's lobby
         route. Below the drawing `#floor-desks` is § 4.5's list view, the desks as text beside the
         drawing: each desk's row (Appendix B row 15, slice A: `public/js/desk/desk-list.js`), every
-        fact the desk model emits as lines of text. The status strip, the failure statements and the
-        sign-in prompt are page chrome outside the camera.
+        fact the desk model emits as lines of text, in the first of the sections below the room,
+        each a <details> closed by default (card#11045). The status strip, the failure statements, the
+        camera row and the sign-in prompt are page chrome outside the camera; the page chrome's look and
+        the drawing's height are `public/css/mezzanine.css`'s.
     --}}
     <section id="floor" aria-labelledby="floor-name" data-floor="{{ $floor }}" data-seat="{{ $seat ?? '' }}">
-        <h2 id="floor-name">The floor {{ $floor }} — waiting for the building layout</h2>
-
-        {{-- § 9 F8: "a full-width banner", above everything else on the page. --}}
+        {{-- § 9 F8: "a full-width banner", above everything else on the floor. --}}
         <p id="floor-banner" role="alert" hidden></p>
+
+        {{--
+            § 5.5 / § 4.2: the persistent status strip — the client talking about itself, then the fleet's
+            indicators (never aggregated, § 5.3), then the room render's clock and sky (§ 4.2) — one row of
+            chips in clusters (card#11045 PR-A).
+        --}}
+        <section class="floor-strip" aria-labelledby="floor-strip-heading">
+            <h2 id="floor-strip-heading" class="visually-hidden">Status — this page's own connection, and the fleet's</h2>
+            <div class="floor-chips">
+                <p id="floor-feed">feed: waiting for the stream</p>
+                <p id="floor-connection">stream: waiting for the stream</p>
+                <p id="floor-resyncs">resyncs: waiting for the stream</p>
+                <p id="floor-last-message" hidden></p>
+                {{-- § 9 F14: *some art failed to load*, only while it is true. --}}
+                <p id="floor-art" hidden></p>
+            </div>
+            <div class="floor-chips">
+                <p id="floor-store">store: waiting for the fleet snapshot</p>
+                <p id="floor-derivation">derivation: waiting for the fleet snapshot</p>
+                <p id="floor-sweep">sweep: waiting for the fleet snapshot</p>
+                <p id="floor-ingest">ingest: waiting for the fleet snapshot</p>
+            </div>
+            {{-- § 4.2's one room render: the wall clock and the windows' sky, the viewer's own time. --}}
+            <div class="floor-chips">
+                <p id="floor-clock" aria-label="clock not set">clock not set — waiting for a live feed</p>
+                <p id="floor-sky">sky not set — waiting for a live feed</p>
+            </div>
+        </section>
 
         {{-- § 9 F4/F5: the store statement, over the floor it kept or in words on a cold start. --}}
         <p id="floor-statement" role="status" hidden></p>
@@ -47,9 +87,75 @@
         {{-- § 9 F17 on the floor route: the layout statement, over the rooms already held. --}}
         <p id="floor-layout-statement" role="status" hidden></p>
 
+        <ul id="floor-notices" role="status" hidden></ul>
+
+        {{-- § 9 F17's cold start: the snapshot's installs as rooms with no floor claimed. --}}
+        <ul id="floor-rooms" hidden></ul>
+
         {{--
-            § 9 F6/F7: the blocking sign-in prompt. The floor beneath is DIMMED — `data-dimmed` on the
-            desk list and on the drawing — and labelled *not live since HH:MM:SS*; it is never blanked.
+            The camera row: the floor's name, and Appendix B row 15's camera controls — zoom in and out
+            about the drawing's centre, the fit-floor control and the whole-building link, shown only while
+            the drawn floor is. OUTSIDE the drawing, so no control ever covers a desk at fit (card#11045).
+        --}}
+        <div class="floor-camera-row">
+            <h2 id="floor-name">The floor {{ $floor }} — waiting for the building layout</h2>
+            <nav id="floor-camera" aria-label="the camera" hidden>
+                <button type="button" id="floor-zoom-in" hidden>Zoom in</button>
+                <button type="button" id="floor-zoom-out" hidden>Zoom out</button>
+                <button type="button" id="floor-fit" hidden>Fit the floor</button>
+                <a class="pill" href="{{ url('/') }}">Whole building</a>
+            </nav>
+        </div>
+
+        {{--
+            Appendix B row 14's room drawing — the painter's SVG, empty until the art modules answer —
+            under row 15's camera. ⛔ ITS SIZE IS THE PAGE CHROME SHEET's (`public/css/mezzanine.css`): the
+            section's width by the viewport height the chrome above it leaves, and that box — read off the
+            element, re-read whenever it changes — is the surface `main.js` hands the camera (card#11045,
+            design review r3 MAJOR-A). It takes focus so the keyboard reaches the camera: `+`/`-` zoom
+            about its centre and the arrow keys pan (it is a tab stop, `aria-keyshortcuts` names them, and
+            the zoom buttons and *Fit the floor* show, only while the camera frames the floor:
+            `public/js/wire/camera-keys.js`'s `offerKeys()`, card#7343 r4b and comment 7692 — so the markup
+            starts with none of them); the desks inside
+            it are buttons of their own, which is why the drawing is a group and never an image.
+        --}}
+        <div id="floor-drawing" role="group" aria-label="the room drawing" data-dimmed="false"></div>
+
+        {{--
+            BELOW THE ROOM: the sections, each a <details> CLOSED BY DEFAULT (the operator's ruling,
+            card#11045), each list root inside its own with the root's heading as its summary — a screen
+            reader reaches every one as a disclosure button by its heading's words. `main.js` paints into
+            the same roots, open or closed.
+        --}}
+        <div class="floor-below">
+            <details class="floor-section">
+                <summary><h2 id="floor-desks-heading">Desks</h2></summary>
+                <ul id="floor-desks" aria-labelledby="floor-desks-heading" data-dimmed="false">
+                    <li>waiting for the fleet snapshot</li>
+                </ul>
+            </details>
+
+            <details class="floor-section">
+                <summary><h2 id="floor-overflow-heading">Overflow — seats past the map's desks</h2></summary>
+                <ul id="floor-overflow" aria-labelledby="floor-overflow-heading" hidden></ul>
+            </details>
+
+            <details class="floor-section">
+                <summary><h2 id="floor-coord-heading">Coordination threads</h2></summary>
+                <ul id="floor-coord" aria-labelledby="floor-coord-heading" hidden></ul>
+            </details>
+
+            {{-- § 5.5's record: this client's own narration, newest first, 200 lines. --}}
+            <details class="floor-section">
+                <summary><h2 id="floor-log-heading">This page's event log</h2></summary>
+                <ol id="floor-log" aria-labelledby="floor-log-heading" hidden></ol>
+            </details>
+        </div>
+
+        {{--
+            § 9 F6/F7: the blocking sign-in prompt, a card centred over the page. The floor beneath is
+            DIMMED — `data-dimmed` on the desk list and on the drawing — and labelled *not live since
+            HH:MM:SS*; it is never blanked.
         --}}
         <section id="floor-signin" role="alertdialog" aria-labelledby="floor-signin-prompt" hidden>
             <p id="floor-signin-prompt"></p>
@@ -57,61 +163,11 @@
             <p><a href="{{ route('login') }}">Sign in</a></p>
         </section>
 
-        {{-- § 5.5 / § 4.2: the persistent status strip — the client talking about itself. --}}
-        <section aria-labelledby="floor-strip-heading">
-            <h3 id="floor-strip-heading">Status — this page's own connection</h3>
-            <p id="floor-feed">feed: waiting for the stream</p>
-            <p id="floor-connection">stream: waiting for the stream</p>
-            <p id="floor-resyncs">resyncs: waiting for the stream</p>
-            <p id="floor-last-message" hidden></p>
-            {{-- § 9 F14: *some art failed to load*, only while it is true. --}}
-            <p id="floor-art" hidden></p>
-            <p id="floor-store">store: waiting for the fleet snapshot</p>
-            <p id="floor-derivation">derivation: waiting for the fleet snapshot</p>
-            <p id="floor-sweep">sweep: waiting for the fleet snapshot</p>
-            <p id="floor-ingest">ingest: waiting for the fleet snapshot</p>
-        </section>
-
-        {{-- § 4.2's one room render: the wall clock and the windows' sky, the viewer's own time. --}}
-        <p id="floor-clock" aria-label="clock not set">clock not set — waiting for a live feed</p>
-        <p id="floor-sky">sky not set — waiting for a live feed</p>
-
-        <ul id="floor-notices" role="status" hidden></ul>
-
-        {{-- § 9 F17's cold start: the snapshot's installs as rooms with no floor claimed. --}}
-        <ul id="floor-rooms" hidden></ul>
-
-        {{--
-            Appendix B row 15's camera controls — zoom in and out about the drawing's centre, the
-            fit-floor control and the whole-building link, shown only while the drawn floor is.
-        --}}
-        <nav id="floor-camera" aria-label="the camera" hidden>
-            <button type="button" id="floor-zoom-in" hidden>Zoom in</button>
-            <button type="button" id="floor-zoom-out" hidden>Zoom out</button>
-            <button type="button" id="floor-fit" hidden>Fit the floor</button>
-            <a href="{{ url('/') }}">Whole building</a>
-        </nav>
-
-        {{--
-            Appendix B row 14's room drawing — the painter's SVG, empty until the art modules answer —
-            under row 15's camera: the section's width by the viewport's height, which is the surface
-            `main.js` hands the camera. It takes focus so the keyboard reaches the camera: `+`/`-` zoom
-            about its centre and the arrow keys pan (it is a tab stop, `aria-keyshortcuts` names them, and
-            the zoom buttons and *Fit the floor* show, only while the camera frames the floor:
-            `public/js/wire/camera-keys.js`'s `offerKeys()`, card#7343 r4b and comment 7692 — so the markup
-            starts with none of them); the desks inside
-            it are buttons of their own, which is why the drawing is a group and never an image.
-        --}}
-        <div id="floor-drawing" role="group" aria-label="the room drawing" data-dimmed="false" style="width: 100%; height: 100vh; overflow: hidden; touch-action: none; cursor: grab"></div>
-
-        <h3 id="floor-desks-heading">Desks</h3>
-        <ul id="floor-desks" aria-labelledby="floor-desks-heading" data-dimmed="false">
-            <li>waiting for the fleet snapshot</li>
-        </ul>
-
         {{--
             § 4.3's DRILL-DOWN — Appendix B row 10: a panel over the floor, opened by selecting a desk
-            and closed back to it, with no stream of its own. `/floor/{floor}/{seat_id}` serves this
+            and closed back to it, with no stream of its own. A card docked over the floor, and inside
+            none of the sections below the room, so it opens wherever the viewer is (card#11045, design
+            review r3 MINOR-6). `/floor/{floor}/{seat_id}` serves this
             same page with the seat segment as data (§ 4.4).
 
             ⛔ THE `data-panel-*` SLOTS ARE THE CONTRACT WITH `public/js/drilldown/main.js`, CHECKED BOTH
@@ -187,20 +243,8 @@
             <h4>Raw</h4>
             <p>state_version <span data-panel-state-version></span> · seq_epoch <span data-panel-raw-seq-epoch></span> · last_seq <span data-panel-raw-last-seq></span></p>
         </section>
-
-        <h3 id="floor-overflow-heading">Overflow — seats past the map's desks</h3>
-        <ul id="floor-overflow" aria-labelledby="floor-overflow-heading" hidden></ul>
-
-        <h3 id="floor-coord-heading">Coordination threads</h3>
-        <ul id="floor-coord" aria-labelledby="floor-coord-heading" hidden></ul>
-
-        {{-- § 5.5's record: this client's own narration, newest first, 200 lines. --}}
-        <h3 id="floor-log-heading">This page's event log</h3>
-        <ol id="floor-log" aria-labelledby="floor-log-heading" hidden></ol>
     </section>
 
     {{-- Native ES modules, no bundler — the lobby's reason (`dashboard.blade.php`). --}}
     <script type="module" src="{{ asset('js/floor/main.js') }}"></script>
-
-    <p><a href="{{ route('dashboard') }}">Back to the lobby</a></p>
 @endsection

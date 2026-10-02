@@ -32,7 +32,7 @@
  * every line from the desk model and this file paints them; row 8's page-side `deskLine()` is gone.
  *
  * ⛔ THE CAMERA IS THE SCREEN's (Appendix B row 15, § 4.5); this file supplies
- * the drawing surface's size, wires the wheel and the drag (through
+ * the drawing surface's size — the drawing element's own box, re-read whenever it changes — wires the wheel and the drag (through
  * `wire/camera-gestures.js`) and the keyboard and the zoom buttons (through `wire/camera-keys.js`),
  * both of which the lobby shares, and the fit-floor control to the screen's camera acts, and sets the drawing's view from the camera
  * each returns — a camera act renders nothing. The drawing is shown at every window size — there is no
@@ -119,9 +119,18 @@ let painter = null;
  */
 const { show, glideTo, current } = cameraView((camera) => painter?.view(camera));
 
-/** The drawing surface: the floor section's width, the viewport's height (the view's stylesheet). */
+/**
+ * The drawing surface: `#floor-drawing`'s own box, as the lobby reads `#lobby-building`'s. Its height is
+ * the page chrome sheet's (`public/css/mezzanine.css`: the room takes the viewport height the chrome above
+ * it leaves, which changes whenever a banner, a statement or a notice is shown), so it is read off the
+ * element and never off the window — a surface the drawing is not is one the camera fits wrongly, and the
+ * painter's `viewBox` then letterboxes the room off every pointer position (card#11045, design review r3
+ * MAJOR-A).
+ */
 function surface() {
-    return { width: root.clientWidth, height: window.innerHeight };
+    const box = el('floor-drawing');
+
+    return { width: box.clientWidth, height: box.clientHeight };
 }
 
 const { client, clock, fetch: pageFetch, requestRender, log } = livePage(() => screen.render());
@@ -224,6 +233,7 @@ function paint(frame) {
     say('floor-feed', `feed: ${strip.feed}`);
     say('floor-connection', `stream: ${strip.connection}`);
     say('floor-resyncs', strip.resyncs);
+    say('floor-fleet-counts', `building: ${strip.totals}`);
     say('floor-last-message', strip.last_message);
     // § 9 F14: the strip's own line when art the room drawing asked for did not load.
     say('floor-art', strip.art);
@@ -356,13 +366,16 @@ el('floor-fit').addEventListener('click', () => {
 
     glideTo(from, to, ms);
 });
-// A resize re-shows the screen's camera at once — stopping a glide in flight, whose every later step
-// would otherwise be computed over the surface it started on — before the render it asks for.
-window.addEventListener('resize', () => {
+// A resize of the DRAWING re-shows the screen's camera at once — stopping a glide in flight, whose every
+// later step would otherwise be computed over the surface it started on — before the render it asks for.
+// The drawing's box, not the window's: the chrome above it grows and shrinks with what the page has to
+// say (a banner, a statement, a notice), and each of those resizes the drawing with no window resize at
+// all (card#11045, design review r3 MAJOR-A).
+new ResizeObserver(() => {
     screen.resize(surface());
     show(screen.camera());
     requestRender();
-});
+}).observe(drawing);
 
 // Back and forward move the seat segment; the screen resolves it on the next render (§ 4.4).
 window.addEventListener('popstate', () => {

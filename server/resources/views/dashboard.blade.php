@@ -32,7 +32,7 @@
         feed status, the resync count and the client's event record below are live, and § 4.1's
         discrepancy check is the protocol's — this page fetches no snapshot of its own.
     --}}
-    <section aria-labelledby="lobby-heading">
+    <section class="lobby" aria-labelledby="lobby-heading">
         <h2 id="lobby-heading">The building</h2>
 
         {{-- § 9 F8: "a full-width banner", above everything else on the page. --}}

@@ -9,7 +9,7 @@
 @extends('layouts.app')
 
 @section('content')
-    <nav aria-label="Admin console">
+    <nav class="console-nav" aria-label="Admin console">
         <ul>
             @foreach (\App\Admin\ConsoleModules::all() as $module)
                 <li>
