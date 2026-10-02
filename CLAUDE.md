@@ -1,4 +1,4 @@
-<!-- BEGIN coord:solo-orientation (synced from coord v0.58.0) -->
+<!-- BEGIN coord:solo-orientation (synced from coord v0.61.0) -->
 # Agent Board Framework — solo agent orientation
 
 > **⚠ Only two sections of this file reach a session automatically: `## Who you are` and
@@ -237,7 +237,8 @@ merge-button intent) using each repo's own conventions. Use it whenever cutting 
   test measures clean on this PR's head merge commit (the `release-pr` skill, § Step C, owns the
   test). Both, not either — the merge is the production approval, the measurement earns the
   review exemption. Use a **merge commit** (`gh pr merge --merge`,
-  **not** `solo-self-merge` — that wrapper squashes; back-merge must preserve topology). Note:
+  **not** `solo-self-merge` — that wrapper is squash-only, so it **refuses** a back-merge sync PR by
+  name; back-merge must preserve topology). Note:
   raw `gh pr merge` is deliberately **not** allow-listed (only `solo-self-merge` is), so this
   **prompts once** in auto-mode — that's expected and fine here, because a human just merged the
   release PR that triggered the back-merge (so a human is present). If the sync PR has conflicts,
@@ -321,7 +322,10 @@ recurring prompt). Specify it **behaviorally**, not as a frozen command. **Each 
 3. **Push WIP — before you dispatch or await any long-running step** (test suite, subagent
    build, CI). Load-bearing for detection: an un-pushed branch is indistinguishable from no
    work; the push precedes the wait, never follows it, so a halt during the wait leaves
-   commits, not silence.
+   commits, not silence. Once a PR is open and under review, this per-cycle rule is superseded
+   for that PR's branch by the round cadence `dispatching-briefs.md § Builder discipline` owns —
+   read it there for when pushing resumes, and for the zero-CI checkpoint that carries this same
+   field lesson (signal before the halt-prone wait) into a review round.
 4. Then await verification / open the PR, and continue to the next unblocked item.
 
 **Bounds — load-bearing. An unbounded self-loop runs away** (opens dozens of PRs, burns
@@ -432,10 +436,11 @@ owned by `dispatching-briefs.md` § `Resuming a terminated builder` [owns: termi
 
 **You stay at spec/review altitude**, and **what the dispatch prompt must carry is owned by
 `dispatching-briefs.md § What a dispatch carries`** (a canonical framework doc, in the plugin's
-`docs/`) — read it there; it is deliberately not restated here. That one section is carved out of
-that doc's "not applicable in solo mode" banner and says so: the rest of the file is `[BRIEF]`-path
-machinery a solo install has no use for, but a subagent dispatch is a subagent dispatch. Your
-merge-authority model above governs the review-and-merge half.
+`docs/`) — read it there; it is deliberately not restated here. And
+`dispatching-briefs.md § Builder discipline` beside it owns push cadence once a PR is open — read
+it there too. Both are carved out of that doc's "not applicable in solo mode" banner and say so: the
+rest of the file is `[BRIEF]`-path machinery a solo install has no use for, but a subagent dispatch
+is a subagent dispatch. Your merge-authority model above governs the review-and-merge half.
 
 ---
 
@@ -551,8 +556,10 @@ up.
 
 1. **Leave your work resumable.** Commit + push in-progress code to its branch (a `wip/…`
    branch if it isn't PR-ready) so nothing lives only in this session's context — uncommitted
-   WIP is lost on restart. Record the branch name + the exact next step in the handoff (step
-   4).
+   WIP is lost on restart. Once a PR is open, the WIP goes to a per-session
+   `wip/<branch>--<stamp>` side ref, never to the PR head —
+   `dispatching-briefs.md § Builder discipline` owns that push. Record the branch (or side ref)
+   name + the exact next step in the handoff (step 4).
 2. **Leave a clean tree.** No stray uncommitted files in any owned repo; verify with `git
    status` for each active repo.
 3. **Surface anything gated.** If you are waiting on a human response (a hard gate, a
@@ -577,7 +584,8 @@ up.
    which line shapes those are, and `--check-region` reports the span resolved on your file; there
    is no closing marker to move). INSIDE the
    region, any line with a status-token (SHA / `vX.Y.Z` / merge-state / `stage:`) must carry
-   `(this cycle)` (a verification act) or a SoT pointer (`see #N` / `→ #N`) — the
+   `(this cycle)` (a verification act) or a repo-qualified SoT pointer (`see owner/repo#N` /
+   `→ owner/repo#N` — `handoff-check.py` does not resolve a bare `#N` it cannot attribute) — the
    `session-end-skip-lint` backstop inspects only in-region lines and WARNs "status-region
    unscanned" if the marker is gone. The skeleton's own header owns the rest of the rule (including
    where not-live material goes); read it there rather than from a list here.
