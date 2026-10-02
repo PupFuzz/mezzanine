@@ -404,6 +404,7 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
         }
 
         $flagged = 0;
+        $asks = [];
 
         foreach ($scene['desks'] as $desk) {
             $seat = $seats[$desk['key']];
@@ -471,10 +472,14 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
                 }
 
                 foreach ($raw as $value) {
-                    if ($this->drawsRaw($e, $value)) {
-                        $defects[] = "{$desk['key']}'s {$e['kind']} draws the raw unrecognised string «{$value}»";
-                    }
+                    $asks[] = [$e['text'], $e['truncated'], $value, "{$desk['key']}'s {$e['kind']} draws the raw unrecognised string «{$value}»"];
                 }
+            }
+        }
+
+        foreach ($this->drawsRaw($asks) as $i => $hit) {
+            if ($hit) {
+                $defects[] = $asks[$i][3];
             }
         }
 
@@ -486,39 +491,34 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
     }
 
     /**
-     * Whether a drawn text carries a raw unrecognised value: its tokens (split on spaces, punctuation
-     * and symbols) as a whole run of the text's — or, for a text drawn CUT, a run of at least one whole
-     * token of the value ending at the cut, the last drawn token a prefix of the value's next. A raw id
-     * cut to fit a chip is still the raw id on the desk.
+     * Whether each drawn text carries its raw unrecognised value — `raw-on-desk.mjs`'s predicate, the ONE
+     * copy (the desk leaf guard imports it too), run once under `node` over every ask: a raw id cut to fit
+     * a chip is still the raw id on the desk.
+     *
+     * @param  list<array{0: string, 1: bool, 2: string}>  $asks  [text, truncated, value, …]
+     * @return list<bool>
      */
-    private function drawsRaw(array $e, string $value): bool
+    private function drawsRaw(array $asks): array
     {
-        $tokens = static fn (string $s): array => array_values(array_filter(preg_split('/[\s\p{P}\p{S}]+/u', $s) ?: [],
-            static fn (string $t): bool => $t !== ''));
-        $raw = $tokens($value);
-        $cut = ($e['truncated'] ?? false) && str_ends_with($e['text'], $this->mark());
-        $drawn = $tokens($cut ? mb_substr($e['text'], 0, -1) : $e['text']);
-        $n = count($drawn);
-
-        for ($i = 0; $i < $n; $i++) {
-            $k = 0;
-
-            while ($k < count($raw) && $i + $k < $n && $drawn[$i + $k] === $raw[$k]) {
-                $k++;
-            }
-
-            if ($k === count($raw)) {
-                return true;
-            }
-
-            $whole = $n - 1 - $i;
-
-            if ($cut && $whole >= 1 && $whole < count($raw) && $k >= $whole && str_starts_with($raw[$whole], $drawn[$n - 1])) {
-                return true;
-            }
+        if ($asks === []) {
+            return [];
         }
 
-        return false;
+        $process = proc_open(['node', __DIR__.'/raw-on-desk.mjs', '--stdin'], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $this->assertTrue(is_resource($process), 'node could not be started');
+        fwrite($pipes[0], (string) json_encode(array_map(static fn (array $a): array => [$a[0], $a[1], $a[2]], $asks)));
+        fclose($pipes[0]);
+        $stdout = (string) stream_get_contents($pipes[1]);
+        $stderr = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $this->assertSame(0, proc_close($process), "raw-on-desk.mjs failed:\n".$stderr);
+
+        $hits = json_decode($stdout, true);
+        $this->assertIsArray($hits);
+        $this->assertCount(count($asks), $hits);
+
+        return $hits;
     }
 
     /** (f) on the crowded map: the line, both desks drawn, the later `id` on top, each in its slot. */

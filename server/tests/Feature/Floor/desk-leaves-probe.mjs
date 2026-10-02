@@ -8,9 +8,18 @@
  *
  *  (i)  EVERY LEAF THE DESK DREW BEFORE card#11058 IS CARRIED BY THE DRILL-DOWN AND BY THE LIST. The
  *       leaves are the committed baseline `desk-leaves/fx-desk-leaves-before-11058.json` — written by this
- *       file's `--snapshot` mode over the real `deskLayout()` at commit 95243c9, before B1 changed it
- *       (`git show 95243c9:server/tests/Feature/Floor/desk-leaves-probe.mjs`; that mode is not kept here
- *       because the layout it read no longer exists, so the record is never regenerated). Each baseline desk
+ *       file's `--snapshot` mode over the real `deskLayout()` of `dev` at 0105953, before B1 changed it.
+ *       That mode is not kept here: the layout it read no longer exists, so the record is never regenerated
+ *       in place. RECOVERING IT, against durable anchors — 0105953 is on `dev`; the walker is the first
+ *       commit of PR #268 (95243c9), which the squash merge orphans and GitHub keeps on the PR's own ref:
+ *           git fetch origin pull/268/head
+ *           git worktree add --detach /tmp/before 0105953
+ *           cd /tmp/before/server/tests/Feature/Floor && mkdir -p desk-leaves
+ *           git show 95243c9:server/tests/Feature/Floor/desk-leaves-probe.mjs > desk-leaves-probe.mjs
+ *           git show 95243c9:server/tests/Feature/Floor/desk-leaves/fx-desk-leaves-planted.json > desk-leaves/fx-desk-leaves-planted.json
+ *           node desk-leaves-probe.mjs --snapshot /tmp/baseline.json --commit 0105953589d4eb734a318c9cd3c39c31a912f5bd
+ *       — the planted seats of THAT commit (70; the file here has grown since), and the output is the
+ *       committed baseline byte for byte (run and compared with `cmp` on 2026-10-02). Each baseline desk
  *       is replayed from its own recorded seat and variant through the CURRENT `deskModel()`; the panel is
  *       read AS RENDERED — the real `renderDrillDown()` into a fake root holding exactly the
  *       `data-panel-*` slots `floor.blade.php` declares, `hidden` honoured on every slot and every row
@@ -36,6 +45,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { drawsRaw } from './raw-on-desk.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SERVER = join(HERE, '..', '..', '..');
@@ -278,7 +288,8 @@ function adapt(desk) {
                 add('monitor.lit', e.lit);
                 break;
             case 'badge':
-                add('badge', e.badge);
+                // The id is the value; the text as drawn rides along for the cut check below.
+                out.push(['badge', String(e.badge), e.text]);
                 break;
             case 'gauge-bar':
                 add('gauge-bar', e.pct);
@@ -310,6 +321,18 @@ function adapt(desk) {
 /** A value drawn cut (ends with the mark) is the expected value it is a prefix of. */
 const cutOf = (drawn, value) => drawn === value || (drawn.endsWith('…') && drawn.length > 1 && value.startsWith(drawn.slice(0, -1)));
 
+/**
+ * The width design § 2.2 gives each text kind at this box, derived from the box and the art column
+ * (216 + 4) — the guard's own reading of the table, not the layout's constants. A text drawn CUT whose
+ * whole value measures within this width was cut for nothing, and is a finding (a cut is owed only to a
+ * value that does not fit).
+ */
+const FACTS_W = BOX.width - (216 + 4);
+const TEXT_W = {
+    nameplate: 148, 'monitor-text': 56, chip: 160 - 12, badge: 108 - 6, label: FACTS_W, currency: FACTS_W, lag: FACTS_W,
+    'gauge-pct': 60, flag: FACTS_W, 'stool-more': FACTS_W, 'quiet-age': FACTS_W, bubble: BOX.width - 6, 'bubble.second': BOX.width - 6,
+};
+
 function ruleTwo(where, m, v, desk) {
     const expected = [];
 
@@ -331,8 +354,15 @@ function ruleTwo(where, m, v, desk) {
 
         if (i < 0) {
             finding({ rule: 'ii-missing', kind, value, where, ruling: RULING[kind] });
-        } else {
-            used[i] = true;
+            continue;
+        }
+
+        used[i] = true;
+
+        const drawn = actual[i][2] ?? actual[i][1];
+
+        if (drawn !== value && drawn.endsWith('…') && TEXT_W[kind] !== undefined && measure(value).w <= TEXT_W[kind]) {
+            finding({ rule: 'ii-cut-fits', kind, value, where, drawn, ruling: RULING[kind] });
         }
     }
 
@@ -342,28 +372,10 @@ function ruleTwo(where, m, v, desk) {
         }
     });
 
-    // Q0 (criterion 10): no element derived from the model's state or badges carries, as a WHOLE TOKEN
-    // run, any raw value of the model's `unrecognised` list. The nameplate and the bubble are outside it.
-    // A text drawn CUT carries the value too when a run of at least one whole token of it ends at the cut,
-    // the last drawn token a prefix of the value's next: a raw id cut to fit a chip is still the raw id.
-    const tokens = (s) => s.split(/[\s\p{P}\p{S}]+/u).filter((t) => t !== '');
-    const raws = m.unrecognised.map((u) => tokens(u.slice(u.indexOf(': ') + 2))).filter((t) => t.length > 0);
-    const carries = (e, raw) => {
-        const cut = e.truncated === true && e.text.endsWith('…');
-        const t = tokens(cut ? e.text.slice(0, -1) : e.text);
-
-        return t.some((_, i) => {
-            let k = 0;
-
-            while (k < raw.length && i + k < t.length && t[i + k] === raw[k]) {
-                k++;
-            }
-
-            const whole = t.length - 1 - i;
-
-            return k === raw.length || (cut && whole >= 1 && whole < raw.length && k >= whole && raw[whole].startsWith(t[t.length - 1]));
-        });
-    };
+    // Q0 (criterion 10): no element derived from the model's state or badges carries a raw value of the
+    // model's `unrecognised` list — `raw-on-desk.mjs`'s predicate, the one copy, cut texts included. The
+    // nameplate and the bubble are outside it.
+    const raws = m.unrecognised.map((u) => u.slice(u.indexOf(': ') + 2));
 
     for (const e of desk.elements) {
         if (!['chip', 'label', 'currency', 'monitor-text', 'badge', 'flag'].includes(e.kind) || typeof e.text !== 'string') {
@@ -371,8 +383,8 @@ function ruleTwo(where, m, v, desk) {
         }
 
         for (const raw of raws) {
-            if (carries(e, raw)) {
-                finding({ rule: 'no-raw', kind: e.kind, value: e.text, where, raw: raw.join(' '), ruling: 'Q0 (a) — no raw unrecognised string on the desk' });
+            if (drawsRaw(e.text, e.truncated, raw)) {
+                finding({ rule: 'no-raw', kind: e.kind, value: e.text, where, raw, ruling: 'Q0 (a) — no raw unrecognised string on the desk' });
             }
         }
     }

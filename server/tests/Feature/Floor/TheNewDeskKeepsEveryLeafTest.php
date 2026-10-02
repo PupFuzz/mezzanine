@@ -263,13 +263,58 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
             'const known = desk.badges.filter((id) => !unknown.has(id));', 'const known = desk.badges;']);
 
-        $this->assertNotSame([], array_filter($this->probeRun([$dir])['results'][0]['findings'], fn ($f) => $f['rule'] === 'no-raw'),
-            'CONTROL (unrecognised badges re-admitted to the row) did not red Q0');
+        $noRaw = array_filter($this->probeRun([$dir])['results'][0]['findings'], fn ($f) => $f['rule'] === 'no-raw');
+
+        $this->assertNotSame([], $noRaw, 'CONTROL (unrecognised badges re-admitted to the row) did not red Q0');
+
+        // A 64-character single-token id is drawn CUT in a chip: still the raw id on the desk
+        // (`raw-on-desk.mjs`, review r1 m1). The planted seat carries one.
+        $this->assertNotSame([], array_filter($noRaw, fn ($f) => str_contains($f['where'], 'plant-unrec-badge-single-token')),
+            'CONTROL (a cut single-token raw id in the row) did not red Q0');
 
         // The nameplate is outside the predicate: `plant-dreaming`'s name carries its raw state's word,
         // and the green above holds it — so the seat must be in the population.
         $this->assertNotSame([], $this->baselineDesksWith(fn (array $l): bool => $l[0] === 'nameplate' && $l[2] === 'plant-dreaming'),
             'the plant-dreaming seat is not in the population — the nameplate exclusion is untested');
+    }
+
+    /**
+     * Rule (ii) accepts a text drawn cut only when its whole value does not fit the width design § 2.2
+     * gives it (review r1 m2): a nameplate cut at 30 px fits whole in 148 and reds.
+     */
+    public function test_ii_a_text_is_drawn_cut_only_when_its_whole_value_does_not_fit(): void
+    {
+        $dir = $this->mutatedModules(['../floor/desk-layout.js', 'const PLATE_TEXT_W = 148;', 'const PLATE_TEXT_W = 30;']);
+
+        $this->assertNotSame([], array_filter($this->probeRun([$dir])['results'][0]['findings'], fn ($f) => $f['rule'] === 'ii-cut-fits' && $f['kind'] === 'nameplate'),
+            'CONTROL (the nameplate cut though it fits) did not red');
+    }
+
+    /**
+     * The PAINTER puts every text and rect of a desk inside that desk's box (`painter-probe.mjs`, review
+     * r1 m3) — the class of a desk-local offset painted as an absolute one.
+     */
+    public function test_the_painter_draws_every_text_and_rect_inside_its_desks_box(): void
+    {
+        $shipped = $this->painterRun();
+
+        $this->assertGreaterThan(0, $shipped['painted'], 'the painter probe read no painted node');
+        $this->assertSame([], $shipped['defects']);
+
+        $dir = $this->mutatedModules(['../floor/painter.js', 'x: e.x + e.text_dx, id', 'x: e.text_dx, id']);
+
+        $this->assertNotSame([], $this->painterRun(dirname($dir))['defects'], 'CONTROL (the badge text drawn at its desk-local offset) did not red');
+    }
+
+    /** @return array{desks: int, painted: int, defects: list<string>} */
+    private function painterRun(?string $jsRoot = null): array
+    {
+        $out = shell_exec('node '.escapeshellarg(__DIR__.'/painter-probe.mjs').($jsRoot === null ? '' : ' --js '.escapeshellarg($jsRoot)).' 2>&1');
+        $decoded = json_decode((string) $out, true);
+
+        $this->assertIsArray($decoded, "the painter probe printed something that is not JSON:\n".substr((string) $out, 0, 500));
+
+        return $decoded;
     }
 
     // ── 11. The panel holds without `detail`; PR-A's slots exist ───────────────────────────────

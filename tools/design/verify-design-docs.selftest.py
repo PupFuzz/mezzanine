@@ -563,18 +563,22 @@ PLANTS = [
         "section 11's fixture table declares no such fixture",
     ),
     (
-        # PupFuzz/mezzanine#164 round 2, the MAJOR.  AT-D3-11 names no fixture, so the harness is in
+        # PupFuzz/mezzanine#164 round 2, the MAJOR (first pinned on AT-D3-11).  The test names no fixture, so the harness is in
         # its class only by its own mention of it: swap that mention for a gate and no recognizer
         # sees a harness test any more.  Against the round-1 verifier, which let any instrument
         # cover a non-harness test, this mutant ran at rc 0 -- measured on d62f212.  It reds only
-        # because the Appendix B row that builds the gate does not gate AT-D3-11, so the substring
+        # because the Appendix B row that builds the gate does not gate the test, so the substring
         # is that anchoring's message and the verdict depends on the anchoring alone.
         "verify-floor.py",
         "docs/design/FLOOR.md",
-        r"(### AT-D3-11 [^\n]*\n\n- \*\*Build:\*\*(?:(?!\n- \*\*)[\s\S])*?\*\*Reads:\*\*)"
+        # RE-PINNED to AT-D3-16 at card#11058 (PR #268 r1): AT-D3-11 split into a desk-model and a scene
+        # half, and its scene half names the harness too, so a swap in one half reds on G5's stronger
+        # harness rule before this one. AT-D3-16 is the one test left of the shape this plant needs: one
+        # Build bullet, no fixture, the harness named once, in its Reads.
+        r"(### AT-D3-16 [^\n]*\n(?:(?!\n- \*\*)[\s\S])*?\n- \*\*Build:\*\*(?:(?!\n- \*\*)[\s\S])*?\*\*Reads:\*\*)"
         r"( \*\*the harness\*\*,)( the)",
         "instrument",
-        "the harness in AT-D3-11, a test that names no fixture, swapped for an Appendix B gate, which "
+        "the harness in AT-D3-16, a test that names no fixture, swapped for an Appendix B gate, which "
         "G5 must refuse because the row that builds the gate does not gate the test (#164 round 2)",
         "an instrument covers only a test that the Appendix B row building it also gates",
     ),
