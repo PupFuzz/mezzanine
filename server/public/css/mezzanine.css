@@ -52,13 +52,33 @@
     --warn: #f0b455;
     --alarm: #d97b6c;
 
-    /* The floor's elevator, as the lobby's cab draws it — copies, held equal by a test (above). */
+    /* The floor's elevator, as the lobby's cab draws it — copies, held equal by a test (above) — in its frame. */
     --door: #dbe5ee;
     --door-edge: #9fb1c4;
+    --door-frame: #2b3340;
+    --door-header: #3a4556;
+
+    /* The floor's frame (card#11045 PR-D): the back wall in the house palette, its skirting and the slab
+       under the rooms, the windows' frames and sills. One house for every floor — a re-key recolours nothing. */
+    --house-wall: #2a454f;
+    --house-wall-2: #35565f;
+    --house-trim: #1f3540;
+    --window-frame: #f0e6d6;
+
+    /* Each room's plane, by its seeded theme (`floor/scene.js`'s `roomTheme()`, § 10.4): top and bottom of
+       the plane's shade. Each keeps the scene's ink at least as legible as oak, the default
+       (`Tests\Feature\Floor\TheFloorDrawsItsFrameTest`). */
+    --room-oak: #b98d5f;
+    --room-oak-2: #9e744a;
+    --room-walnut: #bc8d70;
+    --room-walnut-2: #a2765b;
+    --room-sage: #a3ad88;
+    --room-sage-2: #89946f;
+    --room-slate: #9ba4ae;
+    --room-slate-2: #828c97;
 
     /* The room drawing's palette — `public/js/floor/painter.js`'s classes read these. */
     --scene-ink: #3b2f2a;
-    --scene-wall: #f3e6d4;
     --scene-glass: #cfe6f5;
     --scene-trim: #8a6f5a;
     --scene-clock-face: #fffaf2;

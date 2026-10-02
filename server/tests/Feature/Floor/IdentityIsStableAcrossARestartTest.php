@@ -410,17 +410,4 @@ class IdentityIsStableAcrossARestartTest extends TestCase
 
         return $taker;
     }
-
-    /** § 3.2's published hash, for the one expectation this file computes rather than reads. */
-    private function fnv1a32(string $key): int
-    {
-        $h = 2166136261;
-
-        foreach (str_split($key) as $char) {
-            $h ^= ord($char);
-            $h = ($h * 16777619) & 0xFFFFFFFF;
-        }
-
-        return $h;
-    }
 }

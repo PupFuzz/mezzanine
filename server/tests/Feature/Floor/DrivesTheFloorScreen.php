@@ -236,6 +236,23 @@ trait DrivesTheFloorScreen
         ];
     }
 
+    /**
+     * § 3.2's published hash, FNV-1a-32 over a string's bytes — the oracle for every expectation these
+     * tests compute rather than read: a seat's slot, and a room's plane theme (card#11045). Hoisted here
+     * at its second caller; the shipped one is `floor/floor-layout.js`'s `fnv1a32()`.
+     */
+    protected function fnv1a32(string $key): int
+    {
+        $h = 2166136261;
+
+        foreach (str_split($key) as $char) {
+            $h ^= ord($char);
+            $h = ($h * 16777619) & 0xFFFFFFFF;
+        }
+
+        return $h;
+    }
+
     /** The shipped default map's own `desks` objects — § 10.3's `S`, measured from the file. */
     protected function shippedDefaultSlots(): int
     {
