@@ -46,7 +46,8 @@ import { BADGES } from '../wire/member-sets.js';
 import { isRenderState } from '../lobby/render-state.js';
 import { taskFacts } from '../wire/task.js';
 import { LABEL, deskModel, wasLabel } from '../desk/desk-render.js';
-import { STOOL_CAP } from '../floor/desk-layout.js';
+import { MONITOR, MOVING, STILL, SUBAGENT_CALL, UNCONFIRMED } from '../desk/desk-list.js';
+import { OPEN_CALLS, STOOL_CAP } from '../floor/desk-layout.js';
 
 /**
  * § 4.3's `task` members are decided by the ONE implementation of that member's rules —
@@ -226,7 +227,9 @@ function asOf(stamp) {
  *                  block's `server_time` (§ 2.4's stamp rule), defaulting to the response's own;
  *                  `{ floor }` — the room the header names; `{ detail_failure, timeline_failure }` —
  *                  § 9 F11 / F10, `{ status }` of the request that failed; `{ detail_pending }` — the
- *                  detail request is still out; `{ missing }` — § 2.3 row 5
+ *                  detail request is still out; `{ missing }` — § 2.3 row 5; `{ stilled }` — § 9 F6's
+ *                  stilled floor, and `{ reduce }` — § 6.4's reduced motion: with the seat's own
+ *                  members, the facts that decide whether its desk is drawn moving
  */
 export function drillDownModel(seat, timeline, options = {}) {
     const now = options.now_ms;
@@ -245,12 +248,14 @@ export function drillDownModel(seat, timeline, options = {}) {
     const missingDetail = options.detail_pending === true && !detailFailed ? WAITING : UNAVAILABLE;
     const skew = skewNote(seat?.delivery?.clock_skew_ms ?? null);
     const sc = (wireTime) => withSkew(seatClock(wireTime ?? null), skew);
+    const desk = deskOf(seat, nowMs, stamps, options);
 
     return {
         // § 3.1: `(install_id, seat_id)` is the identity and the whole of it. Never null.
         seat: { seat_id: seat?.seat_id ?? null, install_id: seat?.install_id ?? null },
         render_state: member(seat?.render_state),
-        header: header(seat, nowMs, stamps, options, skew),
+        header: header(seat, desk, options, skew),
+        desk: deskBlock(desk),
         ages_available: ages,
         // § 9's rule for every failure path: the viewer SEES it. A panel that quietly dropped
         // every age because one response arrived without a server clock would look like a seat
@@ -282,18 +287,9 @@ export function drillDownModel(seat, timeline, options = {}) {
  * only, under *when it went dark*" (§ 7.3's `stale` / `offline` row), so there the header carries the
  * *was:* form the desk does not draw — through the desk's own `wasLabel`, § 7.6's one form.
  */
-function header(seat, nowMs, stamps, options, skew) {
-    if (seat === null || seat === undefined || typeof seat.render_state !== 'string') {
-        return { seat_id: seat?.seat_id ?? null, floor: options.floor ?? null, line: null, currency: null };
-    }
-
-    const desk = deskModel(seat, deskAgeReadout(seat, nowMs), {
-        missing: options.missing === true,
-        derivation_stamp: stamps.derivation,
-    });
-
+function header(seat, desk, options, skew) {
     if (desk === null) {
-        return { seat_id: seat.seat_id, floor: options.floor ?? null, line: null, currency: null };
+        return { seat_id: seat?.seat_id ?? null, floor: options.floor ?? null, line: null, currency: null };
     }
 
     const dark = seat.render_state === 'stale' || seat.render_state === 'offline';
@@ -308,7 +304,59 @@ function header(seat, nowMs, stamps, options, skew) {
         line: seat.render_state === 'blocked' ? withSkew(desk.label_line, skew) : desk.label_line,
         // `wasLabel` draws the parenthetical exactly when `activity.last_event_time` is non-null.
         currency: currency !== null && (seat.activity?.last_event_time ?? null) !== null ? withSkew(currency, skew) : currency,
-        unconfirmed: desk.unconfirmed,
+    };
+}
+
+/**
+ * The ONE desk model behind this panel — `desk/desk-render.js`'s `deskModel()`, over the same seat and
+ * the same facts the floor draws its desk from — or `null` for a seat with no desk (`retired`) or no
+ * `render_state` to draw one by.
+ */
+function deskOf(seat, nowMs, stamps, options) {
+    if (seat === null || seat === undefined || typeof seat.render_state !== 'string') {
+        return null;
+    }
+
+    return deskModel(seat, deskAgeReadout(seat, nowMs), {
+        missing: options.missing === true,
+        derivation_stamp: stamps.derivation,
+        stilled: options.stilled === true,
+    }, { reduce: options.reduce === true });
+}
+
+/**
+ * What the DESK draws that no other block of this panel carries — the facts the floor's desk gives up
+ * as it narrows to its glance set (operator ruling 2026-10-02, card#11058: "the details are guaranteed
+ * in the drill-down panel and the desk list"). Every member is the desk model's own, read from the seat
+ * object and the client protocol alone, so a panel whose `detail` request failed (§ 9 F11) still draws
+ * every one of them.
+ *
+ * ⛔ THE WORDS ARE THE LIST VIEW's, IMPORTED: *monitor*, *a subagent's call*, *unconfirmed*, *moving* /
+ * *still* (`desk/desk-list.js`) and *N open calls* (`floor/desk-layout.js`). One fact, one wording on
+ * every render that carries it.
+ */
+function deskBlock(desk) {
+    if (desk === null) {
+        return { render: [], monitor: null, subagent_call: null, note: null, open_calls: null, unrecognised_heading: null, unrecognised: [] };
+    }
+
+    return {
+        // § 7.1's Desk column as the desk draws it: the glyph, the pose, the lighting, whether the
+        // held render moves (§ 6.2's `motion`, which a lag, `config_invalid`, an unrecognised value, a
+        // stilled floor and reduced motion all stop), and § 2.3 row 5's unconfirmed seat.
+        render: [desk.glyph, desk.pose, desk.lighting, desk.held?.motion === true ? MOVING : STILL, desk.unconfirmed ? UNCONFIRMED : null],
+        // § 5.1's monitor: its light, and the *this is a subagent's call* marker. Its TEXT is the
+        // current action's descriptor or the label line, both already on this panel.
+        monitor: `${MONITOR} ${desk.monitor.lit}`,
+        subagent_call: desk.monitor.subagent_call ? SUBAGENT_CALL : null,
+        // § 7.3's `config_invalid` row: *sending nothing*.
+        note: desk.config_note,
+        // § 5.1: "`0` renders nothing rather than a zero" — the count appears past one.
+        open_calls: desk.open_calls === null ? null : OPEN_CALLS(desk.open_calls),
+        // § 5.4 / § 9 F9: every value outside its published set, raw, one `field: value` line each,
+        // under the one word that says what they are — and no heading over an empty list.
+        unrecognised_heading: desk.unrecognised.length === 0 ? null : UNRECOGNISED,
+        unrecognised: [...desk.unrecognised],
     };
 }
 
@@ -680,7 +728,9 @@ function badgeBlock(seat, detailFailed, missingDetail) {
 
     const rows = badges.map((badge) => {
         if (!BADGES.has(badge) || !Object.hasOwn(BADGE_LINE, badge)) {
-            return { badge: String(badge), recognised: false, origin: null, line: `${badge} (${UNRECOGNISED})`, counters: null, since_reporter_start: null };
+            // The raw id is drawn as the row's own text ahead of its line (card#11058), so the line
+            // is the marker alone.
+            return { badge: String(badge), recognised: false, origin: null, line: UNRECOGNISED, counters: null, since_reporter_start: null };
         }
 
         const { origin, line } = BADGE_LINE[badge];

@@ -77,6 +77,15 @@ export function renderDrillDown(root, model) {
     put(root, '[data-panel-currency]', model.header.currency);
     put(root, '[data-panel-clock]', model.no_clock_statement);
 
+    // What the desk draws, carried here too (card#11058) — every one from the seat object, so each is
+    // drawn whether or not the detail request answered (§ 9 F11).
+    const desk = model.desk;
+
+    put(root, '[data-panel-desk]', joined(desk.render));
+    put(root, '[data-panel-note]', desk.note);
+    put(root, '[data-panel-unrecognised-heading]', desk.unrecognised_heading);
+    putRows(root, '[data-panel-unrecognised]', desk.unrecognised.map((line) => ({ text: line })));
+
     const task = model.task;
 
     put(root, '[data-panel-task]', task.present ? task.title : task.statement);
@@ -91,6 +100,8 @@ export function renderDrillDown(root, model) {
     put(root, '[data-panel-action-started]', action.present ? action.started_at : null);
     put(root, '[data-panel-action-elapsed]', action.present ? action.elapsed : null);
     put(root, '[data-panel-action-scope]', action.present ? action.agent_scope : null);
+    put(root, '[data-panel-open-calls]', desk.open_calls);
+    put(root, '[data-panel-monitor]', joined([desk.monitor, desk.subagent_call]));
 
     put(root, '[data-panel-last-kind]', joined([model.quiet_age.last_kind, model.quiet_age.last_event_time]));
 
@@ -168,7 +179,9 @@ export function renderDrillDown(root, model) {
     put(root, '[data-panel-badges-since]', badges.since);
     putRows(root, '[data-panel-badges]', badges.rows.map((badge) => ({
         data: { badge: badge.badge, recognised: badge.recognised },
+        // The badge's id is the row's own visible text, ahead of its line (card#11058).
         text: joined([
+            badge.badge,
             badge.line,
             Array.isArray(badge.counters) ? badge.counters.map((c) => `${c.name}: ${c.value}`).join(', ') : badge.counters,
             badge.since_reporter_start,
