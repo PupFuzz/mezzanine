@@ -27,6 +27,26 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11045** — **The shipped default floor map is a six-desk office that reads at fit in a laptop
+  window.** Operator rulings of 2026-10-01. Every room with no authored map now renders two rows of three
+  desks on a plank floor, with a narrow strip of scenery at each side — a bookcase and two plants on the
+  left, a floor lamp, a plant and a bin on the right — and a rug between the rows; there is no conference
+  room or lounge, and a desk slot no seat holds is plain floor. The map paints no wall of its own, so the
+  floor's tall back wall is the room's only wall. At 1,280 × 800 the floor page fits the whole room at
+  0.81 and draws the desks' 10 px text at 8.1 px, where the twelve-desk default drew it at 4.2 px. The
+  default now declares 6 desk slots instead of 12: a seventh seat in an unauthored room sits on the
+  overflow bench under the *floor map is short N desks* notice until an operator authors a bigger map in
+  the console, and a fifth seat in a four-seat room is more likely to land on a held slot and move one
+  desk. A lamp's glow is drawn inside the lamp's own tile, at its head, instead of twice its size around
+  its foot, so a lamp at a room's edge no longer glows below the floor. The default's grid is 1,576 × 544
+  px (it was 3,024 × 496): on a planned floor, a room placed 496 to 543 px below an unauthored room and
+  within its width overlaps it after the upgrade, the floor names both under its overlap notice, and one
+  layout save that moves a room clears it. FLOOR.md § 3.2, § 3.3, § 4.6, § 6.3, § 10.3, § 12 and
+  AT-D3-3 record it; `tools/design/verify-floor.py` G8,
+  `Tests\Feature\Floor\IdentityIsStableAcrossARestartTest`, the new page-surface run of
+  `TheCameraMovesTheViewerAndNeverTheFleetTest`, the glow check in `TheSceneDrawsOnlyWhatTheSetLoggedTest`
+  and the page-surface check in `tools/design/floor-chrome.browser.mjs` each fail on the previous state.
+
 - **card#11045** — **The floor's room now stands in an office: a tall back wall with a two-door elevator, a
   clock and wide windows, and each room on its own toned floor.** Operator rulings of 2026-10-01. The back
   wall over the floor is taller (160 px of the scene, about 2.2 m at the floor's scale) and holds, at its

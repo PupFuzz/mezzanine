@@ -2428,7 +2428,7 @@
       }
     },
     "scene_crowded": {
-      "note": "AT-D3-20 (f): the crowded map — the slots of `aimla-review` (slot 2) and `aimla-impl-2` (slot 3) overlap: object 4 is drawn 100 px right of object 3.",
+      "note": "AT-D3-20 (f): the crowded map — the slots of `aimla-impl-2` (slot 2) and `aimla-impl-1` (slot 3) overlap (§ 3.2 over this stub map's own objects, not the shipped default's): object 4 is drawn 100 px right of object 3.",
       "http": {
         "/api/fleet/snapshot": [
           {

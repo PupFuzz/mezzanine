@@ -148,7 +148,7 @@ class IdentityIsStableAcrossARestartTest extends TestCase
 
     /**
      * GREEN — TWO ARRIVALS IN ONE RENDER (§ 14 item 27). `fx-collision`'s `two_arrivals` run inserts
-     * § 3.3's colliding `aimla-impl-4` and the free-slotted `aimla-win-1` in one turn, both released
+     * § 3.3's colliding `aimla-impl-4` and the free-slotted `aimla-win-5` in one turn, both released
      * by one discovery snapshot. `aimla-pm` is displaced once, so the log carries exactly one A16
      * row, and § 11 names its cause: the arrival that now holds `aimla-pm`'s former slot.
      *
@@ -157,7 +157,7 @@ class IdentityIsStableAcrossARestartTest extends TestCase
      *
      * ⚠ THE PAIR ALSO SEPARATES THE RULE FROM THE ONE IT REPLACED, and that is asserted rather than
      * assumed. The slot's taker, `aimla-impl-4`, is NOT the arrival that sorts lowest in § 3.2's
-     * `order` (`aimla-win-1` hashes lower). So the old rule, which always named the lowest-order
+     * `order` (`aimla-win-5` hashes lower). So the old rule, which always named the lowest-order
      * arrival, names a seat that displaced nobody, and fails here.
      */
     public function test_green_two_arrivals_in_one_render_record_the_arrival_that_took_the_slot(): void
@@ -274,8 +274,10 @@ class IdentityIsStableAcrossARestartTest extends TestCase
     /**
      * ⛔ SECOND RED — SLOTS BY SORTED `seat_id` POSITION. § 3.2 rejects it by name: provisioning one
      * seat shifts EVERY later desk by one, so an operator's spatial memory of the office is undone
-     * by an arrival. `aimla-alpha` sorts below every seat the snapshot carries, so under the plant
-     * every desk on the floor moves.
+     * by an arrival. `aimla-beta` sorts below every seat the snapshot carries, so under the plant
+     * every desk on the floor moves — and it hashes to a free slot (`fx-collision`'s note), so the
+     * shipped function over the same arrival moves none, which is what makes the plant's move the
+     * sort's and not the arrival's.
      */
     public function test_red_slots_by_sorted_seat_id_shift_every_desk_on_an_arrival(): void
     {
@@ -310,7 +312,7 @@ class IdentityIsStableAcrossARestartTest extends TestCase
 
     /**
      * ⛔ THIRD RED — THE OLD RULE: ALWAYS THE LOWEST-ORDER ARRIVAL. In the two-arrival run that names
-     * `aimla-win-1`, which displaced nobody.
+     * `aimla-win-5`, which displaced nobody.
      */
     public function test_red_the_lowest_order_arrival_as_every_cause_names_a_seat_that_displaced_nobody(): void
     {

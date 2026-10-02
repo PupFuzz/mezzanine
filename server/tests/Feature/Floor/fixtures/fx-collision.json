@@ -1,5 +1,5 @@
 {
-  "note": "docs/design/FLOOR.md \u00a7 11's `fx-collision`: fx-snapshot-4, then a delta for a seat the client does not hold. `collision` delivers \u00a7 3.3's worked `aimla-impl-4` (h mod 12 = 0, which `aimla-pm` holds and sorts above), so slot 0 changes hands and one desk moves; `no_collision` delivers AT-D3-3's `aimla-win-1` (h mod 12 = 9, free) instead, so nothing moves at all. Both hashes are re-derived from \u00a7 3.2's own published function by the test rather than asserted here. `two_arrivals` inserts both of those seats in ONE render (card#7341 step 8, FLOOR.md \u00a7 14 item 27): a heartbeat's `seats_total` of 6 starts a discovery snapshot, both seats' deltas arrive while it is in flight, their insert fetches fail so their buffers wait for the discovery's release, and the discovery inserts both and releases both deltas in one turn. `aimla-pm` is displaced once, and A16's cause is the arrival that took its former slot. `cascade` delivers `aimla-impl-5` (h mod 12 = 11, a free slot) in one render and then `aimla-win-3` (h mod 12 = 11, lower h) in a later one: `aimla-win-3` takes slot 11, `aimla-impl-5` probes to `aimla-pm`'s slot, and `aimla-pm` moves on, so `aimla-pm`'s former slot is held by a seat that is not an arrival. Every hash and slot is re-derived by the test, not asserted here.",
+  "note": "docs/design/FLOOR.md \u00a7 11's `fx-collision`: fx-snapshot-4, then a delta for a seat the client does not hold. `collision` delivers \u00a7 3.3's worked `aimla-impl-4` (h mod 6 = 0, which `aimla-pm` holds and sorts above), so slot 0 changes hands, `aimla-pm` probes past the three held slots to slot 4, and one desk moves; `no_collision` delivers AT-D3-3's `aimla-win-5` (h mod 6 = 5, free) instead, so nothing moves at all. `two_arrivals` inserts both of those seats in ONE render (card#7341 step 8, FLOOR.md \u00a7 14 item 27): a heartbeat's `seats_total` of 6 starts a discovery snapshot, both seats' deltas arrive while it is in flight, their insert fetches fail so their buffers wait for the discovery's release, and the discovery inserts both and releases both deltas in one turn. `aimla-pm` is displaced once, and A16's cause is the arrival that took its former slot, `aimla-impl-4` \u2014 never `aimla-win-5`, which sorts lower in \u00a7 3.2's `order` and displaced nobody. `alpha_arrival` delivers `aimla-beta`, which sorts below every seat the snapshot carries by `seat_id` and hashes to a free slot (h mod 6 = 5), so the shipped function moves no desk while slots by sorted position move every one. `cascade` delivers `aimla-impl-5` (h mod 6 = 5, a free slot) in one render and then `aimla-win-3` (h mod 6 = 5, lower h) in a later one: `aimla-win-3` takes slot 5, `aimla-impl-5` probes on into `aimla-pm`'s slot 0, and `aimla-pm` moves on to slot 4, so `aimla-pm`'s former slot is held by a seat that is not an arrival. The arriving seats were re-chosen when the shipped default went from twelve desks to six (card#11045): at six, `aimla-win-1` and `aimla-alpha` land on held slots and would move a desk. Every hash and slot is re-derived by the test from \u00a7 3.2's published function, not asserted here.",
   "snapshot": {
     "api_version": 1,
     "server_time": "2026-08-23T14:23:14.400Z",
@@ -693,7 +693,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -1275,72 +1275,6 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 510,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
                         "y": 200,
                         "width": 80,
                         "height": 48
@@ -1829,7 +1763,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -2414,72 +2348,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -2488,14 +2356,14 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-win-1": [
+        "/api/fleet/seats/aimla/aimla-win-5": [
           {
             "status": 200,
             "body": {
               "api_version": 1,
               "server_time": "2026-08-23T14:23:20.500Z",
               "install_id": "aimla",
-              "seat_id": "aimla-win-1",
+              "seat_id": "aimla-win-5",
               "state_version": 48400,
               "render_state": "idle",
               "link_state": "live",
@@ -2577,7 +2445,7 @@
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
-            "seat_id": "aimla-win-1",
+            "seat_id": "aimla-win-5",
             "state_version": 48401,
             "at": "2026-08-23T14:23:20.400Z",
             "changed": [
@@ -2965,7 +2833,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -3547,72 +3415,6 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 510,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
                         "y": 200,
                         "width": 80,
                         "height": 48
@@ -4020,7 +3822,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -4605,72 +4407,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -4679,14 +4415,14 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-alpha": [
+        "/api/fleet/seats/aimla/aimla-beta": [
           {
             "status": 200,
             "body": {
               "api_version": 1,
               "server_time": "2026-08-23T14:23:20.500Z",
               "install_id": "aimla",
-              "seat_id": "aimla-alpha",
+              "seat_id": "aimla-beta",
               "state_version": 48500,
               "render_state": "idle",
               "link_state": "live",
@@ -4768,7 +4504,7 @@
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
-            "seat_id": "aimla-alpha",
+            "seat_id": "aimla-beta",
             "state_version": 48501,
             "at": "2026-08-23T14:23:20.400Z",
             "changed": [
@@ -5533,7 +5269,7 @@
                     },
                     {
                       "install_id": "aimla",
-                      "seat_id": "aimla-win-1",
+                      "seat_id": "aimla-win-5",
                       "state_version": 48400,
                       "render_state": "idle",
                       "link_state": "live",
@@ -5632,7 +5368,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -6217,72 +5953,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -6302,7 +5972,7 @@
             "delay_ms": 100
           }
         ],
-        "/api/fleet/seats/aimla/aimla-win-1": [
+        "/api/fleet/seats/aimla/aimla-win-5": [
           {
             "status": 503,
             "body": {
@@ -6365,7 +6035,7 @@
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.600Z",
             "install_id": "aimla",
-            "seat_id": "aimla-win-1",
+            "seat_id": "aimla-win-5",
             "state_version": 48401,
             "at": "2026-08-23T14:23:20.600Z",
             "changed": [
@@ -6753,7 +6423,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -7335,72 +7005,6 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 510,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
                         "y": 200,
                         "width": 80,
                         "height": 48

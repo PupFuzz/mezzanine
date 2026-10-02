@@ -104,6 +104,19 @@ export const STRIP_HEADER = "Overflow — seats past the map's desks";
 export const DECORATIVE_CYCLE_MS = 2400;
 
 /**
+ * A decoration's glow (§ 6.3): the ellipse the painter fills, INSIDE ITS TILE — at the tile's top, where
+ * the kit's floor and table lamps carry their shade, the tile's full width across and as tall as it is
+ * wide (no taller than the tile). The scene decides it, so a glow reaches no further than its own tile:
+ * a lamp the author keeps inside the room's grid glows inside it (card#11045: the glow was drawn about
+ * twice its tile, centred on its foot, and a lamp at the room's front edge glowed below the floor).
+ */
+function glowOf(cell) {
+    const ry = Math.min(cell.w, cell.h) / 2;
+
+    return Object.freeze({ cx: cell.x + cell.w / 2, cy: cell.y + ry, rx: cell.w / 2, ry });
+}
+
+/**
  * § 9 F21's two notices, in § 5.5's words: the objects by Tiled `id` in `id` order, the room, and
  * after the colon the `seat_id` at each object — omitted for an empty one.
  */
@@ -211,6 +224,7 @@ export function buildScene(frame, input) {
                     y: cell.y,
                     w: cell.w,
                     h: cell.h,
+                    glow: glowOf(cell),
                     // § 6.3: claims nothing — no test reads it, it keeps glowing on a dead feed and
                     // asserts nothing by it, and it is on no element a § 6.2 row draws.
                     bound: '§ 6.3',

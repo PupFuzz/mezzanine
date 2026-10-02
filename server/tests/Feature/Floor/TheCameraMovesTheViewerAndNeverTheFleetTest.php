@@ -52,6 +52,9 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     private const FLOOR = 'camera_floor';
 
+    /** `camera_floor`'s replay with the camera's surface at the page's own drawing box at F — § 12's page surface. */
+    private const PAGE = 'camera_page';
+
     private const OVERFLOW = 'camera_overflow';
 
     private const RESIZE = 'camera_resize';
@@ -80,6 +83,11 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         foreach ([self::FLOOR, self::OVERFLOW, self::RESIZE, self::REDUCED, self::PROPORTIONAL, self::NOTHING_MEASURABLE] as $run) {
             $this->assertSame(['width' => $w, 'height' => $h], $this->fixture($run)['floor']['viewport'], "[{$run}] is not entered at F");
         }
+
+        // The page run: the drawing box the page gives the camera at F, as § 12 states it — as wide as F and
+        // lower by the page chrome above the drawing (`tools/design/floor-chrome.browser.mjs` holds the
+        // figure to the rendered page).
+        $this->assertSame([], $this->pageSurfaceDefects($this->floorMd()));
 
         // Each pair: the first window narrower than F, the second lower — so each dimension is asked alone.
         foreach ([self::ENTRY_SMALL, self::DEGRADED_SMALL] as [$narrow, $low]) {
@@ -190,11 +198,14 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
      * ⭐ § 12's viewport row, MEASURED (Appendix B row 15 owes it): the camera's fit zoom at F over the
      * shipped default, and what it draws the desk text at — the scene's font size times that zoom. The
      * row states both; this re-derives both from the camera and `floor/desk-layout.js`'s `FONT` on
-     * every run, so the row can drift from the camera only by this test going red.
+     * every run, so the row can drift from the camera only by this test going red. ⛔ THE SURFACE IS THE
+     * PAGE's (card#11045 PR-E): the run is entered at the drawing box the floor page gives the camera at
+     * F, which the test above holds to § 12's stated page surface — not at the whole window, which fits a
+     * height-bound default higher than any viewer's page does.
      */
     public function test_section_12s_viewport_row_states_what_the_camera_measures_at_the_floor(): void
     {
-        $this->assertSame([], $this->measurementDefects($this->floorRun(self::FLOOR), $this->floorMd()));
+        $this->assertSame([], $this->measurementDefects($this->floorRun(self::PAGE), $this->floorMd()));
     }
 
     // ── RED — each defect planted in the shipped module it would live in, and watched failing ──
@@ -404,10 +415,55 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $drifted = preg_replace('/(the nameplate and the badges\' text at \*\*)[\d.]+( CSS px\*\*)/', '${1}9.9${2}', $md, 1);
 
         $this->assertNotSame($md, $drifted, 'the plant found no measurement in § 12 to move');
-        $this->assertNotSame([], $this->measurementDefects($this->floorRun(self::FLOOR), (string) $drifted), 'CONTROL (a drifted measurement) did not bite');
+        $this->assertNotSame([], $this->measurementDefects($this->floorRun(self::PAGE), (string) $drifted), 'CONTROL (a drifted measurement) did not bite');
+    }
+
+    /** A page surface the camera's run is not entered at: § 12's figure moved and the fixture not. */
+    public function test_red_a_page_surface_the_run_is_not_entered_at(): void
+    {
+        $md = $this->floorMd();
+        $drifted = preg_replace('/(on the page at this viewport the drawing is \*\*[\d,]+ × )([\d,]+)( CSS px\*\*)/', '${1}640${3}', $md, 1);
+
+        $this->assertNotSame($md, $drifted, 'the plant found no page surface in § 12 to move');
+        $this->assertNotSame([], $this->pageSurfaceDefects((string) $drifted), 'CONTROL (a page surface the run is not entered at) did not bite');
     }
 
     // ── The checks ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * `camera_page` is entered at § 12's page surface, and that surface is as wide as F and lower.
+     *
+     * @return list<string>
+     */
+    private function pageSurfaceDefects(string $md): array
+    {
+        [$w, $h] = $this->referenceViewport();
+        [$pw, $ph] = $this->pageSurface($md);
+        $defects = [];
+
+        if ($this->fixture(self::PAGE)['floor']['viewport'] !== ['width' => $pw, 'height' => $ph]) {
+            $defects[] = "[camera_page] is not entered at the page surface § 12 states ({$pw} × {$ph})";
+        }
+
+        if (! ($pw === $w && $ph < $h)) {
+            $defects[] = "§ 12's page surface {$pw} × {$ph} is not as wide as F and lower than it";
+        }
+
+        return $defects;
+    }
+
+    /**
+     * § 12's page surface — the drawing box the floor page gives the camera at F — read from the row.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function pageSurface(?string $md = null): array
+    {
+        $this->assertSame(1, preg_match('/^\| Floor reference viewport \|[^\n]*?on the page at this viewport the drawing is \*\*([\d,]+) × ([\d,]+) CSS px\*\*/m', $md ?? $this->floorMd(), $m),
+            '§ 12\'s viewport row states no page surface in the form this test reads');
+
+        return [(int) str_replace(',', '', $m[1]), (int) str_replace(',', '', $m[2])];
+    }
 
     /** @return array{0: int, 1: int} § 12's reference viewport, read from the row on every run */
     private function referenceViewport(): array

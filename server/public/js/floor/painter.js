@@ -455,10 +455,10 @@ export function createPainter({ characters, failed, select }) {
 
         for (const d of scene.decorative) {
             node('ellipse', {
-                cx: d.x + d.w / 2,
-                cy: d.y + d.h,
-                rx: d.w,
-                ry: d.h,
+                cx: d.glow.cx,
+                cy: d.glow.cy,
+                rx: d.glow.rx,
+                ry: d.glow.ry,
                 class: d.motion ? `decor decor-${d.decoration} decor-moving` : `decor decor-${d.decoration}`,
                 style: d.motion ? `animation-duration:${d.cycle_ms / 1000}s` : null,
             }, tiles);

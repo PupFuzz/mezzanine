@@ -28,6 +28,10 @@
 //   **panel** — the drill-down card, opened, starts at or below the camera row's bottom, so the strip and
 //   the camera's controls stay in view while it is open (review r1 MINOR-2).
 //   **fill** — the drawing spans the page's width.
+//   **surface** — at `docs/design/FLOOR.md` § 12's reference viewport with no notice shown, the drawing's box is
+//   the page surface that row states (card#11045 PR-E): the camera's fit there is measured on that surface by
+//   `TheCameraMovesTheViewerAndNeverTheFleetTest`'s `camera_page` run, so a chrome change that moves the drawing's
+//   height reds here until the row, the run and the fit are re-measured.
 //
 // SELFTEST: each check is planted in a copy of the stylesheet (never in the shipped file) and must red;
 // the shipped sheet must be green under the same runs.
@@ -42,7 +46,26 @@ import { browser, findChrome } from './headless-chromium.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SHEET = join(HERE, '..', '..', 'server', 'public', 'css', 'mezzanine.css');
 
+const FLOOR_MD = join(HERE, '..', '..', 'docs', 'design', 'FLOOR.md');
+
+/** § 12's reference viewport and the page surface its viewport row states at it. */
+function statedSurface() {
+  const row = readFileSync(FLOOR_MD, 'utf8').split('\n').find((l) => l.startsWith('| Floor reference viewport |')) ?? '';
+  const view = /^\| Floor reference viewport \| \*\*([\d,]+) × ([\d,]+) CSS px\*\*/.exec(row);
+  const page = /on the page at this viewport the drawing is \*\*([\d,]+) × ([\d,]+) CSS px\*\*/.exec(row);
+  if (view === null || page === null) {
+    console.error('FAIL — § 12\'s viewport row states no reference viewport or no page surface in the form this tool reads');
+    process.exit(1);
+  }
+  const n = (v) => Number(v.replace(/,/g, ''));
+
+  return { w: n(view[1]), h: n(view[2]), drawing: { w: n(page[1]), h: n(page[2]) } };
+}
+
+const STATED = statedSurface();
+
 const RUNS = [
+  { w: STATED.w, h: STATED.h, notices: 0, surface: STATED.drawing },
   ...[500, 800, 1000, 1341, 1800, 2400].map((h) => ({ w: 1400, h, notices: 0 })),
   ...[560, 700, 900, 1600].map((h) => ({ w: 390, h, notices: 0 })),
   { w: 1400, h: 1000, notices: 3 },
@@ -57,6 +80,7 @@ const PLANTS = {
   reveal: ['    min-height: calc(100dvh - var(--reveal));', '    min-height: calc(100dvh - 2 * var(--reveal));'],
   panel: ['.floor-stage > #floor-panel {\n    top: 12px;', '.floor-stage > #floor-panel {\n    top: -120px;'],
   fill: ['#floor-drawing {\n    flex: 1 1 0;', '#floor-drawing {\n    width: 60% !important;\n    flex: 1 1 0;'],
+  surface: ['.floor-hint-row {\n    flex: 0 0 24px;', '.floor-hint-row {\n    flex: 0 0 24px;\n    margin-bottom: 8px;'],
 };
 
 function page() {
@@ -133,6 +157,10 @@ function defects(m, run) {
 
   if (!near(m.drawing.width, m.vw)) {
     out.push(['fill', `${at}: the drawing is ${m.drawing.width} px wide in a ${m.vw} px page`]);
+  }
+
+  if (run.surface && !(near(m.drawing.width, run.surface.w) && near(m.drawing.height, run.surface.h))) {
+    out.push(['surface', `${at}: the drawing is ${m.drawing.width} × ${m.drawing.height} px and FLOOR.md § 12 states the page surface ${run.surface.w} × ${run.surface.h}`]);
   }
 
   return out;
