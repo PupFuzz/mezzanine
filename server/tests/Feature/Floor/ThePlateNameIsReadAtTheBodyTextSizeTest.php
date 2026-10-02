@@ -365,8 +365,9 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
 
     /**
      * Every painted text of every drawn plate, under every transform a run shows it at, each a defect
-     * unless it is `1rem` on the screen — and the run must have measured something: a fit, a wheel that
-     * moved the zoom, and two glides whose midpoints are neither end.
+     * unless it is `1rem` on the screen — and the run must have measured something: a fit, a Ctrl+wheel
+     * that moved the zoom, a plain wheel that panned (card#11045), and two glides whose midpoints are
+     * neither end.
      *
      * @return list<string>
      */
@@ -393,8 +394,12 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             $act = $a['act']['act'];
             $samples["after the {$act} at {$a['at']} ms"] = $a['label']['after'];
 
-            if ($act === 'wheel' && abs($a['after']['zoom'] - $a['before']['zoom']) < self::EPSILON) {
-                $defects[] = "the wheel at {$a['at']} ms did not move the zoom — the clause measured nothing";
+            if ($act === 'ctrl_wheel' && abs($a['after']['zoom'] - $a['before']['zoom']) < self::EPSILON) {
+                $defects[] = "the Ctrl+wheel at {$a['at']} ms did not move the zoom — the clause measured nothing";
+            }
+
+            if ($act === 'scroll' && abs($a['after']['x'] - $a['before']['x']) < self::EPSILON && abs($a['after']['y'] - $a['before']['y']) < self::EPSILON) {
+                $defects[] = "the plain wheel at {$a['at']} ms did not pan — the clause measured nothing";
             }
 
             if (in_array($act, ['building', 'ride'], true)) {
@@ -410,7 +415,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             }
         }
 
-        foreach (['wheel', 'building', 'ride'] as $act) {
+        foreach (['ctrl_wheel', 'scroll', 'building', 'ride'] as $act) {
             if (! in_array($act, array_map(static fn (array $a): string => $a['act']['act'], $result['camera_acts']), true)) {
                 $defects[] = "the run has no {$act}";
             }

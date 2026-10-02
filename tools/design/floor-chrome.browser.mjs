@@ -18,8 +18,10 @@
 // the room grows), so this sentence is never wider than `RUNS` covers.
 //
 // ⛔ WHAT IS MEASURED, PER RUN, and each is a defect when it fails:
-//   **gap** — the first section's top against the drawing's bottom: they must touch, at every height (the
-//   tall-viewport gap card#11045's review r1 found: a capped drawing left the leftover height empty).
+//   **gap** — the first section's top against the bottom of the gesture hint's row, and that row's top
+//   against the drawing's bottom: each pair must touch, at every height (the tall-viewport gap card#11045's
+//   review r1 found: a capped drawing left the leftover height empty).
+//   **hint** — the gesture hint's row under the drawing (card#11045 PR-B) is its 24 px, offered or not.
 //   **reveal** — while the drawing stands above its own `min-height`, the first summary's top sits exactly
 //   `--reveal` above the window's bottom edge; at its floor, the drawing is exactly that floor and the
 //   summary sits below the fold, which is the floor's purpose (a room too short to use is worse).
@@ -51,6 +53,7 @@ const RUNS = [
 /** One plant per check: [anchor in the sheet, replacement]. */
 const PLANTS = {
   gap: ['    min-height: 320px;\n', '    min-height: 320px;\n    max-height: 1200px;\n'],
+  hint: ['.floor-hint-row {\n    flex: 0 0 24px;', '.floor-hint-row {\n    flex: 0 0 40px;'],
   reveal: ['    min-height: calc(100dvh - var(--reveal));', '    min-height: calc(100dvh - 2 * var(--reveal));'],
   panel: ['.floor-stage > #floor-panel {\n    top: 12px;', '.floor-stage > #floor-panel {\n    top: -120px;'],
   fill: ['#floor-drawing {\n    flex: 1 1 0;', '#floor-drawing {\n    width: 60% !important;\n    flex: 1 1 0;'],
@@ -93,6 +96,7 @@ const MEASURE = (notices) => `(() => {
     min: parseFloat(getComputedStyle(drawing).minHeight),
     drawing: box(drawing),
     section: box(document.querySelector('.floor-section')),
+    hint: box(document.querySelector('.floor-hint-row')),
     camera: box(document.querySelector('.floor-camera-row')),
     panel: box(panel),
   };
@@ -103,8 +107,16 @@ function defects(m, run) {
   const at = `${run.w}x${run.h}${run.notices ? ` +${run.notices} notices` : ''}`;
   const near = (a, b) => Math.abs(a - b) < 0.5;
 
-  if (!near(m.section.top, m.drawing.bottom)) {
-    out.push(['gap', `${at}: ${(m.section.top - m.drawing.bottom).toFixed(1)} px between the drawing's bottom and the first section`]);
+  if (!near(m.hint.top, m.drawing.bottom)) {
+    out.push(['gap', `${at}: ${(m.hint.top - m.drawing.bottom).toFixed(1)} px between the drawing's bottom and the hint's row`]);
+  }
+
+  if (!near(m.section.top, m.hint.bottom)) {
+    out.push(['gap', `${at}: ${(m.section.top - m.hint.bottom).toFixed(1)} px between the hint's row and the first section`]);
+  }
+
+  if (!near(m.hint.height, 24)) {
+    out.push(['hint', `${at}: the hint's row is ${m.hint.height} px, not 24`]);
   }
 
   if (m.drawing.height > m.min + 0.5 && !near(m.section.top, m.vh - m.reveal)) {

@@ -27,6 +27,21 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11045** — **The wheel now pans the floor and the lobby; Ctrl+wheel and a pinch zoom.** Operator
+  rulings of 2026-10-01. A plain mouse wheel or a trackpad's two-finger scroll pans the drawing in any
+  direction, where it used to zoom; Ctrl+wheel and a trackpad's pinch zoom about the pointer; on a touch
+  screen two fingers pinch to zoom about their midpoint and one finger drags to pan. When the drawing can
+  pan no further the wheel's way, the wheel scrolls the page on, so the sections below the drawing are
+  always one scroll away. A one-line hint under each drawing names the gestures (*scroll to pan ·
+  ctrl+scroll or pinch to zoom · drag to pan · arrows · + −*, shortened on a phone), shown while the
+  camera frames something. Both pages share the change through one camera wire, and a ride in the lobby
+  still always arrives: a wheel or a pinch during its glide cuts it to the floor. FLOOR.md § 4.2, § 4.5,
+  AT-D3-21, § 13 row 39 and Appendix B rows 15–16 record it. The rewritten checks in
+  `Tests\Feature\Floor\TheCameraMovesTheViewerAndNeverTheFleetTest`,
+  `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest` and `TheCameraWireIsOneForBothPagesTest` fail on
+  the previous code. Real trackpads, real touch screens and Safari were not exercised; Safari may deliver a
+  trackpad pinch as events this change does not read.
+
 - **card#11045** — **Every page now has a stylesheet: a dark page chrome around the warm room.** The app
   linked no CSS until now, so every page rendered in the browser's default black-on-white. One plain
   stylesheet, `server/public/css/mezzanine.css`, is linked from the shared layout with a `?v=` version

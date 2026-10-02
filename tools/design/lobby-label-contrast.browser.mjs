@@ -21,7 +21,7 @@
 //
 // ⛔ WHAT IS RENDERED — every viewport and framing this file judges, so this sentence is never a claim
 // wider than `RUNS` below actually covers: several viewport sizes, several floor counts at fit, every sky
-// phase, a 4-room plate, a long summary, a wheel-between-renders case (`showLabels()` called again with
+// phase, a 4-room plate, a long summary, a Ctrl+wheel-between-renders case (`showLabels()` called again with
 // NO row rebuilt), zoomed to one plate, and phone width.
 //
 // ⛔ WHAT IS MEASURED, PER RUN. The shipped `server/public/js/lobby/building-scene.js`,
@@ -122,7 +122,7 @@ import { buildingScene, surfaceStyle } from './js/lobby/building-scene.js';
 import { buildingDrawing, keepDrawing, paintBuilding } from './js/lobby/building-paint.js';
 import { showLabels } from './js/lobby/label-paint.js';
 import { plateRow } from './js/lobby/plate-row.js';
-import { createCamera, frameOn, focusOn, wheel } from './js/wire/camera.js';
+import { createCamera, frameOn, focusOn, zoom } from './js/wire/camera.js';
 const q = new URLSearchParams(location.search);
 const n = Number(q.get('floors'));
 const phase = q.get('phase') === 'unset' ? null : q.get('phase');
@@ -152,9 +152,10 @@ function paintCamera(camera) {
 }
 paintCamera(cam);
 // The wheel-between-renders case: a camera move with NO row rebuilt at all — showLabels() alone must
-// carry the new geometry, which is the whole point of the round's redesign.
+// carry the new geometry, which is the whole point of the round's redesign. The move is a Ctrl+wheel's
+// zoom (the plain wheel pans since card#11045), one notch in about the surface's centre.
 if (q.get('zoom') === 'wheel') {
-  cam = wheel(cam, { x: surface.clientWidth / 2, y: surface.clientHeight / 2 }, { deltaY: -400 });
+  cam = zoom(cam, { x: surface.clientWidth / 2, y: surface.clientHeight / 2 }, { deltaY: -400 }).camera;
   paintCamera(cam);
 }
 window.__labelSide = rows.dataset.labelSide ?? null;

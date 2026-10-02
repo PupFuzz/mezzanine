@@ -40,11 +40,17 @@
  *                                               //  (`../Support/harness-surface.mjs`), the size every
  *                                               //  run written before card#7341's 2026-10-01 ruling
  *                                               //  was drawn at
- *                      "camera": [ { "at_ms": N,  //  the viewer's camera acts (row 15): `wheel` at a
- *                        "act": "wheel", "x", "y", "delta_y", "delta_mode"?, "ctrl_key"? } | { "act": "drag", "dx", "dy" }
- *                        | { "act": "zoom", "notches" } | { "act": "fit" } | { "act": "resize", "width", "height" } ] }
- *                                               //  surface point (`delta_mode` the WheelEvent's, absent
- *                                               //  0; `ctrl_key` its `ctrlKey`, a pinch, absent false),
+ *                      "camera": [ { "at_ms": N,  //  the viewer's camera acts (row 15, § 4.5): `scroll`, a
+ *                        "act": "scroll", "delta_x"?, "delta_y"?, "delta_mode"? } | { "act": "ctrl_wheel", "x", "y",
+ *                        "delta_y", "delta_mode"? } | { "act": "pinch", "from": {x, y}, "to": {x, y}, "factor" }
+ *                        | { "act": "drag", "dx", "dy" } | { "act": "zoom", "notches" } | { "act": "fit" }
+ *                        | { "act": "resize", "width", "height" } ] }
+ *                                               //  plain wheel event (the screen's `pan()`; each delta
+ *                                               //  absent 0, `delta_mode` the WheelEvent's, absent 0), a
+ *                                               //  Ctrl+wheel event at a surface point (its `zoom()`), one
+ *                                               //  step of a touch pinch (its `pinch()`; the midpoint
+ *                                               //  `from` → `to`, the spread's ratio `factor`) — the wheel's
+ *                                               //  two recorded with the `consumed` they answer —
  *                                               //  a drag, the keyboard's and the zoom buttons' zoom
  *                                               //  about the centre, the fit-floor control, and a
  *                                               //  viewport resize. A resize is followed by a render, as
@@ -62,7 +68,8 @@
  *                                               //  (absent, `HARNESS_SURFACE`), `"camera": [ { "at_ms": N,
  *                                               //  "act": "ride" } | { "act": "arrive" } | { "act":
  *                                               //  "return" } | { "act": "building" } | { "act":
- *                                               //  "wheel", "x", "y", "delta_y" } | { "act": "zoom",
+ *                                               //  "scroll", … } | { "act": "ctrl_wheel", … } | { "act":
+ *                                               //  "pinch", … } (the floor's three) | { "act": "zoom",
  *                                               //  "notches" } | { "act": "drag", "dx", "dy" } | {
  *                                               //  "act": "focus", "floor" } | { "act": "resize",
  *                                               //  "width", "height" } ], "local_hours": N,
@@ -74,7 +81,8 @@
  *                                               //  asks for the route, then the screen's
  *                                               //  `returned()` and a draw), the page coming back
  *                                               //  from the back-forward cache (`returned()`, then
- *                                               //  drawn), the whole-building control, the wheel, a
+ *                                               //  drawn), the whole-building control, the wheel's pan
+ *                                               //  and zoom and the touch pinch, a
  *                                               //  key's or a zoom button's zoom, the drag (or an
  *                                               //  arrow key's), the keyboard's focus on a plate
  *                                               //  (`focusPlate()`) and a surface resize, none
@@ -646,6 +654,9 @@ async function replay(scenario) {
         });
     }
 
+    /** A `scroll` act's plain wheel event, as the screen's `pan()` takes it. */
+    const scrollDelta = (act) => ({ deltaX: act.delta_x ?? 0, deltaY: act.delta_y ?? 0, deltaMode: act.delta_mode ?? 0 });
+
     // Appendix B row 15's camera acts, each an event on the scenario queue, recorded with the camera
     // before and after it. Only a resize is followed by a render (see the header).
     for (const act of scenario.floor?.camera ?? []) {
@@ -656,10 +667,17 @@ async function replay(scenario) {
 
             const before = screen.camera();
             let glide = null;
+            let consumed;
 
             switch (act.act) {
-                case 'wheel':
-                    screen.wheel({ x: act.x, y: act.y }, { deltaY: act.delta_y, deltaMode: act.delta_mode ?? 0, ctrlKey: act.ctrl_key ?? false });
+                case 'scroll':
+                    ({ consumed } = screen.pan(scrollDelta(act)));
+                    break;
+                case 'ctrl_wheel':
+                    ({ consumed } = screen.zoom({ x: act.x, y: act.y }, { deltaY: act.delta_y, deltaMode: act.delta_mode ?? 0 }));
+                    break;
+                case 'pinch':
+                    screen.pinch(act.from, act.to, act.factor);
                     break;
                 case 'zoom':
                     screen.zoomStep(act.notches);
@@ -677,7 +695,7 @@ async function replay(scenario) {
                     throw new Error(`unknown camera act ${act.act}`);
             }
 
-            cameraActs.push({ at: now, act, before, after: screen.camera(), glide_ms: glide });
+            cameraActs.push({ at: now, act, before, after: screen.camera(), glide_ms: glide, ...(consumed === undefined ? {} : { consumed }) });
 
             return act.act;
         });
@@ -702,6 +720,7 @@ async function replay(scenario) {
             let after = null;
             let glide = null;
             let ride;
+            let consumed;
 
             switch (act.act) {
                 case 'ride':
@@ -735,8 +754,14 @@ async function replay(scenario) {
                 case 'building':
                     glide = lobby.wholeBuilding().glide_ms;
                     break;
-                case 'wheel':
-                    lobby.wheel({ x: act.x, y: act.y }, { deltaY: act.delta_y, deltaMode: act.delta_mode ?? 0, ctrlKey: act.ctrl_key ?? false });
+                case 'scroll':
+                    ({ consumed } = lobby.pan(scrollDelta(act)));
+                    break;
+                case 'ctrl_wheel':
+                    ({ consumed } = lobby.zoom({ x: act.x, y: act.y }, { deltaY: act.delta_y, deltaMode: act.delta_mode ?? 0 }));
+                    break;
+                case 'pinch':
+                    lobby.pinch(act.from, act.to, act.factor);
                     break;
                 case 'zoom':
                     lobby.zoomStep(act.notches);
@@ -765,7 +790,8 @@ async function replay(scenario) {
                 ? { riding: { accessor: lobby.riding(), frame: lobbyRenders[lobbyRenders.length - 1].frame.riding } }
                 : {};
 
-            cameraActs.push({ at: now, act, before, after: shown, glide_ms: glide, label, ...(act.act === 'ride' ? { ride } : {}), ...riding });
+            cameraActs.push({ at: now, act, before, after: shown, glide_ms: glide, label, ...(act.act === 'ride' ? { ride } : {}), ...riding,
+                ...(consumed === undefined ? {} : { consumed }) });
 
             return act.act;
         });

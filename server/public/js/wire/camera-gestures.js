@@ -1,14 +1,16 @@
 /**
- * THE CAMERA'S GESTURES ON A PAGE — the wheel and the drag, wired from one element to a screen's camera
- * acts. `docs/design/FLOOR.md` Appendix B rows 15 and 16.
+ * THE CAMERA'S GESTURES ON A PAGE — the wheel, the drag and the touch pinch, wired from one element to a
+ * screen's camera acts. `docs/design/FLOOR.md` Appendix B rows 15 and 16, § 4.5 (the operator's ruling of
+ * 2026-10-01 on card#11045: plain wheel pans, Ctrl+wheel and the pinch zoom, one finger drags).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⚠ HOISTED HERE AT ITS SECOND CALLER (card#7343 r1). The floor page (`floor/main.js`, row 15) wired
  * these inline and the lobby (`lobby/main.js`, row 16) near-copied them; two copies of *when a press
  * becomes a pan* would drift into two answers. Both pages call `cameraGestures()` on their drawing.
  *
- * ⛔ THIS FILE DECIDES NOTHING ABOUT THE CAMERA. Where a wheel zooms to and how far a drag pans are the
- * screen's acts (`wheel(point, delta)`, `drag(dx, dy)`, each over `camera.js`); what comes back is
+ * ⛔ THIS FILE DECIDES NOTHING ABOUT THE CAMERA. How far a wheel pans, where a Ctrl+wheel or a pinch
+ * zooms to and how far a drag pans are the screen's acts (`pan(delta)`, `zoom(point, delta)`,
+ * `pinch(from, to, factor)`, `drag(dx, dy)`, each over `camera.js`); the camera that comes back is
  * handed to `show` — `camera-view.js`'s — which renders nothing. What IS decided here is the gesture:
  *  · ⛔ NOTHING FRAMED, NOTHING TAKEN (card#7343 r4b, the seat's ruling, widening its r3b ruling on the
  *    wheel to the whole wire). Every gesture is the camera's only while the camera frames something —
@@ -26,11 +28,23 @@
  *    frames nothing before that frame and on a floor
  *    with nothing measurable on it (no map held and no desk — `floor-screen.js`), and there the events,
  *    which moved nothing, are the browser's too;
- *  · the wheel zooms about the cursor, carrying the event's `deltaMode` and `ctrlKey` (a pinch) with
- *    its `deltaY`, and takes the event from the page's own scroll;
- *  · only the primary pointer's primary button drags — a right-click's menu or a second finger never
- *    starts a pan no `pointerup` of its own would end — and a press is a click until it has moved
- *    `DRAG_SLOP_PX`, when the pointer is captured;
+ *  · THE WHEEL CHOOSES BY `ctrlKey`: a plain wheel — a mouse's notch, a trackpad's two-finger scroll —
+ *    is the screen's `pan()`, carrying the event's `deltaX`, `deltaY` and `deltaMode`; a Ctrl+wheel — a
+ *    mouse's Ctrl+notch, or a trackpad's pinch, which a browser delivers as one — is its `zoom()` about
+ *    the cursor, carrying `deltaY` and `deltaMode`. Either takes the event from the page: its scroll, or
+ *    the browser's own page zoom — while the act answers that it `consumed` the event. A pan the camera
+ *    can make no further the wheel's way is not consumed, and that wheel is the page's scroll, untouched
+ *    and showing nothing (the edge, card#11045 Q3, the operator's ruling of 2026-10-01); a zoom, and a
+ *    wheel over a lobby mid-ride, are always consumed — each the screen's answer, never this file's;
+ *  · only the primary pointer's primary button starts a drag — a right-click's menu never starts a pan
+ *    no `pointerup` of its own would end — and a press is a click until it has moved `DRAG_SLOP_PX`,
+ *    when the pointer is captured;
+ *  · A SECOND POINTER DOWN WHILE THE FIRST IS PRESSED IS A PINCH — two fingers on a touch screen. From
+ *    then until one lifts, each move of either is the screen's `pinch()`: a zoom by the fingers' spread
+ *    over their spread at the last move, about their midpoint, the scene under the midpoint carried
+ *    where the midpoint goes. Both pointers are captured, and the gesture is no click. When one finger
+ *    lifts, the other drags on from where it is; a third pointer is ignored. Only the drag's own
+ *    pointer moves the drag — a second finger's move never pans;
  *  · a move with the primary button no longer held ends the drag (a press released outside the element
  *    before capture was taken is never heard released), and so does a `pointercancel` — a pointer the
  *    browser took back, which is no click either;
@@ -54,6 +68,10 @@
  *    native drag wherever an engine would start one — and change nothing else it does: a press there still pans, clicks and
  *    focuses exactly as before.
  *
+ * ⚠ NOT VERIFIED ON A REAL DEVICE: the pinch and both wheels were driven with synthetic events in headless
+ * Chromium (card#11045 PR-B); a real trackpad, a real touch screen and Safari were not. Safari may deliver
+ * a trackpad pinch as its own `gesture*` events rather than as a Ctrl+wheel, and nothing here handles those.
+ *
  * Driven under `node` with a stand-in element by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.
  */
 
@@ -64,22 +82,53 @@ export const DRAG_SLOP_PX = 4;
 
 /**
  * @param {EventTarget & {getBoundingClientRect: function(): {left: number, top: number},
- *         setPointerCapture: function(number): void, style: object}} element the drawing the viewer points at
- * @param {{wheel: function(object, object): object, drag: function(number, number): object,
- *         camera: function(): {bounds: object|null}}} acts the screen's camera acts, each returning the
- *        camera it leaves, and the camera as it stands
+ *         setPointerCapture: function(number): void, releasePointerCapture: function(number): void,
+ *         style: object}} element the drawing the viewer points at
+ * @param {{pan: function(object): {camera: object, consumed: boolean},
+ *         zoom: function(object, object): {camera: object, consumed: boolean},
+ *         pinch: function(object, object, number): object, drag: function(number, number): object,
+ *         camera: function(): {bounds: object|null}}} acts the screen's camera acts — the wheel's two
+ *        each returning the camera it leaves and whether it consumed the event, the pointer's two the
+ *        camera it leaves — and the camera as it stands
  * @param {function(object): void} show puts a camera on the drawing (`camera-view.js`'s `show`)
  */
 export function cameraGestures(element, acts, show) {
+    /** The press: its pointer, where it last was, whether it has panned, and the pointers it has captured. */
     let drag = null;
+    /** The second finger and the pinch's last midpoint and spread — `null` unless two pointers are down. */
+    let pinch = null;
     let dragged = false;
 
     /** The one gate: the screen's camera frames nothing, so the event is the browser's (see the header). */
     const unframed = () => framesNothing(acts.camera());
 
+    /** A point on the drawing, in CSS px from its top-left, from a client point. */
+    const local = (x, y) => {
+        const r = element.getBoundingClientRect();
+
+        return { x: x - r.left, y: y - r.top };
+    };
+
+    /** The two fingers' midpoint on the drawing and their spread. */
+    const span = () => {
+        const a = drag;
+        const b = pinch;
+
+        return { mid: local((a.x + b.x) / 2, (a.y + b.y) / 2), spread: Math.hypot(b.x - a.x, b.y - a.y) };
+    };
+
+    /** Capture a pointer for the press, once. */
+    const capture = (id) => {
+        if (!drag.captured.includes(id)) {
+            drag.captured.push(id);
+            element.setPointerCapture(id);
+        }
+    };
+
     /** The press is over, however it ended: the drawing's text is selectable again. */
     function release() {
         drag = null;
+        pinch = null;
         element.style.userSelect = '';
         element.style.webkitUserSelect = '';
     }
@@ -99,25 +148,48 @@ export function cameraGestures(element, acts, show) {
             return;
         }
 
-        event.preventDefault();
+        const { camera, consumed } = event.ctrlKey
+            ? acts.zoom(local(event.clientX, event.clientY), { deltaY: event.deltaY, deltaMode: event.deltaMode })
+            : acts.pan({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode });
 
-        const r = element.getBoundingClientRect();
-
-        show(acts.wheel({ x: event.clientX - r.left, y: event.clientY - r.top }, { deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey }));
-    }, { passive: false });
-
-    element.addEventListener('pointerdown', (event) => {
-        if (!event.isPrimary || event.button !== 0) {
+        // The edge (card#11045 Q3): a wheel the act did not consume — the camera can pan no further its way —
+        // is the page's scroll, and moves nothing here.
+        if (!consumed) {
             return;
         }
 
-        // Gate: nothing framed — a press selects text as ever, and no drag starts.
+        event.preventDefault();
+        show(camera);
+    }, { passive: false });
+
+    element.addEventListener('pointerdown', (event) => {
+        // Another pointer pressed while the press is down is its pinch's second finger.
+        const second = drag !== null && event.pointerId !== drag.id;
+
+        // A press is the primary pointer's primary button; a second finger, a primary contact while no pinch
+        // is held. A third pointer, or a mouse's other button, is ignored.
+        if (second ? pinch !== null || event.button !== 0 : !event.isPrimary || event.button !== 0) {
+            return;
+        }
+
+        // Gate: nothing framed — a press selects text as ever, and no drag or pinch starts.
         if (unframed()) {
             return;
         }
 
+        if (second) {
+            pinch = { id: event.pointerId, x: event.clientX, y: event.clientY };
+            Object.assign(pinch, span());
+            drag.moved = true;
+            capture(drag.id);
+            capture(event.pointerId);
+
+            return;
+        }
+
         dragged = false;
-        drag = { x: event.clientX, y: event.clientY, moved: false };
+        pinch = null;
+        drag = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, captured: [] };
         element.style.userSelect = 'none';
         element.style.webkitUserSelect = 'none';
     });
@@ -129,14 +201,32 @@ export function cameraGestures(element, acts, show) {
             return;
         }
 
+        const finger = event.pointerId === drag.id ? drag : event.pointerId === pinch?.id ? pinch : null;
+
+        // A pointer that is neither the press nor its pinch moves nothing.
+        if (finger === null) {
+            return;
+        }
+
         // Gate: nothing framed any more — the press ends here, uncaptured, and pans nothing.
         if (unframed()) {
-            // A press that has panned holds the pointer captured: let it go, so the release and its click
+            // A press that has panned holds its pointers captured: let them go, so the release and its click
             // land on what is under the pointer rather than on the drawing (card#7343 c7692 item 3).
-            if (drag.moved) {
-                element.releasePointerCapture(event.pointerId);
+            for (const id of drag.captured) {
+                element.releasePointerCapture(id);
             }
             release();
+
+            return;
+        }
+
+        if (pinch !== null) {
+            const was = { mid: pinch.mid, spread: pinch.spread };
+
+            finger.x = event.clientX;
+            finger.y = event.clientY;
+            Object.assign(pinch, span());
+            show(acts.pinch(was.mid, pinch.mid, was.spread > 0 ? pinch.spread / was.spread : 1));
 
             return;
         }
@@ -150,7 +240,7 @@ export function cameraGestures(element, acts, show) {
 
         if (!drag.moved) {
             drag.moved = true;
-            element.setPointerCapture(event.pointerId);
+            capture(event.pointerId);
         }
 
         drag.x = event.clientX;
@@ -158,7 +248,23 @@ export function cameraGestures(element, acts, show) {
         show(acts.drag(dx, dy));
     });
 
-    element.addEventListener('pointerup', () => {
+    element.addEventListener('pointerup', (event) => {
+        // One finger of a pinch lifts: the other drags on from where it is.
+        if (pinch !== null && (event.pointerId === drag.id || event.pointerId === pinch.id)) {
+            if (event.pointerId === drag.id) {
+                drag.id = pinch.id;
+                drag.x = pinch.x;
+                drag.y = pinch.y;
+            }
+            pinch = null;
+
+            return;
+        }
+
+        if (drag !== null && event.pointerId !== drag.id) {
+            return;
+        }
+
         dragged = drag?.moved === true;
         release();
     });

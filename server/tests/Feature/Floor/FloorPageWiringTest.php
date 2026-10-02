@@ -31,7 +31,8 @@ use Tests\TestCase;
  * from that module — a painter nobody constructs addresses nothing and would pass vacuously.
  *
  * ⛔ AND TO THE CAMERA's (Appendix B row 15): the entry hands the screen the drawing surface's size and
- * wires the wheel and the drag through `wire/camera-gestures.js` (the lobby's too since card#7343 r1)
+ * wires the wheel (a plain wheel's pan, a Ctrl+wheel's zoom), the touch pinch and the drag through
+ * `wire/camera-gestures.js` (the lobby's too since card#7343 r1; the pan and the pinch card#11045's)
  * and the keyboard and the zoom buttons through `wire/camera-keys.js` (the lobby's too since card#7343
  * r2-2) — the rules of both — `deltaMode` and `ctrlKey`, the primary button only, the end on a
  * `pointercancel` or a buttonless move, which key zooms and which way an arrow pans — are held and
@@ -193,10 +194,13 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('painter', $this->painterDefects($unpainted),
             'CONTROL (an entry that never constructs the painter) did not bite');
 
-        $unwheeled = str_replace('wheel: screen.wheel', 'wheel: screen.camera', $js);
-        $this->assertNotSame($unwheeled, $js);
-        $this->assertArrayHasKey('wheel', $this->cameraDefects($unwheeled),
-            'CONTROL (a wheel that never reaches the camera) did not bite');
+        // card#11045: the plain wheel's pan, the Ctrl+wheel's zoom and the touch pinch each reach the screen.
+        foreach (['pan' => 'wheel', 'zoom' => 'wheel', 'pinch' => 'pinch'] as $act => $key) {
+            $unwired = str_replace("{$act}: screen.{$act},", "{$act}: screen.camera,", $js);
+            $this->assertNotSame($unwired, $js);
+            $this->assertArrayHasKey($key, $this->cameraDefects($unwired),
+                "CONTROL (a {$act} that never reaches the camera) did not bite");
+        }
 
         $undragged = str_replace('drag: screen.drag, camera: screen.camera }', 'drag: screen.camera, camera: screen.camera }', $js);
         $this->assertNotSame($undragged, $js);
@@ -205,8 +209,8 @@ class FloorPageWiringTest extends TestCase
 
         // card#7343 r3b: the gestures ask the screen's camera whether it frames the floor; one that never
         // does leaves every wheel over the drawn floor to the page's scroll.
-        $unframed = str_replace('cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);',
-            'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: () => ({ bounds: null }) }, show);', $js);
+        $unframed = str_replace('cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);',
+            'cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: () => ({ bounds: null }) }, show);', $js);
         $this->assertNotSame($unframed, $js);
         $this->assertArrayHasKey('wheel', $this->cameraDefects($unframed),
             'CONTROL (a wheel handed a camera that frames nothing) did not bite');
@@ -297,10 +301,21 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('fit', $this->exposureDefects($fitShown, $painter),
             'CONTROL (Fit the floor shown before any camera frames the floor) did not bite');
 
-        $fitless = str_replace("fit: el('floor-fit') }", "fit: el('floor-zoom-out') }", $js);
+        $fitless = str_replace("fit: el('floor-fit'),", "fit: el('floor-zoom-out'),", $js);
         $this->assertNotSame($fitless, $js);
         $this->assertArrayHasKey('buttons', $this->cameraDefects($fitless),
             'CONTROL (Fit the floor never offered or withdrawn with the camera) did not bite');
+
+        // card#11045: the gesture hint is offered with the camera, and the markup starts with it withdrawn.
+        $hintless = str_replace("hint: el('floor-hint') }", "hint: el('floor-fit') }", $js);
+        $this->assertNotSame($hintless, $js);
+        $this->assertArrayHasKey('buttons', $this->cameraDefects($hintless),
+            'CONTROL (the gesture hint never offered or withdrawn with the camera) did not bite');
+
+        $hintShown = str_replace('id="floor-hint" class="camera-hint" hidden>', 'id="floor-hint" class="camera-hint">', $html);
+        $this->assertNotSame($hintShown, $html);
+        $this->assertArrayHasKey('hint', $this->exposureDefects($hintShown, $painter),
+            'CONTROL (the gesture hint shown before any camera frames the floor) did not bite');
 
         $blind = str_replace('    surface: surface(),', '', $js);
         $this->assertNotSame($blind, $js);
@@ -393,14 +408,16 @@ class FloorPageWiringTest extends TestCase
             'surface' => ['surface: surface(),', 'screen.resize(surface())', "const box = el('floor-drawing');",
                 'return { width: box.clientWidth, height: box.clientHeight };', 'new ResizeObserver(() => {', '}).observe(drawing);'],
             // … and the camera as it stands, so the wheel is the page's scroll while it frames nothing (card#7343 r3b).
-            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel,', 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
-            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
+            // card#11045: the wheel's two acts (a plain wheel's pan, a Ctrl+wheel's zoom) and the touch pinch.
+            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
+            'pinch' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
+            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
             'resize' => ["    screen.resize(surface());\n    show(screen.camera());\n"],
             // … and the camera as it stands, so every key is the browser's while it frames nothing (card#7343 r4b).
             'keyboard' => ["import { cameraKeys, offerKeys } from '../wire/camera-keys.js';", 'cameraKeys(drawing, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);'],
-            // … and the zoom buttons, *Fit the floor* and the drawing's keys and tab stop offered from each
-            // frame's camera (card#7343 r4b, comment 7692).
-            'buttons' => ["const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit') };",
+            // … and the zoom buttons, *Fit the floor*, the gesture hint (card#11045) and the drawing's keys and
+            // tab stop offered from each frame's camera (card#7343 r4b, comment 7692).
+            'buttons' => ["const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit'), hint: el('floor-hint') };",
                 "    offerKeys(el('floor-drawing'), zoomButtons, frame.camera);"],
             'fit' => ["el('floor-fit').addEventListener('click'", 'screen.fitFloor()'],
         ];
@@ -443,6 +460,11 @@ class FloorPageWiringTest extends TestCase
 
         if (preg_match('/<button type="button" id="floor-fit"([^>]*)>/', $html, $fit) !== 1 || preg_match('/(^|\s)hidden(\s|$)/', $fit[1]) !== 1) {
             $defects['fit'] = 'Fit the floor is shown in the markup, before any camera frames the floor — `offerKeys()` offers it';
+        }
+
+        // card#11045: the gesture hint names the camera's gestures, untrue until a camera frames the floor.
+        if (preg_match('/<p id="floor-hint"([^>]*)>/', $html, $hint) !== 1 || preg_match('/(^|\s)hidden(\s|$)/', $hint[1]) !== 1) {
+            $defects['hint'] = 'the gesture hint is shown in the markup, before any camera frames the floor — `offerKeys()` offers it';
         }
 
         if (str_contains($m[1], 'role="img"')) {

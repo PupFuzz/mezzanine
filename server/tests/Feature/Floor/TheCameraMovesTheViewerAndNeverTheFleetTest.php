@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Floor;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -31,9 +32,19 @@ use Tests\TestCase;
  * with its own guard). This test holds that in a small window the route draws a desk for every seat
  * AND carries the desk models the list view's rows are built from, one per seat.
  *
- * ⚠ AND WHAT NO TEST HERE CAN: that a wheel event or a drag in a browser reaches these acts. The page
- * half (`floor/main.js`) is wired to them and decides nothing, and there is no browser on the build
- * host; `FloorPageWiringTest` holds its elements.
+ * ⛔ THE WHEEL PANS, CTRL+WHEEL AND THE PINCH ZOOM (§ 4.5, the operator's ruling of 2026-10-01 on
+ * card#11045). A `scroll` act is a plain wheel event — the screen's `pan()`: the view moves by its
+ * `deltaX`/`deltaY`, `deltaMode` normalised, and the act answers whether it consumed the event — yes
+ * while the view can move the wheel's way on an axis the wheel moves along, no at an edge it can pass
+ * no further, where the page scrolls on (Q3, the operator's ruling of 2026-10-01). A `ctrl_wheel` act is a Ctrl+wheel —
+ * a mouse's Ctrl+notch or a trackpad's pinch — the screen's `zoom()` about the cursor, in proportion to
+ * its scroll after the camera's `PINCH_GAIN`. A `pinch` act is one step of a touch screen's two-finger
+ * pinch — the screen's `pinch()`, zooming by its factor about the fingers' midpoint.
+ *
+ * ⚠ AND WHAT NO TEST HERE CAN: that a wheel event, a pinch or a drag in a browser reaches these acts. The
+ * page half (`floor/main.js`) is wired to them and decides nothing; `TheCameraWireIsOneForBothPagesTest`
+ * holds the gesture wire under `node`, `FloorPageWiringTest` the page's elements, and card#11045 PR-B
+ * drove the page in headless Chromium by hand — never a real trackpad, touch screen or Safari.
  */
 class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 {
@@ -92,18 +103,35 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $this->assertSame([], $this->firstFramingDefects($this->floorRun(self::FLOOR)));
     }
 
-    public function test_green_a_wheel_zoom_keeps_the_scene_point_under_the_cursor(): void
+    public function test_green_a_ctrl_wheel_zoom_keeps_the_scene_point_under_the_cursor(): void
     {
-        $this->assertSame([], $this->wheelDefects($this->floorRun(self::FLOOR)));
+        $this->assertSame([], $this->ctrlWheelDefects($this->floorRun(self::FLOOR)));
     }
 
     /**
-     * The wheel zooms in proportion to its scroll — a trackpad's burst of small deltas by the distance
-     * it covers, `deltaMode` normalised, a pinch's (`ctrlKey`) scroll multiplied by the camera's
-     * `PINCH_GAIN`, one event at most one notch — and never a step per event. The gain's figure is
-     * d3-zoom's; how a pinch feels at it in a browser is not something this run can see.
+     * A plain wheel pans (card#11045): the view moves by the event's `deltaX` and `deltaY` in CSS px over
+     * the zoom, `deltaMode` normalised — lines at the camera's `LINE_PX`, pages at the surface's width or
+     * height — with the zoom unchanged; a wheel far past the floor is clamped with the floor in view; and a
+     * wheel is consumed while the view can move its way and released to the page at the edge (Q3).
      */
-    public function test_green_a_wheel_zooms_in_proportion_to_its_scroll_and_a_trackpad_burst_stays_bounded(): void
+    public function test_green_a_plain_wheel_pans_by_its_scroll_in_any_direction_and_releases_at_the_edge(): void
+    {
+        $this->assertSame([], $this->panDefects($this->floorRun(self::FLOOR)));
+    }
+
+    /** A touch pinch's step (card#11045): the zoom by its factor, the scene under the fingers' midpoint carried with it. */
+    public function test_green_a_touch_pinch_zooms_about_the_fingers_midpoint(): void
+    {
+        $this->assertSame([], $this->pinchDefects($this->floorRun(self::FLOOR)));
+    }
+
+    /**
+     * A Ctrl+wheel zooms in proportion to its scroll — a trackpad pinch's burst of small deltas by the
+     * distance it covers, `deltaMode` normalised, the scroll multiplied by the camera's `PINCH_GAIN`, one
+     * event at most one notch — and never a step per event. The gain's figure is d3-zoom's; how a real
+     * trackpad's pinch feels at it is not something this run can see.
+     */
+    public function test_green_a_ctrl_wheel_zooms_in_proportion_to_its_scroll_and_a_pinch_burst_stays_bounded(): void
     {
         $this->assertSame([], $this->wheelScaleDefects($this->floorRun(self::PROPORTIONAL)));
     }
@@ -171,14 +199,28 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     // ── RED — each defect planted in the shipped module it would live in, and watched failing ──
 
-    /** § 11's RED: write an `edge` row for the zoom transition. */
-    public function test_red_the_logged_zoom(): void
+    /**
+     * The act each § 11 RED logs from: the Ctrl+wheel's zoom, the plain wheel's pan and the touch pinch.
+     *
+     * @return array<string, array{0: string}>
+     */
+    public static function navigationActs(): array
     {
-        $dir = $this->mutatedModules([self::FLOOR_SCREEN,
-            "        this.#camera = wheel(this.#camera, point, delta);\n",
-            "        this.#camera = wheel(this.#camera, point, delta);\n        this.#tap.log.edge({ animation_id: 'A14', cause: null, install_id: null, seat_id: null, motion: true, at: this.#clock.now() });\n"]);
+        return [
+            'a logged Ctrl+wheel zoom' => ["        const { camera, consumed } = zoom(this.#camera, point, delta);\n"],
+            'a logged wheel pan' => ["        const { camera, consumed } = pan(this.#camera, delta);\n"],
+            'a logged touch pinch' => ["        this.#camera = pinch(this.#camera, from, to, factor);\n"],
+        ];
+    }
 
-        $this->assertNotSame([], $this->logDefects(self::FLOOR, $dir), 'the RED (a logged zoom) did not bite');
+    /** § 11's RED: write an `edge` row for the zoom transition — and for the pan and the pinch (card#11045). */
+    #[DataProvider('navigationActs')]
+    public function test_red_the_logged_zoom(string $act): void
+    {
+        $dir = $this->mutatedModules([self::FLOOR_SCREEN, $act,
+            $act."        this.#tap.log.edge({ animation_id: 'A14', cause: null, install_id: null, seat_id: null, motion: true, at: this.#clock.now() });\n"]);
+
+        $this->assertNotSame([], $this->logDefects(self::FLOOR, $dir), 'the RED (a logged navigation act) did not bite');
     }
 
     /** § 11's second RED: re-fit the floor on every render. */
@@ -214,22 +256,64 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $this->assertNotSame([], $this->fitDefects($this->floorRun(self::OVERFLOW, $dir)), 'the fourth RED (a fit that cuts the strip) did not bite');
     }
 
-    /** A zoom that does not hold the cursor's point — the wheel clause's own control. */
+    /** A zoom that does not hold the cursor's point — the Ctrl+wheel clause's own control. */
     public function test_red_a_zoom_about_the_corner_not_the_cursor(): void
     {
         $dir = $this->mutatedModules([self::CAMERA,
-            'x: at.x - point.x / zoom, y: at.y - point.y / zoom, fitted: false',
+            'x: at.x - to.x / zoom, y: at.y - to.y / zoom, fitted: false',
             'x: camera.x, y: camera.y, fitted: false']);
 
-        $this->assertNotSame([], $this->wheelDefects($this->floorRun(self::FLOOR, $dir)), 'CONTROL (a zoom about the corner) did not bite');
+        $this->assertNotSame([], $this->ctrlWheelDefects($this->floorRun(self::FLOOR, $dir)), 'CONTROL (a zoom about the corner) did not bite');
+    }
+
+    /**
+     * The plain wheel's defects (card#11045), each planted in the camera and watched red on the pan clause:
+     * the wheel that still zooms — the behaviour the operator's ruling replaced — a pan the wrong way, a
+     * pan that reads every delta as pixels, a wheel whose `deltaX` is dropped, and the edge (Q3): a wheel
+     * there kept from the page, as before Q3 was ruled, and an edge read on one axis or the wrong way.
+     *
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function panPlants(): array
+    {
+        return [
+            'a plain wheel that zooms' => ['return { camera: panBy(camera, -deltaX * ux, -deltaY * uy), consumed };',
+                'return zoom(camera, { x: 0, y: 0 }, { deltaY, deltaMode });'],
+            'a pan the wrong way' => ['panBy(camera, -deltaX * ux, -deltaY * uy)', 'panBy(camera, deltaX * ux, deltaY * uy)'],
+            'a pan that ignores deltaMode' => ["const ux = deltaMode === 2 ? camera.surface.width : deltaMode === 1 ? LINE_PX : 1;\n    const uy = deltaMode === 2 ? camera.surface.height : deltaMode === 1 ? LINE_PX : 1;",
+                "const ux = 1;\n    const uy = 1;"],
+            'a pan with no deltaX' => ['panBy(camera, -deltaX * ux, -deltaY * uy)', 'panBy(camera, 0, -deltaY * uy)'],
+            // Q3 (card#11045, the operator's ruling of 2026-10-01): the edge releases the wheel to the page.
+            'a wheel at the edge kept from the page — the behaviour before Q3 was ruled' => ['const consumed = room(deltaX, camera.x, xs) || room(deltaY, camera.y, ys);', 'const consumed = true;'],
+            'an edge read on the vertical axis alone' => ['const consumed = room(deltaX, camera.x, xs) || room(deltaY, camera.y, ys);', 'const consumed = room(deltaY, camera.y, ys);'],
+            'an edge read the wrong way' => ['(delta > 0 && pos < high) || (delta < 0 && pos > low)', '(delta > 0 && pos > low) || (delta < 0 && pos < high)'],
+        ];
+    }
+
+    #[DataProvider('panPlants')]
+    public function test_red_each_plain_wheel_defect(string $anchor, string $replacement): void
+    {
+        $dir = $this->mutatedModules([self::CAMERA, $anchor, $replacement]);
+
+        $this->assertNotSame([], $this->panDefects($this->floorRun(self::FLOOR, $dir)), 'the planted plain-wheel defect did not bite');
+    }
+
+    /** A touch pinch that ignores its factor, and one that holds the midpoint still while the fingers move. */
+    public function test_red_each_touch_pinch_defect(): void
+    {
+        $factor = $this->mutatedModules([self::CAMERA, 'Math.max(low, camera.zoom * factor)', 'Math.max(low, camera.zoom)']);
+        $this->assertNotSame([], $this->pinchDefects($this->floorRun(self::FLOOR, $factor)), 'CONTROL (a pinch that ignores its factor) did not bite');
+
+        $still = $this->mutatedModules([self::CAMERA, 'x: at.x - to.x / zoom, y: at.y - to.y / zoom', 'x: at.x - from.x / zoom, y: at.y - from.y / zoom']);
+        $this->assertNotSame([], $this->pinchDefects($this->floorRun(self::FLOOR, $still)), 'CONTROL (a pinch whose midpoint never moves the view) did not bite');
     }
 
     /** Round-1 F1's defect: a notch per wheel event, whatever its scroll — the scale clause's control. */
     public function test_red_a_wheel_that_steps_a_notch_per_event(): void
     {
         $dir = $this->mutatedModules([self::CAMERA,
-            'return zoomAt(camera, point, ZOOM_STEP ** (-scroll / NOTCH_PX));',
-            'return zoomAt(camera, point, scroll < 0 ? ZOOM_STEP : 1 / ZOOM_STEP);']);
+            'return { camera: zoomAt(camera, point, ZOOM_STEP ** (-scroll / NOTCH_PX)), consumed: true };',
+            'return { camera: zoomAt(camera, point, scroll < 0 ? ZOOM_STEP : 1 / ZOOM_STEP), consumed: true };']);
 
         $this->assertNotSame([], $this->wheelScaleDefects($this->floorRun(self::PROPORTIONAL, $dir)), 'CONTROL (a notch per event) did not bite');
     }
@@ -248,8 +332,8 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     public function test_red_a_pinch_at_a_scrolls_rate(): void
     {
         $dir = $this->mutatedModules([self::CAMERA,
-            'const gain = ctrlKey ? PINCH_GAIN : 1;',
-            'const gain = 1;']);
+            'deltaY * unit * PINCH_GAIN',
+            'deltaY * unit']);
 
         $this->assertNotSame([], $this->wheelScaleDefects($this->floorRun(self::PROPORTIONAL, $dir)), 'CONTROL (a pinch at a scroll\'s rate) did not bite');
     }
@@ -258,8 +342,8 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     public function test_red_a_wheel_event_that_leaps_past_a_notch(): void
     {
         $dir = $this->mutatedModules([self::CAMERA,
-            'const scroll = Math.min(NOTCH_PX, Math.max(-NOTCH_PX, deltaY * unit * gain));',
-            'const scroll = deltaY * unit * gain;']);
+            'const scroll = Math.min(NOTCH_PX, Math.max(-NOTCH_PX, deltaY * unit * PINCH_GAIN));',
+            'const scroll = deltaY * unit * PINCH_GAIN;']);
 
         $this->assertNotSame([], $this->wheelScaleDefects($this->floorRun(self::PROPORTIONAL, $dir)), 'CONTROL (an unbounded event) did not bite');
     }
@@ -397,10 +481,10 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     }
 
     /** @return list<string> */
-    private function wheelDefects(array $result): array
+    private function ctrlWheelDefects(array $result): array
     {
-        $wheels = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => $a['act']['act'] === 'wheel'));
-        $defects = $wheels === [] ? ['the run turned the wheel nowhere'] : [];
+        $wheels = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => $a['act']['act'] === 'ctrl_wheel'));
+        $defects = $wheels === [] ? ['the run turned the Ctrl+wheel nowhere'] : [];
 
         foreach ($wheels as $a) {
             $p = ['x' => $a['act']['x'], 'y' => $a['act']['y']];
@@ -408,13 +492,160 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             $after = $this->toScene($a['after'], $p);
 
             if (! ($a['after']['zoom'] > $a['before']['zoom'])) {
-                $defects[] = "the wheel at {$a['at']} ms did not zoom in";
+                $defects[] = "the Ctrl+wheel at {$a['at']} ms did not zoom in";
             }
 
             if (abs($before['x'] - $after['x']) > self::EPSILON || abs($before['y'] - $after['y']) > self::EPSILON) {
-                $defects[] = sprintf('the wheel at %d ms moved the scene point under the cursor from (%.3f, %.3f) to (%.3f, %.3f)',
+                $defects[] = sprintf('the Ctrl+wheel at %d ms moved the scene point under the cursor from (%.3f, %.3f) to (%.3f, %.3f)',
                     $a['at'], $before['x'], $before['y'], $after['x'], $after['y']);
             }
+
+            if (($a['consumed'] ?? null) !== true) {
+                $defects[] = "the Ctrl+wheel at {$a['at']} ms was not consumed — the browser's page zoom would take it too";
+            }
+        }
+
+        return $defects;
+    }
+
+    /**
+     * Every plain wheel (`scroll`) of the run: a pan by its scroll over the zoom, the zoom unchanged — every
+     * one inside the clamp exactly, and each far one (a scroll of 10,000 px or more) clamped with the floor
+     * in view — and consumed exactly when it moved the view: a wheel the view could follow is taken from the
+     * page, and one at an edge the view can pass no further is released to it and moves nothing (Q3). The
+     * run must scroll in all three modes, on both axes, and be released at an edge on each axis, and take a
+     * diagonal wheel at an edge on one axis that the other axis can still follow.
+     *
+     * @return list<string>
+     */
+    private function panDefects(array $result, bool $edge = true): array
+    {
+        $line = $this->wheelConstants()['line'];
+        $scrolls = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => $a['act']['act'] === 'scroll'));
+        $defects = $scrolls === [] ? ['the run turned the plain wheel nowhere'] : [];
+        $modes = [];
+        $axes = [];
+        $far = 0;
+        $released = [];
+        $diagonal = false;
+
+        foreach ($scrolls as $a) {
+            $mode = $a['act']['delta_mode'] ?? 0;
+            $s = $a['before']['surface'];
+            [$ux, $uy] = match ($mode) {
+                2 => [$s['width'], $s['height']],
+                1 => [$line, $line],
+                default => [1, 1],
+            };
+            $dx = ($a['act']['delta_x'] ?? 0) * $ux;
+            $dy = ($a['act']['delta_y'] ?? 0) * $uy;
+            $z = $a['before']['zoom'];
+            $modes[$mode] = true;
+            $axes['x'] = ($axes['x'] ?? false) || $dx !== 0 && $dx !== 0.0;
+            $axes['y'] = ($axes['y'] ?? false) || $dy !== 0 && $dy !== 0.0;
+
+            $movedX = abs($a['after']['x'] - $a['before']['x']) > self::EPSILON;
+            $movedY = abs($a['after']['y'] - $a['before']['y']) > self::EPSILON;
+
+            if (($a['consumed'] ?? null) !== ($movedX || $movedY)) {
+                $defects[] = ($movedX || $movedY)
+                    ? "the wheel at {$a['at']} ms moved the view and was not consumed — the page would scroll as the floor pans"
+                    : "the wheel at {$a['at']} ms could move the view no further its way and was consumed — the page's scroll stops at the drawing's edge";
+            }
+
+            if (($a['consumed'] ?? null) === false) {
+                $released[$dx !== 0 && $dx !== 0.0 ? ($dy !== 0 && $dy !== 0.0 ? 'xy' : 'x') : 'y'] = true;
+            } elseif (($dx !== 0 && $dx !== 0.0) && ($dy !== 0 && $dy !== 0.0) && ! $movedX && $movedY) {
+                $diagonal = true;
+            }
+
+            if (abs($a['after']['zoom'] - $z) > self::EPSILON) {
+                $defects[] = sprintf('the wheel at %d ms zoomed %.6f → %.6f — a plain wheel pans', $a['at'], $z, $a['after']['zoom']);
+            }
+
+            if (max(abs($dx), abs($dy)) >= 10000 || ($a['consumed'] ?? null) === false) {
+                $far++;
+
+                if (! $this->inView($a['after'])) {
+                    $defects[] = "after the wheel at {$a['at']} ms the floor is not in view";
+                }
+
+                continue;
+            }
+
+            // An axis the wheel pushes against its edge stays put (the diagonal case); every other moves exactly.
+            $heldX = ! $movedX && $dx != 0 && $movedY;
+            $heldY = ! $movedY && $dy != 0 && $movedX;
+
+            if ((! $heldX && abs($a['after']['x'] - ($a['before']['x'] + $dx / $z)) > self::EPSILON)
+                || (! $heldY && abs($a['after']['y'] - ($a['before']['y'] + $dy / $z)) > self::EPSILON)) {
+                $defects[] = sprintf('the wheel at %d ms (delta %s, %s, mode %d) moved the view from (%.3f, %.3f) to (%.3f, %.3f); its scroll makes it (%.3f, %.3f)',
+                    $a['at'], $a['act']['delta_x'] ?? 0, $a['act']['delta_y'] ?? 0, $mode, $a['before']['x'], $a['before']['y'],
+                    $a['after']['x'], $a['after']['y'], $a['before']['x'] + $dx / $z, $a['before']['y'] + $dy / $z);
+            }
+        }
+
+        if ($edge) {
+            foreach ([0 => 'pixel', 1 => 'line', 2 => 'page'] as $mode => $name) {
+                if (! isset($modes[$mode])) {
+                    $defects[] = "the run turns the plain wheel in no {$name}-mode event";
+                }
+            }
+
+            foreach (['x', 'y'] as $axis) {
+                if (! ($axes[$axis] ?? false)) {
+                    $defects[] = "the run turns the plain wheel on no {$axis} delta";
+                }
+            }
+
+            foreach (['x' => 'horizontal', 'y' => 'vertical'] as $axis => $name) {
+                if (! isset($released[$axis])) {
+                    $defects[] = "the run releases no {$name} wheel at the floor's edge, so the edge (Q3) was never asked on that axis";
+                }
+            }
+
+            if (! $diagonal) {
+                $defects[] = 'the run takes no diagonal wheel at one axis\'s edge that the other axis still follows';
+            }
+
+            if ($far < 2) {
+                $defects[] = 'the run does not scroll past the edge, so the clamp was never asked';
+            }
+        }
+
+        return $defects;
+    }
+
+    /**
+     * Every touch pinch step: the zoom by its factor, and the scene point that was under the fingers'
+     * midpoint `from` under `to` after it. The run must pinch out and in.
+     *
+     * @return list<string>
+     */
+    private function pinchDefects(array $result, bool $both = true): array
+    {
+        $pinches = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => $a['act']['act'] === 'pinch'));
+        $defects = $pinches === [] ? ['the run pinches nowhere'] : [];
+        $signs = [];
+
+        foreach ($pinches as $a) {
+            $f = $a['act']['factor'];
+            $signs[$f <=> 1] = true;
+            $before = $this->toScene($a['before'], $a['act']['from']);
+            $after = $this->toScene($a['after'], $a['act']['to']);
+
+            if (abs($a['after']['zoom'] - $a['before']['zoom'] * $f) > self::EPSILON) {
+                $defects[] = sprintf('the pinch at %d ms (×%s) zoomed %.6f → %.6f', $a['at'], $f, $a['before']['zoom'], $a['after']['zoom']);
+            }
+
+            if (abs($before['x'] - $after['x']) > self::EPSILON || abs($before['y'] - $after['y']) > self::EPSILON) {
+                $defects[] = sprintf('the pinch at %d ms moved the scene point under its midpoint from (%.3f, %.3f) to (%.3f, %.3f)',
+                    $a['at'], $before['x'], $before['y'], $after['x'], $after['y']);
+            }
+        }
+
+        if ($both && ! isset($signs[1], $signs[-1])) {
+            $defects[] = 'the run pinches not both out and in';
         }
 
         return $defects;
@@ -442,11 +673,10 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     private function wheelScaleDefects(array $result): array
     {
         $c = $this->wheelConstants();
-        $wheels = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => $a['act']['act'] === 'wheel'));
+        $wheels = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => $a['act']['act'] === 'ctrl_wheel'));
         $defects = [];
         $modes = [];
         $bounded = false;
-        $pinched = false;
         $burst = ['n' => 0, 'px' => 0.0, 'factor' => 1.0];
 
         foreach ($wheels as $a) {
@@ -456,21 +686,19 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
                 1 => $c['line'],
                 default => 1,
             };
-            $pinch = ($a['act']['ctrl_key'] ?? false) === true;
-            $px = $a['act']['delta_y'] * $unit * ($pinch ? $c['pinch'] : 1);
+            $px = $a['act']['delta_y'] * $unit * $c['pinch'];
             $scroll = max(-$c['notch'], min($c['notch'], $px));
-            $pinched = $pinched || $pinch;
             $expected = $a['before']['zoom'] * $c['step'] ** (-$scroll / $c['notch']);
             $modes[$mode] = true;
             $bounded = $bounded || abs($px) > $c['notch'];
 
             if (abs($a['after']['zoom'] - $expected) > self::EPSILON) {
-                $defects[] = sprintf('the wheel at %d ms (delta %s, mode %d%s) zoomed %.6f → %.6f; its scroll makes it %.6f',
-                    $a['at'], $a['act']['delta_y'], $mode, $pinch ? ', a pinch' : '', $a['before']['zoom'], $a['after']['zoom'], $expected);
+                $defects[] = sprintf('the Ctrl+wheel at %d ms (delta %s, mode %d) zoomed %.6f → %.6f; its scroll makes it %.6f',
+                    $a['at'], $a['act']['delta_y'], $mode, $a['before']['zoom'], $a['after']['zoom'], $expected);
             }
 
-            // The trackpad's burst: the small pixel-mode deltas, whose sum is the gesture's scroll.
-            if (! $pinch && $mode === 0 && abs($px) < $c['notch'] / 10) {
+            // The trackpad pinch's burst: the small pixel-mode deltas, whose sum is the gesture's scroll.
+            if ($mode === 0 && abs($px) < $c['notch'] / 10) {
                 $burst['n']++;
                 $burst['px'] += $px;
                 $burst['factor'] *= $a['after']['zoom'] / $a['before']['zoom'];
@@ -478,24 +706,20 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         }
 
         if ($burst['n'] < 20) {
-            $defects[] = "the run's trackpad burst is {$burst['n']} events — too few to tell a step per event from a scroll";
+            $defects[] = "the run's trackpad pinch burst is {$burst['n']} events — too few to tell a step per event from a scroll";
         } elseif (abs($burst['factor'] - $c['step'] ** (-$burst['px'] / $c['notch'])) > self::EPSILON) {
-            $defects[] = sprintf('a trackpad burst of %d events scrolling %.0f px in all zoomed ×%.4f; its scroll is ×%.4f',
+            $defects[] = sprintf('a trackpad pinch burst of %d events scrolling %.0f px in all zoomed ×%.4f; its scroll is ×%.4f',
                 $burst['n'], $burst['px'], $burst['factor'], $c['step'] ** (-$burst['px'] / $c['notch']));
         }
 
         foreach ([0 => 'pixel', 1 => 'line', 2 => 'page'] as $mode => $name) {
             if (! isset($modes[$mode])) {
-                $defects[] = "the run turns the wheel in no {$name}-mode event";
+                $defects[] = "the run turns the Ctrl+wheel in no {$name}-mode event";
             }
         }
 
-        if (! $pinched) {
-            $defects[] = 'the run pinches nowhere (no wheel event carries `ctrl_key`), so the pinch gain was never asked to bite';
-        }
-
         if (! $bounded) {
-            $defects[] = 'the run turns the wheel in no event past a notch, so the per-event bound was never asked to bite';
+            $defects[] = 'the run turns the Ctrl+wheel in no event past a notch, so the per-event bound was never asked to bite';
         }
 
         return $defects;
@@ -581,6 +805,17 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         foreach ($result['camera_acts'] as $a) {
             if ($a['after'] !== $a['before']) {
                 $defects[] = "the {$a['act']['act']} at {$a['at']} ms moved a camera with nothing framed";
+            }
+
+            // A wheel over a camera that frames nothing is the page's: the act consumes nothing.
+            if (array_key_exists('consumed', $a) && $a['consumed'] !== false) {
+                $defects[] = "the {$a['act']['act']} at {$a['at']} ms consumed a wheel with nothing framed";
+            }
+        }
+
+        foreach (['scroll', 'ctrl_wheel', 'pinch'] as $act) {
+            if (! in_array($act, array_map(static fn (array $a): string => $a['act']['act'], $result['camera_acts']), true)) {
+                $defects[] = "the run has no {$act} on the camera with nothing framed";
             }
         }
 
@@ -767,7 +1002,8 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
                 $drawing = $drawing || $drawn;
             }
 
-            $checks = [...$this->firstFramingDefects($result), ...$this->wheelDefects($result), ...$this->dragDefects($result)];
+            $checks = [...$this->firstFramingDefects($result), ...$this->ctrlWheelDefects($result), ...$this->panDefects($result, false),
+                ...$this->pinchDefects($result, false), ...$this->dragDefects($result)];
             $fits = array_values(array_filter($result['camera_acts'], static fn (array $a): bool => $a['act']['act'] === 'fit'));
 
             if ($fits === []) {

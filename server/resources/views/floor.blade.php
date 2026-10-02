@@ -38,10 +38,11 @@
         ⭐ UNDER THE CAMERA (Appendix B row 15), AT EVERY WINDOW SIZE (§ 4.5; the operator's ruling of
         2026-10-01 on card#7341 — no minimum size and no substitute view): the drawing fills the
         section's width and the viewport height the chrome above it leaves (card#11045 PR-A) and the
-        camera frames it — wheel to zoom, drag to
-        pan, `+`/`-` or `#floor-zoom-in`/`#floor-zoom-out` to zoom about the centre, the arrow keys to
-        pan, `#floor-fit` to frame the whole floor, and the whole-building link to `/`, § 4.4's lobby
-        route. Below the drawing `#floor-desks` is § 4.5's list view, the desks as text beside the
+        camera frames it — the wheel or a two-finger scroll to pan, Ctrl+wheel or a pinch to zoom
+        about the pointer, one finger or the mouse to drag to pan (the operator's ruling of 2026-10-01 on
+        card#11045), `+`/`-` or `#floor-zoom-in`/`#floor-zoom-out` to zoom about the centre, the arrow
+        keys to pan, `#floor-fit` to frame the whole floor, and the whole-building link to `/`, § 4.4's
+        lobby route; `#floor-hint`, under the drawing, says so in a line. Below the drawing `#floor-desks` is § 4.5's list view, the desks as text beside the
         drawing: each desk's row (Appendix B row 15, slice A: `public/js/desk/desk-list.js`), every
         fact the desk model emits as lines of text, in the first of the sections below the room,
         each a <details> closed by default (card#11045). The status strip, the failure statements, the
@@ -121,6 +122,13 @@
         --}}
         <div class="floor-stage">
             <div id="floor-drawing" role="group" aria-label="the room drawing" data-dimmed="false"></div>
+
+            {{--
+                The camera's gestures in one line (card#11045, § 4.5), offered with the camera's controls —
+                hidden until the camera frames the floor (`camera-keys.js`'s `offerKeys()`). Its row keeps
+                its height while the line is hidden, so offering it never resizes the drawing.
+            --}}
+            <div class="floor-hint-row">@include('partials.camera-hint', ['id' => 'floor-hint'])</div>
 
             {{--
                 § 4.3's DRILL-DOWN — Appendix B row 10: a panel over the floor, opened by selecting a desk

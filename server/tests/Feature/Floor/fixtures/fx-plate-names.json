@@ -1,8 +1,8 @@
 {
-  "note": "docs/design/FLOOR.md Appendix B row 16's plate names (card#7343, the operator's rulings of 2026-09-27: a plate's name, and then its status line, are drawn at the lobby page's own body text size and the camera never scales them). Each run is `building_rides`' entry — `fx-snapshot-4` under the building layout, drawn on the harness's default 1280 × 800 surface — under a layout of N floors: `aimla`, `zeta` labelled *the annex*, and N − 2 more floors of one room each that the fleet reports no seat for. The viewer wheels in once, asks for the whole building (a glide back to fit) and rides (a glide to a plate). `Tests\\Feature\\Floor\\ThePlateNameIsReadAtTheBodyTextSizeTest` reads the size on the screen of each plate's name and status line at fit, after the wheel and halfway through each glide.",
+  "note": "docs/design/FLOOR.md Appendix B row 16's plate names (card#7343, the operator's rulings of 2026-09-27: a plate's name, and then its status line, are drawn at the lobby page's own body text size and the camera never scales them). Each run is `building_rides`' entry — `fx-snapshot-4` under the building layout, drawn on the harness's default 1280 × 800 surface — under a layout of N floors: `aimla`, `zeta` labelled *the annex*, and N − 2 more floors of one room each that the fleet reports no seat for. The viewer zooms in once with a Ctrl+wheel, pans with a plain wheel (card#11045: the plain wheel pans, Ctrl+wheel and the pinch zoom), asks for the whole building (a glide back to fit) and rides (a glide to a plate). `Tests\\Feature\\Floor\\ThePlateNameIsReadAtTheBodyTextSizeTest` reads the size on the screen of each plate's name and status line at fit, after each wheel and halfway through each glide.",
   "runs": {
     "plate_names_2": {
-      "note": "2 floors: the plate names at whole-building fit, after one wheel notch in, halfway through the glide back to the whole building, and halfway through a ride.",
+      "note": "2 floors: the plate names at whole-building fit, after one Ctrl+wheel notch in, a plain wheel's pan, halfway through the glide back to the whole building, and halfway through a ride.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -434,10 +434,15 @@
         "camera": [
           {
             "at_ms": 2000,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
+          },
+          {
+            "at_ms": 2200,
+            "act": "scroll",
+            "delta_y": 60
           },
           {
             "at_ms": 2500,
@@ -451,7 +456,7 @@
       }
     },
     "plate_names_4": {
-      "note": "4 floors: the plate names at whole-building fit, after one wheel notch in, halfway through the glide back to the whole building, and halfway through a ride.",
+      "note": "4 floors: the plate names at whole-building fit, after one Ctrl+wheel notch in, a plain wheel's pan, halfway through the glide back to the whole building, and halfway through a ride.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -903,10 +908,15 @@
         "camera": [
           {
             "at_ms": 2000,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
+          },
+          {
+            "at_ms": 2200,
+            "act": "scroll",
+            "delta_y": 60
           },
           {
             "at_ms": 2500,
@@ -920,7 +930,7 @@
       }
     },
     "plate_names_8": {
-      "note": "8 floors: the plate names at whole-building fit, after one wheel notch in, halfway through the glide back to the whole building, and halfway through a ride.",
+      "note": "8 floors: the plate names at whole-building fit, after one Ctrl+wheel notch in, a plain wheel's pan, halfway through the glide back to the whole building, and halfway through a ride.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -1412,10 +1422,15 @@
         "camera": [
           {
             "at_ms": 2000,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
+          },
+          {
+            "at_ms": 2200,
+            "act": "scroll",
+            "delta_y": 60
           },
           {
             "at_ms": 2500,
@@ -1429,7 +1444,7 @@
       }
     },
     "plate_names_10": {
-      "note": "10 floors: the plate names at whole-building fit, after one wheel notch in, halfway through the glide back to the whole building, and halfway through a ride.",
+      "note": "10 floors: the plate names at whole-building fit, after one Ctrl+wheel notch in, a plain wheel's pan, halfway through the glide back to the whole building, and halfway through a ride.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -1941,10 +1956,15 @@
         "camera": [
           {
             "at_ms": 2000,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
+          },
+          {
+            "at_ms": 2200,
+            "act": "scroll",
+            "delta_y": 60
           },
           {
             "at_ms": 2500,
