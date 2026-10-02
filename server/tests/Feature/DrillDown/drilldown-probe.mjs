@@ -45,7 +45,8 @@ const seat = payload.seat ?? null;
 
 /** The DOM calls `main.js` makes, and not one more. */
 function stubRoot() {
-    const el = () => ({ textContent: '', dataset: {}, children: [], attributes: {} });
+    // `parentElement` is the paragraph a slot shares with its label — `main.js` hides the two together.
+    const el = () => ({ textContent: '', dataset: {}, children: [], attributes: {}, parentElement: { hidden: false } });
     const slots = new Map();
     const doc = { createElement: (tag) => Object.assign(el(), { tag }) };
 
@@ -65,6 +66,7 @@ function stubRoot() {
         read: () => Object.fromEntries([...slots].map(([k, v]) => [k, {
             text: v.textContent,
             hidden: v.hidden === true,
+            parent_hidden: v.parentElement.hidden === true,
             attributes: v.attributes,
             rows: v.children.map((c) => ({ text: c.textContent, data: c.dataset })),
         }])),

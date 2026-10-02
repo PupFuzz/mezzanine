@@ -200,7 +200,8 @@ export class DrillDownPanel {
      * The panel's model at the browser's instant `browserNowMs`, or `null` while closed.
      *
      * @param {number} browserNowMs the BROWSER's clock, corrected here by the protocol's own offset
-     * @param {object} [facts] `{ floor }` — the room the header names
+     * @param {object} [facts] `{ floor }` — the room the header names; `{ stilled, reduce }` — § 9 F6's
+     *                        stilled floor and § 6.4's reduced motion, as the floor draws the desk under
      */
     view(browserNowMs, facts = {}) {
         if (this.#target === null) {
@@ -238,6 +239,8 @@ export class DrillDownPanel {
                 },
                 floor: facts.floor ?? null,
                 missing: this.#client.readStatus(k).missing,
+                stilled: facts.stilled === true,
+                reduce: facts.reduce === true,
                 detail_failure: this.#detailFailure,
                 detail_pending: this.#detail === null && this.#inFlight.has('detail'),
                 timeline_failure: this.#timelineFailure,

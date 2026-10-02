@@ -27,6 +27,20 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11058** — **The drill-down panel carries every fact the desk draws.** Opening a desk now shows
+  the desk's own render on one line (its glyph, pose, lighting, whether it is moving or still, and
+  *unconfirmed* for a seat the floor can no longer confirm), *sending nothing* on a `config_invalid` seat,
+  *N open calls* when more than one call is open, the monitor's light with *a subagent's call* when the
+  monitor shows one, every unrecognised value as its raw `field: value` line under *unrecognised*, and
+  each badge's id as the opening text of its row (an unrecognised badge's row reads its id, then
+  *unrecognised*). Every one is read off the seat object, so each draws when the seat detail could not be
+  read. This is the first step of the desk redesign: the panel holds these facts before the desk narrows
+  to the glance set the operator ruled on 2026-10-02, and the desk itself is unchanged here. FLOOR.md
+  § 4.3, § 5.4, § 9 F9 and AT-D3-11 record it. `DrillDownRendersTheSeatTest` holds each new slot with a
+  control that removes its write, and `TheDrillDownDrawsTheDesksOwnMotionTest` holds the panel's *moving*
+  / *still* to the motion of the desk the same frame draws, under both reduced-motion readings and on a
+  floor stilled by a refused session.
+
 - **card#11045** — **A Safari trackpad pinch zooms the floor and the lobby.** Safari reports a trackpad
   pinch as its own gesture events, which the camera now reads directly: the pinch zooms the drawing about
   the pointer, on the floor and in the lobby, through the same camera wire as every other gesture, and the

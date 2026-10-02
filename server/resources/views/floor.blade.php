@@ -151,6 +151,10 @@
                 <p data-panel-clock role="status" hidden></p>
                 <p>State: <span data-panel-state></span> — <span data-panel-line></span></p>
                 <p data-panel-currency hidden></p>
+                <p data-panel-note hidden></p>
+                <p hidden>Desk: <span data-panel-desk></span></p>
+                <p data-panel-unrecognised-heading hidden></p>
+                <ul data-panel-unrecognised hidden></ul>
 
                 <h4>Current task</h4>
                 <p><span data-panel-task></span> <span data-panel-task-ref hidden></span></p>
@@ -159,6 +163,8 @@
                 <h4>Current action</h4>
                 <p data-panel-action></p>
                 <p>started <span data-panel-action-started></span> · <span data-panel-action-elapsed></span> · scope <span data-panel-action-scope></span></p>
+                <p data-panel-open-calls hidden></p>
+                <p data-panel-monitor></p>
                 <p>last: <span data-panel-last-kind></span></p>
 
                 <h4>Context</h4>

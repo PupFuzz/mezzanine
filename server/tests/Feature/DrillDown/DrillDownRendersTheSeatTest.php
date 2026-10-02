@@ -208,6 +208,254 @@ class DrillDownRendersTheSeatTest extends TestCase
             '§ 5.6: a null `task.ref` renders NO reference text, not an empty reference');
     }
 
+    /**
+     * card#11058 PR-A — the panel carries what the desk draws, so the desk can narrow to the glance set
+     * the operator ruled on 2026-10-02 ("the details are guaranteed in the drill-down panel and the desk
+     * list") without any fact becoming unreachable. One seat carries every one of them at once — an
+     * unrecognised `link_state` and an unrecognised badge beside `config_invalid`, three open calls, a
+     * subagent's call on the monitor — and its DETAIL REQUEST FAILED (§ 9 F11), because every one of
+     * these slots is read off the seat object and must draw without `detail`.
+     *
+     * The words: *sending nothing* (§ 7.3) and *N open calls* (§ 5.1) are D3's, verbatim; *monitor*,
+     * *a subagent's call*, *unconfirmed*, *moving* and *still* are the list view's unratified words
+     * (`desk/desk-list.js`), which the panel imports rather than re-words.
+     */
+    public function test_the_panel_carries_every_fact_the_desk_draws_with_its_detail_failed(): void
+    {
+        $this->assertSame([], $this->deskFactDefects($this->deskFactsDom()));
+    }
+
+    /**
+     * § 5.4 publishes six membership-tested fields, and the panel lists an unrecognised value in EACH
+     * as its raw `field: value` line — one value per field here, all at once, so a panel that dropped
+     * any one field's line is named by that field. Its detail request failed, as above (§ 9 F11).
+     */
+    public function test_the_panel_lists_an_unrecognised_value_in_every_one_of_the_six_fields(): void
+    {
+        $this->assertSame([], $this->unrecognisedDefects($this->unrecognisedDom()));
+    }
+
+    /**
+     * ⛔ ITS CONTROLS — one field's line dropped from the SHIPPED model at a time, and the check above
+     * seen to name exactly that field.
+     */
+    public function test_each_field_of_the_unrecognised_list_goes_red_when_its_line_is_dropped(): void
+    {
+        foreach (array_keys(self::UNRECOGNISED_VALUES) as $field) {
+            $dir = $this->mutatedModules([
+                'drilldown-model.js',
+                'unrecognised: [...desk.unrecognised],',
+                "unrecognised: desk.unrecognised.filter((line) => !line.startsWith('{$field}: ')),",
+            ]);
+
+            $this->assertSame([$field], array_keys($this->unrecognisedDefects($this->unrecognisedDom($dir))),
+                "the control for `{$field}` did not bite alone");
+        }
+    }
+
+    /** One value outside § 5.4's published set, per field — `badges` an array, as the wire carries it. */
+    private const UNRECOGNISED_VALUES = [
+        'render_state' => 'pondering',
+        'link_state' => 'quantum',
+        'activity_state' => 'dreaming',
+        'unknown_reason' => 'reasons',
+        'api_error_type' => 'teapot',
+        'badges' => 'sparkle',
+    ];
+
+    /** @return array<string, mixed> the stub's slots for the seat carrying all six */
+    private function unrecognisedDom(?string $moduleDir = null): array
+    {
+        $values = self::UNRECOGNISED_VALUES;
+        $seat = $this->seatBody([...$values, 'badges' => [$values['badges']]]);
+        unset($seat['detail']);
+
+        return $this->probe([
+            'seat' => $seat,
+            'now_ms' => $this->nowMs(),
+            'options' => ['detail_failure' => ['status' => 503]],
+            'drive_main' => true,
+        ], $moduleDir)['main']['dom'];
+    }
+
+    /**
+     * Each field whose raw `field: value` line is missing from the panel's list, keyed by field.
+     *
+     * @param  array<string, mixed>  $dom
+     * @return array<string, string>
+     */
+    private function unrecognisedDefects(array $dom): array
+    {
+        $this->assertSame('unrecognised', $dom['[data-panel-unrecognised-heading]']['text'] ?? null);
+        $this->assertFalse($dom['[data-panel-unrecognised]']['hidden'] ?? true, 'the unrecognised list is hidden');
+
+        $rows = array_column($dom['[data-panel-unrecognised]']['rows'] ?? [], 'text');
+        $defects = [];
+
+        foreach (self::UNRECOGNISED_VALUES as $field => $value) {
+            if (! in_array("{$field}: {$value}", $rows, true)) {
+                $defects[$field] = "no `{$field}: {$value}` line among ".json_encode($rows);
+            }
+        }
+
+        return $defects;
+    }
+
+    /** § 5.1: "`0` renders nothing rather than a zero" — and one open call is not a count either. */
+    public function test_the_open_call_count_is_drawn_past_one_and_hidden_otherwise(): void
+    {
+        foreach ([0 => null, 1 => null, 3 => '3 open calls'] as $open => $expected) {
+            $dom = $this->probe([
+                'seat' => $this->seatBody(['open_calls' => $open]), 'now_ms' => $this->nowMs(), 'drive_main' => true,
+            ])['main']['dom'];
+
+            $this->assertArrayHasKey('[data-panel-open-calls]', $dom, 'the open-call slot is never written');
+
+            if ($expected === null) {
+                $this->assertTrue($dom['[data-panel-open-calls]']['hidden'], "{$open} open call(s) drew a count");
+                $this->assertSame('', $dom['[data-panel-open-calls]']['text'], "{$open} open call(s) drew a count");
+            } else {
+                $this->assertFalse($dom['[data-panel-open-calls]']['hidden']);
+                $this->assertSame($expected, $dom['[data-panel-open-calls]']['text']);
+            }
+        }
+    }
+
+    /**
+     * The desk's render line follows the desk it describes: the worked seat's typing loop is
+     * *moving*; under reduced motion (§ 6.4) or a stilled floor (§ 9 F6) the same desk is *still*; and a
+     * seat the client cannot confirm (§ 2.3 row 5) is the empty chair, dimmed, and says *unconfirmed*.
+     * A seat with nothing unrecognised draws no unrecognised heading and no rows, and the monitor of a
+     * main-agent call carries no subagent marker.
+     */
+    public function test_the_desk_render_line_follows_the_desk_it_describes(): void
+    {
+        $render = fn (array $options) => $this->probe([
+            'seat' => $this->seatBody(), 'now_ms' => $this->nowMs(), 'drive_main' => true, 'options' => $options,
+        ])['main']['dom'];
+
+        $live = $render([]);
+        $this->assertSame('working · at-keyboard · full · moving', $live['[data-panel-desk]']['text']);
+        $this->assertSame('monitor on', $live['[data-panel-monitor]']['text']);
+        $this->assertTrue($live['[data-panel-note]']['hidden']);
+        $this->assertTrue($live['[data-panel-unrecognised-heading]']['hidden']);
+        $this->assertTrue($live['[data-panel-unrecognised]']['hidden']);
+        $this->assertSame([], $live['[data-panel-unrecognised]']['rows']);
+
+        $this->assertFalse($live['[data-panel-desk]']['parent_hidden'], 'the *Desk:* paragraph is hidden over a drawn desk');
+
+        // A seat with no desk to describe — `retired`, § 7.1's "instruction to stop rendering one" —
+        // draws no desk line, and no bare *Desk:* label above nothing either.
+        $retired = $this->probe([
+            'seat' => $this->seatBody(['render_state' => 'retired']), 'now_ms' => $this->nowMs(), 'drive_main' => true,
+        ])['main']['dom'];
+        $this->assertTrue($retired['[data-panel-desk]']['hidden']);
+        $this->assertTrue($retired['[data-panel-desk]']['parent_hidden'], 'a bare *Desk:* label is drawn over no desk');
+
+        $this->assertSame('working · at-keyboard · full · still', $render(['reduce' => true])['[data-panel-desk]']['text']);
+        $this->assertSame('working · at-keyboard · full · still', $render(['stilled' => true])['[data-panel-desk]']['text']);
+        $this->assertSame('empty-chair · empty-chair · dimmed · still · unconfirmed', $render(['missing' => true])['[data-panel-desk]']['text']);
+    }
+
+    /**
+     * The worked seat with every desk fact at once, its detail request failed (§ 9 F11), through the
+     * shipped model and the shipped DOM half.
+     *
+     * @return array<string, mixed> the stub's slots
+     */
+    private function deskFactsDom(?string $moduleDir = null): array
+    {
+        $seat = $this->seatBody([
+            'link_state' => 'quantum',
+            'badges' => ['config_invalid', 'sparkle'],
+            'open_calls' => 3,
+            'action' => array_merge($this->seatBody()['action'], ['agent_scope' => 'subagent']),
+        ]);
+        unset($seat['detail']);
+
+        return $this->probe([
+            'seat' => $seat,
+            'now_ms' => $this->nowMs(),
+            'options' => ['detail_failure' => ['status' => 503]],
+            'drive_main' => true,
+        ], $moduleDir)['main']['dom'];
+    }
+
+    /**
+     * Each of PR-A's slots against `deskFactsDom()`, keyed by slot — the slot's visible text, or a
+     * defect naming it. A slot the module never wrote is absent from the stub, which is a defect too.
+     *
+     * @param  array<string, mixed>  $dom
+     * @return array<string, string>
+     */
+    private function deskFactDefects(array $dom): array
+    {
+        $expect = [
+            // `config_invalid` and an unrecognised value both stop the loop (§ 7.3, § 9 F9).
+            '[data-panel-desk]' => 'working · at-keyboard · full · still',
+            '[data-panel-note]' => 'sending nothing',
+            '[data-panel-open-calls]' => '3 open calls',
+            '[data-panel-monitor]' => "monitor on · a subagent's call",
+            '[data-panel-unrecognised-heading]' => 'unrecognised',
+        ];
+
+        $defects = [];
+
+        foreach ($expect as $slot => $text) {
+            if (! isset($dom[$slot])) {
+                $defects[$slot] = 'never written';
+            } elseif ($dom[$slot]['hidden'] || $dom[$slot]['text'] !== $text) {
+                $defects[$slot] = 'drew '.json_encode($dom[$slot]['text']).($dom[$slot]['hidden'] ? ' hidden' : '').", not \"{$text}\"";
+            }
+        }
+
+        $rows = fn (string $slot) => array_column($dom[$slot]['rows'] ?? [], 'text');
+
+        // § 5.4 / § 9 F9: the raw `field: value` line for every unrecognised value, badges included.
+        $unrecognised = $rows('[data-panel-unrecognised]');
+
+        if (($dom['[data-panel-unrecognised]']['hidden'] ?? true) || $unrecognised !== ['link_state: quantum', 'badges: sparkle']) {
+            $defects['[data-panel-unrecognised]'] = 'listed '.json_encode($unrecognised);
+        }
+
+        // The badge's id as visible text on its row, recognised or not — with detail failed.
+        $badges = $rows('[data-panel-badges]');
+
+        if (count($badges) !== 2
+            || ! str_starts_with($badges[0], 'config_invalid · ')
+            || $badges[1] !== 'sparkle · unrecognised') {
+            $defects['[data-panel-badges]'] = 'drew the rows '.json_encode($badges);
+        }
+
+        return $defects;
+    }
+
+    /**
+     * ⛔ PR-A's CONTROLS — each slot's write removed from the SHIPPED DOM half, and the check above seen
+     * to name exactly that slot. A check that stayed clean with the write gone would be a check of the
+     * stub, not of the panel.
+     */
+    public function test_each_desk_fact_check_goes_red_when_its_slot_is_not_written(): void
+    {
+        $plants = [
+            '[data-panel-desk]' => "    putLabelled(root, '[data-panel-desk]', joined(desk.render));\n",
+            '[data-panel-note]' => "    put(root, '[data-panel-note]', desk.note);\n",
+            '[data-panel-unrecognised-heading]' => "    put(root, '[data-panel-unrecognised-heading]', desk.unrecognised_heading);\n",
+            '[data-panel-unrecognised]' => "    putRows(root, '[data-panel-unrecognised]', desk.unrecognised.map((line) => ({ text: line })));\n",
+            '[data-panel-open-calls]' => "    put(root, '[data-panel-open-calls]', desk.open_calls);\n",
+            '[data-panel-monitor]' => "    put(root, '[data-panel-monitor]', joined([desk.monitor, desk.subagent_call]));\n",
+            '[data-panel-badges]' => "            badge.badge,\n",
+        ];
+
+        foreach ($plants as $slot => $write) {
+            $defects = $this->deskFactDefects($this->deskFactsDom($this->mutatedModules(['main.js', $write, ''])));
+
+            $this->assertSame([$slot], array_keys($defects),
+                "the control for {$slot} did not bite alone: with its write removed the check reported "
+                .json_encode($defects));
+        }
+    }
+
     /** ⛔ THE CONTROLS — each defect planted in the SHIPPED module and seen to reach the panel. */
     public function test_the_guard_goes_red_against_each_defect_it_exists_to_catch(): void
     {

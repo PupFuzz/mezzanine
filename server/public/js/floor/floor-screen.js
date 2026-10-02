@@ -396,7 +396,16 @@ export class FloorScreen {
      * readout, and nothing else"), read from what the last render left and draining nothing.
      */
     panelView(floorName = null) {
-        return this.#panel.view(this.#clock.now(), { floor: floorName });
+        return this.#panel.view(this.#clock.now(), this.#panelFacts(floorName));
+    }
+
+    /**
+     * What the panel's model reads beside the seat: the room its header names, and the two facts the
+     * desk floor draws every desk's motion under — § 9 F6's stilled floor and § 6.4's reduced motion —
+     * read from the desk floor and its animation set, so the panel's *moving* / *still* is the desk's.
+     */
+    #panelFacts(floorName) {
+        return { floor: floorName, stilled: this.#desks.stilled, reduce: this.#set.reduce };
     }
 
     /** The desk floor this screen runs — the age ticker's population, and the frame's source. */
@@ -714,7 +723,7 @@ export class FloorScreen {
 
         return {
             seat: this.#seatSegment,
-            panel: this.#panel.view(this.#clock.now(), { floor: frame.floor?.name ?? null }),
+            panel: this.#panel.view(this.#clock.now(), this.#panelFacts(frame.floor?.name ?? null)),
             notices: Object.freeze(notices),
         };
     }

@@ -42,6 +42,15 @@ export const UNCONFIRMED = 'unconfirmed';
 
 export const SUBAGENT_CALL = "a subagent's call";
 
+/**
+ * Whether the desk's held render is drawn moving — § 6.2's `motion`, `held.motion` on the model — in
+ * words. ⚠ NOT RATIFIED, for the same reason. The drill-down prints them since card#11058's PR-A; this
+ * row does not yet (`NOT_LISTED`'s `held.motion`).
+ */
+export const MOVING = 'moving';
+
+export const STILL = 'still';
+
 /** The prefix the monitor's line is read under — ⚠ NOT RATIFIED, for the same reason. */
 export const MONITOR = 'monitor';
 
