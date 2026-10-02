@@ -1,25 +1,42 @@
 /**
  * ONE DESK, LAID OUT INSIDE ITS FURNITURE BOX — `docs/design/FLOOR.md` Appendix B row 14 and
- * § 10.3's `desks` row: every element step 5's desk model emits, placed at a rect relative to the
- * box's top-left corner, together with the scene's ONE TRUNCATION PRIMITIVE, `fit()`.
+ * § 10.3's `desks` row: the RULED GLANCE SET (§ 5.1's *the glance set*, the operator's ruling of
+ * 2026-10-02, card#11058 Q0 (a) + Q1 (B)), placed at the rects `deskRects()` derives from the box,
+ * together with the scene's ONE TRUNCATION PRIMITIVE, `fit()`.
+ *
+ * ⛔ THE DESK DRAWS EXACTLY THE RULED SET AND NOTHING ELSE: the character (or the chair), the desk,
+ * the monitor and its text, the nameplate on its plate, the state chip, the label line, the currency
+ * label, the lag line, the context bar and its %, a badge row of two (the treatment badges, then
+ * recognised badges in the wire's order), ONE flag `⚠ +N` for every unusual item whose raw form is
+ * not drawn, the interns, the quiet age, § 7.4's hatch, § 7.3's dimming and the bubble. Every other
+ * fact — and every raw unrecognised string — is the drill-down's and the desk list's
+ * (`drilldown/main.js`, `desk/desk-list.js`). `Tests\Feature\Floor\TheNewDeskKeepsEveryLeafTest` holds
+ * both halves: every leaf the desk drew before card#11058 is carried by the panel AND the list, and
+ * the desk draws exactly the ruled set.
+ *
+ * ⛔ NO RAW UNRECOGNISED STRING IS DRAWN ON THE DESK (Q0, read literally): the chip reads the fixed
+ * word *unrecognised* for an unrecognised state, the label line, currency label and monitor draw the
+ * model's non-raw forms (`desk_label`, `desk_currency`), and an unrecognised badge is never a chip —
+ * it is counted into the flag.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ EVERYTHING DRAWN FOR A DESK AT REST, EXCEPT THE BUBBLE, LIES INSIDE THE BOX — by construction,
- * at the worst case § 10.3 names: § 8's cap of stools with the *+N more* tag, D2's bound of badges
- * with its mark, and every string cut to the width it is given. That is what makes card#7341's
+ * at the worst case § 10.3 names: § 8's cap of interns with the *+N more* tag, the badge row of two
+ * with the flag, and every string cut to the width it is given. The rects are a table derived from
+ * the box (`deskRects()`), never a number of their own. That is what makes card#7341's
  * ruling true of a floor: § 3.2 gives distinct seats distinct slots, the map's slots are disjoint,
  * and a desk drawn inside its own slot cannot reach a neighbour's whatever the seat beside it
  * carries. `Tests\Feature\Floor\SeatFurnitureNeverOverlapsTest` (AT-D3-20) reads the rects this
  * returns.
  *
  * ⛔ EVERY STRING GOES THROUGH `fit()` AND NO DRAWING SITE CUTS ONE ITSELF (§ 10.3). A string the
- * fixtures never stretch — the model label, the currency label, a raw API-error string, the gauge's
- * text — is cut by the same code as the ones they do, which is the only reason AT-D3-20's second RED,
+ * fixtures never stretch — the currency label, the lag line, the gauge's % — is cut by the same code
+ * as the ones they do, which is the only reason AT-D3-20's second RED,
  * planted in `fit()`, can speak for them.
  *
  * ⛔ THE STRINGS ARE THE DESK MODEL's (`desk/desk-render.js`), each as that model decided it. What
- * this module adds is WHERE: which column, which row, how wide. Two strings the model leaves as
- * numbers are worded here and say so (`OPEN_CALLS`, `MORE`).
+ * this module adds is WHERE: which column, which row, how wide. Three strings the model leaves as
+ * numbers are worded here and say so (`OPEN_CALLS`, `MORE`, `FLAG_TEXT`).
  *
  * ⛔ THE POPULATION IS THE MODEL's OUTPUT, NOT A LIST WRITTEN HERE. `DRAWN_MEMBERS` and
  * `NOT_DRAWN_MEMBERS` below partition every member `deskModel()` returns, and
@@ -30,6 +47,7 @@
 
 import { TRUNCATION_MARK } from '../desk/task-bubble.js';
 import { BADGES } from '../wire/member-sets.js';
+import { UNRECOGNISED } from '../desk/desk-render.js';
 
 /** The pitch every text row is laid on, in scene pixels — the page's font is chosen to fit it. */
 export const LINE = 12;
@@ -42,20 +60,20 @@ export const BUBBLE_PAD = 3;
 
 export const BUBBLE_BAND = 2 * LINE + 2 * BUBBLE_PAD;
 
-/** Column A — the art: the character, the desk sprite, the monitor, the nameplate. */
-export const ART_W = 120;
+/** The art column's width — the character, the desk, the monitor, the chip and the plate (§ 2.2: Chosen). */
+export const ART_W = 216;
 
-/** The gap between columns. */
+/** The gap between the art column and the facts column. */
 export const GUTTER = 4;
 
 /**
- * The character's drawn scale over the tree's own `SCENE_W × SCENE_H` — the interim pixel art is
- * 18 × 32, and at 1 it is smaller than the monitor it sits behind. An integer, because the tree
- * blits nearest-neighbour (`resources/characters/index.js`).
+ * The interim pixel character's drawn scale over the tree's own `SCENE_W × SCENE_H` (18 × 32): the
+ * character rect is 3 × that, 54 × 96 (§ 12's *Character rect* row, Chosen). An integer, because the
+ * tree blits nearest-neighbour (`resources/characters/index.js`).
  */
-export const CHARACTER_SCALE = 2;
+export const CHARACTER_SCALE = 3;
 
-/** § 8's cap on the side table: the array D2 caps at 8 (§ 8.1's chosen cap). */
+/** § 8's cap on the interns drawn: the array D2 caps at 8 (§ 8.1's chosen cap). */
 export const STOOL_CAP = 8;
 
 /**
@@ -65,25 +83,55 @@ export const STOOL_CAP = 8;
  */
 export const BADGE_BOUND = BADGES.size;
 
-/** The badge chips laid per row of the cluster. */
-export const BADGES_PER_ROW = 3;
+/** The badges drawn on the desk — Q1 (B): "up to two badges (treatment first)" (§ 12, Chosen). */
+export const BADGES_SHOWN = 2;
 
-/** The side of a stool's glyph. */
-const STOOL_GLYPH = 8;
+/** One badge chip's width, and the pitch the row lays them at (§ 12, Chosen). */
+export const BADGE_W = 108;
+
+const BADGE_PITCH = 112;
+
+/** A badge chip's inner padding: an id of at most ⌊(BADGE_W − 2 × BADGE_PAD) ÷ glyph width⌋ glyphs fits. */
+const BADGE_PAD = 3;
+
+/** One intern's sprite rect, and the pitch the row lays them at (§ 2.5). */
+const STOOL_W = 20;
+
+const STOOL_H = 32;
+
+const STOOL_PITCH = 24;
+
+/** The interim intern glyph, drawn inside its sprite rect until PR-C draws the sprite. */
+export const STOOL_GLYPH = 8;
+
+/** The state chip's widest box, and its inner padding. */
+const CHIP_MAX_W = 160;
+
+const CHIP_PAD = 6;
+
+/** The nameplate's text width inside its 160 px plate. */
+const PLATE_TEXT_W = 148;
 
 /** The badges a § 7 treatment reads — § 7.3's `config_invalid` and § 7.4's `fold_lag`. */
-const TREATMENT_BADGES = Object.freeze(['config_invalid', 'fold_lag']);
+export const TREATMENT_BADGES = Object.freeze(['config_invalid', 'fold_lag']);
 
 /**
  * § 5.1's open-call count, which the model carries as a number.
  *
  * § 5.1: the count renders "when it exceeds 1", in the wording the operator ratified (card#7342,
- * 2026-09-25) — the number and the member it counts, nothing else.
+ * 2026-09-25) — the number and the member it counts, nothing else. The DRILL-DOWN and the LIST draw
+ * it (§ 5.1's row, card#11058); the desk does not.
  */
 export const OPEN_CALLS = (n) => `${n} open calls`;
 
-/** § 8's and § 10.3's *+N more*, the document's own words, for the side table and the cluster. */
+/** § 8's and § 10.3's *+N more*, the document's own words, for the interns past the cap. */
 export const MORE = (n) => `+${n} more`;
+
+/** The flag's glyph — ⚠ NOT RATIFIED, a display form (design § 7's *unratified display forms*). */
+export const FLAG = '⚠';
+
+/** The flag's text: the glyph and the count N (`flagCount()`). */
+export const FLAG_TEXT = (n) => `${FLAG} +${n}`;
 
 /**
  * THE SCENE's ONE TRUNCATION PRIMITIVE (§ 10.3): `text` cut to `width` with a visible mark, by the
@@ -123,46 +171,116 @@ export function fit(text, width, measure) {
 }
 
 /**
+ * THE DESK's RECT TABLE — § 2.2's, derived from the box (`resources/floor/furniture-box.js`'s one
+ * declaration): every element's rect relative to the box's top-left, bottom-anchored rows from `H`
+ * and top-anchored ones from the bubble's band. A larger box keeps every rect inside; AT-D3-20 reds
+ * when the box shrinks below the table at the cap.
+ *
+ * @param {{width: number, height: number}} box the furniture box
+ * @param {{w: number, h: number}} character the character tree's own `SCENE_W × SCENE_H`
+ * @returns {object} `kind → {x, y, w, h}` — `chip.x` / `chip.w` are the chip's centre line and widest
+ *          box, the chip being as wide as its word
+ */
+export function deskRects(box, character) {
+    const W = box.width;
+    const H = box.height;
+    const top = BUBBLE_BAND;
+    const slab = H - 100;
+    const colB = ART_W + GUTTER;
+    const widthB = W - colB;
+    const mid = ART_W / 2;
+    const cw = character.w * CHARACTER_SCALE;
+    const ch = character.h * CHARACTER_SCALE;
+
+    return Object.freeze({
+        character: { x: mid - cw / 2, y: slab - 70, w: cw, h: ch },
+        chair: { x: mid - cw / 2, y: slab - 38, w: cw, h: 64 },
+        placeholder: { x: 0, y: top, w: ART_W, h: H - 36 - top },
+        'desk-sprite': { x: mid - 90, y: slab, w: 180, h: 60 },
+        monitor: { x: mid + 28, y: slab - 44, w: 64, h: 44 },
+        'monitor-text': { x: mid + 32, y: slab - 28, w: 56, h: LINE },
+        chip: { x: mid, y: H - 16, w: CHIP_MAX_W, h: 14 },
+        label: { x: colB, y: top + 6, w: widthB, h: LINE },
+        currency: { x: colB, y: top + 18, w: widthB, h: LINE },
+        lag: { x: colB, y: top + 30, w: widthB, h: LINE },
+        'gauge-bar': { x: colB, y: top + 58, w: 60, h: 8 },
+        'gauge-pct': { x: colB + 64, y: top + 56, w: 60, h: LINE },
+        badge: { x: colB, y: top + 70, w: BADGE_W, h: LINE },
+        flag: { x: colB, y: top + 82, w: widthB, h: LINE },
+        stool: { x: colB, y: top + 104, w: STOOL_W, h: STOOL_H },
+        'side-table': { x: colB, y: top + 138, w: widthB, h: 8 },
+        'stool-more': { x: colB, y: top + 148, w: widthB, h: LINE },
+        'quiet-age': { x: colB, y: top + 160, w: widthB, h: LINE },
+        'lag-overlay': { x: 0, y: top, w: ART_W, h: H - top },
+        plate: { x: mid - 80, y: H - 36, w: 160, h: 18 },
+    });
+}
+
+/**
+ * THE ONE DEFINITION OF N (§ 5.1's *the glance set*, § 12's flag row): the number of unusual items
+ * whose raw form is not drawn on the desk = every line of the model's `unrecognised` list
+ * (`field: value` — `render_state`, `link_state`, `activity_state`, `unknown_reason`,
+ * `api_error_type` and `badges: <id>` alike, since none of them is drawn) + every RECOGNISED badge not
+ * in the row. D2 § 8.2.1 forbids duplicate badge ids; a duplicate is counted per occurrence, here and
+ * in the guard alike.
+ */
+export function flagCount(desk, row) {
+    return desk.unrecognised.length + clusterOrder(desk).length - row.length;
+}
+
+/**
  * Every member `deskModel()` returns, and the element kinds that draw it. A member a desk carries a
  * `null` for draws nothing — § 5.6's null render is the model's, already decided.
  */
 export const DRAWN_MEMBERS = Object.freeze({
     nameplate: ['nameplate'],
-    glyph: ['glyph'],
+    glyph: ['chip'],
     character: ['character', 'chair'],
     pose: ['character', 'chair'],
     lighting: ['desk-sprite'],
-    render_state: ['glyph'],
-    label_line: ['label'],
-    currency_label: ['currency'],
+    render_state: ['chip'],
+    desk_label: ['label', 'monitor-text'],
+    desk_currency: ['currency'],
     lag: ['lag-overlay', 'lag'],
-    config_note: ['config-note'],
-    monitor: ['monitor', 'monitor-text', 'subagent-marker'],
-    open_calls: ['open-calls'],
-    action: ['action-started', 'action-elapsed'],
+    monitor: ['monitor', 'monitor-text'],
     quiet_age: ['quiet-age'],
-    last_kind: ['last-kind'],
-    last_event_time: ['last-event-time'],
-    gauge: ['gauge-bar', 'gauge-pct', 'gauge-numerals', 'gauge-statement', 'gauge-source', 'gauge-sampled', 'gauge-age'],
-    model_label: ['model-label'],
-    badges: ['badge', 'badge-more'],
-    unrecognised: ['unrecognised', 'badge'],
-    oldest_badge_since: ['oldest-badge-since'],
-    side_table: ['side-table', 'stool', 'stool-label', 'stool-type', 'stool-started', 'stool-more'],
+    gauge: ['gauge-bar', 'gauge-pct'],
+    badges: ['badge', 'flag'],
+    unrecognised: ['flag'],
+    side_table: ['side-table', 'stool', 'stool-more'],
     bubble: ['bubble'],
     held: ['character'],
     unconfirmed: ['chair'],
 });
 
-/** The members the desk model returns that no element draws, each with the reason. */
+/**
+ * The members the desk model returns that no element draws, each with the reason. Every one the
+ * ruling of 2026-10-02 moved off the desk is printed by the drill-down AND the desk list — which
+ * `TheNewDeskKeepsEveryLeafTest` checks of every leaf the desk drew before, rather than taking the
+ * reason's word for it.
+ */
 export const NOT_DRAWN_MEMBERS = Object.freeze({
     install_id: "the desk's key with `seat_id` (§ 3.1) — it positions the desk; the room is the floor's to name",
     seat_id: 'drawn as the nameplate, which is the same string (§ 5.1)',
     dark: "its two strings are `label_line`'s own — `labelLine()` splices them in, and drawing them again would be one fact twice",
+    label_line: 'drawn in its non-raw form, `desk_label` (Q0: no raw unrecognised string on the desk); the line itself, raw string '
+        + 'included, is the drill-down\'s header and the desk list\'s',
+    currency_label: 'drawn in its non-raw form, `desk_currency` (Q0); the label itself is the drill-down\'s and the desk list\'s',
+    config_note: "§ 7.3's *sending nothing* — the drill-down's and the desk list's (Q1 B); the desk keeps the `config_invalid` badge "
+        + 'and its dimming',
+    open_calls: "§ 5.1's *N open calls* — the drill-down's and the desk list's (Q1 B)",
+    action: "the action's start and *running for* — the drill-down's and the desk list's (Q1 B, Q5 b); the desk's monitor shows "
+        + 'the descriptor',
+    last_kind: 'the drill-down\'s and the desk list\'s (Q1 B)',
+    last_event_time: 'the drill-down\'s and the desk list\'s (Q1 B)',
+    model_label: 'the drill-down\'s and the desk list\'s (Q1 B)',
+    oldest_badge_since: 'the drill-down\'s and the desk list\'s (Q1 B); the desk draws the badge row and the flag',
 });
 
 /**
- * One desk's elements, relative to its box's top-left.
+ * One desk's elements, relative to its box's top-left, in § 2.2's layer order (bottom first): the
+ * painter draws them in this order, so the hatch is over the art and the chip and the plate is above
+ * the hatch.
  *
  * @param {object} desk one desk model (`desk/desk-render.js`'s `deskModel()`)
  * @param {object} ctx `{ box: {width, height}, measure, character: {w, h}, sprite: {url, w, h}|null,
@@ -170,213 +288,179 @@ export const NOT_DRAWN_MEMBERS = Object.freeze({
  * @returns {{elements: list<object>, bubble: object|null}}
  */
 export function deskLayout(desk, ctx) {
-    const { box, measure } = ctx;
-    const W = box.width;
-    const H = box.height;
+    const { measure } = ctx;
+    const R = deskRects(ctx.box, ctx.character);
     const elements = [];
-    const colB = ART_W + GUTTER;
-    const widthB = Math.floor((W - ART_W - 2 * GUTTER) / 2);
-    const colC = colB + widthB + GUTTER;
-    const widthC = W - colC;
-    const row = (r) => BUBBLE_BAND + r * LINE;
 
-    const text = (kind, member, value, x, y, width, extra = {}) => {
-        if (value === null || value === undefined || value === '') {
-            return;
-        }
-
-        const cut = fit(String(value), width, measure);
-
-        elements.push({ kind, member, x, y, w: cut.w, h: cut.h, text: cut.text, truncated: cut.truncated, ...extra });
+    const rect = (kind, member, r, extra = {}) => {
+        elements.push({ kind, member, x: r.x, y: r.y, w: r.w, h: r.h, ...extra });
     };
 
-    // ── Column A: the art, the glyph and the nameplate ────────────────────────────────────────
-    text('glyph', 'glyph', desk.glyph, 0, row(0), ART_W, { render_state: desk.render_state.value });
+    const text = (kind, member, value, r, extra = {}) => {
+        if (value === null || value === undefined || value === '') {
+            return null;
+        }
 
-    const spriteW = ctx.sprite?.w ?? ART_W - 4;
-    const spriteH = ctx.sprite?.h ?? 57;
-    const deskTop = H - spriteH;
+        const cut = fit(String(value), r.w, measure);
+        const e = { kind, member, x: r.x, y: r.y, w: cut.w, h: cut.h, text: cut.text, truncated: cut.truncated, ...extra };
 
+        elements.push(e);
+
+        return e;
+    };
+
+    // ── Layers 1–3: the art column. § 9 F14's placeholder stands in for the IMAGES only ─────────
     if (ctx.placeholder) {
-        // § 9 F14's placeholder: "a plain rectangle carrying the nameplate, the state label and the
-        // badge cluster — every fact, no art". The rectangle takes the art's place; every text
-        // element below is drawn exactly as on an intact desk.
-        elements.push({ kind: 'placeholder', member: null, x: 0, y: row(1), w: ART_W, h: H - row(1) });
+        rect('placeholder', null, R.placeholder);
     } else {
-        const cw = ctx.character.w * CHARACTER_SCALE;
-        const ch = ctx.character.h * CHARACTER_SCALE;
-        // Seated behind the desk: the lower quarter of the figure is behind the desk's top.
-        const charBottom = deskTop + Math.round(ch / 4);
-
         if (desk.character) {
-            elements.push({
-                kind: 'character',
-                member: 'character',
-                x: Math.round(ART_W / 2 - cw / 2),
-                y: charBottom - ch,
-                w: cw,
-                h: ch,
-                asset: characterAsset(desk),
-                pose: desk.pose,
-                animation: desk.held,
-            });
+            rect('character', 'character', R.character, { asset: characterAsset(desk), pose: desk.pose, animation: desk.held });
         } else {
             // § 7.1: the empty chair — an absence, never a sleeper (§ 7.5).
-            elements.push({
-                kind: 'chair',
-                member: 'character',
-                x: Math.round(ART_W / 2 - 16),
-                y: deskTop - 40,
-                w: 32,
-                h: 40,
-                pose: desk.pose,
-                unconfirmed: desk.unconfirmed,
-            });
+            rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed });
         }
 
-        elements.push({
-            kind: 'desk-sprite',
-            member: 'lighting',
-            x: 2,
-            y: deskTop,
-            w: spriteW,
-            h: spriteH,
-            asset: ctx.sprite?.url ?? null,
-            lighting: desk.lighting,
-        });
-
-        const monitor = { x: ART_W - 36, y: deskTop - 22, w: 32, h: 22 };
-
-        elements.push({ kind: 'monitor', member: 'monitor', ...monitor, lit: desk.monitor.lit });
-
-        if (desk.monitor.subagent_call) {
-            elements.push({ kind: 'subagent-marker', member: 'monitor', x: monitor.x + monitor.w - 8, y: monitor.y, w: 8, h: 8 });
-        }
+        rect('desk-sprite', 'lighting', R['desk-sprite'], { asset: ctx.sprite?.url ?? null, lighting: desk.lighting });
     }
 
-    text('nameplate', 'nameplate', desk.nameplate, 4, H - LINE - 4, ART_W - 8);
+    // The monitor is a fact (its light, Q1 B's task text), drawn on the placeholder too.
+    rect('monitor', 'monitor', R.monitor, { lit: desk.monitor.lit });
 
-    if (desk.lag !== null) {
-        // § 7.4's hatched overlay, over the art where the state is drawn.
-        elements.push({ kind: 'lag-overlay', member: 'lag', x: 0, y: row(0), w: ART_W, h: H - row(0), overlay: desk.lag.overlay });
+    if (desk.monitor.lit !== 'off') {
+        // § 5.1: the current action's descriptor, or with no call open the desk's state text — in
+        // its non-raw form (Q0).
+        text('monitor-text', 'monitor', desk.action === null ? desk.desk_label : desk.monitor.text, R['monitor-text']);
     }
 
-    // ── Column B: the desk's lines ─────────────────────────────────────────────────────────────
-    const lines = [
-        ['label', 'label_line', desk.label_line],
-        ['currency', 'currency_label', desk.currency_label],
-        ['lag', 'lag', desk.lag?.line ?? null],
-        ['config-note', 'config_note', desk.config_note],
-        ['monitor-text', 'monitor', desk.monitor.text],
-        ['action-started', 'action', desk.action?.started_at ?? null],
-        ['action-elapsed', 'action', desk.action?.elapsed ?? null],
-        ['open-calls', 'open_calls', desk.open_calls === null ? null : OPEN_CALLS(desk.open_calls)],
-        ['quiet-age', 'quiet_age', desk.quiet_age],
-        ['last-kind', 'last_kind', desk.last_kind],
-        ['last-event-time', 'last_event_time', desk.last_event_time],
-    ];
+    // ── Layer 4: the chip, then the facts column ────────────────────────────────────────────────
+    // Q4 (a): the chip reads the model's glyph; an unrecognised state's glyph carries its raw string,
+    // so its chip reads the fixed word instead (Q0).
+    const chipCut = fit(desk.render_state.recognised ? desk.glyph : UNRECOGNISED, R.chip.w - 2 * CHIP_PAD, measure);
+    const chipW = Math.min(R.chip.w, chipCut.w + 2 * CHIP_PAD);
 
-    lines.forEach(([kind, member, value], r) => text(kind, member, value, colB, row(r), widthB));
+    elements.push({
+        kind: 'chip',
+        member: 'glyph',
+        x: R.chip.x - chipW / 2,
+        y: R.chip.y,
+        w: chipW,
+        h: R.chip.h,
+        text: chipCut.text,
+        truncated: chipCut.truncated,
+        text_w: chipCut.w,
+        render_state: desk.render_state.value,
+        unrecognised: !desk.render_state.recognised,
+        unconfirmed: desk.unconfirmed,
+    });
 
-    // The gauge takes two rows: the bar and its numerals, then the sample's source, clock and age.
+    text('label', 'desk_label', desk.desk_label, R.label);
+    text('currency', 'desk_currency', desk.desk_currency, R.currency);
+    text('lag', 'lag', desk.lag?.line ?? null, R.lag);
+
     const gauge = desk.gauge;
-    const g1 = row(lines.length);
-    const g2 = row(lines.length + 1);
 
     if (gauge.reported) {
-        const barW = 40;
-
-        elements.push({ kind: 'gauge-bar', member: 'gauge', x: colB, y: g1 + 2, w: barW, h: LINE - 4, pct: gauge.bar });
-        text('gauge-pct', 'gauge', gauge.pct, colB + barW + 4, g1, 44);
-        text('gauge-numerals', 'gauge', gauge.numerals, colB + barW + 52, g1, widthB - barW - 52);
-
-        const third = Math.floor((widthB - 8) / 3);
-
-        text('gauge-source', 'gauge', gauge.source, colB, g2, third);
-        text('gauge-sampled', 'gauge', gauge.sampled_at, colB + third + 4, g2, third);
-        text('gauge-age', 'gauge', gauge.age, colB + 2 * (third + 4), g2, widthB - 2 * (third + 4));
-    } else {
-        // § 5.6: *not reported*, and no bar — never a bar at 0 %.
-        text('gauge-statement', 'gauge', gauge.statement, colB, g1, widthB);
+        // § 5.6: an unreported gauge draws nothing on the desk — never a bar at 0 %; its *not
+        // reported* is the drill-down's and the list's.
+        rect('gauge-bar', 'gauge', R['gauge-bar'], { pct: gauge.bar });
+        text('gauge-pct', 'gauge', gauge.pct, R['gauge-pct']);
     }
 
-    text('model-label', 'model_label', desk.model_label, colB, row(lines.length + 2), widthB);
-    text('oldest-badge-since', 'oldest_badge_since', desk.oldest_badge_since, colB, row(lines.length + 3), widthB);
-    text('unrecognised', 'unrecognised', desk.unrecognised.length === 0 ? null : desk.unrecognised.join(', '),
-        colB, row(lines.length + 4), widthB);
+    // Q1 (B): the badge row — the treatment badges, then recognised badges in the wire's order.
+    const row = clusterOrder(desk).slice(0, BADGES_SHOWN);
 
-    // ── Column C: the side table, then the badge cluster ───────────────────────────────────────
-    elements.push({ kind: 'side-table', member: 'side_table', x: colC, y: row(0), w: widthC, h: (STOOL_CAP + 1) * LINE });
-
-    const stools = desk.side_table.stools;
-    // § 8: every stool the array carries up to the cap is drawn and none is hidden; a skewed wire
-    // past the cap is counted into the tag, never dropped.
-    const shown = stools.slice(0, STOOL_CAP);
-    const more = (desk.side_table.more ?? 0) + (stools.length - shown.length);
-    const labelW = Math.floor((widthC - STOOL_GLYPH - 4) * 0.48);
-    const typeW = Math.floor((widthC - STOOL_GLYPH - 4) * 0.2);
-    const timeX = colC + STOOL_GLYPH + 4 + labelW + 2 + typeW + 2;
-
-    shown.forEach((stool, i) => {
-        const y = row(i);
+    row.forEach((badge, i) => {
+        const x = R.badge.x + i * BADGE_PITCH;
+        const cut = fit(badge, BADGE_W - 2 * BADGE_PAD, measure);
 
         elements.push({
-            kind: 'stool',
-            member: 'side_table',
-            x: colC,
-            y: y + Math.floor((LINE - STOOL_GLYPH) / 2),
-            w: STOOL_GLYPH,
-            h: STOOL_GLYPH,
-            call_id: stool.call_id,
-            untitled: stool.untitled,
-        });
-        text('stool-label', 'side_table', stool.label, colC + STOOL_GLYPH + 4, y, labelW, { untitled: stool.untitled });
-        text('stool-type', 'side_table', stool.type, colC + STOOL_GLYPH + 4 + labelW + 2, y, typeW);
-        text('stool-started', 'side_table', stool.started_at, timeX, y, colC + widthC - timeX);
-    });
-
-    if (more > 0) {
-        text('stool-more', 'side_table', MORE(more), colC, row(STOOL_CAP), widthC);
-    }
-
-    const badges = clusterOrder(desk);
-    const drawn = badges.slice(0, BADGE_BOUND);
-    const chipW = Math.floor((widthC - (BADGES_PER_ROW - 1) * 3) / BADGES_PER_ROW);
-    const firstBadgeRow = STOOL_CAP + 1;
-
-    drawn.forEach((badge, i) => {
-        const x = colC + (i % BADGES_PER_ROW) * (chipW + 3);
-        const y = row(firstBadgeRow + Math.floor(i / BADGES_PER_ROW));
-
-        text('badge', badge.unrecognised ? 'unrecognised' : 'badges', badge.id, x, y, chipW, {
-            badge: badge.id,
-            unrecognised: badge.unrecognised,
-            chip_w: chipW,
+            kind: 'badge',
+            member: 'badges',
+            x,
+            y: R.badge.y,
+            w: BADGE_W,
+            h: R.badge.h,
+            text: cut.text,
+            truncated: cut.truncated,
+            // The text's offset inside the chip — an offset, so it moves with the desk when it is placed.
+            text_dx: BADGE_PAD,
+            badge,
         });
     });
 
-    if (badges.length > drawn.length) {
-        text('badge-more', 'badges', MORE(badges.length - drawn.length), colC,
-            row(firstBadgeRow + Math.ceil(BADGE_BOUND / BADGES_PER_ROW)), widthC);
+    // Q0: ONE flag for every unusual item whose raw form is not drawn.
+    const n = flagCount(desk, row);
+
+    if (n > 0) {
+        text('flag', 'unrecognised', FLAG_TEXT(n), R.flag, { count: n });
     }
+
+    // § 8 / Q1 (B): one sprite per intern up to the cap, none hidden; a skewed wire past the cap is
+    // counted into the tag, never dropped.
+    const stools = desk.side_table.stools;
+    const shown = stools.slice(0, STOOL_CAP);
+    const more = (desk.side_table.more ?? 0) + (stools.length - shown.length);
+
+    if (shown.length > 0 || more > 0) {
+        rect('side-table', 'side_table', R['side-table']);
+
+        shown.forEach((stool, i) => {
+            rect('stool', 'side_table', { ...R.stool, x: R.stool.x + i * STOOL_PITCH }, {
+                call_id: stool.call_id,
+                untitled: stool.untitled,
+                index: i,
+            });
+        });
+
+        if (more > 0) {
+            text('stool-more', 'side_table', MORE(more), R['stool-more']);
+        }
+    }
+
+    // Q5 (b): *nothing done for N* stays on the desk.
+    text('quiet-age', 'quiet_age', desk.quiet_age, R['quiet-age']);
+
+    // ── Layer 5: § 7.4's hatch over the art and the chip ────────────────────────────────────────
+    if (desk.lag !== null) {
+        rect('lag-overlay', 'lag', R['lag-overlay'], { overlay: desk.lag.overlay });
+    }
+
+    // ── Layer 6: the plate and the nameplate, above the hatch ───────────────────────────────────
+    rect('plate', 'nameplate', R.plate);
+
+    const name = fit(desk.nameplate, PLATE_TEXT_W, measure);
+
+    elements.push({
+        kind: 'nameplate',
+        member: 'nameplate',
+        x: R.plate.x + (R.plate.w - name.w) / 2,
+        y: R.plate.y + (R.plate.h - LINE) / 2,
+        w: name.w,
+        h: name.h,
+        text: name.text,
+        truncated: name.truncated,
+    });
 
     return { elements, bubble: desk.bubble };
 }
 
 /**
- * § 10.3's order for the cluster's cut: unrecognised badges first, so F9's marker never falls under
- * the mark (AT-D3-11); then the badges a § 7 treatment reads; then the rest in the wire's own order.
+ * The badge row's order (§ 10.3's cut order, amended by the ruling of 2026-10-02): the badges a § 7
+ * treatment reads first, then the RECOGNISED badges in the wire's own order. An unrecognised badge is
+ * never in it — its raw id is not drawn on the desk (Q0); it is counted into the flag through its
+ * `badges: <id>` line.
+ *
+ * @returns {list<string>} badge ids
  */
 export function clusterOrder(desk) {
     const unknown = new Set(desk.unrecognised
         .filter((line) => line.startsWith('badges: '))
         .map((line) => line.slice('badges: '.length)));
-    const all = desk.badges.map((id) => ({ id, unrecognised: unknown.has(id) }));
+    const known = desk.badges.filter((id) => !unknown.has(id));
 
     return [
-        ...all.filter((b) => b.unrecognised),
-        ...all.filter((b) => !b.unrecognised && TREATMENT_BADGES.includes(b.id)),
-        ...all.filter((b) => !b.unrecognised && !TREATMENT_BADGES.includes(b.id)),
+        ...known.filter((id) => TREATMENT_BADGES.includes(id)),
+        ...known.filter((id) => !TREATMENT_BADGES.includes(id)),
     ];
 }
 

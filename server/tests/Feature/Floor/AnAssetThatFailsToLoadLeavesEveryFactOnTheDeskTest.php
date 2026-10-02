@@ -37,6 +37,9 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
     /** The instant the fixture's painter reports the failure. */
     private const FAILS_AT = 50;
 
+    /** The art a desk draws as images — what the placeholder stands in for. */
+    private const ART = ['character', 'chair', 'desk-sprite'];
+
     public function test_green_with_the_tileset_failed_every_desk_is_the_placeholder_under_no_tiles_and_the_strip_says_so(): void
     {
         $result = $this->floorRun(self::TILESET_FAILS);
@@ -98,7 +101,7 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
     public function test_red_the_blank_desk(): void
     {
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
-            "    if (ctx.placeholder) {\n",
+            "    if (ctx.placeholder) {\n        rect('placeholder', null, R.placeholder);\n",
             "    if (ctx.placeholder) {\n        return { elements: [{ kind: 'placeholder', member: null, x: 0, y: 0, w: 1, h: 1 }], bubble: null };\n"]);
 
         $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::TILESET_FAILS, $dir), ['aimla/aimla-pm']),
@@ -130,23 +133,55 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
     public function test_red_the_fact_dropped_with_the_art(): void
     {
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
-            'drawn.forEach((badge, i) => {', '(ctx.placeholder ? [] : drawn).forEach((badge, i) => {']);
+            'row.forEach((badge, i) => {', '(ctx.placeholder ? [] : row).forEach((badge, i) => {']);
 
         $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::TILESET_FAILS, $dir), ['aimla/aimla-pm']),
-            'RED (the badge cluster dropped with the art) did not fail');
+            'RED (the badge row dropped with the art) did not fail');
+    }
+
+    /** The monitor and its text are facts (card#11058's desk): dropped with the art, the placeholder reds. */
+    public function test_red_the_monitor_dropped_with_the_art(): void
+    {
+        $dir = $this->mutatedModules(['../floor/desk-layout.js',
+            "    rect('monitor', 'monitor', R.monitor, { lit: desk.monitor.lit });\n\n    if (desk.monitor.lit !== 'off') {",
+            "    if (!ctx.placeholder) rect('monitor', 'monitor', R.monitor, { lit: desk.monitor.lit });\n\n    if (desk.monitor.lit !== 'off' && !ctx.placeholder) {"]);
+
+        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::TILESET_FAILS, $dir), ['aimla/aimla-pm']),
+            'RED (the monitor dropped with the art) did not fail');
+    }
+
+    /** The bubble is a fact too: a placeholder desk that loses it reds. */
+    public function test_red_the_bubble_dropped_with_the_art(): void
+    {
+        $dir = $this->mutatedModules(['../floor/desk-layout.js',
+            '    return { elements, bubble: desk.bubble };', '    return { elements, bubble: ctx.placeholder ? null : desk.bubble };']);
+
+        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::TILESET_FAILS, $dir), ['aimla/aimla-pm']),
+            'RED (the bubble dropped with the art) did not fail');
     }
 
     /**
-     * Every desk in `$expected` draws the placeholder — "a plain rectangle carrying the nameplate, the
-     * state label and the badge cluster — every fact, no art" — and every other desk draws its art.
+     * Every desk in `$expected` draws the placeholder — § 9 F14's "plain rectangle in place of the art's
+     * images only" — with EVERY FACT drawn as on the intact desk: the nameplate, the chip and the label
+     * line, the badge row and the flag, the monitor and its text, the bubble and every other fact
+     * (card#11058's desk); and every other desk draws its art. The intact desk is the same seat's on the
+     * run with nothing failed, so the comparison is the drawing's own, not a list written here.
      */
     private function placeholderDefects(array $scene, array $expected): array
     {
         $defects = [];
+        $intact = [];
+
+        foreach ($this->sceneOf(self::INTACT)['desks'] as $desk) {
+            $intact[$desk['key']] = $desk;
+        }
+
+        $this->assertNotSame([], array_filter($intact, fn (array $d): bool => $d['bubble'] !== null),
+            'no intact desk draws a bubble — the bubble half of the comparison reads nothing');
 
         foreach ($scene['desks'] as $desk) {
             $kinds = array_column($desk['elements'], 'kind');
-            $art = array_intersect($kinds, ['character', 'chair', 'desk-sprite', 'monitor']);
+            $art = array_intersect($kinds, self::ART);
 
             if (! in_array($desk['key'], $expected, true)) {
                 if ($desk['placeholder'] || $art === []) {
@@ -164,34 +199,47 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
                 $defects[] = "{$desk['key']}'s placeholder still draws art: ".implode(', ', $art);
             }
 
-            foreach (['nameplate', 'label'] as $fact) {
-                if (! in_array($fact, $kinds, true)) {
-                    $defects[] = "{$desk['key']}'s placeholder dropped its {$fact}";
-                }
+            $want = $intact[$desk['key']] ?? null;
+
+            if ($want === null) {
+                $defects[] = "{$desk['key']} has no intact desk to compare its facts with";
+
+                continue;
             }
 
-            $badges = $this->seatBadges($desk['key']);
+            if (($lost = array_values(array_diff($this->facts($want), $this->facts($desk)))) !== []) {
+                $defects[] = "{$desk['key']}'s placeholder dropped facts the intact desk draws: ".implode('; ', $lost);
+            }
 
-            if (count($this->elementsOf($desk, 'badge')) !== count($badges)) {
-                $defects[] = "{$desk['key']}'s placeholder dropped its badge cluster";
+            if (($want['bubble'] === null) !== ($desk['bubble'] === null)) {
+                $defects[] = "{$desk['key']}'s placeholder dropped its bubble";
             }
         }
 
         return $defects;
     }
 
-    /** The badges the fixture's snapshot carries for one seat. */
-    private function seatBadges(string $key): array
+    /**
+     * A desk's facts as drawn: every element that is not the art or the placeholder, by kind and the
+     * value it carries.
+     *
+     * @return list<string>
+     */
+    private function facts(array $desk): array
     {
-        foreach ($this->fixture(self::INTACT)['http']['/api/fleet/snapshot'][0]['body']['installs'] as $install) {
-            foreach ($install['seats'] as $seat) {
-                if ("{$seat['install_id']}/{$seat['seat_id']}" === $key) {
-                    return $seat['badges'];
-                }
+        $facts = [];
+
+        foreach ($desk['elements'] as $e) {
+            if (in_array($e['kind'], [...self::ART, 'placeholder'], true)) {
+                continue;
             }
+
+            $facts[] = $e['kind'].' '.($e['text'] ?? $e['lit'] ?? $e['badge'] ?? 'present');
         }
 
-        $this->fail("no seat {$key} in the fixture");
+        sort($facts);
+
+        return $facts;
     }
 
     /**

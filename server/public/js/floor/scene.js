@@ -410,8 +410,11 @@ export function buildScene(frame, input) {
     });
 }
 
-/** One desk placed at `at`: its box, its elements in scene coordinates, and their union. */
-function placeDesk(model, key, installId, slot, at, ctx, extra) {
+/**
+ * One desk placed at `at`: its box, its elements in scene coordinates, and their union. Exported for
+ * the desk leaf guard (`TheNewDeskKeepsEveryLeafTest`), which reads a desk as the painter is handed it.
+ */
+export function placeDesk(model, key, installId, slot, at, ctx, extra) {
     const { elements, bubble } = deskLayout(model, ctx);
     const moved = elements.map((e) => Object.freeze({ ...e, x: at.x + e.x, y: at.y + e.y }));
 
@@ -435,9 +438,10 @@ function placeDesk(model, key, installId, slot, at, ctx, extra) {
 /**
  * § 5.1 rules 4 and 5: each bubble's text cut to the box through the one primitive, its box sized
  * from the MEASURED text, and overlapping bubbles parted by `desk/task-bubble.js`'s own pass over
- * the base rects — here, the box's top band, above the character's column.
+ * the base rects — here, the box's top band, above the character's column. Exported, with
+ * `placeDesk()`, for the desk leaf guard.
  */
-function placeBubbles(desks, measure, W, delivered) {
+export function placeBubbles(desks, measure, W, delivered) {
     const inner = W - 2 * BUBBLE_PAD;
     const wanted = [];
     // ⛔ HANDED OVER IN THE ORDER THE CLIENT HOLDS THE SEATS, which is the order they were DELIVERED
