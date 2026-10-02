@@ -1,6 +1,6 @@
 /**
  * The probe the PHP suite drives the camera's PAGE WIRE through — `wire/camera-view.js` (how a page
- * shows the camera: at once, or as a glide), `wire/camera-gestures.js` (the wheel, the drag and the pinch) and
+ * shows the camera: at once, or as a glide), `wire/camera-gestures.js` (the wheel, the drag, the pinch and Safari's `gesture*` pinch) and
  * `wire/camera-keys.js` (the keyboard and the zoom buttons) — under `node`, with a stubbed frame clock
  * and stand-in elements. No DOM, no network.
  *
@@ -18,7 +18,9 @@
  *  · `{ "gestures": [event, …], "framed"? }` — `cameraGestures()` on a stand-in element whose box is
  *    at (10, 20), with acts that record their arguments — the wheel's two, `pan` and `zoom`, answering
  *    that they consumed the event, as a framed camera's do off the edge; with `"pan_consumed": false`
- *    the pan answers that it did not, as at an edge (card#11045 Q3) — and a camera that frames a scene — or, with
+ *    the pan answers that it did not, as at an edge (card#11045 Q3); with `"riding": true` the wheel's acts and
+ *    the pinch answer the camera a lobby mid-ride holds, `{ "act": "held" }`, the wheel's consuming the event
+ *    (card#11045 PR-C) — and a camera that frames a scene — or, with
  *    `"framed": false`, frames nothing (`bounds: null`, the uncomposed lobby's). Each event is
  *    `{ "type", …the event's own members }`, dispatched cancelable — except `{ "type": "reframe",
  *    "framed": bool }`, which dispatches nothing: the camera frames a scene, or nothing, from then on
@@ -166,10 +168,14 @@ if (payload.view !== undefined) {
     element.setPointerCapture = (id) => log.push({ capture: id });
     element.releasePointerCapture = (id) => log.push({ release: id });
 
+    // A lobby mid-ride (`"riding": true`) holds its camera: the wheel's acts and the pinch answer the camera
+    // they hold, `{ act: 'held' }`, the wheel's consuming the event (`lobby/lobby-screen.js`'s ride-hold).
+    const held = { act: 'held' };
+    const riding = payload.riding === true;
     const acts = {
-        pan: (delta) => ({ camera: { act: 'pan', delta }, consumed: payload.pan_consumed !== false }),
-        zoom: (point, delta) => ({ camera: { act: 'zoom', point, delta }, consumed: true }),
-        pinch: (from, to, factor) => ({ act: 'pinch', from, to, factor }),
+        pan: (delta) => ({ camera: riding ? held : { act: 'pan', delta }, consumed: riding || payload.pan_consumed !== false }),
+        zoom: (point, delta) => ({ camera: riding ? held : { act: 'zoom', point, delta }, consumed: true }),
+        pinch: (from, to, factor) => (riding ? held : { act: 'pinch', from, to, factor }),
         zoomStep: (notches) => ({ act: 'zoomStep', notches }),
         drag: (dx, dy) => ({ act: 'drag', dx, dy }),
     };

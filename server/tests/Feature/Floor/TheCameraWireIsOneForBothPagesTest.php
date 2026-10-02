@@ -27,7 +27,10 @@ use Tests\TestCase;
  * second finger down while a press is held pinches — each move a `pinch()` about the fingers' midpoint, both
  * pointers captured, the gesture no click — and when one lifts the other drags on. A plain wheel the
  * screen's pan answers it did not consume — the camera at its edge (Q3) — is left to the page, untouched.
- * Each rule is planted out in the shipped module and watched red.
+ * Safari's trackpad pinch, its own `gesture*` events (card#11045 PR-C), is a `pinch()` about the cursor by
+ * each scale over the last, taken from the page so Safari sends no Ctrl+wheel after it; a touch pinch iOS
+ * also reports as gesture events zooms once, by its pointers; and a lobby mid-ride takes the gesture as it
+ * takes the wheel. Each rule is planted out in the shipped module and watched red.
  *
  * ⛔ NOTHING FRAMED, NOTHING TAKEN (card#7343 r4b, the seat's ruling, widening r3b's on the wheel): over a
  * drawing whose camera frames nothing — the uncomposed lobby, whose list flows in the page — every event is
@@ -52,7 +55,9 @@ use Tests\TestCase;
  *
  * ⚠ WHAT THIS DOES NOT HOLD: that a browser delivers these events to these listeners, honours
  * `user-select` (or its WebKit-prefixed form), or paints what is applied — card#11045 PR-B drove the pages
- * in headless Chromium by hand, never a real trackpad, touch screen or Safari; the pages' wiring tests
+ * in headless Chromium by hand, and card#11045 PR-C dispatched synthetic `gesture*` events in a headless
+ * browser — never a real trackpad, touch screen, Mac Safari or iPhone; nor that Safari, as WebKit's own
+ * layout test holds, sends no Ctrl+wheel after a prevented gesture event; the pages' wiring tests
  * hold that each page hands its drawing, its zoom buttons and its screen's acts to `cameraGestures()` and
  * `cameraKeys()`, and grows no copy of either beside them.
  */
@@ -147,6 +152,13 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             'a pinch that leaves its first finger uncaptured' => ['camera-gestures.js', "            capture(drag.id);\n            capture(event.pointerId);\n", "            capture(event.pointerId);\n"],
             'a lifted finger that ends the other one\'s drag' => ['camera-gestures.js', 'if (pinch !== null && (event.pointerId === drag.id || event.pointerId === pinch.id)) {', 'if (false) {'],
             'a move of a pointer that is not the press, panning' => ['camera-gestures.js', "        if (finger === null) {\n            return;\n        }\n", ''],
+            // card#11045 PR-C: Safari's trackpad pinch, and one touch pinch zooming once.
+            'a Safari pinch that never reaches the camera' => ['camera-gestures.js', "for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {", 'for (const type of []) {'],
+            'a Safari pinch by its cumulative scale' => ['camera-gestures.js', 'event.scale / was.scale', 'event.scale'],
+            'a Safari pinch about the page, not the drawing' => ['camera-gestures.js', 'const at = local(event.clientX, event.clientY);', 'const at = { x: event.clientX, y: event.clientY };'],
+            'a Safari pinch left to the page zoom and its Ctrl+wheel' => ['camera-gestures.js', "        event.preventDefault();\n\n        // A press held is a touch screen's finger", "\n        // A press held is a touch screen's finger"],
+            'a Safari pinch whose end zooms nothing' => ['camera-gestures.js', 'if (drag !== null || was === null) {', "if (drag !== null || was === null || event.type === 'gestureend') {"],
+            'a touch pinch zoomed twice' => ['camera-gestures.js', 'if (drag !== null || was === null) {', 'if (was === null) {'],
             'a drag that follows the plate link it ended over' => ['camera-gestures.js', "        event.preventDefault();\n        event.stopPropagation();", '        event.stopPropagation();'],
             'a drag that selects the desk it ended over' => ['camera-gestures.js', "        event.preventDefault();\n        event.stopPropagation();", '        event.preventDefault();'],
             // card#7343 r2-3: a pan started on a plate's link is no native drag of it, and a pan selects no text.
@@ -199,6 +211,43 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
         return $this->logDefects($this->probe(['gestures' => [$wheel(false), $wheel(true)], 'pan_consumed' => false], $dir)['log'], $expected, 'released wheel');
     }
 
+    // ── A lobby mid-ride (card#11045 PR-C) ─────────────────────────────────────────────────────
+
+    /**
+     * Over a lobby mid-ride the screen's acts hold the camera (`lobby/lobby-screen.js`'s ride-hold): Safari's
+     * pinch is taken from the page as the wheel is — no page zoom and no Ctrl+wheel after it — and shows the
+     * camera the act answers, whatever it is. The model's half, the camera held, is
+     * `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`'s.
+     */
+    public function test_green_a_safari_pinch_over_a_lobby_mid_ride_is_the_rides(): void
+    {
+        $this->assertSame([], $this->ridingDefects());
+    }
+
+    /** The gesture left to the page — Safari's page zoom over a ride, and a Ctrl+wheel after it. */
+    public function test_red_a_safari_pinch_mid_ride_left_to_the_page(): void
+    {
+        $dir = $this->mutatedModules(['camera-gestures.js', "        event.preventDefault();\n\n        // A press held is a touch screen's finger", "\n        // A press held is a touch screen's finger"]);
+
+        $this->assertNotSame([], $this->ridingDefects($dir), 'CONTROL (a Safari pinch mid-ride left to the page) did not bite');
+    }
+
+    /** @return list<string> */
+    private function ridingDefects(?string $dir = null): array
+    {
+        $taken = static fn (string $type): array => ['event' => $type, 'default_prevented' => true, 'propagation_stopped' => false, 'user_select' => '', 'webkit_user_select' => ''];
+        $held = ['show' => ['act' => 'held']];
+        $events = [
+            ['type' => 'gesturestart', 'scale' => 1, 'clientX' => 110, 'clientY' => 220],
+            ['type' => 'gesturechange', 'scale' => 2, 'clientX' => 110, 'clientY' => 220],
+            ['type' => 'gestureend', 'scale' => 2, 'clientX' => 110, 'clientY' => 220],
+            ['type' => 'wheel', 'clientX' => 110, 'clientY' => 220, 'deltaX' => 0, 'deltaY' => -120, 'deltaMode' => 0, 'ctrlKey' => true],
+        ];
+        $expected = [$taken('gesturestart'), $held, $taken('gesturechange'), $held, $taken('gestureend'), $held, $taken('wheel')];
+
+        return $this->logDefects($this->probe(['gestures' => $events, 'riding' => true], $dir)['log'], $expected, 'riding');
+    }
+
     // ── The framing gate ───────────────────────────────────────────────────────────────────────
 
     /**
@@ -221,6 +270,7 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
         return [
             'the wheel' => ['camera-gestures.js', "        // Gate: nothing framed — the wheel is the page's scroll.\n", 'if (unframed()) {', 'wheel'],
             'the dragstart' => ['camera-gestures.js', "        // Gate: nothing framed — a link in the flowing list drags as any link does.\n", 'if (unframed()) {', 'dragstart'],
+            'Safari\'s gesture' => ['camera-gestures.js', "        // Gate: nothing framed — the gesture is the browser's, and so is the Ctrl+wheel Safari sends after it.\n", 'if (unframed()) {', 'gesture'],
             'the press' => ['camera-gestures.js', "        // Gate: nothing framed — a press selects text as ever, and no drag or pinch starts.\n", 'if (unframed()) {', 'press'],
             'the move' => ['camera-gestures.js', "        // Gate: nothing framed any more — the press ends here, uncaptured, and pans nothing.\n", 'if (unframed()) {', 'move'],
             'the click after a drag' => ['camera-gestures.js', "        // Gate: nothing framed any more — the click is the browser's. It follows the link it is on when the\n"
@@ -401,6 +451,8 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
         $lost = static fn (int $id): array => ['type' => 'lostpointercapture', 'pointerId' => $id];
         $drag = static fn (int $dx, int $dy): array => ['show' => ['act' => 'drag', 'dx' => $dx, 'dy' => $dy]];
         $wheel = static fn (bool $ctrl, float $dx, float $dy, int $mode): array => ['type' => 'wheel', 'clientX' => 110, 'clientY' => 220, 'deltaX' => $dx, 'deltaY' => $dy, 'deltaMode' => $mode, 'ctrlKey' => $ctrl];
+        $gesture = static fn (string $phase, float $scale, int $x = 110, int $y = 220): array => ['type' => "gesture{$phase}", 'scale' => $scale, 'clientX' => $x, 'clientY' => $y];
+        $safari = static fn (array $from, array $to, int|float $factor): array => ['show' => ['act' => 'pinch', 'from' => $from, 'to' => $to, 'factor' => $factor]];
 
         // [event, what it produces, default prevented, propagation stopped, the drawing's user-select after it —
         // the standard property and the WebKit-prefixed one alike]
@@ -484,6 +536,29 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             [$up(8), [], false, false, 'none'],
             [$up(7), [], false, false, ''],
             [['type' => 'click'], [], true, true, ''],
+            // Safari's trackpad pinch (card#11045 PR-C): its own gesture events, each with the CUMULATIVE scale.
+            // Every one is taken from the page — its page zoom, and the Ctrl+wheel Safari sends after a gesture
+            // event left unprevented, which would zoom the pinch a second time. The start zooms nothing; each
+            // change, and the end, is a pinch about the cursor on the drawing (110, 220) → (100, 200), by its
+            // scale over the last one's: 1 → 1.5 → 3 → 1.5 is 1.5, 2, then 0.5.
+            [$gesture('start', 1), [], true, false, ''],
+            [$gesture('change', 1.5), [$safari(['x' => 100, 'y' => 200], ['x' => 100, 'y' => 200], 1.5)], true, false, ''],
+            [$gesture('change', 3), [$safari(['x' => 100, 'y' => 200], ['x' => 100, 'y' => 200], 2)], true, false, ''],
+            [$gesture('end', 1.5), [$safari(['x' => 100, 'y' => 200], ['x' => 100, 'y' => 200], 0.5)], true, false, ''],
+            // A second gestureend (WebKit bug 233137) has no scale to step from: taken, and nothing moves.
+            [$gesture('end', 1.5), [], true, false, ''],
+            // ONE TOUCH PINCH ZOOMS ONCE. iOS fires gesture events for a touch screen's two fingers as well as
+            // their pointer events: the pointer pinch zooms it (spread 100 → 200, by 2), and the gesture events
+            // — whichever of the second finger's pointerdown and the gesturestart comes first — move nothing.
+            [$down(0), [], false, false, 'none'],
+            [$gesture('start', 1, 60, 20), [], true, false, 'none'],
+            [$down(100, false, 0, 8), [['capture' => 7], ['capture' => 8]], false, false, 'none'],
+            [$gesture('change', 2, 110, 20), [], true, false, 'none'],
+            [$move(200, 0, 1, 8), [['show' => ['act' => 'pinch', 'from' => ['x' => 40, 'y' => -20], 'to' => ['x' => 90, 'y' => -20], 'factor' => 2]]], false, false, 'none'],
+            [$gesture('end', 2, 110, 20), [], true, false, 'none'],
+            [$up(8), [], false, false, 'none'],
+            [$up(7), [], false, false, ''],
+            [['type' => 'click'], [], true, true, ''],
         ];
 
         $expected = [];
@@ -524,6 +599,13 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             ]],
             'dragstart' => ['gestures', false, [
                 [['type' => 'dragstart'], [$untouched('dragstart')]],
+            ]],
+            // Safari's trackpad pinch over a page whose camera frames nothing is the browser's — and so is the
+            // Ctrl+wheel Safari then sends, which the wheel's own gate leaves to the page (card#11045 PR-C).
+            'gesture' => ['gestures', false, [
+                [['type' => 'gesturestart', 'scale' => 1, 'clientX' => 110, 'clientY' => 220], [$untouched('gesturestart')]],
+                [['type' => 'gesturechange', 'scale' => 2, 'clientX' => 110, 'clientY' => 220], [$untouched('gesturechange')]],
+                [['type' => 'gestureend', 'scale' => 2, 'clientX' => 110, 'clientY' => 220], [$untouched('gestureend')]],
             ]],
             // A press on a room's link that moves the slop, then further, and is released: the link is followed.
             'press' => ['gestures', false, [

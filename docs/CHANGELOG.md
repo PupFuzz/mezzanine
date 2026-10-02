@@ -27,6 +27,18 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11045** — **A Safari trackpad pinch zooms the floor and the lobby.** Safari reports a trackpad
+  pinch as its own gesture events, which the camera now reads directly: the pinch zooms the drawing about
+  the pointer, on the floor and in the lobby, through the same camera wire as every other gesture, and the
+  gesture is kept from the page. Before, those events were left to the browser, and only the Ctrl+wheel
+  that Safari 15 and later send after them reached the camera. One pinch zooms once: taking Safari's gesture
+  events keeps it from sending that Ctrl+wheel, and on an iPhone or iPad a two-finger pinch zooms by its
+  touches only. Over a lobby with no building
+  drawn the pinch stays the browser's, as the wheel does, and during a lobby ride it is taken as the wheel
+  is. FLOOR.md § 4.5 (and its ride-hold bullet) and § 13 row 39 record it. The new Safari steps in
+  `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest` fail on the previous code. A real Mac trackpad
+  and a real iPhone or iPad were not exercised; synthetic gesture events in a headless browser were.
+
 - **card#11045** — **The shipped default floor map is a six-desk office that reads at fit in a laptop
   window.** Operator rulings of 2026-10-01. Every room with no authored map now renders two rows of three
   desks on a plank floor, with a narrow strip of scenery at each side — a bookcase and two plants on the

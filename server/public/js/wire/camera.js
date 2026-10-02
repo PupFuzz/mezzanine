@@ -55,8 +55,9 @@ export const NOTCH_PX = 100;
  * Ctrl+notch, already a notch's scroll, saturates at the one-notch bound and is one step.
  * ⚠ NOT VERIFIED ON A REAL TRACKPAD: synthetic Ctrl+wheel events in headless Chromium were seen to zoom
  * (card#11045 PR-B); how a real pinch feels at this gain — on any browser or OS — has not been seen.
- * Safari is the open case: it may deliver a trackpad pinch as its own `gesture*` events rather than as a
- * Ctrl+wheel, which nothing here handles.
+ * Safari's trackpad pinch does not come through this gain: `wire/camera-gestures.js` takes it as Safari's own
+ * `gesture*` events, each a `pinch()` by its scale's ratio, and prevents the Ctrl+wheel Safari would send after
+ * them (card#11045 PR-C).
  */
 export const PINCH_GAIN = 10;
 
