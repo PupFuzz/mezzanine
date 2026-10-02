@@ -2400,7 +2400,7 @@
       }
     },
     "camera_entry_low": {
-      "note": "AT-D3-21's floor half, the any-size leg: `scene_default` ENTERED in a wide, low window, 1,280 × 240 CSS px — lower than the room at its width's fit — and the route draws the room from its first frame at fit; the same camera acts as `camera_entry_narrow`, each doing what it does at any size.",
+      "note": "AT-D3-21's floor half, the any-size leg: `scene_default` ENTERED in a wide, low window, 1,280 × 240 CSS px — lower than the room at its width's fit — and the route draws the room from its first frame at fit; the same camera acts as `camera_entry_narrow`, each doing what it does at any size. The Ctrl+wheel is a partial notch (`delta_y` −6, a trackpad pinch's step): the fit in this window is height-bound, so one whole notch from it zooms the view narrower than the floor, where the camera's clamp keeps the view on the floor and so cannot also hold the point under a cursor this far right (card#11045 PR-D, whose taller back wall moved that fit).",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -2800,7 +2800,7 @@
             "act": "ctrl_wheel",
             "x": 900,
             "y": 120,
-            "delta_y": -100
+            "delta_y": -6
           },
           {
             "at_ms": 250,

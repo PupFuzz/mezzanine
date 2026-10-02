@@ -31,6 +31,7 @@
 
 import { FONT, LINE } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
+import { ROOM_THEMES } from './scene.js';
 
 /** The furniture box and the desk sprite — `resources/floor/furniture-box.js`, by the asset route. */
 export const FURNITURE_MODULE = '/art/floor/furniture-box.js';
@@ -50,8 +51,13 @@ const SVG = 'http://www.w3.org/2000/svg';
  */
 const STYLE = `
 text{font:${FONT};fill:var(--scene-ink)}
-.wall{fill:var(--scene-wall)}.window{fill:var(--scene-glass);stroke:var(--scene-trim);stroke-width:3}
+.wall{fill:url(#house-wall)}.wall-top{stop-color:var(--house-wall)}.wall-bottom{stop-color:var(--house-wall-2)}
+.skirting,.slab{fill:var(--house-trim)}
+.window{fill:var(--scene-glass);stroke:var(--window-frame);stroke-width:5}.mullion{stroke:var(--window-frame);stroke-width:3}.sill{fill:var(--window-frame)}
 ${Object.keys(SKY_PAINT).map((phase) => `.sky-${phase}{fill:url(#sky-${phase})}`).join('')}
+.elevator-frame{fill:var(--door-frame)}.elevator-header{fill:var(--door-header)}.elevator-lamp{fill:var(--lamp)}
+.elevator-leaf{fill:var(--door);stroke:var(--door-edge);stroke-width:2}.elevator-seam{stroke:var(--door-frame);stroke-width:2}
+${ROOM_THEMES.map((theme) => `.plane-${theme}{fill:url(#plane-${theme})}.plane-${theme}-top{stop-color:var(--room-${theme})}.plane-${theme}-bottom{stop-color:var(--room-${theme}-2)}`).join('')}
 .clock-face{fill:var(--scene-clock-face);stroke:var(--scene-trim);stroke-width:3}.clock.unset .clock-face{stroke-dasharray:6 4}
 .hand{stroke:var(--scene-ink);stroke-linecap:round}.hand.hour{stroke-width:4}.hand.minute{stroke-width:2}
 .pixel{image-rendering:pixelated}
@@ -351,6 +357,22 @@ export function createPainter({ characters, failed, select }) {
 
         node('rect', { width: 3, height: 6, class: 'hatch' }, pattern);
 
+        // The band's wall and each room theme's plane, one gradient each, top to bottom — the stops' colours are
+        // tokens (the style above), so the palette keeps its one home.
+        const defs = pattern.parentNode;
+        const shade = (id, cls) => {
+            const gradient = node('linearGradient', { id, x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+
+            node('stop', { offset: 0, class: `${cls}-top` }, gradient);
+            node('stop', { offset: 1, class: `${cls}-bottom` }, gradient);
+        };
+
+        shade('house-wall', 'wall');
+
+        for (const theme of ROOM_THEMES) {
+            shade(`plane-${theme}`, `plane-${theme}`);
+        }
+
         // The windows' sky, one gradient per phase — `floor-layout.js`'s `SKY_PAINT`, the one phase→paint
         // table the lobby's windows and backdrop read too (card#7343 r1): the reference's window gradient,
         // `top` to `bot`. The window's class names the phase (`sky-*` above), so the scene decides nothing new.
@@ -367,10 +389,26 @@ export function createPainter({ characters, failed, select }) {
             const g = node('g', { class: 'band' }, svg);
 
             node('rect', { x: band.x, y: band.y, width: band.w, height: band.h, class: 'wall' }, g);
+            node('rect', { x: band.skirting.x, y: band.skirting.y, width: band.skirting.w, height: band.skirting.h, class: 'skirting' }, g);
 
             for (const w of band.windows) {
-                node('rect', { x: w.x, y: w.y, width: w.w, height: w.h, class: `window sky-${w.sky ?? 'unset'}` }, g);
+                node('rect', { x: w.x, y: w.y, width: w.w, height: w.h, rx: 4, class: `window sky-${w.sky ?? 'unset'}` }, g);
+                node('path', {
+                    d: `${w.mullions.map((mx) => `M${mx} ${w.y}v${w.h}`).join('')}M${w.x} ${w.transom}h${w.w}`,
+                    class: 'mullion',
+                }, g);
+                node('rect', { x: w.sill.x, y: w.sill.y, width: w.sill.w, height: w.sill.h, rx: 2, class: 'sill' }, g);
             }
+
+            // The two-door elevator, scenery: it never opens.
+            const e = band.elevator;
+
+            node('rect', { x: e.frame.x, y: e.frame.y, width: e.frame.w, height: e.frame.h, rx: 6, class: 'elevator-frame' }, g);
+            node('rect', { x: e.header.x, y: e.header.y, width: e.header.w, height: e.header.h, rx: 4, class: 'elevator-header' }, g);
+            node('circle', { cx: e.lamp.cx, cy: e.lamp.cy, r: e.lamp.r, class: 'elevator-lamp' }, g);
+            node('rect', { x: e.x, y: e.y, width: e.seam - e.x - 1, height: e.h, rx: 3, class: 'elevator-leaf' }, g);
+            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf' }, g);
+            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, g);
 
             const c = band.clock;
             const cx = c.x + c.w / 2;
@@ -385,9 +423,12 @@ export function createPainter({ characters, failed, select }) {
             }
         }
 
-        const tiles = node('g', { class: 'tiles' }, svg);
+        if (scene.slab !== null) {
+            node('rect', { x: scene.slab.x, y: scene.slab.y, width: scene.slab.w, height: scene.slab.h, class: 'slab' }, svg);
+        }
 
-        for (const t of scene.tiles) {
+        const tiles = node('g', { class: 'tiles' }, svg);
+        const tile = (t) => {
             const holder = node('svg', {
                 x: t.x,
                 y: t.y,
@@ -402,6 +443,14 @@ export function createPainter({ characters, failed, select }) {
             image(holder, t.image, 0, 0, t.iw, t.ih, t.image, flip[0] === 1 && flip[1] === 1 ? {} : {
                 transform: `translate(${flip[0] === -1 ? 2 * t.sx + t.sw : 0} ${flip[1] === -1 ? 2 * t.sy + t.sh : 0}) scale(${flip[0]} ${flip[1]})`,
             });
+        };
+
+        // The hallway's tiles first (§ 4.2); then each room in the scene's order, its plane under its own tiles.
+        scene.tiles.filter((t) => t.room === null).forEach(tile);
+
+        for (const plane of scene.planes) {
+            node('rect', { x: plane.x, y: plane.y, width: plane.w, height: plane.h, class: `plane plane-${plane.theme}` }, tiles);
+            scene.tiles.filter((t) => t.room === plane.install_id).forEach(tile);
         }
 
         for (const d of scene.decorative) {

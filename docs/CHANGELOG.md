@@ -27,6 +27,24 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11045** — **The floor's room now stands in an office: a tall back wall with a two-door elevator, a
+  clock and wide windows, and each room on its own toned floor.** Operator rulings of 2026-10-01. The back
+  wall over the floor is taller (160 px of the scene, about 2.2 m at the floor's scale) and holds, at its
+  left, a two-door elevator drawn in the lobby cab's form and door colours and the wall clock, with tall,
+  wide windows — two mullions, a transom and a sill — along the rest of the wall. The elevator is scenery:
+  it never opens, and the floor's *whole building* control is still the way to the lobby's elevator. No
+  window is ever laid over the clock: a wall too narrow for one past the elevator and the clock draws
+  none, and a wall narrower than those two is widened to hold them. Each room's floor is filled under its
+  own map in one of four tones — oak, walnut, sage or slate — chosen from the room's id, so it never
+  changes and agrees in every browser; the wall keeps one house colour on every floor. A slab runs under
+  the rooms. Nothing the frame draws covers a map author's grid. Slots no seat holds stay plain floor.
+  Seats past a map's desks now wrap onto further bench rows at the floor's width instead of running past
+  it. A touch whose pointer capture the browser revokes without a release no longer leaves a press held
+  that turns the next touch into a pinch. FLOOR.md § 4.2 (the frame), § 9 F13, § 10.4, § 12's band,
+  zone and window rows, § 13 rows 40–41 and AT-D3-20's clock clause record it;
+  `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` and the new lost-capture steps in
+  `TheCameraWireIsOneForBothPagesTest` fail on the previous code. The lobby is unchanged.
+
 - **card#11045** — **The wheel now pans the floor and the lobby; Ctrl+wheel and a pinch zoom.** Operator
   rulings of 2026-10-01. A plain mouse wheel or a trackpad's two-finger scroll pans the drawing in any
   direction, where it used to zoom; Ctrl+wheel and a trackpad's pinch zoom about the pointer; on a touch

@@ -60,12 +60,13 @@ const FNV_OFFSET_BASIS = 2166136261;
 const FNV_PRIME = 16777619;
 
 /**
- * § 3.2's `h(seat)` — FNV-1a-32 over the UTF-8 bytes of `install_id + "/" + seat_id`. Both ids are
- * ASCII by D1 § 3.1's slug patterns, and the encoder is the platform's so a non-ASCII id hashes
- * its real bytes rather than its code units.
+ * FNV-1a-32 over the UTF-8 bytes of `text`, with § 3.2's published constants — the one hash this
+ * client seeds anything from: a seat's slot (`hashSeat()`) and a room's plane theme
+ * (`floor/scene.js`'s `roomTheme()`, card#11045). The encoder is the platform's, so a non-ASCII
+ * string hashes its real bytes rather than its code units.
  */
-export function hashSeat(installId, seatId) {
-    const bytes = new TextEncoder().encode(`${installId}/${seatId}`);
+export function fnv1a32(text) {
+    const bytes = new TextEncoder().encode(text);
 
     let h = FNV_OFFSET_BASIS;
 
@@ -76,6 +77,14 @@ export function hashSeat(installId, seatId) {
     }
 
     return h >>> 0;
+}
+
+/**
+ * § 3.2's `h(seat)` — FNV-1a-32 over `install_id + "/" + seat_id`. Both ids are ASCII by D1 § 3.1's
+ * slug patterns.
+ */
+export function hashSeat(installId, seatId) {
+    return fnv1a32(`${installId}/${seatId}`);
 }
 
 /**

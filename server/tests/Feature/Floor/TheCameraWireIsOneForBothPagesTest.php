@@ -123,6 +123,11 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
     {
         return [
             'a drag no pointercancel ends' => ['camera-gestures.js', "element.addEventListener('pointercancel'", "element.addEventListener('pointerleave'"],
+            // card#11045: a capture revoked with no pointerup or pointercancel ends the press — and only a press
+            // still holding that pointer.
+            'a press a lost capture leaves held' => ['camera-gestures.js', "element.addEventListener('lostpointercapture'", "element.addEventListener('lostpointercapture-unheard'"],
+            'a lost capture that ends whatever press is held' => ['camera-gestures.js', 'if (drag !== null && (event.pointerId === drag.id || event.pointerId === pinch?.id)) {', 'if (drag !== null) {'],
+            'a lost capture that forgets the drag was no click' => ['camera-gestures.js', "            release();\n        }\n    });", "            release();\n        }\n        dragged = false;\n    });"],
             'a drag a buttonless move does not end' => ['camera-gestures.js', 'if (drag === null || (event.buttons & 1) === 0) {', 'if (drag === null) {'],
             'a drag any pointer and button starts' => ['camera-gestures.js', ': !event.isPrimary || event.button !== 0) {', ': false) {'],
             'a press that pans before it has moved' => ['camera-gestures.js', 'Math.hypot(dx, dy) < DRAG_SLOP_PX', 'Math.hypot(dx, dy) < 0'],
@@ -393,6 +398,7 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
         $down = static fn (int $x, bool $primary = true, int $button = 0, int $id = 7): array => ['type' => 'pointerdown', 'isPrimary' => $primary, 'button' => $button, 'clientX' => $x, 'clientY' => 0, 'pointerId' => $id];
         $move = static fn (int $x, int $y = 0, int $buttons = 1, int $id = 7): array => ['type' => 'pointermove', 'buttons' => $buttons, 'clientX' => $x, 'clientY' => $y, 'pointerId' => $id];
         $up = static fn (int $id = 7): array => ['type' => 'pointerup', 'pointerId' => $id];
+        $lost = static fn (int $id): array => ['type' => 'lostpointercapture', 'pointerId' => $id];
         $drag = static fn (int $dx, int $dy): array => ['show' => ['act' => 'drag', 'dx' => $dx, 'dy' => $dy]];
         $wheel = static fn (bool $ctrl, float $dx, float $dy, int $mode): array => ['type' => 'wheel', 'clientX' => 110, 'clientY' => 220, 'deltaX' => $dx, 'deltaY' => $dy, 'deltaMode' => $mode, 'ctrlKey' => $ctrl];
 
@@ -425,6 +431,9 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             // Another pointer's move — a pen hovering, say — moves nothing.
             [$move(90, 0, 1, 9), [], false, false, 'none'],
             [$up(), [], false, false, ''],
+            // The capture the release lets go of is lost after it (card#11045): that ends nothing twice, and the
+            // click below is still the drag's.
+            [$lost(7), [], false, false, ''],
             // A drag that moved is no click — neither its handlers nor its default action — and only once.
             [['type' => 'click'], [], true, true, ''],
             [['type' => 'click'], [], false, false, ''],
@@ -439,6 +448,15 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             [['type' => 'pointercancel', 'pointerId' => 7], [], false, false, ''],
             [$move(30), [], false, false, ''],
             [['type' => 'click'], [], false, false, ''],
+            // A capture the browser revoked with neither a pointerup nor a pointercancel ends the press too
+            // (card#11045): the next touch, under a new pointer id, is a press of its own — never the stale
+            // press's pinch second finger, which would capture both and zoom.
+            [$down(0), [], false, false, 'none'],
+            [$move(10), [['capture' => 7], $drag(10, 0)], false, false, 'none'],
+            [$lost(7), [], false, false, ''],
+            [$down(50, true, 0, 12), [], false, false, 'none'],
+            [$move(52, 0, 1, 12), [], false, false, 'none'],
+            [$up(12), [], false, false, ''],
             // A move with the primary button no longer held ends the drag (released outside the drawing).
             [$down(0), [], false, false, 'none'],
             [$move(20, 0, 0), [], false, false, ''],
@@ -451,8 +469,10 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             [$move(200, 0, 1, 8), [['show' => ['act' => 'pinch', 'from' => ['x' => 40, 'y' => -20], 'to' => ['x' => 90, 'y' => -20], 'factor' => 2]]], false, false, 'none'],
             // A third finger is ignored.
             [$down(300, false, 0, 9), [], false, false, 'none'],
-            // The first finger lifts: the second drags on from where it is.
+            // The first finger lifts: the second drags on from where it is — and the lifted finger's capture,
+            // lost after its pointerup, ends nothing.
             [$up(7), [], false, false, 'none'],
+            [$lost(7), [], false, false, 'none'],
             [$move(210, 0, 1, 8), [$drag(10, 0)], false, false, 'none'],
             [$up(8), [], false, false, ''],
             // A pinch is no click.

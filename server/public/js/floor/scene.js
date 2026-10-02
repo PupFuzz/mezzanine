@@ -3,8 +3,8 @@
  * as data. It reads step 7's frame (`floor/floor-screen.js` — each room's placement, the floor's
  * extent, the back-wall band and every desk's slot) and the documents the client holds (each room's
  * map, the floor's hallway, the decoded tilesets), and emits every tile, every desk's elements, the
- * band with the clock and the windows, the overflow strip, the coordination line and the § 6.2
- * forms to draw, and § 9 F21's notices.
+ * floor's frame (§ 4.2: the band with its elevator, clock and windows, the slab, each room's plane),
+ * the overflow strip, the coordination line and the § 6.2 forms to draw, and § 9 F21's notices.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ A MODEL AND NOT A PAGE (row 14: "a model no browser is needed for, and a DOM half no check
@@ -30,17 +30,61 @@
  */
 
 import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
-import { footprintsIntersect, mapDesks, mapGrid } from './floor-layout.js';
+import { fnv1a32, footprintsIntersect, mapDesks, mapGrid } from './floor-layout.js';
 import { FLOOR_ART, readEmbedded, resolvePath, splitGid, tilesetUrl } from './tileset.js';
 import { BUBBLE_BAND, BUBBLE_PAD, ART_W, LINE, deskLayout, fit, union } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 
-/** The back-wall band's height (§ 4.2) — "its height is a drawing layer's" (`floor-layout.js`). */
-export const BAND_H = 96;
+/**
+ * The back-wall band's height (§ 4.2) — "its height is a drawing layer's" (`floor-layout.js`): a wall
+ * about 2.2 m tall at the floor's scale (card#11045, the operator's 2026-10-01 ruling: tall office
+ * windows, not a jail's). FLOOR.md § 12's *Back-wall band height* row is its other home, and
+ * `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` holds the two equal — as it does `ZONE_W` and
+ * `WINDOW`'s pitch and glazing below.
+ */
+export const BAND_H = 160;
 
-/** The wall clock's face, and the windows along the band. Layout, and this module's own. */
-const CLOCK = { dx: 24, dy: 12, size: 72 };
-const WINDOW = { first: 144, pitch: 200, w: 120, h: 64, dy: 16 };
+/**
+ * THE FLOOR's FRAME (§ 4.2's frame list, card#11045 PR-D) — the band's parts, in scene px from the
+ * band's left edge and top. Layout, carrying no fact, and this module's own.
+ *
+ * ⛔ THE RESERVED ZONE IS THE BAND's LEFT `ZONE_W` px, AND NO WINDOW EVER ENTERS IT: the two-door
+ * elevator and the wall clock hang there, so the clock is never covered whatever the floor's width.
+ * A band narrower than the zone — a stored map can be that narrow (F21) — is WIDENED to it, so the
+ * clock (A17's fact) is always on the wall and never hanging past its edge over the exterior.
+ *
+ * ⛔ THE ELEVATOR IS SCENERY. It is the lobby cab's form — two leaves meeting at a seam, a lamp over
+ * them — in the lobby's own door colours (`--door` / `--door-edge`), so the floor and the lobby read as
+ * one building; it never opens and takes no § 6.2 row. The elevator that navigates is the lobby's
+ * (§ 4.1), reached by the floor's *whole building* control.
+ *
+ * ⛔ THE WINDOWS FILL WHAT IS LEFT, PAST THE ZONE: `n = ⌊(w − ZONE_W − margin) ÷ pitch⌋`, at least
+ * one, spread evenly, each centred in its cell and `WINDOW.w` wide — narrowed to its cell less the gap
+ * on a band too short for a full one, never under `WINDOW.min_w`. BELOW THE WIDTH THAT HOLDS THE ZONE,
+ * THE MARGIN AND ONE MINIMUM WINDOW WITH ITS GAP (`ZONE_W + margin + min_w + gap`) THERE ARE NONE
+ * (design review r3 MINOR-1): the formula's *at least one* holds from that width up, and under it a
+ * window — or its sill — could only be drawn inside the zone. A stored map can be that narrow (F21).
+ */
+const ZONE_W = 272;
+const ELEVATOR = { dx: 32, w: 84, h: 144, frame: 6, header: 14, lamp_r: 3 };
+const CLOCK = { dx: 164, size: 64 };
+const WINDOW = { margin: 24, pitch: 360, w: 200, min_w: 96, gap: 24, h: 124, dy: 16, sill_h: 6, sill_out: 6, transom: 0.62 };
+const SKIRTING_H = 8;
+
+/** The slab under the floor's rooms — a baseline strip, scenery, outside every grid (§ 4.2). */
+export const SLAB_H = 8;
+
+/**
+ * § 10.4's seeded room theme (Q2, the operator's 2026-10-01 ruling on card#11045): each room's plane
+ * takes one of these by `fnv1a32(install_id) mod 4` — keyed on the ROOM, whose key never moves, never on
+ * the floor's (§ 4.6: a floor's key moves when a lower-sorting room joins it). Appearance, no fact; the
+ * band stays in the house palette. The paint is `public/css/mezzanine.css`'s `--room-<theme>` pair.
+ */
+export const ROOM_THEMES = Object.freeze(['oak', 'walnut', 'sage', 'slate']);
+
+export function roomTheme(installId) {
+    return ROOM_THEMES[fnv1a32(installId) % ROOM_THEMES.length];
+}
 
 /** The overflow strip's gap below the floor's extent, and its header — § 3.2's labelled row. */
 export const STRIP_GAP = 24;
@@ -182,12 +226,23 @@ export function buildScene(frame, input) {
     }
 
     const byRoom = new Map(frame.rooms.map((room) => [room.install_id, room]));
+    // ⛔ THE FRAME's ONE PER-ROOM PRIMITIVE: a plane under the room's whole grid, opaque over the hallway as
+    // a room is (§ 4.2), drawn before that room's tiles — so it is UNDER the author's content and over no
+    // author's grid but its own. A room whose map is not drawn (F16) has no plane: F16 is "every fact, no
+    // room". The painter draws each plane and then the tiles whose `room` is its `install_id`.
+    const planes = [];
 
     for (const installId of frame.draw_order) {
         const room = byRoom.get(installId);
         const map = input.maps.get(installId) ?? null;
 
         if (!room.mapless && map !== null) {
+            if (room.footprint !== null) {
+                const f = room.footprint;
+
+                planes.push(Object.freeze({ install_id: installId, x: f.x, y: f.y, w: f.width, h: f.height, theme: roomTheme(installId) }));
+            }
+
             drawMap(map, room.origin, installId);
         }
     }
@@ -260,6 +315,10 @@ export function buildScene(frame, input) {
         const top = extent.y + extent.height + STRIP_GAP;
         const header = fit(STRIP_HEADER, Math.max(W, extent.width), input.measure);
         const headerRect = { x: extent.x, y: top, w: header.w, h: header.h, text: header.text, truncated: header.truncated };
+        // § 9 F13 (card#11045): the bench WRAPS — as many boxes to a row as the floor is wide, at least
+        // one, and further rows below — so it never runs past the floor's width however many seats it holds.
+        const perRow = Math.max(1, Math.floor(extent.width / W));
+        const rows = Math.ceil(frame.overflow.length / perRow);
 
         frame.overflow.forEach((key, i) => {
             const model = models[key];
@@ -268,7 +327,7 @@ export function buildScene(frame, input) {
                 return;
             }
 
-            const at = { x: extent.x + i * W, y: top + LINE + 4 };
+            const at = { x: extent.x + (i % perRow) * W, y: top + LINE + 4 + Math.floor(i / perRow) * H };
 
             desks.push(placeDesk(model, key, model.install_id, null, at, {
                 box,
@@ -282,8 +341,8 @@ export function buildScene(frame, input) {
         strip = Object.freeze({
             x: extent.x,
             y: top,
-            w: Math.max(extent.width, frame.overflow.length * W),
-            h: LINE + 4 + H,
+            w: Math.max(extent.width, Math.min(frame.overflow.length, perRow) * W),
+            h: LINE + 4 + rows * H,
             header: Object.freeze(headerRect),
         });
     }
@@ -291,8 +350,14 @@ export function buildScene(frame, input) {
     // ── The bubbles: § 5.1 rule 5's pass over the base rects, in the box's top band ───────────
     placeBubbles(desks, input.measure, W, Object.keys(models));
 
-    // ── The band: one wall clock and the windows, over the floor's whole extent (§ 4.2) ───────
-    const band = frame.band === null ? null : buildBand(frame.band, frame.room);
+    // ── The frame: the band over the floor's whole extent (§ 4.2) and the slab under it ────────
+    const band = frame.band === null ? null : backWall(frame.band, frame.room);
+    const slab = band === null || extent === null ? null : Object.freeze({
+        x: band.x,
+        y: extent.y + extent.height,
+        w: band.w,
+        h: SLAB_H,
+    });
 
     // ── The coordination line and the § 6.2 forms this render draws ───────────────────────────
     const anchors = new Map(desks.map((desk) => [desk.key, anchorOf(desk)]));
@@ -306,6 +371,7 @@ export function buildScene(frame, input) {
     const all = [
         ...(band === null ? [] : [{ x: band.x, y: band.y, w: band.w, h: band.h }]),
         ...(extent === null ? [] : [{ x: extent.x, y: extent.y, w: extent.width, h: extent.height }]),
+        ...(slab === null ? [] : [slab]),
         ...desks.map((desk) => desk.box),
         ...(strip === null ? [] : [strip]),
     ];
@@ -313,6 +379,8 @@ export function buildScene(frame, input) {
     return Object.freeze({
         extent: union(all),
         band,
+        slab,
+        planes: Object.freeze(planes),
         tiles: Object.freeze(tiles),
         desks: Object.freeze(desks),
         strip,
@@ -562,24 +630,74 @@ function f21(installId, objects, seatAt, box, models) {
     return notices;
 }
 
-/** § 4.2's band: its height is this layer's, its span the frame's. */
-function buildBand(band, room) {
-    const y = band.y - BAND_H;
+/**
+ * § 4.2's back wall over one span (`floor-layout.js`'s `backWallBand()`): the wall, its skirting, the
+ * two-door elevator and the wall clock in the reserved zone, and the windows past it. Its height is
+ * this layer's; its span is the frame's, widened to the reserved zone where the floor is narrower.
+ *
+ * ⛔ AT REST NOTHING ON THE BAND MEETS THE CLOCK's FACE (AT-D3-20's clock clause): the elevator ends left
+ * of it and every window, sill included, starts right of the zone. `Tests\Feature\Floor\TheFloorDrawsItsFrameTest`
+ * sweeps every width from 1 px.
+ *
+ * @param {{x: number, y: number, width: number}} span where the band stands: its left, the slab's top, its width
+ * @param {object|null} room `roomTick()`'s value — the clock's hands and the windows' sky — or `null`
+ */
+export function backWall(span, room) {
+    const w = Math.max(span.width, ZONE_W);
+    const y = span.y - BAND_H;
+    const floor = span.y;
     const windows = [];
+    const remaining = w - ZONE_W - WINDOW.margin;
+    const n = remaining < WINDOW.min_w + WINDOW.gap ? 0 : Math.max(1, Math.floor(remaining / WINDOW.pitch));
 
-    for (let x = band.x + WINDOW.first; x + WINDOW.w <= band.x + band.width; x += WINDOW.pitch) {
-        windows.push(Object.freeze({ x, y: y + WINDOW.dy, w: WINDOW.w, h: WINDOW.h, sky: room?.sky ?? null }));
+    for (let i = 0; i < n; i++) {
+        const cell = remaining / n;
+        // At least `min_w`: the threshold above holds one minimum window and its gap in a cell.
+        const ww = Math.min(WINDOW.w, cell - WINDOW.gap);
+        const x = span.x + ZONE_W + cell * (i + 0.5) - ww / 2;
+        const top = y + WINDOW.dy;
+
+        windows.push(Object.freeze({
+            x,
+            y: top,
+            w: ww,
+            h: WINDOW.h,
+            sky: room?.sky ?? null,
+            // Two mullions and a transom, drawn inside the glazing; the sill under it.
+            mullions: Object.freeze([x + ww / 3, x + (2 * ww) / 3]),
+            transom: top + WINDOW.h * WINDOW.transom,
+            sill: Object.freeze({ x: x - WINDOW.sill_out, y: top + WINDOW.h, w: ww + 2 * WINDOW.sill_out, h: WINDOW.sill_h }),
+        }));
     }
 
+    const lift = { x: span.x + ELEVATOR.dx, y: floor - ELEVATOR.h, w: ELEVATOR.w, h: ELEVATOR.h };
+
     return Object.freeze({
-        x: band.x,
+        x: span.x,
         y,
-        w: band.width,
+        w,
         h: BAND_H,
+        // The reserved zone the elevator and the clock hang in — no window enters it.
+        zone: Object.freeze({ x: span.x, y, w: ZONE_W, h: BAND_H }),
+        skirting: Object.freeze({ x: span.x, y: floor - SKIRTING_H, w, h: SKIRTING_H }),
+        // The two-door elevator: its frame and header plate, the lamp over it, and the two leaves.
+        elevator: Object.freeze({
+            ...lift,
+            frame: Object.freeze({
+                x: lift.x - ELEVATOR.frame,
+                y: lift.y - ELEVATOR.header,
+                w: lift.w + 2 * ELEVATOR.frame,
+                h: lift.h + ELEVATOR.header,
+            }),
+            header: Object.freeze({ x: lift.x - ELEVATOR.frame, y: lift.y - ELEVATOR.header, w: lift.w + 2 * ELEVATOR.frame, h: ELEVATOR.header - 2 }),
+            lamp: Object.freeze({ cx: lift.x + lift.w / 2, cy: lift.y - ELEVATOR.header / 2, r: ELEVATOR.lamp_r }),
+            seam: lift.x + lift.w / 2,
+        }),
         // § 6.5: a room with no value is drawn as having none — `set: false`, never a plausible time.
+        // Hung at mid-wall, in the zone, right of the elevator.
         clock: Object.freeze({
-            x: band.x + CLOCK.dx,
-            y: y + CLOCK.dy,
+            x: span.x + CLOCK.dx,
+            y: y + (BAND_H - CLOCK.size) / 2,
             w: CLOCK.size,
             h: CLOCK.size,
             set: room !== null,
