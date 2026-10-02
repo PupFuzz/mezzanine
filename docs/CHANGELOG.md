@@ -38,7 +38,8 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   to the glance set the operator ruled on 2026-10-02, and the desk itself is unchanged here. FLOOR.md
   § 4.3, § 5.4, § 9 F9 and AT-D3-11 record it. `DrillDownRendersTheSeatTest` holds each new slot with a
   control that removes its write, and `TheDrillDownDrawsTheDesksOwnMotionTest` holds the panel's *moving*
-  / *still* to the motion of the desk the same frame draws, under both reduced-motion readings.
+  / *still* to the motion of the desk the same frame draws, under both reduced-motion readings and on a
+  floor stilled by a refused session.
 
 - **card#11045** — **A Safari trackpad pinch zooms the floor and the lobby.** Safari reports a trackpad
   pinch as its own gesture events, which the camera now reads directly: the pinch zooms the drawing about

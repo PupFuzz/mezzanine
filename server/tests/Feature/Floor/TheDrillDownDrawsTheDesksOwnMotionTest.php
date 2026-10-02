@@ -21,6 +21,14 @@ class TheDrillDownDrawsTheDesksOwnMotionTest extends TestCase
 
     private const RUN = 'panel_ages';
 
+    /** `panel_ages`' panel over a floor § 9 F6 stills: its stream ends and the poll is answered `401`. */
+    private const STILLED_RUN = 'panel_stilled';
+
+    /** The RED: the floor screen stops handing the panel § 9 F6's stilled floor. */
+    private const STILLED_DROPPED = ['../floor/floor-screen.js',
+        'return { floor: floorName, stilled: this.#desks.stilled, reduce: this.#set.reduce };',
+        'return { floor: floorName, reduce: this.#set.reduce };'];
+
     /** The RED: the floor screen stops handing the panel § 6.4's reading. */
     private const REDUCE_DROPPED = ['../floor/floor-screen.js',
         'return { floor: floorName, stilled: this.#desks.stilled, reduce: this.#set.reduce };',
@@ -42,6 +50,32 @@ class TheDrillDownDrawsTheDesksOwnMotionTest extends TestCase
             'the worked seat is not drawn moving without reduced motion and still with it — the run measures nothing');
     }
 
+    /**
+     * § 9 F6: a refused session stills the floor beneath the sign-in prompt, and a desk on it moves
+     * nothing — so the panel open on it says *still*, read off the same frame's desk. The run is first
+     * seen to have stilled the floor and to draw the same seat *moving* before the refusal, so the
+     * equality is measured over a word that actually changed.
+     */
+    public function test_green_the_panel_reads_still_on_a_floor_f6_stilled(): void
+    {
+        $result = $this->stilledRun();
+
+        $this->assertNotNull($this->lastFloor($result)['failure']['sign_in'],
+            'the run never drew the sign-in prompt over a stilled floor — it measures nothing about § 9 F6');
+        $this->assertSame([], $this->defects($result, $word));
+        $this->assertSame('still', $word);
+        $this->assertContains('moving', $this->panelMotionWords($result),
+            'the panel never read *moving* before the refusal — the stilled reading is not a change');
+    }
+
+    public function test_red_a_panel_that_is_not_handed_the_stilled_floor_is_caught(): void
+    {
+        $result = $this->stilledRun($this->mutatedModules(self::STILLED_DROPPED));
+
+        $this->assertArrayHasKey('motion', $this->defects($result, $word),
+            'the RED did not bite: a panel never handed the stilled floor still matched the stilled desk');
+    }
+
     public function test_red_a_panel_that_is_not_handed_reduced_motion_is_caught(): void
     {
         $defects = $this->defects($this->panelRun(true, $this->mutatedModules(self::REDUCE_DROPPED)), $word);
@@ -55,6 +89,25 @@ class TheDrillDownDrawsTheDesksOwnMotionTest extends TestCase
             'reduce' => $reduce,
             'browser_clock_ms' => $this->serverTimeMs(self::RUN),
         ]);
+    }
+
+    private function stilledRun(?string $dir = null): array
+    {
+        return $this->floorRun(self::STILLED_RUN, $dir, ['browser_clock_ms' => $this->serverTimeMs(self::STILLED_RUN)]);
+    }
+
+    /** @return list<string> the panel's motion word on every frame that drew it open on `aimla-pm` */
+    private function panelMotionWords(array $result): array
+    {
+        $words = [];
+
+        foreach ($this->panelFrames($result) as [, $panel]) {
+            if ($panel['seat']['seat_id'] === 'aimla-pm') {
+                $words[] = $panel['desk']['render'][3] ?? null;
+            }
+        }
+
+        return $words;
     }
 
     /** @return array<string, string> */

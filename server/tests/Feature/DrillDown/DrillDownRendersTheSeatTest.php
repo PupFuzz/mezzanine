@@ -225,6 +225,82 @@ class DrillDownRendersTheSeatTest extends TestCase
         $this->assertSame([], $this->deskFactDefects($this->deskFactsDom()));
     }
 
+    /**
+     * § 5.4 publishes six membership-tested fields, and the panel lists an unrecognised value in EACH
+     * as its raw `field: value` line — one value per field here, all at once, so a panel that dropped
+     * any one field's line is named by that field. Its detail request failed, as above (§ 9 F11).
+     */
+    public function test_the_panel_lists_an_unrecognised_value_in_every_one_of_the_six_fields(): void
+    {
+        $this->assertSame([], $this->unrecognisedDefects($this->unrecognisedDom()));
+    }
+
+    /**
+     * ⛔ ITS CONTROLS — one field's line dropped from the SHIPPED model at a time, and the check above
+     * seen to name exactly that field.
+     */
+    public function test_each_field_of_the_unrecognised_list_goes_red_when_its_line_is_dropped(): void
+    {
+        foreach (array_keys(self::UNRECOGNISED_VALUES) as $field) {
+            $dir = $this->mutatedModules([
+                'drilldown-model.js',
+                'unrecognised: [...desk.unrecognised],',
+                "unrecognised: desk.unrecognised.filter((line) => !line.startsWith('{$field}: ')),",
+            ]);
+
+            $this->assertSame([$field], array_keys($this->unrecognisedDefects($this->unrecognisedDom($dir))),
+                "the control for `{$field}` did not bite alone");
+        }
+    }
+
+    /** One value outside § 5.4's published set, per field — `badges` an array, as the wire carries it. */
+    private const UNRECOGNISED_VALUES = [
+        'render_state' => 'pondering',
+        'link_state' => 'quantum',
+        'activity_state' => 'dreaming',
+        'unknown_reason' => 'reasons',
+        'api_error_type' => 'teapot',
+        'badges' => 'sparkle',
+    ];
+
+    /** @return array<string, mixed> the stub's slots for the seat carrying all six */
+    private function unrecognisedDom(?string $moduleDir = null): array
+    {
+        $values = self::UNRECOGNISED_VALUES;
+        $seat = $this->seatBody([...$values, 'badges' => [$values['badges']]]);
+        unset($seat['detail']);
+
+        return $this->probe([
+            'seat' => $seat,
+            'now_ms' => $this->nowMs(),
+            'options' => ['detail_failure' => ['status' => 503]],
+            'drive_main' => true,
+        ], $moduleDir)['main']['dom'];
+    }
+
+    /**
+     * Each field whose raw `field: value` line is missing from the panel's list, keyed by field.
+     *
+     * @param  array<string, mixed>  $dom
+     * @return array<string, string>
+     */
+    private function unrecognisedDefects(array $dom): array
+    {
+        $this->assertSame('unrecognised', $dom['[data-panel-unrecognised-heading]']['text'] ?? null);
+        $this->assertFalse($dom['[data-panel-unrecognised]']['hidden'] ?? true, 'the unrecognised list is hidden');
+
+        $rows = array_column($dom['[data-panel-unrecognised]']['rows'] ?? [], 'text');
+        $defects = [];
+
+        foreach (self::UNRECOGNISED_VALUES as $field => $value) {
+            if (! in_array("{$field}: {$value}", $rows, true)) {
+                $defects[$field] = "no `{$field}: {$value}` line among ".json_encode($rows);
+            }
+        }
+
+        return $defects;
+    }
+
     /** § 5.1: "`0` renders nothing rather than a zero" — and one open call is not a count either. */
     public function test_the_open_call_count_is_drawn_past_one_and_hidden_otherwise(): void
     {
@@ -265,6 +341,16 @@ class DrillDownRendersTheSeatTest extends TestCase
         $this->assertTrue($live['[data-panel-unrecognised-heading]']['hidden']);
         $this->assertTrue($live['[data-panel-unrecognised]']['hidden']);
         $this->assertSame([], $live['[data-panel-unrecognised]']['rows']);
+
+        $this->assertFalse($live['[data-panel-desk]']['parent_hidden'], 'the *Desk:* paragraph is hidden over a drawn desk');
+
+        // A seat with no desk to describe — `retired`, § 7.1's "instruction to stop rendering one" —
+        // draws no desk line, and no bare *Desk:* label above nothing either.
+        $retired = $this->probe([
+            'seat' => $this->seatBody(['render_state' => 'retired']), 'now_ms' => $this->nowMs(), 'drive_main' => true,
+        ])['main']['dom'];
+        $this->assertTrue($retired['[data-panel-desk]']['hidden']);
+        $this->assertTrue($retired['[data-panel-desk]']['parent_hidden'], 'a bare *Desk:* label is drawn over no desk');
 
         $this->assertSame('working · at-keyboard · full · still', $render(['reduce' => true])['[data-panel-desk]']['text']);
         $this->assertSame('working · at-keyboard · full · still', $render(['stilled' => true])['[data-panel-desk]']['text']);
@@ -352,7 +438,7 @@ class DrillDownRendersTheSeatTest extends TestCase
     public function test_each_desk_fact_check_goes_red_when_its_slot_is_not_written(): void
     {
         $plants = [
-            '[data-panel-desk]' => "    put(root, '[data-panel-desk]', joined(desk.render));\n",
+            '[data-panel-desk]' => "    putLabelled(root, '[data-panel-desk]', joined(desk.render));\n",
             '[data-panel-note]' => "    put(root, '[data-panel-note]', desk.note);\n",
             '[data-panel-unrecognised-heading]' => "    put(root, '[data-panel-unrecognised-heading]', desk.unrecognised_heading);\n",
             '[data-panel-unrecognised]' => "    putRows(root, '[data-panel-unrecognised]', desk.unrecognised.map((line) => ({ text: line })));\n",

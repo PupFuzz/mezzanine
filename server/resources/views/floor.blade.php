@@ -152,7 +152,7 @@
                 <p>State: <span data-panel-state></span> — <span data-panel-line></span></p>
                 <p data-panel-currency hidden></p>
                 <p data-panel-note hidden></p>
-                <p>Desk: <span data-panel-desk></span></p>
+                <p hidden>Desk: <span data-panel-desk></span></p>
                 <p data-panel-unrecognised-heading hidden></p>
                 <ul data-panel-unrecognised hidden></ul>
 

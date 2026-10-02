@@ -33,6 +33,20 @@ function put(root, selector, text) {
     return el;
 }
 
+/**
+ * Text into a slot whose LABEL shares its paragraph (`<p>Desk: <span data-panel-desk>`): the paragraph
+ * is hidden with the slot, so an absence the model decided draws no bare label either.
+ */
+function putLabelled(root, selector, text) {
+    const el = put(root, selector, text);
+
+    if (el?.parentElement) {
+        el.parentElement.hidden = el.hidden;
+    }
+
+    return el;
+}
+
 /** A list slot, rebuilt from rows the model has already decided the text of; hidden when empty. */
 function putRows(root, selector, rows) {
     const list = root.querySelector(selector);
@@ -81,7 +95,7 @@ export function renderDrillDown(root, model) {
     // drawn whether or not the detail request answered (§ 9 F11).
     const desk = model.desk;
 
-    put(root, '[data-panel-desk]', joined(desk.render));
+    putLabelled(root, '[data-panel-desk]', joined(desk.render));
     put(root, '[data-panel-note]', desk.note);
     put(root, '[data-panel-unrecognised-heading]', desk.unrecognised_heading);
     putRows(root, '[data-panel-unrecognised]', desk.unrecognised.map((line) => ({ text: line })));
