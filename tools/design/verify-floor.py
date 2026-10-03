@@ -40,7 +40,10 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                from must be exactly the ones D2 section 8.7 declares;
                                                and the worked floors laid at the furniture box --
                                                section 4.6's two rows and D2 section 8.7's authored
-                                               rooms and worked room map -- re-derived from the box
+                                               rooms and worked room map -- re-derived from the box;
+                                               and the shipped default's RESERVED DESK, its id and
+                                               role read out of the map and held equal to section
+                                               10.3's sentence and section 12's row (card#11144)
   G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
                                                bearing members without `fetch-fresh` / `dark-only`;
                                                a section 5 table this gate has no column for; a table
@@ -1956,6 +1959,63 @@ else:
                                 f"and the shipped default is the map every unauthored room renders")
             g8e_grid += f"; {len(_mobjs)} `desks` objects held at least the box"
 
+# ---- G8h. the shipped default's RESERVED DESK, against the FILE (card#11144, PR-1a) ----------------------
+# Section 12 gained a Measured row -- which desk the shipped default reserves, by Tiled `id`, and for which
+# role -- and it is a fact with three homes: a sentence in section 10.3, the row, and the map's one `desks`
+# object carrying `reserved_for`.  G4 binds the row's NUMBER to section 10.3 as a whole token, which is weak
+# for a small id (any `3` in the section satisfies it), so this leg binds all three by VALUE: the id and the
+# role are read out of section 10.3's sentence, out of section 12's row, and out of each map G8b counted,
+# and every pair must agree.  A map that reserves two desks is refused by name here too, as the console
+# refuses it at the write (`App\Floor\FloorMap`).  What this leg does NOT check is anything about which
+# seat sits at the reserved desk: that is the slot function's (section 3.2), unchanged until PR-3.
+RES_DECL = prose(r"The shipped default reserves `id (\d+)` for `([a-z0-9-]+)`\*\*")
+RES_ROW = re.compile(r"^`id (\d+)`, `([a-z0-9-]+)`$")
+g8h = "NOT MEASURED"
+m_res = re.search(RES_DECL, sec103)
+_res_rows = [cells(r) for r in (table_rows(sec12, r"^\| Value \| Number \| Basis \| Where \|") or [])
+             if cells(r)[0].startswith("Reserved desk of the shipped default")]
+if not m_res:
+    fail.append("G8 CONTROL: section 10.3 no longer states the shipped default's reserved desk in the form this "
+                "leg reads (`The shipped default reserves `id N` for `role`**`), so section 12's Measured row "
+                "for it is bound to prose nothing re-derives")
+elif len(_res_rows) != 1 or not RES_ROW.match(_res_rows[0][1].replace("**", "")):
+    fail.append(f"G8 CONTROL: section 12 carries {len(_res_rows)} row(s) named `Reserved desk of the shipped "
+                f"default`, and exactly one is required with its Number cell in the form `id N`, `role` -- "
+                f"a row this leg cannot read is a figure nothing holds")
+elif not g8_maps:
+    fail.append("G8: section 10.3 states the shipped default's reserved desk and no map file was read to hold "
+                "it against -- the figure is a measurement of a file this run never opened")
+else:
+    _decl_res = (m_res.group(1), m_res.group(2))
+    _row = RES_ROW.match(_res_rows[0][1].replace("**", ""))
+    _row_res = (_row.group(1), _row.group(2))
+    if _row_res != _decl_res:
+        fail.append(f"G8: section 12 says the shipped default reserves id {_row_res[0]} for `{_row_res[1]}` and "
+                    f"section 10.3 says id {_decl_res[0]} for `{_decl_res[1]}` -- one fact, two homes, and they "
+                    f"disagree")
+    for _mrel in g8_maps:
+        _doc = json.loads((ROOT / _mrel).read_text())
+        _found = []
+        for _l in _doc.get("layers", []):
+            if _l.get("type") == "objectgroup" and _l.get("name") == layer_name:
+                for _o in _l.get("objects", []):
+                    for _p in _o.get("properties", []) or []:
+                        if _p.get("name") == "reserved_for":
+                            _found.append((str(_o.get("id")), _p.get("type"), _p.get("value")))
+        if len(_found) != 1:
+            g8h = f"{_mrel} reserves {len(_found)} desk(s)"
+            fail.append(f"G8: `{_mrel}` carries `reserved_for` on {len(_found)} `{layer_name}` object(s) "
+                        f"({_found}) and section 10.3 states it reserves exactly one -- a room has one "
+                        f"reserved desk, which the console refuses any other map for at the write")
+            continue
+        _fid, _ftype, _fval = _found[0]
+        g8h = f"MEASURED from {_mrel}: id {_fid} for `{_fval}` ({_ftype})"
+        if _ftype != "string" or (_fid, _fval) != _decl_res:
+            fail.append(f"G8: `{_mrel}` reserves id {_fid} for `{_fval}` (a Tiled `{_ftype}` property) and "
+                        f"section 10.3 states id {_decl_res[0]} for `{_decl_res[1]}` (a `string`) -- the "
+                        f"document and the file disagree, and section 12's reserved-desk row rests on the "
+                        f"document's copy")
+
 # ---- G8f. section 12's VIEWPORT arithmetic, re-derived from the map, the box and the reference viewport ----
 # The viewport row restates, in prose, how wide the shipped default is in furniture boxes and what the
 # camera's fit zoom is at the reference viewport (a size the fit is measured at, and no minimum since the
@@ -3323,6 +3383,9 @@ print(f"    G8 the furniture box at the cap (Appendix B row 14, slice B): {g8e_b
 print(f"    G8 the shipped default's grid: {g8e_grid}. MEASURED means `width × tilewidth` by `height × "
       f"tileheight` was read out of the map and held against section 10.3's sentence, and every `desks` "
       f"object was held at least the box above.")
+print(f"    G8 the shipped default's reserved desk (card#11144): {g8h}. MEASURED means the one `desks` object "
+      f"carrying `reserved_for` was read out of the map, and its id and role held equal to section 10.3's "
+      f"sentence and section 12's row.")
 print(f"    G8 section 12's viewport arithmetic: {g8f}. MEASURED means the rows, the boxes per row, the desk "
       f"across, the grid width and the fit zoom the viewport cell states were each recomputed from the map, "
       f"the box and the row's own reference viewport and held equal.")

@@ -30,7 +30,7 @@
             <thead>
                 <tr>
                     <th>Revision</th><th>What it records</th><th>Desk slots</th>
-                    <th>Authored</th><th></th>
+                    <th>Reserved desk</th><th>Authored</th><th></th>
                 </tr>
             </thead>
             <tbody>
@@ -63,6 +63,17 @@
                                 <strong>this document can no longer be read</strong>
                             @else
                                 {{ $revision['slots'] }}
+                            @endif
+                        </td>
+                        <td>
+                            {{-- card#11144: the one desk the map reserves for a role, named by its
+                                 Tiled id, or `none` — read by the same parse as `S`. --}}
+                            @if ($revision['removal'])
+                                —
+                            @elseif ($revision['reserved'] === null)
+                                <strong>this document can no longer be read</strong>
+                            @else
+                                reserved: {{ $revision['reserved'] }}
                             @endif
                         </td>
                         <td>{{ $revision['authored_at'] }}<br>by {{ $revision['authored_by'] }}</td>

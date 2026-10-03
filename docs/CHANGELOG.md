@@ -27,6 +27,18 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11144** — **A room map can reserve one desk for a role, and the shipped room reserves its
+  back-row right corner for the PM.** A `desks` object may now carry one property, `reserved_for` — a
+  Tiled `string` naming a role in the protocol agent name's shape (lowercase `[a-z0-9-]`, at most 48
+  bytes), such as `pm` — and at most one desk in a room may carry it. The console refuses, by the desk's
+  Tiled id, any other property on a desk, a `reserved_for` that is not a string role name (a property with no
+  `type` is a string, as Tiled documents) or appears twice on one desk, a reserved desk with no `id` or with
+  an `id` another desk also declares, and a second reserved desk, at a save and at a restore alike; a reserved desk is still held
+  to the furniture box. The revisions page lists each revision's reserved desk beside its slot count, and a
+  save's result names the reserved desk before and after. `resources/floor/default.tmj` reserves `id 3` for
+  `pm`; the floor does not seat by the reservation yet, so the corner holds whichever seat hashes there.
+  `tools/design/verify-floor.py` G8 holds the default's reserved desk equal to `FLOOR.md § 10.3`'s sentence
+  and § 12's new Measured row. This replaces card#9071's allowlist of none for a desk object's properties.
 - **card#11187** — **A room map whose desks sit inside a Tiled group is seated.** The console already
   accepted a map with its `desks` object layer inside a `group` layer and counted its desks; the floor
   now reads that layer at any depth too, so such a room places its seats at the map's desks instead of sending

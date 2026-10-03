@@ -4524,8 +4524,10 @@ seat, and the two meet only in the client's own slot function
 off the map. ⛔ **The console may NOT pin a seat to a desk — operator ruling, card#9071
 (2026-09-12)** — and what that ruling protects, and what it cannot, are stated apart rather than run
 together. **Protected, at the write:** the document carries no identity — [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)
-refuses a desk object carrying any property, so a map cannot name a seat and the wire never carries a
-stored position; two browsers, two reloads and two restarts still agree from the seat key and `S`
+refuses a desk object carrying any property but `reserved_for`, so a map cannot name a seat and the
+wire never carries a stored position. `reserved_for` (card#11144) reserves one desk for a ROLE — a
+roster name, never a seat — so the map may say which desk a role sits at and still names no seat; two
+browsers, two reloads and two restarts still agree from the seat key and `S`
 alone, which is the property the ruling was reasoned on. **Not prevented, and not preventable by any
 check on the document:** an author chooses `S` and where each slot index is drawn, `h(seat)` is fixed
 and published, so an author who wants a known seat at a known desk can choose `S` and the geometry

@@ -685,6 +685,41 @@ PLANTS = [
         "smaller than the furniture box at the cap",
     ),
     (
+        # card#11144 PR-1a — G8's reserved-desk leg (G8h).  Section 10.3 states which desk the shipped
+        # default reserves, by Tiled id and role; section 12 carries it as a Measured row; the map
+        # carries it as the one `desks` object with `reserved_for`.  Bumping the sentence's id is the
+        # class "the document's copy drifted from the file".
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        # `\s+` because § 10.3 is wrapped prose, and the sentence breaks across a line.
+        r"(The\s+shipped\s+default\s+reserves\s+`id\s+)(\d+)(`\s+for\s+`)",
+        "bump",
+        "§ 10.3's stated id of the shipped default's reserved desk, which G8 holds against the one "
+        "`desks` object carrying `reserved_for` in `resources/floor/default.tmj` (card#11144)",
+        "the document and the file disagree, and section 12's reserved-desk row",
+    ),
+    (
+        # The same leg's second home: section 12's row, held to section 10.3's sentence by VALUE,
+        # because G4's whole-token match is satisfied by any other `3` in section 10.3.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| Reserved desk of the shipped default \| `id )(\d+)(`)",
+        "bump",
+        "section 12's reserved-desk id, which G8 holds equal to section 10.3's sentence (card#11144)",
+        "one fact, two homes, and they disagree",
+    ),
+    (
+        # The same leg over the FILE: the reserved role renamed in the map.  The anchor pins the
+        # property's NAME and reads its value, so the plant stores no role of its own.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"name\":\"reserved_for\",[\s\S]*?\"value\":\")([a-z0-9-]+)(\")",
+        "rename",
+        "the shipped default's reserved role renamed in the map, which G8 must refuse as the file "
+        "disagreeing with section 10.3's sentence (card#11144)",
+        "the document and the file disagree, and section 12's reserved-desk row",
+    ),
+    (
         # PR #232 round 2, MINOR-B — G8e reads the box with the DECLARATION's `\d` bound to ASCII, as
         # PHP's is.  The plant's digit is the width's LAST one, and the position is the whole plant
         # (round 3, F1): the DECLARATION's first digit is `[1-9]`, an ASCII-only range in either

@@ -250,8 +250,10 @@ where *who retired it, when and why* lives, `card#9078`), **floors** (each room'
 many desks it has and where they sit, `card#9085`) and the **building layout** (which rooms share a
 floor, what each floor is called, and where each room is drawn on a planned one, `card#9208`).
 Pinning a named seat to a chosen desk was ruled out on `card#9071` (2026-09-12) because it would
-store a fact `docs/design/FLOOR.md § 3.2` derives — and a desk object carrying **any** property is
-refused at the write so that a seat's name cannot arrive as one.
+store a fact `docs/design/FLOOR.md § 3.2` derives — and a desk object carrying any property but
+`reserved_for` is refused at the write so that a seat's name cannot arrive as one. `reserved_for`
+reserves one desk for a ROLE, such as `pm`, never for a seat (`card#11144`); the shipped default
+reserves its back-row right corner for `pm`, and the floor does not seat by it yet.
 
 **A room's map is authored in Tiled and installed through the console** — export it as a JSON map
 (`.tmj`) with the tile layer format set to CSV, referencing a tileset this repository ships under

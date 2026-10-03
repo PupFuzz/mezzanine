@@ -8,6 +8,7 @@ use App\Floor\FloorAssets;
 use App\Floor\FloorMap;
 use App\Floor\FurnitureBox;
 use App\Floor\InvalidFloorMap;
+use App\Floor\ShippedDefaultMap;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\Admin\FloorMapFixture;
 use Tests\TestCase;
@@ -16,8 +17,8 @@ use Tests\TestCase;
  * `App\Floor\FloorMap` against `docs/design/FLOOR.md § 10.3`'s member table — the refusals the
  * console owes at the WRITE, and the two the table gained with card#9292 and card#9208's reversal:
  * a room's **grid** (its footprint on a planned floor), a desk object **wholly inside** it, a desk
- * object carrying **no property at all**, and a `tilesets[]` entry naming a tileset **the
- * repository ships**.
+ * object carrying **no property but `reserved_for`** (card#11144) on at most one desk, and a
+ * `tilesets[]` entry naming a tileset **the repository ships**.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ EVERY ARM IS ONE MUTATION AWAY FROM THE SAME VALID MAP (`FloorMapFixture`), which is what
@@ -147,12 +148,155 @@ class FloorMapTest extends TestCase
         $this->refuses(FloorMapFixture::deskOutsideTheGrid(), 'is not wholly inside this room\'s grid');
     }
 
-    public function test_a_desk_object_carrying_any_property_is_refused_because_the_one_an_author_reaches_for_is_a_seat(): void
+    public function test_a_desk_object_carrying_a_property_other_than_reserved_for_is_refused_naming_it(): void
     {
         // ⛔ card#9071's operator ruling (2026-09-12): the console may not pin a seat to a desk.
-        // § 10.3 makes it an allowlist of NONE, so the refusal is on `properties` existing at all
-        // rather than on a list of names that would be one edit behind the author.
-        $this->refuses(FloorMapFixture::deskWithProperties(), 'carries `properties`');
+        // § 10.3's allowlist is ONE property since card#11144 — `reserved_for`, a role and never a
+        // seat — so the property an author reaches for, a seat's name, is still refused by name.
+        $this->refuses(
+            FloorMapFixture::deskWithProperties(),
+            'Desk slot id 1 carries property `seat_id`; a desk slot may carry only `reserved_for`.',
+        );
+    }
+
+    // ── card#11144: `reserved_for` — one desk reserved for a role ────────────────────────────
+
+    public function test_a_desk_reserved_for_a_role_is_accepted_and_the_reservation_is_read_by_its_id(): void
+    {
+        // THE CONTROL for every reservation refusal below: the valid map with `id 3` reserved for
+        // `pm`, as the shipped default carries it.
+        $map = FloorMap::parse(FloorMapFixture::reservedDesk());
+
+        $this->assertSame(['name' => 'id 3', 'role' => 'pm'], $map->reserved);
+        $this->assertSame(6, $map->slots, 'a reservation is not a slot: `S` is unchanged');
+
+        // And a map that reserves nothing reads as none, rather than as an absent member.
+        $this->assertNull(FloorMap::parse(FloorMapFixture::valid())->reserved);
+    }
+
+    public function test_two_reserved_desks_are_refused_naming_both(): void
+    {
+        $this->refuses(
+            FloorMapFixture::twoReservedDesks(),
+            'Desk slots id 3 and id 6 are both reserved; a room has one reserved desk. Unreserve one and save again.',
+        );
+    }
+
+    public function test_a_reservation_that_is_not_a_string_property_is_refused(): void
+    {
+        $this->refuses(
+            FloorMapFixture::reservedForAsABool(),
+            'Desk slot id 3\'s `reserved_for` is a Tiled `bool` property; it must be a role name such as `pm`.',
+        );
+    }
+
+    public function test_a_reservation_with_no_type_is_read_as_tiled_s_default_string(): void
+    {
+        // Tiled's JSON map format documents a property's `type` as `string (default)`, so a
+        // `reserved_for` that omits it is a string property and is read as one.
+        $map = FloorMapFixture::decodedReserved();
+        unset($map['layers'][1]['objects'][2]['properties'][0]['type']);
+
+        $this->assertSame(['name' => 'id 3', 'role' => 'pm'], FloorMap::parse(FloorMapFixture::encode($map))->reserved);
+
+        // And an absent `type` is not a pass for the value: it is still held to a role name.
+        $map['layers'][1]['objects'][2]['properties'][0]['value'] = 'Project Manager';
+        $this->refuses(FloorMapFixture::encode($map), 'it must be a role name such as `pm`');
+    }
+
+    public function test_a_reservation_that_is_not_a_role_name_is_refused(): void
+    {
+        $this->refuses(
+            FloorMapFixture::reservedForNotARoleName(),
+            'Desk slot id 3\'s `reserved_for` is `Project Manager`; it must be a role name such as `pm`.',
+        );
+
+        // A role name is the protocol agent name's slug, ≤ 48 B: one byte past it is refused, the
+        // bound itself is not.
+        $over = FloorMapFixture::decodedReserved(value: str_repeat('a', 49));
+        $this->refuses(FloorMapFixture::encode($over), 'it must be a role name such as `pm`');
+
+        // A trailing newline is not part of a role name, though a bare `$` would admit it.
+        $this->refuses(FloorMapFixture::encode(FloorMapFixture::decodedReserved(value: "pm\n")), 'it must be a role name such as `pm`');
+
+        // The lower bound: an empty string is no role name.
+        $this->refuses(FloorMapFixture::encode(FloorMapFixture::decodedReserved(value: '')), 'Desk slot id 3\'s `reserved_for` is ``; it must be a role name such as `pm`.');
+
+        $at = FloorMapFixture::decodedReserved(value: str_repeat('a', 48));
+        $this->assertSame(str_repeat('a', 48), FloorMap::parse(FloorMapFixture::encode($at))->reserved['role']);
+    }
+
+    public function test_a_reserved_desk_that_declares_no_id_is_refused_naming_it(): void
+    {
+        // The client resolves the reservation by Tiled `id`, so a reserved desk with none could
+        // not be found by it.
+        $map = FloorMapFixture::decodedReserved();
+        unset($map['layers'][1]['objects'][2]['id']);
+
+        $this->refuses(
+            FloorMapFixture::encode($map),
+            'Desk slot object #3 (it declares no `id`) is reserved and declares no `id`',
+        );
+
+        // An UNRESERVED desk with no id is not this rule's: the same map without the reservation passes.
+        $plain = FloorMapFixture::decoded();
+        unset($plain['layers'][1]['objects'][2]['id']);
+        $this->assertNull(FloorMap::parse(FloorMapFixture::encode($plain))->reserved);
+    }
+
+    public function test_a_reserved_desk_whose_id_another_desk_also_declares_is_refused_naming_it(): void
+    {
+        $map = FloorMapFixture::decodedReserved();
+        $map['layers'][1]['objects'][5]['id'] = 3;
+
+        $this->refuses(FloorMapFixture::encode($map), 'Desk slot id 3 is reserved, and another desk slot declares `id` 3 too');
+
+        // The other order: the duplicate listed BEFORE the reserved desk.
+        $map = FloorMapFixture::decodedReserved();
+        $map['layers'][1]['objects'][0]['id'] = 3;
+        $this->refuses(FloorMapFixture::encode($map), 'Desk slot id 3 is reserved, and another desk slot declares `id` 3 too');
+
+        // CONTROL: a duplicate id between two UNRESERVED desks is not this rule's.
+        $plain = FloorMapFixture::decodedReserved();
+        $plain['layers'][1]['objects'][5]['id'] = 1;
+        $this->assertSame('id 3', FloorMap::parse(FloorMapFixture::encode($plain))->reserved['name']);
+    }
+
+    public function test_a_desk_carrying_reserved_for_twice_is_refused(): void
+    {
+        // Two values on one desk would be two answers to *which role sits here*.
+        $map = FloorMapFixture::decodedReserved();
+        $map['layers'][1]['objects'][2]['properties'][] = ['name' => 'reserved_for', 'type' => 'string', 'value' => 'impl'];
+
+        $this->refuses(FloorMapFixture::encode($map), 'Desk slot id 3 carries `reserved_for` twice');
+    }
+
+    public function test_a_desks_properties_that_are_not_a_list_are_refused_naming_what_they_are(): void
+    {
+        // card#9322's shape: Tiled writes `properties` as a JSON ARRAY of `{name, type, value}`,
+        // and a `{}` in its place is read as the object it is rather than as an empty list.
+        $map = FloorMapFixture::decoded();
+        $map['layers'][1]['objects'][0]['properties'] = ['reserved_for' => 'pm'];
+
+        $this->refuses(FloorMapFixture::encode($map), 'Desk slot id 1 stores its `properties` as a JSON object');
+    }
+
+    public function test_an_empty_properties_list_carries_no_property_and_is_accepted(): void
+    {
+        $map = FloorMapFixture::decoded();
+        $map['layers'][1]['objects'][0]['properties'] = [];
+
+        $this->assertNull(FloorMap::parse(FloorMapFixture::encode($map))->reserved);
+    }
+
+    public function test_the_shipped_default_reserves_id_3_for_pm(): void
+    {
+        // card#11144, operator ruling Q1 B (2026-10-03): the shipped six-desk default reserves the
+        // back-row right corner, Tiled `id 3`, for `pm` — read through the one parser every reader uses.
+        $map = ShippedDefaultMap::map();
+
+        $this->assertNotNull($map);
+        $this->assertSame(['name' => 'id 3', 'role' => 'pm'], $map->reserved);
     }
 
     // ── § 10.3's `tilesets[]` row: the residue card#9208's reversal closed ───────────────────
