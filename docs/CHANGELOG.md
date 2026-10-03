@@ -27,6 +27,15 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11187** — **A room map whose desks sit inside a Tiled group is seated.** The console already
+  accepted a map with its `desks` object layer inside a `group` layer and counted its desks; the floor
+  now reads that layer at any depth too, so such a room places its seats at the map's desks instead of sending
+  every seat to the overflow row under *floor map is short N desks*. The floor client walks a map's
+  layer tree in one place, `mapLayers()` in `server/public/js/floor/floor-layout.js`, which the desk
+  slots and the tile drawing both read. `docs/design/FLOOR.md` § 10.3's `desks` row says so, and
+  `ADeskLayerInsideAGroupIsSeatedTest` holds the floor's `S` to the server's for a grouped map and the
+  tile walk to a group's offset, opacity and visibility.
+
 - **card#11058** — **The desk's look: the nameplate in its own type, the state in its colour, and the art
   held in its rect.** The nameplate is drawn at 13 px bold — the desk's second measured type role, after
   the operator's ruling of 2026-10-02 — and measured, cut and centred in that role, so at fit on a
