@@ -175,9 +175,59 @@ export function mapGrid(map) {
 }
 
 /**
+ * Every LEAF layer of a Tiled document — each `tilelayer`, `objectgroup` and `imagelayer` — in
+ * document order, bottom first, with § 10.3's `group` layers walked rather than returned: Tiled
+ * nests layers, and § 10.3's `layers[]` row reads `layers` "at every level Tiled nests it", which
+ * is what the server's reader (`App\Floor\FloorMap`) does at the write. Each entry carries what its
+ * enclosing groups contribute — the summed `offsetx`/`offsety`, the multiplied `opacity`, and
+ * whether it and every group above it are `visible` — so a reader decides which of those apply to
+ * it rather than re-walking the tree.
+ *
+ * ⛔ THE ONE WALK OF A MAP'S LAYER TREE ON THIS CLIENT. The tiles (`floor/scene.js`'s `mapTiles()`)
+ * and the desk slots (`mapDesks()` below) both read it; a reader that looked at `map.layers` itself
+ * would see the top level only, which is how a map the console accepted with its `desks` inside a
+ * group was drawn with `S = 0` and every seat in the overflow row (card#11187).
+ *
+ * @returns {list<{layer: object, offset: {x: number, y: number}, opacity: number, visible: boolean}>}
+ */
+export function mapLayers(map) {
+    const out = [];
+
+    const walk = (layers, offset, opacity, visible) => {
+        for (const layer of Array.isArray(layers) ? layers : []) {
+            if (layer === null || typeof layer !== 'object') {
+                continue;
+            }
+
+            const here = { x: offset.x + (layer.offsetx ?? 0), y: offset.y + (layer.offsety ?? 0) };
+            const alpha = opacity * (layer.opacity ?? 1);
+            const shown = visible && layer.visible !== false;
+
+            if (layer.type === 'group') {
+                walk(layer.layers, here, alpha, shown);
+
+                continue;
+            }
+
+            out.push(Object.freeze({ layer, offset: Object.freeze(here), opacity: alpha, visible: shown }));
+        }
+    };
+
+    walk(map?.layers, { x: 0, y: 0 }, 1, true);
+
+    return out;
+}
+
+/**
  * § 10.3: the map's object layer named `desks` carries the slots, and `S` is their count in `id`
  * order. The objects' own `x`/`y` are where a desk is drawn inside the room, in the map's pixel
  * space, so slot *i*'s position on the FLOOR is this plus the room's `origin`.
+ *
+ * ⛔ THE LAYER IS FOUND AT ANY DEPTH, through `mapLayers()`: a `desks` layer inside a `group` is the
+ * one the server counted `S` from when it accepted the map, so it is the one this client seats.
+ * The objects' own `x`/`y` are read as written — a layer's or a group's `offsetx`/`offsety` and its
+ * `visible` move and hide no desk — because they are what the server's *wholly inside the grid*
+ * check read at the write.
  *
  * ⛔ THE LAYER NAME IS § 10.3's AND THE ORDER IS ITS `id` ORDER, not the document's array order:
  * Tiled writes objects in insertion order and an author who deletes and re-adds one can hand this
@@ -185,8 +235,9 @@ export function mapGrid(map) {
  * document rather than of the editing session that produced it.
  */
 export function mapDesks(map) {
-    const layers = Array.isArray(map?.layers) ? map.layers : [];
-    const desks = layers.find((layer) => layer?.type === 'objectgroup' && layer?.name === 'desks');
+    const desks = mapLayers(map)
+        .map((entry) => entry.layer)
+        .find((layer) => layer.type === 'objectgroup' && layer.name === 'desks');
 
     if (desks === undefined || !Array.isArray(desks.objects)) {
         return [];

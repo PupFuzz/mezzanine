@@ -3,6 +3,7 @@
 namespace Tests\Feature\Floor;
 
 use App\Floor\FloorMap;
+use Tests\Feature\Admin\FloorMapFixture;
 use Tests\TestCase;
 
 /**
@@ -20,6 +21,11 @@ use Tests\TestCase;
  * ⛔ AND THE GROUPING IS A NO-OP FOR THE FLOOR. `plan_grouped_desks` is `plan_default` with only
  * `aimla`'s `desks` layer moved into a group, so the room's desks — key, slot and pixel — must be
  * exactly `plan_default`'s. `beta`, left at the top level, is the same run's control.
+ *
+ * ⛔ THE TILES WALK THE SAME TREE. `floor/scene.js`'s `mapTiles()` and `mapDesks()` both read the
+ * layer tree through `floor/floor-layout.js`'s `mapLayers()`, so the last test holds the tile half
+ * of that walk — a group's offset summed, its opacity multiplied, a hidden group's tiles left out —
+ * over a map the server's reader also accepts.
  */
 class ADeskLayerInsideAGroupIsSeatedTest extends TestCase
 {
@@ -96,5 +102,77 @@ class ADeskLayerInsideAGroupIsSeatedTest extends TestCase
             $this->assertSame($this->roomOf($flat, $installId)['slots'], $this->roomOf($grouped, $installId)['slots'],
                 "[{$installId}] its S differs between the flat and the grouped `desks` layer");
         }
+    }
+
+    /**
+     * GREEN — a tile layer two groups deep is drawn at the groups' summed offset with their
+     * multiplied opacity, and a tile layer inside a HIDDEN group draws nothing, over a map the
+     * server accepts. The flat map is the control: the same tile count, at no offset, opaque.
+     */
+    public function test_green_a_tile_layer_inside_groups_is_drawn_through_the_same_walk(): void
+    {
+        $flat = FloorMapFixture::decoded(1);
+        $room = $flat['layers'][0];
+        $hidden = ['id' => 7, 'name' => 'hidden-room'] + $room;
+
+        $grouped = $flat;
+        $grouped['nextlayerid'] = 8;
+        $grouped['layers'][0] = [
+            'id' => 3, 'type' => 'group', 'name' => 'scenery', 'offsetx' => 32, 'opacity' => 0.5, 'visible' => true,
+            'layers' => [[
+                'id' => 4, 'type' => 'group', 'name' => 'floor', 'offsety' => 16, 'opacity' => 0.5, 'visible' => true,
+                'layers' => [$room],
+            ]],
+        ];
+        $grouped['layers'][] = [
+            'id' => 6, 'type' => 'group', 'name' => 'drafts', 'opacity' => 1, 'visible' => false, 'layers' => [$hidden],
+        ];
+
+        $this->assertSame(1, FloorMap::parse(FloorMapFixture::encode($grouped))->slots, 'the server refused the grouped tile map');
+
+        [$flatTiles, $groupedTiles] = $this->tilesOf([$flat, $grouped]);
+
+        $this->assertNotSame([], $flatTiles, 'the flat control map drew no tile, so the comparison asserts nothing');
+        $this->assertCount(count($flatTiles), $groupedTiles, 'the grouped map drew a different number of tiles than the flat one');
+        $this->assertSame(['room'], array_values(array_unique(array_column($groupedTiles, 'layer'))),
+            'a layer other than the visible group\'s tile layer was drawn — a hidden group\'s tiles leaked');
+
+        foreach ($flatTiles as $i => $tile) {
+            $this->assertSame($tile['x'] + 32, $groupedTiles[$i]['x'], "tile {$i} is not at the groups' summed x offset");
+            $this->assertSame($tile['y'] + 16, $groupedTiles[$i]['y'], "tile {$i} is not at the groups' summed y offset");
+            $this->assertEqualsWithDelta(0.25, $groupedTiles[$i]['opacity'], 1e-9, "tile {$i} does not carry the groups' multiplied opacity");
+            $this->assertEqualsWithDelta(1.0, $tile['opacity'], 1e-9, "the flat control's tile {$i} is not opaque");
+        }
+    }
+
+    /**
+     * The SHIPPED `mapTiles()` over each map, at the floor's origin with no tileset loaded.
+     *
+     * @param  list<array<string, mixed>>  $maps
+     * @return list<list<array<string, mixed>>>
+     */
+    private function tilesOf(array $maps): array
+    {
+        $scene = json_encode('file://'.realpath(__DIR__.'/../../../public/js/floor/scene.js'));
+        $script = 'import { readFileSync } from "node:fs";'
+            .'const { mapTiles } = await import('.$scene.');'
+            .'const maps = JSON.parse(readFileSync(0, "utf8"));'
+            .'console.log(JSON.stringify(maps.map((m) => mapTiles(m, { x: 0, y: 0 }, () => null, "room"))));';
+
+        $process = proc_open(['node', '--input-type=module', '-e', $script], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $this->assertTrue(is_resource($process), 'node could not be started');
+        fwrite($pipes[0], (string) json_encode($maps));
+        fclose($pipes[0]);
+        $stdout = (string) stream_get_contents($pipes[1]);
+        $stderr = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $this->assertSame(0, proc_close($process), "the mapTiles node run failed:\n".$stderr);
+
+        $decoded = json_decode($stdout, true);
+        $this->assertIsArray($decoded, "the mapTiles node run printed something that is not JSON:\n".$stdout);
+        $this->assertCount(count($maps), $decoded);
+
+        return $decoded;
     }
 }

@@ -30,7 +30,7 @@
  */
 
 import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
-import { fnv1a32, footprintsIntersect, mapDesks, mapGrid } from './floor-layout.js';
+import { fnv1a32, footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
 import { FLOOR_ART, readEmbedded, resolvePath, splitGid, tilesetUrl } from './tileset.js';
 import { BUBBLE_BAND, BUBBLE_PAD, ART_W, LINE, deskLayout, fit, union } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
@@ -537,75 +537,60 @@ export function mapTiles(map, origin, tilesetFor, owner) {
         .sort((a, b) => b.firstgid - a.firstgid);
 
     const out = [];
-    const walk = (layers, offset, opacity) => {
-        for (const layer of Array.isArray(layers) ? layers : []) {
-            if (layer === null || typeof layer !== 'object' || layer.visible === false) {
-                continue;
-            }
 
-            const here = { x: offset.x + (layer.offsetx ?? 0), y: offset.y + (layer.offsety ?? 0) };
-            const alpha = opacity * (layer.opacity ?? 1);
-
-            if (layer.type === 'group') {
-                walk(layer.layers, here, alpha);
-
-                continue;
-            }
-
-            if (layer.type !== 'tilelayer' || !Array.isArray(layer.data)) {
-                continue;
-            }
-
-            const columns = layer.width ?? grid.width;
-
-            layer.data.forEach((cell, i) => {
-                const { gid, flip_h, flip_v, flip_d } = splitGid(cell);
-
-                if (gid === 0) {
-                    return;
-                }
-
-                const set = sets.find((s) => gid >= s.firstgid);
-
-                if (set === undefined) {
-                    return;
-                }
-
-                const tile = set.tileset?.tile(gid - set.firstgid) ?? null;
-                const col = i % columns;
-                const row = Math.floor(i / columns);
-                const offsetX = set.tileset?.offset.x ?? 0;
-                const offsetY = set.tileset?.offset.y ?? 0;
-                const w = tile?.sw ?? grid.tilewidth;
-                const h = tile?.sh ?? grid.tileheight;
-
-                out.push({
-                    room: owner,
-                    layer: layer.name ?? null,
-                    x: origin.x + here.x + col * grid.tilewidth + offsetX,
-                    y: origin.y + here.y + (row + 1) * grid.tileheight - h + offsetY,
-                    w,
-                    h,
-                    image: tile?.image ?? null,
-                    // The image's own size, so a sheet tile is drawn as a window onto its sheet.
-                    iw: tile?.iw ?? w,
-                    ih: tile?.ih ?? h,
-                    tileset: set.url,
-                    sx: tile?.sx ?? 0,
-                    sy: tile?.sy ?? 0,
-                    sw: w,
-                    sh: h,
-                    flip_h,
-                    flip_v,
-                    flip_d,
-                    opacity: alpha,
-                    properties: tile?.properties ?? null,
-                });
-            });
+    // § 10.3's layer tree, groups walked, through the one walk `mapDesks()` reads it by too.
+    for (const { layer, offset: here, opacity: alpha, visible } of mapLayers(map)) {
+        if (!visible || layer.type !== 'tilelayer' || !Array.isArray(layer.data)) {
+            continue;
         }
-    };
 
-    walk(map.layers, { x: 0, y: 0 }, 1);
+        const columns = layer.width ?? grid.width;
+
+        layer.data.forEach((cell, i) => {
+            const { gid, flip_h, flip_v, flip_d } = splitGid(cell);
+
+            if (gid === 0) {
+                return;
+            }
+
+            const set = sets.find((s) => gid >= s.firstgid);
+
+            if (set === undefined) {
+                return;
+            }
+
+            const tile = set.tileset?.tile(gid - set.firstgid) ?? null;
+            const col = i % columns;
+            const row = Math.floor(i / columns);
+            const offsetX = set.tileset?.offset.x ?? 0;
+            const offsetY = set.tileset?.offset.y ?? 0;
+            const w = tile?.sw ?? grid.tilewidth;
+            const h = tile?.sh ?? grid.tileheight;
+
+            out.push({
+                room: owner,
+                layer: layer.name ?? null,
+                x: origin.x + here.x + col * grid.tilewidth + offsetX,
+                y: origin.y + here.y + (row + 1) * grid.tileheight - h + offsetY,
+                w,
+                h,
+                image: tile?.image ?? null,
+                // The image's own size, so a sheet tile is drawn as a window onto its sheet.
+                iw: tile?.iw ?? w,
+                ih: tile?.ih ?? h,
+                tileset: set.url,
+                sx: tile?.sx ?? 0,
+                sy: tile?.sy ?? 0,
+                sw: w,
+                sh: h,
+                flip_h,
+                flip_v,
+                flip_d,
+                opacity: alpha,
+                properties: tile?.properties ?? null,
+            });
+        });
+    }
 
     return out.map((cell) => Object.freeze(cell));
 }
