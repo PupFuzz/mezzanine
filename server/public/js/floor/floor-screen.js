@@ -851,7 +851,7 @@ export class FloorScreen {
             assignments.set(placed.install_id, assignment);
 
             // § 9 F16: with no map to draw, every desk is F14's placeholder "in a plain grid —
-            // nameplate, state label and badge cluster; every fact, no room". The ORDER is still
+            // every fact as F14 draws it, no room". The ORDER is still
             // § 3.2's own `(h, seat_id)` order, so a mapless room's desks are as stable across a
             // reload as a mapped room's — F16 costs the room, never the identity.
             const drawn = mapless

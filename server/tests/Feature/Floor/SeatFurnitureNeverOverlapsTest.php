@@ -84,10 +84,10 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
         }
     }
 
-    public function test_green_e_every_bound_string_is_cut_inside_the_box_and_no_stool_or_badge_is_hidden(): void
+    public function test_green_e_every_bound_string_is_cut_no_intern_is_hidden_and_the_flag_counts_what_the_row_does_not_draw(): void
     {
-        $this->assertSame([], $this->boundDefects($this->sceneOf(self::CAP), self::CAP), '(e) on the cap leg');
-        $this->assertSame([], $this->boundDefects($this->sceneOf(self::BOUND), self::BOUND), '(e) on the bound seat');
+        $this->assertSame([], $this->boundDefects(self::CAP), '(e) on the cap leg');
+        $this->assertSame([], $this->boundDefects(self::BOUND), '(e) on the bound seat');
     }
 
     public function test_green_f_a_crowded_or_undersized_map_is_drawn_whole_and_named_and_no_other_run_says_so(): void
@@ -138,20 +138,21 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
             $this->assertSame([], $this->measuredDefects($scene, $run), "[{$run}] (d) on the shipped default");
         }
 
-        $this->assertSame([], $this->boundDefects($this->sceneOf(self::CAP), self::CAP), '(e) on the cap leg, on the shipped default');
+        $this->assertSame([], $this->boundDefects(self::CAP), '(e) on the cap leg, on the shipped default');
     }
 
     // ── RED — each defect planted in the shipped module it would live in ──────────────────────
 
     public function test_red_the_tray_outside_the_slot(): void
     {
+        // The facts column laid from the box's right edge rather than the art column's.
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
-            'const colC = colB + widthB + GUTTER;', 'const colC = W + GUTTER;']);
+            'const colB = ART_W + GUTTER;', 'const colB = W + GUTTER;']);
 
         $this->assertNotSame([], $this->containmentDefects($this->sceneOf(self::SHIPPED, $dir)),
-            'RED (the tray outside the slot) did not fail (a) on fx-snapshot-4');
+            'RED (the facts column outside the slot) did not fail (a) on fx-snapshot-4');
         $this->assertNotSame([], $this->containmentDefects($this->sceneOf(self::CAP, $dir)),
-            'RED (the tray outside the slot) did not fail (a) on the cap leg');
+            'RED (the facts column outside the slot) did not fail (a) on the cap leg');
     }
 
     public function test_red_the_primitive_that_does_not_cut(): void
@@ -161,7 +162,7 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
         $scene = $this->sceneOf(self::CAP, $dir);
 
         $this->assertNotSame([], $this->containmentDefects($scene), 'RED (the primitive that does not cut) did not fail (a)');
-        $this->assertNotSame([], $this->boundDefects($scene, self::CAP), 'RED (the primitive that does not cut) did not fail (e)');
+        $this->assertNotSame([], $this->boundDefects(self::CAP, $dir), 'RED (the primitive that does not cut) did not fail (e)');
     }
 
     public function test_red_the_hidden_stool(): void
@@ -169,8 +170,28 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
             'const shown = stools.slice(0, STOOL_CAP);', 'const shown = stools.slice(0, STOOL_CAP - 1);']);
 
-        $this->assertNotSame([], $this->boundDefects($this->sceneOf(self::CAP, $dir), self::CAP),
+        $this->assertNotSame([], $this->boundDefects(self::CAP, $dir),
             'RED (the hidden stool) did not fail (e)');
+    }
+
+    /** The flag that miscounts — one of the badges past the row dropped from N. */
+    public function test_red_the_flag_that_miscounts(): void
+    {
+        $dir = $this->mutatedModules(['../floor/desk-layout.js',
+            'const n = flagCount(desk, row);', 'const n = flagCount(desk, row) - 1;']);
+
+        $this->assertNotSame([], $this->boundDefects(self::CAP, $dir), 'RED (the flag that miscounts) did not fail (e)');
+    }
+
+    /** An unrecognised badge's raw id drawn in the row (operator ruling 2026-10-02, Q0). */
+    public function test_red_the_raw_badge_in_the_row(): void
+    {
+        $dir = $this->mutatedModules(['../floor/desk-layout.js',
+            "    return [\n        ...known.filter((id) => TREATMENT_BADGES.includes(id)),",
+            "    return [\n        ...desk.badges.filter((id) => unknown.has(id)),\n        ...known.filter((id) => TREATMENT_BADGES.includes(id)),"]);
+
+        $this->assertNotSame([], array_filter($this->boundDefects(self::CAP, $dir), fn (string $d): bool => str_contains($d, 'raw unrecognised string')),
+            'RED (the raw badge in the row) did not fail (e) on its raw-string clause');
     }
 
     public function test_red_the_silent_crowded_map(): void
@@ -360,9 +381,19 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
         return $defects;
     }
 
-    /** (e): the fixture's bounded strings cut with a mark, every stool and the tags drawn. */
-    private function boundDefects(array $scene, string $run): array
+    /**
+     * (e), over one run's last scene and the desk models that drew it: every string the box gives a
+     * width is cut with the mark (and only a cut one carries it); every intern up to § 8's cap is drawn
+     * and the *+N more* tag beside it; the descriptor and the nameplate at their bounds are cut; the
+     * badge row draws its two — the treatment badges, then recognised badges in the wire's order — and
+     * the flag `⚠ +N` counts every unusual item it does not (N as § 5.1's *the glance set* defines it);
+     * and no raw unrecognised string is drawn on the desk (the operator's ruling of 2026-10-02, Q0).
+     */
+    private function boundDefects(string $run, ?string $dir = null): array
     {
+        $result = $this->floorRun($run, $dir);
+        $scene = $this->lastScene($result, $run);
+        $models = $this->lastFloor($result)['desks']['desks'];
         $defects = [];
         $seats = [];
 
@@ -372,8 +403,12 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
             }
         }
 
+        $flagged = 0;
+        $asks = [];
+
         foreach ($scene['desks'] as $desk) {
             $seat = $seats[$desk['key']];
+            $model = $models[$desk['key']];
 
             foreach ($desk['elements'] as $e) {
                 if (isset($e['text']) && ($e['truncated'] !== str_ends_with($e['text'], $this->mark()))) {
@@ -386,17 +421,11 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
                 $more = $seat['subagents_open'] - count($seat['subagents']);
 
                 if (count($stools) !== count($seat['subagents'])) {
-                    $defects[] = "{$desk['key']} draws ".count($stools).' of its '.count($seat['subagents']).' stools';
+                    $defects[] = "{$desk['key']} draws ".count($stools).' of its '.count($seat['subagents']).' interns';
                 }
 
                 if ($more > 0 && array_column($this->elementsOf($desk, 'stool-more'), 'text') !== ["+{$more} more"]) {
                     $defects[] = "{$desk['key']} does not draw its +{$more} more";
-                }
-
-                foreach ($this->elementsOf($desk, 'stool-label') as $label) {
-                    if (! $label['untitled'] && ! $label['truncated']) {
-                        $defects[] = "{$desk['key']}'s intern title at its bound is drawn uncut";
-                    }
                 }
             }
 
@@ -416,21 +445,80 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
                 }
             }
 
-            if (count($seat['badges']) > 18) {
-                $chips = $this->elementsOf($desk, 'badge');
-                $hidden = count($seat['badges']) - count($chips);
+            // The row and the flag, from the model's own lists.
+            $raw = array_map(static fn (string $u): string => substr($u, strpos($u, ': ') + 2), $model['unrecognised']);
+            $unknownBadges = array_map(static fn (string $u): string => substr($u, strlen('badges: ')),
+                array_values(array_filter($model['unrecognised'], static fn (string $u): bool => str_starts_with($u, 'badges: '))));
+            $known = array_values(array_filter($model['badges'], static fn (string $b): bool => ! in_array($b, $unknownBadges, true)));
+            $treatment = ['config_invalid', 'fold_lag'];
+            $order = [...array_values(array_filter($known, fn ($b) => in_array($b, $treatment, true))),
+                ...array_values(array_filter($known, fn ($b) => ! in_array($b, $treatment, true)))];
+            $row = array_column($this->elementsOf($desk, 'badge'), 'badge');
+            $n = count($model['unrecognised']) + count($order) - min(2, count($order));
 
-                if (count($chips) !== 18 || array_column($this->elementsOf($desk, 'badge-more'), 'text') !== ["+{$hidden} more"]) {
-                    $defects[] = "{$desk['key']}'s cluster past D2's bound does not draw the bound and its mark";
+            if ($row !== array_slice($order, 0, 2)) {
+                $defects[] = "{$desk['key']}'s badge row draws [".implode(', ', $row).'], not the first two of ['.implode(', ', $order).']';
+            }
+
+            if (array_column($this->elementsOf($desk, 'flag'), 'text') !== ($n > 0 ? ["⚠ +{$n}"] : [])) {
+                $defects[] = "{$desk['key']}'s flag does not read ⚠ +{$n}";
+            }
+
+            $flagged += $n > 0 ? 1 : 0;
+
+            foreach ($desk['elements'] as $e) {
+                if (! in_array($e['kind'], ['chip', 'label', 'currency', 'monitor-text', 'badge', 'flag'], true) || ! isset($e['text'])) {
+                    continue;
                 }
 
-                if (($chips[0]['unrecognised'] ?? false) !== true) {
-                    $defects[] = "{$desk['key']}'s unrecognised badge is not drawn first — F9's marker could fall under the mark";
+                foreach ($raw as $value) {
+                    $asks[] = [$e['text'], $e['truncated'], $value, "{$desk['key']}'s {$e['kind']} draws the raw unrecognised string «{$value}»"];
                 }
             }
         }
 
+        foreach ($this->drawsRaw($asks) as $i => $hit) {
+            if ($hit) {
+                $defects[] = $asks[$i][3];
+            }
+        }
+
+        if ($run === self::CAP) {
+            $this->assertGreaterThan(0, $flagged, 'no desk of the cap leg draws a flag — (e)\'s flag half reads nothing');
+        }
+
         return $defects;
+    }
+
+    /**
+     * Whether each drawn text carries its raw unrecognised value — `raw-on-desk.mjs`'s predicate, the ONE
+     * copy (the desk leaf guard imports it too), run once under `node` over every ask: a raw id cut to fit
+     * a chip is still the raw id on the desk.
+     *
+     * @param  list<array{0: string, 1: bool, 2: string}>  $asks  [text, truncated, value, …]
+     * @return list<bool>
+     */
+    private function drawsRaw(array $asks): array
+    {
+        if ($asks === []) {
+            return [];
+        }
+
+        $process = proc_open(['node', __DIR__.'/raw-on-desk.mjs', '--stdin'], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $this->assertTrue(is_resource($process), 'node could not be started');
+        fwrite($pipes[0], (string) json_encode(array_map(static fn (array $a): array => [$a[0], $a[1], $a[2]], $asks)));
+        fclose($pipes[0]);
+        $stdout = (string) stream_get_contents($pipes[1]);
+        $stderr = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $this->assertSame(0, proc_close($process), "raw-on-desk.mjs failed:\n".$stderr);
+
+        $hits = json_decode($stdout, true);
+        $this->assertIsArray($hits);
+        $this->assertCount(count($asks), $hits);
+
+        return $hits;
     }
 
     /** (f) on the crowded map: the line, both desks drawn, the later `id` on top, each in its slot. */

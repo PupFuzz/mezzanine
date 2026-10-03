@@ -45,7 +45,7 @@ class TheSceneDrawsEveryDeskMemberTest extends TestCase
             'CONTROL (a desk member the scene does not draw or name) did not bite');
 
         $dropped = $this->mutatedModules(['../floor/desk-layout.js',
-            "    text('model-label', 'model_label', desk.model_label, colB, row(lines.length + 2), widthB);\n", '']);
+            "    text('quiet-age', 'quiet_age', desk.quiet_age, R['quiet-age']);\n", '']);
         $this->assertNotSame([], $this->coverageDefects($this->floorRun(self::RUN, $dropped)),
             'CONTROL (a member the partition claims is drawn and is not) did not bite');
     }
@@ -92,9 +92,7 @@ class TheSceneDrawsEveryDeskMemberTest extends TestCase
             $kinds = array_column($desk['elements'], 'kind');
 
             foreach ($partition['drawn'] as $member => $drawnBy) {
-                $value = $model[$member] ?? null;
-
-                if ($value === null || $value === [] || $value === '' || $value === false) {
+                if ($this->absent($member, $model[$member] ?? null)) {
                     continue;
                 }
 
@@ -113,6 +111,30 @@ class TheSceneDrawsEveryDeskMemberTest extends TestCase
         }
 
         return $defects;
+    }
+
+    /**
+     * Whether a member's value is the model's own ABSENCE, which the desk draws as nothing (§ 5.6): a
+     * null, false, empty string or empty list; an object every member of which is absent (the side
+     * table with no intern and no *+N more*); and an unreported gauge, whose *not reported* is the
+     * drill-down's and the desk list's since the ruling of 2026-10-02 (card#11058, Q1 B) — the desk
+     * draws no bar at 0 % and no statement.
+     */
+    private function absent(string $member, mixed $value): bool
+    {
+        if ($value === null || $value === [] || $value === '' || $value === false) {
+            return true;
+        }
+
+        if ($member === 'gauge' && is_array($value) && ($value['reported'] ?? null) === false) {
+            return true;
+        }
+
+        if (is_array($value) && ! array_is_list($value)) {
+            return array_filter($value, fn (mixed $v, int|string $k): bool => ! $this->absent((string) $k, $v), ARRAY_FILTER_USE_BOTH) === [];
+        }
+
+        return false;
     }
 
     /** @return array{drawn: array<string, list<string>>, not_drawn: array<string, string>} */

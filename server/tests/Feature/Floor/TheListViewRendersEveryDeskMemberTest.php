@@ -86,12 +86,12 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
             'is a non-default primitive on a path', 'a string on a path another desk carries an object at');
 
         foreach ([
-            'a printed member dropped from the row' => [['../desk/desk-list.js', "        desk.config_note,\n", ''],
+            'a printed member dropped from the row' => [['../desk/desk-list.js', "        { role: 'config_note', text: desk.config_note },\n", ''],
                 '`config_note`', 'neither on the row nor named'],
             'the unconfirmed word dropped (a true whose flip leaves the row unchanged)' => [['../desk/desk-list.js',
                 'desk.unconfirmed ? UNCONFIRMED : null', 'null'], '`unconfirmed` = true', 'neither on the row nor named'],
             'the open-call line dropped (a number whose sentinel is on no line)' => [['../desk/desk-list.js',
-                "        desk.open_calls === null ? null : OPEN_CALLS(desk.open_calls),\n", ''],
+                "        { role: 'open_calls', text: desk.open_calls === null ? null : OPEN_CALLS(desk.open_calls) },\n", ''],
                 '`open_calls` =', 'neither on the row nor named'],
             'a ghost path in NOT_LISTED' => [['../desk/desk-list.js', "export const NOT_LISTED = Object.freeze({\n",
                 "export const NOT_LISTED = Object.freeze({\n    'ghost.leaf': { reason: 'planted' },\n"],

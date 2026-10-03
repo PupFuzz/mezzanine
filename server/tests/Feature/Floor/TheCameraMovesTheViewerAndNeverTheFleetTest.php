@@ -412,7 +412,7 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     public function test_red_a_viewport_row_that_states_another_measurement(): void
     {
         $md = $this->floorMd();
-        $drifted = preg_replace('/(the nameplate and the badges\' text at \*\*)[\d.]+( CSS px\*\*)/', '${1}9.9${2}', $md, 1);
+        $drifted = preg_replace('/(the facts\' text at \*\*)[\d.]+( CSS px\*\*)/', '${1}9.9${2}', $md, 1);
 
         $this->assertNotSame($md, $drifted, 'the plant found no measurement in § 12 to move');
         $this->assertNotSame([], $this->measurementDefects($this->floorRun(self::PAGE), (string) $drifted), 'CONTROL (a drifted measurement) did not bite');
@@ -1180,7 +1180,7 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $zoom = $first['camera']['zoom'];
         $px = (int) $f[1] * $zoom;
 
-        if (preg_match('/^\| Floor reference viewport \|[^\n]*?the camera\'s fit at this viewport is \*\*([\d.]+)\*\*[^\n]*?draws the scene\'s (\d+) px text — the nameplate and the badges\' text at \*\*([\d.]+) CSS px\*\*/m', $md, $m) !== 1) {
+        if (preg_match('/^\| Floor reference viewport \|[^\n]*?the camera\'s fit at this viewport is \*\*([\d.]+)\*\*[^\n]*?draws the scene\'s (\d+) px text — the facts\' text at \*\*([\d.]+) CSS px\*\*/m', $md, $m) !== 1) {
             return ['§ 12\'s viewport row states no measurement in the form this check reads'];
         }
 

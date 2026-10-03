@@ -29,7 +29,7 @@
  * stylesheet's, at the cycle the scene states.
  */
 
-import { FONT, LINE } from './desk-layout.js';
+import { FONT, LINE, STOOL_GLYPH } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
 import { ROOM_THEMES } from './scene.js';
 
@@ -40,6 +40,9 @@ export const FURNITURE_MODULE = '/art/floor/furniture-box.js';
 export const CHARACTER_TREE = '/art/characters/index.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
+
+/** § 10.4's art contract: a desk's art is drawn in proportion, centred, on its rect's floor line. */
+const MEET = 'xMidYMax meet';
 
 /**
  * The drawing's own stylesheet — which palette token each class paints with, and the § 6.2 forms'
@@ -62,10 +65,11 @@ ${ROOM_THEMES.map((theme) => `.plane-${theme}{fill:url(#plane-${theme})}.plane-$
 .hand{stroke:var(--scene-ink);stroke-linecap:round}.hand.hour{stroke-width:4}.hand.minute{stroke-width:2}
 .pixel{image-rendering:pixelated}
 .chair{fill:var(--scene-chair)}.monitor{fill:var(--scene-monitor)}.monitor.lit-on{fill:var(--scene-monitor-on)}.monitor.lit-dimmed{fill:var(--scene-monitor-dim)}
-.subagent-marker{fill:var(--scene-subagent)}.placeholder{fill:var(--scene-placeholder);stroke:var(--scene-placeholder-edge);stroke-dasharray:4 3}
+.placeholder{fill:var(--scene-placeholder);stroke:var(--scene-placeholder-edge);stroke-dasharray:4 3}
 .side-table{fill:var(--scene-side-table);stroke:var(--scene-side-table-edge)}.stool{fill:var(--scene-stool)}.stool.untitled{fill:none;stroke:var(--scene-stool)}
 .lag-overlay{fill:url(#hatch);opacity:.6}.hatch{fill:var(--scene-trim)}
-.badge{fill:var(--scene-badge);stroke:var(--scene-badge-edge)}.badge.unrecognised{fill:var(--scene-paper);stroke:var(--scene-unrecognised);stroke-dasharray:3 2}
+.badge,.chip{fill:var(--scene-badge);stroke:var(--scene-badge-edge)}.chip.unconfirmed{stroke-dasharray:3 2}.chip.unrecognised{fill:var(--scene-paper);stroke:var(--scene-unrecognised);stroke-dasharray:3 2}
+.plate{fill:var(--scene-paper);stroke:var(--scene-trim)}
 .gauge-track{fill:var(--scene-gauge-track)}.gauge-fill{fill:var(--scene-gauge-fill)}
 .bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-tail{stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
 .lighting-dimmed{opacity:.72}.lighting-dark{opacity:.45}.lighting-desaturated{filter:saturate(.3)}
@@ -183,6 +187,11 @@ export function createPainter({ characters, failed, select }) {
         return frames.get(asset);
     };
 
+    /**
+     * An image in its rect. Tiles stretch to their cell (`none`); the desk's art — the character and
+     * the desk sprite — is drawn `xMidYMax meet` (§ 10.4's art contract): kept in proportion,
+     * centred, standing on the rect's floor line.
+     */
     const image = (parent, href, x, y, w, h, asset, extra = {}) => {
         const el = node('image', { href, x, y, width: w, height: h, preserveAspectRatio: 'none', ...extra }, parent);
 
@@ -225,7 +234,7 @@ export function createPainter({ characters, failed, select }) {
                     const urls = characterFrames(desk.install_id, desk.seat_id, e.asset);
 
                     if (urls !== null) {
-                        const el = image(g, urls[0], e.x, e.y, e.w, e.h, e.asset, { class: 'character pixel' });
+                        const el = image(g, urls[0], e.x, e.y, e.w, e.h, e.asset, { class: 'character pixel', preserveAspectRatio: MEET });
 
                         if (e.animation?.motion === true && e.animation.frame_interval_ms !== null) {
                             el.dataset.frames = JSON.stringify(urls);
@@ -235,7 +244,7 @@ export function createPainter({ characters, failed, select }) {
                     break;
                 }
                 case 'desk-sprite':
-                    image(g, e.asset, e.x, e.y, e.w, e.h, e.asset, { class: 'sprite' });
+                    image(g, e.asset, e.x, e.y, e.w, e.h, e.asset, { class: 'sprite', preserveAspectRatio: MEET });
                     break;
                 case 'bar':
                 case 'gauge-bar':
@@ -243,15 +252,35 @@ export function createPainter({ characters, failed, select }) {
                     node('rect', { x: e.x, y: e.y, width: e.w * (e.pct / 100), height: e.h, class: 'gauge-fill' }, g);
                     break;
                 case 'badge':
-                    node('rect', { x: e.x, y: e.y, width: e.chip_w, height: e.h, class: e.unrecognised ? 'badge unrecognised' : 'badge' }, g);
-                    text(g, { ...e, id }, 'badge-text');
+                    node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, class: 'badge' }, g);
+                    text(g, { ...e, x: e.x + e.text_dx, id }, 'badge-text');
+                    break;
+                case 'chip':
+                    node('rect', {
+                        x: e.x,
+                        y: e.y,
+                        width: e.w,
+                        height: e.h,
+                        rx: 4,
+                        class: ['chip', e.unconfirmed ? 'unconfirmed' : null, e.unrecognised ? 'unrecognised' : null].filter(Boolean).join(' '),
+                    }, g);
+                    text(g, { ...e, x: e.x + (e.w - e.text_w) / 2, id }, 't-chip');
+                    break;
+                case 'stool':
+                    // Interim until card#11058 PR-C draws the intern's sprite: § 8's glyph inside its rect.
+                    node('rect', {
+                        x: e.x + (e.w - STOOL_GLYPH) / 2,
+                        y: e.y + e.h - STOOL_GLYPH,
+                        width: STOOL_GLYPH,
+                        height: STOOL_GLYPH,
+                        class: e.untitled ? 'stool untitled' : 'stool',
+                    }, g);
                     break;
                 case 'chair':
                 case 'monitor':
-                case 'subagent-marker':
                 case 'placeholder':
                 case 'side-table':
-                case 'stool':
+                case 'plate':
                 case 'lag-overlay':
                     node('rect', {
                         x: e.x,
