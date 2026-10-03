@@ -397,6 +397,24 @@ final class FloorMapFixture
         return self::encode(self::decodedReserved(value: 'Project Manager'));
     }
 
+    /** card#11144: the reserved desk declaring no `id` — the client resolves a reservation by it. */
+    public static function reservedDeskWithNoId(): string
+    {
+        $map = self::decodedReserved();
+        unset($map['layers'][1]['objects'][2]['id']);
+
+        return self::encode($map);
+    }
+
+    /** card#11144: `id 6` re-declaring the reserved desk's `id 3`. */
+    public static function reservedDeskWithADuplicateId(): string
+    {
+        $map = self::decodedReserved();
+        $map['layers'][1]['objects'][5]['id'] = 3;
+
+        return self::encode($map);
+    }
+
     /** card#11144: the reserved desk one pixel narrower than the furniture box, and nothing else. */
     public static function reservedDeskUndersized(): string
     {

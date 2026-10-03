@@ -221,11 +221,13 @@ class FloorConsoleTest extends TestCase
             'a desk slot past the grid' => [FloorMapFixture::deskOutsideTheGrid(), 'wholly inside'],
             'a desk slot carrying a property' => [FloorMapFixture::deskWithProperties(), 'may carry only `reserved_for`'],
 
-            // card#11144: `reserved_for`, the allowlist's one name, and the three ways to misuse it.
+            // card#11144: `reserved_for`, the allowlist's one name, and the ways to misuse it.
             // The control they mutate is `test_a_map_reserving_one_desk_for_a_role_is_saved_and_listed`.
             'two reserved desks' => [FloorMapFixture::twoReservedDesks(), 'id 3 and id 6 are both reserved'],
             'a reservation that is not a string' => [FloorMapFixture::reservedForAsABool(), 'is a Tiled `bool` property'],
             'a reservation that is not a role name' => [FloorMapFixture::reservedForNotARoleName(), 'it must be a role name such as `pm`'],
+            'a reserved desk with no id' => [FloorMapFixture::reservedDeskWithNoId(), 'is reserved and declares no `id`'],
+            'a reserved desk whose id is not its own' => [FloorMapFixture::reservedDeskWithADuplicateId(), 'another desk slot declares `id` 3 too'],
             'a tileset the repository does not ship' => [FloorMapFixture::unshippedTileset(), 'does not ship'],
         ];
     }

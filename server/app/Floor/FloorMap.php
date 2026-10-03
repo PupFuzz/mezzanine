@@ -599,7 +599,8 @@ final class FloorMap
      * carries: **no object may declare a property but `reserved_for`** (card#9071 — "the property
      * an author reaches for is a seat's name, and a slot that named a seat would be a stored
      * position"; card#11144 — one desk may be reserved for a ROLE, never for a seat), **at most
-     * one object may be reserved**, and **no object may fall outside the grid** (card#9292 — the
+     * one object may be reserved**, and it must declare an `id` no other object declares (the
+     * client resolves the reservation by `id`), and **no object may fall outside the grid** (card#9292 — the
      * grid is the room's footprint, and a desk drawn past it would overhang a neighbour the
      * footprint check had passed). Returns the slots, whose count is `S`, and the one
      * reservation or `null`.
@@ -655,6 +656,10 @@ final class FloorMap
         $pixelHeight = $grid['height'] * $grid['tileheight'];
         $slots = [];
         $reserved = null;
+        // card#11144: every object's `id`, by its string form, so the reserved desk's can be held
+        // unique — the client resolves the reservation by `id`, and a shared one names two desks.
+        $ids = [];
+        $reservedId = null;
 
         foreach (array_values($objects) as $index => $object) {
             $named = $object instanceof \stdClass && isset($object->id) && is_scalar($object->id)
@@ -677,7 +682,20 @@ final class FloorMap
                     ));
                 }
 
+                if (! isset($object->id) || ! is_scalar($object->id)) {
+                    throw new InvalidFloorMap(sprintf(
+                        'Desk slot %s is reserved and declares no `id`; a reserved desk is found by '
+                        .'its Tiled id. Give it one and save again.',
+                        $named,
+                    ));
+                }
+
                 $reserved = ['name' => $named, 'role' => $role];
+                $reservedId = (string) $object->id;
+            }
+
+            if (isset($object->id) && is_scalar($object->id)) {
+                $ids[(string) $object->id] = ($ids[(string) $object->id] ?? 0) + 1;
             }
 
             $x = self::objectNumber($object, 'x', $named);
@@ -702,13 +720,24 @@ final class FloorMap
             $slots[] = ['name' => $named, 'x' => $x, 'y' => $y, 'w' => $width, 'h' => $height];
         }
 
+        if ($reservedId !== null && $ids[$reservedId] > 1) {
+            throw new InvalidFloorMap(sprintf(
+                'Desk slot %s is reserved, and another desk slot declares `id` %s too; a reserved '
+                .'desk is found by its Tiled id, so it must be the only one. Give each desk slot its '
+                .'own id and save again.',
+                $reserved['name'],
+                $reservedId,
+            ));
+        }
+
         return [$slots, $reserved];
     }
 
     /**
      * ⛔ § 10.3's ALLOWLIST OF ONE for a desk object's `properties` — card#9071's ruling (operator,
      * 2026-09-12: the console may not pin a seat to a desk) as card#11144 narrows it: a desk may be
-     * reserved for a ROLE, by the one property `reserved_for`, a Tiled `string` holding a role name
+     * reserved for a ROLE, by the one property `reserved_for`, a Tiled `string` (an absent `type` is
+     * Tiled's documented default, `string`) holding a role name
      * of the protocol agent name's shape (`App\Support\Slug::AGENT_NAME`). Every other property is
      * refused by its name — the one an author reaches for is a seat's, and a slot that named a seat
      * would be a stored position (§ 3.2 puts a seat at a desk by a function of the seats themselves).
@@ -757,7 +786,8 @@ final class FloorMap
                 ));
             }
 
-            $type = $property->type ?? null;
+            // Tiled's JSON map format documents `type` as `string (default)`: absent is a string.
+            $type = property_exists($property, 'type') ? $property->type : 'string';
             $value = $property->value ?? null;
 
             if ($type !== 'string') {

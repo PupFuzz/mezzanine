@@ -31,8 +31,9 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   back-row right corner for the PM.** A `desks` object may now carry one property, `reserved_for` — a
   Tiled `string` naming a role in the protocol agent name's shape (lowercase `[a-z0-9-]`, at most 48
   bytes), such as `pm` — and at most one desk in a room may carry it. The console refuses, by the desk's
-  Tiled id, any other property on a desk, a `reserved_for` that is not a string role name or appears twice
-  on one desk, and a second reserved desk, at a save and at a restore alike; a reserved desk is still held
+  Tiled id, any other property on a desk, a `reserved_for` that is not a string role name (a property with no
+  `type` is a string, as Tiled documents) or appears twice on one desk, a reserved desk with no `id` or with
+  an `id` another desk also declares, and a second reserved desk, at a save and at a restore alike; a reserved desk is still held
   to the furniture box. The revisions page lists each revision's reserved desk beside its slot count, and a
   save's result names the reserved desk before and after. `resources/floor/default.tmj` reserves `id 3` for
   `pm`; the floor does not seat by the reservation yet, so the corner holds whichever seat hashes there.
