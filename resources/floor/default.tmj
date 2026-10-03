@@ -194,6 +194,12 @@
      "height":228,
      "id":3,
      "name":"",
+     "properties":[
+      {
+       "name":"reserved_for",
+       "type":"string",
+       "value":"pm"
+      }],
      "rotation":0,
      "type":"",
      "visible":true,
