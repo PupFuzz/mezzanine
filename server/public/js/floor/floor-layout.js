@@ -177,8 +177,9 @@ export function mapGrid(map) {
 /**
  * Every LEAF layer of a Tiled document — each `tilelayer`, `objectgroup` and `imagelayer` — in
  * document order, bottom first, with § 10.3's `group` layers walked rather than returned: Tiled
- * nests layers, and § 10.3's `layers[]` row reads `layers` "at every level Tiled nests it", which
- * is what the server's reader (`App\Floor\FloorMap`) does at the write. Each entry carries what its
+ * nests layers, § 10.3's `layers[]` row holds every one of its rules to the layers inside a
+ * `group`, and its `desks` row finds that layer at any depth — which is what the server's reader
+ * (`App\Floor\FloorMap`) does at the write. Each entry carries what its
  * enclosing groups contribute — the summed `offsetx`/`offsety`, the multiplied `opacity`, and
  * whether it and every group above it are `visible` — so a reader decides which of those apply to
  * it rather than re-walking the tree.
