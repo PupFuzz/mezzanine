@@ -27,6 +27,16 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11218** — **The three quiet-state chips stay apart as drawn.** The state chip's `stale`, `offline` and
+  `disabled` fills are now a cold family against the warm planks — frost `#b8d1d1`, dusk `#5398c3`, slate
+  `#8188a4` — replacing `#b0aa9c`, `#828a9a` and `#93a3b3`, which collapsed toward `idle`, `working` and each
+  other once a desk's dimmed or dark lighting washed them over the plank, most of all to a colour-blind
+  viewer. Each still holds the chip's word at 4.5:1 or better at full light. `tools/design/state-chip-colours.py`
+  reads the tokens from the sheet and prints each fill's contrast and every pair's CIEDE2000 distance as the
+  tokens, as the hollow chip's edge and as drawn over either plank course, in normal vision and the three
+  dichromacies; its `--selftest` plants its own defects. `TheFloorDrawsItsFrameTest` now also reds on any
+  `--state-<member>` that holds `--state-ink` under 4.5:1.
+
 - **card#11144** — **A room map can reserve one desk for a role, and the shipped room reserves its
   back-row right corner for the PM.** A `desks` object may now carry one property, `reserved_for` — a
   Tiled `string` naming a role in the protocol agent name's shape (lowercase `[a-z0-9-]`, at most 48

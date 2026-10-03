@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Floor;
 
+use Tests\Feature\Support\ReadsTheRenderStates;
 use Tests\TestCase;
 
 /**
@@ -30,6 +31,7 @@ use Tests\TestCase;
 class TheFloorDrawsItsFrameTest extends TestCase
 {
     use DrivesTheScene;
+    use ReadsTheRenderStates;
 
     private const ONE_DESK = 'frame_one_desk';
 
@@ -52,6 +54,9 @@ class TheFloorDrawsItsFrameTest extends TestCase
 
     /** The sweep's widths: every one from 1 px to the widest floor a reasonable plan composes. */
     private const SWEEP_TO = 4000;
+
+    /** WCAG 2's AA ratio for body text — the bar each state chip's fill holds its word to (card#11058 Q4 a). */
+    private const CHIP_INK_FLOOR = 4.5;
 
     // ── GREEN ──────────────────────────────────────────────────────────────────────────────────
 
@@ -96,6 +101,16 @@ class TheFloorDrawsItsFrameTest extends TestCase
     public function test_green_every_theme_keeps_the_desk_text_as_legible_as_the_default(): void
     {
         $this->assertSame([], $this->contrastDefects($this->sheet()));
+    }
+
+    /**
+     * Every state chip's fill holds the chip's word: each `--state-<member>` of § 7.1's members — the set
+     * `RENDER_STATES` carries and the painter generates the chip rules from — keeps `--state-ink` at
+     * 4.5:1 or better at full light (card#11218).
+     */
+    public function test_green_every_state_chip_holds_its_ink(): void
+    {
+        $this->assertSame([], $this->stateInkDefects($this->sheet()));
     }
 
     /** Q1: an unused slot is plain floor — no desk is drawn but a seat's. */
@@ -242,6 +257,16 @@ class TheFloorDrawsItsFrameTest extends TestCase
 
         $this->assertNotSame($sheet, $dark, 'the contrast control\'s anchor is gone — it mutated nothing');
         $this->assertNotSame([], $this->contrastDefects($dark), 'RED (a theme too dark for the desk text) did not bite');
+    }
+
+    /** The card#11058 design's dark `offline` grey, which the chip's word cannot be read on. */
+    public function test_red_a_state_chip_too_dark_for_its_ink(): void
+    {
+        $sheet = $this->sheet();
+        $dark = (string) preg_replace('/--state-offline:\s*#[0-9a-f]{6};/i', '--state-offline: #5c6270;', $sheet);
+
+        $this->assertNotSame($sheet, $dark, 'the chip contrast control\'s anchor is gone — it mutated nothing');
+        $this->assertNotSame([], $this->stateInkDefects($dark), 'RED (a state chip too dark for its ink) did not bite');
     }
 
     public function test_red_a_bench_that_runs_past_the_floor(): void
@@ -537,10 +562,9 @@ JS;
     /** @return list<string> */
     private function contrastDefects(string $sheet): array
     {
-        $this->assertSame(1, preg_match('/:root\s*\{([^}]*)\}/', $sheet, $root), 'the sheet declares no :root block');
-        preg_match_all('/--([a-z0-9-]+)\s*:\s*(#[0-9a-f]{6})\s*;/i', $root[1], $m);
-        $tokens = array_combine($m[1], $m[2]);
-        preg_match_all('/^\s*--room-([a-z]+):/m', $root[1], $themes);
+        $root = $this->rootBlock($sheet);
+        $tokens = $this->tokensOf($root);
+        preg_match_all('/^\s*--room-([a-z]+):/m', $root, $themes);
 
         $this->assertContains('oak', $themes[1], 'the sheet declares no oak theme — the default every theme is held to');
         $this->assertCount(4, array_unique($themes[1]), 'the sheet does not declare the four room themes');
@@ -560,6 +584,52 @@ JS;
         }
 
         return $defects;
+    }
+
+    /** @return list<string> */
+    private function stateInkDefects(string $sheet): array
+    {
+        $tokens = $this->tokensOf($this->rootBlock($sheet));
+        $members = $this->documentMembers();
+
+        $this->assertNotSame([], $members, '§ 7.1 parsed to no render_state members — the population this check reads is empty');
+        $this->assertArrayHasKey('state-ink', $tokens, 'the sheet declares no --state-ink — the chip\'s word');
+
+        $defects = [];
+
+        foreach ($members as $member) {
+            $fill = $tokens["state-{$member}"] ?? null;
+
+            if ($fill === null) {
+                $defects[] = "--state-{$member} is not declared on the sheet";
+
+                continue;
+            }
+
+            $ratio = $this->contrast($tokens['state-ink'], $fill);
+
+            if ($ratio < self::CHIP_INK_FLOOR) {
+                $defects[] = sprintf('--state-%s (%s) holds --state-ink at %.2f:1, under %.1f:1', $member, $fill, $ratio, self::CHIP_INK_FLOOR);
+            }
+        }
+
+        return $defects;
+    }
+
+    /** The sheet's `:root` block — the one home of the palette (§ 10.4). */
+    private function rootBlock(string $sheet): string
+    {
+        $this->assertSame(1, preg_match('/:root\s*\{([^}]*)\}/', $sheet, $root), 'the sheet declares no :root block');
+
+        return $root[1];
+    }
+
+    /** @return array<string, string> every `#rrggbb` custom property the block declares, by name less its `--` */
+    private function tokensOf(string $root): array
+    {
+        preg_match_all('/--([a-z0-9_-]+)\s*:\s*(#[0-9a-f]{6})\s*;/i', $root, $m);
+
+        return array_combine($m[1], $m[2]);
     }
 
     /** WCAG 2's contrast ratio between two `#rrggbb` colours. */
