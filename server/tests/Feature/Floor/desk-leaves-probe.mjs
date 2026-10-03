@@ -102,7 +102,7 @@ const NOW_MS = Date.parse(baseline.now);
 const PLANTED = JSON.parse(readFileSync(join(DATA, 'fx-desk-leaves-planted.json'), 'utf8'));
 const measure = harnessMeasurer(PLANTED.measurer);
 const BOX = { width: 440, height: 228 };
-const ctxFor = (placeholder) => ({ box: BOX, measure, character: { w: 18, h: 32 }, sprite: { url: 'desk.png', w: 116, h: 57 }, placeholder });
+const ctxFor = (placeholder) => ({ box: BOX, measure, character: { w: 18, h: 32 }, sprite: { url: 'desk.png', w: 116, h: 57 }, placeholder, failed: new Set() });
 const facts = (seat, v) => ({ missing: v.missing, derivation_stamp: seat.server_time ?? '2026-08-23T14:23:14.400Z', stilled: v.stilled });
 const modelOf = (seat, v) => deskModel(seat, deskAgeReadout(seat, NOW_MS), facts(seat, v), { reduce: v.reduce });
 

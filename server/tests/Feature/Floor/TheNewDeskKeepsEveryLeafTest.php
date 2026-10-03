@@ -302,6 +302,12 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
         $this->assertGreaterThan(0, $shipped['painted'], 'the painter probe read no painted node');
         $this->assertSame([], $shipped['defects']);
 
+        // card#11058 PR-C: both forms of an intern — the sprite and § 9 F14's per-stool glyph — titled and
+        // untitled, were painted and held to their elements, and the reorder check read interns.
+        foreach (['sprite', 'glyph', 'untitled_sprite', 'untitled_glyph', 'swapped'] as $form) {
+            $this->assertGreaterThan(0, $shipped['interns'][$form], "the painter probe painted no intern as {$form} — that leg reads nothing");
+        }
+
         $controls = [
             'the badge text drawn at its desk-local offset' => ['../floor/painter.js', 'x: e.x + e.text_dx, id', 'x: e.text_dx, id'],
             // In-box displacements (review r2): each stays inside the box, so only the equality reds.
@@ -318,6 +324,25 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             "a held seat's chip not marked unconfirmed" => ['../floor/painter.js', "e.unconfirmed ? 'unconfirmed' : null,", 'null,'],
             // The page's real measurer measuring the name role in the fact font (review r1 MINOR-1).
             "the page's measurer in one font for every role" => ['../floor/painter.js', 'context.font = type.font;', 'context.font = TYPE_ROLES.fact.font;'],
+            // The text classes of the badge and the flag (PR #269 review r2's residue): the flag's text
+            // painted in the badge's ink.
+            "the flag's text painted as a badge's" => ['../floor/painter.js', "e.kind === 'badge' ? 'badge-text' : 't-flag'", "'badge-text'"],
+            // card#11058 PR-C — the interns. Q3: keyed by their place in the row rather than their call
+            // (the probe's reorder check and its tree-key check both read it).
+            'an intern keyed by its place in the row' => ['../floor/desk-layout.js',
+                'key: internKey(desk.seat_id, stool.call_id),', 'key: internKey(desk.seat_id, `intern${i}`),'],
+            'an untitled intern drawn solid' => ['../floor/painter.js', "e.untitled ? 'intern pixel untitled' : 'intern pixel'", "'intern pixel'"],
+            "an untitled intern's dashed edge dropped" => ['../floor/painter.js',
+                "node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, class: 'intern-edge' }, g);", ''],
+            'an intern drawn as the glyph with its art intact' => ['../floor/painter.js', '                    if (e.art) {', '                    if (false) {'],
+            "an intern's sprite outside its clipping viewport" => ['../floor/painter.js',
+                "art(g, urls[0], e, e.asset, e.untitled ? 'intern pixel untitled' : 'intern pixel');",
+                "image(g, urls[0], e.x, e.y, e.w, e.h, e.asset, { class: e.untitled ? 'intern pixel untitled' : 'intern pixel' });"],
+            // An intern's key is minted per dispatch: the painter forgets each one it no longer draws.
+            "an intern no longer drawn kept in the tree's cache" => ['../floor/painter.js', 'characters.forget(installId, key);', 'void key;'],
+            'an intern animated' => ['../floor/painter.js',
+                "art(g, urls[0], e, e.asset, e.untitled ? 'intern pixel untitled' : 'intern pixel');",
+                "art(g, urls[0], e, e.asset, e.untitled ? 'intern pixel untitled' : 'intern pixel').dataset.frames = '[]';"],
         ];
 
         foreach ($controls as $what => $edit) {
@@ -332,7 +357,27 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
         }
     }
 
-    /** @return array{desks: int, painted: int, defects: list<string>} */
+    /**
+     * Q3 (the operator's ruling of 2026-10-02: "intern sprites keyed by call_id"): two interns that swap
+     * their order in `subagents[]` keep their sprites. `painter-probe.mjs` paints every planted seat of two
+     * or more interns in the wire's order and reversed, each on a fresh painter, and reads each intern's
+     * sprite by its place in the row; the control keys the sprite by that place instead.
+     */
+    public function test_an_intern_keeps_its_sprite_when_subagents_reorder(): void
+    {
+        $swap = fn (array $run): array => array_values(array_filter($run['defects'], fn (string $d): bool => str_contains($d, 'keyed by its place in the row')));
+        $shipped = $this->painterRun();
+
+        $this->assertGreaterThan(0, $shipped['interns']['swapped'], 'no intern was painted in both orders — the check reads nothing');
+        $this->assertSame([], $swap($shipped));
+
+        $byPlace = $this->painterRun(dirname($this->mutatedModules(['../floor/desk-layout.js',
+            'key: internKey(desk.seat_id, stool.call_id),', 'key: internKey(desk.seat_id, `intern${i}`),'])));
+
+        $this->assertNotSame([], $swap($byPlace), 'CONTROL (interns keyed by their place in the row) did not red the reorder check');
+    }
+
+    /** @return array{desks: int, painted: int, interns: array<string, int>, defects: list<string>} */
     private function painterRun(?string $jsRoot = null): array
     {
         $out = shell_exec('node '.escapeshellarg(__DIR__.'/painter-probe.mjs').($jsRoot === null ? '' : ' --js '.escapeshellarg($jsRoot)).' 2>&1');

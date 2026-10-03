@@ -317,6 +317,7 @@ export function buildScene(frame, input) {
                 sprite,
                 // F16: a mapless room's every desk is the placeholder, in a plain grid.
                 placeholder: room.mapless || artFor(model),
+                failed,
             }, { overflow: false, slot: d.slot, object_id: object?.id ?? null }));
         }
     }
@@ -349,6 +350,7 @@ export function buildScene(frame, input) {
                 character: input.character,
                 sprite,
                 placeholder: artFor(model),
+                failed,
             }, { overflow: true, slot: null, object_id: null }));
         });
 
@@ -359,6 +361,16 @@ export function buildScene(frame, input) {
             h: LINE + 4 + rows * H,
             header: Object.freeze(headerRect),
         });
+    }
+
+    // § 9 F14: each intern's sprite is an asset of its own — a failure falls back for that stool alone
+    // (`deskLayout()`), and is named on the strip like any other.
+    for (const desk of desks) {
+        for (const e of desk.elements) {
+            if (e.kind === 'stool') {
+                used.add(e.asset);
+            }
+        }
     }
 
     // ── The bubbles: § 5.1 rule 5's pass over the base rects, in the box's top band ───────────

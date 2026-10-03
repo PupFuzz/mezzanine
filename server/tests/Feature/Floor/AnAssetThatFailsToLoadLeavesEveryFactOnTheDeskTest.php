@@ -34,6 +34,10 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
 
     private const CHARACTER_FAILS = 'scene_default_character_fails';
 
+    private const INTERNS = 'interns_cap';
+
+    private const INTERN_FAILS = 'interns_cap_one_intern_fails';
+
     /** The instant the fixture's painter reports the failure. */
     private const FAILS_AT = 50;
 
@@ -84,6 +88,87 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
         $this->assertCount(count($intact['tiles']), $scene['tiles'], 'one seat\'s character failing cost the room tiles');
         $this->assertSame($this->f14Line(), $this->lastFloor($result)['strip']['art']);
         $this->assertSame([], $this->logDefects($result));
+    }
+
+    /**
+     * § 9 F14's PER-STOOL FALLBACK (card#11058 PR-C): one intern's art failing falls back for that stool
+     * alone — it is drawn as the glyph in its own rect, every other intern on that desk and on every desk
+     * keeps its sprite, the seat's own art stays (no placeholder), and the strip reads F14's line. The
+     * failed asset is the fixture's, delivered as the painter delivers it.
+     */
+    public function test_green_with_one_interns_art_failed_that_stool_alone_falls_back(): void
+    {
+        $this->assertSame([], $this->internFallbackDefects($this->floorRun(self::INTERN_FAILS)));
+    }
+
+    /** The discriminating control for the per-stool leg: with nothing failed, every intern is its sprite. */
+    public function test_control_with_no_interns_art_failed_every_intern_is_its_sprite(): void
+    {
+        $scene = $this->sceneOf(self::INTERNS);
+        $stools = array_merge(...array_map(fn (array $d): array => $this->elementsOf($d, 'stool'), $scene['desks']));
+
+        $this->assertGreaterThan(8, count($stools), 'the cap leg drew too few interns to say anything');
+        $this->assertSame([], array_values(array_filter($stools, fn (array $e): bool => $e['art'] !== true)));
+        $this->assertSame([], $scene['failed']);
+    }
+
+    /** Each way the per-stool fallback can be wrong, planted in the module it would live in. */
+    public function test_red_the_per_stool_fallback(): void
+    {
+        $plants = [
+            'the whole desk drawn as the placeholder' => ['../floor/scene.js',
+                'return sprite === null || (desk.character && failed.has(character));',
+                'return sprite === null || (desk.character && failed.has(character)) || desk.side_table.stools.some((s) => failed.has(`intern:${desk.install_id}/${desk.seat_id}~${s.call_id}`));'],
+            'every intern of the desk falling back' => ['../floor/desk-layout.js',
+                'art: !ctx.failed.has(asset),', 'art: ![...ctx.failed].some((id) => id.startsWith(`intern:${desk.install_id}/${desk.seat_id}~`)),'],
+            'the failure ignored' => ['../floor/desk-layout.js', 'art: !ctx.failed.has(asset),', 'art: true,'],
+            'the strip silent about an intern' => ['../floor/scene.js', "            if (e.kind === 'stool') {\n                used.add(e.asset);",
+                "            if (e.kind === 'stool') {\n                void e;"],
+        ];
+
+        foreach ($plants as $what => $edit) {
+            $this->assertNotSame([], $this->internFallbackDefects($this->floorRun(self::INTERN_FAILS, $this->mutatedModules($edit))),
+                "RED ({$what}) did not fail");
+        }
+    }
+
+    /** @return list<string> */
+    private function internFallbackDefects(array $result): array
+    {
+        $scene = $this->lastScene($result, self::INTERN_FAILS);
+        $failed = array_merge(...array_column($this->fixture(self::INTERN_FAILS)['floor']['asset_failures'], 'assets'));
+        $defects = $this->placeholderDefects($scene, []);
+        $fellBack = [];
+
+        $this->assertCount(1, $failed, 'the run fails exactly one intern');
+
+        foreach ($scene['desks'] as $desk) {
+            foreach ($this->elementsOf($desk, 'stool') as $e) {
+                $asset = "intern:{$desk['install_id']}/{$desk['seat_id']}~{$e['call_id']}";
+
+                if ($e['art'] === in_array($asset, $failed, true)) {
+                    $defects[] = $e['art'] ? "{$asset} failed and is still drawn as its sprite" : "{$asset} fell back with nothing failed for it";
+                }
+
+                if (! $e['art']) {
+                    $fellBack[] = $asset;
+                }
+            }
+        }
+
+        if ($fellBack === []) {
+            $defects[] = 'no intern fell back — the failed asset reached no stool';
+        }
+
+        if ($scene['failed'] !== $failed) {
+            $defects[] = 'the scene names ['.implode(', ', $scene['failed']).'] failed, not the intern\'s asset';
+        }
+
+        if (($this->lastFloor($result)['strip']['art'] ?? null) !== $this->f14Line()) {
+            $defects[] = 'the strip does not read F14\'s line for a failed intern';
+        }
+
+        return [...$defects, ...$this->logDefects($result)];
     }
 
     /** The discriminating control: the gate is known to be able to say *the art is there*. */

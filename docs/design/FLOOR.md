@@ -2171,7 +2171,11 @@ seat did and when, and nothing is guessed onto it.
   seeded **vibe line** ([§ 10.4](#104-the-art-direction-as-a-specification)), are all pure functions
   of `(install_id, seat_id)` — two fields the wire **does** send
   ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)) — so none of them is a fact the client
-  invented; each is the identity redrawn. What the rule above does bind is the **direction**: an
+  invented; each is the identity redrawn. **An intern's look is admitted on the same footing**: it is
+  a pure function of the intern key `seat~<call_id>` ([§ 10.4](#104-the-art-direction-as-a-specification);
+  the operator's ruling of 2026-10-02 on card#11058 Q3) — `subagents[].call_id` is on the wire beside
+  the seat's pair ([§ 8](#8-interns--subagent-rendering-and-the-cap)) — and it is bound by everything
+  below exactly as the seat's is. What the rule above does bind is the **direction**: an
   appearance-class rendering may **never become a fact about state**, so it carries a label saying it
   is seeded, and it drives **no pose, no currency label, no badge and no animation**. That is the
   same boundary [§ 5.5](#55-the-clients-own-narration) draws for the client's own narration, arriving
@@ -3499,9 +3503,9 @@ four steps after the tables that carry them.
 
 | Rendered | Source | Rule |
 |---|---|---|
-| one intern per open subagent — a sprite on the desk, up to the cap and none hidden | `subagents[]`, newest first ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) | the array is a **reduction**, not the truth |
+| one intern per open subagent — a sprite on the desk, up to the cap and none hidden | `subagents[]`, newest first ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), each by its `call_id` | the array is a **reduction**, not the truth. **The sprite is keyed by the intern's call**: the character tree draws it under the key `seat~<call_id>` ([§ 10.4](#104-the-art-direction-as-a-specification); operator ruling 2026-10-02, card#11058 Q3), so an intern keeps its look when the array reorders or a sibling leaves. It is drawn **static** — its standing frame, in its 20 × 32 rect, clipped there; arrival and departure are A10's — and an intern whose art fails to load is drawn as [§ 9](#9-failure-paths-and-their-observables) F14's glyph in its own rect, that stool alone |
 | the intern's label — **drill-down and list**; the desk draws the intern's sprite | `subagents[].title` | from the `subagent.spawn` event's `title` — the dispatch's own description, **programmatic**, sanitized at the reporter ([D1 § 6.7](EVENT-SCHEMA.md#67-subagentspawn)). ≤ 120 B, one line |
-| a **title-less** intern | `subagents[].title == null` | renders **untitled** in the list and the drill-down, with the `call_id` in the drill-down, and a **dashed** intern on the desk. The spawn was lost; D1 and D2 both call this an honest orphan and forbid inventing a title ([D1 § 6.8](EVENT-SCHEMA.md#68-subagentstop), [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)). **A later `subagent.spawn` for the same `call_id` fills it**, and the label appears then |
+| a **title-less** intern | `subagents[].title == null` | renders **untitled** in the list and the drill-down, with the `call_id` in the drill-down, and a **dashed** intern on the desk — its sprite inside a dashed edge, or the glyph dashed where its art failed (the dashed look is a placeholder the art direction has not fixed). The spawn was lost; D1 and D2 both call this an honest orphan and forbid inventing a title ([D1 § 6.8](EVENT-SCHEMA.md#68-subagentstop), [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)). **A later `subagent.spawn` for the same `call_id` fills it**, and the label appears then |
 | the intern's type — **drill-down and list** | `subagents[].subagent_type` | a small tag beside the label, e.g. `coder` |
 | when it started — **drill-down and list** | `subagents[].started_at` | a seat-clock claim, rendered as a **labelled timestamp** and never as *how long it has been running*: the field is the seat's own clock, and the only duration it could yield is a seat clock subtracted from the server's ([§ 2.4](#24-the-clock-and-every-age-on-the-page)). The drill-down carries it in full. There is no server-clock start time for a subagent on any read surface, which is why this row renders no duration rather than inventing one |
 | **+N more** | `subagents_open` minus the array's length | appears only when positive. The count is the wire's, never `subagents.length` |
@@ -3579,7 +3583,7 @@ indistinguishable from a fleet that has gone home.
 | F11 | **Seat-detail request fails** | the status code | the drill-down opens with the seat object it already holds and the sections that need `detail` read **unavailable**; the intern list falls back to `subagents[]` **and says it is capped**, worded ***unavailable — seat detail could not be read; showing the first 8 interns only***, the 8 being `subagents[]`'s cap ([§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)) (ratified by the operator on card#7342, 2026-09-25) | retry | showing a capped list as if it were complete |
 | F12 | **A delta names a seat the client does not hold** | the seat map | none — the client fetches it ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)); the client's event log records *seat added to the floor* | — | applying a shallow-merge patch to a partial object |
 | F13 | **Floor map has fewer slots than the install has seats** | `S` against the rendered seat count | the surplus seats render in a labelled **overflow row**, and a persistent notice reads *floor map is short N desks* — one per short room, naming it, on a floor of several rooms ([§ 3.2](#32-the-desk-slot-function), card#9292). The row **wraps**: as many desks to a row as the floor is wide, at least one, and further rows below, so it never runs past the floor's width however many seats it holds ([§ 4.2](#42-the-floor)'s frame, card#11045) | an operator edits the map | dropping a seat |
-| F14 | **An asset fails to load** — a tile, a sprite sheet | the load error | the desk renders its **placeholder**: a plain rectangle in place of the art's images only — the nameplate, the chip and the label line, the badge row and the flag, the monitor's text, the bubble and every other fact draw as on an intact desk; every fact, no art — and the status strip reads *some art failed to load*. Reachable since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14, which builds the layer the art is drawn on, and asserted by [AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk) | retry on reload | a blank desk, which reads as an empty office |
+| F14 | **An asset fails to load** — a tile, a sprite sheet | the load error | the desk renders its **placeholder**: a plain rectangle in place of the art's images only — the nameplate, the chip and the label line, the badge row and the flag, the monitor's text, the bubble and every other fact draw as on an intact desk; every fact, no art — and the status strip reads *some art failed to load*. **An intern's sprite is an asset of its own** (`intern:<install_id>/<seat_id>~<call_id>`): when it fails, that intern alone is drawn as the glyph inside its own 20 × 32 rect (dashed when untitled) — the desk's placeholder is not triggered, the other interns keep their sprites — and the strip reads the same line (card#11058). Reachable since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14, which builds the layer the art is drawn on, and asserted by [AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk) | retry on reload | a blank desk, which reads as an empty office |
 | F15 | **The browser tab is backgrounded and returns** | the gap in the age ticker, or a stream the platform closed | on return, the client re-runs [§ 2.2](#22-connect-snapshot-deltas) from step 1 and renders **without animation** ([§ 6.5](#65-a-snapshot-never-animates)) | — | replaying the deltas that arrived while hidden, which would animate a history the operator did not watch |
 | F16 | **A room's map request fails** — any non-200 from `GET /api/building/rooms/{install_id}/map`, the `503` included ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the status code | the room renders its desks with **no map**: every desk is F14's placeholder in a plain grid — every fact as F14 draws it, no room — under a notice reading **room map could not be loaded — HTTP N**, naming the room. For the floor's arithmetic ([§ 4.6](#46-the-building-layout) — an unplanned floor's origins, a planned floor's extent, F18) the mapless room keeps the extent of the last map the client held for it, and with none held it has **no footprint**: the placeholder grid is drawn at the room's origin over whatever lies there, under this notice, and F18's determination leaves the room out — an overlap a failed fetch causes is this failure's render, already named, never a plan defect (card#9292). ⭐ **The room is in the FLOOR's extent all the same, as the point its origin is** ([§ 4.6](#46-the-building-layout) rule 5, operator-ruled on card#7341): that union is taken over every room placed on the floor, so [§ 4.2](#42-the-floor)'s back-wall band spans this room too. ⚠ **This row used to say the mapless room had no extent for a planned floor's extent, and that one sentence was answering two questions** — the room's own footprint and the floor's union. The footprint half stands and the union half is REVERSED: a room the union left out drew its desks outside the building's backdrop, where a real map outage is indistinguishable from a rendering defect | retry on the user's action, and on the next `room.map` for that room | **drawing the shipped default in its place.** A default drawn silently is a room the operator authored rendering as one they did not — the *which of the two am I looking at* defect [§ 4.6](#46-the-building-layout) refuses at building scale — and for a `503` it is D2's forbidden clean zero one surface over |
 | F17 | **The layout request fails** — any non-200 from `GET /api/building` ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), on connect or after a `building.layout` | the status code | the lobby renders a full-width statement **the building layout could not be loaded — HTTP N** over the floors it already holds, labelled *last known layout*; on a cold start there is no layout to keep, so under that statement it lists the snapshot's installs as rooms with **no floor claimed**, each a link to `/floor/{install_id}` that [§ 4.4](#44-routes-and-what-each-one-fetches) resolves **once the layout is readable** — until then, following it lands on this same render. **The floor route renders the same statement**: over the rooms it already holds when the layout was fetched before, and, on a cold-start deep link ([§ 4.4](#44-routes-and-what-each-one-fetches)), over the same uncomposed list — it does **not** compose the segment into a one-room floor, because deciding whether a segment is a floor's key or a room on someone else's floor needs the very document that failed. Every seat stays reachable; no composition is asserted on either screen | retry with backoff, and on the next `building.layout` | **composing the EMPTY layout's building** — one floor per install, `open` — from a failed fetch. An empty layout is a legal document ([§ 4.6](#46-the-building-layout)); a failed fetch is not that document, and a building composed from it is the wrong building drawn with confidence, which is F16's silent default one level up |
@@ -4208,10 +4212,15 @@ artifact is the worked example of it.
   Each agent and subagent needs their own appearance and personality"*, and then *"the AIMLA floor has
   a repeated body. Be more creative on the different bodies and colors."* **Colour alone is not
   variety**, and a body repeated across a floor is the defect that ruling names.
-- **Interns seed from the parent seat plus the intern index** — the key `seat~internN` — so siblings
-  at one side table differ from each other and from their seat
-  ([§ 8](#8-interns--subagent-rendering-and-the-cap)). One sprite **per open subagent**; the cap and
-  its arithmetic are § 8.1's and are **not** changed by anything here.
+- **Interns seed from the parent seat plus the intern's CALL** — the key `seat~<call_id>`, the
+  operator's ruling of 2026-10-02 on card#11058 Q3 ([decision 47](#13-decisions-taken-revisable-at-review)),
+  which replaced the reference's `seat~internN` keyed by the intern's place in the array — so siblings at
+  one side table differ from each other and from their seat, and an intern keeps its look when
+  `subagents[]` reorders or a sibling leaves ([§ 8](#8-interns--subagent-rendering-and-the-cap)). The
+  character tree is handed the key in the seat's place (`server/public/js/floor/desk-layout.js`'s
+  `internKey()`); `~` is outside the `seat_id` alphabet (`App\Support\Slug::SEAT_ID`), so no intern key is
+  ever a seat's. One sprite **per open subagent**; the cap and its arithmetic are § 8.1's and are **not**
+  changed by anything here.
 - ⭐ **The salt is a design choice, and this is the rule that must survive this document's author.**
   The per-field salts (the reference's `s18` for silhouette, `s3` for hue) were **searched against the
   real roster** so that the known fleet renders all-distinct bodies and hues. **Determinism is
@@ -4231,6 +4240,15 @@ artifact is the worked example of it.
   build owes is a **measurement**: run the shipped generator over the real roster and over a synthetic
   roster at 50 seats, count full-tuple collisions, and record the count with the roster it was
   measured against. State the measurement; do not restate the estimate as though it were one.
+  ⚠ **The interns' half of the acceptance is an ESTIMATE, stated as one, and it cannot be the
+  measurement above.** An intern's key carries its `call_id` — a fresh ULID per dispatch — so the population
+  of intern keys does not exist before the dispatches do, and the per-field salt cannot be searched
+  against it the way it is searched against the roster. What can be stated is the same birthday estimate
+  under the same independence-and-uniformity assumption, for one desk at [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)'s
+  cap: a seat and its eight interns are 9 keys, C(9, 2) = 36 pairs, so the expected full-tuple collisions
+  per desk at the cap are 36 ÷ the space's size ([§ 12](#12-every-number-and-where-it-comes-from)'s *full
+  appearance tuple's space* row) — about 4.5 × 10⁻⁶. That figure is the estimate the operator's ruling
+  accepted the cost of (card#11058 Q3); it is not a measurement and is not to be restated as one.
 - **The seeded vibe line.** A short flavour line in the drill-down, drawn from the same seed — the
   operator's *"each agent and subagent needs their own appearance and personality"*. It is
   **appearance-class text**: [§ 5.4](#54-what-is-never-rendered) admits it as a rendering of identity
@@ -4325,8 +4343,11 @@ artifact is the worked example of it.
   the box's edge. `server/tests/Feature/Floor/painter-probe.mjs` (driven by
   `Tests\Feature\Floor\TheNewDeskKeepsEveryLeafTest`) holds every node the painter draws for a desk at
   its layout element's own rect, the viewport included. The chair (54 × 64, dashed when unconfirmed), the
-  monitor (64 × 44, in its three lit states), the plate and the interns are drawn as shapes in their own
-  rects today; first-party art replaces each rect for rect (card#11046).
+  monitor (64 × 44, in its three lit states) and the plate are drawn as shapes in their own rects today.
+  Each intern is the character tree's standing frame under its key `seat~<call_id>` (the bullet above),
+  drawn `xMidYMax meet` in its own 20 × 32 rect inside a clipping viewport, static; an untitled one is
+  that sprite inside a dashed edge (a placeholder look the art direction has not fixed); one whose art fails to load is [§ 9](#9-failure-paths-and-their-observables)
+  F14's glyph in that rect, that stool alone. First-party art replaces each rect for rect (card#11046).
 - **Each room's floor plane takes a SEEDED THEME, and the back wall stays the house's** (card#11045, the
   operator's ruling of 2026-10-01 on Q2, [decision 40](#13-decisions-taken-revisable-at-review)). The plane
   ([§ 4.2](#42-the-floor)'s frame) takes one of four themes — oak, walnut, sage, slate — by
@@ -5880,15 +5901,17 @@ scene's, which is why the harness can read it: the painter reports which assets 
 the placeholder for the desks that lost their art.*
 
 - **Build:** replay `fx-snapshot-4` with the scene told — as the painter tells it — that every image of the
-  room's tileset failed to load — the vendored pack is an image collection, one file per tile; then that the bridge kit's images alone failed while the first-party floor plane's loaded ([§ 10.3](#103-the-floor-map)'s two tilesets); then, from an intact floor, that one seat's character art failed; then the same
-  floor with every asset loaded. **Reads:** **the harness**, the **scene**, the **placeholder**, the **status
+  room's tileset failed to load — the vendored pack is an image collection, one file per tile; then that the bridge kit's images alone failed while the first-party floor plane's loaded ([§ 10.3](#103-the-floor-map)'s two tilesets); then, from an intact floor, that one seat's character art failed; then, on
+  `fx-interns`' cap leg, that one intern's art failed; then the same floors with every asset loaded. **Reads:** **the harness**, the **scene**, the **placeholder**, the **status
   strip**, the **animation log**.
 - **GREEN:** with the tileset failed, every desk of that room draws the placeholder — a plain rectangle in
   place of the art's images only, every fact drawn as on the intact desk (the nameplate, the chip and the label
   line, the badge row and the flag, the monitor and its text, the bubble) and no art — under no tiles, and
   the status strip reads *some art failed to load*; with the kit alone failed, every desk draws the placeholder
   — the desk sprite is the kit's — over the plane's tiles, none of the kit's among them; with one seat's character failed, that desk alone draws
-  the placeholder and the room's tiles are drawn; the animation log gains no row from either failure and
+  the placeholder and the room's tiles are drawn; with one intern's art failed, that intern alone is drawn as
+  the glyph in its own rect — no desk draws the placeholder, every other intern keeps its sprite — and the strip
+  reads the same line; the animation log gains no row from either failure and
   every held render entered before it is still open, because an asset failure is not a state change
   ([§ 2.5](#25-what-re-renders-and-when) has no row for one) and a desk keeps its `render_state` through it.
 - **RED — the blank desk:** draw nothing for a desk whose art failed → the desk is blank, which reads as an
@@ -5898,10 +5921,14 @@ the placeholder for the desks that lost their art.*
 - **Third RED — the fact dropped with the art:** a placeholder carrying the nameplate and the state label but
   not the badge row — or not the monitor, its text or the bubble → a `lossy` seat's badge vanishes with the art, which is [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s degradation arriving
   through a load error.
+- **Fourth RED — the intern's failure spread or lost (card#11058):** draw the whole desk as the placeholder
+  for one intern's art, or fall back every intern of the desk, or ignore the failure, or leave it off the
+  strip → one intern's missing art costs the seat its look, or its siblings theirs, or nobody can tell why
+  the intern is a glyph.
 - **Not mechanised:** F14's recovery — *retry on reload* — is a request the browser makes, which the scene
   cannot show; it is read by a human on the built page and asserted by nothing here.
-- **Discriminating control:** with every asset loaded, no desk draws the placeholder and the strip carries no
-  such line — so the gate is known to be able to say *the art is there*.
+- **Discriminating control:** with every asset loaded, no desk draws the placeholder, every intern is its
+  sprite and the strip carries no such line — so the gate is known to be able to say *the art is there*.
 
 ### AT-D3-20 seat furniture never overlaps, and the overflow row stays below the floor
 
@@ -5954,7 +5981,9 @@ the same reason: no browser on the build host.*
   *(a)*'s containment is read against it; *(d)* every bubble's box is sized from the measurer's answer and
   the title at the bound is drawn truncated with a mark (rule 4); *(e)* on the cap leg and on the bound seat,
   every string the `fx-interns` row puts at its bound is drawn inside the box, truncated with a mark and never
-  past the edge, every one of the cap's interns is drawn as a sprite and the *+N more* tag drawn, none hidden;
+  past the edge, every one of the cap's interns is drawn as a sprite and the *+N more* tag drawn, none hidden —
+  each in its own 20 × 32 rect, keyed `seat~<call_id>` by the intern the wire put at that place, on one row in
+  the wire's order, meeting neither a sibling nor another element of its desk;
   the badge row draws its two — the treatment badges, then recognised badges in the wire's order — and the flag
   ⚠ +N counts the rest ([§ 5.1](#51-the-desk)'s *the glance set*); the nameplate at its 48 B bound is cut in the name role; the descriptor at its 200 B
   bound is cut on the monitor; and no raw unrecognised string is drawn on the desk ([§ 10.3](#103-the-floor-map)'s bounds); *(f)* on the crowded map
@@ -5981,6 +6010,10 @@ the same reason: no browser on the build host.*
   through text instead of furniture.
 - **Third RED — the hidden stool:** fit the cap inside the box by dropping the eighth stool, or the tag → *(e)*
   fails; a hidden stool is a dropped intern ([§ 14](#14-open-questions-for-the-review-loop) item 28), and the box is sized so that it never has to be.
+- **RED — the stool rects (card#11058):** lay the interns at a pitch narrower than their sprite, key them by
+  their place in the row rather than their call, or draw them at the old glyph's size → *(e)* fails on the cap
+  leg: siblings meet, an intern's sprite moves to whichever call the array puts at its place, or the sprite
+  is not the art contract's 20 × 32.
 - **Fourth RED — the silent crowded map:** draw the two desks over each other and emit no line → *(f)* fails;
   a viewer sees desks over desks with no word about why, which is F21's *Never* and the defect
   [§ 9](#9-failure-paths-and-their-observables)'s opening sentence names. Watched because the console's refusal reaches no revision stored before it ([§ 14](#14-open-questions-for-the-review-loop) item 28),
@@ -6246,6 +6279,7 @@ review can reverse it deliberately rather than discover it later.
 | 44 | **Decided 2026-10-02 — operator ruling on card#11058 Q1 (B): the badge row draws two, the treatment badges first, then recognised badges in the wire's order** ([§ 10.3](#103-the-floor-map)) | the whole cluster to D2's bound, unrecognised badges first | the two treatment badges are warning treatments the desk must show; the rest is counted into the flag and read in full in the drill-down | a recognised third badge is read as a count on the desk until the drill-down is opened |
 | 45 | **Decided 2026-10-02 — operator ruling on card#11058 Q5 (b): the quiet age (*nothing done for N*) stays on the desk; *running for N* moves to the drill-down and the list** ([§ 5.1](#51-the-desk)) | both ages on the desk, or neither | the quiet age is the one age a live desk may tick and the product's divergence signal; the action's elapsed time is detail | an action's duration is read in the drill-down |
 | 46 | **Decided 2026-10-02 — operator ruling on card#11058 Q2: the desk has two measured type roles — the facts at 10 px, and the nameplate alone at 13 px bold** ([§ 12](#12-every-number-and-where-it-comes-from)'s *Nameplate type size* row) | one 10 px role for every desk string, the nameplate included | at fit on a laptop window the facts read at about 8 CSS px; the name is what a viewer scans the room for, and a role of its own makes it the largest text on the desk without enlarging the facts column the box is sized for | a nameplate cut sooner — a 148 px plate holds fewer glyphs in the name role — and a seat told apart by its drill-down, its list line and its `aria-label`, which carry the name uncut |
+| 47 | **Decided 2026-10-02 — operator ruling on card#11058 Q3: intern sprites are keyed by `call_id` — the character tree draws an intern under `seat~<call_id>`** ([§ 8](#8-interns--subagent-rendering-and-the-cap), [§ 10.4](#104-the-art-direction-as-a-specification)) | the reference's `seat~internN`, keyed by the intern's place in `subagents[]` | an intern keeps its look for its whole life: when the array reorders, a sibling ahead of it leaves, or the page reloads, the same intern is the same sprite, which is what makes a sprite something a viewer can follow | the per-field salt cannot be searched against intern keys — a `call_id` is minted per dispatch — so the interns' half of § 10.4's collision acceptance is an estimate (about 4.5 × 10⁻⁶ full-tuple collisions per desk at the cap) and not the measurement the seats' half is |
 
 ---
 
