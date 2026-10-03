@@ -295,6 +295,71 @@ PLANTS = [
         "in a form this check cannot read",
     ),
     (
+        # card#11144.  The relayed `protocol_agent_role` is bounded by the name's own figure, and check
+        # 12 holds it at every home that states one.  One plant per home, because each home is read by
+        # its own parser and one plant proves one parser -- the ingest registry is new for both members.
+        "verify-event-schema.py",
+        "docs/design/EVENT-SCHEMA.md",
+        r"(\*`protocol_agent_role`\*\); ≤ )(48)( B — the name's own)",
+        "bump",
+        "D1 § 6.14's `protocol_agent_role` byte bound, held by check 12 to § 18.6's (card#11144)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\n  protocol_agent_role +VARCHAR\()(\d+)(\))",
+        "bump",
+        "D2 § 6.4's `protocol_agent_role` column width, the same check-12 equality (card#11144)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\| `protocol_agent_role` \| slug \| \*\*yes\*\* \| ≤ )(\d+)( B)",
+        "bump",
+        "D2 § 8.2.1's `protocol_agent_role` byte bound, the same check-12 equality on the read surface "
+        "(card#11144)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "server/app/Ingest/KindRegistry.php",
+        r"('protocol_agent_role' => )(\d+)(,)",
+        "bump",
+        "the ingest registry's `protocol_agent_role` bound -- the figure that actually refuses -- held "
+        "by check 12 to § 18.6's (card#11144)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "server/database/migrations/2026_10_03_000000_add_protocol_agent_role_column_to_seat_state.php",
+        r"(string\('protocol_agent_role', )(\d+)(\))",
+        "bump",
+        "the store migration's `protocol_agent_role` width, the check-12 equality's code home (card#11144)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        # card#11144.  § 3.1's DECLARED leg names the roster members this design reads; a member named
+        # anywhere else in D1 is a read the contract published to the framework's owner does not cover.
+        "verify-event-schema.py",
+        "docs/design/EVENT-SCHEMA.md",
+        r"(also reads `roster\[\]\.)(role)(` of the entry)",
+        "rename",
+        "a roster member D1 names outside § 3.1's DECLARED leg, which check 12 holds to that leg "
+        "(card#11144)",
+        "a roster member § 3.1's DECLARED leg does",
+    ),
+    (
+        # ... and the reporter's own roster read, member access by member access.
+        "verify-event-schema.py",
+        "fleet-reporter/fleet-reporter.js",
+        r"(roles: named\.map\(\(r\) => r\.)(role)(\))",
+        "rename",
+        "a roster member the reporter reads that § 3.1's DECLARED leg does not declare (card#11144)",
+        "a roster member § 3.1's DECLARED leg does not declare",
+    ),
+    (
         "verify-fleet-state.py",
         "docs/design/FLEET-STATE.md",
         r"(State-changing events per seat-day at the ceiling:.*?= \*\*)([\d,]+)(\*\*)",

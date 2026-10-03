@@ -55,6 +55,7 @@
             "enabled": null,
             "protocol_agent_name": null,
             "protocol_agent_name_check": null,
+            "protocol_agent_role": null,
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -141,6 +142,7 @@
             "enabled": null,
             "protocol_agent_name": null,
             "protocol_agent_name_check": null,
+            "protocol_agent_role": null,
             "reporter": {
               "version": null,
               "platform": null,
@@ -221,6 +223,7 @@
                       "enabled": null,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -307,6 +310,7 @@
                       "enabled": null,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": null,
                         "platform": null,
@@ -412,6 +416,7 @@
                       "enabled": true,
                       "protocol_agent_name": "zero",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",

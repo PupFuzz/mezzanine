@@ -3446,7 +3446,10 @@ def drive_at27(box, reporter: Path = REPORTER) -> dict:
             "config_readable": checks.get("config_readable"), "wire": wire(hb),
             "degraded": hb.get("degraded") if hb else None,
             "fingerprint": hb.get("config_fingerprint") if hb else None,
-            "detail": rep27.get("detail", {}).get("protocol_agent_name_in_roster")}
+            "detail": rep27.get("detail", {}).get("protocol_agent_name_in_roster"),
+            # § 6.14's relayed role (card#11144), kept OUT of `wire()` so every AT-27 comparison above
+            # stays the name pair's. An absent member reads `<absent>`, never None, as in `wire()`.
+            "role": (hb["protocol_agent_role"] if "protocol_agent_role" in hb else "<absent>") if hb else None}
 
 
 def act(d: dict) -> tuple:
@@ -3694,7 +3697,7 @@ eq("GREEN: the real reporter on that seat sends null and `undeclared`", want(Non
 
 # ⛔ RED — the disagreement that fails nothing: the check emits `checked`, or selftest passes.
 r_ok = drive_at27(at27_box("at27-red-checked", home=AT27_ROSTER_WITHOUT),
-                  reporter=plant(("  if (roster.names.includes(name)) return", "  if (true) return")))
+                  reporter=plant(("  if (roster.names.includes(name)) {", "  if (true) {")))
 eq("RED: a reporter that calls a non-member `checked` exits 0 with the check passing on a disagreeing seat",
    (0, "pass", "checked"), (r_ok["rc"], r_ok["selftest"], (r_ok["wire"] or {}).get("check")))
 r_pass = drive_at27(at27_box("at27-red-pass", home=AT27_ROSTER_WITHOUT), reporter=plant(
@@ -3781,6 +3784,92 @@ redgreen("a declared agent name is checked, and a disagreement fails an act (D1 
          f"A {act(at_a)}; B {act(at_b)}; C {act(at_c)}; D {act(at_d)}; E == A: {act(at_e) == act(at_a)}; "
          f"F {at_f}; control (one byte off) == C; fingerprint unmoved by the name {at_a['fingerprint']}; "
          f"one read per flusher start {g_long}")
+
+
+print("\n== 19b. THE ROSTER ENTRY'S ROLE IS RELAYED, AND IS NULL WHENEVER NOTHING SELECTS IT (D1 § 3.1, AT-27, card#11144) ==")
+# D1 § 3.1: on the roster read the name check already makes, the reporter relays `roster[].role` of the
+# ONE entry the declared name selects, verbatim, as `protocol_agent_role` on every heartbeat. It is null
+# whenever the check is not `checked`, when the entry carries no slug-shaped role, and when the name
+# matches more than one entry. `selftest` gains no check: its verdict and exit are unchanged in every
+# case below, and `detail.protocol_agent_name_in_roster.roster_role` says why a `checked` seat relays
+# null. Cases A-E are the AT-27 boxes above, re-read for the role.
+def roster_role(d: dict):
+    return (d["detail"] or {}).get("roster_role", "<absent>")
+
+
+eq("relay case A — `checked`: the heartbeat carries the selected entry's role verbatim, and the detail names it",
+   ("impl", "impl"), (at_a["role"], roster_role(at_a)))
+eq("relay case E — `checked` through $COORD_CONFIG: the same role", ("impl", "impl"), (at_e["role"], roster_role(at_e)))
+eq("relay cases B, C, D — `unchecked`, `disagreed`, `undeclared`: the member is PRESENT and null on each",
+   [None, None, None], [at_b["role"], at_c["role"], at_d["role"]])
+eq("  … and the control (one byte off, so `disagreed` against a roster that holds a role for the real name) "
+   "relays nothing", None, at_ctl["role"])
+
+
+def relay_box(tag: str, entries: list, declare=AT27_NAME):
+    return drive_at27(at27_box(f"relay-{tag}", declare=declare, home={"roster": entries}))
+
+
+ROLE_BOUND = NAME_BOUND
+relay_no_role = relay_box("no-role", [{"name": "pm", "role": "pm"}, {"name": AT27_NAME}])
+eq("relay — a `checked` name whose entry carries no role: null, the check `checked` and passing, selftest exit 0",
+   (None, "checked", 0, "pass"),
+   (relay_no_role["role"], (relay_no_role["wire"] or {}).get("check"), relay_no_role["rc"], relay_no_role["selftest"]))
+eq("  … and the detail says the entry carries none", "no role: the entry carries none", roster_role(relay_no_role))
+relay_null_role = relay_box("null-role", [{"name": AT27_NAME, "role": None}])
+eq("relay — an entry whose role is JSON null: null, as an absent one", None, relay_null_role["role"])
+
+for tag, bad_role in (("upper", "Impl"), ("space", "pm helper"), ("over", "a" * (ROLE_BOUND + 1)),
+                      ("empty", ""), ("number", 7), ("array", ["pm"])):
+    r = relay_box(f"bad-{tag}", [{"name": AT27_NAME, "role": bad_role}])
+    eq(f"relay — a role that is not a slug ({tag}): null on the wire, `checked`, selftest exit 0 and passing, "
+       f"and the detail says why", (None, "checked", 0, "pass", True),
+       (r["role"], (r["wire"] or {}).get("check"), r["rc"], r["selftest"], str(roster_role(r)).startswith("not a slug: ")))
+relay_bound = relay_box("bound", [{"name": AT27_NAME, "role": "a" * ROLE_BOUND}])
+eq(f"relay — a role AT § 6.14's {ROLE_BOUND} B bound is relayed verbatim", "a" * ROLE_BOUND, relay_bound["role"])
+relay_open = relay_box("open", [{"name": AT27_NAME, "role": "pm-helper"}])
+eq("relay — the vocabulary is open: an unknown slug (`pm-helper`) is relayed uninterpreted", "pm-helper", relay_open["role"])
+
+DUP = [{"name": "pm", "role": "pm"}, {"name": AT27_NAME, "role": "impl"}, {"name": AT27_NAME, "role": "pm"}]
+relay_dup = relay_box("dup", DUP)
+eq("relay — a name matching TWO roster entries selects nothing: null on the wire, the check still `checked` "
+   "and passing, selftest exit 0", (None, "checked", 0, "pass"),
+   (relay_dup["role"], (relay_dup["wire"] or {}).get("check"), relay_dup["rc"], relay_dup["selftest"]))
+eq("  … and the detail reads ambiguous, with the count and the name", f"ambiguous: 2 entries named {AT27_NAME}",
+   roster_role(relay_dup))
+eq("relay — on an `unchecked`, `disagreed` or `undeclared` seat the detail relays no role either",
+   [None, None, None], [roster_role(at_b), roster_role(at_c), roster_role(at_d)])
+
+# ⛔ RED — a duplicate name relays whichever entry comes first.
+r_dup = drive_at27(at27_box("relay-red-dup", home={"roster": DUP}),
+                   reporter=plant(("  if (at.length !== 1) return", "  if (at.length === 0) return")))
+eq("RED: a reporter that takes the first entry on a duplicate name relays `impl` — a pick nothing on the "
+   "wire says was a pick", "impl", r_dup["role"])
+# ⛔ RED — the role relayed unvalidated: a value the ingest's 48 B bound would refuse, batch and all.
+r_unval = drive_at27(at27_box("relay-red-unvalidated", home={"roster": [{"name": AT27_NAME, "role": "Impl"}]}),
+                     reporter=plant(("  if (typeof v === 'string' && AGENT_NAME_RE.test(v)) return",
+                                     "  if (typeof v === 'string') return")))
+eq("RED: a reporter that relays an unvalidated role puts `Impl` on the wire", "Impl", r_unval["role"])
+# ⛔ RED — the null omitted rather than sent: a seat whose role is null drops the member.
+r_omit_role = drive_at27(at27_box("relay-red-omit"), reporter=plant(
+    ("    protocol_agent_role: declaration.role,",
+     "    ...(declaration.role === null ? {} : { protocol_agent_role: declaration.role }),")))
+eq("RED: a reporter that omits a null role leaves the member ABSENT on an `unchecked` seat", "<absent>",
+   r_omit_role["role"])
+# ⛔ RED — the role relayed on a check that is not `checked`: a disagreed name that happens to share an
+# entry's name in another case, modelled by a reporter relaying the roster's first role on every read.
+r_any = drive_at27(at27_box("relay-red-unchecked-role", home=AT27_ROSTER_WITHOUT), reporter=plant(
+    ("  return { name, check: 'disagreed', role: null,",
+     "  return { name, check: 'disagreed', role: roster.roles.find((v) => typeof v === 'string') || null,")))
+eq("RED: a reporter that relays a role beside `disagreed` sends `pm` for a name the roster does not hold",
+   ("pm", "disagreed"), (r_any["role"], (r_any["wire"] or {}).get("check")))
+
+redgreen("the roster entry's role is relayed, and is null whenever nothing selects it (D1 § 3.1, AT-27, card#11144)",
+         f"first entry on a duplicate name -> {r_dup['role']!r}; unvalidated role -> {r_unval['role']!r}; null "
+         f"role omitted -> {r_omit_role['role']!r}; role beside disagreed -> {r_any['role']!r}",
+         f"A {at_a['role']!r}; E {at_e['role']!r}; B/C/D {[at_b['role'], at_c['role'], at_d['role']]}; no role "
+         f"{relay_no_role['role']!r}; duplicate {relay_dup['role']!r} ({roster_role(relay_dup)}); bound "
+         f"{len(relay_bound['role'] or '')} B; open vocabulary {relay_open['role']!r}")
 
 
 print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")

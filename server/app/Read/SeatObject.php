@@ -155,6 +155,10 @@ final class SeatObject
             // tells those two apart (`undeclared` against `null`).
             'protocol_agent_name' => $state->protocol_agent_name,
             'protocol_agent_name_check' => $state->protocol_agent_name_check,
+            // card#11144: the roster entry's role the reporter relayed beside the name (D1 § 3.1),
+            // verbatim; this plane interprets no role. Null before the first heartbeat and whenever
+            // the reporter relays none.
+            'protocol_agent_role' => $state->protocol_agent_role,
 
             'reporter' => [
                 'version' => $state->reporter_version,
