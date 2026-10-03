@@ -25,7 +25,8 @@
  *                      "seat": "<seat_id>",     //  § 4.4's `/floor/{floor}/{seat_id}` deep link
  *                      "scene": {               //  Appendix B row 14's scene inputs, as the painter
  *                        "measurer": {glyph_w, line_h},  //  supplies them on a page: a measurer that
- *                        "character": {w, h},   //  answers a stated width per glyph, the tree's
+ *                        "character": {w, h},   //  answers a stated width per glyph PER TYPE ROLE
+ *                                               //  (`Support/harness-measurer.mjs`), the tree's
  *                        "box": {width, height} //  SCENE_W/SCENE_H, and — only in a planted control —
  *                      },                       //  a box other than resources/floor/furniture-box.js's
  *                      "asset_failures": [ { "at_ms": N,  //  § 9 F14 as the painter reports it:
@@ -214,6 +215,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { scriptedFetch } from '../Support/scripted-fetch.mjs';
 import { shownLabel } from '../Support/shown-label.mjs';
 import { HARNESS_SURFACE } from '../Support/harness-surface.mjs';
+import { harnessMeasurer } from '../Support/harness-measurer.mjs';
 
 const dir = process.argv[2];
 
@@ -592,14 +594,14 @@ async function replay(scenario) {
 
     // Appendix B row 14's scene inputs, as the painter supplies them on a page: the furniture box and
     // the desk sprite from `resources/floor/furniture-box.js`, a measurer that answers a stated width
-    // per glyph, and the character's size as the fixture states it.
+    // per glyph in each type role, and the character's size as the fixture states it.
     if (screen !== null && scenario.floor.scene !== undefined) {
         const { measurer, character, box } = scenario.floor.scene;
 
         screen.sceneInputs({
             box: box ?? furniture.FURNITURE_BOX,
             desk_sprite: furniture.DESK_SPRITE,
-            measure: (text) => ({ w: [...String(text)].length * measurer.glyph_w, h: measurer.line_h }),
+            measure: harnessMeasurer(measurer),
             character,
         });
     }

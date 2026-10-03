@@ -55,6 +55,26 @@ export const LINE = 12;
 /** The page's desk text: the font the painter measures and draws with, sized to `LINE`. */
 export const FONT = '10px sans-serif';
 
+/**
+ * The NAME role (§ 5.1's nameplate, the operator's ruling of 2026-10-02 on card#11058 Q2: "the
+ * nameplate at 13 px bold — a second measured type role"): the one string the desk draws in it is the
+ * nameplate, measured and drawn in this font, on this line.
+ */
+export const FONT_NAME = 'bold 13px sans-serif';
+
+export const LINE_NAME = 16;
+
+/**
+ * THE DESK's TWO TYPE ROLES — the font each is measured and drawn in, its line, and the baseline's
+ * offset from the line's top. `fit()` measures in a role, the page's measurer answers in a role
+ * (`painter.js`'s `measurer()`), and the painter draws a text at its role's baseline; a role not in
+ * this table is refused by the measurer rather than measured in a guessed font.
+ */
+export const TYPE_ROLES = Object.freeze({
+    fact: Object.freeze({ font: FONT, line: LINE, baseline: LINE - 2 }),
+    name: Object.freeze({ font: FONT_NAME, line: LINE_NAME, baseline: LINE_NAME - 3 }),
+});
+
 /** The bubble's inner padding, and the band at the top of the box the bubble is drawn in. */
 export const BUBBLE_PAD = 3;
 
@@ -133,17 +153,23 @@ export const FLAG = '⚠';
 /** The flag's text: the glyph and the count N (`flagCount()`). */
 export const FLAG_TEXT = (n) => `${FLAG} +${n}`;
 
+/** The flag chip's inner padding. */
+const FLAG_PAD = 4;
+
 /**
  * THE SCENE's ONE TRUNCATION PRIMITIVE (§ 10.3): `text` cut to `width` with a visible mark, by the
- * page's own measurer — never clipped silently and never drawn past the edge.
+ * page's own measurer IN THE TYPE ROLE THE TEXT IS DRAWN IN (`TYPE_ROLES`) — never clipped silently
+ * and never drawn past the edge. A string measured in one role and drawn in another is a width that
+ * lies, so the role is the caller's to state and the measurer's to answer in.
  *
  * Cut by CODE POINT, for `desk/task-bubble.js`'s reason: a cut that splits an astral character
  * draws a replacement glyph, which is the one way a truncation mark lies about what was cut.
  *
+ * @param {string} role a key of `TYPE_ROLES`; every desk string but the nameplate is the fact role
  * @returns {{text: string, truncated: boolean, w: number, h: number}}
  */
-export function fit(text, width, measure) {
-    const whole = measure(text);
+export function fit(text, width, measure, role = 'fact') {
+    const whole = measure(text, role);
 
     if (whole.w <= width) {
         return { text, truncated: false, w: whole.w, h: whole.h };
@@ -157,7 +183,7 @@ export function fit(text, width, measure) {
     while (lo < hi) {
         const mid = Math.ceil((lo + hi) / 2);
 
-        if (measure(points.slice(0, mid).join('') + TRUNCATION_MARK).w <= width) {
+        if (measure(points.slice(0, mid).join('') + TRUNCATION_MARK, role).w <= width) {
             lo = mid;
         } else {
             hi = mid - 1;
@@ -165,7 +191,7 @@ export function fit(text, width, measure) {
     }
 
     const cut = points.slice(0, lo).join('') + TRUNCATION_MARK;
-    const size = measure(cut);
+    const size = measure(cut, role);
 
     return { text: cut, truncated: true, w: size.w, h: size.h };
 }
@@ -392,7 +418,22 @@ export function deskLayout(desk, ctx) {
     const n = flagCount(desk, row);
 
     if (n > 0) {
-        text('flag', 'unrecognised', FLAG_TEXT(n), R.flag, { count: n });
+        // Drawn as a chip as wide as its text: the text cut to the row less the chip's padding, and
+        // its offset inside the chip carried, as the badge's is.
+        const cut = fit(FLAG_TEXT(n), R.flag.w - 2 * FLAG_PAD, measure);
+
+        elements.push({
+            kind: 'flag',
+            member: 'unrecognised',
+            x: R.flag.x,
+            y: R.flag.y,
+            w: cut.w + 2 * FLAG_PAD,
+            h: R.flag.h,
+            text: cut.text,
+            truncated: cut.truncated,
+            text_dx: FLAG_PAD,
+            count: n,
+        });
     }
 
     // § 8 / Q1 (B): one sprite per intern up to the cap, none hidden; a skewed wire past the cap is
@@ -428,17 +469,19 @@ export function deskLayout(desk, ctx) {
     // ── Layer 6: the plate and the nameplate, above the hatch ───────────────────────────────────
     rect('plate', 'nameplate', R.plate);
 
-    const name = fit(desk.nameplate, PLATE_TEXT_W, measure);
+    // Q2: the nameplate is the one string in the name role — measured, cut and centred in it.
+    const name = fit(desk.nameplate, PLATE_TEXT_W, measure, 'name');
 
     elements.push({
         kind: 'nameplate',
         member: 'nameplate',
         x: R.plate.x + (R.plate.w - name.w) / 2,
-        y: R.plate.y + (R.plate.h - LINE) / 2,
+        y: R.plate.y + (R.plate.h - LINE_NAME) / 2,
         w: name.w,
         h: name.h,
         text: name.text,
         truncated: name.truncated,
+        role: 'name',
     });
 
     return { elements, bubble: desk.bubble };

@@ -46,6 +46,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { drawsRaw } from './raw-on-desk.mjs';
+import { harnessMeasurer } from '../Support/harness-measurer.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SERVER = join(HERE, '..', '..', '..');
@@ -96,8 +97,10 @@ if (keysAsWritten !== Object.keys(baseline.desks).length) {
 }
 
 const NOW_MS = Date.parse(baseline.now);
-const { glyph_w: GLYPH_W, line_h: LINE_H } = baseline.measurer;
-const measure = (text) => ({ w: [...String(text)].length * GLYPH_W, h: LINE_H });
+// The desk is laid out with the planted fixture's measurer, one width per type role (card#11058 B2); the
+// baseline's own `measurer` field is a record of how the desk before B1 was measured: nothing reads it.
+const PLANTED = JSON.parse(readFileSync(join(DATA, 'fx-desk-leaves-planted.json'), 'utf8'));
+const measure = harnessMeasurer(PLANTED.measurer);
 const BOX = { width: 440, height: 228 };
 const ctxFor = (placeholder) => ({ box: BOX, measure, character: { w: 18, h: 32 }, sprite: { url: 'desk.png', w: 116, h: 57 }, placeholder });
 const facts = (seat, v) => ({ missing: v.missing, derivation_stamp: seat.server_time ?? '2026-08-23T14:23:14.400Z', stilled: v.stilled });
@@ -146,7 +149,7 @@ for (const file of walkJson(join(SERVER, 'tests'))) {
     }
 }
 
-for (const { source, seat } of JSON.parse(readFileSync(join(DATA, 'fx-desk-leaves-planted.json'), 'utf8')).seats) {
+for (const { source, seat } of PLANTED.seats) {
     population.push({ source, seat, planted: true });
 }
 
@@ -328,6 +331,9 @@ const cutOf = (drawn, value) => drawn === value || (drawn.endsWith('…') && dra
  * value that does not fit).
  */
 const FACTS_W = BOX.width - (216 + 4);
+
+/** The type role each text kind is measured in — design § 2.4: the nameplate alone is the name role (Q2). */
+const roleOf = (kind) => (kind === 'nameplate' ? 'name' : 'fact');
 const TEXT_W = {
     nameplate: 148, 'monitor-text': 56, chip: 160 - 12, badge: 108 - 6, label: FACTS_W, currency: FACTS_W, lag: FACTS_W,
     'gauge-pct': 60, flag: FACTS_W, 'stool-more': FACTS_W, 'quiet-age': FACTS_W, bubble: BOX.width - 6, 'bubble.second': BOX.width - 6,
@@ -361,7 +367,7 @@ function ruleTwo(where, m, v, desk) {
 
         const drawn = actual[i][2] ?? actual[i][1];
 
-        if (drawn !== value && drawn.endsWith('…') && TEXT_W[kind] !== undefined && measure(value).w <= TEXT_W[kind]) {
+        if (drawn !== value && drawn.endsWith('…') && TEXT_W[kind] !== undefined && measure(value, roleOf(kind)).w <= TEXT_W[kind]) {
             finding({ rule: 'ii-cut-fits', kind, value, where, drawn, ruling: RULING[kind] });
         }
     }

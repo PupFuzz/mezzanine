@@ -27,6 +27,19 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11058** — **The desk's look: the nameplate in its own type, the state in its colour, and the art
+  held in its rect.** The nameplate is drawn at 13 px bold — the desk's second measured type role, after
+  the operator's ruling of 2026-10-02 — and measured, cut and centred in that role, so at fit on a
+  1,280 × 800 window it reads at about 10.6 CSS px beside the facts' 8.1. The state chip is filled with
+  its state's colour (hollow and edged in it for a seat the floor cannot confirm, hollow red for an
+  unrecognised one), the flag **⚠ +N** is drawn as a chip of its own, and the plate has its own paper;
+  the colours are new tokens on `server/public/css/mezzanine.css` (`--state-*`, `--scene-plate*`,
+  `--scene-flag*`). The character and the desk are drawn inside clipping viewports at their rects, so no
+  art reaches past the rect it is given. `painter-probe.mjs` now holds every node the painter draws for a
+  desk equal to its layout element, not only inside the desk's box, and
+  `ThePageChromeIsOneLinkedStylesheetTest` reads the painter's style as built, so a token in a generated
+  rule is checked too. FLOOR.md § 5.1, § 10.4, § 12, § 13 (decision 46) and AT-D3-20 record it.
+
 - **card#11058** — **The desk reads at a glance: it draws the ruled set, and every other fact is in the
   drill-down and the desk list.** Following the operator's ruling of 2026-10-02, each desk draws its
   character (or the empty chair), the nameplate on a plate, a state chip with the state's word, the

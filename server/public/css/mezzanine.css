@@ -101,6 +101,30 @@
     --scene-thread: #6b8fd6;
     --scene-flash: #ffe9a8;
 
+    /* The desk's plate and its flag ⚠ +N (card#11058 B2): the nameplate's paper, and the one flag's chip. */
+    --scene-plate: #fffaf2;
+    --scene-plate-edge: #8a6f5a;
+    --scene-flag: #fff3d6;
+    --scene-flag-edge: #d9905a;
+    --scene-flag-ink: #8a4b10;
+
+    /* The state chip (§ 7.1, card#11058 Q4 a): one colour per `render_state` member — `lobby/render-state.js`'s
+       ten, which the painter's chip rules are generated from — and the chip's ink, each fill light enough to
+       hold it. The word on the chip carries the state; the colour never carries it alone. A held seat's chip
+       is hollow, edged in its state's colour, in the unconfirmed ink. `retired` is never drawn (no desk). */
+    --state-working: #57c785;
+    --state-idle: #9aa7c0;
+    --state-blocked: #f0b455;
+    --state-stalled: #d97b6c;
+    --state-unknown: #c9a7e8;
+    --state-catching_up: #8ecfdb;
+    --state-stale: #b0aa9c;
+    --state-offline: #828a9a;
+    --state-disabled: #93a3b3;
+    --state-retired: #828a9a;
+    --state-ink: #1b1f2b;
+    --state-ink-unconfirmed: #5c6270;
+
     /* Type — system fallbacks until the faces are vendored (card#11045 Q5). */
     --face-display: Quicksand, ui-rounded, system-ui, sans-serif;
     --face-body: "IBM Plex Sans", system-ui, sans-serif;

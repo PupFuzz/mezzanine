@@ -11,8 +11,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8 },
+            "line_h": { "fact": 12, "name": 16 }
           },
           "character": {
             "w": 18,
@@ -437,8 +437,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8 },
+            "line_h": { "fact": 12, "name": 16 }
           },
           "character": {
             "w": 18,
@@ -940,8 +940,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8 },
+            "line_h": { "fact": 12, "name": 16 }
           },
           "character": {
             "w": 18,
@@ -1684,8 +1684,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8 },
+            "line_h": { "fact": 12, "name": 16 }
           },
           "character": {
             "w": 18,

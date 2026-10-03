@@ -196,9 +196,11 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     /**
      * ⭐ § 12's viewport row, MEASURED (Appendix B row 15 owes it): the camera's fit zoom at F over the
-     * shipped default, and what it draws the desk text at — the scene's font size times that zoom. The
-     * row states both; this re-derives both from the camera and `floor/desk-layout.js`'s `FONT` on
-     * every run, so the row can drift from the camera only by this test going red. ⛔ THE SURFACE IS THE
+     * shipped default, and what it draws the desk text at in each of the desk's two type roles — each
+     * role's font size times that zoom: the facts' text (`floor/desk-layout.js`'s `FONT`) and the
+     * nameplate (its `FONT_NAME`, card#11058 Q2). The row states all three; this re-derives them from the
+     * camera and those two declarations on every run, so the row can drift from either only by this test
+     * going red. ⛔ THE SURFACE IS THE
      * PAGE's (card#11045 PR-E): the run is entered at the drawing box the floor page gives the camera at
      * F, which the test above holds to § 12's stated page surface — not at the whole window, which fits a
      * height-bound default higher than any viewer's page does.
@@ -416,6 +418,23 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
         $this->assertNotSame($md, $drifted, 'the plant found no measurement in § 12 to move');
         $this->assertNotSame([], $this->measurementDefects($this->floorRun(self::PAGE), (string) $drifted), 'CONTROL (a drifted measurement) did not bite');
+    }
+
+    /** The second type role's figure (card#11058 Q2): the nameplate's measurement, and its size, each drifted. */
+    public function test_red_a_viewport_row_that_states_another_nameplate_measurement(): void
+    {
+        $md = $this->floorMd();
+        $result = $this->floorRun(self::PAGE);
+
+        foreach ([
+            'the nameplate drawn at another CSS size' => ['/(name role at \*\*)[\d.]+( CSS px\*\*)/', '${1}9.9${2}'],
+            'the name role at another font size' => ['/(the nameplate\'s )\d+( px name role at)/', '${1}12${2}'],
+        ] as $what => [$pattern, $replacement]) {
+            $drifted = preg_replace($pattern, $replacement, $md, 1);
+
+            $this->assertNotSame($md, $drifted, "the plant ({$what}) found nothing in § 12 to move");
+            $this->assertNotSame([], $this->measurementDefects($result, (string) $drifted), "CONTROL ({$what}) did not bite");
+        }
     }
 
     /** A page surface the camera's run is not entered at: § 12's figure moved and the fixture not. */
@@ -1176,11 +1195,13 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
         $layout = (string) file_get_contents($this->jsRoot().'/floor/desk-layout.js');
         $this->assertSame(1, preg_match("/export const FONT = '(\\d+)px /", $layout, $f), 'desk-layout.js\'s FONT did not parse');
+        $this->assertSame(1, preg_match("/export const FONT_NAME = 'bold (\\d+)px /", $layout, $n), 'desk-layout.js\'s FONT_NAME did not parse');
 
         $zoom = $first['camera']['zoom'];
         $px = (int) $f[1] * $zoom;
+        $namePx = (int) $n[1] * $zoom;
 
-        if (preg_match('/^\| Floor reference viewport \|[^\n]*?the camera\'s fit at this viewport is \*\*([\d.]+)\*\*[^\n]*?draws the scene\'s (\d+) px text — the facts\' text at \*\*([\d.]+) CSS px\*\*/m', $md, $m) !== 1) {
+        if (preg_match('/^\| Floor reference viewport \|[^\n]*?the camera\'s fit at this viewport is \*\*([\d.]+)\*\*[^\n]*?draws the scene\'s (\d+) px text — the facts\' text at \*\*([\d.]+) CSS px\*\*[^\n]*?the nameplate\'s (\d+) px name role at \*\*([\d.]+) CSS px\*\*/m', $md, $m) !== 1) {
             return ['§ 12\'s viewport row states no measurement in the form this check reads'];
         }
 
@@ -1196,6 +1217,14 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
         if ($m[3] !== sprintf('%.1f', $px)) {
             $defects[] = sprintf('§ 12 states the text drawn at %s CSS px and the camera draws it at %.1f', $m[3], $px);
+        }
+
+        if ((int) $m[4] !== (int) $n[1]) {
+            $defects[] = "§ 12 states the nameplate's name role at {$m[4]} px and desk-layout.js draws it at {$n[1]} px";
+        }
+
+        if ($m[5] !== sprintf('%.1f', $namePx)) {
+            $defects[] = sprintf('§ 12 states the nameplate drawn at %s CSS px and the camera draws it at %.1f', $m[5], $namePx);
         }
 
         return $defects;
