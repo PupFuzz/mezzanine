@@ -27,6 +27,15 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11144** — **The floor reads which desk a room map reserves.** `mapDesks()` in
+  `server/public/js/floor/floor-layout.js` now returns each desk with its `reserved_for` role, or `null` when
+  the desk is not reserved, read as the console accepts the property: a Tiled `string`, or a property with no
+  `type`. It reads the `desks` layer through the same `mapLayers()` walk as before, so a reservation inside a
+  grouped `desks` layer is read too, and the reserved desk sits at its index after the `id` sort. The floor
+  still seats nothing by the reservation: every seat keeps the desk it hashes to. `docs/design/FLOOR.md`
+  § 10.3's `desks` row says where the client reads it, and `TheFloorReadsWhichDeskAMapReservesTest` holds
+  the client's answer to the server's `FloorMap` over a reserved map written out of `id` order, an
+  unreserved map, a grouped `desks` layer and an untyped property, each with a planted defect it reds on.
 - **card#11144** — **A room map can reserve one desk for a role, and the shipped room reserves its
   back-row right corner for the PM.** A `desks` object may now carry one property, `reserved_for` — a
   Tiled `string` naming a role in the protocol agent name's shape (lowercase `[a-z0-9-]`, at most 48
