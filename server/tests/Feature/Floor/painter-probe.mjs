@@ -71,14 +71,20 @@ globalThis.document = {
     activeElement: null,
     getElementById: (id) => (id === 'floor-drawing' ? host : null),
     createElementNS: (ns, name) => new Node(name),
-    createElement: () => ({ getContext: () => ({}), toDataURL: () => 'data:,' }),
+    // A canvas whose 2D context records the font each measurement was taken in (`measurer()`'s check).
+    createElement: () => {
+        const context = { font: '', measureText(text) { measured.push({ font: this.font, text }); return { width: String(text).length }; } };
+
+        return { getContext: () => context, toDataURL: () => 'data:,' };
+    },
 };
+const measured = [];
 globalThis.CSS = { escape: (s) => s };
 
 const { deskModel } = await mod('desk/desk-render.js');
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
-const { createPainter } = await mod('floor/painter.js');
-const { TYPE_ROLES, STOOL_GLYPH } = await mod('floor/desk-layout.js');
+const { createPainter, measurer } = await mod('floor/painter.js');
+const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME } = await mod('floor/desk-layout.js');
 const { deskAgeReadout } = await mod('wire/age-readout.js');
 const { harnessMeasurer } = await import('../Support/harness-measurer.mjs');
 
@@ -175,21 +181,38 @@ function owed(e) {
             return [['rect', at], ['text', { x: e.x + e.text_dx, y: e.y, h: e.h, text: e.text },
                 (n) => (rectOf(n).w <= e.w - 2 * e.text_dx + EPS ? null : 'its text is wider than the chip less its padding')]];
         case 'flag':
-            return [['rect', at], ['text', { x: e.x + e.text_dx, y: e.y, w: e.w - 2 * e.text_dx, h: e.h, text: e.text }]];
-        case 'chip':
-            return [['rect', at], ['text', { x: e.x + (e.w - e.text_w) / 2, y: e.y, w: e.text_w, text: e.text }]];
+            return [['rect', at, classIs(['flag'])], ['text', { x: e.x + e.text_dx, y: e.y, w: e.w - 2 * e.text_dx, h: e.h, text: e.text }]];
+        case 'chip': {
+            // The chip's look by its state (§ 5.4, AT-D3-11): an unrecognised state is the hollow red chip
+            // and never a recognised member's colour; a held seat's chip is marked unconfirmed.
+            const look = [e.unrecognised ? 'unrecognised' : `state-${e.render_state}`, ...(e.unconfirmed ? ['unconfirmed'] : [])];
+
+            return [['rect', at, classIs(['chip', ...look])], ['text', { x: e.x + (e.w - e.text_w) / 2, y: e.y, w: e.text_w, text: e.text }, classIs(['t-chip', ...look])]];
+        }
         case 'stool':
             return [['rect', { x: e.x + (e.w - STOOL_GLYPH) / 2, y: e.y + e.h - STOOL_GLYPH, w: STOOL_GLYPH, h: STOOL_GLYPH }]];
+        case 'plate':
+            return [['rect', at, classIs(['plate'])]];
         case 'chair':
         case 'monitor':
         case 'placeholder':
         case 'side-table':
-        case 'plate':
         case 'lag-overlay':
             return [['rect', at]];
         default:
             return typeof e.text === 'string' ? [['text', { ...at, text: e.text }]] : [];
     }
+}
+
+/** A check that a painted node's class is exactly these tokens, in any order. */
+function classIs(tokens) {
+    const want = [...tokens].sort().join(' ');
+
+    return (n) => {
+        const got = classes(n).filter(Boolean).sort().join(' ');
+
+        return got === want ? null : `its class is «${got}» and its element owes «${want}»`;
+    };
 }
 
 /** The defects of one painted node against what was owed it. */
@@ -281,6 +304,32 @@ for (const g of layer?.children ?? []) {
 
 if (layer === undefined) {
     defects.push('the painter drew no desks layer');
+}
+
+// ── the page's own measurer: each role measured in its own font (§ 12's Nameplate type size row) ──
+{
+    const measure = measurer();
+
+    for (const [role, font] of [['fact', FONT], ['name', FONT_NAME]]) {
+        measured.length = 0;
+        measure('aimla-pm', role);
+
+        if (measured.length !== 1 || measured[0].font !== font) {
+            defects.push(`measurer(): the ${role} role measured in ${JSON.stringify(measured.map((m) => m.font))}, not «${font}»`);
+        }
+    }
+
+    let refused = false;
+
+    try {
+        measure('aimla-pm', 'headline');
+    } catch {
+        refused = true;
+    }
+
+    if (!refused) {
+        defects.push('measurer(): a role TYPE_ROLES does not declare was measured rather than refused');
+    }
 }
 
 console.log(JSON.stringify({ desks: desks.length, painted, defects }));

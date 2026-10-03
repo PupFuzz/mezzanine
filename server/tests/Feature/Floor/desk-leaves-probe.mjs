@@ -98,7 +98,7 @@ if (keysAsWritten !== Object.keys(baseline.desks).length) {
 
 const NOW_MS = Date.parse(baseline.now);
 // The desk is laid out with the planted fixture's measurer, one width per type role (card#11058 B2); the
-// baseline's own `measurer` is the record of how the desk before B1 was measured, and lays out nothing.
+// baseline's own `measurer` field is a record of how the desk before B1 was measured: nothing reads it.
 const PLANTED = JSON.parse(readFileSync(join(DATA, 'fx-desk-leaves-planted.json'), 'utf8'));
 const measure = harnessMeasurer(PLANTED.measurer);
 const BOX = { width: 440, height: 228 };

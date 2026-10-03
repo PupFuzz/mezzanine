@@ -312,6 +312,12 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             // Q2: the nameplate measured in the fact role and drawn in the name role.
             'the nameplate measured in the wrong type role' => ['../floor/desk-layout.js',
                 "fit(desk.nameplate, PLATE_TEXT_W, measure, 'name')", 'fit(desk.nameplate, PLATE_TEXT_W, measure)'],
+            // § 5.4 / AT-D3-11: an unrecognised state painted as a healthy recognised chip (review r1 MAJOR-1).
+            'an unrecognised state painted as a working chip' => ['../floor/painter.js',
+                "e.unrecognised ? 'unrecognised' : `state-\${e.render_state}`,", "`state-\${e.unrecognised ? 'working' : e.render_state}`,"],
+            "a held seat's chip not marked unconfirmed" => ['../floor/painter.js', "e.unconfirmed ? 'unconfirmed' : null,", 'null,'],
+            // The page's real measurer measuring the name role in the fact font (review r1 MINOR-1).
+            "the page's measurer in one font for every role" => ['../floor/painter.js', 'context.font = type.font;', 'context.font = TYPE_ROLES.fact.font;'],
         ];
 
         foreach ($controls as $what => $edit) {
