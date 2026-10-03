@@ -96,7 +96,7 @@ globalThis.CSS = { escape: (s) => s };
 
 const { deskModel } = await mod('desk/desk-render.js');
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
-const { createPainter, measurer } = await mod('floor/painter.js');
+const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
 const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME } = await mod('floor/desk-layout.js');
 
 /**
@@ -243,7 +243,10 @@ function owed(e, seat, failed) {
                     ?? (img.dataset.frames === undefined ? null : 'its sprite carries frames to step — an intern stands still (§ 8)');
             }];
 
-            return e.untitled ? [sprite, ['rect', at, classIs(['intern-edge'])]] : [sprite];
+            // The untitled edge at the intern's own rect, its corners at rx 3 (the designer's ruling).
+            const edge = ['rect', at, (n) => classIs(['intern-edge'])(n) ?? (n.getAttribute('rx') === '3' ? null : `its dashed edge has rx «${n.getAttribute('rx')}», not 3`)];
+
+            return e.untitled ? [sprite, edge] : [sprite];
         }
         case 'plate':
             return [['rect', at, classIs(['plate'])]];
@@ -390,6 +393,30 @@ if (layer === undefined) {
         defects.push(`the painter forgot ${forgotten.length} of the ${drawn.size} interns no longer drawn `
             + `(missed ${missed.slice(0, 2).join(', ')}; extra ${extra.slice(0, 2).join(', ')}) — an intern's key is minted per dispatch, `
             + 'so a cache that keeps it grows for the page\'s life');
+    }
+}
+
+// ── the untitled intern's look, as the designer ruled it (card#11058 PR-C): the edge no fill, the stool's
+// token at 1.5 wide, dashed `3 2`; the fallback glyph no fill, the stool's token, dashed `3 2` ──
+{
+    const rule = (selector) => {
+        const m = new RegExp(`(?:^|[}\\n])${selector.replace(/\./g, '\\.')}\\{([^}]*)\\}`).exec(STYLE);
+
+        return m === null ? null : Object.fromEntries(m[1].split(';').filter(Boolean).map((d) => d.split(':').map((x) => x.trim())));
+    };
+    const ruled = {
+        '.intern-edge': { fill: 'none', stroke: 'var(--scene-stool)', 'stroke-width': '1.5', 'stroke-dasharray': '3 2' },
+        '.stool.untitled': { fill: 'none', stroke: 'var(--scene-stool)', 'stroke-dasharray': '3 2' },
+    };
+
+    for (const [selector, want] of Object.entries(ruled)) {
+        const got = rule(selector);
+
+        for (const [prop, value] of Object.entries(want)) {
+            if (got?.[prop] !== value) {
+                defects.push(`STYLE: ${selector} declares ${prop} «${got?.[prop] ?? 'nothing'}», and the designer ruled «${value}»`);
+            }
+        }
     }
 }
 

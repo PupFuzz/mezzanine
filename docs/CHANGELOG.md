@@ -40,17 +40,16 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   desk's side table is now drawn as a small character of its own — static, 20 × 32, clipped to its rect —
   from the same character tree the seats use, under the key `seat~<call_id>` (the operator's ruling of
   2026-10-02, Q3), so an intern keeps its look when the list reorders, a sibling leaves or the page
-  reloads. An untitled intern is drawn inside a dashed edge, a placeholder look until the design fixes
-  one. An intern whose art fails to load falls back to the small glyph in its own rect, that intern alone:
-  the seat keeps its art, the other interns keep theirs, and the status strip reads *some art failed to
-  load*. The page forgets an intern's sprite once it is no longer drawn (the character tree gains
-  `forget()`; its hash is updated in `docs/ATTRIBUTION.md`), so a floor left open holds only the interns
-  on screen. `painter-probe.mjs` holds each intern node to its element (its viewport, its class, the tree
-  key it was drawn under, static), holds the badge and flag text classes, and paints every planted seat of
-  two or more interns in both orders on fresh painters to show each intern keeps its sprite; AT-D3-19
-  gains the per-stool leg and AT-D3-20 (e) the stool rects. FLOOR.md § 5.4, § 8, § 9 F14, § 10.4 (the key,
-  and the interns' collision figure stated as an estimate), § 13 (decision 47), AT-D3-19 and AT-D3-20
-  record it.
+  reloads. An untitled intern is drawn inside a dashed edge, and its fallback glyph is dashed too. An
+  intern whose art fails to load falls back to the small glyph in its own rect, that intern alone: the
+  seat keeps its art, the other interns keep theirs, and the status strip reads *some art failed to load*.
+  The page forgets an intern's sprite once it is no longer drawn (the character tree gains `forget()`; its
+  hash is updated in `docs/ATTRIBUTION.md`), so a floor left open holds only the interns on screen.
+  `painter-probe.mjs` holds each intern node to its element (its viewport, its class, the tree key it was
+  drawn under, static), holds the badge and flag text classes, and paints every planted seat of two or
+  more interns in both orders on fresh painters to show each intern keeps its sprite; AT-D3-19 gains the
+  per-stool leg and AT-D3-20 (e) the stool rects. FLOOR.md § 5.4, § 8, § 9 F14, § 10.4 (the key, and the
+  interns' collision figure stated as an estimate), § 13 (decision 47), AT-D3-19 and AT-D3-20 record it.
 
 - **card#11058** — **The desk's look: the nameplate in its own type, the state in its colour, and the art
   held in its rect.** The nameplate is drawn at 13 px bold — the desk's second measured type role, after

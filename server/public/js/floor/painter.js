@@ -76,7 +76,7 @@ ${ROOM_THEMES.map((theme) => `.plane-${theme}{fill:url(#plane-${theme})}.plane-$
 .chair{fill:var(--scene-chair)}.monitor{fill:var(--scene-monitor)}.monitor.lit-on{fill:var(--scene-monitor-on)}.monitor.lit-dimmed{fill:var(--scene-monitor-dim)}
 .placeholder{fill:var(--scene-placeholder);stroke:var(--scene-placeholder-edge);stroke-dasharray:4 3}
 .side-table{fill:var(--scene-side-table);stroke:var(--scene-side-table-edge)}.stool{fill:var(--scene-stool)}.stool.untitled{fill:none;stroke:var(--scene-stool);stroke-dasharray:3 2}
-.intern-edge{fill:none;stroke:var(--scene-stool);stroke-dasharray:3 2}
+.intern-edge{fill:none;stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}
 .lag-overlay{fill:url(#hatch);opacity:.6}.hatch{fill:var(--scene-trim)}
 .badge{fill:var(--scene-badge);stroke:var(--scene-badge-edge)}
 ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});stroke:var(--state-${state})}`).join('')}
@@ -325,12 +325,12 @@ export function createPainter({ characters, failed, select }) {
                 }
                 case 'stool':
                     if (e.art) {
-                        // § 8 / Q3: the intern's sprite, static, in its clipping viewport — its standing
-                        // frame from the character tree under its own key. An untitled intern is drawn
-                        // dashed (§ 8): its sprite inside a dashed edge. ⚠ The dashed look — the edge, its
-                        // dash and its colour, and the fallback glyph's dash below — is a PLACEHOLDER the
-                        // design has not fixed (the house's existing `3 2` dash and the stool's token), for
-                        // the designer to replace.
+                        // § 8 / Q3: the intern's sprite in its clipping viewport — the tree's phase-0 front
+                        // stand frame under its own key, face-on, `xMidYMax meet`, foot on the rect's floor
+                        // line; static, because an intern takes no § 6.2 row. An untitled intern is drawn
+                        // dashed (§ 8): its sprite inside a dashed edge at its own 20 × 32 rect — rx 3, no
+                        // fill, `--scene-stool` at 1.5 wide, dashed `3 2` — and its fallback glyph below is
+                        // dashed `3 2` with no fill (the designer's rulings on card#11058 PR-C).
                         const urls = characterFrames(e.install_id, e.key, e.asset, STILL);
 
                         if (urls !== null) {
@@ -339,7 +339,7 @@ export function createPainter({ characters, failed, select }) {
                             art(g, urls[0], e, e.asset, e.untitled ? 'intern pixel untitled' : 'intern pixel');
 
                             if (e.untitled) {
-                                node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, class: 'intern-edge' }, g);
+                                node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 3, class: 'intern-edge' }, g);
                             }
                         }
                     } else {

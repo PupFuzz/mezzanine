@@ -333,7 +333,11 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 'key: internKey(desk.seat_id, stool.call_id),', 'key: internKey(desk.seat_id, `intern${i}`),'],
             'an untitled intern drawn solid' => ['../floor/painter.js', "e.untitled ? 'intern pixel untitled' : 'intern pixel'", "'intern pixel'"],
             "an untitled intern's dashed edge dropped" => ['../floor/painter.js',
-                "node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, class: 'intern-edge' }, g);", ''],
+                "node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 3, class: 'intern-edge' }, g);", ''],
+            // The designer's rulings on the untitled look (card#11058 PR-C): the edge's corners and width.
+            "the untitled edge's rx dropped" => ['../floor/painter.js', "rx: 3, class: 'intern-edge'", "class: 'intern-edge'"],
+            "the untitled edge's stroke width dropped" => ['../floor/painter.js',
+                'stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}', 'stroke:var(--scene-stool);stroke-dasharray:3 2}'],
             'an intern drawn as the glyph with its art intact' => ['../floor/painter.js', '                    if (e.art) {', '                    if (false) {'],
             "an intern's sprite outside its clipping viewport" => ['../floor/painter.js',
                 "art(g, urls[0], e, e.asset, e.untitled ? 'intern pixel untitled' : 'intern pixel');",

@@ -517,8 +517,9 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
     }
 
     /**
-     * (e)'s stool rects (card#11058 PR-C, § 8 and § 10.4's art contract): each intern is drawn as a sprite
-     * in its own 20 × 32 rect — the contract's size, a Chosen figure § 12 and § 10.4 state — keyed
+     * (e)'s stool rects (card#11058 PR-C): each intern is drawn as a sprite in its own 20 × 32 rect — the
+     * size `docs/design/FLOOR.md` § 10.4's art-contract bullet (*The desk's art contract*) and § 8's
+     * first row (*one intern per open subagent*) state — keyed
      * `seat~<call_id>` by the intern the wire put at that place (Q3), on one row in the wire's order, no two
      * meeting and none meeting another element of its desk. These runs fail no art, so every intern is the
      * sprite rather than § 9 F14's per-stool glyph.
