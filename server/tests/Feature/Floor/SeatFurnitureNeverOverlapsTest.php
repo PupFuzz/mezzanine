@@ -162,7 +162,17 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
         $scene = $this->sceneOf(self::CAP, $dir);
 
         $this->assertNotSame([], $this->containmentDefects($scene), 'RED (the primitive that does not cut) did not fail (a)');
-        $this->assertNotSame([], $this->boundDefects(self::CAP, $dir), 'RED (the primitive that does not cut) did not fail (e)');
+
+        // (e) in BOTH of the desk's type roles (card#11058 Q2), each named so neither role's cut goes
+        // unread: the cap leg's descriptor, cut in the fact role, and the bound seat's 48 B nameplate, cut
+        // in the name role.
+        foreach ([
+            'fact' => [self::CAP, "'s descriptor at its bound is not drawn cut"],
+            'name' => [self::BOUND, "'s nameplate at its bound is not drawn cut"],
+        ] as $role => [$run, $says]) {
+            $this->assertNotSame([], array_filter($this->boundDefects($run, $dir), fn (string $d): bool => str_contains($d, $says)),
+                "RED (the primitive that does not cut) did not fail (e) in the {$role} role on {$run}");
+        }
     }
 
     public function test_red_the_hidden_stool(): void
@@ -355,7 +365,7 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
     /** (d): each bubble's box holds its measured text, and the bound title is cut with a mark. */
     private function measuredDefects(array $scene, string $run): array
     {
-        [$glyph] = $this->measurerOf($run);
+        [$glyph] = $this->measurerOf($run, 'fact');
         $defects = [];
 
         foreach ($scene['desks'] as $desk) {

@@ -189,7 +189,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             'the descriptor' => [[$layout, "        text('monitor-text', 'monitor', desk.action === null ? desk.desk_label : desk.monitor.text, R['monitor-text']);\n", ''], 'ii-missing', 'monitor-text'],
             'the quiet age' => [[$layout, "    text('quiet-age', 'quiet_age', desk.quiet_age, R['quiet-age']);\n", ''], 'ii-missing', 'quiet-age'],
             'the flag off by one' => [[$layout, 'const n = flagCount(desk, row);', 'const n = flagCount(desk, row) + 1;'], 'ii-missing', 'flag'],
-            'the flag dropped' => [[$layout, "        text('flag', 'unrecognised', FLAG_TEXT(n), R.flag, { count: n });\n", ''], 'ii-missing', 'flag'],
+            'the flag dropped' => [[$layout, "        elements.push({\n            kind: 'flag',", "        false && elements.push({\n            kind: 'flag',"], 'ii-missing', 'flag'],
             'the chip read from render_state' => [[$layout, 'fit(desk.render_state.recognised ? desk.glyph : UNRECOGNISED,', 'fit(desk.render_state.value,'], 'ii-missing', 'chip'],
             'the 8th intern' => [[$layout, "    const shown = stools.slice(0, STOOL_CAP);\n    const more = (desk.side_table.more ?? 0) + (stools.length - shown.length);",
                 "    const shown = stools.slice(0, STOOL_CAP - 1);\n    const more = (desk.side_table.more ?? 0) + Math.max(0, stools.length - STOOL_CAP);"], 'ii-missing', 'stool'],
@@ -291,19 +291,39 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
     }
 
     /**
-     * The PAINTER puts every text and rect of a desk inside that desk's box (`painter-probe.mjs`, review
-     * r1 m3) — the class of a desk-local offset painted as an absolute one.
+     * The PAINTER puts every node of a desk exactly where its layout element is, and inside that desk's box
+     * (`painter-probe.mjs`, review r1 m3 and r2) — the class of a desk-local offset painted as an absolute
+     * one, and of a node displaced INSIDE its box, which containment alone reads clean.
      */
-    public function test_the_painter_draws_every_text_and_rect_inside_its_desks_box(): void
+    public function test_the_painter_draws_every_node_at_its_layout_element_and_inside_its_desks_box(): void
     {
         $shipped = $this->painterRun();
 
         $this->assertGreaterThan(0, $shipped['painted'], 'the painter probe read no painted node');
         $this->assertSame([], $shipped['defects']);
 
-        $dir = $this->mutatedModules(['../floor/painter.js', 'x: e.x + e.text_dx, id', 'x: e.text_dx, id']);
+        $controls = [
+            'the badge text drawn at its desk-local offset' => ['../floor/painter.js', 'x: e.x + e.text_dx, id', 'x: e.text_dx, id'],
+            // In-box displacements (review r2): each stays inside the box, so only the equality reds.
+            "the chip's rect drawn 40 px right of its element" => ['../floor/painter.js',
+                'x: e.x, y: e.y, width: e.w, height: e.h, rx: 7', 'x: e.x + 40, y: e.y, width: e.w, height: e.h, rx: 7'],
+            "an intern's glyph drawn 10 px right in its rect" => ['../floor/painter.js',
+                'x: e.x + (e.w - STOOL_GLYPH) / 2,', 'x: e.x + (e.w - STOOL_GLYPH) / 2 + 10,'],
+            // Q2: the nameplate measured in the fact role and drawn in the name role.
+            'the nameplate measured in the wrong type role' => ['../floor/desk-layout.js',
+                "fit(desk.nameplate, PLATE_TEXT_W, measure, 'name')", 'fit(desk.nameplate, PLATE_TEXT_W, measure)'],
+        ];
 
-        $this->assertNotSame([], $this->painterRun(dirname($dir))['defects'], 'CONTROL (the badge text drawn at its desk-local offset) did not red');
+        foreach ($controls as $what => $edit) {
+            $defects = $this->painterRun(dirname($this->mutatedModules($edit)))['defects'];
+
+            $this->assertNotSame([], $defects, "CONTROL ({$what}) did not red");
+
+            if ($what !== 'the badge text drawn at its desk-local offset') {
+                $this->assertSame([], array_values(array_filter($defects, fn (string $d): bool => str_contains($d, "leaves the desk's box"))),
+                    "CONTROL ({$what}) left the box — it is planted to stay inside it, where containment alone reads clean");
+            }
+        }
     }
 
     /** @return array{desks: int, painted: int, defects: list<string>} */

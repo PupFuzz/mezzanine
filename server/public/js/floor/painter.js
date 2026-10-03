@@ -29,9 +29,10 @@
  * stylesheet's, at the cycle the scene states.
  */
 
-import { FONT, LINE, STOOL_GLYPH } from './desk-layout.js';
+import { FONT, FONT_NAME, STOOL_GLYPH, TYPE_ROLES } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
 import { ROOM_THEMES } from './scene.js';
+import { RENDER_STATES } from '../lobby/render-state.js';
 
 /** The furniture box and the desk sprite — `resources/floor/furniture-box.js`, by the asset route. */
 export const FURNITURE_MODULE = '/art/floor/furniture-box.js';
@@ -44,6 +45,9 @@ const SVG = 'http://www.w3.org/2000/svg';
 /** § 10.4's art contract: a desk's art is drawn in proportion, centred, on its rect's floor line. */
 const MEET = 'xMidYMax meet';
 
+/** A text's type role when its element names none — `fit()`'s own default (`desk-layout.js`). */
+const FACT = 'fact';
+
 /**
  * The drawing's own stylesheet — which palette token each class paints with, and the § 6.2 forms'
  * keyframes, placed inside the SVG so the drawing carries it wherever the camera takes it. ⛔ NO COLOUR
@@ -52,8 +56,8 @@ const MEET = 'xMidYMax meet';
  * sheet does not declare, and on a hex colour here). Presentation only: every duration, reach and
  * step count is the scene's, set per element; nothing here decides WHETHER anything moves.
  */
-const STYLE = `
-text{font:${FONT};fill:var(--scene-ink)}
+export const STYLE = `
+text{font:${FONT};fill:var(--scene-ink)}text.role-name{font:${FONT_NAME}}
 .wall{fill:url(#house-wall)}.wall-top{stop-color:var(--house-wall)}.wall-bottom{stop-color:var(--house-wall-2)}
 .skirting,.slab{fill:var(--house-trim)}
 .window{fill:var(--scene-glass);stroke:var(--window-frame);stroke-width:5}.mullion{stroke:var(--window-frame);stroke-width:3}.sill{fill:var(--window-frame)}
@@ -68,8 +72,12 @@ ${ROOM_THEMES.map((theme) => `.plane-${theme}{fill:url(#plane-${theme})}.plane-$
 .placeholder{fill:var(--scene-placeholder);stroke:var(--scene-placeholder-edge);stroke-dasharray:4 3}
 .side-table{fill:var(--scene-side-table);stroke:var(--scene-side-table-edge)}.stool{fill:var(--scene-stool)}.stool.untitled{fill:none;stroke:var(--scene-stool)}
 .lag-overlay{fill:url(#hatch);opacity:.6}.hatch{fill:var(--scene-trim)}
-.badge,.chip{fill:var(--scene-badge);stroke:var(--scene-badge-edge)}.chip.unconfirmed{stroke-dasharray:3 2}.chip.unrecognised{fill:var(--scene-paper);stroke:var(--scene-unrecognised);stroke-dasharray:3 2}
-.plate{fill:var(--scene-paper);stroke:var(--scene-trim)}
+.badge{fill:var(--scene-badge);stroke:var(--scene-badge-edge)}
+${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});stroke:var(--state-${state})}`).join('')}
+.chip.unconfirmed{fill:var(--scene-paper);stroke-width:1.5;stroke-dasharray:3 2}.chip.unrecognised{fill:var(--scene-paper);stroke:var(--scene-unrecognised);stroke-width:1.5;stroke-dasharray:3 2}
+.t-chip{fill:var(--state-ink)}.t-chip.unconfirmed{fill:var(--state-ink-unconfirmed)}.t-chip.unrecognised{fill:var(--scene-unrecognised)}
+.flag{fill:var(--scene-flag);stroke:var(--scene-flag-edge)}.t-flag{fill:var(--scene-flag-ink)}
+.plate{fill:var(--scene-plate);stroke:var(--scene-plate-edge)}
 .gauge-track{fill:var(--scene-gauge-track)}.gauge-fill{fill:var(--scene-gauge-fill)}
 .bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-tail{stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
 .lighting-dimmed{opacity:.72}.lighting-dark{opacity:.45}.lighting-desaturated{filter:saturate(.3)}
@@ -112,13 +120,30 @@ export async function loadArt() {
     return { furniture, characters, failed };
 }
 
-/** The page's own text measurer, in the scene's font — § 5.1 rule 4's measured box. */
+/**
+ * The page's own text measurer — § 5.1 rule 4's measured box — answering in the TYPE ROLE it is asked
+ * for (`desk-layout.js`'s `TYPE_ROLES`: the fact role, and the nameplate's name role, Q2), one canvas
+ * font per role. A role the table does not declare is refused: a width measured in a guessed font is
+ * the guess rule 4 forbids.
+ */
 export function measurer() {
-    const context = document.createElement('canvas').getContext('2d');
+    const contexts = new Map(Object.entries(TYPE_ROLES).map(([role, type]) => {
+        const context = document.createElement('canvas').getContext('2d');
 
-    context.font = FONT;
+        context.font = type.font;
 
-    return (text) => ({ w: context.measureText(String(text)).width, h: LINE });
+        return [role, { context, line: type.line }];
+    }));
+
+    return (text, role) => {
+        const type = contexts.get(role);
+
+        if (type === undefined) {
+            throw new TypeError(`the measurer has no type role ${JSON.stringify(role)} — TYPE_ROLES declares ${[...contexts.keys()].join(', ')}`);
+        }
+
+        return { w: type.context.measureText(String(text)).width, h: type.line };
+    };
 }
 
 function node(name, attrs = {}, parent = null) {
@@ -187,11 +212,7 @@ export function createPainter({ characters, failed, select }) {
         return frames.get(asset);
     };
 
-    /**
-     * An image in its rect. Tiles stretch to their cell (`none`); the desk's art — the character and
-     * the desk sprite — is drawn `xMidYMax meet` (§ 10.4's art contract): kept in proportion,
-     * centred, standing on the rect's floor line.
-     */
+    /** An image in its rect. Tiles stretch to their cell (`none`); the desk's art is `art()`'s. */
     const image = (parent, href, x, y, w, h, asset, extra = {}) => {
         const el = node('image', { href, x, y, width: w, height: h, preserveAspectRatio: 'none', ...extra }, parent);
 
@@ -200,8 +221,27 @@ export function createPainter({ characters, failed, select }) {
         return el;
     };
 
+    /**
+     * A desk's art in its rect (§ 10.4's art contract): a CLIPPING VIEWPORT — a nested `<svg>` at the
+     * element's rect, `overflow: hidden` — holding the image drawn `xMidYMax meet`, kept in proportion,
+     * centred and standing on the rect's floor line. Whatever the art file draws past its own frame is
+     * clipped at the rect the layout gave it, so no art reaches a neighbouring element or the box's edge.
+     */
+    const art = (parent, href, e, asset, cls) => {
+        const port = node('svg', { x: e.x, y: e.y, width: e.w, height: e.h, viewBox: `0 0 ${e.w} ${e.h}`, overflow: 'hidden', class: 'art' }, parent);
+
+        return image(port, href, 0, 0, e.w, e.h, asset, { class: cls, preserveAspectRatio: MEET });
+    };
+
+    /** A text at its type role's baseline, in its role's font (`TYPE_ROLES`; no role is the fact role). */
     const text = (parent, e, cls) => {
-        const el = node('text', { x: e.x, y: e.y + LINE - 2, class: cls, 'data-id': e.id ?? null }, parent);
+        const role = e.role ?? FACT;
+        const el = node('text', {
+            x: e.x,
+            y: e.y + TYPE_ROLES[role].baseline,
+            class: role === FACT ? cls : `${cls} role-${role}`,
+            'data-id': e.id ?? null,
+        }, parent);
 
         el.textContent = e.text;
 
@@ -234,7 +274,7 @@ export function createPainter({ characters, failed, select }) {
                     const urls = characterFrames(desk.install_id, desk.seat_id, e.asset);
 
                     if (urls !== null) {
-                        const el = image(g, urls[0], e.x, e.y, e.w, e.h, e.asset, { class: 'character pixel', preserveAspectRatio: MEET });
+                        const el = art(g, urls[0], e, e.asset, 'character pixel');
 
                         if (e.animation?.motion === true && e.animation.frame_interval_ms !== null) {
                             el.dataset.frames = JSON.stringify(urls);
@@ -244,7 +284,7 @@ export function createPainter({ characters, failed, select }) {
                     break;
                 }
                 case 'desk-sprite':
-                    image(g, e.asset, e.x, e.y, e.w, e.h, e.asset, { class: 'sprite', preserveAspectRatio: MEET });
+                    art(g, e.asset, e, e.asset, 'sprite');
                     break;
                 case 'bar':
                 case 'gauge-bar':
@@ -252,20 +292,22 @@ export function createPainter({ characters, failed, select }) {
                     node('rect', { x: e.x, y: e.y, width: e.w * (e.pct / 100), height: e.h, class: 'gauge-fill' }, g);
                     break;
                 case 'badge':
-                    node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, class: 'badge' }, g);
-                    text(g, { ...e, x: e.x + e.text_dx, id }, 'badge-text');
+                case 'flag':
+                    node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 3, class: e.kind }, g);
+                    text(g, { ...e, x: e.x + e.text_dx, id }, e.kind === 'badge' ? 'badge-text' : 't-flag');
                     break;
-                case 'chip':
-                    node('rect', {
-                        x: e.x,
-                        y: e.y,
-                        width: e.w,
-                        height: e.h,
-                        rx: 4,
-                        class: ['chip', e.unconfirmed ? 'unconfirmed' : null, e.unrecognised ? 'unrecognised' : null].filter(Boolean).join(' '),
-                    }, g);
-                    text(g, { ...e, x: e.x + (e.w - e.text_w) / 2, id }, 't-chip');
+                case 'chip': {
+                    // The state's colour (§ 7.1, Q4 a) by its RECOGNISED member only: an unrecognised
+                    // state's raw string is never a class on the desk (Q0); its chip is the hollow red one.
+                    const look = [
+                        e.unrecognised ? 'unrecognised' : `state-${e.render_state}`,
+                        e.unconfirmed ? 'unconfirmed' : null,
+                    ].filter(Boolean).join(' ');
+
+                    node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 7, class: `chip ${look}` }, g);
+                    text(g, { ...e, x: e.x + (e.w - e.text_w) / 2, id }, `t-chip ${look}`);
                     break;
+                }
                 case 'stool':
                     // Interim until card#11058 PR-C draws the intern's sprite: § 8's glyph inside its rect.
                     node('rect', {
@@ -305,7 +347,7 @@ export function createPainter({ characters, failed, select }) {
             text(g, { x: b.x + 3, y: b.y + 3, text: b.text, id: `${desk.key}:bubble` }, 'bubble-text');
 
             if (b.second !== null) {
-                text(g, { x: b.x + 3, y: b.y + 3 + LINE, text: b.second, id: `${desk.key}:bubble2` }, 'bubble-source');
+                text(g, { x: b.x + 3, y: b.y + 3 + TYPE_ROLES[FACT].line, text: b.second, id: `${desk.key}:bubble2` }, 'bubble-source');
             }
         }
     }

@@ -135,14 +135,17 @@ trait DrivesTheScene
     }
 
     /**
-     * The measurer the fixture states: `[glyph width, line height]`.
+     * The measurer the fixture states, in one type role (`Support/harness-measurer.mjs`):
+     * `[glyph width, line height]`.
      *
      * @return array{0: int, 1: int}
      */
-    protected function measurerOf(string $run): array
+    protected function measurerOf(string $run, string $role): array
     {
         $m = $this->fixture($run)['floor']['scene']['measurer'];
 
-        return [$m['glyph_w'], $m['line_h']];
+        $this->assertArrayHasKey($role, $m['glyph_w'], "the {$run} fixture's measurer states no {$role} role");
+
+        return [$m['glyph_w'][$role], $m['line_h'][$role]];
     }
 }
