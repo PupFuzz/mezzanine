@@ -267,7 +267,7 @@ class TheFloorDrawsItsFrameTest extends TestCase
                 const spare = objects[free];
 
                 desks.push(placeDesk(model, `${d.key}/spare`, installId, null, { x: room.origin.x + spare.x, y: room.origin.y + spare.y }, {
-                    box, measure: input.measure, character: input.character, sprite, placeholder: true,
+                    box, measure: input.measure, character: input.character, sprite, placeholder: true, failed,
                 }, { overflow: false, slot: free, object_id: spare.id }));
             }
 JS;

@@ -16,8 +16,11 @@ export { PORTRAIT_W, PORTRAIT_H, SCENE_W, SCENE_H } from './portrait-art.js';
 /** @typedef {{ front: Buf[], back: Buf[] }} SceneFrames */
 
 // Composition is a few thousand `set()` calls, so it is cached per seat rather than per paint —
-// a floor repaints its desks far more often than the fleet gains a seat. The key space is the
-// rendered seat set, which the feed already bounds, so there is nothing to evict.
+// a floor repaints its desks far more often than the fleet gains a seat. For SEATS the key space
+// is the rendered seat set, which the feed already bounds. An INTERN is drawn under its own key,
+// `seat~<call_id>` (docs/design/FLOOR.md section 10.4), and a call id is minted per dispatch, so
+// that key space grows for as long as a page stays open: the consumer that draws interns calls
+// `forget()` for each one it no longer draws, which keeps the cache to what is on screen.
 /** @type {Map<string, Buf>} */
 const portraitCache = new Map();
 /** @type {Map<string, SceneFrames>} */
@@ -56,6 +59,18 @@ export function sceneFrames(installId, seatId) {
     sceneCache.set(key, frames);
   }
   return frames;
+}
+
+/**
+ * Drop a key's cached pixels — the portrait and the scene frames. The next paint composes them
+ * again, byte-identical (the recipe is a pure function of the key), so forgetting is never
+ * visible; it only stops a key nobody draws any more from holding memory.
+ * @param {string} installId @param {string} seatId
+ */
+export function forget(installId, seatId) {
+  const key = seatKey(installId, seatId);
+  portraitCache.delete(key);
+  sceneCache.delete(key);
 }
 
 /**

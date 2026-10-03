@@ -48,6 +48,11 @@ const MEET = 'xMidYMax meet';
 /** A text's type role when its element names none — `fit()`'s own default (`desk-layout.js`). */
 const FACT = 'fact';
 
+/** A seat's walk frames — stand, step-left, step-right — and an intern's one frame: it stands still (§ 8). */
+const WALK = [0, 1, 2];
+
+const STILL = [0];
+
 /**
  * The drawing's own stylesheet — which palette token each class paints with, and the § 6.2 forms'
  * keyframes, placed inside the SVG so the drawing carries it wherever the camera takes it. ⛔ NO COLOUR
@@ -70,7 +75,8 @@ ${ROOM_THEMES.map((theme) => `.plane-${theme}{fill:url(#plane-${theme})}.plane-$
 .pixel{image-rendering:pixelated}
 .chair{fill:var(--scene-chair)}.monitor{fill:var(--scene-monitor)}.monitor.lit-on{fill:var(--scene-monitor-on)}.monitor.lit-dimmed{fill:var(--scene-monitor-dim)}
 .placeholder{fill:var(--scene-placeholder);stroke:var(--scene-placeholder-edge);stroke-dasharray:4 3}
-.side-table{fill:var(--scene-side-table);stroke:var(--scene-side-table-edge)}.stool{fill:var(--scene-stool)}.stool.untitled{fill:none;stroke:var(--scene-stool)}
+.side-table{fill:var(--scene-side-table);stroke:var(--scene-side-table-edge)}.stool{fill:var(--scene-stool)}.stool.untitled{fill:none;stroke:var(--scene-stool);stroke-dasharray:3 2}
+.intern-edge{fill:none;stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}
 .lag-overlay{fill:url(#hatch);opacity:.6}.hatch{fill:var(--scene-trim)}
 .badge{fill:var(--scene-badge);stroke:var(--scene-badge-edge)}
 ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});stroke:var(--state-${state})}`).join('')}
@@ -182,11 +188,20 @@ export function createPainter({ characters, failed, select }) {
         }
     };
     const frames = new Map();
+    // The interns whose frames are held, asset → [install, key], and those this paint drew: an intern no
+    // longer drawn is forgotten here and in the tree, because its key is minted per dispatch and the
+    // caches would otherwise grow for as long as the page stays open (`resources/characters/index.js`).
+    const interns = new Map();
+    let drawnInterns = new Set();
     let loop = null;
     let svg = null;
 
-    /** The seat's walk frames as image URLs, drawn once per seat (the tree caches the pixels). */
-    const characterFrames = (installId, seatId, asset) => {
+    /**
+     * A character's frames as image URLs, drawn once per asset (the tree caches the pixels): a seat's walk
+     * frames, or an intern's one standing frame — the tree handed the intern key (`internKey()`) in the
+     * seat's place.
+     */
+    const characterFrames = (installId, seatId, asset, phases = WALK) => {
         if (characters === null) {
             report(asset);
 
@@ -195,7 +210,7 @@ export function createPainter({ characters, failed, select }) {
 
         if (!frames.has(asset)) {
             try {
-                frames.set(asset, [0, 1, 2].map((phase) => {
+                frames.set(asset, phases.map((phase) => {
                     const canvas = document.createElement('canvas');
 
                     characters.paintSceneFrame(canvas.getContext('2d'), installId, seatId, { phase, scale: 1 });
@@ -309,14 +324,34 @@ export function createPainter({ characters, failed, select }) {
                     break;
                 }
                 case 'stool':
-                    // Interim until card#11058 PR-C draws the intern's sprite: § 8's glyph inside its rect.
-                    node('rect', {
-                        x: e.x + (e.w - STOOL_GLYPH) / 2,
-                        y: e.y + e.h - STOOL_GLYPH,
-                        width: STOOL_GLYPH,
-                        height: STOOL_GLYPH,
-                        class: e.untitled ? 'stool untitled' : 'stool',
-                    }, g);
+                    if (e.art) {
+                        // § 8 / Q3: the intern's sprite in its clipping viewport — the tree's phase-0 front
+                        // stand frame under its own key, face-on, `xMidYMax meet`, foot on the rect's floor
+                        // line; static, because an intern takes no § 6.2 row. An untitled intern is drawn
+                        // dashed (§ 8): its sprite inside a dashed edge at its own 20 × 32 rect — rx 3, no
+                        // fill, `--scene-stool` at 1.5 wide, dashed `3 2` — and its fallback glyph below is
+                        // dashed `3 2` with no fill (the designer's rulings on card#11058 PR-C).
+                        const urls = characterFrames(e.install_id, e.key, e.asset, STILL);
+
+                        if (urls !== null) {
+                            interns.set(e.asset, [e.install_id, e.key]);
+                            drawnInterns.add(e.asset);
+                            art(g, urls[0], e, e.asset, e.untitled ? 'intern pixel untitled' : 'intern pixel');
+
+                            if (e.untitled) {
+                                node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 3, class: 'intern-edge' }, g);
+                            }
+                        }
+                    } else {
+                        // § 9 F14's per-stool fallback: the glyph inside its rect, that stool alone.
+                        node('rect', {
+                            x: e.x + (e.w - STOOL_GLYPH) / 2,
+                            y: e.y + e.h - STOOL_GLYPH,
+                            width: STOOL_GLYPH,
+                            height: STOOL_GLYPH,
+                            class: e.untitled ? 'stool untitled' : 'stool',
+                        }, g);
+                    }
                     break;
                 case 'chair':
                 case 'monitor':
@@ -553,8 +588,18 @@ export function createPainter({ characters, failed, select }) {
 
         const desks = node('g', { class: 'desks' }, svg);
 
+        drawnInterns = new Set();
+
         for (const desk of scene.desks) {
             paintDesk(desks, desk);
+        }
+
+        for (const [asset, [installId, key]] of interns) {
+            if (!drawnInterns.has(asset)) {
+                interns.delete(asset);
+                frames.delete(asset);
+                characters.forget(installId, key);
+            }
         }
 
         if (scene.strip !== null) {

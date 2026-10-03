@@ -114,14 +114,18 @@ const BADGE_PITCH = 112;
 /** A badge chip's inner padding: an id of at most ⌊(BADGE_W − 2 × BADGE_PAD) ÷ glyph width⌋ glyphs fits. */
 const BADGE_PAD = 3;
 
-/** One intern's sprite rect, and the pitch the row lays them at (§ 2.5). */
+/** One intern's sprite rect, and the pitch the row lays them at (§ 8, § 10.4's art contract). */
 const STOOL_W = 20;
 
 const STOOL_H = 32;
 
 const STOOL_PITCH = 24;
 
-/** The interim intern glyph, drawn inside its sprite rect until PR-C draws the sprite. */
+/**
+ * § 9 F14's per-stool fallback: the glyph an intern whose art failed is drawn as, inside its sprite
+ * rect (dashed when untitled). One intern's art failing falls back for that stool alone — never the
+ * desk's placeholder, which stands in for the seat's own art.
+ */
 export const STOOL_GLYPH = 8;
 
 /** The state chip's widest box, and its inner padding. */
@@ -310,7 +314,8 @@ export const NOT_DRAWN_MEMBERS = Object.freeze({
  *
  * @param {object} desk one desk model (`desk/desk-render.js`'s `deskModel()`)
  * @param {object} ctx `{ box: {width, height}, measure, character: {w, h}, sprite: {url, w, h}|null,
- *        placeholder: boolean }` — `placeholder` is § 9 F14's: every fact, no art
+ *        placeholder: boolean, failed: Set<string> }` — `placeholder` is § 9 F14's: every fact, no art;
+ *        `failed` the asset ids the painter reported, which an intern's sprite is looked up in
  * @returns {{elements: list<object>, bubble: object|null}}
  */
 export function deskLayout(desk, ctx) {
@@ -446,10 +451,20 @@ export function deskLayout(desk, ctx) {
         rect('side-table', 'side_table', R['side-table']);
 
         shown.forEach((stool, i) => {
+            const asset = internAsset(desk, stool.call_id);
+
+            // Q3: the sprite is keyed by the intern's call, never by its place in the row; § 9 F14: an
+            // intern whose art failed falls back to the glyph, that stool alone.
             rect('stool', 'side_table', { ...R.stool, x: R.stool.x + i * STOOL_PITCH }, {
                 call_id: stool.call_id,
                 untitled: stool.untitled,
                 index: i,
+                // What the character tree is handed — the install and the intern key in the seat's place —
+                // from the same model the asset id is, so the two can never name different interns.
+                install_id: desk.install_id,
+                key: internKey(desk.seat_id, stool.call_id),
+                asset,
+                art: !ctx.failed.has(asset),
             });
         });
 
@@ -510,6 +525,22 @@ export function clusterOrder(desk) {
 /** The asset id a desk's character is reported under when the painter cannot draw it (§ 9 F14). */
 export function characterAsset(desk) {
     return `character:${desk.install_id}/${desk.seat_id}`;
+}
+
+/**
+ * THE INTERN KEY — `seat~<call_id>` (§ 10.4; the operator's ruling of 2026-10-02 on card#11058 Q3: "intern
+ * sprites keyed by call_id"). The character tree is handed it in the seat's place, so an intern's look is
+ * a pure function of `(install_id, seat_id, call_id)`: it keeps its sprite when `subagents[]` reorders or
+ * a sibling leaves, and two siblings never share one. `~` is outside the `seat_id` alphabet
+ * (`App\Support\Slug::SEAT_ID`), so no intern key is ever a seat's.
+ */
+export function internKey(seatId, callId) {
+    return `${seatId}~${callId}`;
+}
+
+/** The asset id an intern's sprite is reported under when the painter cannot draw it (§ 9 F14). */
+export function internAsset(desk, callId) {
+    return `intern:${desk.install_id}/${internKey(desk.seat_id, callId)}`;
 }
 
 /** The union of a list of rects, or `null` for none. */

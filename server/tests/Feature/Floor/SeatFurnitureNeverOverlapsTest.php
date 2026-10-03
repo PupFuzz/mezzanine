@@ -184,6 +184,20 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
             'RED (the hidden stool) did not fail (e)');
     }
 
+    /** (e)'s stool rects: an intern's sprite drawn over its neighbour, and interns keyed by their place in the row. */
+    public function test_red_the_stool_rects(): void
+    {
+        foreach ([
+            'the pitch narrower than the sprite' => ['const STOOL_PITCH = 24;', 'const STOOL_PITCH = 16;', 'meets the desk\'s stool'],
+            'the intern keyed by its place' => ['key: internKey(desk.seat_id, stool.call_id),', 'key: internKey(desk.seat_id, `intern${i}`),', 'is keyed'],
+            'the sprite drawn at the glyph\'s size' => ['const STOOL_W = 20;', 'const STOOL_W = 8;', 'not the art contract\'s 20 × 32'],
+        ] as $what => [$from, $to, $says]) {
+            $defects = $this->boundDefects(self::CAP, $this->mutatedModules(['../floor/desk-layout.js', $from, $to]));
+
+            $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_contains($d, $says)), "RED ({$what}) did not fail (e)'s stool rects");
+        }
+    }
+
     /** The flag that miscounts — one of the badges past the row dropped from N. */
     public function test_red_the_flag_that_miscounts(): void
     {
@@ -437,6 +451,8 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
                 if ($more > 0 && array_column($this->elementsOf($desk, 'stool-more'), 'text') !== ["+{$more} more"]) {
                     $defects[] = "{$desk['key']} does not draw its +{$more} more";
                 }
+
+                $defects = [...$defects, ...$this->stoolRectDefects($desk, $seat)];
             }
 
             if (($seat['action']['descriptor'] ?? null) !== null && strlen($seat['action']['descriptor']) >= 200) {
@@ -495,6 +511,53 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
 
         if ($run === self::CAP) {
             $this->assertGreaterThan(0, $flagged, 'no desk of the cap leg draws a flag — (e)\'s flag half reads nothing');
+        }
+
+        return $defects;
+    }
+
+    /**
+     * (e)'s stool rects (card#11058 PR-C): each intern is drawn as a sprite in its own 20 × 32 rect — the
+     * size `docs/design/FLOOR.md` § 10.4's art-contract bullet (*The desk's art contract*) and § 8's
+     * first row (*one intern per open subagent*) state — keyed
+     * `seat~<call_id>` by the intern the wire put at that place (Q3), on one row in the wire's order, no two
+     * meeting and none meeting another element of its desk. These runs fail no art, so every intern is the
+     * sprite rather than § 9 F14's per-stool glyph.
+     *
+     * @param  array<string, mixed>  $desk
+     * @param  array<string, mixed>  $seat
+     * @return list<string>
+     */
+    private function stoolRectDefects(array $desk, array $seat): array
+    {
+        $defects = [];
+        $stools = $this->elementsOf($desk, 'stool');
+
+        foreach ($stools as $i => $e) {
+            $call = $seat['subagents'][$i]['call_id'] ?? null;
+            $at = "{$desk['key']}'s intern {$i}";
+
+            if ([$e['w'], $e['h']] !== [20, 32]) {
+                $defects[] = "{$at} is drawn {$e['w']} × {$e['h']}, not the art contract's 20 × 32";
+            }
+
+            if ($e['call_id'] !== $call || $e['key'] !== "{$seat['seat_id']}~{$call}") {
+                $defects[] = "{$at} is keyed «{$e['key']}», not the intern key «{$seat['seat_id']}~{$call}» of the call the wire put there";
+            }
+
+            if ($e['art'] !== true) {
+                $defects[] = "{$at} is drawn as the fallback glyph on a run that failed no art";
+            }
+
+            if ($i > 0 && ($e['y'] !== $stools[0]['y'] || $e['x'] <= $stools[$i - 1]['x'])) {
+                $defects[] = "{$at} is off the row, or out of the wire's order";
+            }
+
+            foreach ($desk['elements'] as $other) {
+                if ($other !== $e && $this->intersect($e, $other)) {
+                    $defects[] = "{$at} meets the desk's {$other['kind']}";
+                }
+            }
         }
 
         return $defects;

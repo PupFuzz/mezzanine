@@ -186,7 +186,7 @@ class AnUnrecognisedMemberRendersAsUnrecognisedTest extends TestCase
             .'  const root = { querySelector: (s) => (s === "[data-panel-unrecognised]" ? list : null),'
             .'    ownerDocument: { createElement: () => ({ dataset: {}, textContent: "" }) } };'
             .'  renderDrillDown(root, drillDownModel({ ...seat, server_time: "2026-08-23T14:23:14.900Z" }, null, { now_ms: Date.parse("2026-08-23T14:23:15Z") }));'
-            .'  return { elements: deskLayout(model, { box: { width: 440, height: 228 }, measure, character: { w: 18, h: 32 }, sprite: null, placeholder: false }).elements,'
+            .'  return { elements: deskLayout(model, { box: { width: 440, height: 228 }, measure, character: { w: 18, h: 32 }, sprite: null, placeholder: false, failed: new Set() }).elements,'
             .'    panel_rows: list.hidden ? [] : list.children.map((li) => li.textContent) };'
             .'})));';
 

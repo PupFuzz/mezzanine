@@ -20,7 +20,7 @@ import { dirname, join } from 'node:path';
 
 import {
   characterFor, seatKey, fnv1a32, draw,
-  portraitBuf, sceneFrames,
+  portraitBuf, sceneFrames, forget,
   PORTRAIT_W, PORTRAIT_H, SCENE_W, SCENE_H,
 } from '../../resources/characters/index.js';
 import {
@@ -135,6 +135,26 @@ for (const f of ['index.js', 'seed.js', 'portrait-art.js']) {
   const src = readFileSync(join(REPO, 'resources', 'characters', f), 'utf8');
   check(!/data:image\//.test(src), `${f} carries no data:image/ URI`);
   check(!/\b(fetch|XMLHttpRequest|new Image|\.src\s*=)/.test(src), `${f} loads nothing at run time`);
+}
+
+// --- 8. forget() drops one key's cached pixels, and only that key's ---------------------------
+// An intern is drawn under its own key, `seat~<call_id>`, minted per dispatch, so the floor's painter
+// forgets each intern it no longer draws (docs/design/FLOOR.md section 10.4). Forgetting must make the
+// next read RECOMPOSE (a new object) to the SAME bytes, and must leave every other key's entry alone.
+section('8. forget() recomposes the key it names, byte-identical, and nothing else');
+{
+  const I = ['aimla', 'aimla-pm~01K3TB00000000000000000100'];
+  const p0 = portraitBuf(...I), s0 = sceneFrames(...I);
+  const pB = portraitBuf(...B), sB = sceneFrames(...B);
+  check(portraitBuf(...I) === p0 && sceneFrames(...I) === s0, 'before forget(): both caches hand back the cached object');
+  forget(...I);
+  const p1 = portraitBuf(...I), s1 = sceneFrames(...I);
+  check(p1 !== p0, 'after forget(): the portrait is recomposed (a new object)');
+  check(s1 !== s0, 'after forget(): the scene frames are recomposed (a new object)');
+  check(Buffer.compare(Buffer.from(p1), Buffer.from(p0)) === 0, 'the recomposed portrait is byte-equal to the forgotten one');
+  check(['front', 'back'].every((v) => s1[v].every((f, i) => Buffer.compare(Buffer.from(f), Buffer.from(s0[v][i])) === 0)),
+    'the recomposed scene frames are byte-equal to the forgotten ones');
+  check(portraitBuf(...B) === pB && sceneFrames(...B) === sB, 'CONTROL — forgetting one key leaves another key\'s cached entries intact');
 }
 
 console.log(`\n${failures === 0 ? 'ALL CHARACTER SELFTESTS PASS' : `${failures} CHECK(S) FAILED`}`);
