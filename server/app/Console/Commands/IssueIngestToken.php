@@ -53,13 +53,13 @@ class IssueIngestToken extends Command
 
         // D1 § 3.1's slugs, from `App\Support\Slug` — the building surface's route checks the same one.
         if (preg_match(Slug::pattern(Slug::INSTALL_ID), $installId) !== 1) {
-            $this->error('install_id must match '.Slug::pattern(Slug::INSTALL_ID).' (D1 § 3.1)');
+            $this->error(sprintf('install_id %s must match %s (D1 § 3.1)', self::shown($installId), Slug::pattern(Slug::INSTALL_ID)));
 
             return self::FAILURE;
         }
 
         if (preg_match(Slug::pattern(Slug::SEAT_ID), $seatId) !== 1) {
-            $this->error('seat_id must match '.Slug::pattern(Slug::SEAT_ID).' (D1 § 3.1)');
+            $this->error(sprintf('seat_id %s must match %s (D1 § 3.1)', self::shown($seatId), Slug::pattern(Slug::SEAT_ID)));
 
             return self::FAILURE;
         }
@@ -138,5 +138,14 @@ class IssueIngestToken extends Command
         $this->newLine();
 
         return self::SUCCESS;
+    }
+
+    /**
+     * A refused id as a JSON string, so what made it no slug is on the screen: a trailing line
+     * break or a space prints as `\n` or inside the quotes rather than as nothing.
+     */
+    private static function shown(string $id): string
+    {
+        return (string) json_encode($id, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     }
 }
