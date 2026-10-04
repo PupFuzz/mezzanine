@@ -932,6 +932,10 @@ timestamp + 80 random bits, lexicographically sortable by mint time, generated i
 `crypto.randomBytes` (no dependency); `rfc3339_ms` = `YYYY-MM-DDTHH:MM:SS.sssZ`, UTC, always three
 fractional digits; `enum` = a closed set given per field; all string bounds are **bytes** of UTF-8,
 NFC-normalised; all integers fit in a JS safe integer.
+Every pattern in this document, a `^…$` regex or a type such as `ULID`, matches the **whole** value,
+as a JavaScript regex reads `^…$`: a value that ends in a line break does not match. Where the ingest
+checks a pattern ([§ 12.1](#121-validation-order)), it refuses such a value as it refuses any other
+value that fails that pattern (card#11253, card#11263).
 
 ⭐ **Every per-field byte bound in this section's tables is ENFORCED AT THE INGEST, and an event
 carrying a field over one is REFUSED** — `422 invalid_event` naming the field, the bound and what

@@ -135,7 +135,7 @@ final class ReadTokens
 
     private static function bearer(Request $request): ?string
     {
-        if (! preg_match('/^Bearer\s+(\S+)$/', (string) $request->header('Authorization', ''), $m)) {
+        if (! preg_match('/^Bearer\s+(\S+)$/D', (string) $request->header('Authorization', ''), $m)) {
             return null;
         }
 

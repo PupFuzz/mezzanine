@@ -156,7 +156,7 @@ final class TokenResolver
     {
         $header = (string) $request->header('Authorization', '');
 
-        if (! preg_match('/^Bearer\s+(\S+)$/', $header, $m)) {
+        if (! preg_match('/^Bearer\s+(\S+)$/D', $header, $m)) {
             return null;
         }
 

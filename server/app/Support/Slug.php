@@ -15,7 +15,9 @@ namespace App\Support;
  * Callers: `mezzanine:ingest-token:issue` (where an install and a seat are minted),
  * `GET /api/building/rooms/{install_id}/map` (`docs/design/FLEET-STATE.md § 8.7`: "The surface
  * answers for any `install_id` that matches D1 § 3.1's slug; one that does not is `404`"), and
- * `App\Floor\FloorMap`'s `reserved_for` (`AGENT_NAME`).
+ * `App\Floor\FloorMap`'s `reserved_for` (`AGENT_NAME`). `pattern()` also anchors the ingest's own
+ * patterns in `App\Ingest\Wire` (ULID, `kind`, `session_id`; card#11263), so the two classes have one
+ * anchoring rule between them rather than a copy each.
  */
 final class Slug
 {
