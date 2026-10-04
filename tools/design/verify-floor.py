@@ -538,7 +538,10 @@ else:
         "fit": r"further elements that fit \| \*\*(\d+)\*\*",
         "reach": r"the cap could reach \| \*\*(\d+)\*\*",
         "reach_b": r"worst-case delta of \*\*([\d,]+) B\*\*",
-        "breach": r"16 breaches \| \*\*([\d,]+) B\*\*",
+        # The row's own label names the cap one past the reachable one; it is parsed rather than
+        # written here (it read "16" until card#11144's 95 B moved the reachable cap from 15 to 14).
+        "breach_at": r"\| (\d+) breaches \| \*\*[\d,]+ B\*\*",
+        "breach": r"\| \d+ breaches \| \*\*([\d,]+) B\*\*",
         "over": r"which is \*\*(\d+) B over\*\*",
     }
     for k, p in pats.items():
@@ -559,6 +562,7 @@ else:
                                    ("elements that fit", g3["fit"], want_fit),
                                    ("cap reachable", g3["reach"], want_reach),
                                    ("worst case at that cap", g3["reach_b"], want_reach_b),
+                                   ("the cap one past it", g3["breach_at"], want_reach + 1),
                                    ("worst case one past it", g3["breach"], want_breach),
                                    ("bytes over the bound", g3["over"], want_over)):
             if stated != want:

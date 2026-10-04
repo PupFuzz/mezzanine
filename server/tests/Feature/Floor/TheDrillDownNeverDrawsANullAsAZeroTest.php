@@ -69,6 +69,7 @@ class TheDrillDownNeverDrawsANullAsAZeroTest extends TestCase
         'enabled' => ['reporter.enabled', 'absent'],
         'protocol_agent_name' => null,
         'protocol_agent_name_check' => null,
+        'protocol_agent_role' => null,
         'unknown_reason' => null,
         'api_error_type' => null,
         'blocked_since' => null,

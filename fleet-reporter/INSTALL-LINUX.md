@@ -643,6 +643,9 @@ route the batches take (card#9473). Read its exit code by D1 § 6.14:
   `detail.protocol_agent_name_in_roster.malformed_declaration` is not `null`, the check failed for
   another reason: the declared value is not a valid name by D1 § 3.1, and that field shows the value,
   or its type for a non-string. The seat still reports, as `undeclared`, until the config is fixed.
+  The same detail's `roster_role` shows the role the seat relays from its roster entry (card#11144),
+  or why it relays `null`: *no role: the entry carries none*, *not a slug: …*, or *ambiguous: N
+  entries named X* when two roster entries share the declared name. None of those fails the command.
 - **`rc=2`** — no check failed and at least one is `not_measured`. The probe reached no ingest
   (`detail.tls_verify.probe_error`), or the ingest answered without its accepted set
   (`detail.schema_version_accepted.http_status`; a `401` is the ingest refusing the config's token,
@@ -753,6 +756,10 @@ processes, as Step 5 reports.
   install used a checkout of `4ce0a19` (Step 1), which is older. A seat running an older build sends no
   name, and the snapshot shows `protocol_agent_name: null`, until Step 1's artifact is replaced and
   Step 5's flusher restarted.
+- **`protocol_agent_role` is sent only by a build that includes card#11144.** That build relays the
+  roster entry's `role` beside the name. A seat running an older build sends no role, and the
+  snapshot shows `protocol_agent_role: null`, until Step 1's artifact is replaced and Step 5's flusher
+  restarted.
 - **A seat installed from a build before card#9374 stays badged `epoch_reset`.** That build counted
   the first start's missing `state.json` as D1 § 11.4's state reset, so the first heartbeat carried
   `state_reset: 1`. On the sandbox the badge was still on heartbeat seq 10, eleven minutes later and

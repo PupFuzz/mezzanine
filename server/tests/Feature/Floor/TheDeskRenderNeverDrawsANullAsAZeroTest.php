@@ -225,6 +225,7 @@ class TheDeskRenderNeverDrawsANullAsAZeroTest extends TestCase
             'reporter.uptime_s' => $panel,
             'protocol_agent_name' => 'the floor\'s coordination line (§ 5.7, Appendix B step 7): the desk renders exactly as it did before',
             'protocol_agent_name_check' => 'the floor\'s coordination line (§ 5.7, Appendix B step 7): nothing is drawn',
+            'protocol_agent_role' => 'no surface draws it (§ 5.6, card#11144): a relayed label, and the desk renders exactly as it did before',
         ];
     }
 

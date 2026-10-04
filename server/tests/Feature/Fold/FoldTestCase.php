@@ -455,6 +455,7 @@ abstract class FoldTestCase extends TestCase
                 'spool_lag_events' => 0, 'oldest_unsent_age_s' => null, 'last_hook_at' => null,
                 'open_calls' => 0, 'open_sessions' => 0, 'open_attention' => 0, 'enabled' => true,
                 'protocol_agent_name' => 'pm', 'protocol_agent_name_check' => 'checked',
+                'protocol_agent_role' => 'pm',
                 'degraded' => [], 'counters' => ['batches_sent' => $i + 1], 'counters_omitted' => 0,
                 'predicates' => [], 'selftest' => ['spool_writable' => 'pass'],
                 'config_fingerprint' => '9f2c41a7be03d518',

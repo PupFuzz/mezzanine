@@ -363,17 +363,36 @@ function rosterSite() {
   return { path: path.join(home, '.config', 'coord', 'coordination.config.json'), via: 'home' };
 }
 
-/* The roster's member names, or null when NO ROSTER IS READABLE — a missing file, an unreadable
+/* The roster's members, or null when NO ROSTER IS READABLE — a missing file, an unreadable
  * one, invalid JSON, or a document with no `roster` array all map to § 3.1's `unchecked`. D1 names
  * the roster and not its member key: `roster[].name` is the coordination framework's own spelling
  * (its orientation templates: "`COORD_AGENT` … must match a `roster[].name`"), and
- * `fleet-reporter/INSTALL-LINUX.md` Step 2 lists a roster the same way. Never throws. */
+ * `fleet-reporter/INSTALL-LINUX.md` Step 2 lists a roster the same way. `roles` is each named
+ * entry's `role` member as the file holds it (`undefined` when the entry has none), index-aligned
+ * with `names`; `roleOf` below is the only reader of it. Never throws. */
 function readRosterNames(file) {
   let doc;
   try { doc = JSON.parse(fs.readFileSync(file, 'utf8')); }
-  catch (e) { return { names: null, error: e.code || 'not valid JSON' }; }
-  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.roster)) return { names: null, error: 'no roster[] array' };
-  return { names: doc.roster.filter((r) => r && typeof r.name === 'string').map((r) => r.name), error: null };
+  catch (e) { return { names: null, roles: null, error: e.code || 'not valid JSON' }; }
+  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.roster)) return { names: null, roles: null, error: 'no roster[] array' };
+  const named = doc.roster.filter((r) => r && typeof r.name === 'string');
+  return { names: named.map((r) => r.name), roles: named.map((r) => r.role), error: null };
+}
+
+/* § 3.1's relayed ROLE (card#11144): `roster[].role` of the ONE roster entry the declared name
+ * selects, carried verbatim and never interpreted — this reporter knows no role by name. Called only
+ * on a `checked` declaration, so `name` is a member of `names`. It relays `null`, with the reason in
+ * `selftest`'s `detail.roster_role`, when the name matches MORE THAN ONE entry (a duplicate name
+ * selects nothing, rather than whichever entry happens to come first) or when the entry's `role` is
+ * absent or is not a slug by the name's own pattern and bound (`AGENT_NAME_RE`) — the same rule a
+ * malformed declared name gets, so the heartbeat never carries a value the ingest would refuse. */
+function roleOf(roster, name) {
+  const at = roster.names.flatMap((n, i) => (n === name ? [i] : []));
+  if (at.length !== 1) return { role: null, detail: `ambiguous: ${at.length} entries named ${name}` };
+  const v = roster.roles[at[0]];
+  if (v === undefined || v === null) return { role: null, detail: 'no role: the entry carries none' };
+  if (typeof v === 'string' && AGENT_NAME_RE.test(v)) return { role: v, detail: v };
+  return { role: null, detail: `not a slug: ${typeof v === 'string' ? JSON.stringify(v) : `<${Array.isArray(v) ? 'array' : typeof v}>`}` };
 }
 
 /* One row of § 3.1's state table, and its § 9.3 counter. The counter is counted once per resolution:
@@ -382,16 +401,19 @@ function readRosterNames(file) {
  * the `selftest` subcommand nothing flushes the counters, so it costs no count on the seat. */
 function resolveDeclaration(cfg) {
   const name = declaredAgentName(cfg);
-  if (name === null) return { name: null, check: 'undeclared', roster: null, via: null, error: null, malformed: malformedAgentName(cfg) };
+  if (name === null) return { name: null, check: 'undeclared', role: null, roster_role: null, roster: null, via: null, error: null, malformed: malformedAgentName(cfg) };
   const site = rosterSite();
   const roster = site.path === null ? { names: null, error: site.error || 'no roster site on this platform' } : readRosterNames(site.path);
   if (roster.names === null) {
     count('protocol_agent_name_unchecked');
-    return { name, check: 'unchecked', roster: site.path, via: site.via, error: roster.error, malformed: null };
+    return { name, check: 'unchecked', role: null, roster_role: null, roster: site.path, via: site.via, error: roster.error, malformed: null };
   }
-  if (roster.names.includes(name)) return { name, check: 'checked', roster: site.path, via: site.via, error: null, malformed: null };
+  if (roster.names.includes(name)) {
+    const r = roleOf(roster, name);
+    return { name, check: 'checked', role: r.role, roster_role: r.detail, roster: site.path, via: site.via, error: null, malformed: null };
+  }
   count('protocol_agent_name_disagreed');
-  return { name, check: 'disagreed', roster: site.path, via: site.via, error: null, roster_names: roster.names, malformed: null };
+  return { name, check: 'disagreed', role: null, roster_role: null, roster: site.path, via: site.via, error: null, roster_names: roster.names, malformed: null };
 }
 
 /* ── P-6: a secret VALUE must never reach an output stream, a log, a traceback or an argv ────
@@ -2626,6 +2648,10 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, declaration, atMs) {
     // flusher start — never per flush.
     protocol_agent_name: declaration.name,
     protocol_agent_name_check: declaration.check,
+    // § 6.14's relayed role (card#11144): the selected roster entry's `role`, and `null` whenever
+    // the check is not `checked`, the name selects more than one entry, or the entry carries no
+    // slug-shaped role. Resolved with the name, at flusher start.
+    protocol_agent_role: declaration.role,
     degraded: buildDegraded(all).slice(0, K.DEGRADED_MAX),
     counters, counters_omitted, predicates, selftest: st,
     config_fingerprint: configFingerprint(cfg),
@@ -3203,7 +3229,7 @@ function runSelftestChecks(config, cp) {
   detail.protocol_agent_name_in_roster = declaration
     ? { declared: declaration.name, protocol_agent_name_check: declaration.check, roster: declaration.roster,
       read_via: declaration.via, roster_error: declaration.error, roster_names: declaration.roster_names,
-      malformed_declaration: declaration.malformed }
+      roster_role: declaration.roster_role, malformed_declaration: declaration.malformed }
     : { declared: null, protocol_agent_name_check: null, reason: 'no readable config' };
   return { results, detail, declaration };
 }

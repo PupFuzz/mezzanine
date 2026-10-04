@@ -21,7 +21,8 @@ WHAT IT COVERS THAT NOTHING ELSE DOES
              and `next_seq` does not advance past events that were never accepted
   4. the health surface answering the reporter's own `schema_version_accepted` selftest
   5. D1 § 3.1's declaration pair — every `protocol_agent_name_check` state the reporter builds is
-     accepted, stored and folded onto the seat, with its RED (card#9375)
+     accepted, stored and folded onto the seat, with its RED (card#9375) — and the roster role the
+     reporter relays beside it, with its own RED (card#11144)
 
 RUNNING IT
 ──────────
@@ -622,7 +623,11 @@ def check_declaration(h):
     home.mkdir(exist_ok=True)
     roster = h.work / "declaration-coord" / "coordination.config.json"
     roster.parent.mkdir(exist_ok=True)
-    roster.write_text(json.dumps({"roster": [{"name": "pm"}, {"name": "magento"}]}))
+    roster.write_text(json.dumps({"roster": [{"name": "pm", "role": "pm"}, {"name": "magento", "role": "impl"}]}))
+    # card#11144: a name two entries share selects nothing, so the role relays `null` under `checked`.
+    dup_roster = h.work / "declaration-coord-dup" / "coordination.config.json"
+    dup_roster.parent.mkdir(exist_ok=True)
+    dup_roster.write_text(json.dumps({"roster": [{"name": "magento", "role": "impl"}, {"name": "magento", "role": "pm"}]}))
 
     def run(declared, coord_config, script=None):
         """A fresh spool, two passes: the first spools its heartbeat after its drain, the second sends it."""
@@ -636,34 +641,50 @@ def check_declaration(h):
         h.flush(script=script, env=env)
         return [json.loads(e["data"]) for e in h.stored_events() if e["kind"] == "reporter.heartbeat"]
 
+    # (label, declared name, roster site, the check, the role the reporter must relay)
     cases = [
-        ("checked", "magento", str(roster)),
-        ("unchecked", "magento", str(h.work / "declaration-nowhere" / "coordination.config.json")),
-        ("disagreed", "magenta", str(roster)),
-        ("undeclared", None, str(roster)),
+        ("checked", "magento", str(roster), "checked", "impl"),
+        ("checked, a duplicate roster name", "magento", str(dup_roster), "checked", None),
+        ("unchecked", "magento", str(h.work / "declaration-nowhere" / "coordination.config.json"), "unchecked", None),
+        ("disagreed", "magenta", str(roster), "disagreed", None),
+        ("undeclared", None, str(roster), "undeclared", None),
     ]
-    for state, declared, coord_config in cases:
+    for label, declared, coord_config, state, role in cases:
         beats = run(declared, coord_config)
-        pairs = sorted({(b.get("protocol_agent_name"), b.get("protocol_agent_name_check")) for b in beats}, key=str)
-        record(f"a `{state}` heartbeat is accepted and stored with the pair the reporter built",
-               bool(beats) and pairs == [(declared, state)] and not (h.spool / "REJECTED.txt").exists(),
-               f"stored pairs={pairs}")
+        triples = sorted({(b.get("protocol_agent_name"), b.get("protocol_agent_name_check"),
+                           b.get("protocol_agent_role", "<absent>")) for b in beats}, key=str)
+        record(f"a `{label}` heartbeat is accepted and stored with the pair and role the reporter built",
+               bool(beats) and triples == [(declared, state, role)] and not (h.spool / "REJECTED.txt").exists(),
+               f"stored (name, check, role)={triples}")
         h.artisan("mezzanine:fold", "--once")
-        folded = h.query("select protocol_agent_name, protocol_agent_name_check from seat_state")
-        record(f"  … and the fold puts `{state}` on the seat",
-               [(r["protocol_agent_name"], r["protocol_agent_name_check"]) for r in folded] == [(declared, state)],
+        folded = h.query("select protocol_agent_name, protocol_agent_name_check, protocol_agent_role from seat_state")
+        record(f"  … and the fold puts `{label}` on the seat",
+               [(r["protocol_agent_name"], r["protocol_agent_name_check"], r["protocol_agent_role"]) for r in folded]
+               == [(declared, state, role)],
                f"seat_state={folded}")
 
     defective = h.work / "fleet-reporter-bad-check.js"
     src = REPORTER.read_text()
     # The heartbeat's member, and not `runSelftestChecks`' detail object, which spells the same key.
-    anchor = "    protocol_agent_name_check: declaration.check,\n    degraded:"
+    anchor = "    protocol_agent_name_check: declaration.check,\n    // § 6.14's relayed role"
     if not record("declaration RED plant found its target in fleet-reporter.js", src.count(anchor) == 1,
                   "the heartbeat's check member moved; the RED below is not evidence"):
         return
-    defective.write_text(src.replace(anchor, "    protocol_agent_name_check: 'verified',\n    degraded:", 1))
+    defective.write_text(src.replace(anchor, "    protocol_agent_name_check: 'verified',\n    // § 6.14's relayed role", 1))
     beats = run("magento", str(roster), script=defective)
     record("declaration RED — a check value outside § 3.1's set is refused: nothing stored, REJECTED.txt written",
+           not beats and (h.spool / "REJECTED.txt").exists(), f"{len(beats)} heartbeats stored")
+
+    # card#11144's RED: a reporter relaying a role past § 6.14's 48 B figure. The ingest refuses the
+    # heartbeat by that figure, so the batch is quarantined rather than the role reaching D2's column.
+    role_anchor = "    protocol_agent_role: declaration.role,\n"
+    if not record("role RED plant found its target in fleet-reporter.js", src.count(role_anchor) == 1,
+                  "the heartbeat's role member moved; the RED below is not evidence"):
+        return
+    over = h.work / "fleet-reporter-over-bound-role.js"
+    over.write_text(src.replace(role_anchor, "    protocol_agent_role: 'a'.repeat(49),\n", 1))
+    beats = run("magento", str(roster), script=over)
+    record("role RED — a role one byte past § 6.14's bound is refused: nothing stored, REJECTED.txt written",
            not beats and (h.spool / "REJECTED.txt").exists(), f"{len(beats)} heartbeats stored")
 
 

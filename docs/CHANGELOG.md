@@ -40,6 +40,19 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   `disabled` falls under the tool's bound on the sheet. FLOOR.md § 7.3 now gives `offline` desks the dark
   treatment the floor draws, apart from `stale`'s dimmed one.
 
+- **card#11144** — **Each seat carries its agent's roster role.** On the roster read the protocol agent
+  name check already makes, `fleet-reporter` now relays the `role` of the coordination roster entry the
+  declared name selects, verbatim, as `protocol_agent_role` on every heartbeat. It relays `null` when the
+  name check is not `checked`, when the entry carries no slug-shaped `role`, or when two roster entries
+  share the declared name; `selftest`'s `detail.protocol_agent_name_in_roster.roster_role` says which,
+  and no check, counter or badge is added. The ingest accepts the member (≤ 48 B, optional, so an older
+  reporter's heartbeat is still valid), the fold stores it in a new nullable `seat_state` column, and the
+  seat object and its `seat.delta` carry it; `mezzanine:rebuild` resets it with the name pair. A seat box
+  shows its role once its reporter is replaced with this build and its flusher restarted.
+  `docs/design/EVENT-SCHEMA.md` § 3.1, § 6.14, § 18.13 row 6 and AT-27, `docs/design/FLEET-STATE.md`
+  § 6.4, § 6.5, § 8.2.1 and its re-measured sizes, and `docs/design/FLOOR.md` § 5.6 follow; the subagent
+  cap's arithmetic in FLOOR.md § 8.1 is re-measured on the larger worst-case delta (the cap stays 8).
+
 - **card#11144** — **A room map can reserve one desk for a role, and the shipped room reserves its
   back-row right corner for the PM.** A `desks` object may now carry one property, `reserved_for` — a
   Tiled `string` naming a role in the protocol agent name's shape (lowercase `[a-z0-9-]`, at most 48

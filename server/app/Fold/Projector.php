@@ -929,6 +929,13 @@ class Projector
                 'protocol_agent_name_check',
                 KindRegistry::KINDS['reporter.heartbeat']['enums']['protocol_agent_name_check']['members'],
             ),
+            // card#11144: the roster entry's ROLE the reporter relays (D1 § 3.1), last heartbeat's
+            // value verbatim under the same rules as the pair above — heartbeat-only, an omitted key
+            // writes `null`, and the bound is read from the ingest's registry, not restated.
+            'protocol_agent_role' => $e->str(
+                'protocol_agent_role',
+                KindRegistry::KINDS['reporter.heartbeat']['bounds']['protocol_agent_role'],
+            ),
             'reporter_uptime_s' => $e->int('uptime_s'),
             // § 7.3: stored VERBATIM as a snapshot, never summed and never merged into
             // `seat_counters`. They are monotonic since flusher start, so last-write-wins is the

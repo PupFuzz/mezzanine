@@ -52,7 +52,10 @@ The one key the reporter reads beyond § 3.1's table is marked as such in the co
 `protocol_agent_name` (§ 3.1) is optional. When a seat declares one, the reporter checks it against
 the coordination roster at flusher start and on `selftest`, found by § 3.1's resolution order. The name and the check's state ride every
 heartbeat, and `selftest`'s `protocol_agent_name_in_roster` fails when a readable roster does not hold
-the name.
+the name. On that same roster read the reporter relays the `role` of the roster entry the name
+selects as `protocol_agent_role` on every heartbeat (§ 3.1, card#11144): verbatim when the check is
+`checked` and exactly one entry carries that name with a slug-shaped `role`, and `null` otherwise.
+`selftest`'s `detail.protocol_agent_name_in_roster.roster_role` says what the read found.
 
 ## Running the acceptance suite
 
