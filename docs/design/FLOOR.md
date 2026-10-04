@@ -4337,8 +4337,10 @@ artifact is the worked example of it.
   `RENDER_STATES`), with `--state-ink` / `--state-ink-unconfirmed` for the chip's word; `--scene-plate` /
   `--scene-plate-edge` for the nameplate's plate; and `--scene-flag` / `--scene-flag-edge` /
   `--scene-flag-ink` for the flag ⚠ +N. The test reads the painter's style as the painter builds it, so a
-  token spelled through a generated rule is read like any other. This states WHERE the palette lives; the
-  values stay unspecified, as the *What is deliberately NOT specified* bullet below says.
+  token spelled through a generated rule is read like any other. `Tests\Feature\Floor\TheFloorDrawsItsFrameTest`
+  reds on a `--state-<member>` that holds `--state-ink` under 4.5:1 at full light, and
+  `tools/design/state-chip-colours.py` re-derives how far apart the chip fills stay as drawn (card#11218).
+  This states WHERE the palette lives; the values stay unspecified, as the *What is deliberately NOT specified* bullet below says.
 - **The desk's art contract — where a desk's art is drawn, and the clip that holds it there** (card#11058).
   A desk's images — the character and the desk sprite — are drawn into the rects
   `server/public/js/floor/desk-layout.js`'s `deskRects()` derives from the furniture box

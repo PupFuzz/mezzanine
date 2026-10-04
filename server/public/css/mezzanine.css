@@ -111,16 +111,20 @@
     /* The state chip (§ 7.1, card#11058 Q4 a): one colour per `render_state` member — `lobby/render-state.js`'s
        ten, which the painter's chip rules are generated from — and the chip's ink, each fill light enough to
        hold it. The word on the chip carries the state; the colour never carries it alone. A held seat's chip
-       is hollow, edged in its state's colour, in the unconfirmed ink. `retired` is never drawn (no desk). */
+       is hollow, edged in its state's colour, in the unconfirmed ink. `retired` is never drawn (no desk).
+       The three quiet states are a cold family — frost, dusk, slate — chosen so that, as the tokens, as the
+       dimmed hollow edge and AS DRAWN under § 7.3's lighting over either plank course, every pair involving one
+       of them is at least 5 ΔE2000 apart under the three dichromacies; the live states' own pairs are PR #269's;
+       re-derived by `tools/design/state-chip-colours.py`. */
     --state-working: #57c785;
     --state-idle: #9aa7c0;
     --state-blocked: #f0b455;
     --state-stalled: #d97b6c;
     --state-unknown: #c9a7e8;
     --state-catching_up: #8ecfdb;
-    --state-stale: #b0aa9c;
-    --state-offline: #828a9a;
-    --state-disabled: #93a3b3;
+    --state-stale: #b8d1d1;
+    --state-offline: #5398c3;
+    --state-disabled: #8188a4;
     --state-retired: #828a9a;
     --state-ink: #1b1f2b;
     --state-ink-unconfirmed: #5c6270;
