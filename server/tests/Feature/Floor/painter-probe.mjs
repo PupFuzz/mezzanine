@@ -39,43 +39,14 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { Node } from './fake-svg-node.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const JS = args.includes('--js') ? args[args.indexOf('--js') + 1] : join(HERE, '..', '..', '..', 'public', 'js');
 const mod = async (p) => import(pathToFileURL(join(JS, p)).href);
 
-// ── the fake DOM: exactly what the painter touches ────────────────────────────────────────────────
-class Node {
-    constructor(name) {
-        this.name = name;
-        this.attrs = {};
-        this.children = [];
-        this.parentNode = null;
-        this.dataset = {};
-        this.style = { setProperty() {} };
-        this.textContent = '';
-    }
-
-    setAttribute(k, v) { this.attrs[k] = String(v); }
-
-    getAttribute(k) { return this.attrs[k] ?? null; }
-
-    append(...nodes) { for (const n of nodes) { n.parentNode = this; this.children.push(n); } }
-
-    replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
-
-    addEventListener() {}
-
-    contains() { return false; }
-
-    focus() {}
-
-    querySelector() { return null; }
-
-    querySelectorAll() { return []; }
-}
-
+// ── the fake DOM: exactly what the painter touches (`fake-svg-node.mjs`) ─────────────────────────────
 const host = new Node('div');
 
 globalThis.document = {
