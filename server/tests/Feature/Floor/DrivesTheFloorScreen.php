@@ -171,18 +171,40 @@ trait DrivesTheFloorScreen
     }
 
     /**
-     * § 3.2's worked assignment, READ OUT OF THE DOCUMENT: `install/seat => slot`, and the modulus
-     * the table is stated over.
+     * § 3.2's worked assignment, READ OUT OF THE DOCUMENT: `install/seat => slot`, the modulus the
+     * table is stated over, and the reserved desk's holder — the row whose Probes cell reads `role`.
      *
      * ⛔ THE MODULUS IS PARSED FROM THE TABLE'S OWN HEADER, because that is where § 3.2 states `S`
      * for the worked case (*`h mod 6`*) — so a map with another slot count, or a document that
      * re-worked its example, moves this expectation instead of drifting from it.
      *
-     * @return array{slots: array<string, int>, modulus: int}
+     * ⛔ EVERY ROW IS HELD TO THE FUNCTION IT CLAIMS TO WORK (`slotTableDefects()`), and the `role`
+     * row to the shipped default's reservation (card#11144): a hashed row's `h` is the key's hash, its
+     * `h mod S` is that hash's, and its probes land it on its slot; the table carries exactly one
+     * `role` row when the shipped default reserves a desk — the reserved desk's index — and none when
+     * it does not. A holder written with a numeric probe count is a row claiming the loop placed a
+     * seat the loop never saw, and reds here.
+     *
+     * @return array{slots: array<string, int>, modulus: int, holder: string|null}
      */
-    protected function documentSlots(): array
+    protected function documentSlots(?string $document = null): array
     {
-        $document = $this->floorMd();
+        $table = $this->slotTable($document ?? $this->floorMd());
+
+        $this->assertSame([], $this->slotTableDefects($table, $this->shippedDefaultReservation()),
+            "§ 3.2's worked assignment does not work the function it publishes over the shipped default");
+
+        return ['slots' => $table['slots'], 'modulus' => $table['modulus'], 'holder' => $table['holder']];
+    }
+
+    /**
+     * § 3.2's worked table as it is written: each row's `h`, `h mod S`, Probes cell (`role` for the
+     * reserved desk's holder, card#11144) and slot.
+     *
+     * @return array{modulus: int, rows: array<string, array{h: int, mod: int, probes: int|null, slot: int}>, slots: array<string, int>, holder: string|null}
+     */
+    protected function slotTable(string $document): array
+    {
         $start = strpos($document, '### 3.2 The desk slot function');
 
         $this->assertIsInt($start, '§ 3.2 is not in FLOOR.md under the heading this rig reads');
@@ -192,19 +214,82 @@ trait DrivesTheFloorScreen
         $this->assertSame(1, preg_match('/\| Seat \| `h` \| `h mod (\d+)` \| Probes \| Slot \|/', $section, $header),
             "§ 3.2's worked assignment table is not in the form this rig reads, so every expected slot below would be unread");
 
-        $rows = preg_match_all('/^\| `([^`]+)` \| \d+ \| \d+ \| \d+ \| \*\*(\d+)\*\* \|$/m', $section, $found, PREG_SET_ORDER);
+        $count = preg_match_all('/^\| `([^`]+)` \| (\d+) \| (\d+) \| (\d+|role) \| \*\*(\d+)\*\* \|$/m', $section, $found, PREG_SET_ORDER);
 
-        $this->assertGreaterThan(3, $rows, "§ 3.2's worked assignment parsed fewer rows than it publishes");
+        $this->assertGreaterThan(3, $count, "§ 3.2's worked assignment parsed fewer rows than it publishes");
 
+        $rows = [];
         $slots = [];
+        $holder = null;
 
-        foreach ($found as [, $key, $slot]) {
+        foreach ($found as [, $key, $h, $mod, $probes, $slot]) {
+            $rows[$key] = ['h' => (int) $h, 'mod' => (int) $mod, 'probes' => $probes === 'role' ? null : (int) $probes, 'slot' => (int) $slot];
             $slots[$key] = (int) $slot;
+
+            if ($probes === 'role') {
+                $holder = $key;
+            }
         }
 
         ksort($slots);
 
-        return ['slots' => $slots, 'modulus' => (int) $header[1]];
+        return ['modulus' => (int) $header[1], 'rows' => $rows, 'slots' => $slots, 'holder' => $holder];
+    }
+
+    /**
+     * Every way § 3.2's worked table disagrees with the function it works, over a map whose
+     * reservation is `$reservation` (`shippedDefaultReservation()`'s shape, or `null`).
+     *
+     * @param  array{modulus: int, rows: array<string, array{h: int, mod: int, probes: int|null, slot: int}>}  $table
+     * @param  array{index: int, id: int, role: string}|null  $reservation
+     * @return list<string>
+     */
+    protected function slotTableDefects(array $table, ?array $reservation): array
+    {
+        $defects = [];
+        $S = $table['modulus'];
+        $holders = [];
+
+        foreach ($table['rows'] as $key => $row) {
+            if ($row['h'] !== $this->fnv1a32($key)) {
+                $defects[] = "[{$key}] `h` is {$row['h']}, and § 3.2's hash of the key is ".$this->fnv1a32($key);
+            }
+
+            if ($row['mod'] !== $row['h'] % $S) {
+                $defects[] = "[{$key}] `h mod {$S}` is {$row['mod']}, and {$row['h']} mod {$S} is ".($row['h'] % $S);
+            }
+
+            if ($row['probes'] === null) {
+                $holders[] = $key;
+
+                continue;
+            }
+
+            if (($row['mod'] + $row['probes']) % $S !== $row['slot']) {
+                $defects[] = "[{$key}] {$row['probes']} probes from {$row['mod']} do not land on slot {$row['slot']}";
+            }
+
+            if ($reservation !== null && $row['slot'] === $reservation['index']) {
+                $defects[] = "[{$key}] a hashed seat sits at the reserved desk (index {$reservation['index']})";
+            }
+        }
+
+        if ($reservation === null && $holders !== []) {
+            $defects[] = 'the table seats '.implode(', ', $holders).' by role, and the shipped default reserves no desk';
+        }
+
+        if ($reservation !== null && count($holders) !== 1) {
+            $defects[] = 'the shipped default reserves desk id '.$reservation['id'].' for `'.$reservation['role']
+                .'`, and the table writes '.count($holders).' `role` rows rather than one';
+        }
+
+        foreach ($holders as $key) {
+            if ($reservation !== null && $table['rows'][$key]['slot'] !== $reservation['index']) {
+                $defects[] = "[{$key}] the `role` row's slot is {$table['rows'][$key]['slot']}, and the reserved desk's index is {$reservation['index']}";
+            }
+        }
+
+        return $defects;
     }
 
     /**
@@ -280,6 +365,36 @@ trait DrivesTheFloorScreen
                 usort($objects, fn ($a, $b) => $a['id'] <=> $b['id']);
 
                 return array_map(fn ($o) => ['x' => $o['x'], 'y' => $o['y'], 'w' => $o['width'], 'h' => $o['height']], $objects);
+            }
+        }
+
+        $this->fail('the shipped default map declares no `desks` object layer');
+    }
+
+    /**
+     * The shipped default map's reserved desk (card#11144): its index after the `id` sort, its Tiled
+     * `id` and its role, or `null` where it reserves none — read from the file, as `S` is.
+     *
+     * @return array{index: int, id: int, role: string}|null
+     */
+    protected function shippedDefaultReservation(): ?array
+    {
+        $document = json_decode((string) file_get_contents((string) realpath(__DIR__.'/../../../../resources/floor/default.tmj')), true);
+
+        foreach ($document['layers'] as $layer) {
+            if (($layer['type'] ?? null) === 'objectgroup' && ($layer['name'] ?? null) === 'desks') {
+                $objects = $layer['objects'];
+                usort($objects, fn ($a, $b) => $a['id'] <=> $b['id']);
+
+                foreach (array_values($objects) as $index => $object) {
+                    foreach ($object['properties'] ?? [] as $property) {
+                        if ($property['name'] === 'reserved_for') {
+                            return ['index' => $index, 'id' => $object['id'], 'role' => $property['value']];
+                        }
+                    }
+                }
+
+                return null;
             }
         }
 

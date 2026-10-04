@@ -4554,8 +4554,9 @@ together. **Protected, at the write:** the document carries no identity — [FLO
 refuses a desk object carrying any property but `reserved_for`, so a map cannot name a seat and the
 wire never carries a stored position. `reserved_for` (card#11144) reserves one desk for a ROLE — a
 roster name, never a seat — so the map may say which desk a role sits at and still names no seat; two
-browsers, two reloads and two restarts still agree from the seat key and `S`
-alone, which is the property the ruling was reasoned on. **Not prevented, and not preventable by any
+browsers, two reloads and two restarts still agree from the seat key, the seat's relayed
+`protocol_agent_role` and `S` alone, all of them on the wire or the map and none stored, which is the
+property the ruling was reasoned on. **Not prevented, and not preventable by any
 check on the document:** an author chooses `S` and where each slot index is drawn, `h(seat)` is fixed
 and published, so an author who wants a known seat at a known desk can choose `S` and the geometry
 so that it lands there — trivially with one desk in a one-seat room. That is arithmetic on a pure

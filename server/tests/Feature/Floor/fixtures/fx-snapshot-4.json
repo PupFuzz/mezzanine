@@ -5737,6 +5737,13 @@
                           "id": 3,
                           "name": "",
                           "type": "",
+                          "properties": [
+                            {
+                              "name": "reserved_for",
+                              "type": "string",
+                              "value": "pm"
+                            }
+                          ],
                           "rotation": 0,
                           "visible": true,
                           "x": 210,
@@ -6705,6 +6712,13 @@
                           "id": 3,
                           "name": "",
                           "type": "",
+                          "properties": [
+                            {
+                              "name": "reserved_for",
+                              "type": "string",
+                              "value": "pm"
+                            }
+                          ],
                           "rotation": 0,
                           "visible": true,
                           "x": 210,
@@ -7673,6 +7687,13 @@
                           "id": 3,
                           "name": "",
                           "type": "",
+                          "properties": [
+                            {
+                              "name": "reserved_for",
+                              "type": "string",
+                              "value": "pm"
+                            }
+                          ],
                           "rotation": 0,
                           "visible": true,
                           "x": 210,

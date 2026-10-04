@@ -88,18 +88,29 @@ export function hashSeat(installId, seatId) {
 }
 
 /**
- * § 3.2's assignment for ONE room: the room's seats in ascending `(h, seat_id)`, each taking the
- * first free slot from `(h + i) mod S`, and the ones with no slot in that same order.
+ * § 3.2's assignment for ONE room: the reserved desk's holder at the reserved desk, then the room's
+ * other seats in ascending `(h, seat_id)`, each taking the first free slot from `(h + i) mod S`, and
+ * the ones with no slot in that same order.
  *
  * `S` of `0` — a map that declares no `desks` object at all — puts every seat in the overflow row
  * rather than probing an empty ring, which is the same answer as a map one desk short taken to its
  * limit.
  *
- * @param {Iterable<{install_id: string, seat_id: string}>} seats this room's rendered seat set
+ * ⛔ THE RESERVED DESK IS A SLOT TAKEN BEFORE THE LOOP, HELD OR NOT (§ 3.2, card#11144). Its holder is
+ * the room's ONE seat whose relayed `protocol_agent_role` equals the desk's `reserved_for`, compared
+ * as strings and as nothing else: a `null`, or any value that is not a string, matches no desk. With
+ * no such seat the desk stays empty (the operator's ruling Q3 A), and with two or more NONE of them
+ * is seated there (Q4 A) — each hashes as an ordinary seat and the floor says so (§ 9 F22). Either
+ * way the loop below never hands the desk out: a hash landing on it probes on, exactly as one
+ * landing on a held desk does, so the ring stays `S` desks wide and every other seat's hash is
+ * unchanged by the reservation.
+ *
+ * @param {Iterable<{install_id: string, seat_id: string, protocol_agent_role?: string|null}>} seats this room's rendered seat set
  * @param {number} slotCount the room's `S` — the count of its map's `desks` objects (§ 10.3)
- * @returns {{slots: Map<string, number>, probes: Map<string, number>, order: list<string>, overflow: list<string>}}
+ * @param {{index: number, id: number|null, role: string}|null} [reservation] the room's reserved desk (`mapReservation()`), or `null`
+ * @returns {{slots: Map<string, number>, probes: Map<string, number|null>, order: list<string>, overflow: list<string>, reserved: object|null, holder: string|null, eligible: list<string>}}
  */
-export function assignSlots(seats, slotCount) {
+export function assignSlots(seats, slotCount, reservation = null) {
     // `S` is taken as given, because its one producer is `mapDesks()`'s own length and § 3.2 states
     // the answer for a room that declares none: the probe loop runs zero times and every seat is the
     // overflow row. A guard here would be a check on a state the caller cannot express.
@@ -109,17 +120,38 @@ export function assignSlots(seats, slotCount) {
         .map((seat) => ({
             key: `${seat.install_id}/${seat.seat_id}`,
             seat_id: seat.seat_id,
+            role: seat.protocol_agent_role,
             h: hashSeat(seat.install_id, seat.seat_id),
         }))
         // § 3.2: ascending by `(h, seat_id)` — total, because `seat_id` is unique within an install.
         .sort((a, b) => a.h - b.h || (a.seat_id < b.seat_id ? -1 : a.seat_id > b.seat_id ? 1 : 0));
+
+    const eligible = reservation === null
+        ? []
+        : order.filter((seat) => typeof seat.role === 'string' && seat.role === reservation.role).map((seat) => seat.key);
+    const holder = eligible.length === 1 ? eligible[0] : null;
 
     const taken = new Map();
     const slots = new Map();
     const probes = new Map();
     const overflow = [];
 
+    if (reservation !== null) {
+        taken.set(reservation.index, holder);
+    }
+
+    if (holder !== null) {
+        slots.set(holder, reservation.index);
+        // The holder was seated by its role and never probed: § 3.2's worked table writes `role`
+        // in this column for it, and `null` is that cell here.
+        probes.set(holder, null);
+    }
+
     for (const seat of order) {
+        if (seat.key === holder) {
+            continue;
+        }
+
         let placed = false;
 
         for (let i = 0; i < S; i++) {
@@ -146,7 +178,26 @@ export function assignSlots(seats, slotCount) {
         probes,
         order: order.map((seat) => seat.key),
         overflow,
+        reserved: reservation,
+        holder,
+        eligible,
     };
+}
+
+/**
+ * A room's reserved desk, read off `mapDesks()`'s answer: the desk's INDEX (its position after the
+ * `id` sort — § 3.2's slot number), its Tiled `id` (the name every operator-facing line uses for it,
+ * § 10.3) and the role it is reserved for; `null` for a room that reserves none.
+ *
+ * The first reserved desk is the one: the console refuses a map reserving two at the write and at a
+ * restore (§ 10.3's `desks` row), so no map this client is served carries a second.
+ */
+export function mapReservation(desks) {
+    const index = desks.findIndex((desk) => desk.reserved_for !== null);
+
+    return index === -1
+        ? null
+        : Object.freeze({ index, id: desks[index].id, role: desks[index].reserved_for });
 }
 
 /**
@@ -245,8 +296,8 @@ export function mapLayers(map) {
  * unique, so the desk's INDEX here — its position after the `id` sort, the slot function's own
  * number — is resolved by this sort and by nothing else. It is read as the server's
  * `App\Floor\FloorMap` accepts it at the write: the property named `reserved_for`, a Tiled `string`
- * or a property with no `type` (Tiled's documented default). Nothing seats by it here; § 3.2's
- * assignment is unchanged.
+ * or a property with no `type` (Tiled's documented default). `mapReservation()` reads it off this
+ * answer and `assignSlots()` seats by it.
  */
 export function mapDesks(map) {
     const entry = mapLayers(map)

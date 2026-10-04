@@ -785,6 +785,42 @@ PLANTS = [
         "the document and the file disagree, and section 12's reserved-desk row",
     ),
     (
+        # card#11144 PR-3 — G8's reserved re-derivation (G8i).  Section 3.2's worked table seats the
+        # shipped default's reserved-role holder by its role (its Probes cell reads `role`) at the
+        # reserved desk's index; moving that row's slot is the class "the worked table no longer works
+        # the function it publishes over the reservation".
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| role \| \*\*)(\d+)(\*\* \|)",
+        "bump",
+        "the slot section 3.2's worked table seats the reserved desk's holder at, which G8 re-derives as "
+        "the shipped default's reserved index (card#11144)",
+        "reserved, assigns slot",
+    ),
+    (
+        # The same leg on a hashed row: the probe count of the seat whose hash slot IS the reserved
+        # desk, which probes past it.  A rule that skipped the reserved desk instead of counting it
+        # taken would state a different count here.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| `aimla/aimla-impl-2` \| \d+ \| \d+ \| )(\d+)( \|)",
+        "bump",
+        "the probe count section 3.2's worked table states for the seat hashing to the reserved desk, "
+        "which G8 re-derives with that desk taken (card#11144)",
+        "reserved, assigns slot",
+    ),
+    (
+        # The same leg over section 3.3: the slot the displaced incumbent probes to, re-derived as the
+        # function over the table plus the arriving seat, with the reserved desk taken.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(`aimla-impl-2` probes to slot \*\*)(\d+)(\*\*)",
+        "bump",
+        "the slot section 3.3's displaced incumbent probes to, which G8 re-derives over the shipped "
+        "default's reservation (card#11144)",
+        "reserved the function gives slot",
+    ),
+    (
         # PR #232 round 2, MINOR-B — G8e reads the box with the DECLARATION's `\d` bound to ASCII, as
         # PHP's is.  The plant's digit is the width's LAST one, and the position is the whole plant
         # (round 3, F1): the DECLARATION's first digit is `[1-9]`, an ASCII-only range in either

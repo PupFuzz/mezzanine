@@ -27,6 +27,19 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11144** — **The PM sits at the desk reserved for it.** `assignSlots()` in
+  `server/public/js/floor/floor-layout.js` seats a room's one seat whose relayed `protocol_agent_role` equals
+  the map's `reserved_for` at the reserved desk, and takes that desk before the probe loop whether or not
+  anyone holds it, so every other seat hashes over the same six desks and probes past it. With nobody relaying
+  the role the desk stays empty and the floor reads *reserved for `pm` (id 3) — no seat holds that role*; with
+  two or more, neither sits there and § 9 F22's notice names them (the operator's rulings Q3 A and Q4 A). On
+  the shipped default the PM sits at the back-row right corner, desk id 3, and a seat relaying any other role,
+  or none, sits where it hashes with the corner empty. A delta that changes which seat the desk seats is
+  animation A16, its cause that delta's `state_version`. `docs/design/FLOOR.md` § 3.2–§ 3.5, § 5.5, § 6.2,
+  § 9 F22, § 11 (AT-D3-1, AT-D3-3, the new AT-D3-22, the `fx-collision` and `fx-office` rows), § 12, § 13
+  decision 48 and Appendix B row 17 are re-worked over the reservation; `tools/design/verify-floor.py` G8
+  re-derives § 3.2's and § 3.3's worked tables over it with a control, and `tools/design/floor-fixture.browser.mjs`
+  draws a fixture run on the real floor page in headless Chromium, with a selftest.
 - **card#11252** — **A desk inside a moved Tiled group sits where Tiled shows it.** A room map's desk slot is at
   its object's own `x`/`y` plus the summed `offsetx`/`offsety` of the `desks` layer and every group above it, on
   the floor page and in the console alike, so a group an author drags carries its desks with its furniture. The
@@ -35,7 +48,6 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   number. Before, the room's tiles moved with the group and its desks stayed where they were. The server sums
   the offsets in `App\Floor\FloorMap`'s one walk of the layer tree, and the client in `mapLayers()`, the walk
   its tiles already read. A map with no offsets places every desk exactly as before.
-
 - **card#11263** — **The ingest refuses IDs that end in a line break.** `POST /api/ingest/events` answers
   `422 invalid_batch` for a `batch_id` or `seq_epoch`, and `422 invalid_event` for an `event_id`, `kind` or
   `session_id`, that ends in a line break, and stores nothing from that batch. Before, such a value passed its
@@ -44,7 +56,6 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   `App\Support\Anchored::pattern()`, and the patterns in `App\Ingest\Wire` now match through it too. The
   ingest and the read endpoints now share one `Authorization: Bearer` parse, `App\Ingest\TokenResolver::bearer()`,
   and a header whose token is followed by a line break is unauthenticated on both.
-
 - **card#11253** — **Install and seat IDs that end in a line break are refused.** `mezzanine:ingest-token:issue`
   refuses an `install_id` or `seat_id` such as `"aimla\n"` before it writes an install, a seat or a token, and
   its refusal now prints the refused ID as a JSON string, so a trailing line break shows as `\n`. Before, the
@@ -52,13 +63,11 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   which the command and `FloorMap`'s `reserved_for` check both use, now ends the match at the end of the value,
   and `FloorMap`'s own copy of that rule is gone. The building surface's room-map route already answered `404`
   for such an install ID, and a test now holds it to that.
-
 - **card#11144** — **The floor reads which desk a room map reserves.** `mapDesks()` in
   `server/public/js/floor/floor-layout.js` now returns each desk with its `reserved_for` role, or `null` when
   the desk is not reserved, read as the console accepts the property: a Tiled `string`, or a property with no
   `type`. It reads the `desks` layer through the same `mapLayers()` walk as before, so a reservation inside a
-  grouped `desks` layer is read too, and the reserved desk sits at its index after the `id` sort. The floor
-  still seats nothing by the reservation: every seat keeps the desk it hashes to. `docs/design/FLOOR.md`
+  grouped `desks` layer is read too, and the reserved desk sits at its index after the `id` sort. `docs/design/FLOOR.md`
   § 10.3's `desks` row says where the client reads it, and `TheFloorReadsWhichDeskAMapReservesTest` holds
   the client's answer to the server's `FloorMap` over a reserved map written out of `id` order, an
   unreserved map, a grouped `desks` layer and an untyped property, each with a planted defect it reds on.

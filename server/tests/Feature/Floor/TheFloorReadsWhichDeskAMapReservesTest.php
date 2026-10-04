@@ -22,7 +22,8 @@ use Tests\TestCase;
  * ⛔ EVERY GREEN HAS A RED. Each `test_red_*` plants the defect its green guards into a copy of the
  * shipped tree and asserts the green's own predicate fails over it.
  *
- * Nothing seats by the reservation yet: § 3.2's assignment is unchanged until card#11144's PR-3.
+ * `floor/floor-layout.js`'s `assignSlots()` seats by it (card#11144 PR-3), which
+ * `TheReservedDeskSeatsItsRoleAndNobodyElseTest` (AT-D3-22) holds.
  */
 class TheFloorReadsWhichDeskAMapReservesTest extends TestCase
 {

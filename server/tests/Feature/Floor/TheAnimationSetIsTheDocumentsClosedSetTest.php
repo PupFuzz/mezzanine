@@ -252,23 +252,23 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
     public function test_a_displacement_writes_a16s_row_with_section_11s_own_cause(): void
     {
         $driven = $this->shippedSet(['ops' => [[
-            'op' => 'displaced', 'install_id' => 'aimla', 'seat_id' => 'aimla-pm',
-            'arriving' => 'aimla/aimla-impl-4', 'at' => 9000,
+            'op' => 'displaced', 'install_id' => 'aimla', 'seat_id' => 'aimla-impl-2',
+            'arriving' => 'aimla/aimla-mac-1', 'at' => 9000,
         ]]]);
 
         $this->assertSame([], $driven['errors']);
         $this->assertCount(1, $driven['rows']);
         $this->assertSame([
             'animation_id' => 'A16', 'episode_id' => 'ep-1', 'install_id' => 'aimla',
-            'seat_id' => 'aimla-pm', 'class' => 'edge', 'phase' => 'fired',
-            'cause' => 'aimla/aimla-impl-4', 'motion' => true, 'at' => 9000,
+            'seat_id' => 'aimla-impl-2', 'class' => 'edge', 'phase' => 'fired',
+            'cause' => 'aimla/aimla-mac-1', 'motion' => true, 'at' => 9000,
         ], $driven['rows'][0]);
 
         // § 6.4, one class over: the same displacement under `reduce` draws A16's reduced form and
         // says so on the row.
         $reduced = $this->shippedSet(['reduce' => true, 'ops' => [[
-            'op' => 'displaced', 'install_id' => 'aimla', 'seat_id' => 'aimla-pm',
-            'arriving' => 'aimla/aimla-impl-4', 'at' => 9000,
+            'op' => 'displaced', 'install_id' => 'aimla', 'seat_id' => 'aimla-impl-2',
+            'arriving' => 'aimla/aimla-mac-1', 'at' => 9000,
         ]]]);
 
         $this->assertFalse($reduced['rows'][0]['motion']);

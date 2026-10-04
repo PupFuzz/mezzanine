@@ -1582,13 +1582,16 @@ if not S:
 slot_rows = table_rows(sec32, r"^\| Seat \| `h` \| `h mod \d+` \| Probes \| Slot \|") or []
 if len(slot_rows) < 4:
     fail.append(f"G8 CONTROL: {len(slot_rows)} rows parsed from section 3.2's worked assignment")
+# A row's Probes cell is a count, or `role` for the reserved desk's holder (card#11144): the holder is
+# seated by its role before the probe loop and never probes.  `None` stands for `role` below.  Which
+# slots the function assigns is re-derived by G8i, once the shipped default's reservation is read.
 parsed = []
 for r in slot_rows:
     c = cells(r)
     m2 = re.match(r"^`([^`]+)`$", c[0])
     if not m2:
         continue
-    parsed.append((m2.group(1), int(c[1]), int(c[2]), int(c[3]),
+    parsed.append((m2.group(1), int(c[1]), int(c[2]), None if c[3] == "role" else int(c[3]),
                    int(re.sub(r"\D", "", c[4]))))
 for key, h_stated, mod_stated, probes_stated, slot_stated in parsed:
     h = fnv1a32(key)
@@ -1597,21 +1600,23 @@ for key, h_stated, mod_stated, probes_stated, slot_stated in parsed:
                     f"stated constants gives {h}")
     if S and h % S != mod_stated:
         fail.append(f"G8: section 3.2 states h(`{key}`) mod {S} = {mod_stated}; it is {h % S}")
-if S and parsed:
-    occ = {}
-    for key, *_ in sorted(parsed, key=lambda t: (fnv1a32(t[0]), t[0].split("/")[-1])):
+
+
+def assign_slots(keys, S, k=None, holder=None):
+    """Section 3.2's function: `holder` at the reserved index `k`, `k` taken whether or not it is
+    held, every other key by `(h + i) mod S` in ascending `(h, seat_id)`.  Returns key -> (slot,
+    probes), probes `None` for the holder."""
+    taken = set() if k is None else {k}
+    out = {} if holder is None else {holder: (k, None)}
+    for key in sorted((x for x in keys if x != holder), key=lambda x: (fnv1a32(x), x.split("/")[-1])):
         h = fnv1a32(key)
-        i = 0
-        while (h + i) % S in occ:
-            i += 1
-        occ[(h + i) % S] = (key, i)
-    for key, _h, _m, probes_stated, slot_stated in parsed:
-        got_slot = [s for s, (k, _) in occ.items() if k == key][0]
-        got_probes = occ[got_slot][1]
-        if (got_slot, got_probes) != (slot_stated, probes_stated):
-            fail.append(f"G8: section 3.2 assigns `{key}` slot {slot_stated} after "
-                        f"{probes_stated} probes; the function it publishes assigns slot "
-                        f"{got_slot} after {got_probes}")
+        for i in range(S):
+            if (h + i) % S not in taken:
+                taken.add((h + i) % S)
+                out[key] = ((h + i) % S, i)
+                break
+    return out
+
 
 sec33 = section_text("33-collision-displacement-and-why-a-desk-move-is-itself-an-event") or ""
 m = re.search(prose(r"provisioning `([^`]+)` \(h = (\d+),\s*h mod (\d+) = \*\*(\d+)\*\*\)"), sec33)
@@ -1631,12 +1636,18 @@ else:
         inc_h = fnv1a32("aimla/" + m2.group(1))
         if inc_h != int(m2.group(2)):
             fail.append(f"G8: section 3.3 states the incumbent's h = {m2.group(2)}; it is {inc_h}")
-        if h % mod_s != inc_h % mod_s:
-            fail.append("G8: section 3.3's 'collision' pair does not collide under the stated "
-                        "function — the worked case does not exercise the rule it illustrates")
+        # The arrival collides with the incumbent's SLOT, which is the incumbent's hash slot or, as on
+        # the shipped default's reservation (card#11144), the slot it probed to: section 3.2's table states it.
+        _inc_slot = next((p[4] for p in parsed if p[0] == "aimla/" + m2.group(1)), None)
+        if int(m2.group(3)) != _inc_slot or h % mod_s != _inc_slot:
+            fail.append(f"G8: section 3.3's 'collision' pair does not collide under the stated "
+                        f"function — the arrival hashes to {h % mod_s}, section 3.3 places the incumbent at "
+                        f"slot {m2.group(3)} and section 3.2's table at {_inc_slot}, so the worked case does "
+                        f"not exercise the rule it illustrates")
         if (h < inc_h) is not True:
             fail.append("G8: section 3.3 says the arriving seat takes the slot, but it does not "
                         "sort lower in the (h, seat_id) order the function uses")
+m33_to = re.search(prose(r"probes to slot \*\*(\d+)\*\*"), sec33)
 
 # ---- G8b. `S` against the SHIPPED DEFAULT map file, and its absence declared rather than implied ----
 # WHAT MOVED UNDER card#9208's REVERSAL (2026-09-12) AND WHAT DID NOT.  The file this leg counts is no
@@ -1970,8 +1981,8 @@ else:
 # for a small id (any `3` in the section satisfies it), so this leg binds all three by VALUE: the id and the
 # role are read out of section 10.3's sentence, out of section 12's row, and out of each map G8b counted,
 # and every pair must agree.  A map that reserves two desks is refused by name here too, as the console
-# refuses it at the write (`App\Floor\FloorMap`).  What this leg does NOT check is anything about which
-# seat sits at the reserved desk: that is the slot function's (section 3.2), unchanged until PR-3.
+# refuses it at the write (`App\Floor\FloorMap`).  Which seat sits at the reserved desk is G8i's,
+# below.
 RES_DECL = prose(r"The shipped default reserves `id (\d+)` for `([a-z0-9-]+)`\*\*")
 RES_ROW = re.compile(r"^`id (\d+)`, `([a-z0-9-]+)`$")
 g8h = "NOT MEASURED"
@@ -2019,6 +2030,63 @@ else:
                         f"section 10.3 states id {_decl_res[0]} for `{_decl_res[1]}` (a `string`) -- the "
                         f"document and the file disagree, and section 12's reserved-desk row rests on the "
                         f"document's copy")
+
+# ---- G8i. section 3.2's and 3.3's worked tables, re-derived over the RESERVATION (card#11144, PR-3) ----
+# The worked assignment is the shipped default's, and the shipped default reserves a desk (G8h): its
+# index after the `id` sort is taken before the probe loop, the table's one `role` row is its holder and
+# sits there, and every other row is the loop's answer with that desk taken.  Section 3.3's collision is
+# the same function over the table plus the arriving seat: the arrival takes its hash slot, the displaced
+# incumbent probes to the slot section 3.3 states, and no other desk -- the holder included -- moves.
+# CONTROL: the function WITHOUT the reservation, over the same keys, must disagree with the table; if it
+# agreed, this leg could not tell a client that seats by role from one that ignores the reservation.
+g8i = "NOT MEASURED"
+_g8i_k = None
+if m_res and g8_maps:
+    _ids = []
+    for _l in json.loads((ROOT / sorted(g8_maps)[0]).read_text()).get("layers", []):
+        if _l.get("type") == "objectgroup" and _l.get("name") == layer_name:
+            _ids = sorted(int(_o.get("id")) for _o in _l.get("objects", []))
+    if int(m_res.group(1)) in _ids:
+        _g8i_k = _ids.index(int(m_res.group(1)))
+if _g8i_k is None:
+    fail.append("G8 CONTROL: the shipped default's reserved desk was not resolved to an index (G8h's "
+                "declaration or map was not read), so section 3.2's worked table is held to no reservation")
+elif S and parsed:
+    _holders = [p[0] for p in parsed if p[3] is None]
+    _keys = [p[0] for p in parsed]
+    if len(_holders) != 1:
+        fail.append(f"G8: section 3.2's worked table writes {len(_holders)} `role` rows; the shipped default "
+                    f"reserves one desk, so exactly one seat sits there by its role")
+    else:
+        _holder = _holders[0]
+        _got = assign_slots(_keys, S, _g8i_k, _holder)
+        for key, _h, _m, probes_stated, slot_stated in parsed:
+            if _got[key] != (slot_stated, probes_stated):
+                fail.append(f"G8: section 3.2 assigns `{key}` slot {slot_stated} after "
+                            f"{'role' if probes_stated is None else probes_stated} probes; the function it "
+                            f"publishes, with index {_g8i_k} reserved, assigns slot {_got[key][0]} after "
+                            f"{'role' if _got[key][1] is None else _got[key][1]}")
+        _plain = assign_slots(_keys, S)
+        if all(_plain[key][0] == slot for key, _h, _m, _p, slot in parsed):
+            fail.append("G8 CONTROL: the function without the reservation gives section 3.2's worked table too, "
+                        "so this leg cannot tell a client that seats by role from one that ignores it")
+        g8i = f"MEASURED: {len(parsed)} rows, `{_holder}` at index {_g8i_k} by its role"
+        if m and m2 and m33_to:
+            _arr, _inc = "aimla/" + m.group(1), "aimla/" + m2.group(1)
+            _after = assign_slots(_keys + [_arr], S, _g8i_k, _holder)
+            if _after[_arr][0] != int(m.group(4)):
+                fail.append(f"G8: section 3.3 says `{_arr}` takes slot {m.group(4)}; with index {_g8i_k} "
+                            f"reserved the function gives it slot {_after[_arr][0]}")
+            if _after.get(_inc, (None,))[0] != int(m33_to.group(1)):
+                fail.append(f"G8: section 3.3 says `{_inc}` probes to slot {m33_to.group(1)}; with index "
+                            f"{_g8i_k} reserved the function gives slot {_after.get(_inc, (None,))[0]}")
+            _moved = [key for key in _keys if key != _inc and _after[key][0] != _got[key][0]]
+            if _moved:
+                fail.append(f"G8: section 3.3 says every other desk is untouched; with index {_g8i_k} reserved "
+                            f"the arrival also moves {_moved}")
+            g8i += f"; section 3.3's `{_arr}` -> {_after[_arr][0]}, `{_inc}` -> {_after[_inc][0]}"
+        else:
+            fail.append("G8 CONTROL: section 3.3's collision or the slot its incumbent probes to did not parse")
 
 # ---- G8f. section 12's VIEWPORT arithmetic, re-derived from the map, the box and the reference viewport ----
 # The viewport row restates, in prose, how wide the shipped default is in furniture boxes and what the
@@ -3390,6 +3458,9 @@ print(f"    G8 the shipped default's grid: {g8e_grid}. MEASURED means `width × 
 print(f"    G8 the shipped default's reserved desk (card#11144): {g8h}. MEASURED means the one `desks` object "
       f"carrying `reserved_for` was read out of the map, and its id and role held equal to section 10.3's "
       f"sentence and section 12's row.")
+print(f"    G8 section 3.2's and 3.3's worked tables over the reserved desk (card#11144): {g8i}. MEASURED means "
+      f"every row was re-assigned by section 3.2's function with the reserved index taken and its holder "
+      f"seated by role, and the function without the reservation was seen to disagree with the table.")
 print(f"    G8 section 12's viewport arithmetic: {g8f}. MEASURED means the rows, the boxes per row, the desk "
       f"across, the grid width and the fit zoom the viewport cell states were each recomputed from the map, "
       f"the box and the row's own reference viewport and held equal.")
