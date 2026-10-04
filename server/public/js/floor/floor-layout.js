@@ -234,6 +234,14 @@ export function mapLayers(map) {
  * Tiled writes objects in insertion order and an author who deletes and re-adds one can hand this
  * an array whose order is not the ids'. Sorting is what makes `S` and slot *i* properties of the
  * document rather than of the editing session that produced it.
+ *
+ * ⛔ EACH DESK CARRIES ITS RESERVATION (card#11144): `reserved_for`, the role the map reserves that
+ * desk for, or `null`. § 10.3 names a reserved desk by its Tiled `id` and the console holds that id
+ * unique, so the desk's INDEX here — its position after the `id` sort, the slot function's own
+ * number — is resolved by this sort and by nothing else. It is read as the server's
+ * `App\Floor\FloorMap` accepts it at the write: the property named `reserved_for`, a Tiled `string`
+ * or a property with no `type` (Tiled's documented default). Nothing seats by it here; § 3.2's
+ * assignment is unchanged.
  */
 export function mapDesks(map) {
     const desks = mapLayers(map)
@@ -252,7 +260,20 @@ export function mapDesks(map) {
             y: object?.y ?? 0,
             width: object?.width ?? 0,
             height: object?.height ?? 0,
+            reserved_for: deskReservation(object),
         }));
+}
+
+/**
+ * One desk object's `reserved_for` role, or `null` — the property `App\Floor\FloorMap::reservedFor()`
+ * accepts: named `reserved_for`, typed `string` or untyped. The console refuses every other shape at
+ * a save and at a restore (§ 10.3's `desks` row), which is why the value is read as it stands.
+ */
+function deskReservation(object) {
+    const property = (object?.properties ?? [])
+        .find((p) => p.name === 'reserved_for' && (p.type === undefined || p.type === 'string'));
+
+    return property?.value ?? null;
 }
 
 /** § 4.6's half-open footprints: two rooms may share an EDGE and may never share a pixel. */
