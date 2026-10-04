@@ -24,8 +24,11 @@ Reads the `--state-*` tokens OUT OF `server/public/css/mezzanine.css` (never tra
   4. The pairs under the BOUND, per condition, as a list `report()` returns — the self-test plants a
      duplicate through report() and requires it listed, in every condition and in the tokens alone
      (canon #9: a check that cannot fail is a decoration).
+  5. `--check` — the GATE CI runs: the same acceptance the self-test holds the PROPOSED table to, applied to
+     the SHEET read from `--repo`. It exits 1, naming each pair with its condition, vision and ΔE2000, when
+     any pair involving a reviewed (quiet) state falls under the BOUND in any condition or vision.
 
-    python3 tools/design/state-chip-colours.py [--repo <tree>, default the tree this file is in] [--json out.json] [--selftest]
+    python3 tools/design/state-chip-colours.py [--repo <tree>, default the tree this file is in] [--json out.json] [--selftest] [--check]
 """
 import argparse, json, math, os, re, sys
 from pathlib import Path
@@ -34,6 +37,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--repo', default=str(Path(__file__).resolve().parents[2]))   # the tree this file lives in
 ap.add_argument('--json', default=None)
 ap.add_argument('--selftest', action='store_true')
+ap.add_argument('--check', action='store_true')
 a = ap.parse_args()
 
 CSS = (Path(a.repo) / 'server/public/css/mezzanine.css').read_text()
@@ -208,7 +212,7 @@ def report(name, pal, quiet=False):
         for v in VISIONS:
             for (s, t), d in pairs[cond][v].items():
                 if d < BOUND:
-                    below.append({'condition': cond, 'vision': v, 'pair': f'{s}/{t}', 'de': round(d, 1),
+                    below.append({'condition': cond, 'vision': v, 'pair': f'{s}/{t}', 'de': round(d, 2),
                                   'reviewed': s in REVIEWED or t in REVIEWED})
     mins = minima(pairs)
     if not quiet:
@@ -230,6 +234,10 @@ def report(name, pal, quiet=False):
         print('  SENSITIVITY — the smallest reviewed minimum per condition: ' + ', '.join(f'{c} {d:.1f}' for c, d in rmin.items()))
     return {'fills': rows, 'pairs': {c: {v: {f'{s}/{t}': round(d, 1) for (s, t), d in pv.items()} for v, pv in pc.items()} for c, pc in pairs.items()},
             'minima': mins, 'below': below}
+
+def reviewed_below(result):
+    """The acceptance, UNFILTERED (confirm review M1): every reviewed pair under the bound, in ANY condition."""
+    return [b for b in result['below'] if b['reviewed']]
 
 cur = report('SHEET (the tokens as read from --repo)', palette({}))
 new = report('PROPOSED', palette(PROPOSED))
@@ -253,8 +261,7 @@ if a.json:
 
 if a.selftest:
     def clean(result):
-        """The acceptance, UNFILTERED (confirm review M1): no reviewed pair under the bound in ANY condition."""
-        return [b for b in result['below'] if b['reviewed']] == []
+        return reviewed_below(result) == []
     # Control 1: a fill under the floor is reported under it.
     assert contrast(hex2rgb('#6a7078'), ink) < 4.5, 'control 1: the planted fill was not under 4.5'
     # Control 2: a duplicate planted THROUGH report() within one lighting class — disabled := stale's token, both
@@ -277,3 +284,11 @@ if a.selftest:
     assert all(new['fills'][s]['ink_contrast'] >= 4.5 for s in REVIEWED), 'proposal under 4.5 at full light'
     assert clean(new), f"proposal has reviewed pairs under {BOUND}: {[b for b in new['below'] if b['reviewed']]}"
     print(f'\nselftest: 4 controls red where planted; proposal clean at full light and in every condition (bound {BOUND})')
+
+if a.check:
+    bad = reviewed_below(cur)
+    if bad:
+        for b in bad:
+            print(f"check: {b['pair']} {b['de']} under {BOUND} — {b['condition']}, {b['vision']}", file=sys.stderr)
+        sys.exit(f'check: {len(bad)} reviewed pair(s) on the sheet under ΔE2000 {BOUND}')
+    print(f'\ncheck: the sheet holds every pair involving {", ".join(REVIEWED)} at or above ΔE2000 {BOUND}, in every condition and vision')

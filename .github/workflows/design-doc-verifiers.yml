@@ -3,7 +3,8 @@
 # WHAT IT DOES. Runs the three repo-only design verifiers over D1/D2/D3 (`verify-event-schema.py`,
 # `verify-fleet-state.py`, `verify-floor.py`) and the ratified artifact's own gate
 # (`floor-preview.selftest.mjs`) on every pull request, plus the plant harness that proves the
-# three CAN red. All four are pure repo reads on stock `python3` / `node` — no credential, no
+# three CAN red, and the state chip's colour gate (`state-chip-colours.py --selftest --check`,
+# card#11218). All of them are pure repo reads on stock `python3` / `node` — no credential, no
 # network, no browser, no `setup-` step and no interpreter pin to keep honest.
 #
 # WHY IT EXISTS. Until card#7929 `tools/design/` was the one directory in this repository CI never
@@ -75,7 +76,8 @@ permissions:
   contents: read
 
 jobs:
-  # D1/D2/D3 — the three document gates, plus the harness that proves they can red.
+  # D1/D2/D3 — the three document gates, plus the harness that proves they can red — and the state
+  # chip colour gate, which reads the stylesheet rather than a document but shares this job's stock python3.
   design-docs:
     runs-on: ubuntu-latest
     steps:
@@ -117,6 +119,16 @@ jobs:
       - name: D3 — FLOOR.md
         if: ${{ !cancelled() }}
         run: python3 tools/design/verify-floor.py
+
+      # The state chip's fills, read from the sheet (card#11218): `--check` reds, naming each pair, when
+      # any pair involving a quiet state (stale, offline, disabled) falls under the tool's ΔE2000 bound —
+      # as the tokens, as the hollow chip's edge or as drawn over either plank course, in normal vision or
+      # any of the three dichromacies. `--selftest` runs first in the same invocation and carries the
+      # tool's own planted controls, so the acceptance `--check` applies is proven able to red on this
+      # very checkout. Stdlib-only `python3`. Independent of the document gates, hence `!cancelled()`.
+      - name: State chip colours (the sheet's quiet-state fills stay apart, with the tool's own planted controls)
+        if: ${{ !cancelled() }}
+        run: python3 tools/design/state-chip-colours.py --selftest --check
 
   # The ratified artifact. A SEPARATE JOB, not a step above: it judges CODE
   # (`docs/design/floor-preview/floor-preview.html`) rather than a document, it runs on a

@@ -284,7 +284,7 @@ export function drillDownModel(seat, timeline, options = {}) {
  * § 4.3's **header**: "seat name, floor, `render_state` with its plain-language line, the currency
  * label if any" — the DESK's own line and label (§ 5.1, § 7.1, § 7.3), from the ONE desk model rather
  * than a second copy of § 7.1's sentences. On a dark desk the activity state is "in the drill-down
- * only, under *when it went dark*" (§ 7.3's `stale` / `offline` row), so there the header carries the
+ * only, under *when it went dark*" (§ 7.3's `stale` and `offline` rows), so there the header carries the
  * *was:* form the desk does not draw — through the desk's own `wasLabel`, § 7.6's one form.
  */
 function header(seat, desk, options, skew) {
