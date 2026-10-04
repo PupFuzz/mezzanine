@@ -9,15 +9,13 @@ namespace App\Support;
  * nothing here keeps in step.
  *
  * The bodies are UNANCHORED on purpose: a route constraint (`Route::where()`) anchors its pattern
- * itself and takes no delimiters, while `preg_match()` needs both — so `pattern()` builds the second
- * spelling from the first rather than a caller keeping a copy of it.
+ * itself and takes no delimiters, while `preg_match()` needs both — so `Anchored::pattern()`
+ * builds the second spelling from the first rather than a caller keeping a copy of it.
  *
  * Callers: `mezzanine:ingest-token:issue` (where an install and a seat are minted),
  * `GET /api/building/rooms/{install_id}/map` (`docs/design/FLEET-STATE.md § 8.7`: "The surface
  * answers for any `install_id` that matches D1 § 3.1's slug; one that does not is `404`"), and
- * `App\Floor\FloorMap`'s `reserved_for` (`AGENT_NAME`). `pattern()` also anchors the ingest's own
- * patterns in `App\Ingest\Wire` (ULID, `kind`, `session_id`; card#11263), so the two classes have one
- * anchoring rule between them rather than a copy each.
+ * `App\Floor\FloorMap`'s `reserved_for` (`AGENT_NAME`).
  */
 final class Slug
 {
@@ -35,15 +33,4 @@ final class Slug
      * `AGENT_NAME_RE`.
      */
     public const AGENT_NAME = '[a-z0-9-]{1,48}';
-
-    /**
-     * `$body` anchored and delimited for `preg_match()`. `D` makes `$` the end of the subject:
-     * without it PCRE's `$` also matches before one trailing newline, so `"seat\n"` would pass
-     * as a slug that no reporter's `seat` can ever equal (card#11253). A route constraint takes
-     * the bare body instead, and Symfony's compiled route regex carries its own `D`.
-     */
-    public static function pattern(string $body): string
-    {
-        return '/^'.$body.'$/D';
-    }
 }

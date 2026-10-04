@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Console\SecretLine;
+use App\Support\Anchored;
 use App\Support\Slug;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -52,14 +53,14 @@ class IssueIngestToken extends Command
         $seatId = (string) $this->argument('seat_id');
 
         // D1 § 3.1's slugs, from `App\Support\Slug` — the building surface's route checks the same one.
-        if (preg_match(Slug::pattern(Slug::INSTALL_ID), $installId) !== 1) {
-            $this->error(sprintf('install_id %s must match %s (D1 § 3.1)', self::shown($installId), Slug::pattern(Slug::INSTALL_ID)));
+        if (preg_match(Anchored::pattern(Slug::INSTALL_ID), $installId) !== 1) {
+            $this->error(sprintf('install_id %s must match %s (D1 § 3.1)', self::shown($installId), Anchored::pattern(Slug::INSTALL_ID)));
 
             return self::FAILURE;
         }
 
-        if (preg_match(Slug::pattern(Slug::SEAT_ID), $seatId) !== 1) {
-            $this->error(sprintf('seat_id %s must match %s (D1 § 3.1)', self::shown($seatId), Slug::pattern(Slug::SEAT_ID)));
+        if (preg_match(Anchored::pattern(Slug::SEAT_ID), $seatId) !== 1) {
+            $this->error(sprintf('seat_id %s must match %s (D1 § 3.1)', self::shown($seatId), Anchored::pattern(Slug::SEAT_ID)));
 
             return self::FAILURE;
         }

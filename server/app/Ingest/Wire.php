@@ -2,7 +2,7 @@
 
 namespace App\Ingest;
 
-use App\Support\Slug;
+use App\Support\Anchored;
 
 /**
  * D1 § 6.0's type vocabulary, in one place, so the same reading of "ULID" or "rfc3339_ms" is used
@@ -11,9 +11,9 @@ use App\Support\Slug;
 final class Wire
 {
     /*
-     * The three patterns below are UNANCHORED bodies, matched through `Slug::pattern()`, which
-     * anchors the slugs too. Its `D` is what refuses a value ending in a line break, which PCRE's
-     * bare `$` lets through (card#11263; card#11253 for the slugs).
+     * The three patterns below are UNANCHORED bodies, matched through `Anchored::pattern()`. Its
+     * `D` is what refuses a value ending in a line break, which PCRE's bare `$` lets through
+     * (card#11263).
      */
 
     /**
@@ -93,7 +93,7 @@ final class Wire
 
     public static function isUlid(mixed $value): bool
     {
-        return is_string($value) && preg_match(Slug::pattern(self::ULID), $value) === 1;
+        return is_string($value) && preg_match(Anchored::pattern(self::ULID), $value) === 1;
     }
 
     /**

@@ -59,7 +59,7 @@ final class ReadTokens
      */
     public static function resolve(Request $request): ReadGrant|ReadRefusal|null
     {
-        $presented = self::bearer($request);
+        $presented = TokenResolver::bearer($request);
 
         if ($presented === null) {
             return null;
@@ -131,15 +131,6 @@ final class ReadTokens
         ]);
 
         return $token;
-    }
-
-    private static function bearer(Request $request): ?string
-    {
-        if (! preg_match('/^Bearer\s+(\S+)$/D', (string) $request->header('Authorization', ''), $m)) {
-            return null;
-        }
-
-        return $m[1];
     }
 
     private static function touch(int $tokenId, string $ip): void

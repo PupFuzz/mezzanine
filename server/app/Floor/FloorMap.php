@@ -2,6 +2,7 @@
 
 namespace App\Floor;
 
+use App\Support\Anchored;
 use App\Support\Slug;
 
 /**
@@ -799,7 +800,7 @@ final class FloorMap
                 ));
             }
 
-            if (! is_string($value) || preg_match(Slug::pattern(Slug::AGENT_NAME), $value) !== 1) {
+            if (! is_string($value) || preg_match(Anchored::pattern(Slug::AGENT_NAME), $value) !== 1) {
                 throw new InvalidFloorMap(sprintf(
                     'Desk slot %s\'s `%s` is %s; it must be a role name such as `pm`.',
                     $named,
