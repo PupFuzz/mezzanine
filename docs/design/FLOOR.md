@@ -3258,7 +3258,8 @@ The rendering rule:
 |---|---|---|---|
 | `link_state == "live"`, no `fold_lag` | its activity render | as the pose | full colour, motion permitted |
 | `catching_up` | the replay render (A15) | under the label, as *was: working (last event 12:47, seat clock)* | desaturated, no working loop |
-| `stale` / `offline` | the empty-chair render | in the drill-down only, under *when it went dark* | dimmed |
+| `stale` | the empty-chair render | in the drill-down only, under *when it went dark* | dimmed |
+| `offline` | the empty-chair render | in the drill-down only, under *when it went dark* | dark |
 | badged `fold_lag` | its activity render, plus the fold-lag render [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns in full | as the pose, explicitly labelled *N behind* | motion **stops**: a loop implies *now*, and *now* is what the lag denies |
 | badged `config_invalid` | its activity render, with the badge on the desk; *sending nothing* in the drill-down and the list | as the pose | motion stops, for the same reason |
 | `disabled` | the *reporting disabled* render ([§ 7.1](#71-the-render-per-state)) — character present, monitor off | under the label, as *was: working (last event 12:47, seat clock)* | dimmed, motion **stops**; the seat is still heartbeating, which is how the flag is known at all, but it is sending no activity events, so everything under the label is older than the flag |
@@ -4337,10 +4338,12 @@ artifact is the worked example of it.
   `RENDER_STATES`), with `--state-ink` / `--state-ink-unconfirmed` for the chip's word; `--scene-plate` /
   `--scene-plate-edge` for the nameplate's plate; and `--scene-flag` / `--scene-flag-edge` /
   `--scene-flag-ink` for the flag ⚠ +N. The test reads the painter's style as the painter builds it, so a
-  token spelled through a generated rule is read like any other. `Tests\Feature\Floor\TheFloorDrawsItsFrameTest`
-  reds on a `--state-<member>` that holds `--state-ink` under 4.5:1 at full light, and
-  `tools/design/state-chip-colours.py` re-derives how far apart the chip fills stay as drawn (card#11218).
-  This states WHERE the palette lives; the values stay unspecified, as the *What is deliberately NOT specified* bullet below says.
+  token spelled through a generated rule is read like any other.
+  `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` reds on a `--state-<member>` that holds `--state-ink` under
+  4.5:1 at full light, and `tools/design/state-chip-colours.py --check`, which CI runs on every pull request,
+  reds when a pair involving a quiet state (`stale`, `offline`, `disabled`) falls under the tool's bound as
+  the tokens, as the hollow chip's edge or as drawn (card#11218). This states WHERE the palette lives; the
+  values stay unspecified, as the *What is deliberately NOT specified* bullet below says.
 - **The desk's art contract — where a desk's art is drawn, and the clip that holds it there** (card#11058).
   A desk's images — the character and the desk sprite — are drawn into the rects
   `server/public/js/floor/desk-layout.js`'s `deskRects()` derives from the furniture box

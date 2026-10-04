@@ -35,7 +35,10 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   reads the tokens from the sheet and prints each fill's contrast and every pair's CIEDE2000 distance as the
   tokens, as the hollow chip's edge and as drawn over either plank course, in normal vision and the three
   dichromacies; its `--selftest` plants its own defects. `TheFloorDrawsItsFrameTest` now also reds on any
-  `--state-<member>` that holds `--state-ink` under 4.5:1.
+  `--state-<member>` that holds `--state-ink` under 4.5:1. CI runs `state-chip-colours.py --selftest --check`
+  on every pull request, and `--check` reds, naming each pair, when any pair involving `stale`, `offline` or
+  `disabled` falls under the tool's bound on the sheet. FLOOR.md § 7.3 now gives `offline` desks the dark
+  treatment the floor draws, apart from `stale`'s dimmed one.
 
 - **card#11144** — **A room map can reserve one desk for a role, and the shipped room reserves its
   back-row right corner for the PM.** A `desks` object may now carry one property, `reserved_for` — a

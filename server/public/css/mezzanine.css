@@ -115,7 +115,7 @@
        The three quiet states are a cold family — frost, dusk, slate — chosen so that, as the tokens, as the
        dimmed hollow edge and AS DRAWN under § 7.3's lighting over either plank course, every pair involving one
        of them is at least 5 ΔE2000 apart under the three dichromacies; the live states' own pairs are PR #269's;
-       re-derived by `tools/design/state-chip-colours.py`. */
+       re-derived by `tools/design/state-chip-colours.py`, whose `--check` CI runs on every pull request. */
     --state-working: #57c785;
     --state-idle: #9aa7c0;
     --state-blocked: #f0b455;
