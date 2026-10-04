@@ -2,12 +2,20 @@
 
 namespace App\Ingest;
 
+use App\Support\Anchored;
+
 /**
  * D1 § 6.0's type vocabulary, in one place, so the same reading of "ULID" or "rfc3339_ms" is used
  * everywhere the ingest checks one.
  */
 final class Wire
 {
+    /*
+     * The three patterns below are UNANCHORED bodies, matched through `Anchored::pattern()`. Its
+     * `D` is what refuses a value ending in a line break, which PCRE's bare `$` lets through
+     * (card#11263).
+     */
+
     /**
      * ULID = 26-char Crockford base32. The alphabet is `0123456789ABCDEFGHJKMNPQRSTVWXYZ` —
      * uppercase, and without `I`, `L`, `O`, `U`. Cross-checked against `fleet-reporter.js`'s own
@@ -15,13 +23,13 @@ final class Wire
      * the producer's alphabet rejects a valid batch permanently (§ 11.5), which is what
      * § 6.1's `harness_label` row records happening for exactly that reason.
      */
-    public const ULID = '/^[0-9A-HJKMNP-TV-Z]{26}$/';
+    public const ULID = '[0-9A-HJKMNP-TV-Z]{26}';
 
     /**
      * § 4.3 step 9's own pattern, quoted from § 12.1: "`kind` a string matching
      * `^[a-z]+\.[a-z_]+$`".
      */
-    public const KIND = '/^[a-z]+\.[a-z_]+$/';
+    public const KIND = '[a-z]+\.[a-z_]+';
 
     /**
      * § 3.2. The reporter already replaces a value failing this with `null` and counts
@@ -32,7 +40,7 @@ final class Wire
      * instead, and a storage failure is a `5xx`, which § 11.5 makes RETRYABLE — an infinite
      * retry loop in place of one honest permanent refusal.
      */
-    public const SESSION_ID = '/^[A-Za-z0-9._:-]{1,128}$/';
+    public const SESSION_ID = '[A-Za-z0-9._:-]{1,128}';
 
     /** § 4.3 — `data` is kind-specific and ≤ 3 KiB serialized. */
     public const DATA_MAX_BYTES = 3072;
@@ -85,7 +93,7 @@ final class Wire
 
     public static function isUlid(mixed $value): bool
     {
-        return is_string($value) && preg_match(self::ULID, $value) === 1;
+        return is_string($value) && preg_match(Anchored::pattern(self::ULID), $value) === 1;
     }
 
     /**

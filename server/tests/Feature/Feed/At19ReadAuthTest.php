@@ -59,6 +59,18 @@ class At19ReadAuthTest extends FeedTestCase
         $this->assertSame(0, $this->globalCounter('snapshot_denied'));
     }
 
+    /**
+     * The `Authorization` parse ends at the end of the header (card#11263): a valid token followed
+     * by a line break is no credential. `test_a_valid_read_token_is_served` is the control.
+     */
+    public function test_a_read_token_ending_in_a_line_break_is_unauthenticated(): void
+    {
+        $response = $this->asMachine($this->readToken('watchdog')."\n", '/api/fleet/snapshot');
+
+        $response->assertUnauthorized()->assertJsonPath('error', 'unauthenticated');
+        $this->assertNoFleetData($response->getContent());
+    }
+
     public function test_an_expired_token_is_refused_and_leaks_no_fleet(): void
     {
         $token = $this->readToken();

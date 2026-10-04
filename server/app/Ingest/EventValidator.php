@@ -2,6 +2,8 @@
 
 namespace App\Ingest;
 
+use App\Support\Anchored;
+
 /**
  * D1 § 12.1 steps 9 and 10, per event.
  *
@@ -79,7 +81,7 @@ final class EventValidator
 
         $kind = Wire::field($event, 'kind');
 
-        if (! is_string($kind) || strlen($kind) > 32 || preg_match(Wire::KIND, $kind) !== 1) {
+        if (! is_string($kind) || strlen($kind) > 32 || preg_match(Anchored::pattern(Wire::KIND), $kind) !== 1) {
             return Refusal::invalidEvent($index, 'kind', 'must be ≤ 32 bytes matching ^[a-z]+\.[a-z_]+$');
         }
 
@@ -97,7 +99,7 @@ final class EventValidator
 
         $sessionId = Wire::field($event, 'session_id');
 
-        if ($sessionId !== null && (! is_string($sessionId) || preg_match(Wire::SESSION_ID, $sessionId) !== 1)) {
+        if ($sessionId !== null && (! is_string($sessionId) || preg_match(Anchored::pattern(Wire::SESSION_ID), $sessionId) !== 1)) {
             return Refusal::invalidEvent($index, 'session_id', 'must be null or ≤ 128 bytes matching ^[A-Za-z0-9._:-]+$');
         }
 

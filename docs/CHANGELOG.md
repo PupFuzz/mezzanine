@@ -27,6 +27,15 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11263** — **The ingest refuses IDs that end in a line break.** `POST /api/ingest/events` answers
+  `422 invalid_batch` for a `batch_id` or `seq_epoch`, and `422 invalid_event` for an `event_id`, `kind` or
+  `session_id`, that ends in a line break, and stores nothing from that batch. Before, such a value passed its
+  pattern, and a `session_id` such as `"abc-sess\n"` was stored verbatim as a session no other event could
+  match. The anchoring card#11253 fixed for install and seat IDs moved from `App\Support\Slug::pattern()` to
+  `App\Support\Anchored::pattern()`, and the patterns in `App\Ingest\Wire` now match through it too. The
+  ingest and the read endpoints now share one `Authorization: Bearer` parse, `App\Ingest\TokenResolver::bearer()`,
+  and a header whose token is followed by a line break is unauthenticated on both.
+
 - **card#11253** — **Install and seat IDs that end in a line break are refused.** `mezzanine:ingest-token:issue`
   refuses an `install_id` or `seat_id` such as `"aimla\n"` before it writes an install, a seat or a token, and
   its refusal now prints the refused ID as a JSON string, so a trailing line break shows as `\n`. Before, the
