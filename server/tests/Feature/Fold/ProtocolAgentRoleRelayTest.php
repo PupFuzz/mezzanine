@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Fold;
 
+use Illuminate\Support\Facades\DB;
 use Tests\Feature\Feed\FeedTestCase;
 
 /**
@@ -130,5 +131,29 @@ class ProtocolAgentRoleRelayTest extends FeedTestCase
         $this->deliver([$at]);
         $this->fold();
         $this->assertSame(str_repeat('a', 48), $this->served()['protocol_agent_role'], 'a role AT the bound was not served verbatim');
+    }
+
+    /**
+     * `mezzanine:rebuild` RESETS the role with the rest of the heartbeat facts (card#11144). A rebuild
+     * whose window holds no heartbeat must land on `null`, as the live fold of that window would: a
+     * kept role is a value no replayed event carries, which is AT-D2-10's divergence by construction.
+     * The name pair is the control — it is reset by the same list, so a `null` name beside a kept role
+     * is the role's own reset missing.
+     */
+    public function test_a_rebuild_whose_window_holds_no_heartbeat_resets_the_role(): void
+    {
+        $this->deliver($this->heartbeats(1));
+        $this->fold();
+        $this->assertSame('pm', $this->state()->protocol_agent_role, 'the premise: a role reached the column');
+
+        $this->deliver($this->cleanTurn());
+        $this->fold();
+        $newest = DB::table('events')->where('seat_ref', $this->seatRef)->max('received_at');
+
+        $this->artisan('mezzanine:rebuild', ['--seat' => self::INSTALL.'/'.self::SEAT, '--since' => $newest])
+            ->assertSuccessful();
+
+        $this->assertNull($this->state()->protocol_agent_name, 'the control: the rebuild did not reset the name pair');
+        $this->assertNull($this->state()->protocol_agent_role, 'the rebuild kept a role no replayed heartbeat carries');
     }
 }
