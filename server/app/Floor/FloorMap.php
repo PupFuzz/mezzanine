@@ -799,10 +799,7 @@ final class FloorMap
                 ));
             }
 
-            // ⚠ `D`: `Slug::pattern()`'s `$` also matches before a trailing newline, and `"pm\n"`
-            // is a JSON string an author can write. Without it that value would be accepted as a
-            // role no relayed role can ever equal.
-            if (! is_string($value) || preg_match(Slug::pattern(Slug::AGENT_NAME).'D', $value) !== 1) {
+            if (! is_string($value) || preg_match(Slug::pattern(Slug::AGENT_NAME), $value) !== 1) {
                 throw new InvalidFloorMap(sprintf(
                     'Desk slot %s\'s `%s` is %s; it must be a role name such as `pm`.',
                     $named,

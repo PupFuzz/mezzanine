@@ -34,9 +34,14 @@ final class Slug
      */
     public const AGENT_NAME = '[a-z0-9-]{1,48}';
 
-    /** `$body` anchored and delimited for `preg_match()`. */
+    /**
+     * `$body` anchored and delimited for `preg_match()`. `D` makes `$` the end of the subject:
+     * without it PCRE's `$` also matches before one trailing newline, so `"seat\n"` would pass
+     * as a slug that no reporter's `seat` can ever equal (card#11253). A route constraint takes
+     * the bare body instead, and Symfony's compiled route regex carries its own `D`.
+     */
     public static function pattern(string $body): string
     {
-        return '/^'.$body.'$/';
+        return '/^'.$body.'$/D';
     }
 }

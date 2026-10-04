@@ -27,6 +27,14 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11253** — **Install and seat IDs that end in a line break are refused.** `mezzanine:ingest-token:issue`
+  refuses an `install_id` or `seat_id` such as `"aimla\n"` before it writes an install, a seat or a token, and
+  its refusal now prints the refused ID as a JSON string, so a trailing line break shows as `\n`. Before, the
+  command accepted such an ID and issued a token bound to an ID no reporter sends. `App\Support\Slug::pattern()`,
+  which the command and `FloorMap`'s `reserved_for` check both use, now ends the match at the end of the value,
+  and `FloorMap`'s own copy of that rule is gone. The building surface's room-map route already answered `404`
+  for such an install ID, and a test now holds it to that.
+
 - **card#11144** — **The floor reads which desk a room map reserves.** `mapDesks()` in
   `server/public/js/floor/floor-layout.js` now returns each desk with its `reserved_for` role, or `null` when
   the desk is not reserved, read as the console accepts the property: a Tiled `string`, or a property with no

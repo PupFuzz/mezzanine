@@ -335,6 +335,10 @@ class TheBuildingSurfaceTest extends FeedTestCase
             $this->browse("/api/building/rooms/$notASlug/map")->assertNotFound();
         }
 
+        // A slug and a trailing line break is no slug either (card#11253). The router matches the
+        // decoded path, so `%0A` reaches the constraint as `"\n"`.
+        $this->browse('/api/building/rooms/aimla%0A/map')->assertNotFound();
+
         // …and the boundary on the other side answers.
         $this->browse('/api/building/rooms/'.str_repeat('a', 32).'/map')->assertOk();
         $this->browse('/api/building/rooms/0a/map')->assertOk();
