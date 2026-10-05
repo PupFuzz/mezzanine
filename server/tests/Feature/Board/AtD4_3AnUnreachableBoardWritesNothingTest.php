@@ -49,9 +49,9 @@ class AtD4_3AnUnreachableBoardWritesNothingTest extends BoardTaskTestCase
 
         [$code, $printed] = $this->poll();
 
+        $this->assertSame($seeded, $this->boardRow(), $scenario.': the row moved — a failed poll wrote');
         $this->assertNotSame(0, $code, $scenario.': a degraded poll exits non-zero');
         $this->assertSame([1, 1], $this->pollCounters(), $scenario.': board_poll_failed + 1, board_poll_ok unmoved');
-        $this->assertSame($seeded, $this->boardRow(), $scenario.': the row moved — a failed poll wrote');
         $this->assertStringContainsString('nothing written', $printed);
     }
 
