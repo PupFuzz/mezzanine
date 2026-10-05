@@ -284,6 +284,31 @@ accounts.** At that point the console's route group needs a real authorization l
 exists because it *reported* (`docs/design/FLOOR.md § 3.4`); an account stops working by being
 retired, and its record survives so that everything it did still resolves.
 
+### The board card on a desk
+
+A desk's task title comes from the seat's own telemetry until the board integration is configured;
+then a kanban card assigned to the seat's board user takes precedence, with its `card#N` reference
+(`docs/design/BOARD-TASK.md`, which owns every rule below). Three steps turn it on, and each is the
+operator's:
+
+1. **Issue a read-scoped token** at the kanban board for this server — its own token, not any agent's.
+2. **Set the three keys in `server/.env`** and refresh the config cache: `BOARD_API_BASE` (https, no
+   trailing slash, e.g. `https://<kanban-host>/api/v3`), `BOARD_API_TOKEN`, and `BOARD_IDS` (a
+   comma-separated list of board ids). With `BOARD_IDS` empty the poller does nothing.
+3. **Map each seat to its board user:**
+
+```sh
+php artisan mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<board user id>
+php artisan mezzanine:seat-board-user --seat=<install>/<seat> --clear
+```
+
+`mezzanine:board-poll` then runs every five minutes from the existing `schedule:run` crontab entry,
+so `bin/supervision.sh` needs no change. A desk shows the most recently updated card assigned to its
+board user; a board user can be mapped to one seat at a time, and retiring a seat frees its board
+user. If the board stops answering, each board title keeps showing for 30 minutes and then gives way
+to the telemetry title, marked degraded. `GET /api/fleet/health` counts polls in `board_poll_ok` and
+`board_poll_failed`, and the server log names the failure class of each failed poll.
+
 ## Licensing and attribution
 
 MIT (see `LICENSE`). Mezzanine's floor derives from prior open-source work and ships

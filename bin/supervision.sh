@@ -13,7 +13,8 @@
 # daemon with exactly the command cron runs.
 # `bin/deploy.selftest.sh` checks the list against § 2.1's `long-lived daemon` rows, so the two cannot
 # drift apart silently — the drift card#9181 found, when § 2.1 lacked the heartbeat this set carried.
-# `mezzanine:purge` is NOT in the set: it is a scheduled command, run by the `schedule:run` entry.
+# `mezzanine:purge` and `mezzanine:board-poll` are NOT in the set: they are scheduled commands, run by the
+# `schedule:run` entry (server/routes/console.php).
 #
 # ⚑ READ ACROSS TWO RELEASES. bin/deploy.sh runs from the release that is SERVING and deploys another
 # one, so these are a contract between two versions of this file, not one:
