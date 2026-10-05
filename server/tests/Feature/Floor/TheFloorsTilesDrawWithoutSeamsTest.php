@@ -19,13 +19,15 @@ use Tests\TestCase;
  * Whether one primitive is in fact rasterised without a seam is the browser's, and was looked at on a
  * screenshot when this landed (the PR's review round), not here.
  *
- * ⛔ EVERY MEMBER OF THE MERGE KEY IS PLANTED. `tileRegions()` joins tiles whose key is equal; the probe
- * reads that key out of the shipped `scene.js` and plants, per member, two neighbours that differ in that
- * member alone, which must be painted as two primitives, each as itself.
+ * ⛔ EVERY MEMBER OF THE MERGE KEY IS PINNED AND PLANTED. `tileRegions()` joins tiles whose key is equal;
+ * the probe pins that key's members (`KEY_MEMBERS`, its one copy), reds when the key `scene.js` computes
+ * lacks a pinned member or has one the pin does not name, and plants, per pinned member, two neighbours
+ * that differ in that member alone, which must be painted as two primitives, each as itself.
  *
  * ⛔ EACH CHECK IS SEEN TO FAIL: the controls re-mint one defect each in a copy of the shipped modules —
- * neighbours never joined, the draw-order guard gone, a tile's opacity or flip dropped, and each member of
- * the merge key dropped from it in turn — and watch the probe name it.
+ * neighbours never joined, the draw-order guard gone, a tile's opacity or flip dropped, each member of the
+ * merge key dropped from it in turn, a member added to it, and a second key line planted before the real
+ * one — and watch the probe name it.
  */
 class TheFloorsTilesDrawWithoutSeamsTest extends TestCase
 {
@@ -79,28 +81,45 @@ class TheFloorsTilesDrawWithoutSeamsTest extends TestCase
             ],
         ];
 
-        // One per member of the merge key, read out of the shipped `tileRegions()` by the probe — so a member
-        // added to the key later gets its control here with no edit: that member dropped, its planted pair
-        // merges, and the probe must say so. A member the probe cannot plant reds the first test instead.
         $key = $this->probe([])['key'];
 
-        $this->assertNotSame([], $key['members'], 'the probe read no member out of the merge key — no control below would run');
+        $this->assertNotSame([], $key['pinned'], 'the probe pins no member of the merge key — no control below would run');
+        $this->assertNotNull($key['expression'], 'the probe read no merge key out of the shipped scene.js — no control below could plant');
 
-        foreach ($key['members'] as $member) {
-            $kept = array_filter($key['members'], fn (string $m): bool => $m !== $member);
+        $keyLine = "const kind = {$key['expression']};";
+        $keyOf = fn (array $members): string => 'const kind = JSON.stringify(['.implode(', ', array_map(fn (string $m): string => "t.{$m}", $members)).']);';
 
+        $controls['a member the pin does not name added to the merge key'] = [
+            ['scene.js', $keyLine, $keyOf([...$key['members'], 'room'])],
+            'has «room», which the probe\'s KEY_MEMBERS does not pin',
+        ];
+
+        // A second key line ahead of the real one, inside a block comment: a reader that took the first
+        // `JSON.stringify([` would read it for the key.
+        $controls['a decoy key line before the real one'] = [
+            ['scene.js', $keyLine, "/*\n        const kind = JSON.stringify([t.image, t.iw]);\n        */\n        {$keyLine}"],
+            'has 2 lines «const kind = JSON.stringify([…]);», not exactly one',
+        ];
+
+        // One per PINNED member, dropped from the shipped key: its planted pair merges, and the probe must say
+        // so on the pair itself AND as the key's drift from the pin.
+        foreach ($key['pinned'] as $member) {
             $controls["«{$member}» dropped from the merge key"] = [
-                ['scene.js', $key['expression'], 'JSON.stringify(['.implode(', ', array_map(fn (string $m): string => "t.{$m}", $kept)).'])'],
-                "differ only in «{$member}» and are painted as ONE primitive",
+                ['scene.js', $keyLine, $keyOf(array_filter($key['members'], fn (string $m): bool => $m !== $member))],
+                ["differ only in «{$member}» and are painted as ONE primitive", "lacks the pinned member «{$member}»"],
             ];
         }
 
+        // Each control names the defect text it must produce — every one of them, where it lists several.
         foreach ($controls as $name => [$edit, $named]) {
             $defects = $this->probe([], $this->mutatedModules($edit))['defects'];
 
             $this->assertNotSame([], $defects, "CONTROL ({$name}) did not bite");
-            $this->assertNotEmpty(array_filter($defects, fn (string $d): bool => str_contains($d, $named)),
-                "CONTROL ({$name}) redded for another reason:\n".implode("\n", array_slice($defects, 0, 3)));
+
+            foreach ((array) $named as $text) {
+                $this->assertNotEmpty(array_filter($defects, fn (string $d): bool => str_contains($d, $text)),
+                    "CONTROL ({$name}) did not name «{$text}»:\n".implode("\n", array_slice($defects, 0, 3)));
+            }
         }
     }
 }

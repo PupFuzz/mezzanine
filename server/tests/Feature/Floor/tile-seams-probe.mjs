@@ -9,7 +9,7 @@
  * planks, a dotted ladder down an 8 px wall strip. No browser runs here, so this reads the property that
  * causes the hairline rather than the pixels: two identical tiles sharing an edge, drawn by two nodes.
  *
- * ⛔ THREE CHECKS PER CASE, read from what `createPainter().paint()` wrote under `g.tiles`:
+ * ⛔ THE CHECKS PER CASE, read from what `createPainter().paint()` wrote under `g.tiles`:
  *   - THE SAME TILES: every painted primitive is expanded back into the tiles it draws — a pattern-filled
  *     path into the lattice cells of its rects, a per-tile viewport (the form the painter used to write, so
  *     a return to it reds as the seam it is and not as a tile gone missing) into its one — each with its image, its window onto the image, the image's size, its flips and its opacity, and
@@ -24,12 +24,13 @@
  * `mapTiles()`), and planted ones — a sheet tile's window flipped both ways at half opacity on a lattice, an
  * L of 8 px wall strip (no one rectangle covers it), a lattice off the grid, an ORDER case: a tile between two identical
  * neighbours that overlaps the second, so drawing the pair as one would put that tile under it, and a KEY case: per member
- * of `tileRegions()`'s merge key, read out of the shipped `scene.js`, two neighbours that differ in that member alone.
+ * of the merge key as `KEY_MEMBERS` pins it, two neighbours that differ in that member alone — and the key `tileRegions()`
+ * computes, read out of the `scene.js` under test, must be exactly that pinned set.
  *
  * argv: `<floor module dir>` (the shipped `server/public/js/floor`, or a mutated copy's). stdout:
- * `{ cases: { <name>: { tiles, primitives, nodes } }, key: { expression, members }, defects: [ … ] }` — `tiles`
- * counts each case's tiles, so a case that painted nothing reads as such; `key` is the merge key as read, the
- * controls' source for dropping each member in turn.
+ * `{ cases: { <name>: { tiles, primitives, nodes } }, key: { expression, members, pinned }, defects: [ … ] }` — `tiles`
+ * counts each case's tiles, so a case that painted nothing reads as such; `key` is the merge key as read
+ * (`expression`, `members`) beside the pin (`pinned`), the controls' source for dropping each member in turn.
  */
 
 import { readFileSync } from 'node:fs';
@@ -85,17 +86,51 @@ const shipped = (() => {
 const sheet = { image: '/art/floor/tiles/planted/sheet.png', iw: 64, ih: 48, sx: 16, sy: 8, sw: 16, sh: 16, w: 16, h: 16 };
 
 /**
- * THE MERGE KEY, read out of the SHIPPED `scene.js` — never out of the module dir under test, so a control
- * that drops a member from a mutated copy's key still has that member's pair planted against it. Every
- * member is planted below, so a member added to the key later is planted with no edit here — or, where it
- * is not a plain `t.<member>` or the planted tile cannot vary it, the probe reports a defect naming it.
+ * THE MERGE KEY, PINNED HERE AND NOWHERE ELSE — the members `tileRegions()` must join tiles on, every one of
+ * which the planted pairs below vary. The key `scene.js` actually computes is read out of the module dir
+ * under test and must be exactly this set: a member removed from it, or one added, is a defect naming the
+ * member. So the key cannot shrink and keep the probe green by planting one pair fewer, and a member added
+ * to it is a conscious edit of this list, which plants its pair.
  */
-const KEY = (() => {
-    const source = readFileSync(join(HERE, '..', '..', '..', 'public', 'js', 'floor', 'scene.js'), 'utf8');
-    const m = /export function tileRegions\([\s\S]*?(JSON\.stringify\(\[([^\]]*)\]\))/.exec(source);
-    const members = m === null ? [] : m[2].split(',').map((s) => /^\s*t\.(\w+)\s*$/.exec(s)?.[1] ?? null);
+const KEY_MEMBERS = ['image', 'iw', 'ih', 'sx', 'sy', 'sw', 'sh', 'w', 'h', 'flip_h', 'flip_v', 'flip_d', 'opacity'];
 
-    return { expression: m?.[1] ?? null, members };
+/**
+ * THE KEY AS `scene.js` COMPUTES IT: the `const kind = JSON.stringify([...]);` statement in the body of
+ * `tileRegions()` — the binding the merge looks each tile's kind up by — matched as a whole line, so a
+ * comment that merely mentions a `JSON.stringify([` is not read for it. Anything but exactly one such line
+ * is a defect: none (the key is computed some other way, which this reader cannot vouch for) or several
+ * (which one the merge uses is not the reader's to guess).
+ */
+const keyDefects = [];
+
+const KEY = (() => {
+    const source = readFileSync(join(FLOOR, 'scene.js'), 'utf8');
+    const body = /^export function tileRegions\([\s\S]*?^\}$/m.exec(source)?.[0] ?? null;
+    const lines = body === null ? [] : [...body.matchAll(/^\s*const kind = (JSON\.stringify\(\[([^\]\n]*)\]\));$/gm)];
+
+    if (lines.length !== 1) {
+        keyDefects.push(body === null
+            ? 'scene.js has no `export function tileRegions(` — the merge key could not be read'
+            : `tileRegions() in scene.js has ${lines.length} lines «const kind = JSON.stringify([…]);», not exactly one — the merge key could not be read`);
+
+        return { expression: null, members: [], pinned: KEY_MEMBERS };
+    }
+
+    const members = lines[0][2].split(',').map((s) => /^\s*t\.(\w+)\s*$/.exec(s)?.[1] ?? null);
+
+    if (members.includes(null)) {
+        keyDefects.push(`the merge key «${lines[0][1]}» in tileRegions() is not a list of a tile's members \`t.<member>\``);
+    }
+
+    for (const m of KEY_MEMBERS.filter((p) => !members.includes(p))) {
+        keyDefects.push(`the merge key in tileRegions() lacks the pinned member «${m}» — tiles that differ in it would be joined`);
+    }
+
+    for (const m of members.filter((r) => r !== null && !KEY_MEMBERS.includes(r))) {
+        keyDefects.push(`the merge key in tileRegions() has «${m}», which the probe's KEY_MEMBERS does not pin — pin it, so its pair is planted`);
+    }
+
+    return { expression: lines[0][1], members: members.filter((m) => m !== null), pinned: KEY_MEMBERS };
 })();
 
 /**
@@ -121,12 +156,6 @@ const differIn = (base, member) => {
     return null;
 };
 
-const keyDefects = [];
-
-if (KEY.expression === null || KEY.members.length === 0 || KEY.members.includes(null)) {
-    keyDefects.push(`the merge key could not be read out of tileRegions() in scene.js as a list of a tile's members — «${KEY.expression}»`);
-}
-
 /**
  * EVERY KEY MEMBER, ONE PAIR EACH: a tile and its neighbour at its right edge that differ in that member
  * alone, each pair on a row of its own. Drop the member from the key and the pair merges into one region,
@@ -136,7 +165,7 @@ const pairs = (() => {
     const tiles = [];
     const apart = [];
 
-    KEY.members.filter((m) => m !== null).forEach((member, row) => {
+    KEY_MEMBERS.forEach((member, row) => {
         const base = tile({ ...sheet, opacity: 0.5, x: 0, y: 400 + 32 * row });
         const other = differIn(base, member);
 
