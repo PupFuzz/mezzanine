@@ -21,8 +21,9 @@ use Tests\TestCase;
  *
  * ⛔ WHAT A TILE LOOKS LIKE IS WRITTEN ONCE, in `scene.js`'s `tileLook()`: the regions are joined on it and
  * the painter is handed it in place of the tile. The probe's reader is closed — anything the painter
- * writes on a tile's nodes that it cannot read into the picture is a defect — and a look field the merge
- * ignores, or one the painter drops, shows as a tile not painted as itself.
+ * writes on a tile's nodes, or on the tiles layer, the defs and the drawing above them, that it cannot
+ * read into the picture is a defect — and a look field the merge ignores, or one the painter drops, shows
+ * as a tile not painted as itself; the value stratum puts each field at its pool's values for that.
  *
  * ⛔ EACH CHECK IS SEEN TO FAIL: the controls below re-mint one defect each in a copy of the shipped
  * modules (or of the probe, for its own count) and watch the probe name it.
@@ -128,6 +129,38 @@ class TheFloorsTilesDrawWithoutSeamsTest extends TestCase
             'every room\'s tiles merged in one pass' => [
                 ['painter.js', 'pass(scene.tiles.filter((t) => t.room === null));', 'pass(scene.tiles); scene = { ...scene, tiles: [] };'],
                 'one primitive paints tiles of two passes',
+            ],
+            // The review's three merges wrong only at particular values, which the merge stratum's one base
+            // could not reach: a flip ignored while the other flip is set, opacity 1 taken for 0.5, and sy
+            // ignored where sx is 0.
+            'flip_v ignored while flip_h is set' => [
+                ['scene.js', 'const kind = JSON.stringify(look);', 'const kind = JSON.stringify(look.flip_h ? { ...look, flip_v: 0 } : look);'],
+                ['the value stratum: the scene\'s tile', 'is not painted as itself'],
+            ],
+            'opacity 1 joined with opacity 0.5' => [
+                ['scene.js', 'const kind = JSON.stringify(look);', 'const kind = JSON.stringify({ ...look, opacity: look.opacity === 1 ? 0.5 : look.opacity });'],
+                ['the value stratum: the scene\'s tile', 'is not painted as itself'],
+            ],
+            'sy ignored where sx is 0' => [
+                ['scene.js', 'const kind = JSON.stringify(look);', 'const kind = JSON.stringify(look.sx === 0 ? { ...look, sy: 0 } : look);'],
+                ['the value stratum: the scene\'s tile', 'is not painted as itself'],
+            ],
+            // Every node between a tile and the drawing is closed as the tile's own are.
+            'an opacity on the tiles layer' => [
+                ['painter.js', "const tiles = node('g', { class: 'tiles' }, svg);", "const tiles = node('g', { class: 'tiles', opacity: 0.5 }, svg);"],
+                'the tiles layer: the painter writes «opacity» the probe cannot attribute to a look field',
+            ],
+            'an opacity on the drawing' => [
+                ['painter.js', "class: 'floor-scene', role: 'group',", "class: 'floor-scene', opacity: 0.5, role: 'group',"],
+                'the drawing: the painter writes «opacity» the probe cannot attribute to a look field',
+            ],
+            'a style on the defs' => [
+                ['painter.js', "node('defs', {}, svg)", "node('defs', { style: 'opacity:.5' }, svg)"],
+                'the drawing\'s defs: the painter writes «style» the probe cannot attribute to a look field',
+            ],
+            'an empty pattern ahead of each fill, under its id' => [
+                ['painter.js', 'const id = `floor-tile-${fills++}`;', "const id = `floor-tile-\${fills++}`;\n                node('pattern', { id }, defs);"],
+                'two of the drawing\'s defs share an id',
             ],
         ];
 

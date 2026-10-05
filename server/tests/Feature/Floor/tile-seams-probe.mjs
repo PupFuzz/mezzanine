@@ -23,7 +23,9 @@
  *
  * ⛔ THE READER IS CLOSED. Every attribute and child the painter writes under `g.tiles`, and on the
  * pattern and image a path is filled with, is either read into the picture above or is a defect naming
- * it — so nothing the painter writes on a tile's nodes goes uncompared.
+ * it — so nothing the painter writes on a tile's nodes goes uncompared. So is every node between them and
+ * the drawing: `g.tiles` (its class alone), the one `defs` and the root `<svg>` (what the painter writes on
+ * them today), one of each, and no two defs of one id.
  *
  * ⛔ THE INPUTS ARE STRATA, EACH SIZED AT RUN TIME AND HELD TO ITS PRODUCT. The SHIPPED default room
  * (`resources/floor/default.tmj` through the shipped tileset reader and `mapTiles()`) and one planted
@@ -31,6 +33,8 @@
  *   - MERGE: every field a real `mapTiles()` cell carries but its place and its room, crossed with the
  *     four directions, a pair or a chain of two before the differing tile, and the differing tile first
  *     or last in draw order — two neighbours differing in that field alone;
+ *   - VALUE: per field, a pool of its values (the shipped room's, and its type's edges); each pair of them
+ *     on two neighbours, and each value held on both neighbours while another field differs;
  *   - ORDER: a tile between two identical tiles that overlaps the second, in each direction; one place
  *     drawn by three layers; a hallway tile under a room's plane;
  *   - OFFSETS: lattices built through `mapTiles()` under nested group offsets — whole, dyadic and
@@ -40,8 +44,9 @@
  *
  * argv: `<floor module dir>` (the shipped `server/public/js/floor`, or a mutated copy's). stdout:
  * `{ cases: { <name>: { tiles, primitives, nodes } }, strata: { <name>: { cells, product, factors } },
- * fields, look, defects: [ … ] }` — `fields` is the merge stratum's field set as derived, `look` the
- * fields of `tileLook()` (the controls' source for dropping each in turn).
+ * fields, pools, look, defects: [ … ] }` — `fields` is the merge stratum's field set as derived, `pools`
+ * the value stratum's pool per field as derived, `look` the fields of `tileLook()` (the controls' source
+ * for dropping each in turn).
  */
 
 import { readFileSync } from 'node:fs';
@@ -203,6 +208,85 @@ const merge = (() => {
     return { seamless: true, tiles, planes: [], fields: F };
 })();
 
+/** A value's identity — two values are one when they serialise alike, `{}` and `{}` included. */
+const same = (v) => JSON.stringify(v);
+
+/**
+ * A field's VALUE POOL: the distinct values the shipped room's cells carry in it (the first `cap` of them,
+ * in the room's order), and the edges of each of their types — a flag both ways; a number 0, 1 and a
+ * fraction; a name empty and not; an object empty and not. Nothing is listed per field: the field's own
+ * values pick the edges.
+ */
+const poolOf = (field, cap) => {
+    const shippedValues = [...new Map(shipped.tiles.map((t) => [same(t[field]), t[field]])).values()];
+    const EDGES = {
+        boolean: [false, true],
+        number: [0, 1, 0.5],
+        string: ['', 'other'],
+        object: [{}, { other: true }],
+    };
+    const edges = shippedValues.flatMap((v) => (v === null ? [] : EDGES[typeof v] ?? []));
+
+    return [...new Map([...shippedValues.slice(0, cap), ...edges].map((v) => [same(v), v])).values()];
+};
+
+/**
+ * THE VALUE STRATUM: the merge stratum varies each field once from one base, so a merge wrong only at
+ * certain values — two values of one field taken as one, or a field ignored while another holds a value —
+ * passes it. Per field g of the merge stratum's F, its pool (`poolOf()`):
+ *   - VALUE: each unordered pair of distinct values of g — two neighbours differing in g alone, at those values;
+ *   - CONDITIONED: per field f, per value v in f's pool, per other field g — two neighbours that both hold
+ *     f = v and differ in g alone (`differIn()`).
+ * One direction (rightward) and one order: the merge stratum crosses every field with every direction,
+ * depth and order, so what this adds is the values. ⚠ A merge wrong only where two or more OTHER fields
+ * hold particular values at once (a three-way condition or deeper) is outside this stratum — the accepted
+ * bound; the random fill is the only input that may happen on one.
+ */
+const values = (() => {
+    const F = merge.fields;
+    const pools = Object.fromEntries(F.map((f) => [f, poolOf(f, 4)]));
+    const base = tile({ ...sheet, opacity: 0.5 });
+    // Room for the widest pair a pool can make, and as much again between slots.
+    const SLOT = 4 * Math.max(base.w, base.h, ...Object.values(pools).flat().filter((v) => typeof v === 'number'));
+    const tiles = [];
+    const cells = { value: 0, conditioned: 0 };
+    const plant = (kind, a, b) => {
+        const n = cells.value + cells.conditioned;
+        const first = { ...a, x: SLOT * (n % 40), y: SLOT * Math.floor(n / 40) };
+
+        tiles.push(first, against(first, b, [1, 0]));
+        cells[kind] += 1;
+    };
+
+    for (const field of F.filter((f) => pools[f].length < 2)) {
+        defects.push(`«${field}» has fewer than two values to vary — its value cells are not planted`);
+    }
+
+    for (const g of F) {
+        pools[g].forEach((a, i) => pools[g].slice(i + 1).forEach((b) => plant('value', { ...base, [g]: a }, { ...base, [g]: b })));
+    }
+
+    for (const f of F) {
+        for (const v of pools[f]) {
+            for (const g of F.filter((k) => k !== f)) {
+                const held = { ...base, [f]: v };
+                const other = differIn(held, g);
+
+                if (other !== null) {
+                    plant('conditioned', held, other);
+                }
+            }
+        }
+    }
+
+    const sizes = F.map((f) => pools[f].length);
+
+    stratum('value', cells.value, { 'pairs within each field\'s pool': sizes.reduce((s, n) => s + (n * (n - 1)) / 2, 0) });
+    stratum('conditioned value', cells.conditioned, { 'values over every pool': sizes.reduce((s, n) => s + n, 0), 'other fields': F.length - 1 });
+
+    return { seamless: true, tiles, planes: [], pools };
+})();
+
 /**
  * THE ORDER STRATUM: per direction, a tile between two identical neighbours that overlaps the second — so
  * drawing the pair as one would put it under that second tile; one place drawn by three layers, the middle
@@ -340,6 +424,7 @@ const CASES = {
         planes: [],
     },
     'the merge stratum': merge,
+    'the value stratum': values,
     'the order stratum': order,
     'the offsets stratum': offsets,
     'the rooms stratum': rooms,
@@ -413,15 +498,37 @@ function drawn(img, viewBox, w, h, where, defects) {
     return { image: img.getAttribute('href'), iw: num(img, 'width'), ih: num(img, 'height'), sx, sy, sw, sh, w, h, flip_h: flip[0], flip_v: flip[1] };
 }
 
+/**
+ * The drawing's tiles, read back. What lies between the drawing and a tile is closed as the tile's own
+ * nodes are: the root `<svg>` and the one `<defs>` carry only what the painter writes on them today, and
+ * the one `g.tiles` layer only its class — an opacity or a transform there would draw every tile other
+ * than as itself. Their other children are the drawing's other layers and fills, which no tile reads.
+ */
 function paintedOf(svg, defects, name) {
-    const layer = svg.children.find((n) => n.getAttribute('class') === 'tiles');
-    const defs = new Map(svg.children.filter((n) => n.name === 'defs').flatMap((d) => d.children).map((n) => [n.getAttribute('id'), n]));
+    const layers = svg.children.filter((n) => n.name === 'g' && n.getAttribute('class') === 'tiles');
+    const defsNodes = svg.children.filter((n) => n.name === 'defs');
+    const layer = layers[0];
+    const defs = new Map((defsNodes[0]?.children ?? []).map((n) => [n.getAttribute('id'), n]));
     const items = [];
 
-    if (layer === undefined) {
-        defects.push(`${name}: the painter drew no tiles layer`);
+    closed(svg, ['width', 'height', 'class', 'role', 'aria-label'], svg.children.length, `${name}: the drawing`, defects);
+
+    for (const d of defsNodes) {
+        closed(d, [], d.children.length, `${name}: the drawing's defs`, defects);
+    }
+
+    if (layers.length !== 1 || defsNodes.length !== 1) {
+        defects.push(`${name}: the painter drew ${layers.length} tiles layers and ${defsNodes.length} defs, not one of each`);
 
         return { items, primitives: 0 };
+    }
+
+    closed(layer, ['class'], layer.children.length, `${name}: the tiles layer`, defects);
+
+    // A fill names its pattern by id, and a browser takes the first of two that share one: the reader
+    // would read the other.
+    if (defs.size !== defsNodes[0].children.length) {
+        defects.push(`${name}: two of the drawing's defs share an id, so a fill naming it is not read as drawn`);
     }
 
     layer.children.forEach((n, prim) => {
@@ -492,7 +599,11 @@ function paintedOf(svg, defects, name) {
             }
 
             for (const [x, y, w, h, back] of rects) {
-                const [cols, rows, col0, row0] = [w / t.w, h / t.h, (x - num(pattern, 'x')) / t.w, (y - num(pattern, 'y')) / t.h];
+                // A tile of no width (or height) is one column (row) of no width at the lattice's origin: no
+                // two of its copies can sit side by side, and `0 / 0` would read it as no cell at all.
+                const cells = (len, cell) => (cell === 0 && len === 0 ? 1 : len / cell);
+                const from = (len, cell) => (cell === 0 && len === 0 ? 0 : len / cell);
+                const [cols, rows, col0, row0] = [cells(w, t.w), cells(h, t.h), from(x - num(pattern, 'x'), t.w), from(y - num(pattern, 'y'), t.h)];
 
                 if (back !== -w || ![cols, rows, col0, row0].every(whole) || cols < 1 || rows < 1) {
                     defects.push(`${where}: its rect at (${x}, ${y}) is not a whole number of its pattern's cells, on the pattern's own lattice`);
@@ -562,13 +673,18 @@ for (const [name, c] of Object.entries(CASES)) {
     }
 
     // ── the same order where it shows: every overlapping pair, in the scene's order ──
-    for (let i = 0; i < expected.length; i++) {
-        for (let j = i + 1; j < expected.length; j++) {
+    // Swept left to right: a pair can overlap only while the later-starting one starts inside the other.
+    const byX = expected.map((t, i) => i).sort((a, b) => expected[a].x - expected[b].x);
+
+    byX.forEach((p, n) => {
+        for (let m = n + 1; m < byX.length && expected[byX[m]].x < expected[p].x + expected[p].w; m++) {
+            const [i, j] = p < byX[m] ? [p, byX[m]] : [byX[m], p];
+
             if (position[i] !== undefined && position[j] !== undefined && overlap(expected[i], expected[j]) && position[i] > position[j]) {
                 defects.push(`${name}: ${id(expected[j])} is painted under ${id(expected[i])}, which the scene draws first`);
             }
         }
-    }
+    });
 
     // ── one pass per primitive: a primitive's tiles are all of one room, or all of the hallway ──
     const passOf = new Map();
@@ -613,4 +729,4 @@ for (const [name, c] of Object.entries(CASES)) {
     }
 }
 
-console.log(JSON.stringify({ cases, strata, fields: merge.fields, look: Object.keys(tileLook(shipped.tiles[0] ?? tile({}))), defects }));
+console.log(JSON.stringify({ cases, strata, fields: merge.fields, pools: values.pools, look: Object.keys(tileLook(shipped.tiles[0] ?? tile({}))), defects }));
