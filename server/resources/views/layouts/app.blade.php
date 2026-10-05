@@ -43,5 +43,10 @@
 
         @yield('content')
     </main>
+    {{--
+        THE ONE TIME CONVERTER's page half (card#9446): every `<x-utc-time>` this page printed is labelled
+        UTC, and this rewrites it to the viewer's browser zone. With JavaScript off the UTC text stays.
+    --}}
+    <script type="module" src="{{ asset('js/local-times.js') }}"></script>
 </body>
 </html>

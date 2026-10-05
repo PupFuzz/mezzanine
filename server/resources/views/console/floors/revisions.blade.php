@@ -18,7 +18,7 @@
     @else
         <p>
             Current: <strong>revision {{ $current->map_version }}</strong>, saved
-            {{ $current->updated_at }} by {{ $current->updated_by }}.
+            <x-utc-time :at="$current->updated_at" /> by {{ $current->updated_by }}.
             <a href="{{ route('admin.floors.edit', $installId) }}">Edit the map</a>
         </p>
     @endif
@@ -76,7 +76,7 @@
                                 reserved: {{ $revision['reserved'] }}
                             @endif
                         </td>
-                        <td>{{ $revision['authored_at'] }}<br>by {{ $revision['authored_by'] }}</td>
+                        <td><x-utc-time :at="$revision['authored_at']" /><br>by {{ $revision['authored_by'] }}</td>
                         <td>
                             @unless ($revision['removal'])
                                 <a href="{{ route('admin.floors.export', [$installId, $revision['revision']]) }}">Export

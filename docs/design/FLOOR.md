@@ -617,6 +617,19 @@ pair carries values. The timestamp says *when* and is
   ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by), citing
   [D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what)), and the seat's
   `delivery.clock_skew_ms` is rendered beside it in the drill-down whenever it is non-null.
+- **Every timestamp on this page is shown in the viewer's browser zone** — the zone
+  `Intl.DateTimeFormat().resolvedOptions().timeZone` names in the viewer's own browser — and every one
+  of them goes through **one converter**, `public/js/wire/clock.js` (card#9446; the operator's ruling of
+  2026-09-14). The wire and the store stay UTC, the server emits UTC only, and there is no stored
+  per-user zone, no picker and no setting. A server-clock stamp and a *seat clock* claim are converted
+  alike: *seat clock* names whose clock made the claim, never a zone. The zone is said **once per
+  page**, by [§ 5.5](#55-the-clients-own-narration)'s zone line, so the stamps themselves keep their
+  bare *HH:MM:SS* forms. The wall clock was the viewer's own time before this rule and is unchanged by
+  it. The console's server-rendered pages print each instant as labelled UTC inside a
+  `<time datetime="…Z">` that the same converter rewrites to `YYYY-MM-DD HH:MM:SS GMT±H[:MM]` (`UTC`
+  at a zero offset), so with JavaScript off they read UTC and say so. `Tests\Feature\Support\EveryTimeGoesThroughTheConverterTest`
+  reds when the client, a view or a controller prints an instant in one of the raw-print shapes it
+  names; its own docblock states the shapes it cannot see.
 
 **Ten fields the feed never re-sends, and the two markers every render of one must carry. This
 section owns that rule** — the two markers, the third token, which tables the rule runs over and what
@@ -2276,6 +2289,7 @@ the client's own, and never becomes a fact about a seat.**
 | ***rooms `X` and `Y` overlap on this floor*** | two footprints the client computed from the maps it holds sharing a pixel — the two `install_id`s in key order ([§ 4.6](#46-the-building-layout), [§ 9](#9-failure-paths-and-their-observables) F18, card#9292) | a fact about this client's layout and the documents it holds, not about any seat; it is rendered only where every write's refusal was passed, so it is rare and it names what to move |
 | ***desk objects `i` and `j` intersect — `install_id`: `seat`, `seat`***, one per pair, and ***desk object `i` is smaller than the furniture box — `install_id`: `seat`***, one per object | two `desks` objects of a map the client holds sharing a pixel on half-open rects, or one object smaller than [§ 12](#12-every-number-and-where-it-comes-from)'s furniture box at the cap — `i` and `j` are the objects' Tiled `id`s, never [§ 3.2](#32-the-desk-slot-function)'s 0-based slot index, in `id` order; the room's suffix as [§ 4.6](#46-the-building-layout)'s layout names it; and after the colon the `seat_id` at each object, omitted for an empty one ([§ 10.3](#103-the-floor-map), [§ 9](#9-failure-paths-and-their-observables) F21) | a fact about the map and this client's layout, not about any seat — the seat names are there so that a desk drawn under another is still named on the page, and are the way to its drill-down once row 10 serves [§ 4.4](#44-routes-and-what-each-one-fetches)'s route. It is rendered for **any** map the client holds — the shipped default, an authored save, a stored or restored revision — because the console's refusals landed with row 14's slice C ([§ 14](#14-open-questions-for-the-review-loop) item 28, ruled) and a refusal at the write reaches no revision stored before it, nor one saved against an earlier box; so this line, and not a harness test, is what tells a viewer and the map's author, and it is drawn by [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's scene from the map alone |
 | the **wall clock** and the windows' **sky** ([§ 6.2](#62-the-animation-table--the-closed-set) A17) | the **viewer's own clock**, read at the moment a `feed.heartbeat` arrives — never the server clock, never corrected by [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset, and never a seat's | a fact about **the viewer's machine**, labelled on the page as the viewer's own local time so that nothing about it reads as wire data. It is the one line here rendered by an animation rather than as text, which is why the rule below is stated in terms of *drives* rather than *appears in*: the heartbeat drives A17 and this value is what A17 **sets**. Its stopping is the point ([§ 9](#9-failure-paths-and-their-observables) F1) and it carries no *as of* stamp of its own — the feed-status line above is where this page says how current it is |
+| the **zone line** — ***times: your local time (GMT+5:30)*** | the viewer's browser zone, as its offset at the moment the page loaded | a fact about **the viewer's machine**, like the wall clock above: said once on the floor and once on the lobby so that every bare *HH:MM:SS* stamp on the page reads in a known zone ([§ 2.4](#24-the-clock-and-every-age-on-the-page), card#9446). It is text, set once, and drives nothing |
 
 **None of these is a state, and none of them may become one.** A narration line never drives a desk's
 pose, a currency label, a badge or an animation — the only effect the client's own connection state has

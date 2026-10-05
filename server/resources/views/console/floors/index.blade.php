@@ -100,7 +100,7 @@
                     </td>
                     <td>
                         @if ($row['authored'])
-                            {{ $row['updated_at'] }} by {{ $row['updated_by'] }}
+                            <x-utc-time :at="$row['updated_at']" /> by {{ $row['updated_by'] }}
                         @else
                             —
                         @endif

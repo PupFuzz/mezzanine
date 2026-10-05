@@ -102,7 +102,7 @@ trait DrivesTheDeskFloor
         return $this->mutatedModules([self::DESK_RENDER, $anchor, $replacement]);
     }
 
-    /** A wire instant's own `HH:MM:SS` digits — `wire/clock.js`'s reading, derived here from the fixture. */
+    /** A wire instant's `HH:MM:SS` in the suite's UTC (`tests/bootstrap.php`) — `wire/clock.js`'s reading there, derived here from the fixture. */
     protected function hms(string $wire): string
     {
         return substr($wire, 11, 8);

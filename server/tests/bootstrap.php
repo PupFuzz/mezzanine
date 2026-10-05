@@ -131,3 +131,12 @@ if (! is_readable($env)) {
 
     exit(1);
 }
+
+/*
+ * NOT A REFUSAL — A PIN (card#9446). EVERY `node` THIS SUITE STARTS RUNS IN UTC, WHATEVER ZONE THE
+ * HOST IS IN. The shipped client shows an instant in its runtime's own zone (`public/js/wire/clock.js`)
+ * — the browser's on a page, the process's `TZ` under `node` — so a probe expecting `14:23:14` would
+ * read `10:23:14` on a host set to New York and pass on CI alone. Child processes inherit this. A test
+ * that means a viewer in another zone says which, through `DrivesAShippedClientModule::probeZone()`.
+ */
+putenv('TZ=UTC');

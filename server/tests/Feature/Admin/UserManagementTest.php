@@ -21,6 +21,7 @@ use Tests\TestCase;
 class UserManagementTest extends TestCase
 {
     use RefreshDatabase;
+    use SeesAConvertedInstant;
 
     private const PASSWORD = 'a perfectly serviceable passphrase';
 
@@ -263,11 +264,14 @@ class UserManagementTest extends TestCase
 
         // And the console still SHOWS it — a console that hid the row would give the operator the
         // same view a deletion would.
-        $this->actingAs($operator)
+        $page = $this->actingAs($operator)
             ->get(route('admin.users.index'))
             ->assertOk()
             ->assertSee($target->email)
             ->assertSee('left the project');
+
+        // card#9446: when, through the one converter.
+        $this->assertSeesConvertedInstant($page, $target->retired_at);
     }
 
     public function test_a_reason_is_required(): void

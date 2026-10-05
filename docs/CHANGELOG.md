@@ -27,6 +27,16 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9446** — **Every time shows in the viewer's browser timezone.** The floor, the lobby and the
+  console show each instant in the zone the viewer's own browser reports, through one converter
+  (`public/js/wire/clock.js`). The floor's header now agrees with itself: the sweep and ingest stamps sit in
+  the same zone as the wall clock. The floor and the lobby say the zone once, as *times: your local time
+  (GMT+5:30)*. Console pages print each time as `YYYY-MM-DD HH:MM:SS GMT±H[:MM]` (`UTC` at a zero offset); with
+  JavaScript off they print labelled UTC. Storage and the wire stay UTC, and there is no per-user zone setting. The seat
+  retirement message no longer carries a time; the retired-seats record below it does.
+  `EveryTimeGoesThroughTheConverterTest` reds when the client, a view or a controller prints a time in one
+  of the raw-print shapes it names.
+
 - **card#11314** — **`web-auth/cose-lib` moves from 4.6.0 to 4.7.3, past three advisories.** The lockfile
   update clears GHSA-9v8c-2mgr-qvx3, GHSA-h7p4-6f74-7w4g and GHSA-rh56-4rc8-hj58 (each patched in 4.7.2). The
   library arrives through Fortify's passkey support, which stays disabled.

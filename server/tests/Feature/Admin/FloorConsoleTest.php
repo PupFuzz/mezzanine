@@ -42,6 +42,7 @@ use Tests\TestCase;
 class FloorConsoleTest extends TestCase
 {
     use RefreshDatabase;
+    use SeesAConvertedInstant;
 
     private const INSTALL = 'aimla';
 
@@ -148,6 +149,12 @@ class FloorConsoleTest extends TestCase
         // Stored VERBATIM: the bytes an operator authored are the bytes the store holds, so the
         // desk slots the renderer reads are the ones Tiled exported and not a re-encoding of them.
         $this->assertSame(FloorMapFixture::valid(12), $row->map);
+
+        // card#9446: the floors list says when, through the one converter.
+        $this->assertSeesConvertedInstant(
+            $this->actingAs($this->operator())->get(route('admin.floors.index'))->assertOk(),
+            $row->updated_at,
+        );
     }
 
     public function test_authoring_is_refused_for_an_install_the_snapshot_does_not_render(): void
@@ -583,7 +590,7 @@ class FloorConsoleTest extends TestCase
         $this->author(self::INSTALL, FloorMapFixture::valid(12))->assertSessionHasNoErrors();
         $this->author(self::INSTALL, FloorMapFixture::valid(8))->assertSessionHasNoErrors();
 
-        $this->actingAs($this->operator())
+        $page = $this->actingAs($this->operator())
             ->get(route('admin.floors.revisions', self::INSTALL))
             ->assertOk()
             ->assertSee('ops@example.com')
@@ -591,6 +598,13 @@ class FloorConsoleTest extends TestCase
             // `S` before and after, which is what re-slots every desk in the room (§ 10.3).
             ->assertSee('12')
             ->assertSee('8');
+
+        // card#9446: the current map's save and every revision's, through the one converter.
+        $this->assertSeesConvertedInstant($page, DB::table('floors')->where('install_id', self::INSTALL)->value('updated_at'));
+
+        foreach ([1, 2] as $revision) {
+            $this->assertSeesConvertedInstant($page, Revisions::get(Revisions::ROOM_MAP, self::INSTALL, $revision)->authored_at);
+        }
     }
 
     public function test_the_diff_page_names_the_layer_that_moved_and_the_slot_count_on_both_sides(): void

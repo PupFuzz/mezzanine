@@ -185,7 +185,7 @@ class CoordRendersTheThreadLineTest extends TestCase
         $this->assertSame([], $hits[1],
             'the coordination render emitted a § 2.4-shaped duration: '.implode(', ', $hits[1]));
 
-        // The shared `wire/clock.js` reads the wire's digits and converts nothing — a null in
+        // The shared `wire/clock.js`, in the suite's UTC (`tests/bootstrap.php`) — a null in
         // gives a null out, and the caller applies its own absence render rather than a zero.
         $this->assertSame(['09:14:02', '16:02:11', null], $probe['clock']);
     }

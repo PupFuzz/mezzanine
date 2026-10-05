@@ -44,7 +44,7 @@
                                 {{ $revision['floors'] }} composed
                             @endif
                         </td>
-                        <td>{{ $revision['authored_at'] }}<br>by {{ $revision['authored_by'] }}</td>
+                        <td><x-utc-time :at="$revision['authored_at']" /><br>by {{ $revision['authored_by'] }}</td>
                         <td>
                             <a href="{{ route('admin.layout.export', $revision['revision']) }}">Export
                                 <code>.json</code></a>
