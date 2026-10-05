@@ -4,6 +4,7 @@ namespace Tests\Feature\Board;
 
 use App\Fold\StateRecompute;
 use App\Support\ByteTruncation;
+use Illuminate\Support\Facades\DB;
 
 /**
  * AT-D4-6 — an unmapped seat is untouched, and a long title is truncated
@@ -26,7 +27,7 @@ class AtD4_6UnmappedAndTruncatedTest extends BoardTaskTestCase
 
         $this->liveTier3Seat();
         [$otherToken] = $this->issueToken(self::INSTALL, self::OTHER);
-        $otherRef = (int) \Illuminate\Support\Facades\DB::table('seats')->where('seat_id', self::OTHER)->value('id');
+        $otherRef = (int) DB::table('seats')->where('seat_id', self::OTHER)->value('id');
         $this->deliver($this->openCall(), token: $otherToken, seat: self::OTHER);
         $this->fold();
         $otherBefore = $this->taskColumns($otherRef);
