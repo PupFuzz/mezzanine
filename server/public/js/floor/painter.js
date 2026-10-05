@@ -449,11 +449,11 @@ export function createPainter({ characters, failed, select }) {
         const sec = (frames) => (frames * fx.frame_interval_ms) / 1000;
         const shown = node('g', {
             class: 'fx-walker-shown',
-            style: `animation-duration:${sec(fx.shown.frames)}s;animation-delay:${sec(fx.shown.at) - ago}s`,
+            style: `animation-duration:${sec(fx.shown.frames)}s;animation-delay:${sec(fx.shown.start) - ago}s`,
         }, layer);
         const g = node('g', {
             class: 'fx-walker',
-            style: `animation-duration:${sec(fx.walk.frames)}s;animation-timing-function:steps(${fx.walk.frames});animation-delay:${sec(fx.walk.at) - ago}s`,
+            style: `animation-duration:${sec(fx.walk.frames)}s;animation-timing-function:steps(${fx.walk.frames});animation-delay:${sec(fx.walk.start) - ago}s`,
         }, shown);
 
         g.style.setProperty('--from-x', `${fx.from.x}px`);

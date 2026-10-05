@@ -153,7 +153,7 @@ export class EffectsInFlight {
             .map((h) => {
                 const elapsed = this.#elapsed(h, now);
 
-                return { from: h.effect.door.at - elapsed, to: h.effect.door.at + h.effect.door.frames - elapsed };
+                return { from: h.effect.door.start - elapsed, to: h.effect.door.start + h.effect.door.frames - elapsed };
             })
             .filter((s) => s.to > 0)
             .sort((a, b) => a.from - b.from);

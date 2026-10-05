@@ -43,6 +43,7 @@ const url = (file) => pathToFileURL(join(dir, file)).href;
 
 const bubble = await import(url('task-bubble.js'));
 const render = await import(url('desk-render.js'));
+const poses = await import(url('desk-poses.js'));
 const absence = await import(url('../wire/null-render.js'));
 
 const payload = JSON.parse(readFileSync(0, 'utf8') || '{}');
@@ -78,7 +79,7 @@ console.log(JSON.stringify({
         label: render.LABEL,
         unknown_reason: render.UNKNOWN_REASON,
         api_error_phrase: render.API_ERROR_PHRASE,
-        desk: render.DESK,
+        desk: poses.DESK,
         sending_nothing: render.SENDING_NOTHING,
         oldest_badge_since: render.OLDEST_BADGE_SINCE,
         no_data_yet: absence.NO_DATA_YET,

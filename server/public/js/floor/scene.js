@@ -180,8 +180,8 @@ function walkEffect(base, id, desk, door, motion, character) {
     const D = ELEVATOR_DOOR;
     const doorFrames = D.open + D.step + D.close;
     const timing = id === 'A2'
-        ? { walk: { at: 0, frames: steps }, shown: { at: 0, frames: steps + D.open + D.step }, door: { at: steps, frames: doorFrames } }
-        : { walk: { at: D.open + D.step, frames: steps }, shown: { at: D.open, frames: D.step + steps }, door: { at: 0, frames: doorFrames } };
+        ? { walk: { start: 0, frames: steps }, shown: { start: 0, frames: steps + D.open + D.step }, door: { start: steps, frames: doorFrames } }
+        : { walk: { start: D.open + D.step, frames: steps }, shown: { start: D.open, frames: D.step + steps }, door: { start: 0, frames: doorFrames } };
 
     return Object.freeze({
         ...base,
@@ -190,7 +190,7 @@ function walkEffect(base, id, desk, door, motion, character) {
         ...timing,
         // The walker is the desk's character at its drawn size, its feet on the segment.
         size: Object.freeze({ w: character.w * CHARACTER_SCALE, h: character.h * CHARACTER_SCALE }),
-        frames: Math.max(timing.walk.at + timing.walk.frames, timing.door.at + timing.door.frames),
+        frames: Math.max(timing.walk.start + timing.walk.frames, timing.door.start + timing.door.frames),
     });
 }
 

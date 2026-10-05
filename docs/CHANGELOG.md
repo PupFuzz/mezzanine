@@ -27,6 +27,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9566** — **A seat that leaves walks to the floor's elevator; one that returns walks back to its desk.** When a desk goes from staffed to an empty chair (`stale` or `offline`), the character walks to the elevator on the back wall, the leaves open, it steps in and the leaves close; when a seat comes back, the leaves open and it walks to its desk and sits. Under reduced motion the chair simply empties or the character is simply present. `docs/design/FLOOR.md § 6.2`'s walk note owns the rules: a walk is drawn only, the rows and the log are written at the apply as before, and anything that touches the seat mid-walk cancels the walk and draws its current state. The two rows used to be keyed on `offline` alone, which predicted a walk out of an already-empty chair when a `stale` seat turned `offline`; they now read § 7.1's staffed and empty sides. Every multi-frame floor effect — the coordination envelope and ring included — now survives the renders that land while it runs instead of being cut by the next one. AT-D3-23 (`ASeatLeavesByTheElevatorAndReturnsByItTest`, `fx-elevator`).
 - **card#9446** — **Every time shows in the viewer's browser timezone.** The floor, the lobby and the
   console show each instant in the zone the viewer's own browser reports, through one converter
   (`public/js/wire/clock.js`). The floor's header now agrees with itself: the sweep and ingest stamps sit in

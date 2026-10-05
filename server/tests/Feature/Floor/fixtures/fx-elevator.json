@@ -6420,7 +6420,7 @@
                       "badges": [],
                       "badges_since": null,
                       "enabled": true,
-                      "protocol_agent_name": "helper",
+                      "protocol_agent_name": "reviewer",
                       "protocol_agent_name_check": "unchecked",
                       "protocol_agent_role": null,
                       "reporter": {
@@ -7223,33 +7223,7 @@
           }
         },
         {
-          "at_ms": 1000,
-          "envelope": {
-            "feed_version": 1,
-            "t": "coord.round",
-            "server_time": "2026-08-23T14:23:19.000Z",
-            "coord_round": {
-              "thread_ref": "T1",
-              "post_ref": "R3",
-              "install_id": "aimla",
-              "from": "coder",
-              "attribution": "resolved",
-              "to": [
-                "all"
-              ],
-              "targets": [
-                "pm",
-                "helper"
-              ],
-              "carrier": "announce",
-              "declares_close": false,
-              "received_at": "2026-08-23T14:23:19.000Z",
-              "posted_at": "2026-08-23T14:23:19.000Z"
-            }
-          }
-        },
-        {
-          "at_ms": 1300,
+          "at_ms": 1100,
           "envelope": {
             "feed_version": 1,
             "t": "feed.heartbeat",
@@ -7263,7 +7237,7 @@
               "seats_total": 5,
               "seats_live": 5
             },
-            "server_time": "2026-08-23T14:23:15.700Z"
+            "server_time": "2026-08-23T14:23:15.500Z"
           }
         }
       ],
@@ -7289,7 +7263,7 @@
           }
         }
       },
-      "note": "repaint's A19 variant over `fx-coord`: its round R3, the first that draws an envelope, in flight when a `feed.heartbeat` lands."
+      "note": "repaint's A19 variant over `fx-coord`: its round R2, whose envelopes reach two resolved desks, in flight when a `feed.heartbeat` lands. `aimla-review` declares `reviewer` rather than fx-coord's deliberate duplicate `helper`, so the install is valid and R2's `helper` resolves."
     }
   }
 }

@@ -73,7 +73,7 @@ class TheDeskSpeaksTheDocumentsWordsTest extends TestCase
             'CONTROL 4 did not bite: § 7.1 gained an unknown_reason and the guard passed');
 
         // CONTROL 5 — a dark desk drawn as the sleeper in the module reds against the Desk column.
-        $sleeper = $this->probe([], $this->mutatedModules(['desk-render.js',
+        $sleeper = $this->probe([], $this->mutatedModules(['desk-poses.js',
             "stale: { pose: 'empty-chair',", "stale: { pose: 'asleep',"]))['words'];
 
         $this->assertNotSame([], $this->wordDefects($sleeper, $md), 'CONTROL 5 did not bite: the stale desk was drawn asleep and the guard passed');

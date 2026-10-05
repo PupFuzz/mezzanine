@@ -263,7 +263,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
     public function test_green_effects_across_paints(): void
     {
-        foreach (['repaint' => ['A2', 1000, 1500], 'repaint-a19' => ['A19', 1000, 1300]] as $run => [$id, $wrote, $later]) {
+        foreach (['repaint' => ['A2', 1000, 1500], 'repaint-a19' => ['A19', 800, 1100]] as $run => [$id, $wrote, $later]) {
             $result = $this->floorRun($run);
             $pick = static fn (array $frame) => array_values(array_filter($frame['scene']['effects'], static fn ($e) => $e['animation_id'] === $id && $e['frames'] > 0));
             $first = $pick($this->frameAt($result, $wrote));
@@ -282,8 +282,8 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
         $d = $this->door();
         $span = $both['scene']['doors'][0];
-        $ends = array_map(static fn ($w) => $w['door']['at'] + $w['door']['frames'] - $w['elapsed_frames'], $this->walks($both));
-        $starts = array_map(static fn ($w) => $w['door']['at'] - $w['elapsed_frames'], $this->walks($both));
+        $ends = array_map(static fn ($w) => $w['door']['start'] + $w['door']['frames'] - $w['elapsed_frames'], $this->walks($both));
+        $starts = array_map(static fn ($w) => $w['door']['start'] - $w['elapsed_frames'], $this->walks($both));
         $this->assertSame([min($starts), max($ends)], [$span['from'], $span['to']], 'the leaves are not open across the union of the door frames');
 
         foreach ($this->walks($both) as $w) {
