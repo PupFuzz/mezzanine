@@ -110,12 +110,15 @@ class SeatController extends Controller
             ]);
         }
 
+        // card#9446: the flash names no time. It is a plain string the layout prints, so a time in it
+        // could not reach the viewer's zone; the record below, under retired seats, carries the
+        // instant through the one converter (`<x-utc-time>`).
         $message = $outcome->outcome === SeatRetirementOutcome::ALREADY_RETIRED
-            ? $seat.' was already retired (at '.$outcome->at.') — no-op. The original author and '
-                .'reason are kept.'
-            : $seat.' retired at '.$outcome->at.' — state_version '.$outcome->version
-                .'. Its desk left every connected floor in the same transaction; the record is '
-                .'below, under retired seats.';
+            ? $seat.' was already retired — no-op. The original author, time and reason are kept; '
+                .'the record is below, under retired seats.'
+            : $seat.' retired — state_version '.$outcome->version
+                .'. Its desk left every connected floor in the same transaction; the record, with '
+                .'when it was retired, is below, under retired seats.';
 
         return redirect()->route('admin.agents.index')->with('status', $message);
     }

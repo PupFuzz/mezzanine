@@ -30,6 +30,7 @@ use Tests\TestCase;
 class LayoutConsoleTest extends TestCase
 {
     use RefreshDatabase;
+    use SeesAConvertedInstant;
 
     private const OPERATOR = 'ops@example.com';
 
@@ -90,11 +91,14 @@ class LayoutConsoleTest extends TestCase
         $this->assertSame(1, Layouts::version());
         $this->assertSame('sola', Layouts::layout()->floors[0]['floor']);
 
-        $this->actingAs($this->operator())
+        $page = $this->actingAs($this->operator())
             ->get(route('admin.layout.edit'))
             ->assertOk()
             ->assertSee('revision 1')
             ->assertSee(self::OPERATOR);
+
+        // card#9446: when it was saved, through the one converter.
+        $this->assertSeesConvertedInstant($page, Layouts::current()->updated_at);
     }
 
     public function test_a_document_this_reader_refuses_comes_back_on_the_form_with_the_reason(): void
@@ -153,11 +157,16 @@ class LayoutConsoleTest extends TestCase
         $this->save($this->document([['rooms' => ['sola' => ['form' => 'office']]]]))->assertSessionHasNoErrors();
         $this->save($this->document([['rooms' => ['sola' => ['form' => 'open']]]]))->assertSessionHasNoErrors();
 
-        $this->actingAs($this->operator())
+        $page = $this->actingAs($this->operator())
             ->get(route('admin.layout.revisions'))
             ->assertOk()
             ->assertSee('current')
             ->assertSee(self::OPERATOR);
+
+        // card#9446: every revision's save, through the one converter.
+        foreach ([1, 2] as $revision) {
+            $this->assertSeesConvertedInstant($page, Revisions::get(Revisions::LAYOUT, Revisions::LAYOUT_SUBJECT, $revision)->authored_at);
+        }
 
         $this->actingAs($this->operator())
             ->post(route('admin.layout.restore', 1))

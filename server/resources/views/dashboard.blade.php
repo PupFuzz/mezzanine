@@ -145,6 +145,7 @@
 
         {{-- § 4.1 row 5 / § 2.3: the membership picture's own age, separate from the state's. --}}
         <p id="lobby-stamp">waiting for the fleet snapshot</p>
+        @include('partials.zone-note')
 
         {{--
             § 4.1 row 6 / § 5.3: THREE SEPARATE INDICATORS, NEVER ONE AGGREGATE, plus § 5.3's

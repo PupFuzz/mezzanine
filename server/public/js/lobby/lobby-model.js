@@ -51,8 +51,8 @@ import { NOT_REPORTED } from '../wire/null-render.js';
 /**
  * ⚠ `clockTime` MOVED to `../wire/clock.js` at its second caller (card#8300's coordination
  * client needs the identical function), and is re-exported here so this module stays the
- * lobby's one import. Its reasoning — why it reads the wire's digits and converts nothing —
- * moved with it rather than being copied.
+ * lobby's one import. Its reasoning — why it shows every instant in the viewer's browser zone
+ * (card#9446) — moved with it rather than being copied.
  */
 export { clockTime };
 

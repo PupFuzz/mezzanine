@@ -20,7 +20,13 @@
                     <td>{{ $seat->seat_id }}</td>
                     <td>{{ $seat->render_state }}</td>
                     <td>{{ $seat->link_state }}</td>
-                    <td>{{ $seat->last_activity_received_at ?? '—' }}</td>
+                    <td>
+                        @if ($seat->last_activity_received_at === null)
+                            —
+                        @else
+                            <x-utc-time :at="$seat->last_activity_received_at" />
+                        @endif
+                    </td>
                     <td>
                         <form method="POST"
                               action="{{ route('admin.agents.retire', [$seat->install_id, $seat->seat_id]) }}">
@@ -64,7 +70,7 @@
                 <tr>
                     <td>{{ $seat->install_id }}</td>
                     <td>{{ $seat->seat_id }}</td>
-                    <td>{{ $seat->retired_at }}</td>
+                    <td><x-utc-time :at="$seat->retired_at" /></td>
                     <td>{{ $seat->retired_by }}</td>
                     <td>{{ $seat->retired_reason }}</td>
                 </tr>

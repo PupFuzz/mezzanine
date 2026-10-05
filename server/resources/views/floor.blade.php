@@ -74,10 +74,11 @@
                 <p id="floor-sweep">sweep: waiting for the fleet snapshot</p>
                 <p id="floor-ingest">ingest: waiting for the fleet snapshot</p>
             </div>
-            {{-- § 4.2's one room render: the wall clock and the windows' sky, the viewer's own time. --}}
+            {{-- § 4.2's one room render: the wall clock and the windows' sky, the viewer's own time — and the zone every stamp on the page is shown in (card#9446). --}}
             <div class="floor-chips">
                 <p id="floor-clock" aria-label="clock not set">clock not set — waiting for a live feed</p>
                 <p id="floor-sky">sky not set — waiting for a live feed</p>
+                @include('partials.zone-note')
             </div>
         </section>
 

@@ -22,7 +22,7 @@
                     <td>
                         @if ($user->isRetired())
                             {{-- D2: the row stays, and so does the whole record of the act. --}}
-                            retired {{ $user->retired_at }} by {{ $user->retired_by }}
+                            retired <x-utc-time :at="$user->retired_at" /> by {{ $user->retired_by }}
                             — {{ $user->retired_reason }}
                         @else
                             active
