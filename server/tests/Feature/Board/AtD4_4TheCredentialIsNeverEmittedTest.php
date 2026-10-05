@@ -54,6 +54,7 @@ class AtD4_4TheCredentialIsNeverEmittedTest extends BoardTaskTestCase
         'redirect' => BoardPollFailed::STATUS,
         'assignee is a string' => BoardPollFailed::SHAPE,
         'assigned card missing updated_at' => BoardPollFailed::SHAPE,
+        'assigned card with an impossible updated_at' => BoardPollFailed::SHAPE,
         'credential missing' => BoardPollFailed::CREDENTIAL,
         'credential malformed' => BoardPollFailed::CREDENTIAL,
         'plain-http base' => BoardPollFailed::CONFIG,

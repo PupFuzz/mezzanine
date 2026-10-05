@@ -205,7 +205,7 @@ abstract class BoardTaskTestCase extends SweepTestCase
     protected const DEGRADED = [
         'connection refused', '401', '403', '500 on page 2 of 2', 'no meta.last_page (§ 6.5)',
         'string id (§ 6.5)', 'data is an object', 'more rows than the page size', 'page cap',
-        'redirect', 'assignee is a string', 'assigned card missing updated_at',
+        'redirect', 'assignee is a string', 'assigned card missing updated_at', 'assigned card with an impossible updated_at',
         'credential missing', 'credential malformed', 'plain-http base', 'malformed BOARD_IDS',
         'store refuses the write',
     ];
@@ -232,6 +232,7 @@ abstract class BoardTaskTestCase extends SweepTestCase
             'redirect' => [1 => [302, $echo]],
             'assignee is a string' => [1 => $this->page([['assigned_user_id' => '14'] + $good])],
             'assigned card missing updated_at' => [1 => $this->page([array_diff_key($good, ['updated_at' => 1])])],
+            'assigned card with an impossible updated_at' => [1 => $this->page([['updated_at' => '2026-13-45T02:10:00+00:00'] + $good])],
             'store refuses the write' => [1 => $this->page([['board_id' => 70_000] + $good])],
             default => [1 => $this->page([$good])],
         };

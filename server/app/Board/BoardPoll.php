@@ -294,7 +294,13 @@ final class BoardPoll
             return null;
         }
 
-        $updated = (new \DateTimeImmutable($row->updated_at))->setTimezone(new \DateTimeZone('UTC'));
+        try {
+            // The pattern above admits a shape; this is what refuses an impossible date in it.
+            $updated = (new \DateTimeImmutable($row->updated_at))->setTimezone(new \DateTimeZone('UTC'));
+        } catch (\DateMalformedStringException) {
+            return false;
+        }
+
         $updatedSql = Clock::sql($updated);
 
         return [
