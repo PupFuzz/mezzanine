@@ -27,6 +27,20 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11144** — **The PM office has walls, drawn from above.** The floor now follows one projection, a 3/4
+  top-down oblique (`docs/design/FLOOR.md` § 10.4's new projection bullet, the operator's ruling of
+  2026-10-03): the back wall shows its face and every other wall shows only its top edge, a strip one map
+  cell wide in the wall colour. The shipped room draws its two side edges and an office around the reserved
+  desk — a partition, a front return and a 96 px doorway facing the room — as a `walls` tile layer of the new
+  first-party wall-strip tile (`resources/floor/tiles/floor-plane/wall-strip.svg`, tile id 2 of
+  `floor-plane.tsx`), placed by script from the reserved desk's box, every cell outside every desk slot. The
+  back wall's band gains an end post up each end, so the corner where a side wall meets it closes (the
+  operator's ruling of 2026-10-04, option B). An authored room keeps its own look until its author paints the
+  tile. `tools/design/verify-floor.py` G-walls holds the shipped room's walls outside every slot, keeps the
+  kit's elevation-only tiles off it, and reds when the tile's fill and `--house-trim` differ;
+  `TheFloorDrawsItsFrameTest` holds the end posts inside the band and clear of every grid and the clock.
+  `design-11144-design.md`'s walls question is superseded by this rule.
+
 - **card#11289** — **A desk shows the board card its seat is working on.** `php artisan mezzanine:board-poll`
   runs every five minutes from the scheduler, reads each board in `BOARD_IDS` over HTTPS with the read-scoped
   `BOARD_API_TOKEN`, and writes, for every seat mapped to a board user, the most recently updated card assigned

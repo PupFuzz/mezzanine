@@ -71,7 +71,7 @@ const CLOCK = { dx: 164, size: 64 };
 const WINDOW = { margin: 24, pitch: 360, w: 200, min_w: 96, gap: 24, h: 124, dy: 16, sill_h: 6, sill_out: 6, transom: 0.62 };
 const SKIRTING_H = 8;
 
-/** The slab under the floor's rooms — a baseline strip, scenery, outside every grid (§ 4.2). */
+/** The slab under the floor's rooms — the front wall's top edge, scenery, outside every grid (§ 4.2). */
 export const SLAB_H = 8;
 
 /**
@@ -933,6 +933,16 @@ export function backWall(span, room) {
             label: room?.label ?? null,
         }),
         windows: Object.freeze(windows),
+        // The back corner (§ 4.2; the operator's ruling of 2026-10-04, option B): a post `SLAB_H` wide up each
+        // end of the band, its full height, in the wall colour — the side walls' end faces rising beside the
+        // back wall's, so the corner where the map's side strips meet the band closes. The frame's, because
+        // the band lies outside every grid; drawn on an authored map with no side strips too, where it reads
+        // as the back wall's own end thickness. Clear of the clock by construction: the elevator starts at
+        // `ELEVATOR.dx`, past the left post, and the clock past it.
+        posts: Object.freeze([
+            Object.freeze({ x: span.x, y, w: SLAB_H, h: BAND_H }),
+            Object.freeze({ x: span.x + w - SLAB_H, y, w: SLAB_H, h: BAND_H }),
+        ]),
     });
 }
 

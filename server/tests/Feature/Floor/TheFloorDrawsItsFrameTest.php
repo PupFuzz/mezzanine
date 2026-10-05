@@ -243,6 +243,18 @@ class TheFloorDrawsItsFrameTest extends TestCase
             'RED (the slab over the grid) did not bite');
     }
 
+    /** The back corner's end post (option B) stood on the floor line instead of up the band — over the room's grid. */
+    public function test_red_an_end_post_planted_over_the_grid(): void
+    {
+        $dir = $this->mutatedModules(['../floor/scene.js',
+            'Object.freeze({ x: span.x, y, w: SLAB_H, h: BAND_H }),', 'Object.freeze({ x: span.x, y: floor, w: SLAB_H, h: BAND_H }),']);
+        $result = $this->floorRun(self::SPARSE, $dir);
+        $defects = $this->frameDefects($this->lastScene($result, self::SPARSE), $this->lastFloor($result));
+
+        $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_contains($d, 'end post sits over')),
+            'RED (an end post over the grid) did not fail the over-a-grid clause: '.json_encode($defects));
+    }
+
     public function test_red_a_theme_keyed_on_the_floor_and_not_the_room(): void
     {
         $dir = $this->mutatedModules(['../floor/scene.js', 'theme: roomTheme(installId) }));', 'theme: roomTheme(frame.floor.key) }));']);
@@ -408,6 +420,24 @@ JS;
             }
         }
 
+        // The end posts (§ 4.2, the operator's ruling of 2026-10-04 on the back corner, option B): one up each
+        // end of the band, its full height — the side walls' end faces rising to the back wall's.
+        $posts = $band['posts'] ?? [];
+
+        if (count($posts) !== 2) {
+            $defects[] = "at width {$band['w']} the band draws ".count($posts).' end post(s), not one at each end';
+        } else {
+            foreach (['left' => $posts[0], 'right' => $posts[1]] as $end => $post) {
+                if (! $this->inside($post, $wall) || $post['y'] !== $band['y'] || $post['h'] !== $band['h']) {
+                    $defects[] = "at width {$band['w']} the {$end} end post does not stand the band's height inside its span";
+                }
+            }
+
+            if ($posts[0]['x'] !== $band['x'] || $posts[1]['x'] + $posts[1]['w'] !== $band['x'] + $band['w']) {
+                $defects[] = "at width {$band['w']} the end posts do not stand at the band's two ends";
+            }
+        }
+
         foreach ($band['windows'] as $i => $window) {
             foreach (['window' => $window, 'sill' => $window['sill']] as $part => $rect) {
                 if ($rect['x'] < $zone['x'] + $zone['w']) {
@@ -436,6 +466,10 @@ JS;
             'the wall\'s skirting' => $band['skirting'],
             'the elevator' => $band['elevator']['frame'],
         ];
+
+        foreach (array_values($band['posts'] ?? []) as $i => $post) {
+            $parts[$i === 0 ? 'the left end post' : ($i === 1 ? 'the right end post' : "end post {$i}")] = $post;
+        }
 
         foreach ($band['windows'] as $i => $window) {
             $parts["window {$i}"] = $window;

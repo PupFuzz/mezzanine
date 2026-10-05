@@ -6,7 +6,7 @@
      camera scales without resampling (§ 4.5), which is the property the bridge's PNGs lack. Every file
      here owes a `docs/ATTRIBUTION.md` row (§ 10.1 Gate 1); nothing in `resources/floor/LINEAGE.md`
      vouches for these, because they were not vendored — they were drawn here. -->
-<tileset version="1.10" tiledversion="1.10.2" name="floor-plane" tilewidth="216" tileheight="48" tilecount="2" columns="0">
+<tileset version="1.10" tiledversion="1.10.2" name="floor-plane" tilewidth="216" tileheight="48" tilecount="3" columns="0">
  <grid orientation="orthogonal" width="1" height="1"/>
  <!-- the plane: a seamless plank tile, laid in courses under the whole room -->
  <tile id="0">
@@ -15,5 +15,9 @@
  <!-- scenery on the plane -->
  <tile id="1">
   <image source="floor-plane/rug.svg" width="128" height="40"/>
+ </tile>
+ <!-- a wall's top edge (§ 10.4's projection rule): one cell, painted in runs, a doorway left unpainted -->
+ <tile id="2">
+  <image source="floor-plane/wall-strip.svg" width="8" height="8"/>
  </tile>
 </tileset>
