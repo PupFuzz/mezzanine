@@ -67,7 +67,7 @@ const STILL = [0];
 export const STYLE = `
 text{font:${FONT};fill:var(--scene-ink)}text.role-name{font:${FONT_NAME}}
 .wall{fill:url(#house-wall)}.wall-top{stop-color:var(--house-wall)}.wall-bottom{stop-color:var(--house-wall-2)}
-.skirting,.slab{fill:var(--house-trim)}
+.skirting,.slab,.end-post{fill:var(--house-trim)}
 .window{fill:var(--scene-glass);stroke:var(--window-frame);stroke-width:5}.mullion{stroke:var(--window-frame);stroke-width:3}.sill{fill:var(--window-frame)}
 ${Object.keys(SKY_PAINT).map((phase) => `.sky-${phase}{fill:url(#sky-${phase})}`).join('')}
 .elevator-frame{fill:var(--door-frame)}.elevator-header{fill:var(--door-header)}.elevator-lamp{fill:var(--lamp)}
@@ -529,6 +529,11 @@ export function createPainter({ characters, failed, select }) {
             if (c.set) {
                 node('line', { x1: cx, y1: cy, x2: cx, y2: cy - c.w * 0.25, class: 'hand hour', transform: `rotate(${c.hour_angle_deg} ${cx} ${cy})` }, face);
                 node('line', { x1: cx, y1: cy, x2: cx, y2: cy - c.w * 0.4, class: 'hand minute', transform: `rotate(${c.minute_angle_deg} ${cx} ${cy})` }, face);
+            }
+
+            // The back corner's two end posts, last in the band so they stand over the skirting's ends.
+            for (const p of band.posts) {
+                node('rect', { x: p.x, y: p.y, width: p.w, height: p.h, class: 'end-post' }, g);
             }
         }
 

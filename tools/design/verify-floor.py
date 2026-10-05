@@ -44,6 +44,10 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                and the shipped default's RESERVED DESK, its id and
                                                role read out of the map and held equal to section
                                                10.3's sentence and section 12's row (card#11144)
+  G-walls the PM office walls (card#11144)     on the shipped default: every wall-strip cell outside every
+                                               `desks` object; none of the kit's elevation-only tiles (ids
+                                               read from section 10.4) placed; the strip's fill equal to
+                                               the sheet token it copies, the SVG parsed as XML
   G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
                                                bearing members without `fetch-fresh` / `dark-only`;
                                                a section 5 table this gate has no column for; a table
@@ -2088,6 +2092,152 @@ elif S and parsed:
         else:
             fail.append("G8 CONTROL: section 3.3's collision or the slot its incumbent probes to did not parse")
 
+# ---- G-walls. the PM office walls on the shipped default, under section 10.4's projection rule (card#11144) ----
+# Section 10.4's projection bullet, item 4: every wall but the band shows only its TOP EDGE -- a strip one cell
+# wide, drawn with the floor-plane tileset's wall-strip tile, under every standing thing -- and the kit's
+# elevation-only renders are never placed.  The shipped default carries the PM office's walls, so three legs
+# hold it, each re-derived from the files on every run and never from a list stored here:
+#   leg 1  every cell of the shipped default whose GID resolves to the wall-strip tile lies OUTSIDE every
+#          `desks` object -- G8's half-open rects, the cell's whole 8 x 8 against the object.  A wall cell
+#          inside a slot is drawn UNDER that desk (tile layers draw under every desk, section 10.3), so it
+#          is a wall that silently vanishes, and the console does not refuse one (it validates documents).
+#   leg 2  no tile layer of the shipped default places one of the kit's ELEVATION-ONLY tiles, whose ids are
+#          read out of section 10.4's bullet (`the kit's elevation-only tiles are ids ...`) and resolved to
+#          GIDs through the map's own `firstgid` for the kit -- so the list has one home, the document.
+#   leg 3  the wall-strip SVG parses as well-formed XML, and its one fill equals the sheet token its own
+#          comment names (`house-trim`, read as `--house-trim`): a tile is an isolated SVG document that cannot
+#          read the page's custom properties, so the value is a COPY, and this leg is the guard canon #16 asks
+#          of a copy a program loads (section 10.4 item 4).  Parsed because a malformed tile is one the
+#          browser refuses to draw -- the first draft of this tile carried `--` in its comment and drew no
+#          wall at all while every grep-level check passed.
+# Each leg carries a CONTROL that reds rather than reporting clean when its population is empty: a map with
+# no wall cell at all, a bullet this leg cannot read, an SVG with no fill or no named token.
+# What it does NOT check, said rather than implied: an authored map (the console validates documents, not
+# pictures -- section 10.3's residue), where on the plane a wall runs, the doorway's width, and whether the
+# walls LOOK right -- that is the screenshot's, at review.
+gw_status = "NOT MEASURED"
+GW_TILE = "wall-strip.svg"
+GW_KIT = "furniture-kit.tsx"
+sec104 = section_text("104-the-art-direction-as-a-specification") or ""
+m_elev = re.search(r"the kit's\s+elevation-only\s+tiles\s+are\s+ids\s+((?:\d+(?:-\d+)?(?:,\s+|\s+and\s+)?)+)\*\*", sec104)
+CSS = ROOT / "server/public/css/mezzanine.css"
+
+
+def gw_ids(spec):
+    """`24-37 and 44` -> {24, ..., 37, 44}."""
+    out = set()
+    for part in re.split(r",\s+|\s+and\s+", spec.strip()):
+        if "-" in part:
+            a, b = part.split("-")
+            out.update(range(int(a), int(b) + 1))
+        elif part:
+            out.add(int(part))
+    return out
+
+
+def gw_tile_layers(layers):
+    """Every tile layer, inside groups at any depth too -- the renderer's own walk (section 10.3)."""
+    for l in layers:
+        if l.get("type") == "group":
+            yield from gw_tile_layers(l.get("layers", []))
+        elif l.get("type") == "tilelayer":
+            yield l
+
+
+if not m_elev:
+    fail.append("G-walls CONTROL: section 10.4's projection bullet no longer states the kit's elevation-only "
+                "tiles in the form this leg reads (`the kit's elevation-only tiles are ids N-M and K**`), so "
+                "leg 2 would hold the shipped default against an empty list and report it clean")
+elif not g8_maps:
+    fail.append("G-walls: no shipped default map was read (see the G8 lines above), so the walls on it were "
+                "never measured")
+else:
+    _elev = gw_ids(m_elev.group(1))
+    for _mrel in g8_maps:
+        _mp = ROOT / _mrel
+        if _mp.suffix != ".tmj":
+            fail.append(f"G-walls: `{_mrel}` is not a `.tmj` and this leg reads the JSON spelling only -- the "
+                        f"walls on it were never measured")
+            continue
+        _doc = json.loads(_mp.read_text())
+        _tw, _th = int(_doc["tilewidth"]), int(_doc["tileheight"])
+        _strip_gid, _strip_svg, _kit_first = None, None, None
+        for _ts in _doc.get("tilesets", []):
+            _src = _ts.get("source")
+            if not isinstance(_src, str):
+                continue
+            _tsx = (_mp.parent / _src).resolve()
+            if _tsx.name == GW_KIT:
+                _kit_first = int(_ts["firstgid"])
+            for _t in ET.parse(_tsx).getroot().findall("tile"):
+                _img = _t.find("image")
+                if _img is not None and pathlib.PurePosixPath(_img.get("source", "")).name == GW_TILE:
+                    _strip_gid = int(_ts["firstgid"]) + int(_t.get("id"))
+                    _strip_svg = (_tsx.parent / _img.get("source")).resolve()
+        if _strip_gid is None:
+            fail.append(f"G-walls CONTROL: no tileset `{_mrel}` names resolves a tile drawn from `{GW_TILE}`, so "
+                        f"the shipped default's walls cannot be found -- leg 1 would read nothing")
+            continue
+        if _kit_first is None:
+            fail.append(f"G-walls CONTROL: `{_mrel}` names no `{GW_KIT}` tileset, so the kit's elevation-only "
+                        f"ids resolve to no GID and leg 2 would read nothing")
+            continue
+        _elev_gids = {_kit_first + i for i in _elev}
+        _objs = g8_maps[_mrel][0]
+        _walls, _placed = 0, []
+        for _l in gw_tile_layers(_doc.get("layers", [])):
+            _cols = int(_l.get("width", _doc["width"]))
+            for _i, _cell in enumerate(_l.get("data", [])):
+                _gid = int(_cell) & 0x1FFFFFFF                    # Tiled's three flip bits, cleared
+                if _gid in _elev_gids:
+                    _placed.append((_l.get("name"), _i % _cols, _i // _cols, _gid - _kit_first))
+                if _gid != _strip_gid:
+                    continue
+                _walls += 1
+                _cx, _cy = (_i % _cols) * _tw, (_i // _cols) * _th
+                for _o in _objs:
+                    if _cx < _o[1] + _o[3] and _o[1] < _cx + _tw and _cy < _o[2] + _o[4] and _o[2] < _cy + _th:
+                        fail.append(f"G-walls leg 1: `{_mrel}` `{_l.get('name')}` wall cell "
+                                    f"({_i % _cols}, {_i // _cols}) lies inside `desks` object id {_o[0]} -- a "
+                                    f"wall cell inside a slot is drawn under that desk and vanishes (section "
+                                    f"10.4 item 4; section 10.3: tile layers draw under every desk)")
+        if _walls == 0:
+            fail.append(f"G-walls CONTROL: `{_mrel}` places no wall-strip cell (GID {_strip_gid}) on any tile "
+                        f"layer, and section 10.3 says the shipped default draws the PM office's walls -- leg 1 "
+                        f"read an empty population")
+        for _ln, _c, _r, _kid in _placed:
+            fail.append(f"G-walls leg 2: `{_mrel}` `{_ln}` places the kit's elevation-only tile id {_kid} at "
+                        f"({_c}, {_r}) -- section 10.4 item 4: no wall but the band shows a face, and the kit's "
+                        f"elevation-only renders are never placed")
+        # leg 3: the copy and its token.  The SVG is PARSED, not grepped: a tile that is not well-formed XML
+        # is an image the browser refuses to draw (a `--` inside its comment is enough), and a grep would
+        # read the fill out of it and pass.  The comment names the token without its leading `--`, which
+        # an XML comment may not carry.
+        _svg = _strip_svg.read_text() if _strip_svg.is_file() else ""
+        try:
+            _root = ET.fromstring(_svg)
+            _fills = {e.get("fill") for e in _root.iter() if e.get("fill") not in (None, "none")}
+        except ET.ParseError as exc:
+            _fills = set()
+            fail.append(f"G-walls leg 3: `{GW_TILE}` is not well-formed XML ({exc}) -- the browser refuses to "
+                        f"draw it, and every wall on the floor is reported as failed art (section 9 F14)")
+        _tok = re.search(r"COPY OF the sheet token `([a-z0-9-]+)`", _svg)
+        _tok_name = f"--{_tok.group(1)}" if _tok else None
+        _css = re.search(rf"^\s*{re.escape(_tok_name)}:\s*(#[0-9a-fA-F]{{3,8}});", CSS.read_text(), re.M) if _tok else None
+        if len(_fills) != 1 or not _tok or not _css:
+            fail.append(f"G-walls CONTROL: `{_strip_svg.relative_to(ROOT.resolve()) if _strip_svg.is_file() else GW_TILE}` "
+                        f"carries fills {sorted(_fills)} and names token {_tok_name} "
+                        f"({'declared' if _css else 'not declared'} in `{CSS.relative_to(ROOT)}`) -- leg 3 needs "
+                        f"exactly one fill and a token the sheet declares, or the copy is guarded by nothing")
+        elif next(iter(_fills)).lower() != _css.group(1).lower():
+            fail.append(f"G-walls leg 3: `{_strip_svg.relative_to(ROOT.resolve())}` fills {next(iter(_fills))} and the sheet's "
+                        f"`{_tok_name}` is {_css.group(1)} -- the wall strip is a copy of the one wall colour "
+                        f"and the two homes disagree")
+        else:
+            gw_status = (f"MEASURED from {_mrel}: {_walls} wall-strip cell(s) (GID {_strip_gid}) outside all "
+                         f"{len(_objs)} `desks` objects; {len(_elev_gids)} elevation-only kit GID(s) absent from "
+                         f"every tile layer; `{GW_TILE}` well-formed, fill {next(iter(_fills))} = `{_tok_name}`")
+
 # ---- G8f. section 12's VIEWPORT arithmetic, re-derived from the map, the box and the reference viewport ----
 # The viewport row restates, in prose, how wide the shipped default is in furniture boxes and what the
 # camera's fit zoom is at the reference viewport (a size the fit is measured at, and no minimum since the
@@ -3466,6 +3616,10 @@ print(f"    G8 section 12's viewport arithmetic: {g8f}. MEASURED means the rows,
       f"the box and the row's own reference viewport and held equal.")
 print(f"    G8 the worked floors laid at the furniture box: {g8g}. Each figure section 4.6's two rows and D2 "
       f"§ 8.7 state was re-derived from the box above, the rows' own tile counts and the worked JSON, and held.")
+print(f"G-walls the PM office walls on the shipped default (card#11144): {gw_status}. MEASURED means every "
+      f"wall-strip cell was held outside every `desks` object, the kit's elevation-only ids read out of section "
+      f"10.4 were held absent from every tile layer, and the strip's SVG was parsed and its one fill held equal "
+      f"to the sheet token its comment names. NOT checked: an authored map, where a wall runs, and how the walls look")
 print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase pairs re-derived from "
       f"section 7.6, section 7.1's worked instance held against them, section 5.1's verbatim "
       f"illustration held against the MEMBERS; both predicates fed their own defect on this run and "

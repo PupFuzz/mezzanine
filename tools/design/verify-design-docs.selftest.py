@@ -160,6 +160,12 @@ because a gate can only be proven on a defect of its own class:
                `✅ LANDED` markers each minted a phantom artifact, and a fourth row was written
                unbolded to dodge it -- two forms of one marker.  The plant emboldens a marker
                already in the one form, so what reds is the emphasis alone.
+  `wall-cell`
+            -- write, at the anchored map cell, the GID the anchored tile layer's own first cell
+               carries, which is the class "a wall was painted inside a desk slot".  card#11144's
+               walls are why this exists: G-walls leg 1 holds every wall-strip cell of the shipped
+               default outside every `desks` object, and no other kind can paint a cell.  The GID is
+               read out of the layer's first cell -- the left side wall's -- so the plant stores none.
 
 TWO VERDICTS.  `PLANTS` must RED, as described above.  `HOLDS` must NOT: the mutant must carry no
 line containing the named substring that the control lacks -- the same differential, pointed the
@@ -821,6 +827,44 @@ PLANTS = [
         "reserved the function gives slot",
     ),
     (
+        # card#11144 walls — G-walls leg 1 over the FILE: a wall-strip cell painted inside a slot.  The
+        # anchor walks to the SECOND tile layer's data (`walls`, between `plane` and `furniture`) and
+        # to row 3, column 13 -- 8 px inside the first `desks` object's top-left corner -- and the
+        # `wall-cell` kind writes there the GID that layer's own first cell carries (the left side
+        # wall's), so the plant stores no GID of its own.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"data\":\[[\s\S]*?\"data\":\[\n(?:[^\n]*\n){3}    (?:\d+, ){13})(0)(, )",
+        "wall-cell",
+        "a wall-strip cell planted inside the shipped default's first `desks` object, which G-walls "
+        "leg 1 must refuse as a wall drawn under a desk (card#11144)",
+        "lies inside `desks` object id",
+    ),
+    (
+        # G-walls leg 2: the kit's elevation-only ids are read out of section 10.4's bullet.  Widening
+        # the range's low end by one takes in kit id 23 -- the floor lamp, which the shipped default
+        # DOES place -- so the leg must now find a placed elevation-only tile.  A doc-side plant,
+        # because the ids' one home is the bullet.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(elevation-only\s+tiles\s+are\s+ids\s+)(\d+)(-)",
+        "shrink",
+        "section 10.4's elevation-only kit range widened to take in a tile the shipped default "
+        "places, which G-walls leg 2 must then refuse on the map (card#11144)",
+        "places the kit's elevation-only tile id",
+    ),
+    (
+        # G-walls leg 3: the wall strip's fill is a COPY of `--house-trim`; one hex digit moved in the
+        # SVG alone is the class "the copy drifted from the sheet".
+        "verify-floor.py",
+        "resources/floor/tiles/floor-plane/wall-strip.svg",
+        r"(fill=\"#[0-9a-fA-F]{5})(\d)(\")",
+        "bump",
+        "the wall strip's fill moved off the sheet's `--house-trim` in the SVG alone, which G-walls "
+        "leg 3 must refuse (card#11144)",
+        "the two homes disagree",
+    ),
+    (
         # PR #232 round 2, MINOR-B — G8e reads the box with the DECLARATION's `\d` bound to ASCII, as
         # PHP's is.  The plant's digit is the width's LAST one, and the position is the whole plant
         # (round 3, F1): the DECLARATION's first digit is `[1-9]`, an ASCII-only range in either
@@ -1082,6 +1126,8 @@ MUTATIONS = {
     "noun": lambda m: (m.group(1) + m.group(2) + ", and keeps a count of "
                        + re.search(r"`[a-z_]+`", m.group(2)).group(0) + m.group(3)),
     "drop": lambda m: m.group(1) + m.group(3),
+    # The GID the anchored layer's own first cell carries, written at the anchored cell (G-walls leg 1).
+    "wall-cell": lambda m: m.group(1) + re.findall(r'"data":\[\n    (\d+), ', m.group(1))[-1] + m.group(3),
     # The previous object's `x` and `width` are the first of each after the layer's name in
     # group(1); `x + width - 1` is the last pixel column of its half-open span.
     "overlap": lambda m: (m.group(1)
