@@ -4130,12 +4130,13 @@ eq("a record straddling the walk's chunk boundaries is read whole", CU_URL_B, cu
 eq(f"a {fx_huge.stat().st_size // MIB} MiB transcript, record near its end: found from the tail", CU_URL_A, cu_huge_r["url"])
 eq("descriptors \"paths\": null", None, cu_paths_r["url"])
 eq("descriptors \"none\": null", None, cu_none_r["url"])
+cu_all = (cu_bridge_r, cu_rsc_r, cu_rsc_null_r, cu_newest_r, cu_ended_r, cu_absent_r, cu_nofile_r, cu_nokey_r,
+          cu_bad_id_r, cu_bad_url_r, cu_torn_r, cu_far_r, cu_straddle_r, cu_huge_r, cu_paths_r, cu_none_r)
 eq("every read exits 0 and prints nothing (P-1, P-2: UserPromptSubmit stdout reaches the model)",
-   [(0, "")] * 16, [(r["rc"], r["stdout"]) for r in (cu_bridge_r, cu_rsc_r, cu_rsc_null_r, cu_newest_r, cu_ended_r,
-                                                      cu_absent_r, cu_nofile_r, cu_nokey_r, cu_bad_id_r, cu_bad_url_r,
-                                                      cu_torn_r, cu_far_r, cu_straddle_r, cu_huge_r, cu_paths_r, cu_none_r)])
+   [(0, "")] * len(cu_all), [(r["rc"], r["stdout"]) for r in cu_all])
+cu_clean = (cu_bridge_r, cu_rsc_r, cu_newest_r, cu_ended_r, cu_straddle_r, cu_huge_r)
 eq("nothing counted malformed or exhausted where the read was clean",
-   [0] * 6, [r["malformed"] + r["exhausted"] for r in (cu_bridge_r, cu_rsc_r, cu_newest_r, cu_ended_r, cu_straddle_r, cu_huge_r)])
+   [0] * len(cu_clean), [r["malformed"] + r["exhausted"] for r in cu_clean])
 print(f"  MEASURED  UserPromptSubmit wall time over the {fx_huge.stat().st_size // MIB} MiB transcript: "
       f"{cu_huge_r['ms']:.0f} ms (bridge fixture: {cu_bridge_r['ms']:.0f} ms) — P-5's budget is 250 ms, asserted by § 3")
 
