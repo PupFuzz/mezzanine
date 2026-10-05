@@ -2067,7 +2067,7 @@ absent line leaves its row empty, and the bubble's band is reserved. The rects a
 right. ⚠ Three of the set's places are the ruling read rather than the ruling's words, and await the
 operator's confirmation: the **label line** (the desk's state text, Q1 (B)'s carrier of the state), the
 **currency label** and the **lag line** (both read as Q0's *warning treatments*). ⚠ Not ratified, as
-display forms: the chip's vocabulary (the glyph strings `desk/desk-render.js` publishes, and
+display forms: the chip's vocabulary (the glyph strings `desk/desk-poses.js` and `desk/desk-render.js` publish, and
 *unrecognised*), the non-raw label forms above, and the flag's glyph and *+N*.
 
 ⭐ **The `task` row's rendered form is a THOUGHT BUBBLE anchored to the character, and it REPLACES the
@@ -3400,7 +3400,7 @@ as [D2 § 4.3](FLEET-STATE.md#43-the-derivation-function) intends ("the *renderi
 
 ⭐ **The state's word is drawn on a CHIP under the nameplate, in the state's colour** (operator ruling
 2026-10-02, card#11058 Q4 (a)), and **the colour never carries the state alone**. The chip's vocabulary
-is the glyph strings `server/public/js/desk/desk-render.js` publishes — an unratified display form —
+is the glyph strings `server/public/js/desk/desk-poses.js` and `server/public/js/desk/desk-render.js` publish — an unratified display form —
 and the fixed word *unrecognised* for an unrecognised member ([§ 5.4](#54-what-is-never-rendered)). On
 the desk an unrecognised `unknown_reason` reads *unknown — unrecognised reason*; the reason's raw string
 is the drill-down's and the desk list's. The **Desk** column's markers are the pose art's
