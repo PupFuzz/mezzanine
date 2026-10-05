@@ -19,9 +19,13 @@ use Tests\TestCase;
  * Whether one primitive is in fact rasterised without a seam is the browser's, and was looked at on a
  * screenshot when this landed (the PR's review round), not here.
  *
+ * ⛔ EVERY MEMBER OF THE MERGE KEY IS PLANTED. `tileRegions()` joins tiles whose key is equal; the probe
+ * reads that key out of the shipped `scene.js` and plants, per member, two neighbours that differ in that
+ * member alone, which must be painted as two primitives, each as itself.
+ *
  * ⛔ EACH CHECK IS SEEN TO FAIL: the controls re-mint one defect each in a copy of the shipped modules —
- * neighbours never joined, the draw-order guard gone, a tile's opacity or flip dropped — and watch the
- * probe name it.
+ * neighbours never joined, the draw-order guard gone, a tile's opacity or flip dropped, and each member of
+ * the merge key dropped from it in turn — and watch the probe name it.
  */
 class TheFloorsTilesDrawWithoutSeamsTest extends TestCase
 {
@@ -74,6 +78,22 @@ class TheFloorsTilesDrawWithoutSeamsTest extends TestCase
                 'is not painted as itself',
             ],
         ];
+
+        // One per member of the merge key, read out of the shipped `tileRegions()` by the probe — so a member
+        // added to the key later gets its control here with no edit: that member dropped, its planted pair
+        // merges, and the probe must say so. A member the probe cannot plant reds the first test instead.
+        $key = $this->probe([])['key'];
+
+        $this->assertNotSame([], $key['members'], 'the probe read no member out of the merge key — no control below would run');
+
+        foreach ($key['members'] as $member) {
+            $kept = array_filter($key['members'], fn (string $m): bool => $m !== $member);
+
+            $controls["«{$member}» dropped from the merge key"] = [
+                ['scene.js', $key['expression'], 'JSON.stringify(['.implode(', ', array_map(fn (string $m): string => "t.{$m}", $kept)).'])'],
+                "differ only in «{$member}» and are painted as ONE primitive",
+            ];
+        }
 
         foreach ($controls as $name => [$edit, $named]) {
             $defects = $this->probe([], $this->mutatedModules($edit))['defects'];

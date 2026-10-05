@@ -16,16 +16,20 @@
  *     the result must be exactly the scene's tiles, none missing and none extra;
  *   - THE SAME ORDER WHERE IT SHOWS: any two tiles that overlap are painted in the scene's order, each
  *     room's plane under its own tiles and over the hallway's;
- *   - NO SEAM (the cases marked `seamless`): two identical tiles sharing an edge are painted by ONE node.
+ *   - NO SEAM (the cases marked `seamless`): two identical tiles sharing an edge are painted by ONE node;
+ *   - APART (the pairs a case lists in `apart`): two neighbours that differ in one member of the merge key
+ *     are painted by TWO nodes — the one check that reads a member the painter does not draw (`flip_d`).
  *
  * The cases: the SHIPPED default room (`resources/floor/default.tmj` through the shipped tileset reader and
  * `mapTiles()`), and planted ones — a sheet tile's window flipped both ways at half opacity on a lattice, an
- * L of 8 px wall strip (no one rectangle covers it), a lattice off the grid, and an ORDER case: a tile between two identical
- * neighbours that overlaps the second, so drawing the pair as one would put that tile under it.
+ * L of 8 px wall strip (no one rectangle covers it), a lattice off the grid, an ORDER case: a tile between two identical
+ * neighbours that overlaps the second, so drawing the pair as one would put that tile under it, and a KEY case: per member
+ * of `tileRegions()`'s merge key, read out of the shipped `scene.js`, two neighbours that differ in that member alone.
  *
  * argv: `<floor module dir>` (the shipped `server/public/js/floor`, or a mutated copy's). stdout:
- * `{ cases: { <name>: { tiles, primitives, nodes } }, defects: [ … ] }` — `tiles` counts each case's tiles,
- * so a case that painted nothing reads as such.
+ * `{ cases: { <name>: { tiles, primitives, nodes } }, key: { expression, members }, defects: [ … ] }` — `tiles`
+ * counts each case's tiles, so a case that painted nothing reads as such; `key` is the merge key as read, the
+ * controls' source for dropping each member in turn.
  */
 
 import { readFileSync } from 'node:fs';
@@ -80,6 +84,75 @@ const shipped = (() => {
 
 const sheet = { image: '/art/floor/tiles/planted/sheet.png', iw: 64, ih: 48, sx: 16, sy: 8, sw: 16, sh: 16, w: 16, h: 16 };
 
+/**
+ * THE MERGE KEY, read out of the SHIPPED `scene.js` — never out of the module dir under test, so a control
+ * that drops a member from a mutated copy's key still has that member's pair planted against it. Every
+ * member is planted below, so a member added to the key later is planted with no edit here — or, where it
+ * is not a plain `t.<member>` or the planted tile cannot vary it, the probe reports a defect naming it.
+ */
+const KEY = (() => {
+    const source = readFileSync(join(HERE, '..', '..', '..', 'public', 'js', 'floor', 'scene.js'), 'utf8');
+    const m = /export function tileRegions\([\s\S]*?(JSON\.stringify\(\[([^\]]*)\]\))/.exec(source);
+    const members = m === null ? [] : m[2].split(',').map((s) => /^\s*t\.(\w+)\s*$/.exec(s)?.[1] ?? null);
+
+    return { expression: m?.[1] ?? null, members };
+})();
+
+/**
+ * A neighbour that differs from `base` in `member` alone: a flag flipped, a number halved, a name changed.
+ * A member of any other kind, or one the planted tile does not carry, cannot be varied — a defect, so the
+ * member is never silently left unplanted.
+ */
+const differIn = (base, member) => {
+    const v = base[member];
+
+    if (typeof v === 'boolean') {
+        return { ...base, [member]: !v };
+    }
+
+    if (typeof v === 'number' && v !== 0) {
+        return { ...base, [member]: v / 2 };
+    }
+
+    if (typeof v === 'string') {
+        return { ...base, [member]: v.replace(/(\.\w+)?$/, '-other$1') };
+    }
+
+    return null;
+};
+
+const keyDefects = [];
+
+if (KEY.expression === null || KEY.members.length === 0 || KEY.members.includes(null)) {
+    keyDefects.push(`the merge key could not be read out of tileRegions() in scene.js as a list of a tile's members — «${KEY.expression}»`);
+}
+
+/**
+ * EVERY KEY MEMBER, ONE PAIR EACH: a tile and its neighbour at its right edge that differ in that member
+ * alone, each pair on a row of its own. Drop the member from the key and the pair merges into one region,
+ * drawn as its first tile.
+ */
+const pairs = (() => {
+    const tiles = [];
+    const apart = [];
+
+    KEY.members.filter((m) => m !== null).forEach((member, row) => {
+        const base = tile({ ...sheet, opacity: 0.5, x: 0, y: 400 + 32 * row });
+        const other = differIn(base, member);
+
+        if (other === null) {
+            keyDefects.push(`the key member «${member}» cannot be varied on the planted tile (${JSON.stringify(base[member])}) — its pair is not planted`);
+
+            return;
+        }
+
+        apart.push([tiles.length, tiles.length + 1, member]);
+        tiles.push(base, { ...other, x: base.x + base.w });
+    });
+
+    return { tiles, apart };
+})();
+
 const CASES = {
     'the shipped default room': shipped,
     'a sheet tile flipped at half opacity, an L of wall strip and a lattice off the grid': {
@@ -100,6 +173,14 @@ const CASES = {
             tile({ x: 8, y: 200, room: 'r' }),
         ],
         planes: [{ install_id: 'r', x: 0, y: 200, w: 24, h: 8, theme: 'sage' }],
+    },
+    // Not `seamless`: a pair that differs only in what the painter does not draw (`flip_d`) reads back as
+    // two identical tiles, and two primitives there is the point.
+    'neighbours that differ in exactly one member of the merge key': {
+        seamless: false,
+        tiles: pairs.tiles,
+        apart: pairs.apart,
+        planes: [],
     },
 };
 
@@ -242,7 +323,7 @@ function paintedOf(svg, defects, name) {
 }
 
 const count = (n) => 1 + n.children.reduce((s, c) => s + count(c), 0);
-const defects = [];
+const defects = [...keyDefects];
 const cases = {};
 
 for (const [name, c] of Object.entries(CASES)) {
@@ -296,6 +377,17 @@ for (const [name, c] of Object.entries(CASES)) {
         }
     }
 
+    // ── apart: neighbours that differ in one key member are two primitives ──
+    for (const [a, b, member] of c.apart ?? []) {
+        const primAt = (t) => items.find((it) => it.plane === undefined && it.x === t.x && it.y === t.y)?.prim;
+        const [pa, pb] = [primAt(c.tiles[a]), primAt(c.tiles[b])];
+
+        if (pa !== undefined && pa === pb) {
+            defects.push(`${name}: the tiles at (${c.tiles[a].x}, ${c.tiles[a].y}) and (${c.tiles[b].x}, ${c.tiles[b].y}) differ only in `
+                + `«${member}» and are painted as ONE primitive — the second is drawn as the first`);
+        }
+    }
+
     // ── no seam: identical tiles sharing an edge are one primitive ──
     if (c.seamless) {
         const byPlace = new Map(items.filter((it) => it.plane === undefined).map((it) => [placed(it), it]));
@@ -313,4 +405,4 @@ for (const [name, c] of Object.entries(CASES)) {
     }
 }
 
-console.log(JSON.stringify({ cases, defects }));
+console.log(JSON.stringify({ cases, key: KEY, defects }));
