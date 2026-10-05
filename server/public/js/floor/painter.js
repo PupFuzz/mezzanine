@@ -32,9 +32,9 @@
  * stylesheet's, at the cycle the scene states.
  */
 
-import { FONT, FONT_NAME, STOOL_GLYPH, TYPE_ROLES } from './desk-layout.js';
+import { FONT, FONT_NAME, STOOL_GLYPH, TYPE_ROLES, characterAsset } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
-import { ROOM_THEMES, tileRegions } from './scene.js';
+import { ELEVATOR_DOOR, ROOM_THEMES, tileRegions } from './scene.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
 
 /** The furniture box and the desk sprite — `resources/floor/furniture-box.js`, by the asset route. */
@@ -104,6 +104,12 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 .fx-bead{transform:translate(var(--to-x),var(--to-y))}.envelope{fill:var(--scene-paper);stroke:var(--scene-thread)}
 .fx-flash{fill:var(--scene-flash);opacity:0;animation-name:flash}
 @keyframes flash{from{opacity:.8}to{opacity:0}}
+.fx-walker{animation-name:walk;animation-fill-mode:both}.fx-walker-shown{opacity:0;animation-name:walker-shown;animation-fill-mode:none}
+@keyframes walk{from{transform:translate(var(--from-x),var(--from-y))}to{transform:translate(var(--to-x),var(--to-y))}}
+@keyframes walker-shown{from{opacity:1}to{opacity:1}}
+.elevator-leaf.left{transform-box:fill-box;transform-origin:left center}.elevator-leaf.right{transform-box:fill-box;transform-origin:right center}
+@keyframes leaf-open{from{transform:scaleX(1)}to{transform:scaleX(.12)}}
+@keyframes leaf-close{from{transform:scaleX(.12)}to{transform:scaleX(1)}}
 .fx-broadcast-marker{fill:none;stroke:var(--scene-thread);stroke-width:3}
 `;
 
@@ -393,7 +399,16 @@ export function createPainter({ characters, failed, select }) {
     function paintEffects(layer, effects) {
         for (const fx of effects) {
             const seconds = (fx.frames * fx.frame_interval_ms) / 1000;
-            const style = fx.frames > 0 ? `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames})` : null;
+            // § 6.2's walk note item 8: an effect still in flight from an earlier render is drawn at the
+            // frame it has reached — a negative delay — never restarted.
+            const ago = ((fx.elapsed_frames ?? 0) * fx.frame_interval_ms) / 1000;
+            const style = fx.frames > 0 ? `animation-duration:${seconds}s;animation-timing-function:steps(${fx.frames});animation-delay:${-ago}s` : null;
+
+            if ((fx.animation_id === 'A1' || fx.animation_id === 'A2') && fx.frames > 0) {
+                paintWalker(layer, fx, ago);
+
+                continue;
+            }
 
             if (fx.animation_id === 'A19') {
                 const g = node('g', { class: fx.frames > 0 ? 'fx-envelope' : 'fx-bead', style }, layer);
@@ -416,13 +431,62 @@ export function createPainter({ characters, failed, select }) {
                     r: fx.frames > 0 ? fx.radius : 10,
                     class: fx.frames > 0 ? 'fx-ring' : 'fx-broadcast-marker',
                     style: fx.frames > 0
-                        ? `animation:ring-reach ${reach}s steps(${fx.reach_frames}) forwards,ring-fade ${fade}s steps(${fx.fade_frames}) ${reach}s forwards`
+                        ? `animation:ring-reach ${reach}s steps(${fx.reach_frames}) ${-ago}s forwards,ring-fade ${fade}s steps(${fx.fade_frames}) ${reach - ago}s forwards`
                         : null,
                 }, layer);
             } else if (fx.at !== null && fx.at !== undefined && fx.frames > 0) {
                 node('circle', { cx: fx.at.x, cy: fx.at.y, r: 12, class: `fx-flash fx-${fx.animation_id}`, style }, layer);
             }
         }
+    }
+
+    /**
+     * One A1 or A2 walker (§ 6.2's walk note items 3–5): the seat's character in its walk frames, moving
+     * along the scene's segment in the walk's frames and drawn only in its shown frames — the scene
+     * decided every number, and `ago` is how far into the walk this paint lands.
+     */
+    function paintWalker(layer, fx, ago) {
+        const sec = (frames) => (frames * fx.frame_interval_ms) / 1000;
+        const shown = node('g', {
+            class: 'fx-walker-shown',
+            style: `animation-duration:${sec(fx.shown.frames)}s;animation-delay:${sec(fx.shown.at) - ago}s`,
+        }, layer);
+        const g = node('g', {
+            class: 'fx-walker',
+            style: `animation-duration:${sec(fx.walk.frames)}s;animation-timing-function:steps(${fx.walk.frames});animation-delay:${sec(fx.walk.at) - ago}s`,
+        }, shown);
+
+        g.style.setProperty('--from-x', `${fx.from.x}px`);
+        g.style.setProperty('--from-y', `${fx.from.y}px`);
+        g.style.setProperty('--to-x', `${fx.to.x}px`);
+        g.style.setProperty('--to-y', `${fx.to.y}px`);
+
+        const asset = characterAsset({ install_id: fx.install_id, seat_id: fx.seat_id });
+        const urls = characterFrames(fx.install_id, fx.seat_id, asset);
+
+        if (urls === null) {
+            // § 9 F14: the art failed, so the walker is the placeholder rectangle at the character's size.
+            node('rect', { x: -fx.size.w / 2, y: -fx.size.h, width: fx.size.w, height: fx.size.h, class: 'placeholder' }, g);
+
+            return;
+        }
+
+        const el = image(g, urls[0], -fx.size.w / 2, -fx.size.h, fx.size.w, fx.size.h, asset, { class: 'character pixel', preserveAspectRatio: MEET });
+
+        el.dataset.frames = JSON.stringify(urls);
+    }
+
+    /**
+     * The elevator's leaves (§ 6.2's walk note item 10): open while any walk in flight is in its door
+     * frames — one open-then-close per merged span the scene carries, in frames from this paint.
+     */
+    function leafAnimation(doors, interval) {
+        const sec = (frames) => (frames * interval) / 1000;
+
+        return doors.flatMap((d) => [
+            `leaf-open ${sec(ELEVATOR_DOOR.open)}s steps(${ELEVATOR_DOOR.open}) ${sec(d.from)}s forwards`,
+            `leaf-close ${sec(ELEVATOR_DOOR.close)}s steps(${ELEVATOR_DOOR.close}) ${sec(d.to - ELEVATOR_DOOR.close)}s forwards`,
+        ]).join(',');
     }
 
     /**
@@ -509,14 +573,15 @@ export function createPainter({ characters, failed, select }) {
                 node('rect', { x: w.sill.x, y: w.sill.y, width: w.sill.w, height: w.sill.h, rx: 2, class: 'sill' }, g);
             }
 
-            // The two-door elevator, scenery: it never opens.
+            // The two-door elevator: its leaves open only inside an A1 or A2 walk (§ 4.2, card#9566).
             const e = band.elevator;
+            const leaves = (scene.doors ?? []).length === 0 ? null : `animation:${leafAnimation(scene.doors, 1000 / scene.loop_fps)}`;
 
             node('rect', { x: e.frame.x, y: e.frame.y, width: e.frame.w, height: e.frame.h, rx: 6, class: 'elevator-frame' }, g);
             node('rect', { x: e.header.x, y: e.header.y, width: e.header.w, height: e.header.h, rx: 4, class: 'elevator-header' }, g);
             node('circle', { cx: e.lamp.cx, cy: e.lamp.cy, r: e.lamp.r, class: 'elevator-lamp' }, g);
-            node('rect', { x: e.x, y: e.y, width: e.seam - e.x - 1, height: e.h, rx: 3, class: 'elevator-leaf' }, g);
-            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf' }, g);
+            node('rect', { x: e.x, y: e.y, width: e.seam - e.x - 1, height: e.h, rx: 3, class: 'elevator-leaf left', style: leaves }, g);
+            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, g);
             node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, g);
 
             const c = band.clock;
@@ -647,7 +712,8 @@ export function createPainter({ characters, failed, select }) {
         // § 6.2's held loops, at the interval the scene carries — one interval for the whole floor,
         // stepping every character whose render the set drew with motion.
         const moving = [...svg.querySelectorAll('image[data-frames]')];
-        const interval = scene.desks.find((d) => d.held?.motion)?.held.frame_interval_ms ?? null;
+        const walking = scene.effects.some((fx) => (fx.animation_id === 'A1' || fx.animation_id === 'A2') && fx.frames > 0);
+        const interval = scene.desks.find((d) => d.held?.motion)?.held.frame_interval_ms ?? (walking ? 1000 / scene.loop_fps : null);
 
         if (moving.length > 0 && interval !== null) {
             let tick = 0;

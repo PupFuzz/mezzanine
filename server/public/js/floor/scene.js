@@ -32,7 +32,7 @@
 import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
 import { fnv1a32, footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
 import { FLOOR_ART, readEmbedded, resolvePath, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_BAND, BUBBLE_PAD, ART_W, LINE, deskLayout, fit, union } from './desk-layout.js';
+import { BUBBLE_BAND, BUBBLE_PAD, ART_W, CHARACTER_SCALE, LINE, deskLayout, fit, union } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 
 /**
@@ -53,10 +53,11 @@ export const BAND_H = 160;
  * A band narrower than the zone — a stored map can be that narrow (F21) — is WIDENED to it, so the
  * clock (A17's fact) is always on the wall and never hanging past its edge over the exterior.
  *
- * ⛔ THE ELEVATOR IS SCENERY. It is the lobby cab's form — two leaves meeting at a seam, a lamp over
- * them — in the lobby's own door colours (`--door` / `--door-edge`), so the floor and the lobby read as
- * one building; it never opens and takes no § 6.2 row. The elevator that navigates is the lobby's
- * (§ 4.1), reached by the floor's *whole building* control.
+ * ⛔ THE ELEVATOR IS WHERE A SEAT LEAVES AND RETURNS (§ 4.2, card#9566). It is the lobby cab's form — two
+ * leaves meeting at a seam, a lamp over them — in the lobby's own door colours (`--door` / `--door-edge`),
+ * so the floor and the lobby read as one building. Its leaves open and close inside an A1 or A2 walk and
+ * for nothing else, and it takes no § 6.2 row of its own. It never navigates: the elevator that does is
+ * the lobby's (§ 4.1), reached by the floor's *whole building* control.
  *
  * ⛔ THE WINDOWS FILL WHAT IS LEFT, PAST THE ZONE: `n = ⌊(w − ZONE_W − margin) ÷ pitch⌋`, at least
  * one, spread evenly, each centred in its cell and `WINDOW.w` wide — narrowed to its cell less the gap
@@ -139,7 +140,7 @@ function roomSuffix(installId, seats) {
  * at § 12's loop rate. They decide how many frames a walk takes and carry no fact: every walk of
  * one length takes the same number of frames, whatever the seat.
  */
-const WALK_PX_PER_FRAME = 48;
+export const WALK_PX_PER_FRAME = 48;
 const ENVELOPE_PX_PER_FRAME = 96;
 const RING_PX_PER_FRAME = 240;
 const RING_FADE_FRAMES = 2;
@@ -149,6 +150,49 @@ const RING_FADE_FRAMES = 2;
  * It decides how fast the dashes flow and carries no fact — every moving line flows alike.
  */
 const THREAD_FLOW_FRAMES = 4;
+
+/**
+ * The elevator's leaves, in loop frames (FLOOR § 12's *Elevator leaves* row, card#9566): opening, the
+ * step through the doorway, closing.
+ */
+export const ELEVATOR_DOOR = Object.freeze({ open: 2, step: 1, close: 2 });
+
+/** Where every A1 and A2 walk meets the elevator: the leaves' seam, at their foot (§ 6.2's walk note item 3). */
+export function threshold(band) {
+    return band === null || band === undefined ? null : Object.freeze({ x: band.elevator.seam, y: band.elevator.y + band.elevator.h });
+}
+
+/**
+ * One A1 or A2 walk (FLOOR § 6.2's walk note items 3 and 5): A16's straight-segment rule between the
+ * desk's anchor and the elevator's threshold, `⌈length ÷ WALK_PX_PER_FRAME⌉` frames, and the door's
+ * frames around it. A2 walks to the threshold, the leaves open, the walker steps in and is gone, the
+ * leaves close; A1 is the reverse, the leaves closing behind it while it walks, and it sits on the
+ * walk's last frame. `shown` is the frames the walker is drawn in, `walk` the frames it moves in, `door`
+ * the frames the leaves are not shut in. With no motion, or no desk on this floor, it draws nothing.
+ */
+function walkEffect(base, id, desk, door, motion, character) {
+    if (!motion || desk === null || door === null) {
+        return Object.freeze({ ...base, from: null, to: null, frames: 0, walk: null, shown: null, door: null, size: null });
+    }
+
+    const [from, to] = id === 'A2' ? [desk, door] : [door, desk];
+    const steps = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / WALK_PX_PER_FRAME));
+    const D = ELEVATOR_DOOR;
+    const doorFrames = D.open + D.step + D.close;
+    const timing = id === 'A2'
+        ? { walk: { at: 0, frames: steps }, shown: { at: 0, frames: steps + D.open + D.step }, door: { at: steps, frames: doorFrames } }
+        : { walk: { at: D.open + D.step, frames: steps }, shown: { at: D.open, frames: D.step + steps }, door: { at: 0, frames: doorFrames } };
+
+    return Object.freeze({
+        ...base,
+        from,
+        to,
+        ...timing,
+        // The walker is the desk's character at its drawn size, its feet on the segment.
+        size: Object.freeze({ w: character.w * CHARACTER_SCALE, h: character.h * CHARACTER_SCALE }),
+        frames: Math.max(timing.walk.at + timing.walk.frames, timing.door.at + timing.door.frames),
+    });
+}
 
 /** A § 6.2 edge row's single-frame forms — the 250 ms fades and eases, one loop frame each. */
 const ONE_FRAME = new Set(['A5', 'A11', 'A12', 'A14', 'A17']);
@@ -388,7 +432,7 @@ export function buildScene(frame, input) {
     // ── The coordination line and the § 6.2 forms this render draws ───────────────────────────
     const anchors = new Map(desks.map((desk) => [desk.key, anchorOf(desk)]));
     const lines = buildLines(frame, anchors, input);
-    const effects = buildEffects(input.effects ?? [], frame, anchors, input.previous ?? new Map(), extent, band, input.reduce === true);
+    const effects = buildEffects(input.effects ?? [], frame, anchors, input.previous ?? new Map(), extent, band, input.reduce === true, input.character);
 
     // § 9 F14: every asset the scene asked to be drawn that the painter reported failed, and every
     // tileset that could not be fetched or read.
@@ -1017,7 +1061,7 @@ function form(animationId, reduce) {
  * Every § 6.2 edge row this render WROTE, as the frames to draw — at § 12's loop rate, from where
  * the fact happened to where it ends. Rows are the animation set's; nothing here fires one.
  */
-function buildEffects(rows, frame, anchors, previous, extent, band, reduce) {
+function buildEffects(rows, frame, anchors, previous, extent, band, reduce, character) {
     const interval = 1000 / LOOP_FPS;
     const effects = [];
     const seen = new Set();
@@ -1116,9 +1160,15 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce) {
         const now = key === null ? null : anchors.get(key) ?? null;
         const before = key === null ? null : previous.get(key) ?? null;
 
-        if (id === 'A1' || id === 'A2' || id === 'A13' || id === 'A16') {
-            const from = id === 'A1' ? (now === null ? null : { x: now.x, y: (extent?.y ?? now.y) + (extent?.height ?? 0) }) : (before ?? now);
-            const to = id === 'A16' || id === 'A1' ? now : (from === null ? null : { x: from.x, y: (extent?.y ?? from.y) + (extent?.height ?? 0) });
+        if (id === 'A1' || id === 'A2') {
+            effects.push(walkEffect(base, id, now, threshold(band), motion && !reduce, character));
+
+            continue;
+        }
+
+        if (id === 'A13' || id === 'A16') {
+            const from = before ?? now;
+            const to = id === 'A16' ? now : (from === null ? null : { x: from.x, y: (extent?.y ?? from.y) + (extent?.height ?? 0) });
             const length = from === null || to === null ? 0 : Math.hypot(to.x - from.x, to.y - from.y);
 
             effects.push(Object.freeze({

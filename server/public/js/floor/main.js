@@ -298,6 +298,9 @@ const screen = startFloorScreen(client, pageFetch, clock, log, paint, {
     seat: root.dataset.seat === '' ? null : root.dataset.seat,
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     surface: surface(),
+    // § 6.2's walk note item 4: a walk's last frame is a paint-only refresh on the browser's timer — it
+    // reaches `paint` and never `screen.render()`, so it drains nothing and writes no animation-log row.
+    timers: { after: (ms, fire) => window.setTimeout(fire, ms), cancel: (id) => window.clearTimeout(id) },
 });
 
 // § 2.5's 1 s tick: the ages over the desks the last render read — and the open panel's — with

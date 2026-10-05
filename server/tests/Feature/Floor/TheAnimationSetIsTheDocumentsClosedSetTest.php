@@ -355,22 +355,36 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
      * exclusion on A1 — the row that yields — as it hosts A3's exclusion of A4, and this reads the
      * document's cell AND the shipped predicate so neither can move alone.
      *
-     * ⚠ A2 IS NOT IMPLICATED AND NO EXCLUSION IS STATED ON IT. Its condition is *a delta whose new
-     * `render_state` is `offline`*, which `offline → retired` does not satisfy; the fourth transition
-     * below is the converse control that shows A2 still fires where it should.
+     * ⛔ AND A2's, WHICH card#9566 STATES ON A2's ROW TOO. Since card#9566 both hold BY CONSTRUCTION:
+     * A1 and A2 are keyed on § 7.1's two sides (the walk note's item 1) and `retired` is on neither, so
+     * `offline → retired` and `working → retired` fire A13 alone. The plant that would break either is
+     * not a deleted clause but one side read as the other's complement — the reading the walk note
+     * refuses — planted below for each.
+     *
+     * ⚠ THE OTHER TRANSITIONS ARE THE WALK NOTE's EDGES: staffed → empty is A2 at the `stale` edge as at the
+     * `offline` one, empty → staffed is A1 from either, and an edge between two values of one side —
+     * `stale → offline`, `working → idle` — or into an unrecognised value fires neither.
      */
     public function test_a_retirement_is_not_also_an_arrival(): void
     {
-        $condition = $this->documentAnimationRows()['A1']['condition'];
+        $rows = $this->documentAnimationRows();
 
-        $this->assertStringContainsString('and not A13', $condition,
+        $this->assertStringContainsString('and not A13', $rows['A1']['condition'],
             '§ 6.2\'s A1 row no longer states its exclusion of A13 — the shipped predicate below would be stricter than the table');
+        $this->assertStringContainsString('and not A13', $rows['A2']['condition'],
+            '§ 6.2\'s A2 row no longer states its exclusion of A13');
 
         $transitions = [
             'offline->working' => ['offline', 'working', ['A1']],
+            'stale->working' => ['stale', 'working', ['A1']],
             'offline->retired' => ['offline', 'retired', ['A13']],
             'working->retired' => ['working', 'retired', ['A13']],
             'working->offline' => ['working', 'offline', ['A2']],
+            'working->stale' => ['working', 'stale', ['A2']],
+            'stale->offline' => ['stale', 'offline', []],
+            'offline->offline' => ['offline', 'offline', []],
+            'working->idle' => ['working', 'idle', []],
+            'working->unrecognised' => ['working', 'on_fire', []],
         ];
 
         foreach ($transitions as $name => [$before, $after, $expected]) {
@@ -378,16 +392,21 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
                 "[{$name}] the § 6.2 rows this transition fires are not the ones the table predicts");
         }
 
-        // ⛔ THE CONTROL: the exclusion removed from A1's predicate, and the double fire observed.
-        // ⚠ THE ANCHOR IS THE EXCLUSION CLAUSE AND NOTHING MORE. An anchor spanning the whole of A1's
-        // predicate drifts on any edit to any other part of it — measured: it did, on a whitespace
-        // change during this very build — and a drifted anchor mutates nothing and then "proves" the
-        // control can fail by running unmodified code. The smallest text that still expresses the
-        // planted defect is the right anchor.
-        $unexcluded = $this->plantedSet(' && !retiring(before, after)', '');
+        // ⛔ THE CONTROLS: A1's exclusion removed, and the double fire observed; and A2's empty chair read
+        // as *not staffed*, and a retirement walking out beside its A13.
+        // ⚠ EACH ANCHOR IS THE SMALLEST TEXT THAT STILL EXPRESSES ITS PLANTED DEFECT. An anchor spanning a
+        // whole predicate drifts on any edit to any other part of it — measured: it did, on a whitespace
+        // change during card#7341's build — and a drifted anchor mutates nothing and then "proves" the
+        // control can fail by running unmodified code.
+        $unexcluded = $this->plantedSet('emptyChair(before.render_state) && staffed(after.render_state)', 'emptyChair(before.render_state) && !emptyChair(after.render_state)');
 
         $this->assertSame(['A1', 'A13'], $this->rowsFiredBy('offline', 'retired', $unexcluded),
-            'the control did not bite: A1\'s exclusion of A13 was removed and a retirement still fired one row');
+            'the control did not bite: A1\'s staffed side was read as not empty and a retirement still fired one row');
+
+        $complement = $this->plantedSet('staffed(before.render_state) && emptyChair(after.render_state)', 'staffed(before.render_state) && !staffed(after.render_state)');
+
+        $this->assertSame(['A2', 'A13'], $this->rowsFiredBy('working', 'retired', $complement),
+            'the control did not bite: A2\'s empty chair was read as not staffed and a retirement still fired one row');
     }
 
     /**
