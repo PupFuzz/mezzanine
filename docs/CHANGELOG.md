@@ -39,8 +39,8 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   --seat=<install>/<seat> --board-user=<id> | --clear` sets or clears a seat's board user and deletes its
   board row in the same transaction, refuses a board user another seat holds, and refuses a retired seat.
   Both counters are on `GET /api/fleet/health`. The three keys are in `server/.env.example`, empty.
-  `docs/design/BOARD-TASK.md` § 0, § 5, § 12 and § 13, `docs/PLAN.md` D4, D2 § 4.9, § 13 and § 14, D3 § 1.2 and the
-  README record the build.
+  `docs/design/BOARD-TASK.md` § 0, § 5, § 12, § 13 and § 14, `docs/PLAN.md` D4, D2 § 4.9, § 13 and § 14,
+  D3 § 1.2 and the README record the build.
 - **card#11144** — **The PM sits at the desk reserved for it.** `assignSlots()` in
   `server/public/js/floor/floor-layout.js` seats a room's one seat whose relayed `protocol_agent_role` equals
   the map's `reserved_for` at the reserved desk, and takes that desk before the probe loop whether or not
