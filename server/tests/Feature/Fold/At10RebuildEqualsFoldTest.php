@@ -2,7 +2,11 @@
 
 namespace Tests\Feature\Fold;
 
+use App\Fold\Clock;
+use App\Read\SeatObject;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 /**
  * AT-D2-10 — rebuild equals fold.
@@ -62,6 +66,82 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
         $this->assertSame($folded, $this->snapshot());
 
         $this->assertSame(1, $this->counter('state_rebuilds'));
+    }
+
+    /**
+     * AT-D4-1 — rebuild equals fold with a BOARD-SOURCED title (`docs/design/BOARD-TASK.md § 11`).
+     *
+     * It widens this test's fixture and adds NO exclusion to `snapshot()`: the seat carries a
+     * board-user mapping and a `seat_board_task` row inside the bound, written by a real
+     * `mezzanine:board-poll` against a faked board, and all five `task_*` columns are compared
+     * like every other one. The rebuild reaches the same tier-1 answer because the fold READS that
+     * row on every recompute and `reset()` does not destroy it (§ 2.3); the stamp it renders is
+     * the row's stored `observed_at`, never `now()` (§ 8.3).
+     *
+     * ⛔ THE BOARD-POLL SCHEDULE IS OFF FOR THE DURATION, AND THE TEST ASSERTS IT WAS. The input is
+     * rewritten every cadence, so a poll landing between the snapshot and the rebuild would move
+     * the very input the two sides are compared over — a divergence that is a moved input, not a
+     * fold rule reading what it may not, and a RED whose message would then be false. Nothing in
+     * the suite runs the scheduler; what is asserted is the consequence that matters — the input
+     * row and both poll counters are byte-identical across the rebuild.
+     *
+     * The discriminating control § 11 asks for — the same comparison on a seat with NO
+     * `seat_board_task` row reporting zero differences — is the test above, unchanged.
+     */
+    public function test_at_d4_1_a_board_titled_seat_rebuilds_equal_to_its_fold(): void
+    {
+        $this->artisan('mezzanine:seat-board-user', ['--seat' => 'aimla/aimla-pm', '--board-user' => '14'])
+            ->assertSuccessful();
+
+        config([
+            'mezzanine.board.api_base' => 'https://board.example.test/api/v3',
+            'mezzanine.board.api_token' => 'kbr_at_d4_1_fixture',
+            'mezzanine.board.board_ids' => '14',
+        ]);
+        Http::fake(['board.example.test/*' => Http::response(json_encode([
+            'data' => [[
+                'id' => 9234, 'board_id' => 14, 'name' => 'Drop tier 2 (the GitHub-sourced task title)',
+                'assigned_user_id' => 14, 'updated_at' => '2026-09-11T02:10:00+00:00',
+                'archived_at' => null, 'deleted_at' => null,
+            ]],
+            'meta' => ['current_page' => 1, 'last_page' => 1],
+        ]), 200)]);
+        $this->assertSame(0, Artisan::call('mezzanine:board-poll'));
+
+        $this->deliverEveryKind();
+        $this->fold();
+
+        $folded = $this->snapshot();
+        $this->assertSame('board_card', $folded['seat_state']['task_source'], 'the fixture is not board-titled');
+        $this->assertSame('card#9234', $folded['seat_state']['task_ref']);
+
+        $input = (array) DB::table('seat_board_task')->where('seat_ref', $this->seatRef)->first();
+        $counters = DB::table('global_counters')->whereIn('name', ['board_poll_ok', 'board_poll_failed'])
+            ->orderBy('name')->pluck('value', 'name')->all();
+
+        // Rendered at ONE instant on both sides, so the comparison is about the derivation and not
+        // about a render-time age. Two members are left out, and they are § 11's own exclusions on
+        // the rendered side: `state_version`, and `derivation.computed_at`, which IS
+        // `state_computed_at` on the wire. Nothing else is.
+        $renderAt = Clock::toMs(Clock::sql(now())) + 5000;
+        $rendered = function () use ($renderAt): array {
+            $object = SeatObject::forSeatRef($this->seatRef, $renderAt);
+            unset($object['state_version'], $object['derivation']['computed_at']);
+
+            return $object;
+        };
+        $renderedFolded = json_encode($rendered());
+
+        $this->advanceServerClock(5);
+        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla/aimla-pm'])->assertSuccessful();
+
+        $this->assertSame($input, (array) DB::table('seat_board_task')->where('seat_ref', $this->seatRef)->first(),
+            'the board input moved between the snapshot and the rebuild — the comparison below would not be about the fold');
+        $this->assertSame($counters, DB::table('global_counters')->whereIn('name', ['board_poll_ok', 'board_poll_failed'])
+            ->orderBy('name')->pluck('value', 'name')->all(), 'a board poll ran during the comparison');
+
+        $this->assertSame($folded, $this->snapshot());
+        $this->assertSame($renderedFolded, json_encode($rendered()), 'the rendered object is not byte-identical');
     }
 
     public function test_the_discriminating_control_a_rebuild_of_an_untouched_seat_reports_equality(): void

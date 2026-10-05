@@ -9,20 +9,18 @@ use Illuminate\Support\Facades\Schema;
  * RATIFIED on card#7582 (operator ruling, 2026-09-12) from `docs/design/BOARD-TASK.md`'s A2.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ WHY THE STORE SHIPS WHILE THE POLLER DOES NOT. The same ruling says in terms that the poller
- * is design-only and that building `mezzanine:board-poll` is a separate pull, so nothing here
+ * ⛔ WHY THE STORE SHIPPED BEFORE THE POLLER. The same ruling says in terms that the poller
+ * was design-only and that building `mezzanine:board-poll` was a separate pull, so nothing here
  * WRITES a board fact. What does write is **retirement**: the ruling's F5 fork resolved as
  * *retirement clears the board-user mapping*, in the retirement transaction
  * (`App\Fleet\SeatRetirement`, § 4.10), and that act has nothing to null and no row to delete
  * without these two. A clearing act with no column to clear is not a smaller change — it is an
  * untestable one, and a test that cannot fail is a decoration.
  *
- * ⚠ SO THIS TABLE HAS EXACTLY ONE WRITER TODAY, AND IT ONLY DELETES. That is stated rather than
- * left to be discovered: `seat_board_task` is an INPUT whose producer (§ 2.1's board poll) is not
- * built, so it is empty on every store until that pull lands, and the fold does not read it yet —
- * `StateRecompute` still derives `task_*` from `calls` alone. What is true now is that the
- * retirement act can hold the invariant § 6.7 states ("a row leaves in exactly two ways"), which
- * it could not before.
+ * ⚠ WHEN THIS SHIPPED THE TABLE HAD EXACTLY ONE WRITER, AND IT ONLY DELETED: the producer was
+ * not built and the fold did not read the table. Both landed on card#11289 — `mezzanine:board-poll`
+ * (`App\Board\BoardPoll`) writes it, `mezzanine:seat-board-user` and retirement delete from it,
+ * and `StateRecompute::task()` reads it. The schema below did not change with them.
  *
  * WHERE THE SCHEMA COMES FROM. Every column is § 6.4's DDL, and nothing is widened — that section
  * says "Names are final; a builder may reorder columns and add nothing", which is the gate
