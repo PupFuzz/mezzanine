@@ -95,7 +95,9 @@ final class FloorMap
         public readonly array $grid,
         /**
          * The `desks` layer's objects, in the order the layer lists them, each with the name a refusal
-         * calls it by (`id 3`, or `object #3 (it declares no `id`)`) and its geometry in pixels.
+         * calls it by (`id 3`, or `object #3 (it declares no `id`)`) and its geometry in pixels, at
+         * the position Tiled draws it — its own `x`/`y` plus the summed `offsetx`/`offsety` of the
+         * `desks` layer and every `group` above it (card#11252).
          * Read here, once, by the same walk that counts `S` and checks each object against the
          * grid, so `App\Floor\DeskSlots` — the console's item-28(1) refusals and its
          * re-validation listing — judges the very objects this parser admitted and parses nothing
@@ -603,7 +605,8 @@ final class FloorMap
      * one object may be reserved**, and it must declare an `id` no other object declares (the
      * client resolves the reservation by `id`), and **no object may fall outside the grid** (card#9292 — the
      * grid is the room's footprint, and a desk drawn past it would overhang a neighbour the
-     * footprint check had passed). Returns the slots, whose count is `S`, and the one
+     * footprint check had passed), judged at the position Tiled draws it, its layer's and its
+     * groups' offsets summed in (card#11252). Returns the slots, whose count is `S`, and the one
      * reservation or `null`.
      *
      * @param  array<mixed>  $layers
@@ -634,7 +637,7 @@ final class FloorMap
             ));
         }
 
-        $objects = $desks[0]->objects ?? null;
+        $objects = $desks[0]['layer']->objects ?? null;
 
         if ($objects !== null && ! is_array($objects)) {
             throw new InvalidFloorMap(sprintf(
@@ -653,6 +656,7 @@ final class FloorMap
             ));
         }
 
+        $offset = self::offset($desks[0]);
         $pixelWidth = $grid['width'] * $grid['tilewidth'];
         $pixelHeight = $grid['height'] * $grid['tileheight'];
         $slots = [];
@@ -699,8 +703,11 @@ final class FloorMap
                 $ids[(string) $object->id] = ($ids[(string) $object->id] ?? 0) + 1;
             }
 
-            $x = self::objectNumber($object, 'x', $named);
-            $y = self::objectNumber($object, 'y', $named);
+            // card#11252: where Tiled SHOWS the desk — its own `x`/`y` plus the `desks` layer's and
+            // every enclosing group's `offsetx`/`offsety`, summed once by `offset()` — so every
+            // check below, and `App\Floor\DeskSlots` after it, judges the desk the author sees.
+            $x = $offset['x'] + self::objectNumber($object, 'x', $named);
+            $y = $offset['y'] + self::objectNumber($object, 'y', $named);
             $width = self::objectNumber($object, 'width', $named);
             $height = self::objectNumber($object, 'height', $named);
 
@@ -850,10 +857,14 @@ final class FloorMap
     }
 
     /**
+     * Every object layer named `desks`, at any depth, each with the `group` layers it sits inside,
+     * outermost first — what `offset()` sums into where Tiled draws it.
+     *
      * @param  array<mixed>  $layers
-     * @return list<\stdClass>
+     * @param  list<\stdClass>  $groups  the groups enclosing `$layers`, outermost first
+     * @return list<array{layer: \stdClass, groups: list<\stdClass>}>
      */
-    private static function deskLayers(array $layers): array
+    private static function deskLayers(array $layers, array $groups = []): array
     {
         $found = [];
 
@@ -864,16 +875,57 @@ final class FloorMap
 
             if (($layer->type ?? null) === 'group') {
                 // `structure()` has already refused a group whose `layers` is not a list.
-                $found = array_merge($found, self::deskLayers($layer->layers ?? []));
+                $found = array_merge($found, self::deskLayers($layer->layers ?? [], [...$groups, $layer]));
 
                 continue;
             }
 
             if (($layer->type ?? null) === 'objectgroup' && ($layer->name ?? null) === self::SLOT_LAYER) {
-                $found[] = $layer;
+                $found[] = ['layer' => $layer, 'groups' => $groups];
             }
         }
 
         return $found;
+    }
+
+    /**
+     * Where Tiled draws a `desks` layer's objects relative to their own `x`/`y`: the summed
+     * `offsetx`/`offsety` of the layer and of every `group` above it (card#11252, operator ruling
+     * 2026-10-04 — a desk inside a moved group sits where Tiled shows it). An absent member is
+     * Tiled's default, `0`; one that is not a number is refused by name, because a desk whose
+     * position cannot be read cannot be checked against the grid. Only the layers a desk's
+     * position reads are judged — a group elsewhere in the tree is not the desks' to refuse.
+     *
+     * ⛔ THE SERVER'S FORM OF THE CLIENT'S `mapLayers()` SUM (`floor/floor-layout.js`), which adds
+     * the same members down the same tree for the tiles and the desks alike — so the position the
+     * console judges at the write is the one the floor draws.
+     *
+     * @param  array{layer: \stdClass, groups: list<\stdClass>}  $found  one `deskLayers()` entry
+     * @return array{x: float, y: float}
+     */
+    private static function offset(array $found): array
+    {
+        $offset = ['x' => 0.0, 'y' => 0.0];
+
+        foreach ([...$found['groups'], $found['layer']] as $layer) {
+            foreach (['x' => 'offsetx', 'y' => 'offsety'] as $axis => $member) {
+                $value = $layer->$member ?? 0;
+
+                if (! is_int($value) && ! is_float($value)) {
+                    throw new InvalidFloorMap(sprintf(
+                        'Layer %s declares `%s` as %s rather than a number, so where the `%s` '
+                        .'inside it are drawn cannot be read (docs/design/FLOOR.md § 10.3).',
+                        isset($layer->name) && is_string($layer->name) ? '`'.$layer->name.'`' : 'with no name',
+                        $member,
+                        is_scalar($value) ? '`'.$value.'`' : self::jsonShape($value),
+                        self::SLOT_LAYER,
+                    ));
+                }
+
+                $offset[$axis] += (float) $value;
+            }
+        }
+
+        return $offset;
     }
 }

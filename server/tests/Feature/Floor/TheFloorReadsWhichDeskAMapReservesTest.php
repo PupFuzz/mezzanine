@@ -313,8 +313,8 @@ class TheFloorReadsWhichDeskAMapReservesTest extends TestCase
     public function test_red_a_client_that_reads_the_top_level_only(): void
     {
         $dir = $this->mutatedModules([self::MODULE,
-            "    const desks = mapLayers(map)\n        .map((entry) => entry.layer)\n",
-            "    const desks = (Array.isArray(map?.layers) ? map.layers : [])\n",
+            "    const entry = mapLayers(map)\n",
+            "    const entry = (Array.isArray(map?.layers) ? map.layers : []).map((layer) => ({ layer, offset: { x: 0, y: 0 } }))\n",
         ]);
 
         [$desks] = $this->desksOf([$this->groupedMap()], $dir);

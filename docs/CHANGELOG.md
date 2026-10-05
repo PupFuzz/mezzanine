@@ -27,6 +27,15 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11252** — **A desk inside a moved Tiled group sits where Tiled shows it.** A room map's desk slot is at
+  its object's own `x`/`y` plus the summed `offsetx`/`offsety` of the `desks` layer and every group above it, on
+  the floor page and in the console alike, so a group an author drags carries its desks with its furniture. The
+  console judges *wholly inside the grid* and two overlapping slots at that position, names the shifted spans in
+  its refusals, and refuses an `offsetx` or `offsety` on the desks' path that is not a
+  number. Before, the room's tiles moved with the group and its desks stayed where they were. The server sums
+  the offsets in `App\Floor\FloorMap`'s one walk of the layer tree, and the client in `mapLayers()`, the walk
+  its tiles already read. A map with no offsets places every desk exactly as before.
+
 - **card#11263** — **The ingest refuses IDs that end in a line break.** `POST /api/ingest/events` answers
   `422 invalid_batch` for a `batch_id` or `seq_epoch`, and `422 invalid_event` for an `event_id`, `kind` or
   `session_id`, that ends in a line break, and stores nothing from that batch. Before, such a value passed its
