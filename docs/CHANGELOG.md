@@ -27,6 +27,10 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11314** — **`web-auth/cose-lib` moves from 4.6.0 to 4.7.3, past three advisories.** The lockfile
+  update clears GHSA-9v8c-2mgr-qvx3, GHSA-h7p4-6f74-7w4g and GHSA-rh56-4rc8-hj58 (each patched in 4.7.2). The
+  library arrives through Fortify's passkey support, which stays disabled.
+
 - **card#11292** — **The reporter removes secrets and host names from tool descriptors, and a seat can choose
   to send less.** The descriptor sanitizer (D1 § 7.3) now replaces the value of any assignment or flag whose
   name contains `pass`, `pwd`, `pw`, `secret`, `token`, `key`, `auth`, `credential` or `cookie` (`PGPASSWORD=`,
