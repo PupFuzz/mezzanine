@@ -29,11 +29,13 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 - **card#11292** — **The reporter removes secrets and host names from tool descriptors, and a seat can choose
   to send less.** The descriptor sanitizer (D1 § 7.3) now replaces the value of any assignment or flag whose
-  name contains `pass`, `pwd`, `secret`, `token`, `key`, `auth`, `credential` or `cookie` (`PGPASSWORD=`,
+  name contains `pass`, `pwd`, `pw`, `secret`, `token`, `key`, `auth`, `credential` or `cookie` (`PGPASSWORD=`,
   `MYSQL_PWD=`, `SECRET_KEY=`, `--db-pass`), the value of `Authorization:`, `Proxy-Authorization:`, `Cookie:`
   and `Set-Cookie:` headers, every `name=` value of `vault write` / `vault kv put|patch`, JWTs, the
-  `rk_live_`/`rk_test_`/`whsec_`/`hvs.`/`hvb.` prefixes, long mixed-case base64url tokens, and host names (a
-  URL's host, and dotted names under a curated TLD set) with `‹redacted:host›`. A `WebFetch` descriptor
+  `rk_live_`/`rk_test_`/`whsec_`/`hvs.`/`hvb.`/`ya29.`/`dop_v1_`/`shpat_`/`npm_`/`SG.`/`pypi-` prefixes, long
+  mixed-case base64url tokens, the value of a quoted JSON or dict key such as `{"password":"…"}`, IPv6
+  literals, and host names (a URL's host, including after a password-less user, and dotted names under a
+  curated TLD set) with `‹redacted:host›`. A `WebFetch` descriptor
   therefore shows the scheme only. Free text (dispatch descriptions, `Grep` patterns, `WebSearch` queries,
   commit messages) passes through every rule. A new optional config key, `descriptors`, takes `"full"`
   (the default), `"paths"` (file paths for `Read`/`Write`/`Edit`/`Glob` only) or `"none"` (tool names and

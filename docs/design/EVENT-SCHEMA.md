@@ -2827,13 +2827,13 @@ before it could be shortened to something a human can read.
 |---|---|---|---|
 | 1 | URL userinfo | `(\w+://)[^/\s:@]+:[^/\s@]+@` | `$1‹redacted›@` |
 | 2 | Env-expansion **defaults** | `\$\{(\w+):([-=?+])([^}]*)\}` | `${$1:$2‹redacted›}` — the operator is **kept verbatim**, so `${V:=x}` and `${V:?x}` are not relabelled as `${V:-…}` |
-| 3 | Known-prefix credentials, **JWTs included** | `\b(?:(?:gh[pousr]_\|github_pat_\|sk-\|sk_live_\|sk_test_\|rk_live_\|rk_test_\|whsec_\|xox[abposr]-\|AKIA\|ASIA\|glpat-\|AIza\|hv[sb]\.\|mzn_\|mzr_)[A-Za-z0-9_\-]{8,}\|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]*)` — one list, which the reporter's log sink also runs | `‹redacted:token›` |
-| 4 | Credential **keyword** + its value, in three passes. **4a** — the value of an `Authorization:`, `Proxy-Authorization:`, `Cookie:` or `Set-Cookie:` header, to the next quote or the end of the line, keeping a scheme word (`Basic`, `Bearer`, `Token`, `Digest`, `Negotiate`, `NTLM`). **4b** — the value of a name that is a bare keyword word, separated by `=`, `:` **or whitespace** (`password hunter2`); of a **flag** whose name **contains** `pass`, `pwd`, `secret`, `token`, `key`, `auth`, `credential` or `cookie`, separated by `=` or whitespace (`--db-pass x`, `-storepass x`); and of an **assignment** whose name contains one, separated by `=` or `:` only (`PGPASSWORD=x`, `X-Api-Key: x`). A quoted value is taken whole. **4c** — every `name=` value after `vault write` / `vault kv put` / `vault kv patch` | 4a: `(?i)\b((?:proxy-)?authorization\s*:\s*(?:(?:basic\|bearer\|token\|digest\|negotiate\|ntlm)\s+)?\|(?:set-)?cookie\s*:\s*)([^"'\r\n]+)`. 4b: the legacy keyword-word pattern `(?:-{1,2}\|[A-Za-z0-9]{0,24}[_-])?(?:pass(?:word)?\|secret\|token\|api[_-]?key\|auth\|bearer\|credential)(?![A-Za-z])`, or a name `[A-Za-z0-9_.-]*?(?:pass\|pwd\|secret\|token\|key\|auth\|credential\|cookie)[A-Za-z0-9_.-]*` with or without a leading `-`/`--`, never at a 4a header name | the name, separator and any 4a scheme word kept verbatim, then `‹redacted›` |
+| 3 | Known-prefix credentials, **JWTs included** | `\b(?:(?:gh[pousr]_\|github_pat_\|sk-\|sk_live_\|sk_test_\|rk_live_\|rk_test_\|whsec_\|xox[abposr]-\|AKIA\|ASIA\|glpat-\|AIza\|hv[sb]\.\|ya29\.\|dop_v1_\|shpat_\|pypi-AgEIcHlwaS5vcmc\|mzn_\|mzr_)[A-Za-z0-9_\-]{8,}\|npm_[A-Za-z0-9]{30,}\|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}\|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]*)` — one list, which the reporter's log sink also runs | `‹redacted:token›` |
+| 4 | Credential **keyword** + its value, in three passes. **4a** — the value of an `Authorization:`, `Proxy-Authorization:`, `Cookie:` or `Set-Cookie:` header, to the next quote or the end of the line, keeping a scheme word (`Basic`, `Bearer`, `Token`, `Digest`, `Negotiate`, `NTLM`). **4b** — the value of a name that is a bare keyword word, separated by `=`, `:` **or whitespace** (`password hunter2`); of a **flag** whose name **contains** `pass`, `pwd`, `pw`, `secret`, `token`, `key`, `auth`, `credential` or `cookie`, separated by `=` or whitespace (`--db-pass x`, `-storepass x`); and of an **assignment** whose name contains one, separated by `=` or `:` only (`PGPASSWORD=x`, `X-Api-Key: x`). A quoted value is taken whole. **4d** — a **quoted key** carrying one of those name parts, closed by its own quote (optionally backslash-escaped) before `:` — a JSON or Python-dict body, `{"password":"x"}`, `{'token': 'x'}` — has its value replaced, the value's quotes kept. **4c** — every `name=` value after `vault write` / `vault kv put` / `vault kv patch` | 4a: `(?i)\b((?:proxy-)?authorization\s*:\s*(?:(?:basic\|bearer\|token\|digest\|negotiate\|ntlm)\s+)?\|(?:set-)?cookie\s*:\s*)([^"'\r\n]+)`. 4b: the legacy keyword-word pattern `(?:-{1,2}\|[A-Za-z0-9]{0,24}[_-])?(?:pass(?:word)?\|secret\|token\|api[_-]?key\|auth\|bearer\|credential)(?![A-Za-z])`, or a name `[A-Za-z0-9_.-]*?(?:pass\|pwd\|pw\|secret\|token\|key\|auth\|credential\|cookie)[A-Za-z0-9_.-]*` with or without a leading `-`/`--`, never at a 4a header name | the name, separator and any 4a scheme word kept verbatim, then `‹redacted›` |
 | 5 | Credential **flags**, glued or separated: `--user` `--password` `--token` `--secret`, and `-u` / `-p` (case-insensitively, so `-P` too) | `(?i)(?<![\w-])(--(?:user\|password\|token\|secret)(\s*[:=]\s*\|\s+)\|-[up](\s*[:=]?\s*))(\S+)` | flag + separator verbatim, then `‹redacted›` |
 | 6 | Home and long paths | `/home/<u>/`, `/Users/<u>/`, `C:\Users\<u>\` → `~/`; then a **path token** (one starting at a whitespace or quote boundary with `/`, `~/`, `./` or `X:\`) with > 4 segments keeps its **root prefix** + `…` + the last 2 segments. The root prefix is `~`, `.`, `X:` or — for an absolute non-home path — the **empty string before the leading `/`**, never the first named directory | `~/…/design/EVENT-SCHEMA.md`; `/var/www/app/Http/X.php` → `/…/Http/X.php` |
 | 7 | Long opaque blobs | `[A-Za-z0-9+/]{32,}={0,2}` and `\b[0-9a-f]{24,}\b`; then a run `[A-Za-z0-9_-]{32,}` that holds an upper-case letter, a lower-case letter **and** a digit | `‹redacted:blob›` |
 | 8 | Email addresses | `[\w.+-]+@[\w-]+\.[\w.-]+` | `‹redacted:email›` |
-| 9 | Network addresses: IPv4 literals, then host names | IPv4: `\b(\d{1,3}\.){3}\d{1,3}\b` (valid octets). Hosts: the host of a URL, whatever its shape (after `://`, or after rule 1's `‹redacted›@`); and, anywhere, a dotted name whose last label is in the reporter's curated TLD set (`HOST_TLDS`: common generic and country TLDs plus `internal`, `local`, `lan`, `corp`…, minus every TLD that is also a common file extension or code member — `.sh`, `.py`, `.md`, `.info`, `.app`…), starting at the head of a dotted run and not followed by another label | `‹redacted:ip›`; `‹redacted:host›` |
+| 9 | Network addresses: IPv4 literals, IPv6 literals, then host names | IPv4: `\b(\d{1,3}\.){3}\d{1,3}\b` (valid octets). IPv6: a bracketed literal (brackets kept), a bare eight-group form, and a bare compressed `::` form of at least three groups. Hosts: the host of a URL, whatever its shape (after `://`, after a password-less user's `@`, which keeps the user, or after rule 1's `‹redacted›@`); and, anywhere, a dotted name whose last label is in the reporter's curated TLD set (`HOST_TLDS`: common generic and country TLDs plus `internal`, `local`, `lan`, `corp`…, minus every TLD that is also a common file extension or code member — `.sh`, `.py`, `.md`, `.info`, `.app`…), starting at the head of a dotted run and not followed by another label | `‹redacted:ip›`; `‹redacted:host›` |
 | 10 | ANSI escape sequences | `\x1b\[[0-9;]*[A-Za-z]` and `\x1b][^\x07\x1b]*(\x07\|\x1b\\)` | removed entirely |
 | 11 | Control characters | `[\x00-\x1F\x7F]` including newline, tab, and any surviving ESC | single space |
 | 12 | Whitespace collapse | ` {2,}` | single space, then trim |
@@ -2940,6 +2940,26 @@ descriptor now says that the agent fetched over `https`, and not from where: the
 datum § 1 excludes, and a public documentation site and an internal one cannot be told apart by
 shape.
 
+**Shapes rules 1–9 do not catch, stated rather than implied covered** (card#11292's review). Each is
+a credential with no keyword, prefix or entropy signal the rules key on, or a split the one-token
+value cannot follow:
+- **a single-letter flag with no keyword**: `-a <secret>` (`redis-cli`), `-k <secret>`, `htpasswd -b <file>
+  <user> <secret>` — rule 5 covers only `-u` and `-p`;
+- **a quoted secret containing a space or an escaped quote** after `-p`, `-u` or `=`: the value is one
+  token, or a quoted string ended at its first matching quote, so the tail after the space or the
+  escaped quote passes (`--password="two words"` is taken whole; `-p"two words"` is not);
+- **a query parameter whose name has no keyword**: `?sig=…`, `?X-Amz-Signature=…`;
+- **prose that separates the keyword from the secret**: `set the password to <secret>`;
+- **a secret on stdin or in a file**: `echo <secret> | docker login --password-stdin` passes the
+  echoed value unless another rule takes it by shape;
+- **a two-group compressed IPv6** (`fe80::1`) and a **single-label host outside a URL** (`ssh db1`).
+
+**A pre-existing slow path, found by card#11292 and not fixed by it.** Rules 1 and 8 backtrack on
+long runs of dotted or alphanumeric tokens: one 16 KB first line of `a.a.a…` takes about 1 s to
+sanitize on the sandbox host (the same on the code before card#11292), which is past P-5's 250 ms
+budget for that one hook. A Bash first line of that shape and length is not an ordinary command;
+the figure is recorded so the next change to rule 1 or 8 can measure against it.
+
 **Rule 10 is not cosmetic.** A descriptor is written to a local log, a quarantine file and an
 operator's terminal; an ESC sequence that survives into any of them is a terminal-control injection,
 and stripping only the ESC byte (as rule 11 alone would) leaves the visible garbage `[31m` in the
@@ -2970,13 +2990,14 @@ spool and batch arithmetic in [§ 14](#14-every-number-and-where-it-comes-from) 
 
 These are unit tests over the sanitizer function, run in CI on both platforms. **They must be seen to
 fail before they are trusted** ([`docs/PLAN.md § 2`](../PLAN.md#2-design-first-gates--the-order-is-the-plan)):
-replace the sanitizer body with `s => s` and the table must go RED — **every fixture but 8, 14 and
-33**. 8 is stopped by the allowlist before the sanitizer runs, and its RED removes the allowlist. 14's
+replace the sanitizer body with `s => s` and the table must go RED — **every fixture but 8, 14, 33,
+40 and 46**. 8 is stopped by the allowlist before the sanitizer runs, and its RED removes the allowlist. 14's
 required output on its profile *is* its input, so identity is the one substitution it cannot
 discriminate; [AT-2](#at-2-sanitizer-red-fixtures)'s fourth RED is the one that goes red on it, and
-that is why the profile has a RED of its own rather than riding this one. 33 is the same shape on the
-descriptor profile: an over-redaction pin whose required output is its input, red under a loosened
-rule 9 rather than under identity. A fixture set that only
+that is why the profile has a RED of its own rather than riding this one. 33, 40 and 46 are the same shape on
+the descriptor profile: over-redaction pins whose required output is their input, each red under its
+own loosening (rule 9's TLD set, rule 4b's separators, rule 9's IPv6 group floor) rather than under
+identity. A fixture set that only
 ever passes proves nothing about the sanitizer; it proves the harness runs.
 
 **Every fixture is produced by tracing [§ 7.3](#73-redaction-rules-applied-in-this-order) in order**,
@@ -3022,6 +3043,19 @@ a re-read.
 | 31 | `Agent`, `check PGPASSWORD=hunter2 on db01.internal.example.com` — free text, the dispatch description | 4, 9 | `Agent: check PGPASSWORD=‹redacted› on ‹redacted:host›` — every rule runs over prose as over a command |
 | 32 | `Bash`, `echo Zx9-Ab3dEf6hIj9kLm2n_Op5qRs8tUv1wXy4z-Q7r \| base64 -d` — a 42-character base64url token whose `-`/`_`-separated runs are each under 32 | 7 (the mixed-class pattern) | `Bash: echo ‹redacted:blob› \| base64 -d` |
 | 33 | `Bash`, `python3 setup.py && ./run.sh README.md && node app.js` — file names whose extensions are TLDs (`.py`, `.sh`, `.md`) or look like one | *(none)* | the input **unchanged**: rule 9's TLD set is curated so a file name is not a host, and this fixture is what reds if it is loosened |
+| 34 | `Bash`, `curl -d '{"password":"zq9w8kabc"}' "$URL"` | 4 (4d, a quoted JSON key) | `Bash: curl -d '{"password":"‹redacted›"}' "$URL"` — the value's quotes kept |
+| 35 | `Bash`, `curl -d '{"token": "zq9w8kabc", "user": "bob"}' "$URL"` | 4 (4d, spaced separator) | `Bash: curl -d '{"token": "‹redacted›", "user": "bob"}' "$URL"` |
+| 36 | `Bash`, `curl -d "{'secret': 'zq9w8kabc'}" "$URL"` | 4 (4d, single-quoted key) | `Bash: curl -d "{'secret': '‹redacted›'}" "$URL"` |
+| 37 | `Bash`, `MY_PW=zq9w8kabc PW=zq9w8kabc deploy --pw zq9w8kabc` | 4 (4b, `pw`) | `Bash: MY_PW=‹redacted› PW=‹redacted› deploy --pw ‹redacted›` |
+| 38 | `Bash`, `terraform apply -var 'db_pw=zq9w8kabc'` | 4 (4b) | `Bash: terraform apply -var 'db_pw=‹redacted›` — the closing quote goes with the one-token value |
+| 39 | `Bash`, `kubectl create configmap x --from-literal=pw=zq9w8kabc` | 4 (4b, an assignment inside a flag's value) | `Bash: kubectl create configmap x --from-literal=pw=‹redacted›` |
+| 40 | `Bash`, `git commit -m "fix the upward scroll"` | *(none)* | the input **unchanged**: `upward` holds `pw`, and a keyword-containing name takes no bare-space separator. Red when it does |
+| 41 | `Bash`, `echo npm_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789 SG.AbCdEfGhIjKlMnOp12.QrStUvWxYz0123456789ab` | 3 | `Bash: echo ‹redacted:token› ‹redacted:token›` |
+| 42 | `Bash`, `echo ya29.AbCdEfGh12 dop_v1_abcdef1234 shpat_abcdef1234 pypi-AgEIcHlwaS5vcmcAbCd1234` | 3 | `Bash: echo ‹redacted:token› ‹redacted:token› ‹redacted:token› ‹redacted:token›` |
+| 43 | `Bash`, `DATABASE_URL=postgres://root@dbhost/db` — a URL user with no password | 9 (the user kept, the host after `@` replaced) | `Bash: DATABASE_URL=postgres://root@‹redacted:host›/db` |
+| 44 | `Bash`, `curl http://[2001:db8::1]/x && curl [::1]:8080` | 9 (bracketed IPv6) | `Bash: curl http://[‹redacted:ip›]/x && curl [‹redacted:ip›]:8080` |
+| 45 | `Bash`, `ssh 2001:db8:0:0:0:0:0:1 && ping6 2001:db8::1` | 9 (bare IPv6, full and compressed) | `Bash: ssh ‹redacted:ip› && ping6 ‹redacted:ip›` |
+| 46 | `Bash`, `grep -rn std::vector src && echo cafe::babe 12:30:45` | *(none)* | the input **unchanged**: a two-group `::` and a time are not addresses. Red when compressed IPv6 has no group floor |
 
 Fixtures **9, 10 and 11 are the credential-on-argv shapes rule 4 alone did not cover**: a
 space-separated `--password`, a `curl -u user:pass` with no `scheme://`, and a glued single-letter
@@ -3034,9 +3068,10 @@ the rule table being checked against each other rather than maintained twice: th
 purpose is the email and IP rules must not hand its input to an earlier rule.
 
 Fixture 8 is the one that matters most: it tests the allowlist, which is the control that holds when
-an input shape nobody anticipated arrives. Fixtures 1–4, 9–11 and 18–32 test the second layer.
+an input shape nobody anticipated arrives. Fixtures 1–4, 9–11, 18–32 and 34–45 test the second layer.
 
-**Fixtures 18–33 are card#11292's.** A pre-install audit by another seat drove `buildDescriptor` on
+**Fixtures 18–46 are card#11292's** (34–46 from its review's first round, each of 34–45 seen
+leaking or mis-redacting on the change's previous head first). A pre-install audit by another seat drove `buildDescriptor` on
 synthetic strings and found each shape in 18–28 passing whole, and host names passing against § 1;
 each of 18–32 was run against the reporter before the change and seen to leak its planted value.
 Fixtures 1, 2 and 10 were **re-traced** in the same change, as this section requires: their hosts are
@@ -4628,19 +4663,19 @@ recorded here because they are what a re-run will hit first:
   declares its **caller**, and 14–17 run the `coord.subject` profile. The fixture set is read from
   the table, never counted: a producer's executable copy is checked against the table's rows for its
   caller.
-- **RED:** replace the sanitizer with the identity function → **every fixture fails except 8, 14 and
-  33**: 8 is refused by the allowlist (the next RED is its), and 14 and 33 are pins whose required
-  output *is* the input unchanged, covered by the fourth RED below and by loosening rule 9's TLD set
-  respectively. Then restore it and remove
+- **RED:** replace the sanitizer with the identity function → **every fixture fails except 8, 14, 33,
+  40 and 46**: 8 is refused by the allowlist (the next RED is its), and the others are pins whose
+  required output *is* the input unchanged, covered by the fourth RED below and by card#11292's REDs. Then restore it and remove
   only the allowlist → fixture 8 fails alone (proving the layers are independently load-bearing).
   Then restore the allowlist and revert rule 5 to the pre-extension rule 4 → fixtures 9, 10 and 11
-  fail, with 28 (the same credential-on-argv shape under a keyword-containing flag name), and the
+  fail, with 28 and 37 (the same credential-on-argv shape under a keyword-containing flag name), and the
   credential in each appears verbatim in the output (proving the credential-on-argv extension is
   load-bearing and not decoration).
 - **card#11292's REDs:** disable each mechanism that change added, one at a time — rule 3's new
-  prefixes and JWT alternative, 4a, 4b's flag and assignment shapes, 4c, rule 7's mixed-class
-  pattern, rule 9's URL-host and dotted-name passes — and exactly the fixtures that pin it fail; loosen
-  rule 9's TLD set to any letters and fixture 33 fails.
+  prefixes and JWT alternative, 4a, 4b's flag and assignment shapes, 4c, 4d, rule 7's mixed-class
+  pattern, rule 9's IPv6, URL-host and dotted-name passes — and exactly the fixtures that pin it fail.
+  Loosen rule 9's TLD set to any letters and fixture 33 fails; give 4b's keyword-containing names a
+  bare-space separator and 40 fails; drop the compressed-IPv6 group floor and 46 fails.
 - **Fourth RED — the profile, which is the one this table could not previously go red on.** Point the
   `coord.subject` caller at the `descriptor` profile — the one-line change that undoes
   [§ 7.3](#73-redaction-rules-applied-in-this-order)'s narrowing — and **fixture 14 fails alone**, its

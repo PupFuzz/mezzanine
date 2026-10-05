@@ -457,8 +457,12 @@ function registerConfigSecrets(cfg) {
 /* § 7.3 RULE 3's SHAPE LIST, and the ONE copy of it: the sanitizer runs this regex as rule 3 and the
  * log sink below runs it as `redactSecrets`' shape leg, so a prefix added for one is added for both.
  * A JWT is a shape with a known prefix too — a base64url `{"…` header and payload, `eyJ` each — so it
- * is an alternative here rather than a second mechanism (card#11292). */
-const CRED_PREFIX_RE = /\b(?:(?:gh[pousr]_|github_pat_|sk-|sk_live_|sk_test_|rk_live_|rk_test_|whsec_|xox[abposr]-|AKIA|ASIA|glpat-|AIza|hv[sb]\.|mzn_|mzr_)[A-Za-z0-9_-]{8,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*)/g;
+ * is an alternative here rather than a second mechanism (card#11292). Three prefixes carry a tighter
+ * body than the shared `[A-Za-z0-9_-]{8,}`, because the bare prefix is also ordinary text: `npm_`
+ * takes only an unbroken alphanumeric body, so the `npm_config_*` environment names stay; `SG.` needs
+ * SendGrid's two dotted parts; and PyPI's is matched with the base64 of `pypi.org` every token starts
+ * with, so a `pypi-server` package name stays. */
+const CRED_PREFIX_RE = /\b(?:(?:gh[pousr]_|github_pat_|sk-|sk_live_|sk_test_|rk_live_|rk_test_|whsec_|xox[abposr]-|AKIA|ASIA|glpat-|AIza|hv[sb]\.|ya29\.|dop_v1_|shpat_|pypi-AgEIcHlwaS5vcmc|mzn_|mzr_)[A-Za-z0-9_-]{8,}|npm_[A-Za-z0-9]{30,}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*)/g;
 function redactSecrets(s) {
   let out = String(s);
   for (const v of SECRET_VALUES) if (v) out = out.split(v).join('‹redacted:token›');
@@ -793,9 +797,16 @@ function sanitize(input, cap) {
   //   · an ASSIGNMENT whose name contains a keyword (`PGPASSWORD=`, `X-Api-Key:`) — `=` or `:` only,
   //     because a name merely containing `key` or `pass` followed by a space is prose, not argv.
   // The header names 4a owns are excluded, or this pass would redact a scheme word and leave the
-  // credential after it. A quoted value is taken whole.
-  run(4, /(?<![\w-])(?!(?:proxy-)?authorization\s*:|(?:set-)?cookie\s*:)(?:((?:-{1,2}|[A-Za-z0-9]{0,24}[_-])?(?:pass(?:word)?|secret|token|api[_-]?key|auth|bearer|credential)(?![A-Za-z])(?:\s*[:=]\s*|\s+))|(-{1,2}[A-Za-z0-9_.-]*?(?:pass|pwd|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*(?:\s*=\s*|\s+))|([A-Za-z0-9_.-]*?(?:pass|pwd|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*\s*[:=]\s*))("[^"]*"|'[^']*'|\S+)/gi,
+  // credential after it. A quoted value is taken whole. The name parts include `pw` (`MY_PW=`,
+  // `--pw`), which no flag or assignment shape reaches in an ordinary word (`upward` is prose).
+  run(4, /(?<![\w-])(?!(?:proxy-)?authorization\s*:|(?:set-)?cookie\s*:)(?:((?:-{1,2}|[A-Za-z0-9]{0,24}[_-])?(?:pass(?:word)?|secret|token|api[_-]?key|auth|bearer|credential)(?![A-Za-z])(?:\s*[:=]\s*|\s+))|(-{1,2}[A-Za-z0-9_.-]*?(?:pass|pwd|pw|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*(?:\s*=\s*|\s+))|([A-Za-z0-9_.-]*?(?:pass|pwd|pw|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*\s*[:=]\s*))("[^"]*"|'[^']*'|\S+)/gi,
     (m) => mark(m[1] || m[2] || m[3], '‹redacted›', ''));
+  // 4d — a QUOTED KEY: a JSON or Python-dict body (`{"password":"x"}`, `{'token': 'x'}`), where the
+  // closing quote of the name stands between it and the separator, so 4b never sees `name:`. The
+  // key's quote (optionally backslash-escaped, as inside a double-quoted shell string) must close the
+  // name; the value is a quoted string — its quotes kept, its content replaced — or a bare token.
+  run(4, /((\\?["'])[A-Za-z0-9_.-]*?(?:pass|pwd|pw|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*\2\s*:\s*)(?:(\\?["'])(?:(?!\3)[^\r\n])*\3|[^\s,}\]"'\\]+)/gi,
+    (m) => mark(m[1] + (m[3] || ''), '‹redacted›', m[3] || ''));
   // 4c — a secrets-store WRITE, whose credential sits under a name the writer chose: in
   // `vault write secret/x value=hunter2` nothing in `value` says it is secret, the command does.
   // Every `name=` argument after `vault write` / `vault kv put|patch` has its value replaced. The
@@ -849,9 +860,24 @@ function sanitize(input, cap) {
     for (let i = 1; i <= 4; i++) if (+m[i] > 255) return { text: m[0], lock: null };
     return mark('', '‹redacted:ip›', '');
   });
+  // IPv6, three shapes: a bracketed literal (`[2001:db8::1]`, `[::1]`, brackets kept); a bare full
+  // form of eight groups; and a bare compressed form with `::` and at least three groups, so
+  // `std::vector`, `a::b` and a `12:30:45` time are not addresses. A bare compressed address of two
+  // groups (`fe80::1`) passes: the stated gap. Each match starts only where no hex, `:` or `.`
+  // precedes it, so the scan stays linear.
+  run(9, /\[[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*\]|(?<![\w:.])(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}(?![\w:])|(?<![\w:.])(?:[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,6})?::(?:[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,6})?(?![\w:])/g, (m) => {
+    if (m[0][0] === '[') return mark('[', '‹redacted:ip›', ']');
+    if (m[0].includes('::') && m[0].split(/:+/).filter(Boolean).length < 3) return { text: m[0], lock: null };
+    return mark('', '‹redacted:ip›', '');
+  });
   // 9b — the host of a URL, whatever its shape (`http://buildbox:8080`), and the host after rule
-  // 1's userinfo marker. The lookbehinds are fixed-length, so the scan stays linear.
-  run(9, /(?<=[A-Za-z0-9+.-]:\/\/|\u203a@)[A-Za-z0-9_-](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?/g, () => mark('', '‹redacted:host›', ''));
+  // 1's userinfo marker. A user with no password (`postgres://root@dbhost`) is not rule 1's, so it
+  // is matched here and KEPT, and the name after its `@` is the host replaced. The user part
+  // excludes the marker characters, so a URL whose userinfo rule 1 already locked falls through to
+  // the `›@` alternative instead of being discarded whole. The lookbehinds are fixed-length, so the
+  // scan stays linear.
+  run(9, /(?<=[A-Za-z0-9+.-]:\/\/)(?:([^\/\s@:'"\u2039\u203a]+)@)?([A-Za-z0-9_-](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)|(?<=\u203a@)[A-Za-z0-9_-](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?/g,
+    (m) => mark(m[1] ? `${m[1]}@` : '', '‹redacted:host›', ''));
   // 9c — a dotted name ending in a top-level domain from HOST_TLDS, wherever it stands
   // (`ssh db01.internal.example.com`). A match starts only at the head of a dotted run and may
   // not be followed by another label, so `example.com.conf` and `README.md` are not hosts.
@@ -3171,6 +3197,20 @@ const SANITIZER_FIXTURES = [
   { n: 31, tool: 'Agent', input: { description: 'check PGPASSWORD=hunter2 on db01.internal.example.com' }, rules: [4, 9], out: 'Agent: check PGPASSWORD=\u2039redacted\u203a on \u2039redacted:host\u203a' },
   { n: 32, tool: 'Bash', input: { command: 'echo Zx9-Ab3dEf6hIj9kLm2n_Op5qRs8tUv1wXy4z-Q7r | base64 -d' }, rules: [7], out: 'Bash: echo \u2039redacted:blob\u203a | base64 -d' },
   { n: 33, tool: 'Bash', input: { command: 'python3 setup.py && ./run.sh README.md && node app.js' }, rules: [], out: 'Bash: python3 setup.py && ./run.sh README.md && node app.js' },
+  // card#11292 review round 1 — JSON-body keys, `pw`, more provider prefixes, user-only URLs, IPv6.
+  { n: 34, tool: 'Bash', input: { command: `curl -d '{"password":"zq9w8kabc"}' "$URL"` }, rules: [4], out: `Bash: curl -d '{"password":"\u2039redacted\u203a"}' "$URL"` },
+  { n: 35, tool: 'Bash', input: { command: `curl -d '{"token": "zq9w8kabc", "user": "bob"}' "$URL"` }, rules: [4], out: `Bash: curl -d '{"token": "\u2039redacted\u203a", "user": "bob"}' "$URL"` },
+  { n: 36, tool: 'Bash', input: { command: `curl -d "{'secret': 'zq9w8kabc'}" "$URL"` }, rules: [4], out: `Bash: curl -d "{'secret': '\u2039redacted\u203a'}" "$URL"` },
+  { n: 37, tool: 'Bash', input: { command: 'MY_PW=zq9w8kabc PW=zq9w8kabc deploy --pw zq9w8kabc' }, rules: [4], out: 'Bash: MY_PW=\u2039redacted\u203a PW=\u2039redacted\u203a deploy --pw \u2039redacted\u203a' },
+  { n: 38, tool: 'Bash', input: { command: "terraform apply -var 'db_pw=zq9w8kabc'" }, rules: [4], out: "Bash: terraform apply -var 'db_pw=\u2039redacted\u203a" },
+  { n: 39, tool: 'Bash', input: { command: 'kubectl create configmap x --from-literal=pw=zq9w8kabc' }, rules: [4], out: 'Bash: kubectl create configmap x --from-literal=pw=\u2039redacted\u203a' },
+  { n: 40, tool: 'Bash', input: { command: 'git commit -m "fix the upward scroll"' }, rules: [], out: 'Bash: git commit -m "fix the upward scroll"' },
+  { n: 41, tool: 'Bash', input: { command: 'echo npm_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789 SG.AbCdEfGhIjKlMnOp12.QrStUvWxYz0123456789ab' }, rules: [3], out: 'Bash: echo \u2039redacted:token\u203a \u2039redacted:token\u203a' },
+  { n: 42, tool: 'Bash', input: { command: 'echo ya29.AbCdEfGh12 dop_v1_abcdef1234 shpat_abcdef1234 pypi-AgEIcHlwaS5vcmcAbCd1234' }, rules: [3], out: 'Bash: echo \u2039redacted:token\u203a \u2039redacted:token\u203a \u2039redacted:token\u203a \u2039redacted:token\u203a' },
+  { n: 43, tool: 'Bash', input: { command: 'DATABASE_URL=postgres://root@dbhost/db' }, rules: [9], out: 'Bash: DATABASE_URL=postgres://root@\u2039redacted:host\u203a/db' },
+  { n: 44, tool: 'Bash', input: { command: 'curl http://[2001:db8::1]/x && curl [::1]:8080' }, rules: [9], out: 'Bash: curl http://[\u2039redacted:ip\u203a]/x && curl [\u2039redacted:ip\u203a]:8080' },
+  { n: 45, tool: 'Bash', input: { command: 'ssh 2001:db8:0:0:0:0:0:1 && ping6 2001:db8::1' }, rules: [9], out: 'Bash: ssh \u2039redacted:ip\u203a && ping6 \u2039redacted:ip\u203a' },
+  { n: 46, tool: 'Bash', input: { command: 'grep -rn std::vector src && echo cafe::babe 12:30:45' }, rules: [], out: 'Bash: grep -rn std::vector src && echo cafe::babe 12:30:45' },
 ];
 /* The planted secrets each fixture must never leak, for the whole-event assertion (§ 7.5). */
 const FIXTURE_SECRETS = {
@@ -3181,6 +3221,9 @@ const FIXTURE_SECRETS = {
   23: ['dXNlcjpwYXNzd29yZA=='], 24: ['hunter2'], 25: ['abcd1234efgh'],
   26: ['eyJzdWIiOiJodW50ZXIyIn0', 'c2lnbmF0dXJlLW5vdC1yZWFs'], 27: ['hunter2'], 28: ['abc123', 'hunter2'],
   29: ['db01', 'example.com'], 30: ['buildbox'], 31: ['hunter2', 'db01'], 32: ['Ab3dEf6hIj9kLm2n'],
+  34: ['zq9w8kabc'], 35: ['zq9w8kabc'], 36: ['zq9w8kabc'], 37: ['zq9w8kabc'], 38: ['zq9w8kabc'], 39: ['zq9w8kabc'],
+  41: ['npm_AbCd', 'SG.AbCd'], 42: ['ya29.', 'dop_v1_', 'shpat_', 'pypi-'], 43: ['dbhost'],
+  44: ['2001:db8', '::1'], 45: ['2001:db8'],
 };
 
 function checkSanitizerFixtures() {

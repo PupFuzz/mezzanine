@@ -1348,10 +1348,10 @@ p_id = plant(("function sanitize(input, cap) {",
               "function sanitize(input, cap) { return { text: String(input == null ? '' : input), truncated: false, rules: [], redactions: 0 };"))
 _, rep_id = selftest(s1, reporter=p_id)
 failed_id = [d["fixture"] for d in rep_id["detail"]["sanitizer_fixtures"] if not d["pass"]]
-# Every fixture whose documented trace is non-empty must go RED. The two with an empty trace are
-# the two that identity cannot discriminate, each for a stated reason: 8 is stopped by the
-# allowlist (RED 2 below is its RED), and 33 is the over-redaction pin whose required output IS
-# its input (the TLD-curation RED below is its RED).
+# Every fixture whose documented trace is non-empty must go RED. Those with an empty trace are
+# the ones identity cannot discriminate, each for a stated reason: 8 is stopped by the allowlist
+# (RED 2 below is its RED), and the rest are over-redaction pins whose required output IS their
+# input (each has its own RED in RED 5 below).
 eq("RED: the identity sanitizer fails every fixture that redacts or truncates",
    [f["n"] for f in JS_FIXTURES if f["rules"]], failed_id)
 eq("  … and fixture 8 still passes, because the ALLOWLIST is what stops it, not the regexes",
@@ -1360,9 +1360,14 @@ leaks = [d["leaked"] for d in rep_id["detail"]["sanitizer_fixtures"] if d["leake
 eq("  … and the whole-event assertion sees the raw credentials appear", True, len(leaks) >= 3)
 
 # RED 2 — remove only the allowlist: fixture 8 must fail ALONE, proving the two layers are
-# independently load-bearing.
+# independently load-bearing. The planted fallback renders an unknown tool's argument VALUES, the
+# way a generic "show the input" fallback would. It used to render the whole input as JSON, and
+# since card#11292's rule 4d a JSON `"password":` key is redacted by layer 2 — which would make this
+# RED show layer 2 catching one key name rather than what layer 1 is for: an MCP tool's input is
+# whatever its server defines, and a secret under a key no rule knows reaches the wire unless the
+# tool is refused outright.
 p_allow = plant(("  const fn = ALLOWLIST[toolName];\n  if (!fn) return",
-                 "  const fn = ALLOWLIST[toolName] || ((ti) => JSON.stringify(ti));\n  if (!fn) return"))
+                 "  const fn = ALLOWLIST[toolName] || ((ti) => Object.values(ti).join(' '));\n  if (!fn) return"))
 _, rep_allow = selftest(s1, reporter=p_allow)
 eq("RED: with the allowlist removed, fixture 8 fails ALONE",
    [8], [d["fixture"] for d in rep_allow["detail"]["sanitizer_fixtures"] if not d["pass"]])
@@ -1375,15 +1380,15 @@ redgreen("sanitizer layer 1 — the allowlist (§ 7.1)",
 # RED 3 — revert rule 5 to the pre-extension rule 4: fixtures 9, 10 and 11 fail alone and each
 # credential appears VERBATIM, proving the credential-on-argv extension is load-bearing. Rule 4's
 # whitespace separator is stripped from BOTH of the shapes that take one — the bare keyword and,
-# since card#11292, a flag whose name contains a keyword — so fixture 28's `--db-pass hunter2`,
-# the same credential-on-argv shape, fails with them.
+# since card#11292, a flag whose name contains a keyword — so fixture 28's `--db-pass hunter2` and
+# fixture 37's `--pw zq9w8kabc`, the same credential-on-argv shape, fail with them.
 p_r5 = plant_src(
     (r"  run\(5, /[^\n]*\n[^\n]*\n", "  // rule 5 removed by plant\n"),
     (r"\(\?!\[A-Za-z\]\)\(\?:\\s\*\[:=\]\\s\*\|\\s\+\)", "(?![A-Za-z])(?:\\s*[:=]\\s*)"),
     (r"\(\?:\\s\*=\\s\*\|\\s\+\)", "(?:\\s*=\\s*)"))
 _, rep_r5 = selftest(s1, reporter=p_r5)
-eq("RED: reverting to the pre-extension rule 4 with no rule 5 fails fixtures 9, 10, 11 and 28 ALONE",
-   [9, 10, 11, 28], [d["fixture"] for d in rep_r5["detail"]["sanitizer_fixtures"] if not d["pass"]])
+eq("RED: reverting to the pre-extension rule 4 with no rule 5 fails fixtures 9, 10, 11, 28 and 37 ALONE",
+   [9, 10, 11, 28, 37], [d["fixture"] for d in rep_r5["detail"]["sanitizer_fixtures"] if not d["pass"]])
 survivors = {d["fixture"]: d["got"] for d in rep_r5["detail"]["sanitizer_fixtures"] if not d["pass"]}
 eq("  … and every credential-on-argv appears VERBATIM in the descriptor", True,
    "hunter2" in survivors[9] and "admin:s3cr3t" in survivors[10] and "S3cr3tP@ss" in survivors[11])
@@ -1409,19 +1414,23 @@ redgreen("sanitizer traces (AT-2 consistency check)",
 # fixtures that pin it go RED; the secret each one guards then appears in the descriptor. A
 # mechanism no fixture notices being removed would be decoration, and this is where that shows.
 CARD_11292_REDS = [
-    ("rule 3's shape list back to its pre-card#11292 prefixes, no JWT", [22, 26], plant_src(
+    ("rule 3's shape list back to its pre-card#11292 prefixes, no JWT", [22, 26, 41, 42], plant_src(
         (r"const CRED_PREFIX_RE = /[^\n]*/g;",
          r"const CRED_PREFIX_RE = /\b(gh[pousr]_|github_pat_|sk-|sk_live_|sk_test_|xox[abposr]-|AKIA|ASIA|glpat-|AIza|mzn_|mzr_)[A-Za-z0-9_-]{8,}/g;"))),
     ("rule 4a (credential headers) removed", [23, 24, 25], plant(
         ("  run(4, /\\b((?:proxy-)?authorization", "  if (0) run(4, /\\b((?:proxy-)?authorization"))),
     ("rule 4b narrowed to the bare keyword words (no flag or assignment NAME containing one)",
-     [18, 19, 20, 21, 28, 31], plant(
-        (r"|(-{1,2}[A-Za-z0-9_.-]*?(?:pass|pwd|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*(?:\s*=\s*|\s+))"
-         r"|([A-Za-z0-9_.-]*?(?:pass|pwd|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*\s*[:=]\s*))", ")"))),
+     [18, 19, 20, 21, 28, 31, 37, 38, 39], plant(
+        (r"|(-{1,2}[A-Za-z0-9_.-]*?(?:pass|pwd|pw|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*(?:\s*=\s*|\s+))"
+         r"|([A-Za-z0-9_.-]*?(?:pass|pwd|pw|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*\s*[:=]\s*))", ")"))),
+    ("rule 4d (quoted JSON / dict keys) removed", [34, 35, 36], plant(
+        ("  run(4, /((\\\\?[\"'])", "  if (0) run(4, /((\\\\?[\"'])"))),
     ("rule 4c (secrets-store writes) removed", [27], plant(("  if (vault) {", "  if (0) {"))),
     ("rule 7c (mixed-case base64url runs) removed", [32], plant(
         ("  run(7, /(?<![A-Za-z0-9_-])", "  if (0) run(7, /(?<![A-Za-z0-9_-])"))),
-    ("rule 9b (the host of a URL) removed", [2, 30], plant(
+    ("rule 9's IPv6 pass removed", [44, 45], plant(
+        ("  run(9, /\\[[0-9A-Fa-f:.]*", "  if (0) run(9, /\\[[0-9A-Fa-f:.]*"))),
+    ("rule 9b (the host of a URL) removed", [2, 30, 43], plant(
         ("  run(9, /(?<=[A-Za-z0-9+.-]", "  if (0) run(9, /(?<=[A-Za-z0-9+.-]"))),
     ("rule 9c (dotted host names) removed", [29, 31], plant(
         ("  run(9, HOST_NAME_RE,", "  if (0) run(9, HOST_NAME_RE,"))),
@@ -1434,13 +1443,23 @@ for label, want, planted in CARD_11292_REDS:
     _reds.append(f"{label} -> {[d['fixture'] for d in got]}")
 # The over-redaction side: rule 9c's TLD set is curated so file names survive. Any two-letter-or-
 # longer last label as a "TLD" eats `setup.py` and `README.md`, and fixture 33 exists to say so.
+# Two more over-redaction pins, each with its own RED: fixture 40 (`upward` holds `pw`, and only an
+# assignment or flag shape may take it) and fixture 46 (`cafe::babe` is two hex groups around `::`).
+p_pw = plant(("[A-Za-z0-9_.-]*\\s*[:=]\\s*))(\"", "[A-Za-z0-9_.-]*(?:\\s*[:=]\\s*|\\s+)))(\""))
+_, rep_pw = selftest(s1, reporter=p_pw)
+eq("RED: a keyword-containing NAME taking a bare-space separator fails fixture 40 (prose read as argv)",
+   False, [d for d in rep_pw["detail"]["sanitizer_fixtures"] if d["fixture"] == 40][0]["pass"])
+p_v6 = plant(("filter(Boolean).length < 3)", "filter(Boolean).length < 0)"))
+_, rep_v6 = selftest(s1, reporter=p_v6)
+eq("RED: compressed IPv6 with no group floor fails fixture 46 (`cafe::babe` read as an address)",
+   False, [d for d in rep_v6["detail"]["sanitizer_fixtures"] if d["fixture"] == 46][0]["pass"])
 p_tld = plant(("(?:${HOST_TLDS})", "(?:[A-Za-z]{2,})"))
 _, rep_tld = selftest(s1, reporter=p_tld)
 f33 = [d for d in rep_tld["detail"]["sanitizer_fixtures"] if d["fixture"] == 33][0]
 eq("RED: rule 9c with an uncurated TLD set fails fixture 33 (file names read as hosts)", False, f33["pass"])
 redgreen("sanitizer — card#11292's secret and host shapes (§ 7.3 rules 3, 4, 7, 9)",
          "; ".join(_reds) + f"; uncurated TLDs -> fixture 33 = {f33['got']!r}",
-         "every mechanism present -> fixtures 18-33 pass with output and trace exact")
+         "every mechanism present -> fixtures 18-46 pass with output and trace exact")
 
 
 print("\n== 2b. `descriptors` — HOW MUCH OF THE ALLOWLIST A SEAT SENDS (D1 § 3.1, card#11292) ==")
