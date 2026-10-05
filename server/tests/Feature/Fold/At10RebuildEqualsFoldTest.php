@@ -135,13 +135,18 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
         $this->advanceServerClock(5);
         $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla/aimla-pm'])->assertSuccessful();
 
-        $this->assertSame($input, (array) DB::table('seat_board_task')->where('seat_ref', $this->seatRef)->first(),
-            'the board input moved between the snapshot and the rebuild — the comparison below would not be about the fold');
+        // FIRST, because it is what makes the comparison below mean what its message says: no poll
+        // ran between the snapshot and the rebuild.
         $this->assertSame($counters, DB::table('global_counters')->whereIn('name', ['board_poll_ok', 'board_poll_failed'])
             ->orderBy('name')->pluck('value', 'name')->all(), 'a board poll ran during the comparison');
 
         $this->assertSame($folded, $this->snapshot());
         $this->assertSame($renderedFolded, json_encode($rendered()), 'the rendered object is not byte-identical');
+
+        // And the rebuild left another writer's input alone (§ 2.3: "the rebuild has no business
+        // truncating another writer's input").
+        $this->assertSame($input, (array) DB::table('seat_board_task')->where('seat_ref', $this->seatRef)->first(),
+            'the rebuild destroyed or rewrote the board input');
     }
 
     public function test_the_discriminating_control_a_rebuild_of_an_untouched_seat_reports_equality(): void
