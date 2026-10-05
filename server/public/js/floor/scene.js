@@ -608,22 +608,53 @@ export function mapTiles(map, origin, tilesetFor, owner) {
 }
 
 /**
+ * WHAT A TILE LOOKS LIKE — everything the painter draws a tile from, and nothing else: its image, the
+ * image's size, the window onto it, the cell it is stretched to, its flips and its opacity. Tiles with
+ * equal looks draw the same picture, so `tileRegions()` joins them on it, and the painter receives the
+ * look in place of the tile: what it can draw is exactly what is here, so the merge and the drawing
+ * read one list.
+ *
+ * ⚠ `flip_d` is not here because the painter does not draw it yet — card#11277.
+ */
+export function tileLook(t) {
+    return Object.freeze({
+        image: t.image,
+        iw: t.iw,
+        ih: t.ih,
+        sx: t.sx,
+        sy: t.sy,
+        sw: t.sw,
+        sh: t.sh,
+        w: t.w,
+        h: t.h,
+        flip_h: t.flip_h,
+        flip_v: t.flip_v,
+        opacity: t.opacity,
+    });
+}
+
+/**
  * The tiles of one drawing pass (the hallway's, or one room's) as REGIONS: a region is one tile and every
- * identical tile joined to it edge to edge on its lattice — its copies at `x + c·w`, `y + r·h` — which the
- * painter draws as ONE primitive. Every tile is in exactly one region; a tile with no identical neighbour
- * is a region of one. `rects` is the region's area, row by row: each run of copies side by side in a row
- * is one rect, and the rects never overlap.
+ * tile of the same look (`tileLook()`) joined to it edge to edge on its lattice — its copies at `x + c·w`,
+ * `y + r·h` — which the painter draws as ONE primitive. Every tile is in exactly one region; a tile with no
+ * neighbour of its look is a region of one. `rects` is the region's area, row by row: each run of copies
+ * side by side in a row is one rect, and the rects never overlap.
  *
  * ⛔ WHY: a tile drawn as its own primitive has its own antialiased edge, and where two tiles' shared edge
  * lands on a fractional device pixel — any zoom but a whole one — each covers that pixel partly and the
  * pair leaves a hairline of whatever is under them (the room's plane between the planks; a dotted ladder
  * down a wall strip). One primitive is antialiased as one coverage, so the copies inside a region meet at
  * no edge of their own whatever shape the region has — an L of wall strip included, which no single
- * rectangle covers. ⚠ That was looked at in Chromium when this landed, and in no other engine. ⚠ Two
- * DIFFERENT tiles that meet are still two primitives and still meet at an edge.
+ * rectangle covers. ⚠ That was looked at in Chromium when this landed, and in no other engine. ⚠ Two tiles
+ * of DIFFERENT looks that meet are still two primitives and still meet at an edge.
  *
- * ⛔ IDENTICAL means everything the painter draws a tile from: its image, the window onto it, its size,
- * its flips and its opacity — so a region draws exactly what its tiles drew.
+ * ⛔ A NEIGHBOUR IS FOUND BY ITS PLACE TO 1/1024 px, NEVER BY ITS EXACT COORDINATES. `mapTiles()` places a
+ * cell at `origin + offsets + col·w`, and a group or tileset offset such as 0.1 or 1/3 makes that differ in
+ * its last bits from the `x + w` the lookup computes, so an exact match misses identical neighbours and the
+ * seam is back. A dyadic coordinate of ten fractional bits or fewer is exact at that quantum, and one of up
+ * to six decimal places (or a third) lies at least 10⁻⁶ of a quantum from a rounding edge, where a sum's
+ * drift on a floor-sized coordinate is orders of magnitude smaller. Inside a region a copy's place is its
+ * whole-number column and row on the region's lattice, so `rects` are on that lattice exactly.
  *
  * ⛔ THE DRAW ORDER IS KEPT WHERE IT IS VISIBLE. A region is drawn where its first tile was, which moves
  * its later copies earlier; that is only allowed past tiles they do not overlap. A copy that would move
@@ -632,17 +663,23 @@ export function mapTiles(map, origin, tilesetFor, owner) {
  * order holds for every copy.
  *
  * @param {list<object>} tiles one pass's tiles, in draw order (`mapTiles()`'s cells)
- * @returns {list<{tile: object, rects: list<{x: number, y: number, w: number, h: number}>}>} in draw
- *          order; `tile` is the region's first tile in that order, and its lattice is the region's
+ * @returns {list<{look: object, x: number, y: number, rects: list<{x: number, y: number, w: number, h: number}>}>}
+ *          in draw order; `look` is the region's (`tileLook()`), and `x`, `y` its first tile's place — the
+ *          origin of its lattice
  */
 export function tileRegions(tiles) {
-    // Each kind of tile by a small number, so a place is looked up by a short key.
+    const spot = (x, y) => `${Math.round(x * 1024)},${Math.round(y * 1024)}`;
+
+    // Each look by a small number, so a place is looked up by a short key.
     const kinds = new Map();
+    const looks = [];
     const keys = tiles.map((t) => {
-        const kind = JSON.stringify([t.image, t.iw, t.ih, t.sx, t.sy, t.sw, t.sh, t.w, t.h, t.flip_h, t.flip_v, t.flip_d, t.opacity]);
+        const look = tileLook(t);
+        const kind = JSON.stringify(look);
 
         if (!kinds.has(kind)) {
             kinds.set(kind, kinds.size);
+            looks.push(look);
         }
 
         return kinds.get(kind);
@@ -650,7 +687,7 @@ export function tileRegions(tiles) {
     const at = new Map();
 
     tiles.forEach((t, i) => {
-        const k = `${keys[i]}@${t.x},${t.y}`;
+        const k = `${keys[i]}@${spot(t.x, t.y)}`;
 
         // Two identical tiles at one place (two layers) stay apart: the later one is a region of its own.
         if (!at.has(k)) {
@@ -671,28 +708,31 @@ export function tileRegions(tiles) {
                 return;
             }
 
+            const { w, h } = looks[keys[first]];
             const id = regions.length;
             const members = [first];
+            const cells = [[0, 0]];
 
             regionOf[first] = id;
 
-            // Every identical tile reachable edge to edge — a held-out tile joins no region but its own.
+            // Every tile of its look reachable edge to edge — a held-out tile joins no region but its own.
             for (let m = 0; m < members.length && !heldOut.has(first); m++) {
                 const here = tiles[members[m]];
 
                 for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-                    const i = at.get(`${keys[first]}@${here.x + dx * t.w},${here.y + dy * t.h}`);
+                    const i = at.get(`${keys[first]}@${spot(here.x + dx * w, here.y + dy * h)}`);
 
                     // Later than `first` (an earlier tile is already in a region), and never `first` itself —
                     // which a tile of no width or height would otherwise find at every step.
                     if (i !== undefined && i > first && regionOf[i] === -1 && !heldOut.has(i)) {
                         regionOf[i] = id;
                         members.push(i);
+                        cells.push([cells[m][0] + dx, cells[m][1] + dy]);
                     }
                 }
             }
 
-            regions.push({ first, members });
+            regions.push({ first, members, cells });
         });
 
         const late = misordered(tiles, regions, regionOf);
@@ -706,22 +746,25 @@ export function tileRegions(tiles) {
         }
     }
 
-    return regions.map(({ first, members }) => {
-        const t = tiles[first];
-        const cells = members.map((i) => tiles[i]).sort((a, b) => a.y - b.y || a.x - b.x);
-        const rects = [];
+    return regions.map(({ first, cells }) => {
+        const look = looks[keys[first]];
+        const { x, y } = tiles[first];
+        const runs = [];
 
-        for (const c of cells) {
-            const last = rects[rects.length - 1];
+        // Row by row, each run of whole-number columns side by side one rect.
+        for (const [c, r] of [...cells].sort((a, b) => a[1] - b[1] || a[0] - b[0])) {
+            const last = runs[runs.length - 1];
 
-            if (last !== undefined && last.y === c.y && last.x + last.w === c.x) {
-                last.w += t.w;
+            if (last !== undefined && last.r === r && last.c + last.n === c) {
+                last.n += 1;
             } else {
-                rects.push({ x: c.x, y: c.y, w: t.w, h: t.h });
+                runs.push({ c, r, n: 1 });
             }
         }
 
-        return Object.freeze({ tile: t, rects: Object.freeze(rects.map((r) => Object.freeze(r))) });
+        const rects = runs.map(({ c, r, n }) => Object.freeze({ x: x + c * look.w, y: y + r * look.h, w: n * look.w, h: look.h }));
+
+        return Object.freeze({ look, x, y, rects: Object.freeze(rects) });
     });
 }
 

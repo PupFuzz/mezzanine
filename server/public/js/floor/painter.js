@@ -537,34 +537,35 @@ export function createPainter({ characters, failed, select }) {
         }
 
         // The tiles, one PRIMITIVE per region (`scene.js`'s `tileRegions()`): a path over the region's rects,
-        // filled with its tile as a pattern on the tile's own lattice, so identical neighbours are one coverage
+        // filled with its look as a pattern on the region's lattice, so identical neighbours are one coverage
         // and meet at no edge of their own — a tile drawn alone left a hairline of the plane between neighbours
-        // wherever their edge fell on a fractional device pixel. The pattern draws the tile as a single tile
+        // wherever their edge fell on a fractional device pixel. The pattern draws the look as a single tile
         // drew it: a window onto its image (`viewBox`), stretched to its cell, flipped about the window's centre.
+        // A region hands this its LOOK and never a tile, so what is drawn is what the regions were joined on.
         const tiles = node('g', { class: 'tiles' }, svg);
         let fills = 0;
         const pass = (cells) => {
-            for (const { tile: t, rects } of tileRegions(cells)) {
+            for (const { look, x, y, rects } of tileRegions(cells)) {
                 const id = `floor-tile-${fills++}`;
                 const fill = node('pattern', {
                     id,
                     patternUnits: 'userSpaceOnUse',
-                    x: t.x,
-                    y: t.y,
-                    width: t.w,
-                    height: t.h,
-                    viewBox: `${t.sx} ${t.sy} ${t.sw} ${t.sh}`,
+                    x,
+                    y,
+                    width: look.w,
+                    height: look.h,
+                    viewBox: `${look.sx} ${look.sy} ${look.sw} ${look.sh}`,
                     preserveAspectRatio: 'none',
                 }, defs);
-                const flip = [t.flip_h ? -1 : 1, t.flip_v ? -1 : 1];
+                const flip = [look.flip_h ? -1 : 1, look.flip_v ? -1 : 1];
 
-                image(fill, t.image, 0, 0, t.iw, t.ih, t.image, flip[0] === 1 && flip[1] === 1 ? {} : {
-                    transform: `translate(${flip[0] === -1 ? 2 * t.sx + t.sw : 0} ${flip[1] === -1 ? 2 * t.sy + t.sh : 0}) scale(${flip[0]} ${flip[1]})`,
+                image(fill, look.image, 0, 0, look.iw, look.ih, look.image, flip[0] === 1 && flip[1] === 1 ? {} : {
+                    transform: `translate(${flip[0] === -1 ? 2 * look.sx + look.sw : 0} ${flip[1] === -1 ? 2 * look.sy + look.sh : 0}) scale(${flip[0]} ${flip[1]})`,
                 });
                 node('path', {
                     d: rects.map((r) => `M${r.x} ${r.y}h${r.w}v${r.h}h${-r.w}Z`).join(''),
                     fill: `url(#${id})`,
-                    opacity: t.opacity === 1 ? null : t.opacity,
+                    opacity: look.opacity === 1 ? null : look.opacity,
                 }, tiles);
             }
         };
