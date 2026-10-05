@@ -957,7 +957,7 @@ A seat exists on the floor from the moment it is provisioned, because
 | first batch lands | the character **steps out of the elevator**, walks to its desk and sits ([A1](#62-the-animation-table--the-closed-set)) | the delta whose `changed[]` carries `render_state`, leaving `offline` |
 | first `tool.start` | the working loop begins ([A3](#62-the-animation-table--the-closed-set)) | `render_state: "working"` |
 | the seat was inserted by [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s fetch | the desk appears **without** an arrival animation, and the client's event log records *seat added to the floor* | an insert is not a state change; the arrival animation is reserved for a seat leaving `stale` or `offline` for a member that draws a character ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 1), which is a claim the wire actually made |
-| the seat relays the role its room's map reserves a desk for ([§ 3.2](#32-the-desk-slot-function), card#11144) | **first at its hash slot**, by the row above that applies — [A1](#62-the-animation-table--the-closed-set) for a client holding the seat from a snapshot, the insert's appearance with no animation for a client that connected before it was provisioned — **then a walk to the reserved desk** ([A16](#62-the-animation-table--the-closed-set)), and the chain through the slot it left re-probes | a provisioned seat renders `offline` with `protocol_agent_role: null` before it reports, and the reporter's first pass drains before it heartbeats, so the role arrives on a later delta than the one that took the seat out of `offline`. That delta is A16's `cause` ([§ 11](#11-acceptance-tests)) |
+| the seat relays the role its room's map reserves a desk for ([§ 3.2](#32-the-desk-slot-function), card#11144) | **first at its hash slot**, by the row above that applies — [A1](#62-the-animation-table--the-closed-set) for a client holding the seat from a snapshot, the insert's appearance with no animation for a client that connected before it was provisioned — **then a walk to the reserved desk** ([A16](#62-the-animation-table--the-closed-set)), and the chain through the slot it left re-probes | a provisioned seat renders `offline` with `protocol_agent_role: null` before it reports, and the reporter's first pass drains before it heartbeats, so the role arrives on a later delta than the one that took the seat out of `offline`. That delta is A16's `cause` ([§ 11](#11-acceptance-tests)); landing while the A1 walk is in flight, it cancels that walk ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 6), and the seat appears seated at the reserved desk |
 
 The distinction in the last row is the honesty principle applied to the one edge where an implementer
 would naturally reach for the nicer effect: *a desk appearing because the client had not fetched it yet*
@@ -2701,8 +2701,8 @@ it carries the same fact.
 
 | # | Class | Animation | Where | Driving fact (D2) | Edge that starts it, or the fact it is held by | Ends | Reduced-motion form | Its absence means |
 |---|---|---|---|---|---|---|---|---|
-| **A1** | `edge` | `arrive` — the elevator's leaves open, the character steps out, walks to its desk and sits | desk, floor, back-wall band | `render_state` | a delta whose `changed[]` contains `render_state`, whose held value before it is one [§ 7.1](#71-the-render-per-state)'s *Desk* column draws as an empty chair and whose new value is one that column draws a character for **and not** [A13](#62-the-animation-table--the-closed-set)'s condition — `retired` is the one exit from `offline` that is not an arrival, and stating it here is what keeps a desk being REMOVED from also walking in, exactly as [A3](#62-the-animation-table--the-closed-set) states its exclusion of [A4](#62-the-animation-table--the-closed-set) on the row that yields (card#7341 step 6). The walk note under this table owns the path, the exclusions, the desk awaiting its walker and what ends a walk early (card#9566) | when the walker sits, in the pose the seat then holds | the character is simply present | the seat did not go from an empty chair to a member that draws a character |
-| **A2** | `edge` | `depart` — the character stands, walks to the elevator, the leaves open, it steps in and is gone, and the leaves close, leaving the chair empty | desk, floor, back-wall band | `render_state` | a delta whose `changed[]` contains `render_state` and whose new value [§ 7.1](#71-the-render-per-state)'s *Desk* column draws as an empty chair, at a desk **the render before drew a character at** — the one predicate the walk note's item 4 names, which also decides whether A13 and A16 draw a walker; a desk under [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5's condition fails it. The walk note owns the path, the exclusions and what ends a walk early (card#9566) | when the elevator's leaves have closed behind it | the chair is empty and labelled | no delta emptied a desk the render before drew a character at |
+| **A1** | `edge` | `arrive` — the elevator's leaves open, the character steps out, walks to its desk and sits | desk, floor, back-wall band | `render_state` | a delta whose `changed[]` contains `render_state`, whose old value [§ 7.1](#71-the-render-per-state)'s *Desk* column draws as an empty chair and whose new value it draws a character for, **and not** [A13](#62-the-animation-table--the-closed-set)'s condition — `retired` is the one exit from `offline` that is not an arrival, and stating it here is what keeps a desk being REMOVED from also walking in, exactly as [A3](#62-the-animation-table--the-closed-set) states its exclusion of [A4](#62-the-animation-table--the-closed-set) on the row that yields (card#7341 step 6). The walk note under this table owns how it is drawn (card#9566) | when the walker sits, in the pose the seat then holds | the character is simply present | the seat did not go from an empty chair to a member that draws a character |
+| **A2** | `edge` | `depart` — the character stands, walks to the elevator, the leaves open, it steps in and is gone, and the leaves close, leaving the chair empty | desk, floor, back-wall band | `render_state` | a delta whose `changed[]` contains `render_state`, whose old value [§ 7.1](#71-the-render-per-state)'s *Desk* column draws a character for and whose new value it draws as an empty chair, **and not** [A13](#62-the-animation-table--the-closed-set)'s condition — `retired` draws no character either, and a removal is not a departure. The walk note under this table owns how it is drawn (card#9566) | when the elevator's leaves have closed behind it | the chair is empty and labelled | the seat did not go from a member that draws a character to an empty chair |
 | **A3** | `held` | `work` — typing at the keyboard, with the eye **blink** and the gentle in-place **wiggle**, 4 fps loop | desk | `render_state` | `render_state == "working"` **and not** A4's condition — the two are exclusive, and stating it here is what makes *the held rows this table predicts* a single answer rather than two ([§ 7.1](#71-the-render-per-state)'s `working` row says the same thing in prose) | when it is not | a *working* pose, static, with the glyph | the seat is not working **now** |
 | **A4** | `held` | `think` — leaning back, watching the monitor, with the same **blink** and **wiggle**, 4 fps loop | desk | `open_calls`, `open_turn` | `render_state == "working"` **and** `open_calls == 0` **and** `open_turn == true` | when either fact changes | a *thinking* pose, static | there is an open call, so A3 runs instead |
 | **A5** | `edge` | `tool-swap` — the monitor's glyph changes, one 250 ms cross-fade | desk monitor | `action.tool_name` | a delta whose `changed[]` contains `action` and whose `action.tool_name` differs from the held one | after one tick | the glyph changes with no fade | the action did not change |
@@ -2726,177 +2726,125 @@ it carries the same fact.
 (2026-09-14): *"when a desk transitions from staffed to empty, have the person walk from their desk to
 the elevator and then disappear. When an agent reappears, draw the animation for the person to exit the
 elevator and move to their desk where they start working"*. This note owns how the two rows above are
-drawn, and every other site points here.
+drawn, and every other site points here. **One principle governs all of it: a walk is presentation,
+never state.** The rows fire, and the animation log is written, at the apply exactly as for every other
+`edge` row; held episodes are entered and left at the apply exactly as before; nothing in
+[§ 11](#11-acceptance-tests) changes. The walk is only how the floor draws a row it has already
+logged.
 
-1. **Staffed and empty are what the render draws at the desk.** A desk is **staffed** in a render that
-   draws a character at it and **empty** in one that draws an empty chair; which `render_state`
-   members draw which is [§ 7.1](#71-the-render-per-state)'s *Desk* column, shipped as
+1. **Staffed and empty are [§ 7.1](#71-the-render-per-state)'s *Desk* column, read off the delta.**
+   A `render_state` value is **staffed** where that column draws a character and **empty** where it
+   draws an empty chair; the shipped form of the column's partition is
    `server/public/js/desk/task-bubble.js`'s `NO_CHARACTER_STATES` and `deskDrawsCharacter()`, and no
-   list of them is written here. A2 is the edge from a desk the **render before** drew staffed to a
-   delta whose new value the *Desk* column draws as an empty chair; A1 the edge from a held value it
-   draws as an empty chair to a new value it draws a character for. A2 reads the render before rather
-   than the delta's old value because the two disagree on a desk under
-   [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5, which holds a staffed
-   value and draws an empty chair. So a seat that goes quiet walks out at its `stale` edge, and
-   nothing moves when that desk later turns `offline`. ⚠ **Until card#9566 the two rows were keyed on
-   `offline` alone**, and that key predicted walks the request rules out: A2 on `stale → offline`, and
-   on a delta re-sending `offline` unchanged ([§ 2.5](#25-what-re-renders-and-when): a re-sent value
-   still counts as changed), each a walk out of a chair that was already empty; and A1 on any exit
-   from `offline`, `offline → stale` included, an arrival into a chair that stays empty. Every seat
-   that goes quiet crosses `stale → offline` at [D2 § 4.5](FLEET-STATE.md#45-link-states)'s `offline`
-   threshold, so the first of them fired on every quiet seat; none was seen only because no walk was
-   drawn (item 3).
-2. **What fires neither row, each for a stated reason.**
-   - **A retirement** — [A13](#62-the-animation-table--the-closed-set)'s, which removes the desk and
-     keeps its own form; A1's exclusion of it is stated on A1's row. A13's walk does not use the
-     elevator, and [§ 14](#14-open-questions-for-the-review-loop) item 31 carries whether it should.
+   list of members is written here. A2 fires on a delivered delta whose old value is staffed and
+   whose new value is empty, and A1 on one whose old value is empty and whose new value is staffed;
+   **both exclude [A13](#62-the-animation-table--the-closed-set)'s condition**, because `retired` is
+   in the shipped no-character set and an edge into it is a removal, not a departure. So a seat that
+   goes quiet walks out at its `stale` edge, and nothing moves when that desk later turns `offline`.
+   ⚠ **Until card#9566 the two rows were keyed on `offline` alone**, and that key predicted walks the
+   request rules out: A2 on `stale → offline` and on a delta re-sending `offline` unchanged
+   ([§ 2.5](#25-what-re-renders-and-when): a re-sent value still counts as changed), each a walk out
+   of a chair that was already empty; and A1 on any exit from `offline`, `offline → stale` included.
+   Every seat that goes quiet crosses `stale → offline` at [D2 § 4.5](FLEET-STATE.md#45-link-states)'s
+   `offline` threshold, so the first of them fired on every quiet seat; none was seen only because no
+   walk was drawn (item 3).
+2. **What fires neither row.**
+   - **A retirement** — A13's alone (item 1).
    - **The first render, and every render [§ 6.5](#65-a-snapshot-never-animates) names** — a snapshot,
-     a resync, a per-seat insert, a reconnect, a backgrounded tab's return ([§ 9](#9-failure-paths-and-their-observables)
-     F15). There is no edge: a seat the client first meets as an empty chair is drawn as one and a
-     staffed one as seated, with no walk. Item 9 says what such a render does to a walk in flight.
-   - **A displacement** — [A16](#62-the-animation-table--the-closed-set)'s, which walks a character
-     from one desk to another and never through the elevator: the seat did not leave the floor.
+     a resync, a per-seat insert, a reconnect, a backgrounded tab's return
+     ([§ 9](#9-failure-paths-and-their-observables) F15). There is no edge.
    - **[§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5's empty chair,
-     in either direction.** The card asked for it and it is declined
-     ([decision 50](#13-decisions-taken-revisable-at-review)) on [§ 11](#11-acceptance-tests)'s
-     existing ruling on exactly this transition: an emptied desk *"is a claim about what the client
-     knows, not about anything the seat did, so nothing about it moves"*, and an `edge` row needs a
-     wire message the client applied, where a refused read is a response it could not apply. The
-     chair empties with no walk, as it does today, and a delta that clears the count draws the
-     character back with no walk unless the delta is itself A1's edge. A desk drawn under row 5 has
-     no character to walk out, which is item 1's reason for reading the render before.
+     in either direction** ([decision 50](#13-decisions-taken-revisable-at-review)), on
+     [§ 11](#11-acceptance-tests)'s existing ruling: an emptied desk *"is a claim about what the
+     client knows, not about anything the seat did, so nothing about it moves"*, and an `edge` row
+     needs a wire message the client applied. The chair empties with no walk, as it does today.
    - **An unrecognised `render_state`** on either side ([§ 9](#9-failure-paths-and-their-observables)
-     F9): it draws no character and is not one of the *Desk* column's empty chairs, so no edge touches
-     it.
+     F9): it is neither a staffed nor an empty value of the *Desk* column.
+   - **A displacement or a retirement's walk.** [A16](#62-the-animation-table--the-closed-set) and
+     A13 keep their shipped drawing — a moved desk jumps, a removed desk goes — and
+     [§ 14](#14-open-questions-for-the-review-loop) item 31 carries walking them as a follow-up.
 3. **The path is A16's rule, and this is what that rule IS today.** `server/public/js/floor/scene.js`'s
-   `buildEffects()` draws a walk as one **straight segment** between two points — for A16 the
+   `buildEffects()` computes a walk as one **straight segment** between two points — for A16 the
    previous render's anchor and this render's, each `anchorOf()`'s *character's column at the desk's
    mid-height* — in `⌈length ÷ 48⌉` frames, at least one, at [§ 12](#12-every-number-and-where-it-comes-from)'s
    loop rate (`WALK_PX_PER_FRAME`, § 12's *Walk speed* row). It reads no tile, wall or furniture, so a
    walk crosses whatever lies on the segment. A1 and A2 take the same rule between the desk's anchor
    and **the elevator's threshold**: the seam's `x` at the foot of the leaves (`backWall()`'s
-   `elevator`, its `seam` and `y + h`), on the one band the floor draws. Every walker on a floor of
-   several rooms uses that one elevator. ⚠ **Two facts about the shipped code this note corrects
-   rather than inherits.** `buildEffects()` today sends A1 in from, and A2 out to, the floor extent's
-   **bottom edge** under the desk — the "door" the old Ends cell named and no section defined — which
-   this note replaces with the threshold. And `server/public/js/floor/painter.js`'s `paintEffects()`
-   has **no branch for any walk**: an A1, A2, A13 or A16 effect carries `from` and `to` and no `at`,
-   so the painter draws nothing for it, and A16's *walks to its new desk* has been a desk that jumps.
-   The build that lands this note draws the walker for all four rows, in the character's own walk
-   frames ([§ 10.2](#102-characters-the-munder-difflin-port)), under item 4's predicate.
-4. **ONE predicate decides whether a walker leaves a desk: the render before drew a character at it.**
-   It is A2's firing condition (item 1) and it gates the walker of
-   [A13](#62-the-animation-table--the-closed-set) and [A16](#62-the-animation-table--the-closed-set)
-   too, written once and read by all three, because a walker leaving a desk nobody sat at is a
-   person drawn who was never there. The cases are real: `floor/floor-screen.js`'s
-   `#displacements()` displaces a seat whatever it renders, an `offline` one included, and a
-   retirement can announce a seat that is already `offline`. Where it fails, A2 does not
-   fire; A13 and A16 still fire, because their facts — a desk removed, a desk moved — happened, and
-   each draws its row's reduced-motion form with the row written at `motion: false`, so the log
-   records what was drawn. A1 needs no such gate: its walker comes from the elevator, and its edge
-   already starts from an empty chair.
-5. **The desk a walker is bound for is a stated render: the desk AWAITING its walker.** It is A1's
-   desk from the applying render until its walker sits, and A16's destination desk from the moving
-   render until the mover arrives — so the person is drawn once, as the walker, and never also seated.
-   It draws **no character**, and therefore **no bubble** ([§ 5.1](#51-the-desk) rule 3: *a desk that
-   draws no character draws no bubble*). Every other element [§ 5.1](#51-the-desk) assigns the desk is
-   drawn from the applied object on the applying frame: the nameplate, the chip and label line, the
-   currency label, the badge row and flag, the gauge, the monitor with its glyph, the lighting, and
-   [§ 8](#8-interns--subagent-rendering-and-the-cap)'s side table with its stools — none of those is
-   the character's, so none waits for it. That is the one exception to
-   [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s *A desk changes pose on
-   the frame the delta is applied*, and that bullet states it: the walker carries the pose change.
-   **It holds no held render**, as an empty chair holds none: no `held` row is entered while it
-   awaits, and an A16 mover whose episode was open leaves it with the literal **`walking`**
-   ([§ 11](#11-acceptance-tests)'s precedence step (3) and its table of client-held conditions).
-   **The held render is entered at the sit**, on the render the screen asks for at the walk's last
-   frame, against the held object's `state_version` as every entry is — so the first pose is the
-   delivered state's as of the sit, and a delta that changed the state during the walk is the pose
-   the walker sits into. That render drains whatever the journal holds, like any render. It is not
-   [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s timer-driven motion:
-   it draws the end of an edge animation a delivered delta started, and a held render is entered
-   whenever the object the client holds says so ([§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean)
-   consequence 3) — the awaiting desk is the condition that, until the sit, says not yet.
-6. **A2 and A1, frame by frame.** A2: on the render that applies the delta the chair is empty and
-   labelled, as § 7.1 draws it, and the walker stands at the desk's anchor; it walks the segment; at
-   the threshold the leaves open over **2** frames, the walker steps into the doorway over **1** and is
-   no longer drawn, and the leaves close over **2** (§ 12's *Elevator leaves* row). A1 is the same in
-   reverse: the leaves open, the walker steps out, they close behind it while it walks, and it sits
-   on the frame after its last step (item 5).
+   `elevator`, its `seam` and `y + h`), on the one band the floor draws, which every walker on a floor
+   of several rooms shares. ⚠ **Two facts about the shipped code this note corrects rather than
+   inherits.** `buildEffects()` today sends A1 in from, and A2 out to, the floor extent's **bottom
+   edge** under the desk — the "door" the old Ends cell named and no section defined. And
+   `server/public/js/floor/painter.js`'s `paintEffects()` has **no branch for any walk**: a walk effect
+   carries `from` and `to` and no `at`, so the painter draws nothing for it. card#9566's build draws
+   the walker for A1 and A2, in the character's own walk frames
+   ([§ 10.2](#102-characters-the-munder-difflin-port)).
+4. **The desk under a walk draws the empty chair.** From the render that applies an A2, the desk is
+   § 7.1's empty chair for the new value, and the walker carries the person to the elevator. From the
+   render that applies an A1, the desk draws **the empty chair** until the walker sits — with its
+   label line, chip and every other fact the desk carries drawn from the applied object on that
+   frame — and on the walk's last frame it draws its current state, the character in the pose the
+   seat then holds. The held episode the A1 delta entered is logged at the apply as every entry is;
+   its loop is first drawn when the walker sits. **The walk's last frame triggers a PAINT-ONLY
+   refresh**: it re-paints the scene the last render built, with that seat's walk ended. It drains
+   nothing, applies nothing, writes no animation-log row and fires no edge, so it is **not a render**
+   in [§ 2.5](#25-what-re-renders-and-when)'s sense or in [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
+   row 15's. [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s timer
+   bullet admits it as an edge row's own bounded frames, and its tween bullet states the one pose
+   exception it makes.
+5. **Frame by frame.** A2: the walker stands at the desk's anchor and walks the segment; at the
+   threshold the leaves open over **2** frames, the walker steps into the doorway over **1** and is no
+   longer drawn, and the leaves close over **2** (§ 12's *Elevator leaves* row). A1 in reverse: the
+   leaves open, the walker steps out, they close behind it while it walks, and it sits on the walk's
+   last frame.
+6. **At most one walk per seat, and ANYTHING that touches the seat cancels it.** Any render that
+   touches a seat with a walk in flight cancels that walk — a delta of any kind, firing a row or not;
+   an animating or non-animating render; [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)
+   row 5's threshold; [§ 9](#9-failure-paths-and-their-observables) F9; a snapshot, a resync, a
+   per-seat insert, a reconnect; F15's return — and the seat's desk draws its current state at once.
+   **No walk starts from a cancelled one**: if the cancelling delta fires a row of its own, the row
+   is logged and its walk is not drawn ([decision 51](#13-decisions-taken-revisable-at-review)). So
+   an A1 then an A2 inside the walk leaves the empty chair the A2 delivered, with one A2 row and no
+   second walk; an A2 then an A1 inside the walk draws the person seated. A seat's walk never meets
+   another walk of the same seat, which is why no ordering between them is needed.
+   ⚠ **The reserved desk ([§ 3.4](#34-a-new-seats-first-appearance)'s last row).** A seat whose role
+   arrives on the delta after the one that took it out of `offline` has its A1 walk cancelled by
+   that delta, and [A16](#62-the-animation-table--the-closed-set)'s move to the reserved desk is drawn
+   as A16 is drawn today: the PM appears seated at the reserved desk.
 7. **When a route does not exist.** Under a straight segment it always does: a segment joins any two
    points, the threshold exists on every floor that has an extent ([§ 4.2](#42-the-floor)'s band), and
    the desk's anchor exists wherever the desk is drawn — inside a room, or on
-   [§ 3.2](#32-the-desk-slot-function)'s overflow strip, which `scene.js` places **below** the
-   extent. A seat whose desk is on another floor has nothing drawn for it here. **No fallback branch
-   is built**, because none is reachable. The fallback is still decided, for the day
+   [§ 3.2](#32-the-desk-slot-function)'s overflow strip, which `scene.js` places **below** the extent.
+   **No fallback branch is built**, because none is reachable. For the day
    [§ 14](#14-open-questions-for-the-review-loop) item 30's tile path lands — when a walled-off desk
-   and every overflow desk, which stands on no room's or hallway's cells, become unroutable: **that
-   firing draws the row's reduced-motion form**, the chair simply empty or the character simply
-   present, with no leaves moving. A fade at the desk was the alternative and is refused: it is a
-   visual form no row states, so it would mint vocabulary
-   [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith) then has to rule on,
-   where the reduced form is already a stated rendering of the same fact.
-8. **An effect in flight survives every paint until its last frame, with the geometry of the render
-   that wrote it.** The painter rebuilds the drawing on every render ([§ 2.5](#25-what-re-renders-and-when)),
-   and a render follows each event the protocol handles, so today a multi-frame effect —
-   [A19](#62-the-animation-table--the-closed-set)'s envelope, [A20](#62-the-animation-table--the-closed-set)'s
-   ring — is cut by the next heartbeat or by any seat's delta, and a walk drawn the same way would be.
-   The screen holds each effect from the render that wrote its row until its last frame, and every
-   paint in between draws it at its elapsed frame, counted from that render's instant at the loop
-   rate. **The held effect keeps the segment, endpoints and radius that render computed**; a later
-   render does not re-aim it at where a desk now stands. The rule is the effects layer's and not the
-   walk's, so it holds for every multi-frame `edge` row, A19's and A20's included.
-9. **What ends a walk early.**
-   - **A second walk row on the same seat SUPERSEDES the one in flight**, and the new walk is drawn
-     from its own start — an A1 from the threshold, an A2 from the desk, an A16 from the desk the
-     seat last held, an A13 as A13 draws — never from wherever the walker had got to.
-     **Finish-then-apply is refused:** the newer delivered state is already on the desk's label and
-     chip from its applying frame (item 5), so a queued walk would draw an older state's motion
-     beside a newer desk, and a seat flapping between `stale` and live would queue walks behind the
-     wire without bound. Restarting rather than turning round keeps the scene a function of the rows
-     and the anchors, with no walker position to compute from elapsed time. **An arrival and a
-     departure on one desk inside one walk** is this rule twice: the first walker is dropped and the
-     second is drawn whole. A delta that fires no walk row does not touch a walk in flight. A desk
-     removed mid-walk takes its walk with it, which is the supersede by A13.
-   - **A non-animating render that contradicts the walk's end drops it.** An
-     [§ 9](#9-failure-paths-and-their-observables) F2 resync, a
-     [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) insert or a discovery or
-     reconnect snapshot animates nothing ([§ 6.5](#65-a-snapshot-never-animates)), and where the
-     object it applies for a seat with a walk in flight draws that seat other than the walk ends —
-     staffed where A2 ends empty, empty where A1 or A16 ends staffed, or at a desk other than A16's
-     destination — the walk is dropped on that render and the desk is drawn as the render says, with
-     no walker and no awaiting desk.
-10. **Several walkers at once each walk their own segment**, independently and with no queue at the
-    door: two walkers reaching the threshold together step in together. A queue would make one seat's
-    walk longer because another seat left, a quantity nothing sent
-    ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s third form).
-    Walkers may overlap one another on the way; they are drawn above the desks, in the order their
-    rows were written.
-11. **The leaves are one fact about every walk in flight: open while any walk is in its door frames.**
-    A walk whose door frames begin while the leaves are already open — another walker's — opens
-    nothing more, and the leaves close when the last door frames in flight end. Their motion is
+   and every overflow desk, which stands on no room's or hallway's cells, become unroutable — the
+   fallback is decided: **that firing draws the row's reduced-motion form**. A fade at the desk was
+   refused: it is a visual form no row states, where the reduced form is a stated rendering of the
+   same fact.
+8. **A walk in flight survives repaints.** The painter rebuilds the drawing on every render
+   ([§ 2.5](#25-what-re-renders-and-when)) and a render follows each event the protocol handles, so
+   the screen keeps **one generic holder** of `edge` effects in flight, each with the geometry the
+   render that wrote it computed and its start instant, and every paint before its last frame draws it
+   at its elapsed frame. The same holder ends the truncation of
+   [A19](#62-the-animation-table--the-closed-set)'s envelope and
+   [A20](#62-the-animation-table--the-closed-set)'s ring that today's next render causes.
+9. **Several walkers at once each walk their own segment**, with no queue at the door: a queue would
+   make one seat's walk longer because another seat left, a quantity nothing sent
+   ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s third form). Walkers
+   are drawn above the desks, in the order their rows were written.
+10. **The leaves are open while any walk in flight is in its door frames**, and closed otherwise. A
+    walk whose door frames begin while they are already open opens nothing more. Their motion is
     claim-bearing by [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s
-    vocabulary test, so they move only inside an A1 or A2 firing and never on their own: an elevator
-    that opened with nobody in it would claim an arrival.
-12. **Reduced motion ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)):**
-    the same fact without the walk — on the render that applies the delta the chair is empty and
-    labelled, or the character is seated in its held pose; no walker is drawn, no desk awaits one, and
-    the leaves never move. Each firing still writes its row, at `motion: false`.
-13. **The failure paths take the walk as they take the desk.** On a floor
-    [§ 9](#9-failure-paths-and-their-observables) F6 or F7 stills, every walk in flight ends at once
-    at its last frame — the walker gone or seated, the leaves closed — and no new walk can fire: the
-    client closes the stream there and its signed-out mode re-opens nothing, which F6's *Recovery*
-    cell owns. Where the walker's art failed to load (F14), the walker is F14's placeholder rectangle
-    at the character's size, walking the same segment, because F14 replaces the art's images and
-    nothing else. F15's return re-runs the connect sequence and drops every walk in flight with the
-    rest of the floor. **No new failure path is minted**: item 7 shows the one this design could add
-    is unreachable while the path is a straight segment.
-14. **The log.** One A1 or A2 row per firing, as before, its `cause` the applying delta's
-    `state_version` and its `motion` § 6.4's — or `false` where item 4's predicate draws the reduced
-    form; the door frames, a superseded or dropped walk and a walk cut by a stilled floor write
-    nothing further, because an `edge` row is an instant and has no exit ([§ 11](#11-acceptance-tests)).
-    The held side is item 5's: entered at the sit, and left with `walking` by an A16 mover.
-    [AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it) is this note's test.
+    vocabulary test, so they move only inside an A1 or A2 walk: an elevator that opened with nobody
+    in it would claim an arrival.
+11. **Reduced motion ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)):**
+    the same fact without the walk — on the applying render the chair is empty and labelled, or the
+    character is seated in its held pose; no walker is drawn and the leaves never move. Each firing
+    writes its row at `motion: false`.
+12. **Failure paths.** Item 6 already cancels a walk on every render that touches its seat, F9, F15
+    and row 5 included. On a floor [§ 9](#9-failure-paths-and-their-observables) F6 or F7 stills,
+    every walk in flight is cancelled and its desk drawn as the stilled render draws it. Where the
+    walker's art failed to load (F14), the walker is F14's placeholder rectangle at the character's
+    size, because F14 replaces the art's images and nothing else. No new failure path is minted.
 
 **Two rows move with no seat's state behind them — A14 and A17 — and both are driven by
 `feed.heartbeat`, so when the feed dies they stop together and every claim on the page goes still.**
@@ -3127,7 +3075,11 @@ permits this one.
 
 - **Motion driven by a timer.** **No claim-bearing motion** may be driven by the 1 s age tick, by a
   render loop's frame count, or by wall-clock time, except a state-held loop's own frames at the fixed
-  rate of [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2. ⚠ **Decorative motion is
+  rate of [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2, and **an `edge` row's own
+  bounded frames** at that rate — a count fixed by the render that applied the row's causing message,
+  run from that render and finishing within those frames, including the paint-only refresh that ends a
+  walk ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 4, card#9566). That refresh
+  drains nothing and starts nothing: it ends what a delivered message began. ⚠ **Decorative motion is
   necessarily on a timer, and this bullet deliberately does not reach it** — a loop with no driver is
   exactly what decorative motion **is**, so a bullet that forbade timers outright would have re-refused
   on 2026-08-30 everything the first bullet had just admitted. What makes decoration admissible is that
@@ -3142,7 +3094,9 @@ permits this one.
   [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s)'s RED exist to catch — the clock would keep
   moving after the feed died, which is the property the bullet above refuses under its dead-feed test.
   **The test is what would happen on a dead feed: claim-bearing motion that stops is caused;
-  claim-bearing motion that continues was on a timer.**
+  claim-bearing motion that continues was on a timer.** An `edge` row's frames are the bounded case
+  of the first: on a feed that dies mid-walk the walk is bounded and finishes within its frames, and
+  nothing moves after them.
 - **Motion whose rate, amplitude or direction encodes a quantity.** A faster typing loop for a busier
   seat, a gauge that drifts upward between samples, a badge that pulses harder as a counter rises: each
   invents a number the wire never sent.
@@ -3154,12 +3108,11 @@ permits this one.
   [AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere) is the test that catches it.
 - **A transition tween between two states.** A desk changes pose on the frame the delta is applied. An
   interpolation between `working` and `idle` would be rendering a state that never existed. **The one
-  exception is a desk awaiting its walker** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk
-  note item 5, card#9566): where [A1](#62-the-animation-table--the-closed-set) or
-  [A16](#62-the-animation-table--the-closed-set) sends a walker to the desk, the walker carries the
-  pose change and the desk draws its pose when the walker sits, while its label line, its chip and
-  every other fact change on the frame the delta is applied. A walk is a row's own motion and not a
-  tween: it draws no state between two states, only the one person on the way to the desk.
+  exception is an inbound walk** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 4,
+  card#9566): where [A1](#62-the-animation-table--the-closed-set)'s walker is on its way to the desk,
+  the desk draws the empty chair until the walker sits and its pose then, while its label line, its
+  chip and every other fact change on the frame the delta is applied. A walk is a row's own motion and
+  not a tween: it draws no state between two states, only the one person on the way to the desk.
 - ⭐ **Decorative motion that is not SLOW, LOW-AMPLITUDE and OUTSIDE the animation vocabulary.** ⚠ **The
   ordering above is historical and this section's bullets are cited BY ORDINAL from elsewhere in this
   document — *second forbidden form*, *third forbidden form*, *first bullet* — which is why this
@@ -4967,11 +4920,8 @@ labels are those of the operator ruling that set the order (PR #240,
   this step.
 - **(3)** Otherwise, if this render draws the seat under
   [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5's condition and the
-  previous render did not, `cause` is the literal `unconfirmed`; or, failing that, if this render
-  draws the seat's desk awaiting its walker ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk
-  note item 5, card#9566) and the previous render did not, `cause` is the literal `walking`. This is
-  checked before (2b) and (4) because neither the empty chair nor the awaiting desk has a loop left to
-  start or stop.
+  previous render did not, `cause` is the literal `unconfirmed`. This is checked before (2b) and (4)
+  because the empty chair has no loop left to start or stop.
 - **(2b)** Otherwise, if the object the client now holds for the seat — the one (2a) asked about,
   drawn as (2a) draws it — would draw the episode's row at a
   different `motion` than the episode was entered with, then an object ended the hold, and `cause` is
@@ -4981,7 +4931,7 @@ labels are those of the operator ruling that set the order (PR #240,
   ([§ 9](#9-failure-paths-and-their-observables) F6/F7), `cause` is the literal `stilled`.
 
 These steps cover every desk exit: a desk's held render depends only on the held object, row 5's
-condition, whether a walker is bound for the desk, the stilled floor and reduced motion. Reduced motion is fixed for the page's life
+condition, the stilled floor and reduced motion. Reduced motion is fixed for the page's life
 ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation), which owns that
 invariant), and so is a stilled floor once it is stilled
 ([§ 9](#9-failure-paths-and-their-observables) F6's recovery, which owns that invariant). The
@@ -4994,7 +4944,7 @@ The shipped client's exit is `held()`'s, in
 ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15 (a); row 15 (b) names what
 checks the order).
 
-The conditions (3) and (4) name end a hold with no object behind it, because the client holds
+The two conditions (3) and (4) name end a hold with no object behind it, because the client holds
 each itself and the wire delivered neither. Each writes an ordinary `left` row of the episode it
 ends — `animation_id`, `install_id` and `seat_id` copied from its `entered` row as every exit's are,
 `motion: false`, `at` the instant of that render — whose `cause` is the literal naming the condition:
@@ -5003,15 +4953,6 @@ ends — `animation_id`, `install_id` and `seat_id` copied from its `entered` ro
 |---|---|---|
 | [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5: a failed read takes the seat's count of consecutive refused reads to that row's threshold | draws the empty chair, so its render is left and nothing is entered | **`unconfirmed`** |
 | [§ 9](#9-failure-paths-and-their-observables) F6's render: a read returned `401`, or F7's server-ended session fired it, and the floor beneath the sign-in prompt is stilled | keeps its render and stops the loop, so the episode is left and the same row is entered again with `motion: false`, against the held object's `state_version` as every entry is; a desk whose render was already drawn static writes nothing | **`stilled`** |
-| [§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 5: an [A16](#62-the-animation-table--the-closed-set) mover's destination desk awaits its walker (card#9566) | draws no character while the walker is on the floor, so its render is left and nothing is entered until the sit, which enters the row the held object then says against its `state_version` | **`walking`** |
-
-⚠ **The `walking` row came with card#9566, after the bullets below were written of the first two**;
-where they say *neither* or *each*, they hold of it too. It takes no row of its own in
-[§ 6.2](#62-the-animation-table--the-closed-set): the walk is A16's row, already caused by its own
-message, and what holds the desk empty meanwhile is the client's own knowledge that the walker has not
-arrived. Its re-entry is the sit, on the render the walk note's item 5 names. An
-[A1](#62-the-animation-table--the-closed-set) desk never takes it: it awaits its walker from an empty
-chair, which had no episode open to leave.
 
 The rest of the rule follows from that:
 
@@ -5189,7 +5130,7 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 | `fx-refusals` | the responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, **a stream whose FIRST message is a `fleet.health` with `db: "down"` and whose LAST is `feed.close{reason:"unavailable"}`, the stream then ENDING** ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)'s stream-connect posture: the connection is accepted to say why, and ends in the same breath), and **a `fleet.reload`, after which the stream also ends** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) declares that message terminal and pairs it with its own `feed.close` — in **two forms**, by operator ruling A4: carrying a `feed_version` the client does not know, and carrying its own, the second followed by re-opens the stub refuses `503` for the spans [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office) names before it accepts one; and **a stream that ends with no `feed.close` at all**, which is the deploy's drain ending a stream that missed the message ([D2 § 2.1](FLEET-STATE.md#21-processes)'s feed-reload row); and the warm `401` once more with an **open coordination line** on the floor — a `coord.thread` between `"pm"` and `"impl-1"`, two names `fx-snapshot-4`'s seats each declare once, opened before the refusal and never closed — so [§ 9](#9-failure-paths-and-their-observables) F6 stills the floor under a line that was moving (card#7341). ⛔ A fixture that held the `db: "down"` stream or the `fleet.reload` stream OPEN would be the posture card#9287's ruling withdrew, and [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office)'s GREEN would certify it — the fixture is where that certification starts, so the end is written here rather than left to the test |
 | `fx-coord` | Two installs. **`aimla`** — four seats: `aimla-pm` declares `protocol_agent_name: "pm"`, `checked`, and `aimla-impl-1` declares `"coder"`, **`unchecked`** — **one declaring seat each**, so both resolve and they are the two endpoints the line is drawn between. ⛔ **The two endpoints are deliberately in DIFFERENT check states.** An `unchecked` seat declared and no coordination roster was readable **on its own box** to check the declaration against ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), which neither rule of the join refuses: [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) **rule 1** counts the seats that **declare**, whatever their check state, so one `unchecked` declarer is not a duplicate, and **rule 2** — *"Only `checked` and `unchecked` resolve"* — admits it. So `"coder"` resolves exactly as `"pm"` does, and [§ 5.7](#57-the-coordination-thread-line)'s *rests on an UNCHECKED declaration* row gets the one thing that gates it at all: a **resolving** endpoint to mark, with the `checked` endpoint beside it as the control for *`checked` draws nothing extra*. On the duplicate arm below, where this fixture's only `unchecked` declaration first sat, the check state changes no outcome, so that row was left with nothing to break; `aimla-impl-2` and `aimla-review` **both** declare `"helper"` — `checked` and `unchecked` respectively, the **duplicate-declaration** case ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1), whose duplicate arm counts every seat of the install that **declares** the name whatever its check state, so `"helper"` resolves to **nothing**. ⛔ **The duplicated name is deliberately one no object here needs as an endpoint.** A fixture that duplicates the name it also draws the line to has one resolving name left and cannot demonstrate a two-endpoint line at all — the render this fixture exists to gate ([§ 5.7](#57-the-coordination-thread-line)) — so the clean-resolve case and the must-not-resolve case are carried by different names here, on purpose. No seat's `seat_id` is itself a declared name. **`win`** — one seat, `win-1`, declares `"reviewer"`, `checked` — a name real on a **different** install. On `aimla`: a `coord.thread` (`thread_ref: "T1"`, `lifecycle: "opened"`, `participants: ["pm", "coder", "helper", "reviewer", "aimla-impl-2", "all"]` — **two** resolvable names, one duplicate, one other-install, one seat-id coincidence, and the literal `all`, unexpanded); `coord.round` **R1**, the thread's opening post (`from: "pm"`, `to: ["all"]`, `targets: null`, `declares_close: false`) — **the one wire state [D1 § 18.7](EVENT-SCHEMA.md#187-coordround) assigns `null` to**, *`to` contains `all` and that roster is unreadable*, which `coord_targets_unresolved` alarms on ([D1 § 18.8.1](EVENT-SCHEMA.md#1881-the-counters-this-route-mints)). ⛔ **`null` belongs on no other address.** D1 pins it to that case and publishes no second path to it, so a `to` naming a seat carries a resolved `targets` and never this — a fixture putting `null` beside `to: ["coder"]` would gate the *not resolvable* render against a combination the producer cannot emit. With `"pm"` resolving, R1 is also the post that draws a ring and **no** envelope, which splits [A20](#62-the-animation-table--the-closed-set) from [A19](#62-the-animation-table--the-closed-set) by **reach** where the R2/R3 pair below splits them by **origin**. ⚠ **The unreadable roster here is [D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)'s install-facts input, held by the PRODUCER** — the copy provisioned with the hook — and it is readable again by R2, which is the only way one thread carries both this answer and a resolved fan-out. It is **not** the roster `unchecked` names above, which is read on a **seat's own box**: two artifacts on two machines, and this fixture holds both unreadable on purpose so a builder does not covary them. ⛔ **The roster that input holds from R2 onward is `["pm", "coder", "helper"]`**, and **every `targets` below is re-derived from it** by [D1 § 18.7](EVENT-SCHEMA.md#187-coordround)'s rule rather than asserted: R1 is `null` because the input is unreadable there, R2 and R3 carry one address from two authors and therefore **different** fan-outs, and R4's `[]` is `to: ["pm"]` from `pm` with the author removed. ⚠ **Those are the coordination names `aimla`'s own seats declare, and the fixture CHOOSES that rather than inheriting it** — the input is a copy of another repository's config and nothing forces the two artifacts equal ([D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)) — so it is what an install in agreement with itself looks like, and it is what gives the author-removal clause of that rule two different answers to be checked by. A roster naming only `"pm"` satisfies all four values too, and gates that clause with nothing: neither R2's author nor R3's is in it, so removing the author removes nothing and the two broadcasts come out identical. ⛔ **`"helper"` is a roster member that resolves to no desk** — it is the duplicate declaration above — so R3's fan-out is this fixture's one case of [A19](#62-the-animation-table--the-closed-set)'s *"A destination that does not resolve gets **no envelope and no line**, and the ones that do still get theirs"*; `coord.round` **R2** (`from: "helper"` — unresolved, duplicate, and the object still renders — `to: ["all"]`, `targets: ["pm", "coder"]` — the roster with its own author removed, and **both** members resolve to a desk — `declares_close: false`); `coord.round` **R3** (`from: "coder"`, `to: ["all"]`, `targets: ["pm", "helper"]` — the same roster with a **different** author removed, so one member resolves and one does not — `declares_close: false` — R2's address from an origin that **does** resolve, the pair that holds [A19](#62-the-animation-table--the-closed-set)'s and [A20](#62-the-animation-table--the-closed-set)'s origin precondition apart from the address they read); `coord.round` **R4** (`from: "pm"`, `to: ["pm"]`, `targets: []` — the one address the roster is never consulted for, its whole membership being its own author, so *this post reached nobody*, which is not R1's *the fan-out is not resolvable here* — and `declares_close: true`, never rendered as convergence); then a `coord.thread` closing T1 (`lifecycle: "closed"`) |
 | `fx-nulls` | **two** seats, because the **40** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `blocked_since`, `model_label`, `badges_since`, `enabled`, `protocol_agent_name`, `protocol_agent_name_check`, `protocol_agent_role`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat (a fixture sets values and renders none: **`named-not-rendered`**); all three nullable `reporter.*`. The two together cover all 40, and neither covers them alone. **`nulls-a`'s `render_state` is `idle`**, a state whose desk draws a character ([§ 7.1](#71-the-render-per-state)) — stated because [§ 5.1](#51-the-desk)'s thought bubble is anchored to one, so on a desk without a character *no bubble* would be true whatever `task` held and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero)'s assertion would pass without being able to fail. **`nulls-b` is the never-reported seat above**, which [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints `offline`: its desk draws no character, so it asserts nothing about the bubble and is not asked to |
-| `fx-elevator` | card#9566's walks, every run but the A19 and A20 variants over `fx-snapshot-4`'s four `aimla` seats on the shipped default map, each run a sequence of deltas for one or two seats with the frames between renders stated: **leave-stale** (`aimla-impl-1` `working → stale`); **leave-offline** (`working → offline`); **stale-then-offline** (`working → stale`, later `stale → offline`); **resent-offline** (an `offline` seat, a delta re-sending `offline`); **return-from-stale** (`stale → working`, `aimla-impl-1` holding a non-null `task` and two `subagents`); **return-from-offline** (`offline → idle`); **pose-change** (`offline → working`, then inside the walk `working → idle`); **supersede** (`working → stale`, then inside the walk `stale → working`); **two-walkers** (`aimla-impl-1` and `aimla-impl-2` `working → stale` in one render, and a second variant a render apart, so the second's door frames begin while the first's leaves are open); **retire** (`working → retired`), and **retire-offline** (an `offline` seat retired); **displace** (`fx-collision`'s `aimla-mac-1` arrival, with `aimla-impl-2` `working`), and **displace-offline** (the same arrival, `aimla-impl-2` `offline`); **unrecognised** (`working` → a member not in § 7.1); **reconnect** (a snapshot after a reconnect carrying `aimla-impl-1` `offline`, which it last held `working`); **resync-contradicts** (an A1 in flight, then a delta gap whose resync fetch returns the seat `stale`); **unconfirmed** ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5: every read of `aimla-impl-1`, held `working`, refused past the threshold, then a delta at `+1` clearing it, then the same refusals and a delta `working → stale`); **repaint** (an A2 in flight, then a `feed.heartbeat`), with an **A19** and an **A20** variant over `fx-coord` (its round to a resolved desk, and a round addressed to `all`, each in flight when a `feed.heartbeat` lands); **stilled** (an A2 in flight, then a read refused `401`) |
+| `fx-elevator` | card#9566's walks, every run over `fx-snapshot-4`'s four `aimla` seats on the shipped default map but the A19 variant, each run a sequence of deltas with the frames between renders stated: **leave-stale** (`aimla-impl-1` `working → stale`); **return-from-stale** (`stale → working`); **return-then-leave** (`offline → working`, then inside A1's walk `working → offline`); **leave-then-return** (`working → offline`, then inside A2's walk `offline → working`); **resync-cancels** (`offline → working`, then inside A1's walk a delta gap whose resync fetch returns the seat `working`); **retire** (`working → retired`); **two-walkers** (`aimla-impl-1` and `aimla-impl-2` `working → offline` in one render, their walks differing in length by fewer frames than the door's opening and step, so the farther's door frames begin while the nearer's leaves are still open); **repaint** (`working → offline`, then a `feed.heartbeat` while its A2 is in flight), with one **A19** variant over `fx-coord` (its round to a resolved desk in flight when a `feed.heartbeat` lands) |
 
 ### AT-D3-1 no animation without its event
 
@@ -6543,60 +6484,51 @@ viewer asked for is what the view does.*
 it that a replay can observe.*
 
 - **Build:** replay every run of `fx-elevator`, once as written and once under
-  `prefers-reduced-motion: reduce`, collecting the animation log and the scene of every render.
-  **Reads:** **the harness**, the **desk render**, the **animation set**, the **room drawing**, the
-  **elevator walk**.
-- **GREEN — the edges:** an A2 is written exactly where a delta's new value is drawn as an empty chair
-  at a desk the **render before** drew a character at, and an A1 exactly where a delta takes a held
-  value drawn as an empty chair to one drawn with a character; each carries its delta's
-  `state_version` as `cause`. So `stale → offline`, a re-sent `offline`, a retirement (A13 alone), an
-  unrecognised member, a reconnect's snapshot, and both legs of the unconfirmed run — its clearing
-  delta, and its `working → stale` at a desk row 5 had already emptied — write neither. Which members
-  draw a character is read from the shipped `NO_CHARACTER_STATES`, and which desk the render before
-  drew a character at from that render's own scene; the test re-lists neither.
-- **GREEN — the one walker predicate:** retire-offline writes its A13 and displace-offline its A16,
-  each at `motion: false` with no walker in the scene; retire and displace draw a walker for theirs.
-  The three rows read one predicate, which the RED planting a second copy below reaches.
-- **GREEN — the path:** each walk's segment runs between the desk's anchor and the elevator's
-  threshold, both read off the render's own scene (`anchors`, `band.elevator`), and its frames are
-  `⌈length ÷ 48⌉` re-derived by the test from those two points; the door frames are
-  [§ 12](#12-every-number-and-where-it-comes-from)'s *Elevator leaves* row, read from that row.
-- **GREEN — the desk awaiting its walker:** while A1's walker is on the floor in return-from-stale, the
-  desk draws no character and **no bubble**, while its chip, label line, monitor glyph and side-table
-  stools are the applied object's from the applying render; no `held` row is entered until the
-  render at the walk's last frame, which enters the row the held object then says — in the
-  pose-change run, the later delta's. In the displace run the destination desk draws no character
-  until the mover arrives, and the mover's open episode is left with the literal `walking`.
-- **GREEN — what ends a walk early:** the supersede run draws the A2 walker until the A1 row's render
-  and never after, and the A1 whole from the threshold; the resync-contradicts run draws the A1
-  walker until the resync's render and none on it, the desk drawn as the empty chair the resync
-  delivered; the stilled run ends the walk at its last frame on the render that stills the floor.
-- **GREEN — effects across paints:** the repaint run and its A19 and A20 variants draw the effect in
-  flight on the heartbeat's render at its elapsed frame, with the endpoints, segment and radius of
-  the render that wrote it; the two-walker run draws both walks with their own frame counts and the
-  leaves open across the union of their door frames, opening once.
+  `prefers-reduced-motion: reduce`, collecting the animation log, the scene of every render and every
+  paint-only refresh. **Reads:** **the harness**, the **desk render**, the **animation set**, the
+  **room drawing**, the **elevator walk**.
+- **GREEN — the rows:** leave-stale writes one A2 and return-from-stale one A1, each with its delta's
+  `state_version` as `cause`, written at the apply; retire writes A13 and no A2. Which values are
+  staffed and which empty is read from the shipped `NO_CHARACTER_STATES`, never re-listed by the
+  test.
+- **GREEN — the walk:** each walk's segment runs between the desk's anchor and the elevator's
+  threshold, both read off the render's own scene (`anchors`, `band.elevator`), its frames
+  `⌈length ÷ 48⌉` re-derived from those two points, and its door frames
+  [§ 12](#12-every-number-and-where-it-comes-from)'s *Elevator leaves* row. Under A1's walk the desk
+  draws the empty chair with the applied object's label line and chip; the paint-only refresh at the
+  walk's last frame draws the character, drains no journal entry and writes no log row.
+- **GREEN — cancel:** return-then-leave ends with the empty chair the second delta delivered, one A1
+  and one A2 row, and no walk after the cancelled one; leave-then-return ends with the person seated
+  and no walk; resync-cancels draws the person seated on the resync's render, with no walker.
+- **GREEN — effects across paints:** the repaint run and its A19 variant draw the effect in flight on
+  the heartbeat's render at its elapsed frame, with the geometry of the render that wrote it; the
+  two-walker run draws both walks with their own frame counts, and the leaves open across the union
+  of their door frames, opening once.
 - **GREEN — reduced motion:** under `reduce` every run writes the same rows at `motion: false`, the
-  scene draws no walker and no awaiting desk, and the leaves are closed on every render.
-- **RED:** A2 keyed on a new `render_state` of `offline` alone, the predicate the row read until
-  card#9566 → the stale-then-offline run writes an A2 at the `offline` edge, and the leave-stale run
-  writes none.
-- **RED:** A1 keyed on leaving `offline` alone → the return-from-stale run writes no A1.
-- **RED:** A2 without its previous-render clause, read off the delta's old value instead → the
-  unconfirmed run's `working → stale` writes an A2.
-- **RED:** A13 and A16 drawn with no walker predicate, or with a copy of it that differs from A2's →
-  retire-offline and displace-offline draw a walker from a desk nobody sat at.
-- **RED:** the awaiting desk drawn as the applied object's ordinary render → return-from-stale draws a
-  bubble, and a seated character, while A1's walker is on the floor.
-- **RED:** walk to the floor extent's bottom edge, the target the shipped scene drew → the path GREEN
-  finds a segment that does not end at the threshold.
-- **RED:** finish-then-apply → the supersede run draws the A2 walker past the A1 row's render.
-- **RED:** a non-animating render that leaves the walk in flight → the resync-contradicts run draws an
-  A1 walker into a desk the resync emptied.
-- **RED:** drop in-flight effects at a repaint, the shipped painter's behaviour → the repaint run and
-  both variants draw no effect on the heartbeat's render.
-- **RED:** queue walkers at the door → the two-walker run's second walk is longer than its own
+  scene draws no walker, and the leaves are closed on every render.
+- ⚠ **Each RED below is a plant that only its named run catches**, and the runs are cut to make it
+  so: only leave-stale and return-from-stale cross a `stale` edge, every other walk crossing
+  `offline`, which the old keys also fired on; only retire reaches `retired`; only return-then-leave
+  and leave-then-return cancel a walk with a row of the opposite kind; only resync-cancels cancels by
+  a non-animating render; the two walkers start in one render; and only the repaint run and its
+  variant land a render that touches no seat under an effect in flight.
+- **RED:** A2 keyed on a new value of `offline` alone, the predicate the row read until card#9566 →
+  leave-stale writes no A2.
+- **RED:** A1 keyed on leaving `offline` alone → return-from-stale writes no A1.
+- **RED:** A2 without its exclusion of A13's condition → retire writes an A2 beside its A13.
+- **RED:** a cancelling A2 draws its own walk (a chain) → return-then-leave draws an A2 walk after the
+  cancelled A1.
+- **RED:** a cancelling A1 draws its own walk (a chain) → leave-then-return draws an A1 walk after the
+  cancelled A2.
+- **RED:** a non-animating render that does not cancel → resync-cancels still draws the A1 walker
+  after the resync's render.
+- **RED:** the desk under A1's walk drawn as the applied object's render → return-from-stale draws a
+  seated character while the walker is on the floor.
+- **RED:** effects dropped at a repaint, the shipped painter's behaviour → the repaint run and its
+  A19 variant draw no effect on the heartbeat's render.
+- **RED:** walkers queued at the door → the two-walker run's second walk is longer than its own
   segment's frames.
-- **RED:** draw the walk under `reduce` → the reduced run's scene carries a walker.
+- **RED:** the walk drawn under `reduce` → the reduced replays' scenes carry a walker.
 
 ---
 
@@ -6781,8 +6713,8 @@ review can reverse it deliberately rather than discover it later.
 | 48 | **Decided 2026-10-03 — operator rulings on card#11144: a map may reserve one desk for a role; the room's one seat relaying that role sits there; with nobody eligible the desk stays empty and reserved (Q3 A); with two or more, nobody sits there and § 9 F22 says so (Q4 A); the client compares roles as strings and knows none by name (Q2 A)** ([§ 3.2](#32-the-desk-slot-function), [§ 9](#9-failure-paths-and-their-observables) F22) | for two eligible seats, the lowest `(h, seat_id)` keeps the desk; for none, the desk opened to the hash | a reserved desk that changed hands by a hash order would put a seat in the PM's office with nothing on screen saying the install is misconfigured, and an opened desk would make the office's occupant depend on which seat happened to hash there; taking the desk before the probe loop keeps every other seat's hash unchanged | a PM install whose flusher reads no roster relays `null` and leaves the office empty with only § 5.5's line to say why (D1 § 3.1's documented failure), and a handover walks the outgoing PM out before the newcomer can walk in |
 | 49 | **Decided 2026-10-03 — operator ruling: the floor is drawn in the 3/4 top-down oblique; the back wall shows its face, every other wall its top edge; characters flat, furniture face-on; walls are tiles** ([§ 10.4](#104-the-art-direction-as-a-specification)'s projection bullet). The back corner's end posts are the frame's, by the operator's ruling of 2026-10-04 (option B, [§ 4.2](#42-the-floor)) | the dollhouse elevation with face-on interior walls (the kit's wall panels) | one viewer for every element ("Make sure all elements in a scene follow the same rules", slynyrd) — so the one place two projections would meet is resolved rather than left to judgement; walls as tiles are painted with the tools an author already has, a doorway is cells left unpainted, and no new map member is read | one tile file and one layer |
 | 50 | **Decided 2026-10-05 — card#9566, by this seat as the repository's maintainer: [A1](#62-the-animation-table--the-closed-set) and [A2](#62-the-animation-table--the-closed-set) fire on whether the render draws the desk staffed or empty, per § 7.1's *Desk* column, and § 2.3 row 5's empty chair fires neither** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note items 1–2) | keep the rows keyed on `offline`; or walk on every change of whether a character is drawn, row 5 included, as the card's text asks | staffed and empty are the request's own words, and they remove the walks out of an already-empty chair the `offline` key predicted; row 5's chair is the client's knowledge rather than the seat's act, which [§ 11](#11-acceptance-tests) already rules moves nothing, and an `edge` row needs a wire message the client applied | a quiet seat walks out at its `stale` edge rather than at `offline`; an unreadable desk empties with no walk |
-| 51 | **Decided 2026-10-05 — card#9566: a second walk row on the same seat supersedes a walk in flight, and the new walk starts from its own start** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 9) | finish the walk in flight, then draw the next; or turn the walker round from where it is | the desk shows the newest delivered state on the frame it is applied, so a queued walk is an older state's motion beside a newer desk, and a flapping seat would queue walks without bound; turning round needs a walker position computed from elapsed time, which the scene does not read | on the rare staffed → empty → staffed inside one walk the walker vanishes mid-floor and a new one steps out of the elevator |
-| 52 | **Decided 2026-10-05 — card#9566: A1 and A2 walk [A16](#62-the-animation-table--the-closed-set)'s straight segment, desk anchor to elevator threshold, as the first cut; the decided fallback for an unroutable desk is the row's reduced-motion form** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note items 3 and 7) | a path over walkable tiles, with a fade at the desk where none exists | it is the shipped rule, it needs no map member, and a segment joins any two points, so the fallback is unreachable until a path rule lands; the reduced form is a stated rendering of the same fact where a fade would be new vocabulary | a walker crosses walls and furniture — the walled PM office of card#11144 included — until the follow-up [§ 14](#14-open-questions-for-the-review-loop) item 30 asks the operator about |
+| 51 | **Decided 2026-10-05 — card#9566, by this seat as the repository's maintainer: at most one walk per seat — anything that touches the seat cancels its walk in flight, and no walk starts from a cancelled one (cancel, never chain)** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 6) | supersede the walk with the next row's walk; or finish the walk, then apply | a walk is presentation and the desk must draw its current state the moment anything about it changes; a chain re-raises every ordering question the r1 and r2 reviews found — which walk owns the desk, which person is drawn where — while cancel has one answer for all of them, and finish-then-apply would hold an older state's motion beside a newer desk and queue walks behind a flapping seat's wire without bound | on a seat that leaves and returns inside one walk the second change is drawn without a walk: the person reappears seated, or the chair is simply empty, while the log still records both rows |
+| 52 | **Decided 2026-10-05 — card#9566: A1 and A2 walk [A16](#62-the-animation-table--the-closed-set)'s straight segment, desk anchor to elevator threshold, as the first cut; the decided fallback for an unroutable desk is the row's reduced-motion form** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note items 3 and 7) | a path over walkable tiles, with a fade at the desk where none exists | it is the shipped segment rule, it needs no map member, and a segment joins any two points, so the fallback is unreachable until a path rule lands; the reduced form is a stated rendering of the same fact where a fade would be new vocabulary | a walker crosses walls and furniture — the walled PM office of card#11144 included — until the follow-up [§ 14](#14-open-questions-for-the-review-loop) item 30 asks the operator about |
 
 ---
 
@@ -7635,13 +7567,18 @@ reason to leave two readings live.
     sandbox; if crossing walls reads as wrong, the derived rule first, because it mints no map
     member. **Blocks:** nothing — the straight segment is the first cut. **Closes it:** the operator's
     answer.
-31. **⇢ Review — [A13](#62-the-animation-table--the-closed-set) still leaves toward the floor's
-    bottom edge, not the elevator.** card#9566 kept retirement out of scope, so on one floor a seat
-    going quiet walks to the elevator while a retired one walks off the bottom of the floor
-    (`floor/scene.js`'s `buildEffects()`, the extent's bottom edge). **Recommendation:** A13 walks to
-    the elevator too, so the floor has one way out; the desk is removed on the announcement as
-    [§ 3.5](#35-retirement-and-the-only-removal) rules, and the walker leaves from where it stood.
-    **Blocks:** nothing. **Closes it:** an amendment to A13's row and its Ends cell.
+31. **⇢ Review — [A13](#62-the-animation-table--the-closed-set) and
+    [A16](#62-the-animation-table--the-closed-set) draw no walker; walking them is a follow-up.**
+    card#9566 scoped its walk to A1 and A2 ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 2), so a removed desk goes and a moved
+    desk jumps, as they do today: `floor/painter.js`'s `paintEffects()` draws no walk for either, and
+    `floor/scene.js`'s `buildEffects()` still aims A13's computed walk at the floor extent's bottom edge.
+    **What a follow-up must settle first**, because both rows reach desks nobody sits at:
+    `floor/floor-screen.js`'s `#displacements()` displaces a seat whatever it renders, an `offline` one
+    included, and a retirement can announce a seat that is already `offline`, so a walker drawn for
+    either needs a *was a character there* test, and A16 needs its destination desk drawn empty until
+    the walker arrives. **Recommendation:** A13 walks to the elevator, so the floor has one way out,
+    and A16 walks desk to desk on the same segment rule, each only from a desk that drew a character.
+    **Blocks:** nothing. **Closes it:** amendments to A13's and A16's rows and to the walk note.
 32. **✅ CLOSED — an unreadable desk does not walk out.** Decided by this seat as the repository's
     maintainer, card#9566 ([decision 50](#13-decisions-taken-revisable-at-review)). The card's text
     listed [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5's rule among
@@ -7788,7 +7725,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | 15 | ✅ landed 2026-09-26 (card#7341 row 15, slices A–B and § 14 item 29's build list) — the **camera** — [§ 4.5](#45-the-viewport-rule-and-the-camera)'s viewport, built: wheel-zoom to the cursor (⭐ **superseded 2026-10-01**, card#11045 PR-B, [§ 13](#13-decisions-taken-revisable-at-review) row 39: the plain wheel and a two-finger scroll PAN, Ctrl+wheel and a pinch zoom to the cursor, a touch screen's two-finger pinch zooms about its midpoint — `wire/camera.js`'s `wheel()` became `pan()` and `zoom()`, with `pinch()` beside them), drag-pan, a fit-floor control and a whole-building control, one machinery for the floor here and for the building at row 16 (card#7341's scope addition, operator 2026-08-26: *same one zoom/pan machinery serves both scales*). It is a model too — a view transform over the scene's space: zoom and pan, the clamp that keeps the floor in view, and the fit that frames the floor's whole extent INCLUDING the overflow strip (the reference's own correction, card#7965: a fit that framed the floor alone cut off the seats the strip exists to show) — exposed as data, with the floor page wiring the wheel and the pointer to it. ⛔ **Navigation is never state** ([§ 4.5](#45-the-viewport-rule-and-the-camera)): a camera move writes no animation-log row, starts nothing through the set, and survives every re-render — a delta, a full snapshot, a resync, a reconnect and a layout act all leave the viewer's head where it was; only the viewer moves it. The first render frames the floor at fit with no transition, which is [§ 6.5](#65-a-snapshot-never-animates)'s setting and not a move. A camera glide is the viewer's and not the fleet's, so it is permitted and takes no [§ 6.2](#62-the-animation-table--the-closed-set) row, and under `prefers-reduced-motion` the camera cuts rather than glides. The whole-building control on the floor is the way to `/`, [§ 4.4](#44-routes-and-what-each-one-fetches)'s lobby route, and not a second scale drawn on this page — [§ 4.1](#41-the-lobby--the-building-summary): a plate is a summary and never a drawn interior. Everything the camera scales is the scene's; the status strip, the failure statements and the sign-in prompt are page chrome outside it. The **list view** is [§ 4.5](#45-the-viewport-rule-and-the-camera)'s second rule, built: the same facts as text, one row per seat, every fact the desk model emits, painted below the drawing at every window size. ⭐ **Amended 2026-10-01 — the capability floor is removed** (the operator's ruling on card#7341, [§ 4.5](#45-the-viewport-rule-and-the-camera)'s first rule, [§ 13](#13-decisions-taken-revisable-at-review) row 14): slice B built one — below a 1,280 × 800 viewport the route rendered the list view INSTEAD of the drawing, `floor/floor-screen.js`'s `capabilityOf()` over its `VIEWPORT_FLOOR` — and the ruling's PR deleted both: every frame carries the scene whatever the drawing surface's size, the page paints the drawing and the list at every size, and [AT-D3-21](#at-d3-21-the-camera-moves-the-viewer-and-never-the-fleet)'s any-size clause holds it in a phone's window and a low one, its third RED planting the minimum back. ⚠ **The list view is a headless model and not a page function, and this row is where it moved.** Step 8's text render was `floor/main.js`'s `deskLine()`, which carried the nameplate, the glyph, the label line, the quiet age, the badges and the unrecognised values and nothing else — so a `fold_lag` seat on it was marked only by its raw badge id, [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s lag line and [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s note missing, which is [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s rule failing on the page's one text render — and it lived in a DOM entry (`const root = el('floor')` at module top level) that no harness can load and whose own header rules it the wrong home for a decision. This row builds the list as a module beside `desk/desk-render.js`: one function over `deskModel()`'s output returning the row's lines, each the model's own string, and deciding there the text form of every member that is not already a string — the gauge (`wire/context-gauge.js`'s statement, percentage, numerals, source and age), the side table (each stool's label, tag and start, and the *+N more* tag) and the bubble (its text with rule 4's mark, its source and its degraded note) are the three the page would otherwise have had to compose, and the members that carry their strings inside an object (the lag line, the monitor's text, the action's start and elapsed, the dark pair) are read out of it there — so nothing is composed in the page: `floor/main.js` paints the lines it is handed, and `deskLine()` is deleted rather than kept beside it. **No list of the facts is written in this document**: the population is `deskModel()`'s return, and this row's guard is what holds every member of it rendered or excluded by name, so a member added to the model lands on the row or reds the build. ⭐ **The list view is BUILT — slice A (card#7341 row 15, 2026-09-26)**: `server/public/js/desk/desk-list.js`, whose `deskListRow(desk)` returns one seat's lines and whose `NOT_LISTED` names, by path and with its reason, each leaf of the model the row does not print; `floor/main.js` paints those lines below the drawing and `deskLine()` is gone. The dark pair is read out differently from the sentence above: the desk model already splices it into the label line, so the row prints it once there, and the exclusion names the label line as its carrier, which the guard checks on every desk. The guard is `Tests\Feature\Floor\TheListViewRendersEveryDeskMemberTest`: its runs are every run of every checked-in fixture file that draws a desk, and its leaves are what `deskModel()` returned on them. Each leaf a desk carries at a non-default value is replaced in a copy of that desk and the row is derived again, so *printed* is measured on the row. ⭐ **This is the build [§ 12](#12-every-number-and-where-it-comes-from)'s viewport row waits on**: it is the first to draw a nameplate and a badge cluster on a desk at the camera's floor zoom, so it owed that row its measurement — recorded on the card and in that row, whether the figure moved or was confirmed — and slice B took it (below). This document publishes no zoom step, no zoom ceiling and no glide duration: they are the drawing's ([§ 10.4](#104-the-art-direction-as-a-specification)'s last bullet), carry no fact, and the ratified reference's are the worked example ⭐ **The camera is BUILT — slice B (card#7341, 2026-09-26)**: the camera is `server/public/js/wire/camera.js`, a frozen value and pure functions over it (fit, zoom about a point, pan, the clamp, resize, the glide's step and its length, a cut under reduced motion) that frame a rect and know nothing of a floor, so row 16 is its second caller; `floor/floor-screen.js` holds it, frames it on the scene's whole extent on every render (the first framing alone fits) and exposes the viewer's acts, which render nothing; `floor/main.js` wires — the wheel and the drag through `wire/camera-gestures.js` since card#7343 r1 hoisted them at the lobby, their second caller — the wheel (zooming in proportion to its scroll, so a trackpad's or a pinch's stream of small events is one gesture and not a step each — a pinch, a wheel event with `ctrlKey`, scaled up by `camera.js`'s `PINCH_GAIN` because its deltas are far smaller, d3-zoom's figure and not yet felt in a browser), the drag (ended by a `pointercancel` or by a move with the primary button no longer held), the keyboard and the zoom buttons (about the drawing's centre), the fit-floor control and the whole-building link, and `floor/painter.js` sets the drawing's `viewBox` from the camera — the drawing a focusable group and never an image, so the desks inside it stay buttons, each opened by Enter or Space, and the desk the keyboard is on keeps focus across the painter's rebuild of the drawing — and took § 12's measurement, which confirmed the figure and left its criterion open (that row). Below the drawing the page paints slice A's list view through `floor/main.js`'s `paintDesks()`, the one path it paints desks as text on. Both slices are built, and so is the build list below, which is what the landing marker waited on. ⭐ **This row owns [§ 14](#14-open-questions-for-the-review-loop) item 29's build list — the client, test, probe and fixture halves of that item's answer, whose rule is [§ 11](#11-acceptance-tests)'s precedence — and every other surface that names part of it points here.** (a) **The client** writes each exit (3) and (4) of § 11's precedence name with the literal each gives it, `unconfirmed` and `stilled`, where `held()` (`wire/animation-set.js`) wrote the held object's own `state_version`: `held()` asks `exitCause()` the precedence in its order, and `desk/desk-floor.js` hands it, per seat, the held rendering the object held now draws with row 5's condition and the stilled floor at their previous-render values, and whether each condition newly holds. (b) **The test:** `Tests\Feature\Floor\NoAnimationFiresWithoutItsEventTest`'s `assertHoldConditionsPointOppositeWays` read every held `cause` as a version, so on a literal `seatAtVersion` returned `null` and the `assertNotNull` beside it redded; its `left`-row half is replaced by one assertion, `assertEveryExitHasThePrecedencesCause`, implementing [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s one predicate, that every desk `left` row's `cause` is the one § 11's precedence gives for the render that wrote it, removal, version and literal causes alike, and the `stilled` re-entry check AT-D3-1's GREEN sets beside that predicate — both evaluated from (c)'s records, which it first holds to partitioning the log. Its `entered` half stands as `assertEveryEntryHoldsItsRow`. ⛔ **The ORDER of the precedence is checked by direct cases, not by the replay:** no replayed run has a render in which two steps apply together, so a client asking them in another order passes every run. `Tests\Feature\Floor\TheAnimationSetIsTheDocumentsClosedSetTest`'s `test_the_exit_precedence_is_asked_in_its_ruled_order` drives one render per adjacent pair of the ruled order through `server/tests/Feature/Floor/animation-set-probe.mjs`'s `held` op, with both steps applying, and asserts the higher step's cause; `test_each_adjacent_swap_of_the_precedence_reds_its_pair` plants each swap in `exitCause()` and watches its pair red. (1) and (2a) take no pair case, because (1) applies only where the client no longer holds the seat and every later step asks about the object it holds. (c) **The probe:** `server/tests/Feature/Floor/fleet-client-probe.mjs` writes the per-render records the predicate is evaluated from, which its `records[]` could not stand in for — they are snapped once per scenario event, age ticks included, rather than once per render, carry the stilled floor only as the failure render's `sign_in` and under no name of its own, and no animation-log row says which render wrote it. Each `desk_renders[]` entry an `apply` drew — the one path that drains the journal and writes to the animation log — carries the stilled floor, each held seat's object and row-5 state, the removals that render's journal applied, with their `cause`, and the log rows that render wrote; a `tick` entry carries none of them, because the age ticker drains nothing and writes no row. (d) **The fixture:** every refused read in `fx-confirm`'s `missing_persistent` run answers a `503` body carrying the `server_time` of the instant it answers, on the run's own clock — each entry is `clocked` (`server/tests/Feature/Support/scripted-fetch.mjs`). Each carried the snapshot's own `server_time` before, and since [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset is refreshed from each, every refusal pulled the corrected clock back to the snapshot's instant and dated the exit the instant its episode was entered, which AT-D3-1's `left.at > entered.at` redded on a correct client. (e) **The replay:** AT-D3-1's closed-set half replays `fx-refusals`' `refusal_401_warm` run — the one checked-in fixture run that stills a floor with a loop running, whose exits are (4)'s, resting on (a)'s fix for (4), (b) and (c) — and `fx-confirm`'s `missing_persistent` run — the unconfirmed desk's, whose exit is (3)'s, resting on (a)'s fix for (3), (b), (c) and (d) — and no assertion was loosened to admit either | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** — its closed-set half's runs are the ones [its Build bullet](#at-d3-1-no-animation-without-its-event) names, this row's (e) runs among them — plus **[AT-D3-21](#at-d3-21-the-camera-moves-the-viewer-and-never-the-fleet)** **(floor half)** — plus the list view's own guard, which holds a PROPERTY and nothing more; how it enumerates, where it runs and what it is shaped like are row 15's build, proven by running code and not by this cell. The property: **every leaf of `deskModel()`'s output is either rendered — the module's own text form of that value is on the row — or excluded by path with a reason; and every rendered leaf is seen at a value other than the model's default — not null, not false, not 0, not empty — on at least one run** over every checked-in fixture file that draws a desk, `fx-confirm`'s `missing_persistent` run among them, so that a leaf the row could drop without anyone noticing has no run to hide on. The control plants a boolean held false throughout and watches the guard red naming it |
 | 16 | ✅ landed 2026-09-29 (card#7343 row 16, slices A–B) — the **building cross-section**'s arrival — ⭐ the cross-section and the elevator are BUILT: PR #96 (card#7343 part 1, merged to `dev` 2026-09-11) landed `server/public/js/lobby/building-model.js` — `plates()` over `lobby-model.js`'s `floors()` with a stack position, `elevator()` with its `NO_STOPS` / `ONE_STOP` refusals — composed into the lobby's frame by `server/public/js/lobby/lobby-screen.js`, the lobby's model since step 9 (PR #228; its `building` member is `buildingModel()` over the viewer's cab position, once a full snapshot is applied), and drawn by `lobby/main.js`'s `renderBuilding()`: one plate per composed floor ([§ 4.6](#46-the-building-layout)) in the same ascending order, each the link and carrying [§ 4.1](#41-the-lobby--the-building-summary)'s summary, the room names and the floor's `label ?? key`, the cab standing at one plate and the ride control moving it, gated by `Tests\Feature\Lobby\TheBuildingStacksTheComposedFloorsTest`. This row is NOT a second cross-section; it builds what that module named as unbuilt until slice A (`building-model.js`: *where the ride arrives is not built*): the **elevator ride**'s arrival — the cab reaches the plate and the page arrives at `/floor/{floor}` with the key and never the label (card#9273, [§ 4.4](#44-routes-and-what-each-one-fetches)), which row 8 now serves and which must still deep-link on a cold start; row 15's camera at building scale over the same painter — whole-building being every plate in view, zoom-to-a-plate being the ride, one machinery at two scales (card#7341's scope addition, operator 2026-08-26/27), the ride still navigation ([§ 4.6](#46-the-building-layout)'s elevator row: no [§ 6.2](#62-the-animation-table--the-closed-set) row) and cut rather than glided under `prefers-reduced-motion`; and the plate drawn as the reference's section rather than a list row, the roof sign and ground lobby being scenery carrying no fact, and the sky behind the building A17's, on A17's driver — the lobby draws no clock ([§ 4.1](#41-the-lobby--the-building-summary)). `lobby-model.js` and `building-model.js` are unchanged in code, exactly as row 14 leaves step 7's frame: a plate reads no field the table does not and recounts nothing, so [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) stays at 9. ⭐ **The card split, settled:** card#7343 part 1 is the stack and the cab; this row is the destination half its comment 4524 left open, buildable since row 8 served the route (the lifting condition its comment 5366 states), and it is **card#7343's** — `docs/PLAN.md § 3` lists the elevator there and the title names it — while rows 14 and 15 are card#7341's. ⭐ **The ride's arrival and the camera at building scale are BUILT — slice A (card#7343, 2026-09-27)**: `server/public/js/lobby/lobby-screen.js` holds row 15's `server/public/js/wire/camera.js` as its second caller, framed on the plates `server/public/js/lobby/building-scene.js` places — a rect per plate at its stack position, the numbers the drawing's — so the first framing, and the whole-building control, is every plate in view; `ride()` names `elevator().next` as the stop — `lobby/main.js` moves the cab there, the cab being the viewer's and not the model's — zooms the camera to that plate with `focusOn()`, which `camera.js` gained for it (the primitive extended, not a sibling), and hands back the plate's own `href`, `/floor/{key}`; and `server/public/js/lobby/main.js` wires the whole-building control and the ride, whose glide steps through `server/public/js/wire/camera-view.js` — hoisted from `floor/main.js` at this second caller — and whose arrival is the page going to that route, and hands its drawing to `server/public/js/wire/camera-gestures.js`, the wheel and the drag both pages share (⭐ since card#11045 PR-B, 2026-10-01: the plain wheel pans, Ctrl+wheel zooms and a touch screen's two-finger pinch zooms about its midpoint, on both pages — [§ 13](#13-decisions-taken-revisable-at-review) row 39; hoisted from `floor/main.js` at this second caller, card#7343 r1: one click policy, a drag that moved being no click — neither its handlers nor its default action, which the lobby's plate links need and the floor's drawing has none of; and, card#7343 r2-3, a press in a framed drawing starts no native drag and selects no text — a `dragstart` is refused, and the drawing is `user-select: none` from a primary press until it ends), and its drawing and two zoom buttons to `server/public/js/wire/camera-keys.js`, the keyboard and the zoom buttons both pages share (hoisted from `floor/main.js` at this second caller, card#7343 r2-2): `#lobby-building`, while a building is drawn, takes focus and names the floor drawing's keys — `+`/`-` zoom about the centre, the arrow keys pan — and shows the floor's *Zoom in* and *Zoom out* buttons, which were how a touch screen zoomed the building until card#11045 gave it the two-finger pinch. ⛔ **Nothing framed, nothing taken** (card#7343 r3b for the wheel, widened to the whole wire by r4b, the seat's rulings): every camera handler in the two modules — the wheel, a `dragstart`, a press and its `user-select`, the move's pointer capture and pan, the click after a drag, and the arrow and `+`/`-` keys — acts only while the screen's camera frames something. Each asks `server/public/js/wire/camera.js`'s one `framesNothing()` of the page's `camera()` at its own event, and with no `bounds` leaves the event to the browser, so an uncomposed lobby's flowing list scrolls under the wheel and the arrow keys, its text selects, and a press on a room's link that moves and is released there follows the link, as before this row; a press that began framed pans nothing once nothing is framed, and its click is the browser's — a capture its pan took is released at its next move, so its release and its click land on what is under the pointer (card#7343 comment 7692 item 3; a press released still captured, with no move since the frame went, clicks the drawing). While nothing is framed nothing of the camera is offered (c7692 items 1–2, the seat's rulings): the zoom buttons and the page's framing control — the lobby's *Whole building*, the floor's *Fit the floor* — are hidden, and the drawing is no tab stop and names no `aria-keyshortcuts`. `camera-keys.js`'s `offerKeys()` restores all of it once something is framed and writes nothing while the offer is unchanged (item 4); the lobby calls it with the screen's camera on every camera it shows — never a glide's step, so a building that stops framing mid-glide withdraws it at once (item 4) — and the floor with every render's. Both pages' markup starts with none of it offered, which the unchanged-offer reading rests on; a drawing that held the keyboard's focus when its camera stopped framing loses it to the page (the edge c7692 accepts). Every drawn building and drawn floor behaves as before; the floor's camera frames nothing only before its first frame with an extent and on a floor with nothing measurable on it, where these events moved nothing and are now the browser's too. `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest` reds each gate planted out — its event taken over a camera that frames nothing, on that gate's own step and no other — and each planted shut, a framed drawing's event left to the page; the one predicate read either way; and the buttons, the framing control, the tab stop or `aria-keyshortcuts` offered wrongly, naming a key no handler takes or missing one, a capture kept past the frame, and an unchanged offer written again. Both pages' wiring tests red a page that hands the gestures or the keys no camera, or one that frames nothing, or never offers the keys or its framing control, and markup that offers any of them — a tab stop, `aria-keyshortcuts`, a zoom button or the framing control — before any camera frames; `LobbyPageWiringTest` also reds the lobby offering from a glide's step. While it draws a building, `#lobby-building` is a fixed-height surface that clips the plates and its scroll is held at the origin, so focus never slides the plates out from under the camera; with no building to draw — no snapshot yet, [§ 9](#9-failure-paths-and-their-observables) F17's rooms with no floor claimed, or no install — it has no height or clip of its own and the list flows in the page as it did before this row (`server/public/js/lobby/building-scene.js`'s `surfaceStyle()`, which `lobby/main.js` applies on every render and then sizes the camera to the surface it leaves; card#7343 r3, the seat's ruling; `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest` reds an uncomposed lobby held in a clipping box, and `LobbyPageWiringTest` a size or clip in the page's markup, the style never applied, and a camera left sized to the old surface). With a building drawn, instead the keyboard's focus on a plate not wholly in view brings the camera to that plate — the lobby screen's `focusPlate()`, row 15's `focusOn()` again — and a plate already in view stays put, so tabbing through a building at fit moves nothing (card#7343 r2-2). ⛔ **The click commits the ride, and the hold protects the glide** ([§ 4.5](#45-the-viewport-rule-and-the-camera); card#7343 r1 ruling, and the seat's r2-4 ruling, 2026-09-27): from the click until the glide has arrived and the page has asked for the route, the ride is in flight — the lobby screen's frame says so and the ride control is disabled on it, a second ride is refused, and the wheel (its pan or its Ctrl+zoom, each still consuming its event), a touch pinch, a key, a zoom button, the drag and the whole-building control leave the camera on the plate; the page's glide is committed, so any of them, or a resize, during it cuts it to the plate and the page arrives. The keyboard's focus moving to a plate during it moves nothing and leaves the glide running — `focusPlate()` answers nothing while a ride is in flight. A plate link clicked during it does not navigate — the committed ride wins (card#7343: the seat's r3 ruling, made true of the code at r3b): `server/public/js/lobby/ride-hold.js` puts a capture-phase `click` listener on `#lobby-building` that, while the lobby screen's `riding` says a ride is in flight, prevents the default action of a click inside a plate link, and keyboard Enter on a focused link arrives as that same `click` (`Tests\Feature\Lobby\TheCommittedRideWinsOverAPlateLinkTest` drives the module under `node` and reds a hold that is missing, in the bubble phase, prevents nothing, holds a link with no ride running, or holds a click that is on no plate link; `LobbyPageWiringTest` reds the page never wiring it, or wiring it over anything but the screen's `riding`). Arriving asks for the route and then ends the ride (the lobby screen's `returned()`), so a navigation the browser cancels leaves a lobby whose controls work — its plate links navigating again; a lobby the back-forward cache restores ends it too. Under `prefers-reduced-motion` the ride, the whole-building control and a focused plate's camera move cut. No ride, zoom or pan writes an animation-log row: the lobby reaches the log and the set by ONE path only — the page's bounded log from `wire/live-page.js`, handed to `lobby/lobby-screen.js`, which constructs the set drawing A17 alone for the sky (card#7343, 2026-09-30, below) — and no other module it loads can write a row or start anything through the set — held over the page's whole import graph from `lobby/main.js`: in each module's code, comments not read, every string-literal specifier after `from`, after a bare `import` and inside `import(` — single-quoted, double-quoted, or a backtick with no `${` — is followed when it starts `./` or `../`, and any other specifier (an absolute path, a URL, a bare name, a template with `${`, an `import(` of anything but one literal) is a defect the walk cannot follow, never one it skips (card#7343 r2-1). ⛔ **A plate's label is [§ 4.1](#41-the-lobby--the-building-summary)'s alone** (card#7343: one owner for the contract, replacing the copy this row used to carry). `server/public/js/lobby/building-scene.js`'s `buildingArt()` is the building as shapes — the roof with its sign; a storey under each plate, its wall, skirting, floorboards and slab and its elevator doors in the shaft at the plate's right — and the ground lobby, boxed on the scene's `extent`, which takes the roof (`ROOF_H`) above the top plate and the ground lobby (`GROUND_H`) under the bottom one, so the first framing and the whole-building control show both; `CAB` and `cabStyle()` stand the cab in its shaft at the plate the elevator is at, aligned from the column of plates the shaft and its doors serve (`shaftAt()`) rather than the extent's own edge, so the shaft never jogs off the storeys'. `server/public/js/lobby/main.js` paints them into one `<svg>`, the first row of `#lobby-floors` under the camera's one transform, hidden from assistive technology and never a pointer's target, and stands the plates' rows after it; a plate's label is [§ 4.1](#41-the-lobby--the-building-summary)'s. The roof sign's text carries no `textLength`/`lengthAdjust` and is sized to the reference's own proportions, scaled to this sign's own width; the outer frame stands inside the scene's `extent`, with the plates inset `PLATE_INSET` from it on both sides, so the whole-building fit never clips the frame and the frame itself peeks out as a margin around the plates. ⛔ **Scenery carrying no fact:** `buildingArt()` reads the scene's rects and no plate's key or fact, so two buildings of one height draw one building, and its only words are the roof sign's and the ground lobby's. ⛔ **The cab glides with the ride and only with it:** the ride sets the cab's glide to its own `glide_ms` before it draws the cab at its stop, and a CSS transition on the one cab element — kept across renders, which replace every other row of `#lobby-floors` — carries it there; arriving sets it back to none, so every other render cuts the cab, and under `prefers-reduced-motion` the ride's glide is none and the cab cuts. It is the ride's, and the ride is navigation: no [§ 6.2](#62-the-animation-table--the-closed-set) row, no animation-log row, nothing through the set, and the committed-ride hold above unchanged. `main.js` reads the viewer's `cab` through a THUNK (`livePage(() => screen.render(() => cab))`, called only after `lobby-screen.js`'s `render()` has finished its own awaits, right before `draw()`) so the drawn cab is never built from a stale read; `buildingModel()`'s `elevator.at` is computed from whatever `cab` is fed it, so a ride in flight or one that just arrived needs no special case. `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` drives `building-scene.js` under `node` and reds a storey drawn from its plate's key, a plate's name drawn in the scene, the roof or the ground lobby outside the extent, a plate off the building's left edge, a cab that always glides, one that never glides, one at the wrong plate, a shaft or door off its column, and a drawn `textLength`/`lengthAdjust`; `LobbyPageWiringTest` reds a cab gliding over a time of its own, a cab still gliding after the ride, and a page that does NOT read `cab` late through a thunk; `Tests\Feature\Lobby\TheBuildingDrawingKeepsItsElementTest` drives the drawing's construction, its keeping across a rebuild and its paint (`building-paint.js`) on a stand-in DOM, and `Tests\Feature\Lobby\TheDrawnCabNeverStalesTest` drives the thunk under `node` against the real `LobbyScreen`, `FleetClient` and `Building`, with a scripted layout fetch released either mid-ride or after `returned()` has already ended it. **The sky is drawn, and it is A17's** (the operator's ruling, card#7343, 2026-09-30, answer A, recorded at [§ 4.1](#41-the-lobby--the-building-summary)): `lobby/lobby-screen.js` holds the floor's own A17 driver (`floor/floor-layout.js`'s `RoomClock`) and constructs the animation set drawing A17 alone, over the page's log (`wire/live-page.js`, with [§ 12](#12-every-number-and-where-it-comes-from)'s retention); `lobby/building-scene.js`'s `surfaceStyle()` paints the drawing surface with the phase's sky, in the reference's dim treatment, stars at night, never with a transition, and each plate's WINDOWS carry the same time of day at full strength — the phase's gradient, stars and a moon at night, the sun at its height by day, dawn and dusk, the city's roofline lit by the phase — repainted when the phase steps, `unset` flat with none of it before the first heartbeat. ONE phase→paint table serves every sky on both pages: `floor/floor-layout.js`'s `SKY_PAINT`. `Tests\Feature\Floor\TheLobbySkyIsTheFloorsA17Test` holds it: the sky steps only on a heartbeat and freezes when the feed dies, one phase function, one A17 row per heartbeat and no other lobby row, A17 without motion under reduced motion, and the paint stepping between every phase the floor decides; `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`'s import-graph clause holds the lobby to that ONE path to the log and the set, and `LobbyPageWiringTest` holds `lobby/main.js` to naming it exactly twice. **The round-by-round record — every review finding, every rejected design and why, and how the present mechanism and contract were reached — is PR #252's**, not a design statement this row restates. | **[AT-D3-21](#at-d3-21-the-camera-moves-the-viewer-and-never-the-fleet)** **(building half)** |
 | 17 | ✅ landed 2026-10-04 (card#11144, PR #272 for the map's reservation, #273 for the client's read of it, #276 for the reporter's relayed role and #280 for the seating) — the **reserved desk**: a map reserves one desk for a role ([§ 10.3](#103-the-floor-map)), the reporter relays each seat's roster role ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), and [§ 3.2](#32-the-desk-slot-function)'s function seats the room's one seat relaying it there — empty and reserved with none, empty under [§ 9](#9-failure-paths-and-their-observables) F22's notice with two or more — with a change of the holder on a delta as [A16](#62-the-animation-table--the-closed-set) | [AT-D3-22](#at-d3-22-the-reserved-desk-seats-its-role-and-nobody-else), and [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) re-cut on the reserved default (its worked table and the REDs on the probe loop it names) |
-| 18 | card#9566 — the **elevator walk** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note): [A1](#62-the-animation-table--the-closed-set) and [A2](#62-the-animation-table--the-closed-set) re-keyed on § 7.1's *Desk* column as `desk/task-bubble.js`'s `NO_CHARACTER_STATES` ships it; ONE walker predicate — the render before drew a character at the desk — read from the desk render's previous-render conditions, gating A2's firing and A13's and A16's walker, with A13 and A16 written at `motion: false` where it fails; the desk awaiting its walker as a desk-render condition — no character, no bubble, no held render, the render at the walk's last frame entering it, and the `walking` literal in [§ 11](#11-acceptance-tests)'s precedence step (3) for an A16 mover; the scene's walk segment ended at the elevator's threshold for A1 and A2, and the door frames; the screen holding every multi-frame `edge` effect until its last frame with the geometry of the render that wrote it, superseding per seat, and dropping a seat's walk on a non-animating render that contradicts its end; the painter drawing a walker for every walking row — A1, A2, A13 and A16 — and the elevator's leaves from the walks in flight; the guarded copy of A1's and A2's Animation cells in `wire/animation-set.js` re-synced; [§ 12](#12-every-number-and-where-it-comes-from)'s *Walk speed* and *Elevator leaves* rows held equal to their code homes; and the code comments that still call the elevator scenery (`floor/scene.js`, `floor/painter.js`) corrected | [AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it), and the animation set's closed-set guard over A1's and A2's re-keyed predicates and § 11's precedence order with the `walking` step |
+| 18 | card#9566 — the **elevator walk** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note): [A1](#62-the-animation-table--the-closed-set) and [A2](#62-the-animation-table--the-closed-set) re-keyed on § 7.1's *Desk* column as `desk/task-bubble.js`'s `NO_CHARACTER_STATES` ships it, each excluding A13's condition, rows and log at the apply as today; the scene's walk segment ended at the elevator's threshold for A1 and A2, and the door frames; one generic holder of `edge` effects in flight across repaints, with the geometry and start instant of the render that wrote each; at most one walk per seat, cancelled by any render that touches the seat; the desk drawn as the empty chair under a walk, and the paint-only refresh at a walk's last frame; the painter drawing the A1 and A2 walker and the elevator's leaves from the walks in flight; the guarded copy of A1's and A2's Animation cells in `wire/animation-set.js` re-synced; [§ 12](#12-every-number-and-where-it-comes-from)'s *Walk speed* and *Elevator leaves* rows held equal to their code homes; and the code comments that still call the elevator scenery (`floor/scene.js`, `floor/painter.js`) corrected | [AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it), and the animation set's closed-set guard over A1's and A2's re-keyed predicates |
 
 **Three of these are hard requirements before anything downstream may treat this floor as honest:**
 **AT-D3-1** (no animation without its event — the operator's principle, made into a test),
