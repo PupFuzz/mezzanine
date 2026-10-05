@@ -28,8 +28,9 @@ use Illuminate\Validation\Rule;
  * ⭐ WHAT THE REVISION MODULE IS FOR, AND IT IS NOT BOOKKEEPING. § 6.11: the authored store took
  * away the four things version control gave a build artifact — a diff, a review, a revert and a
  * blame — and gives back three. This module is those three. ⚠ The fourth, REVIEW, is the one it
- * does not give back: "every authenticated user is an operator (card#9070), so no second person
- * stands between a save and the floor", and until the console PREVIEWS a document with the
+ * does not give back: "every account that can reach the console is an operator (the console's own
+ * rule, card#9070; card#9415 keeps observers out of it), so no second person stands between a save
+ * and the floor", and until the console PREVIEWS a document with the
  * floor's own renderer — which exists now (Appendix B step 7's layout and row 14's room drawing),
  * and which the console does not yet draw with — **restore is the only thing between a bad save
  * and every viewer.** That is why restore shipped in card#9208's slice and the preview did not.
@@ -62,9 +63,8 @@ use Illuminate\Validation\Rule;
  * card#9292). Both are the operator's to fix and both name what to do, so both come back on the
  * form they were submitted from.
  *
- * ⚠ NO `Authorize`/policy CALLS — card#9070's D3: every authenticated user is an operator, and
- * the authorization statement is the route group's middleware. `routes/admin.php` carries the
- * decision and the trigger that would void it.
+ * ⚠ NO `Authorize`/policy CALLS — the authorization statement is the route group's middleware,
+ * whose `can:operate` admits operators only (card#9415). `routes/admin.php` carries the decision.
  */
 class FloorController extends Controller
 {

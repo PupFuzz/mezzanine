@@ -38,20 +38,47 @@ use Illuminate\Support\Str;
  * verbatim into the operator's shell history. The password is either PROMPTED for (never echoed,
  * never in history) or GENERATED and printed exactly once, with that said out loud — the same
  * posture `mezzanine:feed-token:issue` takes for a token it can never show again.
+ *
+ * ⛔ `--role` DEFAULTS TO `observer`, THE SAFER TIER, AND IS REFUSED ON AN INSTALL WITH NO ACTIVE
+ * OPERATOR (card#9415). An observer cannot open the admin console, so creating one where nobody can
+ * would hand the operator an account that signs in and can administer nothing — the first account
+ * on a fresh deploy most of all. The refusal names `--role=operator` rather than quietly choosing it:
+ * which tier an account gets is the person's decision, and the default must not change under them.
+ * It needs no existing user to SATISFY it, so it never blocks the way back. `mezzanine:user:role`
+ * changes the role of an account that already exists.
  */
 class CreateUserCommand extends Command
 {
     protected $signature = 'mezzanine:user:create
-        {--name= : the operator\'s name}
+        {--name= : the person\'s name}
         {--email= : the address they sign in with}
-        {--generate : mint a password and print it ONCE instead of prompting for one}';
+        {--generate : mint a password and print it ONCE instead of prompting for one}
+        {--role=observer : observer (reads the floor) or operator (also the admin console)}';
 
-    protected $description = 'Create an operator account — the first one on a fresh deploy, and the way back from a lockout';
+    protected $description = 'Create a user account — the first operator on a fresh deploy, and the way back from a lockout';
 
     public function handle(): int
     {
         $name = trim((string) ($this->option('name') ?: $this->ask('Name') ?? ''));
         $email = UserProvisioning::canonicalEmail((string) ($this->option('email') ?: $this->ask('Email') ?? ''));
+        $role = (string) $this->option('role');
+
+        // ⛔ BEFORE THE PASSWORD PROMPT: neither refusal below depends on the password, and asking
+        // for one twice only to refuse the run would waste the operator's typing.
+        if (! in_array($role, User::ROLES, true)) {
+            $this->error(sprintf('--role must be one of: %s. Nothing was created.', implode(', ', User::ROLES)));
+
+            return self::INVALID;
+        }
+
+        if ($role !== User::OPERATOR && ! User::query()->active()->where('role', User::OPERATOR)->exists()) {
+            $this->error(
+                'This install has no active operator, and an observer cannot open the admin console, '
+                .'so nobody could administer it. Pass --role=operator. Nothing was created.'
+            );
+
+            return self::INVALID;
+        }
 
         $generated = (bool) $this->option('generate');
         $password = $generated ? Str::password(24) : $this->promptForPassword();
@@ -85,11 +112,12 @@ class CreateUserCommand extends Command
             return self::FAILURE;
         }
 
-        $user = UserProvisioning::create($name, $email, $password);
+        $user = UserProvisioning::create($name, $email, $password, $role);
 
         $this->newLine();
         $this->line(sprintf('  name        %s', $user->name));
         $this->line(sprintf('  email       %s', $user->email));
+        $this->line(sprintf('  role        %s', $user->role));
 
         if ($generated) {
             $this->newLine();

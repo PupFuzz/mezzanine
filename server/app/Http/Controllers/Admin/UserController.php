@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Admin\PasswordPolicy;
 use App\Admin\UserProvisioning;
 use App\Admin\UserRetirement;
+use App\Admin\UserRoles;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Contracts\View\View;
@@ -40,9 +41,10 @@ use Illuminate\Http\Request;
  * read-time guard for a write-site rule, which is the same shape the retired-account filter was
  * deliberately put in the PROVIDER rather than the login route to avoid.
  *
- * ⚠ NO `Authorize`/policy CALLS ANYWHERE IN THIS CLASS — D3: every authenticated user is an
- * operator, and the whole authorization statement is the route group's middleware.
- * `routes/admin.php` carries the decision and the trigger that would void it.
+ * ⚠ NO `Authorize`/policy CALLS ANYWHERE IN THIS CLASS — the whole authorization statement is the
+ * route group's `can:operate` (card#9415), stated in `routes/admin.php`. Only an operator reaches
+ * any action here; the role an action WRITES is `App\Admin\UserRoles`'s rule, including its refusal
+ * to demote the last active operator.
  */
 class UserController extends Controller
 {
@@ -67,7 +69,7 @@ class UserController extends Controller
 
     public function create(): View
     {
-        return view('console.users.create', ['active' => 'users']);
+        return view('console.users.create', ['active' => 'users', 'roles' => User::ROLES]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -77,17 +79,21 @@ class UserController extends Controller
         $validated = $request->validate(
             UserProvisioning::identityRules() + [
                 'password' => array_merge(['required', 'confirmed'], PasswordPolicy::rules()),
+                'role' => UserProvisioning::roleRules(),
             ]
         );
 
-        $user = UserProvisioning::create($validated['name'], $validated['email'], $validated['password']);
+        $user = UserProvisioning::create(
+            $validated['name'], $validated['email'], $validated['password'], $validated['role'],
+        );
 
         return redirect()
             ->route('admin.users.index')
             ->with('status', sprintf(
-                '%s created. They must complete second-factor enrolment on their first sign-in '
+                '%s created as %s. They must complete second-factor enrolment on their first sign-in '
                 .'before anything else is reachable.',
                 $user->email,
+                $user->isOperator() ? 'an operator' : 'an observer',
             ));
     }
 
@@ -97,7 +103,7 @@ class UserController extends Controller
             return $this->refuseRetired($user);
         }
 
-        return view('console.users.edit', ['active' => 'users', 'user' => $user]);
+        return view('console.users.edit', ['active' => 'users', 'user' => $user, 'roles' => User::ROLES]);
     }
 
     public function update(Request $request, User $user): RedirectResponse
@@ -121,10 +127,28 @@ class UserController extends Controller
         $validated = $request->validate(
             UserProvisioning::identityRules($user->getKey()) + [
                 'password' => array_merge(['nullable', 'confirmed'], PasswordPolicy::rules()),
+                'role' => UserProvisioning::roleRules(),
             ]
         );
 
+        // ⛔ THE ROLE FIRST, BECAUSE IT IS THE PART THAT CAN BE REFUSED. Demoting the last active
+        // operator is refused by `UserRoles::assign()`; written after the identity, that refusal
+        // would arrive with a new name, address or password already saved and report the whole
+        // form as refused. Written first, a refusal leaves the account exactly as it was.
+        if (UserRoles::assign($user, $validated['role']) === UserRoles::REFUSED_LAST_OPERATOR) {
+            return redirect()->route('admin.users.edit', $user)->withErrors([
+                'role' => 'Refused: '.$user->email.' is the last active operator. An observer cannot '
+                    .'reach this console, so demoting it would leave nobody able to administer this '
+                    .'install. Make another account an operator first, then change this one.',
+            ]);
+        }
+
         UserProvisioning::update($user, $validated['name'], $validated['email'], $validated['password'] ?? null);
+
+        // An operator who demoted themselves can no longer open the user list this would land on.
+        if ($request->user()->is($user) && ! $user->isOperator()) {
+            return redirect()->route('dashboard')->with('status', $user->email.' updated. You are now an observer.');
+        }
 
         return redirect()->route('admin.users.index')->with('status', $user->email.' updated.');
     }
@@ -178,13 +202,13 @@ class UserController extends Controller
             $validated['reason'],
         );
 
-        if ($outcome === UserRetirement::REFUSED_LAST_ACTIVE) {
+        if ($outcome === UserRetirement::REFUSED_LAST_OPERATOR) {
             return redirect()->route('admin.users.index')->withErrors([
-                'retire' => 'Refused: '.$user->email.' is the last account that can still sign in. '
-                    .'Retiring it would lock every operator out of this install — there is no '
-                    .'self-service registration and no password reset, so the only way back would '
-                    .'be shell access and `php artisan mezzanine:user:create`. Create the '
-                    .'replacement account first, then retire this one.',
+                'retire' => 'Refused: '.$user->email.' is the last active operator. Retiring it would '
+                    .'leave nobody able to administer this install — there is no self-service '
+                    .'registration and no password reset, so the only way back would be shell access '
+                    .'and `php artisan mezzanine:user:create --role=operator`. Make another account '
+                    .'an operator first, then retire this one.',
             ]);
         }
 

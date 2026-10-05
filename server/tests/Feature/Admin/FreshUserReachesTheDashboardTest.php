@@ -41,7 +41,7 @@ class FreshUserReachesTheDashboardTest extends TestCase
         // ── 1. the account exists because the operator ran the command, on an empty table ──
         $this->assertSame(0, User::query()->count());
 
-        $this->artisan('mezzanine:user:create', ['--name' => 'Fresh', '--email' => self::EMAIL])
+        $this->artisan('mezzanine:user:create', ['--role' => 'operator', '--name' => 'Fresh', '--email' => self::EMAIL])
             ->expectsQuestion('Password (not echoed)', self::PASSWORD)
             ->expectsQuestion('Confirm password', self::PASSWORD)
             ->assertExitCode(SymfonyCommand::SUCCESS);

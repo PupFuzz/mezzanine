@@ -6,7 +6,9 @@ use App\Auth\ActiveUserProvider;
 use App\Feed\MonotonicStreamClock;
 use App\Feed\StreamClock;
 use App\Floor\FurnitureBox;
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -49,5 +51,18 @@ class AppServiceProvider extends ServiceProvider
         Auth::provider('eloquent', function ($app, array $config) {
             return new ActiveUserProvider($app['hash'], $config['model']);
         });
+
+        /*
+         * ⛔ `operate` — card#9415's ONE authorization gate: the account is an operator, not an
+         * observer. Routes take it as the stock `can:operate` middleware — the admin console's group in
+         * `routes/web.php` does, and so does every per-desk write route that follows (card#9416's
+         * console link, card#9417's compose box) — and views as `@can('operate')`.
+         *
+         * It answers ONE question, the role. Who may sign in is `App\Auth\ActiveUserProvider`'s, the
+         * second factor is `mfa`'s, and which fleet a session may READ is
+         * `App\Http\Middleware\FleetReadGate`'s, which stays all-or-nothing (docs/design/FLEET-STATE.md
+         * § 14 item 7): an observer reads every install an operator does.
+         */
+        Gate::define('operate', fn (User $user): bool => $user->isOperator());
     }
 }
