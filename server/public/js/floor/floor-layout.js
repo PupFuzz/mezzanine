@@ -179,10 +179,11 @@ export function mapGrid(map) {
  * document order, bottom first, with § 10.3's `group` layers walked rather than returned: Tiled
  * nests layers, § 10.3's `layers[]` row holds every one of its rules to the layers inside a
  * `group`, and its `desks` row finds that layer at any depth — which is what the server's reader
- * (`App\Floor\FloorMap`) does at the write. Each entry carries what its
- * enclosing groups contribute — the summed `offsetx`/`offsety`, the multiplied `opacity`, and
- * whether it and every group above it are `visible` — so a reader decides which of those apply to
- * it rather than re-walking the tree.
+ * (`App\Floor\FloorMap`) does at the write. Each entry carries what it and its enclosing groups
+ * contribute — the summed `offsetx`/`offsety` (the layer's own included, which is the sum the
+ * server's `FloorMap::offset()` judges a desk at), the multiplied `opacity`, and whether it and
+ * every group above it are `visible` — so a reader decides which of those apply to it rather than
+ * re-walking the tree.
  *
  * ⛔ THE ONE WALK OF A MAP'S LAYER TREE ON THIS CLIENT. The tiles (`floor/scene.js`'s `mapTiles()`)
  * and the desk slots (`mapDesks()` below) both read it; a reader that looked at `map.layers` itself
@@ -221,14 +222,18 @@ export function mapLayers(map) {
 
 /**
  * § 10.3: the map's object layer named `desks` carries the slots, and `S` is their count in `id`
- * order. The objects' own `x`/`y` are where a desk is drawn inside the room, in the map's pixel
- * space, so slot *i*'s position on the FLOOR is this plus the room's `origin`.
+ * order. Each slot's `x`/`y` is where a desk is drawn inside the room, in the map's pixel space, so
+ * slot *i*'s position on the FLOOR is this plus the room's `origin`.
  *
  * ⛔ THE LAYER IS FOUND AT ANY DEPTH, through `mapLayers()`: a `desks` layer inside a `group` is the
  * one the server counted `S` from when it accepted the map, so it is the one this client seats.
- * The objects' own `x`/`y` are read as written — a layer's or a group's `offsetx`/`offsety` and its
- * `visible` move and hide no desk — because they are what the server's *wholly inside the grid*
- * check read at the write.
+ *
+ * ⛔ AND A SLOT SITS WHERE TILED SHOWS IT (card#11252, operator ruling 2026-10-04): the object's own
+ * `x`/`y` plus the offset `mapLayers()` summed for the layer — its own `offsetx`/`offsety` and every
+ * enclosing group's, the same sum the tiles are drawn at — so a group an author drags carries its
+ * desks with its furniture. It is the position the server's `App\Floor\FloorMap` judged at the
+ * write, *wholly inside the grid* included. A layer's or a group's `visible` still hides no desk,
+ * because the server counts `S` from the layer whatever its visibility.
  *
  * ⛔ THE LAYER NAME IS § 10.3's AND THE ORDER IS ITS `id` ORDER, not the document's array order:
  * Tiled writes objects in insertion order and an author who deletes and re-adds one can hand this
@@ -244,20 +249,21 @@ export function mapLayers(map) {
  * assignment is unchanged.
  */
 export function mapDesks(map) {
-    const desks = mapLayers(map)
-        .map((entry) => entry.layer)
-        .find((layer) => layer.type === 'objectgroup' && layer.name === 'desks');
+    const entry = mapLayers(map)
+        .find(({ layer }) => layer.type === 'objectgroup' && layer.name === 'desks');
 
-    if (desks === undefined || !Array.isArray(desks.objects)) {
+    if (entry === undefined || !Array.isArray(entry.layer.objects)) {
         return [];
     }
+
+    const { layer: desks, offset } = entry;
 
     return [...desks.objects]
         .sort((a, b) => (a?.id ?? 0) - (b?.id ?? 0))
         .map((object) => Object.freeze({
             id: object?.id ?? null,
-            x: object?.x ?? 0,
-            y: object?.y ?? 0,
+            x: offset.x + (object?.x ?? 0),
+            y: offset.y + (object?.y ?? 0),
             width: object?.width ?? 0,
             height: object?.height ?? 0,
             reserved_for: deskReservation(object),
