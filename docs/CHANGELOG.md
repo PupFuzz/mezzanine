@@ -27,6 +27,16 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#9416** — **An operator opens an agent's console from its desk.** The drill-down shows
+  **Open console on claude.ai**, opening in a new tab, to operators only. `fleet-reporter` reads the
+  session's console address from the tail of its transcript (at most 1 MiB back) and sends it as
+  `console_url` on every `turn.start` (D1 § 6.3), `null` when the bridge has ended or the seat's
+  `descriptors` key is not `full`; a value of any other shape is dropped and counted
+  `console_url_malformed`. The fold stores only a value matching D1's pattern, in the new
+  `sessions.console_url` column, and counts `console_url_refused` for the rest. The seat detail
+  response carries `detail.console_url` for a signed-in operator only — the member is absent for an
+  observer and for a machine token, and no seat object, snapshot or stream message carries it.
+  Seats send the link once their reporter is re-copied (`fleet-reporter/INSTALL-LINUX.md` Step 1).
 - **card#9446** — **Every time shows in the viewer's browser timezone.** The floor, the lobby and the
   console show each instant in the zone the viewer's own browser reports, through one converter
   (`public/js/wire/clock.js`). The floor's header now agrees with itself: the sweep and ingest stamps sit in

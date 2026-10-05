@@ -111,6 +111,16 @@ Stated so an implementer cannot widen scope in good faith. Each is a decision, n
 | **OpenTelemetry / a generic tracing pipeline** | Rejected deliberately: its defaults carry rich attributes — exactly what D-06 forbids — and it adds a collector to every seat to move ~500-byte events at ~6 requests/minute. |
 | **Log shipping** | The reporter's own log stays local. It is a diagnostic for the seat's owner, not a stream. |
 
+**One value is read out of a session's transcript, and it is admitted because it is not transcript
+content** (card#9416). [§ 6.3](#63-turnstart)'s `console_url` is the address of the session's console
+on claude.ai — a link into Anthropic's own product, reconstructed from the session's bridge identifier.
+It carries no prompt, no output, no tool argument and no file content, and it is admitted only in the
+one shape [§ 6.3](#63-turnstart)'s pattern allows: a value that fails the pattern is dropped at the
+reporter and counted, never sanitized into something sendable. What it costs is that the link opens the
+session's console to whoever holds it, so it reaches the store and goes no further than an operator
+([§ 6.3](#63-turnstart)'s `D2:` line), and a seat whose [`descriptors`](#31-the-seat-config-file) key is
+not `full` does not send it.
+
 ---
 
 ## 2. The producer — process model
@@ -321,7 +331,9 @@ sends**, for an installer who wants less on the wire than the sanitized label. `
 table. `"paths"` keeps the descriptors whose source is a file path or a path glob (`Read`, `Write`,
 `Edit`, `Glob`) and sends `null` for every other tool. `"none"` sends `null` for every tool, so the
 wire carries tool names and timing only. Under `"paths"` and `"none"` [§ 6.7](#67-subagentspawn)'s
-`title` is `null` too, because it is the dispatch's free text. Neither value changes
+`title` is `null` too, because it is the dispatch's free text. Under `"paths"` and `"none"`
+[§ 6.3](#63-turnstart)'s `console_url` is `null` too (card#9416): the key says how much a seat sends, and
+a seat that asked for less than the full label set did not ask for a link to its console either. Neither value changes
 `descriptor_allowlisted` ([§ 9.4](#94-the-predicate-constant-alarm)), which still reads whether the tool is
 on the allowlist. An unrecognised value is a config error: like every other, the flusher keeps
 spooling and sends nothing (`config_invalid`, [§ 9.3](#93-degradation-counters)), and the hooks build
@@ -1588,6 +1600,7 @@ session B is ever inferred from a hook belonging to session A.
 |---|---|---|---|---|---|
 | `prompt_chars` | int | UTF-16 code units | yes | 0…1,000,000 | `412` |
 | `project_label` | string | — | yes | ≤ 48 B; **same field, same rule as [§ 6.1](#61-sessionstart)** — `null` when cwd is the home directory | `"mezzanine"` |
+| `console_url` | string | — | **yes** | ≤ 95 B, and only a value matching `^https://claude\.ai/code/session_[A-Za-z0-9]{8,64}$` — the pattern's longest match is the bound. Read from the session's transcript, below; `null` when no record answers, when the bridge has ended, when the seat's [`descriptors`](#31-the-seat-config-file) key is not `full`, and from a reporter that predates it (card#9416) | `"https://claude.ai/code/session_01AbCdEfGhIjKlMnOpQrStUv"` |
 
 **The prompt text never transits** — only its length, which is a size, not content, and is what lets
 the floor distinguish a one-line nudge from a pasted brief. If review reads a character count as
@@ -1596,11 +1609,53 @@ content-adjacent, deleting the field is a compatible change.
 A `UserPromptSubmit` also resolves any attention request open in that session, because a human typing
 is a human present ([§ 6.13](#613-attentionresolved)).
 
+**`console_url` is the session's console on claude.ai, and it rides this event because it is a
+session fact that moves** (card#9416). The harness's bridge identifier changes within one session and
+ends with the bridge, so a carrier that fires once — [§ 6.1](#61-sessionstart) — would publish the
+first value forever, and fires before the transcript holds any; the heartbeat carries no session and
+is the flusher's, which never sees a `transcript_path`. Every turn re-reads it, so a changed or ended
+bridge reaches the desk with the next prompt.
+
+**Where it is read, and the basis for the shape.** No hook payload carries it. The reporter reads the
+file the payload's `transcript_path` names — the key every hook carries
+([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) — walking back from its end and taking the
+**newest** record that decides: a `{"type":"bridge-session","bridgeSessionId":"cse_<id>"}` record
+answers `https://claude.ai/code/session_<id>`, or `null` when its id is empty (the bridge ended); an
+`attachment` of type `remote_session_change` with a non-null `url` answers that url; one whose `url`
+is `null` decides nothing. ⚠ **This is a harness fact with no [§ 17](#17-appendix--the-captured-harness-payloads)
+capture behind it, so it is UNVERIFIED in that section's sense, and Anthropic documents the transcript
+as an internal format.** What it rests on is a read of this project's own seat's transcripts on
+2026-10-05, Claude Code 2.1.284 to 2.1.289: every transcript carried `bridge-session` records with a
+`cse_`-prefixed id, the id changed within a session, an empty id appeared where a bridge ended — most often as a
+transcript's last such record — and
+`remote_session_change.url` was `null` on the newest builds — while on every older record where both
+were present, the url was exactly the one the bridge id derives. **Cost if wrong:** the field is
+`null` and the desk offers no console link; a value of any other shape is dropped and counted
+(`console_url_malformed`, [§ 9.3](#93-degradation-counters)), so a harness that moved the record is
+visible on the heartbeat rather than a quiet absence. **Closed by** a capture of the record into
+[§ 17](#17-appendix--the-captured-harness-payloads) with ids replaced, under the same declined-raw-capture
+rule that section states.
+
+**The read is bounded, because a transcript runs to many MiB and this runs inside the 250 ms hook
+budget ([§ 2.2](#22-rules-that-protect-the-seat)).** It walks back 64 KiB at a time and stops after
+**1 MiB**; a tail that holds no deciding record is `null` and counted (`console_url_tail_exhausted`). 1 MiB
+is chosen above the largest gap between two `bridge-session` records the same 2026-10-05 read found
+(under 1 MiB), so a live bridge is always inside it; a gap that outgrows it costs one turn's link, and
+the counter says so. Every failure of the read — no transcript yet, an unreadable file, a torn last
+line — is `null`, never an error and never a non-zero exit.
+
+**D2:** store `console_url` against its session as of the session's newest `turn.start`, refuse at the
+fold a value the pattern above does not match, and publish it to an **operator** only — on the seat
+detail response, and never on the seat object, the snapshot or the stream, which every signed-in
+observer reads. The link opens a live session's console; who may follow it is the read plane's
+authorization question, and this document carries the value no further than the store.
+
 ```json
 { "event_id":"01K3TA2C3D4E5F6G7H8J9K0M1N","schema_version":1,"kind":"turn.start",
   "event_time":"2026-08-23T14:23:02.660Z","seq":48311,
   "install_id":"aimla","seat_id":"aimla-pm","session_id":"a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
-  "data":{"prompt_chars":412,"project_label":"mezzanine"} }
+  "data":{"prompt_chars":412,"project_label":"mezzanine",
+          "console_url":"https://claude.ai/code/session_01AbCdEfGhIjKlMnOpQrStUv"} }
 ```
 
 ### 6.4 `turn.end`
@@ -3690,6 +3745,8 @@ statusLine processes reach the flusher through the counter sink
 | `protocol_agent_name_unchecked` | the seat declares a protocol agent name and **no coordination roster was readable on this box** to check it against ([§ 3.1](#31-the-seat-config-file)) | informational, and the fleet-wide measurement of how much of the join rests on an unchecked declaration. **It raises no `degraded` member on purpose**: the state rides every heartbeat as `protocol_agent_name_check`, dated by `uptime_s` beside it, which is strictly more than a badge carries |
 | `protocol_agent_name_disagreed` | a roster **was** readable here and the declared name is not a member of it — the two identity surfaces disagree ([§ 3.1](#31-the-seat-config-file)) | the `selftest` check `protocol_agent_name_in_roster` **fails**, so the act fails visibly and `selftest` carries the failure on every heartbeat; the name is emitted exactly as declared and **resolves to no desk**. **It raises no `degraded` member, deliberately**: the reporter is not degraded — it is reporting a coordination-config defect correctly — and badging the seat's own health would name the wrong subject |
 | `project_label_home_suppressed` | a `cwd` equal to the home directory, whose basename is the OS username, so `project_label` was sent as `null` ([§ 6.1](#61-sessionstart)) | informational, and the record that the § 1 non-goal is enforced rather than merely stated. It also distinguishes this `null` from a `null` caused by an absent `cwd` |
+| `console_url_malformed` | a transcript record that decides [§ 6.3](#63-turnstart)'s `console_url` carried an id or url that fails the field's pattern, so `null` was sent | informational, and the observable for that row's UNVERIFIED basis: a non-zero here on real seats means the harness moved the record's shape and § 6.3 owes an edit |
+| `console_url_tail_exhausted` | [§ 6.3](#63-turnstart)'s read walked its whole 1 MiB tail of a larger transcript without finding a deciding record, so `null` was sent | informational; a rising share of turns means the bridge records have drifted further apart than the bound, which § 6.3 re-derives |
 | `statusline_suppressed` | sampling suppressions | informational; a *zero* here on an active seat means sampling is broken |
 | `negative_duration` | clock stepped mid-call | informational |
 | `wrapped_statusline_failures` | the wrapped status-line command failed | `degraded`; the seat's own UI is affected |
@@ -5457,6 +5514,8 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Typical event size | ~500 B | Derived from the field tables in [§ 6](#6-event-kinds) — the sizing input for spool, batch and rate limits | [§ 4.4](#44-size-caps-and-their-derivations) |
 | Descriptor cap | 200 B | Derived — three constraints agree: ~160 chars renderable, 5× the longest realistic command, keeps events ~500 B | [§ 7.4](#74-truncation) |
 | Title cap | 120 B | Chosen — ~18 English words; a dispatch description is 3–8 | [§ 7.4](#74-truncation) |
+| `console_url` bound | 95 B | Derived — the longest string § 6.3's pattern matches: the 31 B prefix `https://claude.ai/code/session_` plus 64 id characters | [§ 6.3](#63-turnstart) |
+| `console_url` transcript tail | 1 MiB, read back in 64 KiB steps | Chosen — above the largest gap between two bridge records a read of this seat's transcripts found on 2026-10-05; the step keeps the common case (a record in the last few KiB) to one small read inside the 250 ms hook budget | [§ 6.3](#63-turnstart) |
 | Busy-seat volume | ceiling **10,420 events/day ≈ 5.2 MB/day**; midpoint ~7,100/day ≈ 3.6 MB/day | **Estimate, not a measurement** — the sum of the kind table's per-kind ranges (1,440 heartbeats + ≤ 1,440 context samples + ≤ 6,000 tool events + ≤ 1,200 turn events + the rest). Sizing uses the ceiling. Re-derived from the first week of live data | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | statusLine sample cadence | 60 s | Derived — matches the heartbeat. Bounds the class at **≤ 1,440 cadence samples/session-day plus one per 5-point crossing**; deliberately *not* expressed as a multiple of the render rate, which is event-driven and burst-shaped, not a rate | [§ 6.11](#611-contextsample) |
 | statusLine bucket | 5 percentage points | Chosen — the resolution a human reads a gauge at | [§ 6.11](#611-contextsample) |

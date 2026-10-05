@@ -42,6 +42,14 @@ final class Wire
      */
     public const SESSION_ID = '[A-Za-z0-9._:-]{1,128}';
 
+    /**
+     * § 6.3's `console_url` (card#9416): the claude.ai address of a session's console, and nothing
+     * else. The ingest does NOT check it — § 12.1 step 10 refuses a published byte bound and no
+     * pattern — so the FOLD does, before the value can reach the store or a link
+     * (`App\Fold\Projector::turnStart()`): a value that fails it is stored as `NULL` and counted.
+     */
+    public const CONSOLE_URL = 'https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{8,64}';
+
     /** § 4.3 — `data` is kind-specific and ≤ 3 KiB serialized. */
     public const DATA_MAX_BYTES = 3072;
 

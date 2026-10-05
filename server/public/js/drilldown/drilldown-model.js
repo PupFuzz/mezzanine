@@ -275,6 +275,7 @@ export function drillDownModel(seat, timeline, options = {}) {
         reporter: reporterBlock(seat?.reporter ?? null, seat?.enabled ?? null, stamps.reporter),
         badges: badgeBlock(seat, detailFailed, missingDetail),
         session: sessionBlock(seat?.session ?? null, seat?.model_label ?? null, sc),
+        console: consoleBlock(seat?.detail ?? null),
         counters: countersBlock(seat, detailFailed, missingDetail, stamps.detail),
         raw: rawBlock(seat),
     };
@@ -806,6 +807,22 @@ function sessionBlock(session, modelLabel, sc) {
         harness_label: session.harness_label ?? null,
         model_label: modelLabel,
     };
+}
+
+/** § 4.3's **console** row: the link's visible text, which names where it goes. */
+export const OPEN_CONSOLE = 'Open console on claude.ai';
+
+/**
+ * § 4.3's **console** row (card#9416): the link to the seat's current session console, or `null` for
+ * NO LINE AT ALL. ⛔ WHO MAY SEE IT IS THE SERVER'S DECISION, NOT THIS MODULE'S: `detail.console_url`
+ * is on an operator's response alone (`docs/design/FLEET-STATE.md § 8.2.3`), so an observer's panel
+ * gets `undefined` here and draws nothing. An operator's `null` draws nothing too (§ 5.2), never a
+ * *no console* line: that line would make an operator's panel say what an observer's never can.
+ */
+function consoleBlock(detail) {
+    const url = detail?.console_url;
+
+    return typeof url === 'string' && url !== '' ? { url, text: OPEN_CONSOLE } : null;
 }
 
 /**

@@ -295,6 +295,9 @@ email and home-path shapes D1 § 7.3 lists (§ 7.3 also states the shapes it doe
 | `"paths"` | the file path for `Read`, `Write`, `Edit` and `Glob`; the tool name alone for everything else, and no subagent title |
 | `"none"` | the tool name alone, for every tool, and no subagent title |
 
+Under `"paths"` and `"none"` the seat also sends no console link (D1 § 6.3): an operator's drill-down
+offers **Open console on claude.ai** only for a seat on `"full"`.
+
 Any other value is a config error: `selftest`'s `config_readable` fails and the flusher sends nothing
 until the value is fixed. The events spooled meanwhile are built as under `"none"`. To change the value on an installed seat, rewrite the one key with
 the config's mode kept. This reads and writes the file without printing it:
@@ -788,6 +791,11 @@ processes, as Step 5 reports.
   roster entry's `role` beside the name. A seat running an older build sends no role, and the
   snapshot shows `protocol_agent_role: null`, until Step 1's artifact is replaced and Step 5's flusher
   restarted.
+- **The console link is sent only by a build that includes card#9416.** That build reads each
+  session's console address from its transcript and sends it on every `turn.start`. A seat running an
+  older build sends none, and an operator's drill-down offers no **Open console** link for it, until
+  Step 1's artifact is replaced. Every hook loads the reporter when it fires, so the next prompt
+  after the replacement carries the link; no flusher restart is needed for it.
 - **A seat installed from a build before card#9374 stays badged `epoch_reset`.** That build counted
   the first start's missing `state.json` as D1 § 11.4's state reset, so the first heartbeat carried
   `state_reset: 1`. On the sandbox the badge was still on heartbeat seq 10, eleven minutes later and
