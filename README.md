@@ -124,7 +124,7 @@ cd server
 composer install                                    # ← local only; a HOST installs --no-dev (below)
 cp .env.example .env && php artisan key:generate    # .env is never committed; then set DB_PASSWORD in it
 php artisan migrate
-php artisan mezzanine:user:create                   # ← the first account; nothing else creates one
+php artisan mezzanine:user:create --role=operator   # ← the first account; nothing else creates one
 php artisan test                                    # ← rebuilds mezzanine_test, never DB_DATABASE
 ```
 
@@ -167,9 +167,14 @@ first-run web page — so on a fresh deployment *nobody can sign in until this c
 the host*, and running it is part of standing the host up, not an optional extra.
 
 ```
-php artisan mezzanine:user:create                             # prompts for the password
-php artisan mezzanine:user:create --name=… --email=… --generate   # mints one, prints it ONCE
+php artisan mezzanine:user:create --role=operator             # prompts for the password
+php artisan mezzanine:user:create --role=operator --name=… --email=… --generate   # mints one, prints it ONCE
 ```
+
+**`--role` is `observer` unless you say otherwise** (card#9415). An observer signs in and sees the
+floor, the lobby and each desk's detail; an operator also opens the admin console. The first account
+must be an operator, and the command refuses to create an observer on an install with no active
+operator, naming `--role=operator`, because nobody could administer such an install.
 
 It takes **no `--password` option, deliberately**: an argument lands in argv, which is
 world-readable in `/proc` for the life of the process and is written verbatim into shell history.
@@ -177,14 +182,22 @@ Give the password at the prompt (never echoed), or use `--generate` and hand the
 over out of band — it is shown once and stored only as a hash.
 
 ⛔ **It is also the ONLY way back from a locked-out install**, which is why the console refuses to
-retire the last account that can still sign in. Retiring accounts is deliberately not a deletion
+retire or demote the last active operator. Retiring accounts is deliberately not a deletion
 — the whole row is kept: who the account was (its name and address), who retired it and why —
 and a retired account can no longer authenticate on any path. **A retired account is also no
 longer editable**, so its address can never be freed and handed to somebody else; if the person
 needs an account again, create one under a different address. If an install somehow reaches a
-state with no account that can sign in, there is no
+state with no operator that can sign in, there is no
 password reset and no registration page: shell access on the host
-and this command are the recovery.
+and these commands are the recovery. `mezzanine:user:create --role=operator` makes a new operator;
+`mezzanine:user:role` changes the role of an account that already exists:
+
+```
+php artisan mezzanine:user:role --email=… --role=operator   # or --role=observer
+```
+
+It refuses a retired account and an unknown address, and, like the console, it refuses to demote the
+last active operator.
 
 ### The authenticator entry's name
 
@@ -243,7 +256,8 @@ who does not want that property leaves `MAIL_MAILER` unconfigured and the path s
 
 ### The admin console
 
-`/admin`, behind the same session + second factor as the dashboard. It carries **users** (create,
+`/admin`, behind the same session + second factor as the dashboard, **for operators only** — an
+observer is refused it with a `403` and the dashboard does not link it (card#9415). It carries **users** (create,
 edit, retire), **agents** (read seat state, the `mezzanine:retire` operator act, and the
 **retired seats** record — a removed seat's desk goes from the floor immediately, so the console is
 where *who retired it, when and why* lives, `card#9078`), **floors** (each room's Tiled map: how
@@ -270,15 +284,20 @@ tile layers that differ and the desk count before and after — restores any one
 rather than by rewriting history, and exports any one as a file, which is the operator's own copy
 against a lost store. A removal is a revision too, so the map it removed is still there to restore,
 and a save that changes nothing is refused rather than recorded. ⚠ **What that does not give back is
-a review**: every authenticated user is an operator, so no second person stands between a save and
+a review**: any operator can save, and no second person stands between a save and
 every viewer, and until the floor's renderer can preview a document before it is saved the restore
 is what stands in its place.
 
-**Every account that can reach the console is an operator** — there are no roles, because this
-application has one class of user. ▶ **The trigger that reopens that decision, stated so it is a
-decision and not drift: the first time an account must exist that may NOT administer other
-accounts.** At that point the console's route group needs a real authorization layer;
-`server/routes/admin.php` carries the same trigger beside the middleware it would change.
+**An account is an observer or an operator** (card#9415). An observer reads everything the floor,
+the lobby, the drill-down and the fleet REST endpoints show, for every install; an operator also
+opens this console and, once they exist, the per-desk write controls. The console's **users** module
+shows each account's role and changes it. It refuses to make the last active operator an observer,
+and to retire it, because an install with no operator cannot be administered from the web; make
+another account an operator first. Every account that existed before this change is an operator.
+▶ This replaced card#9070's D3, "every authenticated user is an operator", whose stated trigger —
+the first time an account must exist that may NOT administer other accounts — fired on 2026-09-13
+with the operator's ruling on card#9415. `server/routes/admin.php` carries the same account beside
+the middleware.
 
 ⛔ **There is no "add an agent" and no "delete a user", and both absences are deliberate.** A seat
 exists because it *reported* (`docs/design/FLOOR.md § 3.4`); an account stops working by being

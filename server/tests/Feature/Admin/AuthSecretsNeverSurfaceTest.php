@@ -349,7 +349,7 @@ class AuthSecretsNeverSurfaceTest extends TestCase
      */
     public function test_the_command_never_prints_a_password_it_was_given(): void
     {
-        $this->artisan('mezzanine:user:create', ['--name' => 'Ops', '--email' => 'ops@example.com'])
+        $this->artisan('mezzanine:user:create', ['--role' => 'operator', '--name' => 'Ops', '--email' => 'ops@example.com'])
             ->expectsQuestion('Password (not echoed)', self::SECRET)
             ->expectsQuestion('Confirm password', 'a different value')
             ->doesntExpectOutputToContain(self::SECRET)
@@ -363,7 +363,7 @@ class AuthSecretsNeverSurfaceTest extends TestCase
         // Short enough to fail the policy, and distinctive enough that quoting it back would show.
         $tooShort = 'sh0rt-'.substr(self::SECRET, 0, 4);
 
-        $this->artisan('mezzanine:user:create', ['--name' => 'Ops', '--email' => 'ops@example.com'])
+        $this->artisan('mezzanine:user:create', ['--role' => 'operator', '--name' => 'Ops', '--email' => 'ops@example.com'])
             ->expectsQuestion('Password (not echoed)', $tooShort)
             ->expectsQuestion('Confirm password', $tooShort)
             ->doesntExpectOutputToContain($tooShort)

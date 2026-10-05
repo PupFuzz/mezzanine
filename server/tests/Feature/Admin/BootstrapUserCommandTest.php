@@ -32,7 +32,7 @@ class BootstrapUserCommandTest extends TestCase
     {
         $this->assertSame(0, User::query()->count(), 'the precondition: nobody exists');
 
-        $this->artisan('mezzanine:user:create', ['--name' => 'Ops', '--email' => 'ops@example.com'])
+        $this->artisan('mezzanine:user:create', ['--role' => 'operator', '--name' => 'Ops', '--email' => 'ops@example.com'])
             ->expectsQuestion('Password (not echoed)', self::PASSWORD)
             ->expectsQuestion('Confirm password', self::PASSWORD)
             ->assertExitCode(SymfonyCommand::SUCCESS);
@@ -55,14 +55,14 @@ class BootstrapUserCommandTest extends TestCase
      */
     public function test_running_it_twice_creates_one_account_and_refuses_the_second(): void
     {
-        $this->artisan('mezzanine:user:create', ['--name' => 'Ops', '--email' => 'ops@example.com'])
+        $this->artisan('mezzanine:user:create', ['--role' => 'operator', '--name' => 'Ops', '--email' => 'ops@example.com'])
             ->expectsQuestion('Password (not echoed)', self::PASSWORD)
             ->expectsQuestion('Confirm password', self::PASSWORD)
             ->assertExitCode(SymfonyCommand::SUCCESS);
 
         $first = User::query()->sole();
 
-        $this->artisan('mezzanine:user:create', ['--name' => 'Someone Else', '--email' => 'OPS@example.com'])
+        $this->artisan('mezzanine:user:create', ['--role' => 'operator', '--name' => 'Someone Else', '--email' => 'OPS@example.com'])
             ->expectsQuestion('Password (not echoed)', 'a different password entirely')
             ->expectsQuestion('Confirm password', 'a different password entirely')
             ->assertExitCode(SymfonyCommand::FAILURE);
@@ -86,7 +86,7 @@ class BootstrapUserCommandTest extends TestCase
         // against expectations and buffers nothing readable, and what has to be read here is the
         // literal text the operator sees.
         $exit = Artisan::call('mezzanine:user:create', [
-            '--name' => 'Ops', '--email' => 'ops@example.com', '--generate' => true,
+            '--name' => 'Ops', '--email' => 'ops@example.com', '--generate' => true, '--role' => 'operator',
         ]);
 
         $this->assertSame(SymfonyCommand::SUCCESS, $exit);
@@ -136,7 +136,7 @@ class BootstrapUserCommandTest extends TestCase
      */
     public function test_a_mixed_case_address_is_stored_canonically_and_still_signs_in(): void
     {
-        $this->artisan('mezzanine:user:create', ['--name' => 'Ops', '--email' => 'Ops@Example.COM'])
+        $this->artisan('mezzanine:user:create', ['--role' => 'operator', '--name' => 'Ops', '--email' => 'Ops@Example.COM'])
             ->expectsQuestion('Password (not echoed)', self::PASSWORD)
             ->expectsQuestion('Confirm password', self::PASSWORD)
             ->assertExitCode(SymfonyCommand::SUCCESS);
@@ -149,7 +149,7 @@ class BootstrapUserCommandTest extends TestCase
 
     public function test_mismatched_confirmation_creates_nothing(): void
     {
-        $this->artisan('mezzanine:user:create', ['--name' => 'Ops', '--email' => 'ops@example.com'])
+        $this->artisan('mezzanine:user:create', ['--role' => 'operator', '--name' => 'Ops', '--email' => 'ops@example.com'])
             ->expectsQuestion('Password (not echoed)', self::PASSWORD)
             ->expectsQuestion('Confirm password', self::PASSWORD.' but typed wrong')
             ->assertExitCode(SymfonyCommand::INVALID);
@@ -159,7 +159,7 @@ class BootstrapUserCommandTest extends TestCase
 
     public function test_a_password_under_the_policy_is_refused_and_creates_nothing(): void
     {
-        $this->artisan('mezzanine:user:create', ['--name' => 'Ops', '--email' => 'ops@example.com'])
+        $this->artisan('mezzanine:user:create', ['--role' => 'operator', '--name' => 'Ops', '--email' => 'ops@example.com'])
             ->expectsQuestion('Password (not echoed)', 'short')
             ->expectsQuestion('Confirm password', 'short')
             ->assertExitCode(SymfonyCommand::FAILURE);
