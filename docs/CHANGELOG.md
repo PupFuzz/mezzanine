@@ -27,6 +27,20 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11289** — **A desk shows the board card its seat is working on.** `php artisan mezzanine:board-poll`
+  runs every five minutes from the scheduler, reads each board in `BOARD_IDS` over HTTPS with the read-scoped
+  `BOARD_API_TOKEN`, and writes, for every seat mapped to a board user, the most recently updated card assigned
+  to that user (greatest `id` on a tie) into `seat_board_task` — or a row saying the board has no card for it.
+  The fold and the sweeper render that card as the desk's task title with `task.source: "board_card"` and
+  `task.ref: "card#N"`, and fall through to the telemetry title with `task.degraded: true` once a row is 30
+  minutes old. A poll that fails on any page of any board writes nothing, counts `board_poll_failed`, logs a
+  failure class with a status and a userinfo-redacted URL, and exits non-zero; a clean poll counts
+  `board_poll_ok`; with `BOARD_IDS` empty the job does nothing. `php artisan mezzanine:seat-board-user
+  --seat=<install>/<seat> --board-user=<id> | --clear` sets or clears a seat's board user and deletes its
+  board row in the same transaction, refuses a board user another seat holds, and refuses a retired seat.
+  Both counters are on `GET /api/fleet/health`. The three keys are in `server/.env.example`, empty.
+  `docs/design/BOARD-TASK.md` § 0, § 5, § 12 and § 13, `docs/PLAN.md` D4, D2 § 4.9, § 13 and § 14, D3 § 1.2 and the
+  README record the build.
 - **card#11144** — **The PM sits at the desk reserved for it.** `assignSlots()` in
   `server/public/js/floor/floor-layout.js` seats a room's one seat whose relayed `protocol_agent_role` equals
   the map's `reserved_for` at the reserved desk, and takes that desk before the probe loop whether or not
