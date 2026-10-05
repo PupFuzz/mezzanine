@@ -103,7 +103,7 @@ Stated so an implementer cannot widen scope in good faith. Each is a decision, n
 | **Any server → reporter channel** | The wire is one-way. No config push, no remote disable, no "run this". An ingest that can command seats is a fleet-wide remote-execution surface, and the dashboard gains nothing from it. Reporter configuration changes by editing the seat's config file. |
 | **Any dependency on the webhook bridge** | D-10: Mezzanine is an observer and stands alone. The reporter POSTs to Mezzanine directly; the bridge is neither in the path nor a fallback. **This binds the second producer too, and card #7897 says otherwise** — [§ 18.1](#181-two-corrections-this-section-carries-and-the-boundary-it-keeps) carries the correction and the evidence, including the measured fact that the bridge has no surface to consume in the first place. The bridge stays what it is here: **prior art**, re-derived at source, never a runtime dependency. |
 | **Any body text from a coordination post** | [§ 18.10](#1810-sanitization-at-the-coordination-producer). A coordination thread's body is human-written prose with no allowlist behind it, so exactly one free-text field is carried — the issue title, redacted and bounded — and a body is read only to compute predicates whose *results* transit. |
-| **PII beyond `install_id` / `seat_id`** | No prompt text, no file contents, no OS usernames, no hostnames, no email addresses, no IP addresses. Usernames leak through absolute paths, which is why [§ 7.3 rule 6](#73-redaction-rules-applied-in-this-order) rewrites them. |
+| **PII beyond `install_id` / `seat_id`** | No prompt text, no file contents, no OS usernames, no hostnames, no email addresses, no IP addresses. Usernames leak through absolute paths, which is why [§ 7.3 rule 6](#73-redaction-rules-applied-in-this-order) rewrites them; host names and IP addresses in descriptor text are replaced by [rule 9](#73-redaction-rules-applied-in-this-order), within the gap that rule states. |
 | **The storage schema, retention, and state model** | D2 (`docs/design/FLEET-STATE.md`). This doc says what arrives and what it *means*; D2 says what is kept. **Where D1 constrains D2, the marker sits on the obligation sentence itself, never merely somewhere in its section:** **`D2-MUST`** for the five numbered hard constraints ([§ 12.6](#126-the-five-d2-must-constraints)), and a **`D2:`** prefix — or a *constraining D2* note — for every other consumer-addressed obligation. A section-level marker was the earlier convention and it is why an obligation phrased *"a consumer must not …"* ([§ 6.2](#62-sessionend)) was walked past three times by the grep that found its neighbours: the section carried a marker, the rule did not. The whole set is greppable now, and `tools/design/verify-fleet-state.py` re-derives D2's obligation table against it. **Where this doc merely *cites* D2 — stating what D2 already contains, as evidence, imposing nothing — the citing sentence carries `D2-CITED:` on the same line as the reference.** It is the one form that *subtracts* a line from that gate, so it is fenced: an **unmarked** mention of D2 still fails (silence is never read as a citation), an obligation marker on the same line wins over it, and a `D2-CITED:` line must name the place in D2 it cites and must not state a rule — a sentence doing both gets split, because the citation form excuses nothing that constrains D2. |
 | **Anything rendered** | D3 (`docs/design/FLOOR.md`). |
 | **Human authentication** | Seat tokens authenticate machines. MFA gates the browser plane and never touches this endpoint (`docs/PLAN.md § 3`: "seat-token ingest is separate and never browser-facing"). |
@@ -312,8 +312,21 @@ Written once, at install time, by the installer. It is the **only** source of th
 | `ca_file` | string | **yes** | absolute path or `null` | `null` (set only for a sandbox host with a private CA) |
 | `proxy_url` | string | **yes** | absolute `https://`/`http://` proxy URL or `null` | `null` |
 | `wrapped_statusline` | string | **yes** | the seat's previously configured statusLine command, ≤ 512 B, or `null` | `"/home/agent/bin/my-statusline.sh"` |
+| `descriptors` | string | no — **absent** means `"full"` | `"full"`, `"paths"` or `"none"`; any other value is a config error, and the events spooled under it are built as under `"none"` | `"full"` |
 | `protocol_agent_name` | slug | **yes** | the **protocol agent name this seat declares itself to be** — the `slug` pattern and the byte bound [§ 18.6](#186-coordthread) gives such a name on the wire, pointed at rather than restated: a name this file could hold and no `coord.*` field could carry would join nothing. Absent or `null` when the seat declares none | `"pm"` |
 | `enabled` | bool | no | — | `true` |
+
+**`descriptors` is how much of [§ 7.1](#71-layer-1--the-descriptor-allowlist)'s allowlist the seat
+sends**, for an installer who wants less on the wire than the sanitized label. `"full"` is § 7.1's
+table. `"paths"` keeps the descriptors whose source is a file path or a path glob (`Read`, `Write`,
+`Edit`, `Glob`) and sends `null` for every other tool. `"none"` sends `null` for every tool, so the
+wire carries tool names and timing only. Under `"paths"` and `"none"` [§ 6.7](#67-subagentspawn)'s
+`title` is `null` too, because it is the dispatch's free text. Neither value changes
+`descriptor_allowlisted` ([§ 9.4](#94-the-predicate-constant-alarm)), which still reads whether the tool is
+on the allowlist. An unrecognised value is a config error: like every other, the flusher keeps
+spooling and sends nothing (`config_invalid`, [§ 9.3](#93-degradation-counters)), and the hooks build
+the events they spool meanwhile as under `"none"`. The key exists to send less, so the events spooled
+under a typo carry no more once it is fixed than the seat asked for.
 
 `enabled: false` is the **only** switch that stops emission, and it is explicit, local, and visible in
 the heartbeat's last transmission. There is no other kill switch and no environment variable that
@@ -1762,7 +1775,7 @@ sharing the same `call_id`.
 |---|---|---|---|---|---|
 | `call_id` | ULID | — | no | 26 chars, minted by the reporter | `"01K3TA4E5F6G7H8J9K0M1N2P3Q"` |
 | `tool_name` | string | — | no | ≤ 64 B, `^[A-Za-z0-9_.-]{1,64}$`, else the literal `"INVALID_TOOL_NAME"` and `invalid_tool_name` is incremented | `"Bash"` |
-| `descriptor` | string | — | **yes** | ≤ 200 B, sanitized ([§ 7](#7-sanitization-at-the-reporter)); `null` when the tool is not on the descriptor allowlist | `"Bash: composer test"` |
+| `descriptor` | string | — | **yes** | ≤ 200 B, sanitized ([§ 7](#7-sanitization-at-the-reporter)); `null` when the tool is not on the descriptor allowlist, or when the seat's [`descriptors`](#31-the-seat-config-file) key leaves it out | `"Bash: composer test"` |
 | `descriptor_truncated` | bool | — | no | — | `false` |
 | `agent_scope` | enum | — | **yes** | `main` \| `subagent` \| `null` | `"main"` |
 | `parent_call_id` | ULID | — | **yes** | the `call_id` of the dispatch call this call runs inside; `null` in the main agent or when the binding is unresolved | `null` |
@@ -1998,7 +2011,7 @@ sending instead of this document guessing again.
 | `data` field | Type | Units | Null? | Bounds | Example |
 |---|---|---|---|---|---|
 | `call_id` | ULID | — | no | 26 chars, equals the Task `tool.start`'s | `"01K3TA6G7H8J9K0M1N2P3Q4R5T"` |
-| `title` | string | — | **yes** | ≤ 120 B, sanitized, from `tool_input.description`; `null` if the payload has no description | `"draft the D1 event schema"` |
+| `title` | string | — | **yes** | ≤ 120 B, sanitized, from `tool_input.description`; `null` if the payload has no description, or when the seat's [`descriptors`](#31-the-seat-config-file) key is `"paths"` or `"none"` | `"draft the D1 event schema"` |
 | `title_truncated` | bool | — | no | — | `false` |
 | `subagent_type` | string | — | yes | ≤ 32 B, `^[A-Za-z0-9_-]+$` | `"coder"` |
 
@@ -2768,7 +2781,7 @@ tool. A tool not in this table contributes **no descriptor at all** (`descriptor
 | `Glob` | `tool_input.pattern` | `Glob: <pattern>` | `Glob: **/*.php` |
 | `Grep` | `tool_input.pattern` | `Grep: <pattern>` | `Grep: schema_version` |
 | `Agent`, `Task` | `tool_input.description` | `<tool_name>: <description>` | `Agent: draft the D1 event schema` |
-| `WebFetch` | `tool_input.url`, **scheme + host only** | `WebFetch: <scheme>://<host>` | `WebFetch: https://docs.anthropic.com` |
+| `WebFetch` | `tool_input.url`, **scheme + host only** | `WebFetch: <scheme>://<host>`, the host then replaced by [rule 9](#73-redaction-rules-applied-in-this-order) | `WebFetch: https://‹redacted:host›` |
 | `WebSearch` | `tool_input.query` | `WebSearch: <query>` | `WebSearch: laravel reverb auth` |
 | `TodoWrite` | *(none)* | `TodoWrite` | `TodoWrite` |
 | anything else, **including every `mcp__*` tool** | *(none)* | `null` | `null` |
@@ -2786,6 +2799,11 @@ to keep them that way.
 **This is the property to test.** AT-2 fixture 8 feeds an unknown tool an input named `password` and
 asserts `descriptor == null`, proving the allowlist and not the regexes is what stops it.
 
+**A seat can send less than this table.** The [`descriptors`](#31-the-seat-config-file) config key
+narrows it to the path-valued rows (`"paths"`) or to nothing (`"none"`). Under `"full"`, the free-text
+rows (`Agent`/`Task` descriptions, `Grep` patterns, `WebSearch` queries, a `git commit -m` message on
+a `Bash` first line) keep flowing, and every rule of § 7.3 runs over them as over a command.
+
 ### 7.2 Layer 2 — redaction of the allowlisted text
 
 The allowlisted fields can themselves contain secrets — `curl -H "Authorization: Bearer sk-…"` is an
@@ -2795,7 +2813,9 @@ allowlisted `Bash` command. So the candidate descriptor passes a redaction pass 
 or across that marker; a candidate match overlapping a locked span is discarded. Without this the
 output depends on rule interaction order in ways nobody can predict, and the fixtures below would not
 be deterministic. The rule is load-bearing in fixtures 1 and 3, where it is the only reason a
-credential keyword next to an already-redacted value does not redact the marker itself.
+credential keyword next to an already-redacted value does not redact the marker itself, and in fixture
+4, where the email span it locks is the only reason rule 9 does not also read the address's domain as
+a host.
 
 ### 7.3 Redaction rules, applied in this order
 
@@ -2807,13 +2827,13 @@ before it could be shortened to something a human can read.
 |---|---|---|---|
 | 1 | URL userinfo | `(\w+://)[^/\s:@]+:[^/\s@]+@` | `$1‹redacted›@` |
 | 2 | Env-expansion **defaults** | `\$\{(\w+):([-=?+])([^}]*)\}` | `${$1:$2‹redacted›}` — the operator is **kept verbatim**, so `${V:=x}` and `${V:?x}` are not relabelled as `${V:-…}` |
-| 3 | Known-prefix credentials | `\b(gh[pousr]_\|github_pat_\|sk-\|sk_live_\|sk_test_\|xox[abposr]-\|AKIA\|ASIA\|glpat-\|AIza\|mzn_\|mzr_)[A-Za-z0-9_\-]{8,}` | `‹redacted:token›` |
-| 4 | Credential **keyword** + its value, separated by `=`, `:` **or whitespace** | `(?i)(?<![\w-])((?:-{1,2}\|[A-Za-z0-9]{0,24}[_-])?(?:pass(?:word)?\|secret\|token\|api[_-]?key\|auth\|bearer\|credential))(?![A-Za-z])(\s*[:=]\s*\|\s+)(\S+)` | `$1$2‹redacted›` — keyword and separator kept verbatim |
+| 3 | Known-prefix credentials, **JWTs included** | `\b(?:(?:gh[pousr]_\|github_pat_\|sk-\|sk_live_\|sk_test_\|rk_live_\|rk_test_\|whsec_\|xox[abposr]-\|AKIA\|ASIA\|glpat-\|AIza\|hv[sb]\.\|ya29\.\|dop_v1_\|shpat_\|pypi-AgEIcHlwaS5vcmc\|mzn_\|mzr_)[A-Za-z0-9_\-]{8,}\|npm_[A-Za-z0-9]{30,}\|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}\|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]*)` — one list, which the reporter's log sink also runs | `‹redacted:token›` |
+| 4 | Credential **keyword** + its value, in three passes. **4a** — the value of an `Authorization:`, `Proxy-Authorization:`, `Cookie:` or `Set-Cookie:` header, to the next quote or the end of the line, keeping a scheme word (`Basic`, `Bearer`, `Token`, `Digest`, `Negotiate`, `NTLM`). **4b** — the value of a name that is a bare keyword word, separated by `=`, `:` **or whitespace** (`password hunter2`); of a **flag** whose name **contains** `pass`, `pwd`, `pw`, `secret`, `token`, `key`, `auth`, `credential` or `cookie`, separated by `=` or whitespace (`--db-pass x`, `-storepass x`); and of an **assignment** whose name contains one, separated by `=` or `:` only (`PGPASSWORD=x`, `X-Api-Key: x`). A quoted value is taken whole. **4d** — a **quoted key** carrying one of those name parts, closed by its own quote (optionally backslash-escaped) before `:` — a JSON or Python-dict body, `{"password":"x"}`, `{'token': 'x'}` — has its value replaced, the value's quotes kept. **4c** — every `name=` value after `vault write` / `vault kv put` / `vault kv patch` | 4a: `(?i)\b((?:proxy-)?authorization\s*:\s*(?:(?:basic\|bearer\|token\|digest\|negotiate\|ntlm)\s+)?\|(?:set-)?cookie\s*:\s*)([^"'\r\n]+)`. 4b: the legacy keyword-word pattern `(?:-{1,2}\|[A-Za-z0-9]{0,24}[_-])?(?:pass(?:word)?\|secret\|token\|api[_-]?key\|auth\|bearer\|credential)(?![A-Za-z])`, or a name `[A-Za-z0-9_.-]*?(?:pass\|pwd\|pw\|secret\|token\|key\|auth\|credential\|cookie)[A-Za-z0-9_.-]*` with or without a leading `-`/`--`, never at a 4a header name | the name, separator and any 4a scheme word kept verbatim, then `‹redacted›` |
 | 5 | Credential **flags**, glued or separated: `--user` `--password` `--token` `--secret`, and `-u` / `-p` (case-insensitively, so `-P` too) | `(?i)(?<![\w-])(--(?:user\|password\|token\|secret)(\s*[:=]\s*\|\s+)\|-[up](\s*[:=]?\s*))(\S+)` | flag + separator verbatim, then `‹redacted›` |
 | 6 | Home and long paths | `/home/<u>/`, `/Users/<u>/`, `C:\Users\<u>\` → `~/`; then a **path token** (one starting at a whitespace or quote boundary with `/`, `~/`, `./` or `X:\`) with > 4 segments keeps its **root prefix** + `…` + the last 2 segments. The root prefix is `~`, `.`, `X:` or — for an absolute non-home path — the **empty string before the leading `/`**, never the first named directory | `~/…/design/EVENT-SCHEMA.md`; `/var/www/app/Http/X.php` → `/…/Http/X.php` |
-| 7 | Long opaque blobs | `[A-Za-z0-9+/]{32,}={0,2}` and `\b[0-9a-f]{24,}\b` | `‹redacted:blob›` |
+| 7 | Long opaque blobs | `[A-Za-z0-9+/]{32,}={0,2}` and `\b[0-9a-f]{24,}\b`; then a run `[A-Za-z0-9_-]{32,}` that holds an upper-case letter, a lower-case letter **and** a digit | `‹redacted:blob›` |
 | 8 | Email addresses | `[\w.+-]+@[\w-]+\.[\w.-]+` | `‹redacted:email›` |
-| 9 | IPv4 literals | `\b(\d{1,3}\.){3}\d{1,3}\b` (valid octets) | `‹redacted:ip›` |
+| 9 | Network addresses: IPv4 literals, IPv6 literals, then host names | IPv4: `\b(\d{1,3}\.){3}\d{1,3}\b` (valid octets). IPv6: a bracketed literal (brackets kept), a bare eight-group form, and a bare compressed `::` form of at least three groups. Hosts: the host of a URL, whatever its shape (after `://`, after a password-less user's `@`, which keeps the user, or after rule 1's `‹redacted›@`); and, anywhere, a dotted name whose last label is in the reporter's curated TLD set (`HOST_TLDS`: common generic and country TLDs plus `internal`, `local`, `lan`, `corp`…, minus every TLD that is also a common file extension or code member — `.sh`, `.py`, `.md`, `.info`, `.app`…), starting at the head of a dotted run and not followed by another label | `‹redacted:ip›`; `‹redacted:host›` |
 | 10 | ANSI escape sequences | `\x1b\[[0-9;]*[A-Za-z]` and `\x1b][^\x07\x1b]*(\x07\|\x1b\\)` | removed entirely |
 | 11 | Control characters | `[\x00-\x1F\x7F]` including newline, tab, and any surviving ESC | single space |
 | 12 | Whitespace collapse | ` {2,}` | single space, then trim |
@@ -2846,7 +2866,7 @@ would delete the control that redacts `deploy --password hunter2 --host db1`, wh
 | Profile | Caller | Difference from the table above |
 |---|---|---|
 | `descriptor` | [§ 7.1](#71-layer-1--the-descriptor-allowlist)'s allowlisted tool inputs | none — it **is** the table above |
-| `coord.subject` | [§ 18.10](#1810-sanitization-at-the-coordination-producer)'s issue-title subject | **rule 4 requires an explicit `:` or `=` separator**; its bare-whitespace alternative does not run. Every other rule, and the order, are identical |
+| `coord.subject` | [§ 18.10](#1810-sanitization-at-the-coordination-producer)'s issue-title subject | **rule 4 requires an explicit `:` or `=` separator**; its bare-whitespace alternatives (4b's keyword words and flags) do not run. Every other rule, and the order, are identical |
 
 **One rule, because one rule is what the measurement supports.** Re-run over the same 728 titles with
 rule 4 so narrowed: **5 titles (0.7%) still take a redaction — a 10× reduction from one change** — and
@@ -2878,13 +2898,17 @@ readings disagree and whose fixtures exercise only one is an unstated default
 
 **A stated gap in rule 7, with its backstop.** The blob class `[A-Za-z0-9+/]` excludes `-` and `_`, so
 a **base64url** secret (which uses exactly those two characters) is split into runs shorter than 32
-and can survive rule 7. Rule 3's known prefixes are the backstop for the credentials that matter most
+and can survive the first two patterns. The third pattern (card#11292) takes a 32-character
+base64url run when it mixes upper case, lower case and digits, which is what a generated token does
+and a hyphenated identifier does not; a base64url secret of one case, or with no digit, still
+survives it. Rule 3's known prefixes are the backstop for the credentials that matter most
 — including this project's own `mzn_` seat tokens and the `mzr_` fleet-read tokens minted by
 [`FLEET-STATE.md § 9`](FLEET-STATE.md#9-read-side-authentication) — and rules 4 and 5 catch the
 shapes where such a
-value sits next to a credential keyword or flag. Widening rule 7's class to include `-` and `_` was
+value sits next to a credential keyword or flag. Widening rule 7's class to include `-` and `_` **unconditionally** was
 considered and rejected: it would eat ordinary long flag strings and hyphenated identifiers, and a
-descriptor made of `‹redacted:blob›` answers nothing. The residual is named here rather than papered
+descriptor made of `‹redacted:blob›` answers nothing. The mixed-class condition is what lets the
+third pattern take those characters without that cost. The residual is named here rather than papered
 over.
 
 **Rule 2 is here because of a measured incident in this fleet:** `${VAR:-fallback}` prints the
@@ -2894,6 +2918,47 @@ The reporter never expands a variable — it is reading text, not running a shel
 
 **Rule 6 is a PII rule as much as a length rule** — an absolute path carries the OS username, which
 [§ 1](#1-non-goals) excludes from the wire.
+
+**Rule 4 matches a keyword INSIDE a name since card#11292, and its false positives are the same
+trade as rule 5's.** The shapes it was widened for were each measured passing whole: `PGPASSWORD=`,
+`MYSQL_PWD=`, `SECRET_KEY=`, `STRIPE_KEY=`, `--db-pass x`, an `Authorization: Basic …` header, a
+`Cookie:` header, and `vault write secret/x value=…`. A name merely containing a keyword now loses its
+value too — `git log --author=alice` reads `--author=‹redacted›` and `max_tokens = 4096` reads
+`max_tokens = ‹redacted›` — and that is accepted for the reason rule 5 states. The **whitespace**
+separator is kept to the bare keyword words and to flags: a name that only contains `key` or `pass`
+and is followed by a space is English (`keyboard handler`), not argv.
+
+**Rule 9 is a PII rule: [§ 1](#1-non-goals) excludes host names from the wire, and descriptors carried
+them until card#11292.** It decides what a host is by shape, because a host name and a file name are
+both dotted words and the last label is the only thing that separates `db01.internal.example.com` from
+`setup.py`. So the TLD set is curated, and two gaps are stated rather than closed: a **single-label**
+host outside a URL (`ssh db1`, `psql -h db`) is indistinguishable from any other word and passes, and
+so does a host under a TLD the set excludes or does not list. A dotted word under a listed TLD that is
+not a host is replaced anyway (`socket.io`), the same direction of error as rules 5, 7 and 9's
+others. **Rule 9 replaces the host a `WebFetch` descriptor exists to carry**, so under § 7.1 that
+descriptor now says that the agent fetched over `https`, and not from where: the host is exactly the
+datum § 1 excludes, and a public documentation site and an internal one cannot be told apart by
+shape.
+
+**Shapes rules 1–9 do not catch, stated rather than implied covered** (card#11292's review). Each is
+a credential with no keyword, prefix or entropy signal the rules key on, or a split the one-token
+value cannot follow:
+- **a single-letter flag with no keyword**: `-a <secret>` (`redis-cli`), `-k <secret>`, `htpasswd -b <file>
+  <user> <secret>` — rule 5 covers only `-u` and `-p`;
+- **a quoted secret containing a space or an escaped quote** after `-p`, `-u` or `=`: the value is one
+  token, or a quoted string ended at its first matching quote, so the tail after the space or the
+  escaped quote passes (`--password="two words"` is taken whole; `-p"two words"` is not);
+- **a query parameter whose name has no keyword**: `?sig=…`, `?X-Amz-Signature=…`;
+- **prose that separates the keyword from the secret**: `set the password to <secret>`;
+- **a secret on stdin or in a file**: `echo <secret> | docker login --password-stdin` passes the
+  echoed value unless another rule takes it by shape;
+- **a two-group compressed IPv6** (`fe80::1`) and a **single-label host outside a URL** (`ssh db1`).
+
+**A pre-existing slow path, found by card#11292 and not fixed by it.** Rules 1 and 8 backtrack on
+long runs of dotted or alphanumeric tokens: one 16 KB first line of `a.a.a…` takes about 1 s to
+sanitize on the sandbox host (the same on the code before card#11292), which is past P-5's 250 ms
+budget for that one hook. A Bash first line of that shape and length is not an ordinary command;
+the figure is recorded so the next change to rule 1 or 8 can measure against it.
 
 **Rule 10 is not cosmetic.** A descriptor is written to a local log, a quarantine file and an
 operator's terminal; an ESC sequence that survives into any of them is a terminal-control injection,
@@ -2925,10 +2990,14 @@ spool and batch arithmetic in [§ 14](#14-every-number-and-where-it-comes-from) 
 
 These are unit tests over the sanitizer function, run in CI on both platforms. **They must be seen to
 fail before they are trusted** ([`docs/PLAN.md § 2`](../PLAN.md#2-design-first-gates--the-order-is-the-plan)):
-replace the sanitizer body with `s => s` and the table must go RED — **every fixture but 14**, whose
-required output on this profile *is* its input, so identity is the one substitution it cannot
+replace the sanitizer body with `s => s` and the table must go RED — **every fixture but 8, 14, 33,
+40 and 46**. 8 is stopped by the allowlist before the sanitizer runs, and its RED removes the allowlist. 14's
+required output on its profile *is* its input, so identity is the one substitution it cannot
 discriminate; [AT-2](#at-2-sanitizer-red-fixtures)'s fourth RED is the one that goes red on it, and
-that is why the profile has a RED of its own rather than riding this one. A fixture set that only
+that is why the profile has a RED of its own rather than riding this one. 33, 40 and 46 are the same shape on
+the descriptor profile: over-redaction pins whose required output is their input, each red under its
+own loosening (rule 9's TLD set, rule 4b's separators, rule 9's IPv6 group floor) rather than under
+identity. A fixture set that only
 ever passes proves nothing about the sanitizer; it proves the harness runs.
 
 **Every fixture is produced by tracing [§ 7.3](#73-redaction-rules-applied-in-this-order) in order**,
@@ -2941,8 +3010,8 @@ a re-read.
 
 | # | Input (**caller**, raw allowlisted value) | Rules that fire, in order | Required output |
 |---|---|---|---|
-| 1 | `Bash`, `curl -H "Authorization: Bearer ghp_ABCDEF1234567890abcdef1234" https://api.github.com/user` | 3 (rule 4's candidate `Bearer ‹…›` overlaps the lock and is discarded) | `Bash: curl -H "Authorization: Bearer ‹redacted:token›" https://api.github.com/user` |
-| 2 | `Bash`, `psql "postgres://mez:s3cr3t-pw@db.example.com:5432/mezz" -c '\dt'` | 1 | `Bash: psql "postgres://‹redacted›@db.example.com:5432/mezz" -c '\dt'` |
+| 1 | `Bash`, `curl -H "Authorization: Bearer ghp_ABCDEF1234567890abcdef1234" https://api.github.com/user` | 3, 9 (rule 4a's header candidate and 4b's `Bearer ‹…›` both overlap the lock and are discarded; rule 9 takes the URL's host) | `Bash: curl -H "Authorization: Bearer ‹redacted:token›" https://‹redacted:host›/user` |
+| 2 | `Bash`, `psql "postgres://mez:s3cr3t-pw@db.example.com:5432/mezz" -c '\dt'` | 1, 9 (the host after rule 1's marker) | `Bash: psql "postgres://‹redacted›@‹redacted:host›:5432/mezz" -c '\dt'` |
 | 3 | `Bash`, `echo "${STRIPE_SECRET:-sk_live_51H8xYzAbCdEfGhIj}" > /tmp/k` | 2 (rules 3 and 4 then overlap the lock and are discarded) | `Bash: echo "${STRIPE_SECRET:-‹redacted›}" > /tmp/k` |
 | 4 | `Bash`, `deploy --host 203.0.113.47 --notify ops@example.org` | 8, 9 | `Bash: deploy --host ‹redacted:ip› --notify ‹redacted:email›` |
 | 5 | `Read`, `/home/aimlapm/projects/mezzanine/app/Http/Controllers/IngestController.php` | 6 (then rule 7 finds no run ≥ 32: `Controllers/IngestController` is 28) | `Read: ~/…/Controllers/IngestController.php` |
@@ -2950,7 +3019,7 @@ a re-read.
 | 7 | `Bash`, the literal string `echo ` followed by `"` then the 2-byte `é` repeated 300 times then `"` — 611 bytes, no other rule's pattern present, and a character boundary that straddles byte 197 | 14 | exactly 200 bytes; valid UTF-8; ends with `…` (U+2026); the final `é` is whole, never a lone `0xC3`; `descriptor_truncated == true` |
 | 8 | `mcp__vault__read`, `{"password":"hunter2","path":"/prod/db"}` | *(none — layer 1 refuses the tool)* | `descriptor == null`, `tool_name == "mcp__vault__read"`, and the string `hunter2` appears nowhere in the emitted event |
 | 9 | `Bash`, `deploy --password hunter2 --host db1` | 4 | `Bash: deploy --password ‹redacted› --host db1` |
-| 10 | `Bash`, `curl -u admin:s3cr3t https://api.example.org/v1/ping` | 5 | `Bash: curl -u ‹redacted› https://api.example.org/v1/ping` |
+| 10 | `Bash`, `curl -u admin:s3cr3t https://api.example.org/v1/ping` | 5, 9 | `Bash: curl -u ‹redacted› https://‹redacted:host›/v1/ping` |
 | 11 | `Bash`, `mysql -pS3cr3tP@ss -h db1 mezz` | 5 (glued, empty separator; rule 8's `@` then overlaps the lock) | `Bash: mysql -p‹redacted› -h db1 mezz` |
 | 12 | `Read`, `/var/www/app/Http/Controllers/HealthController.php` — an absolute path **outside** any home directory, 6 segments | 6 (then rule 7 finds no run ≥ 32: `Controllers/HealthController` is 28) | `Read: /…/Controllers/HealthController.php` — the retained head is the empty root, **not** `/var` |
 | 13 | `Read`, `/opt/verylongdirectoryname/application.php` — 3 segments, so rule 6 does not shorten it | 7 (the 37-character run `opt/verylongdirectoryname/application`) | `Read: /‹redacted:blob›.php` — the acknowledged rule-7 false positive, pinned |
@@ -2958,6 +3027,35 @@ a re-read.
 | 15 | `coord.subject`, `rotate password: hunter2 before the cutover` | 4 (the explicit `:` separator, which this profile keeps) | `rotate password: ‹redacted› before the cutover` — narrowing rule 4 gives up the prose false positives and **not** the credential shape |
 | 16 | `coord.subject`, `the ghp_ABCDEF1234567890abcdef token is live in env` | 3 | `the ‹redacted:token› token is live in env` — rule 3 is unchanged by the profile and is the backstop for a pasted literal |
 | 17 | `coord.subject`, `CustomerProvisionRedriveSweepTest reads the arming flag from ambient env` — a span taken **verbatim** from a real title in the measured corpus | 7 (the 33-character run `CustomerProvisionRedriveSweepTest`) | `‹redacted:blob› reads the arming flag from ambient env` — the rule-7 false positive is **retained** on titles and pinned here, so a later decision to drop it has to change a test rather than a sentence |
+| 18 | `Bash`, `PGPASSWORD=hunter2 psql -h db mezz` | 4 (4b, an assignment whose name contains `pass`) | `Bash: PGPASSWORD=‹redacted› psql -h db mezz` — and `db`, a single-label host outside a URL, passes: rule 9's stated gap |
+| 19 | `Bash`, `MYSQL_PWD=hunter2 mysql mezz` | 4 (4b, `pwd`) | `Bash: MYSQL_PWD=‹redacted› mysql mezz` |
+| 20 | `Bash`, `export SECRET_KEY=abc123def456` | 4 (4b — a keyword followed by `_`, which the old rule required to be the separator) | `Bash: export SECRET_KEY=‹redacted›` |
+| 21 | `Bash`, `APP_SECRET_KEY=short123 php artisan serve` | 4 (4b) | `Bash: APP_SECRET_KEY=‹redacted› php artisan serve` |
+| 22 | `Bash`, `export STRIPE_KEY=rk_live_51H8xYzAbCdEfGhIj` | 3 (the `rk_live_` prefix; 4b's candidate then overlaps the lock and is discarded) | `Bash: export STRIPE_KEY=‹redacted:token›` |
+| 23 | `Bash`, `curl -H "Authorization: Basic dXNlcjpwYXNzd29yZA==" "$URL"` | 4 (4a, scheme kept) | `Bash: curl -H "Authorization: Basic ‹redacted›" "$URL"` |
+| 24 | `Bash`, `curl -H 'Set-Cookie: sid=hunter2; Path=/' -H "Authorization: hunter2xyz" "$URL"` | 4 (4a twice: a single-quoted header, and an `Authorization:` with no scheme word) | `Bash: curl -H 'Set-Cookie: ‹redacted›' -H "Authorization: ‹redacted›" "$URL"` |
+| 25 | `Bash`, `curl -H "Cookie: sid=abcd1234efgh" "$URL"` | 4 (4a) | `Bash: curl -H "Cookie: ‹redacted›" "$URL"` |
+| 26 | `Bash`, `jwt decode eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJodW50ZXIyIn0.c2lnbmF0dXJlLW5vdC1yZWFs` — a synthetic JWT whose three parts are each under rule 7's 32 | 3 (the JWT alternative) | `Bash: jwt decode ‹redacted:token›` |
+| 27 | `Bash`, `vault write secret/x value=hunter2` | 4 (4c) | `Bash: vault write secret/x value=‹redacted›` |
+| 28 | `Bash`, `deploy --api-token=abc123 --db-pass hunter2` | 4 (4b, two flags whose names contain a keyword, `=` and whitespace) | `Bash: deploy --api-token=‹redacted› --db-pass ‹redacted›` |
+| 29 | `Bash`, `ssh db01.internal.example.com uptime` | 9 (a dotted name under a listed TLD) | `Bash: ssh ‹redacted:host› uptime` |
+| 30 | `Bash`, `curl http://buildbox:8080/health` | 9 (a URL's host, single-label) | `Bash: curl http://‹redacted:host›:8080/health` |
+| 31 | `Agent`, `check PGPASSWORD=hunter2 on db01.internal.example.com` — free text, the dispatch description | 4, 9 | `Agent: check PGPASSWORD=‹redacted› on ‹redacted:host›` — every rule runs over prose as over a command |
+| 32 | `Bash`, `echo Zx9-Ab3dEf6hIj9kLm2n_Op5qRs8tUv1wXy4z-Q7r \| base64 -d` — a 42-character base64url token whose `-`/`_`-separated runs are each under 32 | 7 (the mixed-class pattern) | `Bash: echo ‹redacted:blob› \| base64 -d` |
+| 33 | `Bash`, `python3 setup.py && ./run.sh README.md && node app.js` — file names whose extensions are TLDs (`.py`, `.sh`, `.md`) or look like one | *(none)* | the input **unchanged**: rule 9's TLD set is curated so a file name is not a host, and this fixture is what reds if it is loosened |
+| 34 | `Bash`, `curl -d '{"password":"zq9w8kabc"}' "$URL"` | 4 (4d, a quoted JSON key) | `Bash: curl -d '{"password":"‹redacted›"}' "$URL"` — the value's quotes kept |
+| 35 | `Bash`, `curl -d '{"token": "zq9w8kabc", "user": "bob"}' "$URL"` | 4 (4d, spaced separator) | `Bash: curl -d '{"token": "‹redacted›", "user": "bob"}' "$URL"` |
+| 36 | `Bash`, `curl -d "{'secret': 'zq9w8kabc'}" "$URL"` | 4 (4d, single-quoted key) | `Bash: curl -d "{'secret': '‹redacted›'}" "$URL"` |
+| 37 | `Bash`, `MY_PW=zq9w8kabc PW=zq9w8kabc deploy --pw zq9w8kabc` | 4 (4b, `pw`) | `Bash: MY_PW=‹redacted› PW=‹redacted› deploy --pw ‹redacted›` |
+| 38 | `Bash`, `terraform apply -var 'db_pw=zq9w8kabc'` | 4 (4b) | `Bash: terraform apply -var 'db_pw=‹redacted›` — the closing quote goes with the one-token value |
+| 39 | `Bash`, `kubectl create configmap x --from-literal=pw=zq9w8kabc` | 4 (4b, an assignment inside a flag's value) | `Bash: kubectl create configmap x --from-literal=pw=‹redacted›` |
+| 40 | `Bash`, `git commit -m "fix the upward scroll"` | *(none)* | the input **unchanged**: `upward` holds `pw`, and a keyword-containing name takes no bare-space separator. Red when it does |
+| 41 | `Bash`, `echo npm_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789 SG.AbCdEfGhIjKlMnOp12.QrStUvWxYz0123456789ab` | 3 | `Bash: echo ‹redacted:token› ‹redacted:token›` |
+| 42 | `Bash`, `echo ya29.AbCdEfGh12 dop_v1_abcdef1234 shpat_abcdef1234 pypi-AgEIcHlwaS5vcmcAbCd1234` | 3 | `Bash: echo ‹redacted:token› ‹redacted:token› ‹redacted:token› ‹redacted:token›` |
+| 43 | `Bash`, `DATABASE_URL=postgres://root@dbhost/db` — a URL user with no password | 9 (the user kept, the host after `@` replaced) | `Bash: DATABASE_URL=postgres://root@‹redacted:host›/db` |
+| 44 | `Bash`, `curl http://[2001:db8::1]/x && curl [::1]:8080` | 9 (bracketed IPv6) | `Bash: curl http://[‹redacted:ip›]/x && curl [‹redacted:ip›]:8080` |
+| 45 | `Bash`, `ssh 2001:db8:0:0:0:0:0:1 && ping6 2001:db8::1` | 9 (bare IPv6, full and compressed) | `Bash: ssh ‹redacted:ip› && ping6 ‹redacted:ip›` |
+| 46 | `Bash`, `grep -rn std::vector src && echo cafe::babe 12:30:45` | *(none)* | the input **unchanged**: a two-group `::` and a time are not addresses. Red when compressed IPv6 has no group floor |
 
 Fixtures **9, 10 and 11 are the credential-on-argv shapes rule 4 alone did not cover**: a
 space-separated `--password`, a `curl -u user:pass` with no `scheme://`, and a glued single-letter
@@ -2970,7 +3068,15 @@ the rule table being checked against each other rather than maintained twice: th
 purpose is the email and IP rules must not hand its input to an earlier rule.
 
 Fixture 8 is the one that matters most: it tests the allowlist, which is the control that holds when
-an input shape nobody anticipated arrives. Fixtures 1–4 and 9–11 test the second layer.
+an input shape nobody anticipated arrives. Fixtures 1–4, 9–11, 18–32 and 34–45 test the second layer.
+
+**Fixtures 18–46 are card#11292's** (34–46 from its review's first round, each of 34–45 seen
+leaking or mis-redacting on the change's previous head first). A pre-install audit by another seat drove `buildDescriptor` on
+synthetic strings and found each shape in 18–28 passing whole, and host names passing against § 1;
+each of 18–32 was run against the reporter before the change and seen to leak its planted value.
+Fixtures 1, 2 and 10 were **re-traced** in the same change, as this section requires: their hosts are
+now replaced, so their required outputs are stricter than before, never looser. 33 is the
+other direction, the readable-file-name side of rule 9's shape test.
 
 **Fixtures 12 and 13 exist because two rules had a stated behaviour with no test.** 12 pins rule 6's
 retained head for an absolute non-home path — the reading that produces `/var/…/Http/X.php` and the
@@ -4551,17 +4657,25 @@ recorded here because they are what a re-run will hit first:
 
 ### AT-2 sanitizer red fixtures
 
-- **Build:** the 17 fixtures of [§ 7.5](#75-red-fixtures--required-tests) plus the two whole-event
+- **Build:** every fixture of [§ 7.5](#75-red-fixtures--required-tests) plus the two whole-event
   assertions, as unit tests, run on Linux **and** Windows. Each fixture asserts the exact output
-  string, not a substring — which is buildable for all 17 because all 17 inputs are literals. Each
-  declares its **caller**, and 14–17 run the `coord.subject` profile.
-- **RED:** replace the sanitizer with the identity function → **all 17 fail except fixture 14**, whose
-  required output under the `coord.subject` profile *is* the input unchanged, so it passes under the
-  identity function and is covered by the fourth RED below instead. Then restore it and remove
+  string, not a substring — which is buildable for every one because every input is a literal. Each
+  declares its **caller**, and 14–17 run the `coord.subject` profile. The fixture set is read from
+  the table, never counted: a producer's executable copy is checked against the table's rows for its
+  caller.
+- **RED:** replace the sanitizer with the identity function → **every fixture fails except 8, 14, 33,
+  40 and 46**: 8 is refused by the allowlist (the next RED is its), and the others are pins whose
+  required output *is* the input unchanged, covered by the fourth RED below and by card#11292's REDs. Then restore it and remove
   only the allowlist → fixture 8 fails alone (proving the layers are independently load-bearing).
   Then restore the allowlist and revert rule 5 to the pre-extension rule 4 → fixtures 9, 10 and 11
-  fail alone, and the credential in each appears verbatim in the output (proving the credential-on-
-  argv extension is load-bearing and not decoration).
+  fail, with 28 and 37 (the same credential-on-argv shape under a keyword-containing flag name), and the
+  credential in each appears verbatim in the output (proving the credential-on-argv extension is
+  load-bearing and not decoration).
+- **card#11292's REDs:** disable each mechanism that change added, one at a time — rule 3's new
+  prefixes and JWT alternative, 4a, 4b's flag and assignment shapes, 4c, 4d, rule 7's mixed-class
+  pattern, rule 9's IPv6, URL-host and dotted-name passes — and exactly the fixtures that pin it fail.
+  Loosen rule 9's TLD set to any letters and fixture 33 fails; give 4b's keyword-containing names a
+  bare-space separator and 40 fails; drop the compressed-IPv6 group floor and 46 fails.
 - **Fourth RED — the profile, which is the one this table could not previously go red on.** Point the
   `coord.subject` caller at the `descriptor` profile — the one-line change that undoes
   [§ 7.3](#73-redaction-rules-applied-in-this-order)'s narrowing — and **fixture 14 fails alone**, its
@@ -4569,7 +4683,7 @@ recorded here because they are what a re-run will hit first:
   profiles instead, which is the other way to make the difference vanish, and **fixture 9 fails
   alone**, `deploy --password hunter2` surviving unredacted. Both directions, because a profile that
   can only be tested in one of them is a profile a refactor can collapse in the other.
-- **GREEN:** all 17 exact-match; no planted credential appears in any serialized event.
+- **GREEN:** every fixture exact-matches; no planted credential appears in any serialized event.
 - **Third RED — the two rules fixtures 12 and 13 pin:** change rule 6's retained head to the first
   *named* segment → fixture 12 fails alone (`/var/…/Http/X.php`) while fixture 5 still passes, which
   is what proves the two fixtures disagree about the reading rather than duplicating each other.
@@ -5514,6 +5628,7 @@ values no published rule derived.
 | 47 | **One declared `install_facts` input — `roster[]` and `shared_identity` — provisioned with the hook registration, with a drift GUARD on the copy** | let each field read `coordination.config.json` at runtime (a live cross-repo coupling and a second credential); or hardcode the roster (a restatement with neither pointer nor guard); or leave it unstated, which is what the draft did | Four fields reached past [§ 18.3](#183-the-bridge-as-prior-art-what-the-source-read-found)'s derivability test for one input nobody declared, in four separate places — one input consolidated, not four patches. Two of the four dissolved on inspection: `carrier` reads the bracketed token syntactically and `participants` stops expanding anything, so **only the roster genuinely varies**. The input is a copy, so it carries the config revision it was copied at, and the copy is **guarded**: a body-derived name absent from it increments `coord_roster_unknown_name` on that seat's first post | the guard is **one-directional** — it sees an addition, never a removal — and a stale roster under-expands a broadcast until the next provisioning. Both are stated at [§ 18.3.1](#1831-the-install-facts-input-declared-once) rather than discovered. If a runtime read is ever affordable, [decision 40](#15-decisions-taken-revisable-at-review) is the decision to reopen, not this row |
 | 48 | **[§ 7.3](#73-redaction-rules-applied-in-this-order) gains a `coord.subject` PROFILE differing in exactly one rule, and [§ 7.5](#75-red-fixtures--required-tests) gains real title fixtures** | reuse the pass unchanged, which is what the draft claimed to do; or narrow rule 4 for every caller; or write a second redactor for titles | Reuse was measured and it corrupts **7.0%** of 728 real titles, 49 of the 51 hits being rule 4's bare-whitespace separator firing on English (`token that` → `token ‹redacted›`). Narrowing rule 4 to an explicit `:`/`=` cuts that to **0.7%** and still catches every credential shape planted in a title. Narrowing it for **all** callers was rejected outright: it deletes the control [fixture 9](#75-red-fixtures--required-tests) holds, and a widened guard is one weaker path for both callers rather than a second path. A second redactor was rejected because two redactors disagree about what a secret looks like | a title with `password hunter2` — whitespace, no separator — survives on this profile where a descriptor would not. That is the accepted residual, and rule 3 remains the backstop for every prefixed credential. Rule 7's title false positive is **kept** and pinned as [fixture 17](#75-red-fixtures--required-tests) rather than narrowed away, because dropping it buys 1 title in 728 and gives up the unprefixed-blob backstop |
 | 49 | **`targets`' whole derivation is stated on the field — `to`, with the literal `all` replaced by [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s `roster[]` and the author removed — and a named addressee is never filtered against that roster** | **(a)** keep the author, so `targets` is `to` with `all` expanded and nothing removed; **(b)** intersect `to` with the roster, dropping a name the copy does not know; **(c)** leave the field stating the `all` expansion and the `null` case only, with sender exclusion shown by [§ 18.7](#187-coordround)'s worked example and stated nowhere — which is what this document did | Option (c) is the one that was in force and it is the defect: the example expanded a broadcast to fewer names than the roster it read, so the document carried two answers — one in the field spec and one in the example — and the example was the only place the difference was visible. That is the failure this document already names about itself one field over, *"a worked example becomes a second, disagreeing specification"*. Option (a) contradicts that example rather than the spec, and it makes `targets` mean something else: the field is **who the post reaches**, and an author is not reached by their own post. Option (b) drops a name with nothing counting it: [§ 18.12](#1812-the-anti-requirements-checked-against-the-derivation)'s no-silent-cap anti-requirement enumerates the two paths that may drop a fan-out — the counted truncation at 32 members, and `targets: null` — and both are reported, while a roster-filtered name would be a third reported by nothing. On a body-derived name it also deletes the evidence `coord_roster_unknown_name` exists to raise, and on a label-derived one that counter is not even in scope — so a roster copy gone stale would under-report every fan-out with no counter moving | The field now carries a five-clause rule (order, expansion, author removal, first-occurrence-only, and the `null` case) where it carried two sentences, and **the first-occurrence clause is asserted by no test in this document** — it is reachable only by a `TO:` line naming `all` and a roster member together, which no fixture writes. And `[]` is now an ordinary derived value rather than an oddity, so the two empty answers have to be read apart by every consumer: `null` is the alarmed one (`coord_targets_unresolved`) and `[]` is not alarmed at all |
+| 50 | **card#11292: rule 4 matches a keyword inside a name and reads credential headers whole, rule 3 takes JWTs and more prefixes, rule 7 takes mixed-class base64url runs, rule 9 replaces host names, and a `descriptors` config key lets a seat send less** | a per-seat local narrowing of the allowlist, the option the auditing seat's operator was weighing; or an entropy scorer beside the regexes; or host scrubbing by an allowlist of public hosts | Every shape was measured passing whole by an outside audit, and the descriptor is stored on the server and shown on the floor to every signed-in user. A local narrowing fixes one seat and leaves the sanitizer that every seat runs as it was. An entropy scorer is a second mechanism with its own false-positive profile; rule 7's mixed-class condition is the entropy test the existing rule could carry. A public-host allowlist is a list of the world, and § 1 excludes host names without exception | `--author=` and `max_tokens =` lose their values; `socket.io` reads as a host; `WebFetch` descriptors no longer say where. Single-label hosts outside a URL still pass (fixture 18 pins one). The `coord.subject` profile shares rule 4, so row 48's measured title rates describe the rule before this change and were **not** re-measured |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health

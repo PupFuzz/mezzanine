@@ -27,6 +27,21 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11292** — **The reporter removes secrets and host names from tool descriptors, and a seat can choose
+  to send less.** The descriptor sanitizer (D1 § 7.3) now replaces the value of any assignment or flag whose
+  name contains `pass`, `pwd`, `pw`, `secret`, `token`, `key`, `auth`, `credential` or `cookie` (`PGPASSWORD=`,
+  `MYSQL_PWD=`, `SECRET_KEY=`, `--db-pass`), the value of `Authorization:`, `Proxy-Authorization:`, `Cookie:`
+  and `Set-Cookie:` headers, every `name=` value of `vault write` / `vault kv put|patch`, JWTs, the
+  `rk_live_`/`rk_test_`/`whsec_`/`hvs.`/`hvb.`/`ya29.`/`dop_v1_`/`shpat_`/`npm_`/`SG.`/`pypi-` prefixes, long
+  mixed-case base64url tokens, the value of a quoted JSON or dict key such as `{"password":"…"}`, IPv6
+  literals, and host names (a URL's host, including after a password-less user, and dotted names under a
+  curated TLD set) with `‹redacted:host›`. A `WebFetch` descriptor
+  therefore shows the scheme only. Free text (dispatch descriptions, `Grep` patterns, `WebSearch` queries,
+  commit messages) passes through every rule. A new optional config key, `descriptors`, takes `"full"`
+  (the default), `"paths"` (file paths for `Read`/`Write`/`Edit`/`Glob` only) or `"none"` (tool names and
+  timing only); `"paths"` and `"none"` also drop the subagent title, and any other value is a config error.
+  Before the change, all of these shapes passed whole, as a pre-install audit by another seat found. An installed seat takes the change by re-copying the artifact
+  (`INSTALL-LINUX.md` Step 1).
 - **card#11144** — **The PM office has walls, drawn from above.** The floor now follows one projection, a 3/4
   top-down oblique (`docs/design/FLOOR.md` § 10.4's new projection bullet, the operator's ruling of
   2026-10-03): the back wall shows its face and every other wall shows only its top edge, a strip one map

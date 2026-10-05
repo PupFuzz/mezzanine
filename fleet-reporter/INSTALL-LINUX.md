@@ -196,6 +196,8 @@ replaced. It receives the token, so it lives in `$B` and nowhere another account
   cat > "$B/write-config.js" <<'JS'
 const fs = require("fs"), path = require("path");
 const e = process.env, out = [], TOKEN = /^\s*token\s+(mzn_[A-Za-z0-9_-]{43})\s*$/, SHAPE = /mzn_[A-Za-z0-9_-]{43}/g;
+const DESCRIPTORS = e.FR_DESCRIPTORS || "full";
+if (!["full", "paths", "none"].includes(DESCRIPTORS)) { console.error("FR_DESCRIPTORS must be full, paths or none: NOTHING WRITTEN"); process.exit(1); }
 let raw = ""; process.stdin.setEncoding("utf8");
 process.stdin.on("data", (d) => { raw += d; });
 process.stdin.on("end", () => {
@@ -209,7 +211,8 @@ process.stdin.on("end", () => {
   const cfg = {
     install_id: e.FR_INSTALL, seat_id: e.FR_SEAT, ingest_url: e.FR_URL, token,
     spool_dir: e.FR_SPOOL, ca_file: null, proxy_url: null,
-    wrapped_statusline: e.FR_WRAPPED || null, protocol_agent_name: e.FR_AGENT || null, enabled: true,
+    wrapped_statusline: e.FR_WRAPPED || null, protocol_agent_name: e.FR_AGENT || null,
+    descriptors: DESCRIPTORS, enabled: true,
   };
   fs.mkdirSync(path.dirname(e.FR_CONFIG), { recursive: true, mode: 0o700 });
   fs.chmodSync(path.dirname(e.FR_CONFIG), 0o700);
@@ -224,6 +227,10 @@ JS
 Before this ran for real, the writer was driven three ways: with a fabricated issue output, which wrote
 the file at mode `600` in a `700` directory; against a config that already existed, which refused
 (`'wx'`) and wrote nothing; and with output that had no token line, which exited 1 and wrote nothing.
+
+`FR_DESCRIPTORS` is how much of each tool call the seat sends as its descriptor: `full` (the default when
+it is unset), `paths` or `none`. D1 § 3.1 defines the three values, and Step 3 says how to change it later.
+The writer refuses any other value before it writes anything.
 
 `FR_WRAPPED` is the statusLine command the seat has **now**, read from `statusLine.command` in
 `~/.claude/settings.json`. On the sandbox it was the coord framework's context sensor. It is recorded
@@ -277,6 +284,27 @@ node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));
 
 On the sandbox this printed `700` and `600`, and then every key with the token shown only as
 `<well-formed>`.
+
+**Choose what the descriptor carries: the `descriptors` key.** Each tool call reaches the floor with a
+short label built from its arguments, after the reporter has replaced the credential, host-name, IP,
+email and home-path shapes D1 § 7.3 lists (§ 7.3 also states the shapes it does not catch). `descriptors` decides how much of that label is sent at all:
+
+| Value | What the floor shows for a tool call |
+|---|---|
+| `"full"`, or the key absent | the sanitized label: `Bash: composer test`, `Read: ~/…/docs/PLAN.md`, and a subagent's title |
+| `"paths"` | the file path for `Read`, `Write`, `Edit` and `Glob`; the tool name alone for everything else, and no subagent title |
+| `"none"` | the tool name alone, for every tool, and no subagent title |
+
+Any other value is a config error: `selftest`'s `config_readable` fails and the flusher sends nothing
+until the value is fixed. The events spooled meanwhile are built as under `"none"`. To change the value on an installed seat, rewrite the one key with
+the config's mode kept. This reads and writes the file without printing it:
+
+```bash
+node -e 'const fs=require("fs"),f=process.argv[1],v=process.argv[2]; if(!["full","paths","none"].includes(v)) throw new Error("full, paths or none"); const c=JSON.parse(fs.readFileSync(f,"utf8")); c.descriptors=v; fs.writeFileSync(f, JSON.stringify(c,null,2)+"\n", {mode:0o600}); console.log("descriptors =", v)' /home/mezzanine/.config/fleet-reporter/config.json none
+```
+
+Every hook reads the config when it fires, so the next tool call uses the new value. Nothing needs a
+restart.
 
 **`harness_label` is left unset, on purpose.** D1 § 6.1 wants `claude-code/<version>`, and the reporter
 can only read that from this config key (see the note in the README's open-questions table). Claude Code
