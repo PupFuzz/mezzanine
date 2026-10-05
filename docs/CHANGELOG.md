@@ -37,6 +37,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   response carries `detail.console_url` for a signed-in operator only — the member is absent for an
   observer and for a machine token, and no seat object, snapshot or stream message carries it.
   Seats send the link once their reporter is re-copied (`fleet-reporter/INSTALL-LINUX.md` Step 1).
+
 - **card#9446** — **Every time shows in the viewer's browser timezone.** The floor, the lobby and the
   console show each instant in the zone the viewer's own browser reports, through one converter
   (`public/js/wire/clock.js`). The floor's header now agrees with itself: the sweep and ingest stamps sit in
