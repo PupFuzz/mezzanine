@@ -303,10 +303,12 @@ and D2 § 14 item 3 asked for a ruling on where the board producer is designed �
 now answers with this document's name, the ratification of 2026-09-12 having written the answer into
 it. It is held to the D-14 bar above like every document listed before it.
 
-Status: **designed and ratified; the poller is not built** — card#7582. The D2 amendments every
-structural piece needed were ratified and applied on 2026-09-12, and the store shape shipped with
-them because retirement now clears the board-user mapping; `docs/design/BOARD-TASK.md § 13` records
-where each landed and what remains unbuilt.
+Status: **designed, ratified and built** — designed on card#7582, built on card#11289. The D2
+amendments every structural piece needed were ratified and applied on 2026-09-12, and the store shape
+shipped with them because retirement clears the board-user mapping; the poller, the seat→board-user
+command and the tier-1 branch of the merge followed. Tier 1 stays dark until an operator issues the
+board credential and maps a seat (`docs/design/BOARD-TASK.md § 10`); § 13 there records where each
+amendment landed and what is still deliberately not built.
 
 ## 3. Work breakdown
 
@@ -494,8 +496,8 @@ rule violations anyone could have committed at the time.
   argued at each step in the script:
   - **Supervision is the application user's crontab.** `bin/supervision.sh` is the one statement of
     what is supervised — the long-lived daemons of `docs/design/FLEET-STATE.md § 2.1`, plus the
-    `schedule:run` entry that drives `mezzanine:purge` — and renders their entries: every minute
-    under `flock -n` on a per-checkout lock (a no-op while the running copy holds it), and at
+    `schedule:run` entry that drives the scheduled commands of `server/routes/console.php` — and
+    renders their entries: every minute under `flock -n` on a per-checkout lock (a no-op while the running copy holds it), and at
     `@reboot`. **Install it as the application user when the host is stood up: `bin/supervision.sh
     install`.** Each deploy then installs its own release's block inside the window — a crontab missing
     an entry or carrying another release's lines included, which the dry run names line by line — so a

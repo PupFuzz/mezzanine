@@ -87,9 +87,9 @@ class DeskDrawsTheThoughtBubbleTest extends TestCase
     }
 
     /**
-     * The case every seat on this deployment is in: tier 1's producer is designed and
-     * deliberately not built (`docs/design/BOARD-TASK.md`, card#7582) and tier 2 was retired
-     * (card#9234), so `task.ref` is null and `task.source` reads `telemetry` everywhere.
+     * The case every seat on this deployment is in: tier 1's producer is built (card#11289) and
+     * dark until an operator configures it (`docs/design/BOARD-TASK.md § 10`), and tier 2 was
+     * retired (card#9234), so `task.ref` is null and `task.source` reads `telemetry` everywhere.
      */
     public function test_a_null_reference_renders_the_title_alone_with_no_reference_text(): void
     {

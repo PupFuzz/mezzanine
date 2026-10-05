@@ -50,10 +50,17 @@ class StateRecompute
      *
      * PUBLIC because `BOARD-TASK.md § 8.4` requires the tier-1 poller to truncate to this same
      * bound — *"one bound, one place, so the input row and the projection can never disagree
-     * about what the title is"* — and the poller is a separate pull. A second literal there would
-     * be the disagreement that sentence forbids, available the day either number moves.
+     * about what the title is"* — and `App\Board\BoardPoll` reads it from here. A second literal
+     * there would be the disagreement that sentence forbids, available the day either number moves.
      */
     public const TASK_TITLE_MAX_BYTES = 120;
+
+    /**
+     * D2 § 4.9's tier-1 freshness bound — 30 minutes, measured from `seat_board_task.observed_at`
+     * (`BOARD-TASK.md § 3.2` derives it as six board-poll cadences; D2 § 12 carries the row).
+     * Inclusive: a row exactly at the bound still answers.
+     */
+    public const BOARD_TITLE_BOUND_MS = 30 * 60 * 1000;
 
     /**
      * ⚠ THE ONE CALLER THAT PASSES `false` IS `mezzanine:rebuild`, AND THE REASON IS NOT
@@ -370,7 +377,7 @@ class StateRecompute
 
     /**
      * The derived columns: the two axes, their collapse, the open-fact pointers, the badges and
-     * § 4.9's tier-3 task title.
+     * § 4.9's task title (tier 1 over tier 3, `task()`).
      */
     private function writeDerivedColumns(int $seatRef): void
     {
@@ -446,20 +453,68 @@ class StateRecompute
             ),
             'state_computed_at' => $nowSql,
             'updated_at' => $nowSql,
-        ] + $this->taskTier3($seatRef, $currentCall));
+        ] + $this->task($seatRef, $currentCall, $nowMs));
+    }
+
+    /**
+     * `docs/design/BOARD-TASK.md § 8.1` — the merge D2 § 4.9 specifies: tier 1 (a board card
+     * assigned to this seat) over tier 3 (the seat's own telemetry).
+     *
+     * ⛔ TIER 1 IS READ FROM `seat_board_task`, AN INPUT, AND NEVER WRITTEN INTO `seat_state` BY
+     * ITS PRODUCER (§ 2). The poller owns that table and the rebuild does not touch it, so a
+     * replay re-reads the same row and reaches the same answer — the reason AT-D2-10 needs no
+     * exclusion for a board-titled seat. `task_as_of` on this branch is the row's STORED
+     * `observed_at`, never `now()` (§ 8.3, card#9214's rule applied to a second input).
+     *
+     * ⛔ PAST THE BOUND THE TITLE IS DROPPED, NOT RENDERED STALE (D2 § 4.9), and `task_degraded`
+     * says so — but only when a value EXISTED, was dropped, and a lower tier answered in its place
+     * (§ 8.2). No row, or a row whose `card_id` is null, is not degraded: *dark is not degraded*.
+     * Dropped with no tier-3 title either is not degraded either — the whole `task` group goes to
+     * null together, because a flag whose subject is absent is a value no consumer can read.
+     *
+     * `$nowMs` is the recompute's own clock, the one every other time-derived column on this pass
+     * is computed from. Both writers reach this unchanged: the fold on every event, and the sweeper
+     * on every seat every pass — which is what makes the 30-minute drop ARRIVE with no wire event
+     * behind it.
+     *
+     * @return array<string, mixed>
+     */
+    private function task(int $seatRef, ?int $currentCall, int $nowMs): array
+    {
+        $row = DB::table('seat_board_task')->where('seat_ref', $seatRef)
+            ->first(['card_id', 'title', 'observed_at']);
+
+        $dropped = false;
+
+        if ($row !== null && $row->card_id !== null) {
+            if ($nowMs - Clock::toMs($row->observed_at) <= self::BOARD_TITLE_BOUND_MS) {
+                return [
+                    'task_title' => $row->title,
+                    'task_source' => 'board_card',
+                    'task_ref' => 'card#'.$row->card_id,
+                    'task_as_of' => $row->observed_at,
+                    'task_degraded' => false,
+                ];
+            }
+
+            $dropped = true;
+        }
+
+        $tier3 = $this->taskTier3($seatRef, $currentCall);
+
+        return $tier3 + ['task_degraded' => $dropped && $tier3['task_title'] !== null];
     }
 
     /**
      * § 4.9's TIER 3 ONLY — "the seat's own telemetry: the newest open dispatch call's `title`,
      * else the current call's `descriptor`".
      *
-     * Tiers 1 and 2 (a board card and a coordination thread) have NO PRODUCER designed in this
-     * repo: § 4.9 says so outright and files the question for review, and instructs an implementer
-     * to "build tier 3 (which needs nothing new) and leave tiers 1 and 2 as the stated columns
-     * they populate". So `task_source` is always `telemetry` here, `task_ref` is always null, and
-     * `task_degraded` stays false — a higher tier cannot be dropped past its freshness bound when
-     * no higher tier exists. A floor showing tier 3 everywhere is VISIBLY a floor whose board
-     * integration is dark, which is why `task.source` is on the wire at all.
+     * Tier 1 (a board card) is `task()`'s, above, and tier 2 is retired (card#9234). This method
+     * answers only from telemetry, so `task_source` is always `telemetry` here and `task_ref`
+     * always null; whether this answer stands in for a DROPPED tier-1 title — `task_degraded` — is
+     * `task()`'s to say, because only it knows whether a higher tier existed. A floor showing
+     * tier 3 everywhere is VISIBLY a floor whose board integration is dark, which is why
+     * `task.source` is on the wire at all.
      *
      * ⛔ `task_as_of` IS READ OFF THE ANSWERING CALL AND NEVER OFF THE WALL CLOCK — card #9214,
      * and it is the SECOND correction this line has taken. Both are stated, because the first one
@@ -517,8 +572,8 @@ class StateRecompute
      * would be a second, weaker statement of a property the expression already holds — free to
      * drift, and drifting first on the case it was written for.
      *
-     * A tier-1/2 producer landing later (§ 4.9 leaves both unbuilt) brings its own `as_of` with
-     * its own value: the poll's receipt, on the same footing. This method owns tier 3 only.
+     * Tier 1 brings its own `as_of` on the same footing — `seat_board_task.observed_at`, the poll's
+     * stored start stamp (`task()`). This method owns tier 3 only.
      *
      * ⛔ `task_as_of` GOES TO NULL WITH THE TITLE, and that is a fix and not tidiness — card
      * #9214, found by the same audit. The null branch used to return three keys and leave

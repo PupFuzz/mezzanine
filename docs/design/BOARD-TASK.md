@@ -29,13 +29,13 @@ with no new event kind, no change to `RebuildCommand::reset()`, and no exclusion
 [AT-D2-10](FLEET-STATE.md#at-d2-10-rebuild-equals-fold). [§ 2](#2-the-rebuildability-question) is the
 argument for that, and it is the reason this document exists in the shape it does.
 
-⛔ **The poller is not built, and building it is a separate pull.** ✅ **The D2 amendments every
-structural piece of it needed were RATIFIED and applied on 2026-09-12** (`card#7582`), so D2 § 6.4
-carries the store shape and the two counters have their rows;
-[§ 13](#13-what-is-deliberately-not-built) records where each landed and what is still deliberately
-not built. The one piece of it that DID ship with the ratification is the store itself, and only
-because retirement now clears the board-user mapping in its own transaction
-([§ 7.2](#72-the-upsert)) and had nothing to write against otherwise.
+✅ **The poller is built** (`card#11289`): `mezzanine:board-poll`, `mezzanine:seat-board-user` and
+the tier-1 branch of the merge, against the D2 amendments RATIFIED and applied on 2026-09-12
+(`card#7582`) — D2 § 6.4 carries the store shape and the two counters have their rows. The store
+itself shipped first, with the ratification, because retirement clears the board-user mapping in its
+own transaction ([§ 7.2](#72-the-upsert)) and had nothing to write against otherwise.
+[§ 13](#13-what-is-deliberately-not-built) records where each amendment landed and what is still
+deliberately not built.
 
 ⚠ **Tier 1 arrives DARK, and that is correct rather than a defect.** Three independent things must be
 true before a single board title reaches a desk, and today none of them is; [§ 10](#10-dark-on-arrival)
@@ -359,7 +359,8 @@ the column; today it would be a column with one value.
 | `BOARD_API_TOKEN` | a **read-scoped** bearer token | Sent as `Authorization: Bearer …`. |
 | `BOARD_IDS` | comma-separated board ids | Empty or unset ⇒ the poller is **unconfigured**, which is a clean no-op, not a failure ([§ 9](#9-failure-paths)). |
 
-Read through `config/mezzanine.php` like every other setting, never `env()` at a call site.
+Read through `config/mezzanine.php` (`mezzanine.board.api_base`, `.api_token`, `.board_ids`), never
+`env()` at a call site. The three keys are in `server/.env.example`, empty.
 
 **Read-scoped is a requirement, not a preference.** The poller issues `GET` only and there is no path
 in this design that writes to the board; a token that *could* write is a token that turns a bug in a
@@ -838,6 +839,7 @@ running the command in the cell, which is what a reader re-runs rather than trus
 | Tier-1 freshness bound | **30 min** | **Derived** — 6 × the cadence ⇒ five consecutive failed polls tolerated, with a floor of *strictly more than two cadences* so one lost request cannot clear the floor, and a standing re-derivation whenever the cadence moves. ⭐ **This re-derived D2 § 12's "Chosen, provisional" row, as that row asked; the figure is unchanged.** ⚠ **`Derived` HERE and `Chosen` THERE, and that is not drift**: the basis is the cadence, which is in THIS table and in neither D2's nor D1's, and D2 § 12's `Derived` is defined over those two ([§ 3.2](#32-the-cadence-chosen--and-the-30-minute-bound-re-derived)) | [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here) |
 | Search page size | **200 rows** | **Cited** — the search endpoint's documented maximum (its default is 50), from the board API's own `/docs.openapi`; a whole-board enumeration's only cost axis is round-trips, so take the max. ⚠ Cited from a live document outside this repository, which is the one class of citation nothing here can re-derive — the poller must therefore treat a page that returns more rows than it asked for as a shape failure like any other | [§ 6.3](#63-pagination-and-the-false-clean-rule) |
 | HTTP request timeout | **20 s**, connect and read, per request | **Chosen** — and it exists at all because `->withoutOverlapping()` makes a hung request a fleet-wide stall rather than one slow poll: the request never returns, so `board_poll_failed` never increments, every later poll is skipped, and the only symptom is titles ageing out one bound later with nothing naming the cause. Bounded above by the cadence — a whole poll, every configured board and its pages, must finish inside 5 min with room to spare, and 20 s leaves room for fifteen requests — and below by a real network's slow-but-working read, which for a ~340 KB page is seconds, not tens of them | [§ 3.1](#31-mezzanineboard-poll) |
+| Overlap-lock expiry | **10 min** | **Chosen** — § 3.1 requires it below the 30-minute bound and the framework default is a day. Bounded above by the bound: a poll killed holding the lock at T + 5 min frees it at T + 5 + E, the next tick polls within 5 min, and that must land before T + 30 — so E < 20 min. Bounded below by a live poll's own length, or a slow poll gets a second copy beside it: the timeout row's fifteen requests at 20 s is 5 min. Re-derive when either the cadence or the bound moves | [§ 3.1](#31-mezzanineboard-poll) |
 | Page cap | **200 pages** | **Chosen** — a runaway guard, not a truncation policy: 200 × 200 is far past any real board, so reaching it means the pager is looping | [§ 6.3](#63-pagination-and-the-false-clean-rule) |
 | `title` bound | `seat_state.task_title`'s own | **Cited** — D2 § 6.4. Never restated as a figure here: one bound, one home ([§ 8.4](#84-truncation)) | [§ 7.1](#71-the-input-table) |
 | Whole-board payload, board 14 | **Measured 2026-09-11** | `GET /tasks/search.json?q=board_id%3D14&limit=200&page=1` → `200`; then `len(json.dumps(body))`, `len(body["data"])`, `body["meta"]["last_page"]`. ~340 KB on one page. **Re-run it rather than trusting this cell** | [§ 3.2](#32-the-cadence-chosen--and-the-30-minute-bound-re-derived) |
@@ -848,8 +850,8 @@ running the command in the cell, which is what a reader re-runs rather than trus
 
 ## 13. What is deliberately not built
 
-⛔ **The poller is not implemented, and that is a decision with a reason rather than an unfinished
-job.** ✅ **What HAS changed since this section was written: the amendments below were RATIFIED and
+✅ **The poller is implemented** (`card#11289`) — see the paragraph after the table for what that
+pull built and what it still could not validate. ✅ **The amendments below were RATIFIED and
 APPLIED** — operator ruling of 2026-09-12 on `card#7582`, taken with an adversarial review's required
 edits and one product fork answered (retirement clears the mapping, [§ 7.2](#72-the-upsert)). The
 table is therefore a record of where each amendment landed rather than a list of what is owed, and
@@ -874,18 +876,20 @@ the amendments were stated as exact text and not applied by the card that wrote 
 carries both**, so the store change is the ratified shape rather than an invention, and it ships with
 the ratification because retirement's clearing act has nothing to write without it.
 
-⛔ **The poller itself is still unbuilt, and the ratification did not authorise it** —
-`mezzanine:board-poll`,
-`mezzanine:seat-board-user` and the tier-1 branch of the merge are a separate pull. Two reasons hold
-independently of ratification, so that the gate was never the only thing standing here:
+✅ **The poller is built — `card#11289`**, the separate pull the ratification named:
+`mezzanine:board-poll` (`App\Board\BoardPoll`, scheduled in `server/routes/console.php`),
+`mezzanine:seat-board-user`, and the tier-1 branch of the merge (`StateRecompute::task()`), with
+§ 11's acceptance tests in `server/tests/Feature/Board/` and AT-D4-1 beside AT-D2-10 in
+`At10RebuildEqualsFoldTest`. The two reasons this section gave for holding it back are now what the
+build could NOT close, and both still stand:
 
-- **The positive path cannot be validated on a real surface.** No board card is assigned and
-  `kbcard patch --assign` is not in this seat's released toolkit, so tier 1's answering branch could be
-  exercised only against a fixture. A producer whose one interesting path has never run against the
-  system it reads is not a producer anyone should trust: a synthetic test is not a substitute for the
-  first real exercise of a boundary, which is a rule here rather than a preference.
+- **The positive path has not run on a real surface.** No board card is assigned, so tier 1's
+  answering branch has been exercised only against a faked board at the HTTP client. The first real
+  exercise of that boundary is still owed, and it is the first poll after a card is assigned to a
+  mapped seat's board user.
 - **The credential does not exist.** Issuing a read-scoped board token for the server is an operator
-  act.
+  act ([§ 14](#14-open-questions) item 1); until it is issued the poller is UNCONFIGURED on every host
+  and § 10's condition 1 keeps tier 1 dark.
 
 ⚠ **One optimization is named and deliberately not taken:** filtering server-side with an
 `assigned_user_id` predicate in `q`, which would cut the per-poll payload by orders of magnitude. It
@@ -912,8 +916,9 @@ against.
    `.github/workflows/design-doc-verifiers.yml`; **this document has none**, so no gate re-derives
    its numbers, resolves its anchors or holds its tables against its worked examples.
    `tools/design/README.md` declares the gap on the surface a reader of those gates checks.
-   **Blocks:** nothing today — the poller is unbuilt. ⚠ **Ratification has now happened, which was the
-   first half of what closed this**, so what is left is D4's verifier in its own round — the rule that
+   **Blocks:** nothing the poller needs — it is built (`card#11289`) and its acceptance tests run in the
+   PHP suite; what is ungated is this document's own numbers and anchors. ⚠ **Ratification has
+   happened, which was the first half of what closed this**, so what is left is D4's verifier in its own round — the rule that
    README states for every gate. The shape a guard would be written against has stopped moving.
 5. **⇢ Deferred — the server-side assignee filter** ([§ 13](#13-what-is-deliberately-not-built)).
    **Blocks:** nothing. **Closes it:** one assigned card, which makes a discriminating control possible.

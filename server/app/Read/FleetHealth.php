@@ -2,6 +2,7 @@
 
 namespace App\Read;
 
+use App\Board\BoardPoll;
 use App\Fold\Clock;
 use App\Fold\SeatFacts;
 use App\Ingest\Counters;
@@ -89,6 +90,8 @@ final class FleetHealth
         'purge_backlog_rows',
         'feed_prefix_future',
         'feed_outbox_boundary_stalled',
+        BoardPoll::OK,
+        BoardPoll::FAILED,
     ];
 
     /**
