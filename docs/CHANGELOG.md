@@ -27,6 +27,20 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11292** — **The reporter removes secrets and host names from tool descriptors, and a seat can choose
+  to send less.** The descriptor sanitizer (D1 § 7.3) now replaces the value of any assignment or flag whose
+  name contains `pass`, `pwd`, `secret`, `token`, `key`, `auth`, `credential` or `cookie` (`PGPASSWORD=`,
+  `MYSQL_PWD=`, `SECRET_KEY=`, `--db-pass`), the value of `Authorization:`, `Proxy-Authorization:`, `Cookie:`
+  and `Set-Cookie:` headers, every `name=` value of `vault write` / `vault kv put|patch`, JWTs, the
+  `rk_live_`/`rk_test_`/`whsec_`/`hvs.`/`hvb.` prefixes, long mixed-case base64url tokens, and host names (a
+  URL's host, and dotted names under a curated TLD set) with `‹redacted:host›`. A `WebFetch` descriptor
+  therefore shows the scheme only. Free text (dispatch descriptions, `Grep` patterns, `WebSearch` queries,
+  commit messages) passes through every rule. A new optional config key, `descriptors`, takes `"full"`
+  (the default), `"paths"` (file paths for `Read`/`Write`/`Edit`/`Glob` only) or `"none"` (tool names and
+  timing only); `"paths"` and `"none"` also drop the subagent title, and any other value is a config error.
+  Before the change, all of these shapes passed whole, as a pre-install audit by another seat found. An installed seat takes the change by re-copying the artifact
+  (`INSTALL-LINUX.md` Step 1).
+
 - **card#11289** — **A desk shows the board card its seat is working on.** `php artisan mezzanine:board-poll`
   runs every five minutes from the scheduler, reads each board in `BOARD_IDS` over HTTPS with the read-scoped
   `BOARD_API_TOKEN`, and writes, for every seat mapped to a board user, the most recently updated card assigned

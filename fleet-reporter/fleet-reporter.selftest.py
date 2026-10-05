@@ -1324,10 +1324,23 @@ PROXY.stop()
 SILENT_PROXY.stop()
 
 
-print("\n== 2. SANITIZER — § 7.5's thirteen fixtures, and the four REDs AT-2 names ==")
-eq("GREEN: all 13 fixtures match their exact output AND their documented rule trace",
+print("\n== 2. SANITIZER — § 7.5's descriptor fixtures, the four REDs AT-2 names, and card#11292's ==")
+# THE FIXTURE SET IS DERIVED, NEVER COUNTED. § 7.5's table is the contract and the reporter's
+# SANITIZER_FIXTURES is its executable copy; a row added to one and not the other is the drift the
+# trace column exists to stop, so the numbers are read out of both and compared. The doc's
+# `coord.subject` rows are another producer's (§ 18.10) and are not this reporter's to run.
+_d75 = (HERE.parent / "docs/design/EVENT-SCHEMA.md").read_text(encoding="utf-8")
+_d75 = _d75.split("### 7.5 RED fixtures", 1)[1].split("\n## ", 1)[0]
+DOC_FIXTURES = [int(m.group(1)) for m in re.finditer(r"^\| (\d+) \| `([^`]+)`,", _d75, re.M)
+                if m.group(2) != "coord.subject"]
+JS_FIXTURES = json.loads(subprocess.run(
+    ["node", "-e", "process.stdout.write(JSON.stringify(require(process.argv[1]).SANITIZER_FIXTURES"
+     ".map((f) => ({ n: f.n, rules: f.rules }))))", str(REPORTER)],
+    capture_output=True, text=True, check=True).stdout)
+eq("the reporter's fixtures are exactly § 7.5's descriptor rows", DOC_FIXTURES, [f["n"] for f in JS_FIXTURES])
+eq("GREEN: every fixture matches its exact output AND its documented rule trace",
    [], [d for d in rep["detail"]["sanitizer_fixtures"] if not d["pass"]])
-eq("  … and 13 is the whole table", 13, len(rep["detail"]["sanitizer_fixtures"]))
+eq("  … and the selftest ran every one of them", DOC_FIXTURES, [d["fixture"] for d in rep["detail"]["sanitizer_fixtures"]])
 
 # RED 1 — the identity sanitizer. "Replace the sanitizer body with s => s and the whole table
 # must go RED." A fixture set that only ever passes proves the harness runs, nothing else.
@@ -1335,8 +1348,12 @@ p_id = plant(("function sanitize(input, cap) {",
               "function sanitize(input, cap) { return { text: String(input == null ? '' : input), truncated: false, rules: [], redactions: 0 };"))
 _, rep_id = selftest(s1, reporter=p_id)
 failed_id = [d["fixture"] for d in rep_id["detail"]["sanitizer_fixtures"] if not d["pass"]]
+# Every fixture whose documented trace is non-empty must go RED. The two with an empty trace are
+# the two that identity cannot discriminate, each for a stated reason: 8 is stopped by the
+# allowlist (RED 2 below is its RED), and 33 is the over-redaction pin whose required output IS
+# its input (the TLD-curation RED below is its RED).
 eq("RED: the identity sanitizer fails every fixture that redacts or truncates",
-   [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13], failed_id)
+   [f["n"] for f in JS_FIXTURES if f["rules"]], failed_id)
 eq("  … and fixture 8 still passes, because the ALLOWLIST is what stops it, not the regexes",
    False, 8 in failed_id)
 leaks = [d["leaked"] for d in rep_id["detail"]["sanitizer_fixtures"] if d["leaked"]]
@@ -1356,13 +1373,17 @@ redgreen("sanitizer layer 1 — the allowlist (§ 7.1)",
          'allowlist intact  -> fixture 8 descriptor=None, leaked=None')
 
 # RED 3 — revert rule 5 to the pre-extension rule 4: fixtures 9, 10 and 11 fail alone and each
-# credential appears VERBATIM, proving the credential-on-argv extension is load-bearing.
+# credential appears VERBATIM, proving the credential-on-argv extension is load-bearing. Rule 4's
+# whitespace separator is stripped from BOTH of the shapes that take one — the bare keyword and,
+# since card#11292, a flag whose name contains a keyword — so fixture 28's `--db-pass hunter2`,
+# the same credential-on-argv shape, fails with them.
 p_r5 = plant_src(
     (r"  run\(5, /[^\n]*\n[^\n]*\n", "  // rule 5 removed by plant\n"),
-    (r"\(\?!\[A-Za-z\]\)\(\\s\*\[:=\]\\s\*\|\\s\+\)", "(?![A-Za-z])(\\s*[:=]\\s*)"))
+    (r"\(\?!\[A-Za-z\]\)\(\?:\\s\*\[:=\]\\s\*\|\\s\+\)", "(?![A-Za-z])(?:\\s*[:=]\\s*)"),
+    (r"\(\?:\\s\*=\\s\*\|\\s\+\)", "(?:\\s*=\\s*)"))
 _, rep_r5 = selftest(s1, reporter=p_r5)
-eq("RED: reverting to the pre-extension rule 4 with no rule 5 fails fixtures 9, 10 and 11 ALONE",
-   [9, 10, 11], [d["fixture"] for d in rep_r5["detail"]["sanitizer_fixtures"] if not d["pass"]])
+eq("RED: reverting to the pre-extension rule 4 with no rule 5 fails fixtures 9, 10, 11 and 28 ALONE",
+   [9, 10, 11, 28], [d["fixture"] for d in rep_r5["detail"]["sanitizer_fixtures"] if not d["pass"]])
 survivors = {d["fixture"]: d["got"] for d in rep_r5["detail"]["sanitizer_fixtures"] if not d["pass"]}
 eq("  … and every credential-on-argv appears VERBATIM in the descriptor", True,
    "hunter2" in survivors[9] and "admin:s3cr3t" in survivors[10] and "S3cr3tP@ss" in survivors[11])
@@ -1381,7 +1402,114 @@ eq("RED: raising rule 7's threshold from 32 to 64 fails fixture 13 ALONE",
    [13], [d["fixture"] for d in rep_r7["detail"]["sanitizer_fixtures"] if not d["pass"]])
 redgreen("sanitizer traces (AT-2 consistency check)",
          "rule 7 threshold 32->64 -> fixture 13 alone RED (trace [] != documented [7])",
-         "all 13 fixtures: output AND documented rule trace both exact")
+         f"all {len(JS_FIXTURES)} descriptor fixtures (§ 7.5's rows, read from the doc): output AND "
+         f"documented rule trace both exact")
+
+# RED 5 — card#11292. Each mechanism the card added is disabled on its own, and exactly the
+# fixtures that pin it go RED; the secret each one guards then appears in the descriptor. A
+# mechanism no fixture notices being removed would be decoration, and this is where that shows.
+CARD_11292_REDS = [
+    ("rule 3's shape list back to its pre-card#11292 prefixes, no JWT", [22, 26], plant_src(
+        (r"const CRED_PREFIX_RE = /[^\n]*/g;",
+         r"const CRED_PREFIX_RE = /\b(gh[pousr]_|github_pat_|sk-|sk_live_|sk_test_|xox[abposr]-|AKIA|ASIA|glpat-|AIza|mzn_|mzr_)[A-Za-z0-9_-]{8,}/g;"))),
+    ("rule 4a (credential headers) removed", [23, 24, 25], plant(
+        ("  run(4, /\\b((?:proxy-)?authorization", "  if (0) run(4, /\\b((?:proxy-)?authorization"))),
+    ("rule 4b narrowed to the bare keyword words (no flag or assignment NAME containing one)",
+     [18, 19, 20, 21, 28, 31], plant(
+        (r"|(-{1,2}[A-Za-z0-9_.-]*?(?:pass|pwd|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*(?:\s*=\s*|\s+))"
+         r"|([A-Za-z0-9_.-]*?(?:pass|pwd|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*\s*[:=]\s*))", ")"))),
+    ("rule 4c (secrets-store writes) removed", [27], plant(("  if (vault) {", "  if (0) {"))),
+    ("rule 7c (mixed-case base64url runs) removed", [32], plant(
+        ("  run(7, /(?<![A-Za-z0-9_-])", "  if (0) run(7, /(?<![A-Za-z0-9_-])"))),
+    ("rule 9b (the host of a URL) removed", [2, 30], plant(
+        ("  run(9, /(?<=[A-Za-z0-9+.-]", "  if (0) run(9, /(?<=[A-Za-z0-9+.-]"))),
+    ("rule 9c (dotted host names) removed", [29, 31], plant(
+        ("  run(9, HOST_NAME_RE,", "  if (0) run(9, HOST_NAME_RE,"))),
+]
+_reds = []
+for label, want, planted in CARD_11292_REDS:
+    _, rep_c = selftest(s1, reporter=planted)
+    got = [d for d in rep_c["detail"]["sanitizer_fixtures"] if not d["pass"]]
+    eq(f"RED: {label} fails fixtures {want} ALONE", want, [d["fixture"] for d in got])
+    _reds.append(f"{label} -> {[d['fixture'] for d in got]}")
+# The over-redaction side: rule 9c's TLD set is curated so file names survive. Any two-letter-or-
+# longer last label as a "TLD" eats `setup.py` and `README.md`, and fixture 33 exists to say so.
+p_tld = plant(("(?:${HOST_TLDS})", "(?:[A-Za-z]{2,})"))
+_, rep_tld = selftest(s1, reporter=p_tld)
+f33 = [d for d in rep_tld["detail"]["sanitizer_fixtures"] if d["fixture"] == 33][0]
+eq("RED: rule 9c with an uncurated TLD set fails fixture 33 (file names read as hosts)", False, f33["pass"])
+redgreen("sanitizer — card#11292's secret and host shapes (§ 7.3 rules 3, 4, 7, 9)",
+         "; ".join(_reds) + f"; uncurated TLDs -> fixture 33 = {f33['got']!r}",
+         "every mechanism present -> fixtures 18-33 pass with output and trace exact")
+
+
+print("\n== 2b. `descriptors` — HOW MUCH OF THE ALLOWLIST A SEAT SENDS (D1 § 3.1, card#11292) ==")
+# Driven through real hooks, because the key is read from the config a hook loads and acts at
+# two emit sites — tool.start's descriptor and subagent.spawn's title — and a function-level
+# test of buildDescriptor alone could not see the second one.
+DISPATCH = {"description": "check PGPASSWORD=hunter2 on db01.internal.example.com", "subagent_type": "coder"}
+ABSENT = object()
+
+
+def drive_descriptors(name: str, mode, reporter: Path = REPORTER) -> dict:
+    s = seat(name)
+    if mode is not ABSENT:
+        s.cfg["descriptors"] = mode
+        s.write_cfg()
+    hook(s, "PreToolUse", pre(tool="Bash", ti={"command": "make deploy"}, tuid="d_bash"), reporter=reporter)
+    hook(s, "PreToolUse", pre(tool="Read", ti={"file_path": "/var/www/app/Http/Controllers/HealthController.php"},
+                              tuid="d_read"), reporter=reporter)
+    hook(s, "PreToolUse", pre(tool="Agent", ti=DISPATCH, tuid="d_agent"), reporter=reporter)
+    ev = s.events()
+    spawns = [e["data"]["title"] for e in ev if e["kind"] == "subagent.spawn"]
+    return {
+        "descriptors": {e["data"]["tool_name"]: e["data"]["descriptor"] for e in ev if e["kind"] == "tool.start"},
+        "title": spawns[0] if len(spawns) == 1 else f"<{len(spawns)} spawns>",
+        "config_invalid": s.counters().get("config_invalid", 0),
+        "allowlisted": s.predicates().get("descriptor_allowlisted"),
+        "leaked": [x for x in ("hunter2", "db01") if any(x in json.dumps(e) for e in ev)],
+    }
+
+
+FULL = {"Bash": "Bash: make deploy", "Read": "Read: /\u2026/Controllers/HealthController.php",
+        "Agent": "Agent: check PGPASSWORD=\u2039redacted\u203a on \u2039redacted:host\u203a"}
+NOTHING = {"Bash": None, "Read": None, "Agent": None}
+d_absent = drive_descriptors("desc-absent", ABSENT)
+d_full = drive_descriptors("desc-full", "full")
+d_paths = drive_descriptors("desc-paths", "paths")
+d_none = drive_descriptors("desc-none", "none")
+d_typo = drive_descriptors("desc-typo", "path")
+eq("absent: every allowlisted descriptor, sanitized (today's behaviour)", FULL, d_absent["descriptors"])
+eq("  … and the dispatch title, sanitized", "check PGPASSWORD=\u2039redacted\u203a on \u2039redacted:host\u203a", d_absent["title"])
+eq("\"full\": the same as absent", (FULL, d_absent["title"]), (d_full["descriptors"], d_full["title"]))
+eq("\"paths\": the file path only — no command, no dispatch text",
+   {"Bash": None, "Read": FULL["Read"], "Agent": None}, d_paths["descriptors"])
+eq("  … and no dispatch title", None, d_paths["title"])
+eq("\"none\": no descriptor at all — tool names and timing only", NOTHING, d_none["descriptors"])
+eq("  … and no dispatch title", None, d_none["title"])
+eq("  … while descriptor_allowlisted still reads the allowlist, so § 9.4's alarm stays quiet",
+   {"true": 3, "false": 0}, d_none["allowlisted"])
+eq("an unrecognised value spools what \"none\" spools, never more", (NOTHING, None), (d_typo["descriptors"], d_typo["title"]))
+eq("  … and is a config error, counted on every hook (the flusher then sends nothing, § 9.3)", 3, d_typo["config_invalid"])
+eq("  … and no valid value is one", [0, 0, 0, 0], [d["config_invalid"] for d in (d_absent, d_full, d_paths, d_none)])
+eq("nothing the dispatch text held reaches the spool, under any value",
+   [[], [], [], [], []], [d["leaked"] for d in (d_absent, d_full, d_paths, d_none, d_typo)])
+
+# RED — the two ways this key dies: the hook ignores it, or a typo widens it.
+p_ignore = plant(("const d = buildDescriptor(toolName, ti, mode);", "const d = buildDescriptor(toolName, ti);"),
+                 ("const title = mode === 'full' && typeof", "const title = typeof"))
+r_ignore = drive_descriptors("desc-none-ignored", "none", reporter=p_ignore)
+eq("RED: a hook that ignores the key sends every descriptor and the title under \"none\"",
+   (FULL, False), (r_ignore["descriptors"], r_ignore["title"] is None))
+p_widen = plant(("? cfg.descriptors : 'none';", "? cfg.descriptors : 'full';"))
+r_widen = drive_descriptors("desc-typo-widened", "path", reporter=p_widen)
+eq("RED: a typo read as \"full\" sends the command and the dispatch text", FULL, r_widen["descriptors"])
+redgreen("`descriptors` (D1 § 3.1, card#11292)",
+         f"key ignored -> \"none\" sends {r_ignore['descriptors']} + title {r_ignore['title']!r}; "
+         f"typo read as full -> {r_widen['descriptors']}",
+         f"absent/full -> {d_full['descriptors']}; paths -> {d_paths['descriptors']}; none -> "
+         f"{d_none['descriptors']}, title {d_none['title']!r}; typo -> none + config_invalid "
+         f"{d_typo['config_invalid']}")
 
 
 print("\n== 3. NEVER BLOCKS THE SEAT (P-1..P-5, AT-3) ==")
@@ -1711,11 +1839,12 @@ eq("  … and `hunter2` from that tool_input appears nowhere in the spool", True
 # hypothetical: a bare 32-character hex string (a proxy password, a harness token) matches NO
 # prefix in the shape list, and only the value leg can redact it.
 SHAPELESS = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"          # 32 hex, no recognisable prefix
+# The regex is the reporter's OWN, loaded from it, so the control cannot go on probing a copy of
+# the shape list after the list has grown.
 shape_probe = subprocess.run(
     ["node", "-e",
-     "const RE=/\\b(gh[pousr]_|github_pat_|sk-|sk_live_|sk_test_|xox[abposr]-|AKIA|ASIA|glpat-|"
-     "AIza|mzn_|mzr_)[A-Za-z0-9_-]{8,}/g;"
-     "process.stdout.write(String(RE.test(process.argv[1])));", SHAPELESS],
+     "const RE=require(process.argv[1]).CRED_PREFIX_RE; RE.lastIndex=0;"
+     "process.stdout.write(String(RE.test(process.argv[2])));", str(REPORTER), SHAPELESS],
     capture_output=True, text=True, cwd=str(HERE))
 # THE CONTROL THAT MAKES THIS TEST ISOLATE THE LEG. If the shape regex matched this value, a
 # green sweep below would prove nothing about the value leg — the same false-clean the whole
