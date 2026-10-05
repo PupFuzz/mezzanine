@@ -188,8 +188,11 @@
 
     <p>Signed in as {{ auth()->user()->email }}, with a confirmed second factor.</p>
 
-    {{-- The console is reachable from here rather than by knowing its URL (card#9070). --}}
-    <p><a href="{{ route('admin.index') }}">Admin console</a></p>
+    {{-- The console is reachable from here rather than by knowing its URL (card#9070), for the
+         accounts that may open it (card#9415): an observer would only be shown a 403. --}}
+    @can('operate')
+        <p><a href="{{ route('admin.index') }}">Admin console</a></p>
+    @endcan
 
     {{-- And the recovery codes from here, for the same reason (card#9077): a page nobody can find
          is the same defect as a page that does not exist, which is how the codes came to be stored,

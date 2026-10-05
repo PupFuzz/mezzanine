@@ -37,6 +37,18 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   `EveryTimeGoesThroughTheConverterTest` reds when the client, a view or a controller prints a time in one
   of the raw-print shapes it names.
 
+- **card#9415** — **An account is an observer or an operator.** An observer signs in and sees the floor,
+  the lobby, each desk's detail and the fleet REST endpoints; an operator also opens the admin console,
+  which now refuses an observer with a `403`, and the dashboard links it for operators only. Every
+  account that existed before this change is an operator. The console's users module shows and edits
+  the role, and a new account is an observer unless its creator picks operator.
+  `mezzanine:user:create` takes `--role` (default `observer`) and refuses to create an observer on an
+  install with no active operator; the new `mezzanine:user:role --email=… --role=…` changes an
+  existing account's role and is the CLI way back from a lockout. The console and both commands
+  refuse to demote the last active operator, and retirement now refuses the last active operator
+  rather than the last active account, so an install cannot be left with only observers. This replaces card#9070's D3, whose trigger fired
+  on 2026-09-13 (`docs/PLAN.md § 0`).
+
 - **card#11314** — **`web-auth/cose-lib` moves from 4.6.0 to 4.7.3, past three advisories.** The lockfile
   update clears GHSA-9v8c-2mgr-qvx3, GHSA-h7p4-6f74-7w4g and GHSA-rh56-4rc8-hj58 (each patched in 4.7.2). The
   library arrives through Fortify's passkey support, which stays disabled.

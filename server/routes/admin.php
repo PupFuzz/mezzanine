@@ -17,17 +17,19 @@ use Illuminate\Support\Facades\Route;
 | middleware list per route. The group that mounts this file — in `routes/web.php` — carries the
 | prefix, the name prefix and the whole of that story.
 |
-| ⛔ AUTHORIZATION IS `auth` + `mfa`, AND THAT IS THE ENTIRE MODEL — card#9070's D3: **every
-| authenticated user is an operator.** There is no role column, no gate and no policy, because
-| this application has exactly one class of user (`config/fortify.php` disables self-service
-| registration, so every account was provisioned by another operator or by
-| `mezzanine:user:create`). Inventing an RBAC layer for a fleet dashboard with one class of user
-| would be mechanism for a state that cannot occur.
+| ⛔ AUTHORIZATION IS `auth` + `mfa` + `can:operate` — card#9415. An account is an OBSERVER or an
+| OPERATOR (`users.role`), and this whole console is operator-only: an observer who could reach user
+| management could promote itself, which would void the tier (the console-wide scope is the PM's
+| decision of 2026-10-05, appended to `docs/PLAN.md § 0`). Observers keep everything the floor,
+| the lobby and the drill-down show, which are outside this group. The gate is `operate`, defined
+| once in `App\Providers\AppServiceProvider`; the controllers make no `authorize` calls of their own,
+| because the group's middleware is the whole statement.
 |
-| ▶ D3's REVISIT TRIGGER, written down so this is a decision and not drift: **the first time an
-| account must exist that may NOT administer other accounts** — a read-only viewer, an auditor, a
-| per-install operator — D3 is void and this group needs a real authorization layer. That trigger
-| is also in `README.md § The admin console`, which is the surface an operator reads.
+| ▶ THIS WAS card#9070's D3 — "every authenticated user is an operator", with no role column, no gate
+| and no policy — and D3 named its own revisit trigger: "the first time an account must exist that
+| may NOT administer other accounts". That TRIGGER FIRED on 2026-09-13, when the operator ruled that
+| a user may be observer-only (card#9415), and this layer is what D3 said would then be needed.
+| `README.md § The admin console` carries the same account for the operator who reads it.
 |
 | ⚠ `mfa` IS NOT OPTIONAL ON THIS SURFACE AND IS NOT A SEPARATE DECISION. `docs/PLAN.md` D-03
 | makes the whole public deployment MFA-gated, and this is the surface that creates accounts and
@@ -102,7 +104,9 @@ Route::post('/floors/{install_id}/remove', [FloorController::class, 'remove'])->
  * THE REVISIONS, THE DIFF, THE RESTORE AND THE EXPORT — card#9208's reversal (2026-09-12),
  * `docs/design/FLEET-STATE.md § 6.11`. The store took the four things version control gave a
  * build artifact and gives back three; these four routes ARE those three, and § 6.11 says in
- * terms which one is missing — the review, because "every authenticated user is an operator".
+ * terms which one is missing — the review, because "every account that can reach the console is an
+ * operator" (card#9415 keeps observers out of it, and adds no second person between a save and the
+ * floor).
  *
  * ⛔ RESTORE IS A `POST` TO A NAMED ACT and it DESTROYS NOTHING: § 6.11 makes a restore "a new
  * revision whose `document` copies revision K's", so the verb is a write forward and never a

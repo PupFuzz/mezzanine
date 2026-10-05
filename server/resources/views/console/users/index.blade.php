@@ -9,7 +9,7 @@
     <table>
         <thead>
             <tr>
-                <th>Name</th><th>Email</th><th>Second factor</th><th>State</th><th></th>
+                <th>Name</th><th>Email</th><th>Role</th><th>Second factor</th><th>State</th><th></th>
             </tr>
         </thead>
         <tbody>
@@ -17,6 +17,7 @@
                 <tr>
                     <td>{{ $user->name }}</td>
                     <td>{{ $user->email }}</td>
+                    <td>{{ $user->role }}</td>
                     <td>{{ $user->hasCompletedTwoFactorEnrolment() ? 'enrolled' : 'not enrolled' }}</td>
                     <td>
                         @if ($user->isRetired())
@@ -55,6 +56,7 @@
 
     <p>
         Retiring an account stops it signing in and keeps its record — nothing here deletes a row.
-        The last account that can still sign in cannot be retired; create its replacement first.
+        An observer reads the floor and cannot open this console; an operator can. The last active
+        operator cannot be retired or made an observer; make another account an operator first.
     </p>
 @endsection

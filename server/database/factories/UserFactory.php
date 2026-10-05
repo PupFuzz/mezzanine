@@ -61,7 +61,16 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make(static::password()),
             'remember_token' => Str::random(10),
+            // An operator unless a test says otherwise: most of the suite drives the admin console,
+            // which is operator-only (card#9415). `observer()` below is the other tier.
+            'role' => User::OPERATOR,
         ];
+    }
+
+    /** An account in card#9415's read-only tier: the floor, yes; the admin console, no. */
+    public function observer(): static
+    {
+        return $this->state(fn (array $attributes) => ['role' => User::OBSERVER]);
     }
 
     /**

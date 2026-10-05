@@ -184,6 +184,25 @@ its date, its decider and the scope of what it moved. The original row above sta
   requirement for a store on another host. **Reopens:** a store that moves off the application's host,
   which then carries the TLS requirement again with no further decision.
 
+- **card#9070's D3 · superseded: an account is an observer or an operator — operator, 2026-09-13;
+  the console's scope — pm, 2026-10-05 (card#9415).**
+  card#9070 decided that *every authenticated user is an operator* (D3) and named the trigger that
+  would void it: *the first time an account must exist that may NOT administer other accounts*. The
+  operator's ruling of 2026-09-13 on card#9415 fired it: a user is **observer only, or read/write**.
+  **What moves:** `users.role` is `observer` or `operator`, and one gate, `operate`, reads it. The
+  pm decided on 2026-10-05 that the gate covers the **whole admin console**, not only the per-desk
+  write controls card#9415 named, because an observer that reached user management could promote
+  itself. Every account that existed when the column was added is an operator; a new account is an
+  observer unless its creator chooses otherwise; the last active operator can be neither demoted nor
+  retired. `README.md § The admin console` and `server/routes/admin.php` state the operative rule.
+  **What does NOT move, and each is load-bearing:** D-10 stands — Mezzanine still owns no actuator,
+  and of the write controls the role will gate, card#9416's console link hands the operator to
+  Anthropic's console and card#9417's compose box writes into a channel the agent already reads;
+  neither is a server→seat command path.
+  Fleet read access stays all-or-nothing
+  ([`docs/design/FLEET-STATE.md § 14`](design/FLEET-STATE.md#14-open-questions-for-the-review-loop)
+  item 7): an observer reads every install an operator does.
+
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
 The operator's question: *can Mezzanine function without the bridge, and what is best technically —
