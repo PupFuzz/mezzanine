@@ -253,7 +253,8 @@ Pinning a named seat to a chosen desk was ruled out on `card#9071` (2026-09-12) 
 store a fact `docs/design/FLOOR.md § 3.2` derives — and a desk object carrying any property but
 `reserved_for` is refused at the write so that a seat's name cannot arrive as one. `reserved_for`
 reserves one desk for a ROLE, such as `pm`, never for a seat (`card#11144`); the shipped default
-reserves its back-row right corner for `pm`, and the floor does not seat by it yet.
+reserves its back-row right corner for `pm`, and the floor seats the room's one seat relaying
+`pm` there, or nobody.
 
 **A room's map is authored in Tiled and installed through the console** — export it as a JSON map
 (`.tmj`) with the tile layer format set to CSV, referencing a tileset this repository ships under

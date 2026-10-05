@@ -439,7 +439,9 @@ export class AnimationSet {
     /**
      * § 3.3's displacement: an arriving seat took an incumbent's slot, so the incumbent walks to
      * its new one. `cause` is § 11's own answer for this row — the seat-set change, recorded as
-     * the ARRIVING seat's key — while the row itself names the desk that MOVED.
+     * the ARRIVING seat's key (or a departure's, § 3.5), or, where an applied delta changed which
+     * seat the reserved desk seats (§ 3.2, card#11144), that delta's `state_version` — while the row
+     * itself names the desk that MOVED.
      *
      * ⚠ THE CALLER IS `floor/floor-screen.js` (card#7341 step 7), and it is the slot function's
      * own answer rather than a diff of two renders: the screen re-assigns § 3.2's slots over the
@@ -447,8 +449,8 @@ export class AnimationSet {
      * before that caller so that the step read § 6.4's form and § 11's `cause` off this set rather
      * than minting a second answer.
      */
-    displaced(installId, seatId, arrivingKey, at) {
-        this.#edge('A16', arrivingKey, installId, seatId, at);
+    displaced(installId, seatId, cause, at) {
+        this.#edge('A16', cause, installId, seatId, at);
     }
 
     /**

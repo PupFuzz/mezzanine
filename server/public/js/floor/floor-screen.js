@@ -79,6 +79,7 @@ import {
     backWallBand,
     mapDesks,
     mapGrid,
+    mapReservation,
     placeRooms,
     RoomClock,
 } from './floor-layout.js';
@@ -90,6 +91,31 @@ import {
  */
 export function shortNotice(count, installId, roomsOnFloor) {
     const bare = `floor map is short ${count} desks`;
+
+    return roomsOnFloor > 1 ? `${bare} — ${installId}` : bare;
+}
+
+/**
+ * § 5.5's reserved-desk line and § 9 F22 (card#11144): the room's reserved desk seats nobody, either
+ * because no seat relays its role or because two or more do — named by its Tiled `id`, never by
+ * § 3.2's slot index, and the seats by their `seat_id` in § 3.2's `order`. `null` when the desk seats
+ * its one holder, which is the case with nothing to say. Bare on a one-room floor and suffixed with
+ * the room on a floor of several, as `shortNotice()` is and for its reason: *which room's desk* is
+ * the question.
+ *
+ * @param {{reserved: {id: number|null, role: string}|null, eligible: list<string>}} assignment `assignSlots()`'s answer for the room
+ */
+export function reservationNotice(assignment, installId, roomsOnFloor) {
+    const { reserved, eligible } = assignment;
+
+    if (reserved === null || eligible.length === 1) {
+        return null;
+    }
+
+    const head = `reserved for \`${reserved.role}\` (id ${reserved.id})`;
+    const bare = eligible.length === 0
+        ? `${head} — no seat holds that role`
+        : `${head} — ${eligible.length} seats hold that role: ${eligible.map((key) => `\`${splitKey(key)[1]}\``).join(', ')}`;
 
     return roomsOnFloor > 1 ? `${bare} — ${installId}` : bare;
 }
@@ -846,7 +872,7 @@ export class FloorScreen {
             const seats = seatsByRoom.get(placed.install_id) ?? [];
             const mapless = state.state === null || state.state.failure !== null;
             const slots = mapless ? [] : mapDesks(state.map);
-            const assignment = assignSlots(seats, slots.length);
+            const assignment = assignSlots(seats, slots.length, mapReservation(slots));
 
             assignments.set(placed.install_id, assignment);
 
@@ -883,6 +909,12 @@ export class FloorScreen {
                 roomNotices.push(mapFailureNotice(placed.install_id, state.state?.failure?.status ?? null));
             } else if (assignment.overflow.length > 0) {
                 roomNotices.push(shortNotice(assignment.overflow.length, placed.install_id, floor.rooms.length));
+            }
+
+            const reservation = reservationNotice(assignment, placed.install_id, floor.rooms.length);
+
+            if (reservation !== null) {
+                roomNotices.push(reservation);
             }
 
             // § 4.6: a room the fleet reports no seat for is drawn and LABELLED, never omitted — and
@@ -1000,23 +1032,38 @@ export class FloorScreen {
      * some OTHER mover left) the departure that held the lowest slot: the stated approximation § 11
      * makes for an arrival's cascade, read from the other side. ⚠ The departure half of `cause` is
      * this step's reading — § 11's cell names the ARRIVING seat's key, and a departure has none.
+     *
+     * ⛔ AND A DELTA THAT CHANGES THE RESERVED DESK'S HOLDER IS THE THIRD DRIVER (§ 3.2, card#11144).
+     * A held seat's relayed `protocol_agent_role` changing on an applied delta can seat it at the
+     * reserved desk, walk it out of the desk, or make a second seat eligible so that the incumbent
+     * walks out (§ 9 F22); the seats whose chain the move reaches re-probe with it. Each of those
+     * moves is A16, and its `cause` is that delta's `state_version` — the wire message that made the
+     * change. The same change by a snapshot, a resync or an insert moves the desks with no row, as
+     * every snapshot apply does (§ 6.5). An arrival or a departure in the same render keeps its own
+     * cause for the desks it moved; the seat whose role changed names its own delta.
      */
     #displacements(assignments, journal, at) {
-        const arrived = new Set(journal
-            .filter((entry) => entry.t === 'seat.delta' && entry.outcome === 'applied')
-            .map((entry) => `${entry.install_id}/${entry.seat_id}`));
+        const applied = journal.filter((entry) => entry.t === 'seat.delta' && entry.outcome === 'applied');
+        const arrived = new Set(applied.map((entry) => `${entry.install_id}/${entry.seat_id}`));
+        // The last applied delta per key that changed the seat's relayed role — the only member the
+        // reserved desk's holder is a function of, besides the seat set.
+        const relayed = new Map(applied
+            .filter((entry) => entry.before?.protocol_agent_role !== entry.after?.protocol_agent_role)
+            .map((entry) => [`${entry.install_id}/${entry.seat_id}`, entry.state_version]));
         const announced = new Set(journal
             .filter((entry) => entry.t === 'seat.removed' && entry.cause !== 'snapshot')
             .map((entry) => `${entry.install_id}/${entry.seat_id}`));
 
         for (const [installId, assignment] of assignments) {
-            const before = this.#placed.get(installId) ?? null;
+            const placed = this.#placed.get(installId) ?? null;
 
-            this.#placed.set(installId, assignment.slots);
+            this.#placed.set(installId, { slots: assignment.slots, holder: assignment.holder, eligible: assignment.eligible });
 
-            if (before === null) {
+            if (placed === null) {
                 continue;
             }
+
+            const before = placed.slots;
 
             // The seats that arrived with a delta this journal carries, in § 3.2's order, and the
             // seats an announcement took off the floor, in the order they were placed.
@@ -1025,7 +1072,14 @@ export class FloorScreen {
                 .filter((key) => !assignment.slots.has(key) && announced.has(key))
                 .sort((a, b) => before.get(a) - before.get(b));
 
-            if (arrivals.length === 0 && departures.length === 0) {
+            // The held seats whose eligibility for the reserved desk an applied delta changed, in
+            // § 3.2's order — when the change moved the desk's holder.
+            const relays = placed.holder === assignment.holder
+                ? []
+                : assignment.order.filter((key) => before.has(key) && relayed.has(key)
+                    && placed.eligible.includes(key) !== assignment.eligible.includes(key));
+
+            if (arrivals.length === 0 && departures.length === 0 && relays.length === 0) {
                 continue;
             }
 
@@ -1038,9 +1092,13 @@ export class FloorScreen {
             for (const [key, slot] of assignment.slots) {
                 if (before.has(key) && before.get(key) !== slot) {
                     const [install_id, seat_id] = splitKey(key);
-                    const cause = arrivals.length > 0
-                        ? displacementCause(before.get(key), holder, arrivals)
-                        : departureCause(slot, formerHolder, departures);
+                    const cause = relays.includes(key)
+                        ? relayed.get(key)
+                        : arrivals.length > 0
+                            ? displacementCause(before.get(key), holder, arrivals)
+                            : departures.length > 0
+                                ? departureCause(slot, formerHolder, departures)
+                                : relayed.get(relays[0]);
 
                     this.#set.displaced(install_id, seat_id, cause, at);
                 }

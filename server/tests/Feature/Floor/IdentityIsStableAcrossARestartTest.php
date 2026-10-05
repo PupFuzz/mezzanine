@@ -119,44 +119,59 @@ class IdentityIsStableAcrossARestartTest extends TestCase
 
     /**
      * GREEN — an arrival that does not collide: it takes its own free slot, NO DESK MOVES AT ALL,
-     * and the log carries no A16 row.
+     * and the log carries no A16 row. Twice: `aimla-win-5` on a desk nobody holds, and
+     * `aimla-impl-4` on the PM's own hash slot (card#11144) — which the PM, seated by its role at
+     * the reserved desk, does not hold, so it is free.
      */
     public function test_green_a_non_colliding_arrival_moves_nothing_and_writes_no_a16_row(): void
     {
         $published = $this->documentSlots();
-        $result = $this->floorRun('no_collision');
-        $after = $this->slotsOf($this->lastFloor($result), self::ROOM);
 
-        foreach ($published['slots'] as $key => $slot) {
-            $this->assertSame($slot, $after[$key] ?? null,
-                "[{$key}] a desk moved on an arrival that collided with nothing");
+        foreach (['no_collision', 'pm_hash_slot'] as $run) {
+            $result = $this->floorRun($run);
+            $after = $this->slotsOf($this->lastFloor($result), self::ROOM);
+
+            foreach ($published['slots'] as $key => $slot) {
+                $this->assertSame($slot, $after[$key] ?? null,
+                    "[{$run}] [{$key}] a desk moved on an arrival that collided with nothing");
+            }
+
+            // The arriving seat is whichever key the run added, and its slot is re-derived here from
+            // § 3.2's published function rather than transcribed: `h mod S` with the slot free.
+            $arrived = array_diff(array_keys($after), array_keys($published['slots']));
+
+            $this->assertCount(1, $arrived, "[{$run}] the run did not add exactly one seat to the room");
+
+            $key = (string) reset($arrived);
+
+            $this->assertSame($this->fnv1a32($key) % $published['modulus'], $after[$key],
+                "[{$run}] the non-colliding arrival did not take the slot § 3.2's function gives it at zero probes");
+            $this->assertSame([], $this->rowsFor($result, 'A16'),
+                "[{$run}] an A16 row was written although no arrival collided — a desk move was claimed that did not happen");
         }
 
-        // The arriving seat is whichever key the run added, and its slot is re-derived here from
-        // § 3.2's published function rather than transcribed: `h mod S` with the slot free.
-        $arrived = array_diff(array_keys($after), array_keys($published['slots']));
+        // `pm_hash_slot`'s arrival lands on the slot the PM's hash names — the case that tells a
+        // client seating the PM by its role from one seating it by its hash.
+        $pm = $published['holder'];
 
-        $this->assertCount(1, $arrived, 'the run did not add exactly one seat to the room');
-
-        $key = (string) reset($arrived);
-
-        $this->assertSame($this->fnv1a32($key) % $published['modulus'], $after[$key],
-            'the non-colliding arrival did not take the slot § 3.2\'s function gives it at zero probes');
-        $this->assertSame([], $this->rowsFor($result, 'A16'),
-            'an A16 row was written although no arrival collided — a desk move was claimed that did not happen');
+        $this->assertNotNull($pm, '§ 3.2 seats no holder by role, so `pm_hash_slot` tests nothing about the reservation');
+        $this->assertSame($this->fnv1a32($pm) % $published['modulus'],
+            $this->fnv1a32(self::ROOM.'/aimla-impl-4') % $published['modulus'],
+            '`pm_hash_slot`\'s arrival does not hash to the PM\'s own hash slot, so it no longer tests that slot is free');
     }
 
     /**
      * GREEN — TWO ARRIVALS IN ONE RENDER (§ 14 item 27). `fx-collision`'s `two_arrivals` run inserts
-     * § 3.3's colliding `aimla-impl-4` and the free-slotted `aimla-win-5` in one turn, both released
-     * by one discovery snapshot. `aimla-pm` is displaced once, so the log carries exactly one A16
-     * row, and § 11 names its cause: the arrival that now holds `aimla-pm`'s former slot.
+     * `aimla-linux-4`, which collides as § 3.3's worked arrival does, and the free-slotted
+     * `aimla-win-5` in one turn, both released by one discovery snapshot. § 3.3's displaced
+     * `aimla-impl-2` is displaced once, so the log carries exactly one A16 row, and § 11 names its
+     * cause: the arrival that now holds `aimla-impl-2`'s former slot.
      *
      * ⛔ THE RUN IS FIRST CHECKED TO BE THE CASE THE RULING IS ABOUT. A run whose two seats landed
      * in two renders would hold two single-arrival turns, where any rule gives the same answer.
      *
      * ⚠ THE PAIR ALSO SEPARATES THE RULE FROM THE ONE IT REPLACED, and that is asserted rather than
-     * assumed. The slot's taker, `aimla-impl-4`, is NOT the arrival that sorts lowest in § 3.2's
+     * assumed. The slot's taker, `aimla-linux-4`, is NOT the arrival that sorts lowest in § 3.2's
      * `order` (`aimla-win-5` hashes lower). So the old rule, which always named the lowest-order
      * arrival, names a seat that displaced nobody, and fails here.
      */
@@ -187,10 +202,11 @@ class IdentityIsStableAcrossARestartTest extends TestCase
 
     /**
      * GREEN — A CASCADE (§ 14 item 27's second clause). `fx-collision`'s `cascade` run places
-     * `aimla-impl-5` in a free slot in one render, then delivers `aimla-win-3`, which hashes to the
-     * same slot and sorts lower. `aimla-win-3` takes it, `aimla-impl-5` probes on into `aimla-pm`'s
-     * slot, and `aimla-pm` moves again. So two desks move, and `aimla-pm`'s former slot is held by
-     * `aimla-impl-5`, which is NOT one of this render's arrivals.
+     * `aimla-impl-6` in slot 5 in one render, then delivers `aimla-win-6`, which hashes to the
+     * reserved desk and probes past it into `aimla-impl-1`'s slot 3 (card#11144). `aimla-impl-1`
+     * moves on into `aimla-impl-2`'s slot, `aimla-impl-2` into `aimla-impl-6`'s, and `aimla-impl-6`
+     * round to slot 0. So three desks move, and two of their former slots are held by seats that
+     * are NOT this render's arrivals.
      *
      * The first displacement names its taker, as in the GREEN above. The cascaded one takes the
      * stated approximation: the arrival that sorts lowest in § 3.2's `order` among this render's
@@ -202,7 +218,7 @@ class IdentityIsStableAcrossARestartTest extends TestCase
         $render = $this->displacingRender($result);
         $rows = $this->rowsFor($result, 'A16');
 
-        $this->assertCount(2, $rows, 'the cascade did not move exactly two desks');
+        $this->assertCount(3, $rows, 'the cascade did not move exactly three desks');
 
         $cascaded = 0;
 
@@ -225,8 +241,8 @@ class IdentityIsStableAcrossARestartTest extends TestCase
                 "[{$key}] a cascaded displacement names the seat that took the slot, which did not arrive");
         }
 
-        $this->assertSame(1, $cascaded,
-            'no displaced seat\'s former slot is held by a non-arrival, so the cascade clause never ran');
+        $this->assertSame(2, $cascaded,
+            'the cascade\'s two displaced seats whose former slots a non-arrival holds did not both take the cascade clause');
     }
 
     /**
@@ -239,9 +255,10 @@ class IdentityIsStableAcrossARestartTest extends TestCase
      * `fx-clear-trace`, WHICH AT-D3-3's RED NAMES AS THE EXAMPLE. Two reasons, both mechanical:
      * that file holds exactly ONE run and `TheClearTraceShowsNoIdleAnywhereTest` asserts so, and its
      * run is driven by the desk-only rig, which the probe refuses to start beside the floor screen.
-     * What the RED needs is *a `/clear` on any seat*, which is the delta that mints a new
-     * `session.session_id` — D2 § 10's E9, authored on one seat here with nothing else moving, so a
-     * slot that changes changed because the SESSION did.
+     * What the RED needs is *a `/clear` on any seat the hash places*, which is the delta that mints
+     * a new `session.session_id` — D2 § 10's E9, authored on `aimla-impl-2` here with nothing else
+     * moving, so a slot that changes changed because the SESSION did. Not on `aimla-pm`: the PM sits
+     * at the reserved desk by its role (card#11144), so no hash, the session's or the key's, moves it.
      */
     public function test_red_a_desk_keyed_on_the_session_moves_when_a_seat_restarts(): void
     {
@@ -275,9 +292,13 @@ class IdentityIsStableAcrossARestartTest extends TestCase
      * ⛔ SECOND RED — SLOTS BY SORTED `seat_id` POSITION. § 3.2 rejects it by name: provisioning one
      * seat shifts EVERY later desk by one, so an operator's spatial memory of the office is undone
      * by an arrival. `aimla-beta` sorts below every seat the snapshot carries, so under the plant
-     * every desk on the floor moves — and it hashes to a free slot (`fx-collision`'s note), so the
+     * every desk the HASH places moves — and it hashes to a free slot (`fx-collision`'s note), so the
      * shipped function over the same arrival moves none, which is what makes the plant's move the
      * sort's and not the arrival's.
+     *
+     * ⚠ THE RESERVED DESK'S HOLDER IS NOT IN THAT POPULATION, and that is asserted rather than
+     * dropped (card#11144): `aimla-pm` sits at the reserved desk by its role, before the loop any
+     * ordering reaches, so it stays there under the plant as under the shipped function.
      */
     public function test_red_slots_by_sorted_seat_id_shift_every_desk_on_an_arrival(): void
     {
@@ -290,6 +311,12 @@ class IdentityIsStableAcrossARestartTest extends TestCase
         $result = $this->floorRun('alpha_arrival', $sorted);
         $before = $this->slotsOf($this->firstFloorWithRoom($result, self::ROOM), self::ROOM);
         $after = $this->slotsOf($this->lastFloor($result), self::ROOM);
+        $holder = $this->documentSlots()['holder'];
+
+        $this->assertNotNull($holder);
+        $this->assertSame($before[$holder] ?? null, $after[$holder] ?? null,
+            'the reserved desk\'s holder moved under the plant — it is seated by its role, before any ordering');
+        unset($before[$holder]);
 
         $shifted = array_keys(array_filter(
             $before,
@@ -298,7 +325,7 @@ class IdentityIsStableAcrossARestartTest extends TestCase
         ));
 
         $this->assertCount(count($before), $shifted,
-            'the RED did not bite: slots were assigned by sorted position and some desk kept its slot');
+            'the RED did not bite: slots were assigned by sorted position and some hashed desk kept its slot');
 
         // And the shipped function moves none of them on the same arrival.
         $shipped = $this->floorRun('alpha_arrival');
@@ -335,7 +362,7 @@ class IdentityIsStableAcrossARestartTest extends TestCase
 
     /**
      * ⛔ FOURTH RED — THE CASCADE ANSWERED WITH THE SLOT'S TAKER, WHATEVER IT IS. In the cascade run
-     * that names `aimla-impl-5` as `aimla-pm`'s cause, a seat that arrived in an earlier render.
+     * that names `aimla-impl-1` as `aimla-impl-2`'s cause, a seat that did not arrive at all.
      */
     public function test_red_a_cascade_answered_by_the_slots_taker_names_a_seat_that_did_not_arrive(): void
     {
@@ -349,9 +376,83 @@ class IdentityIsStableAcrossARestartTest extends TestCase
 
         $named = array_map(static fn (array $row): string => $row['cause'], $this->rowsFor($result, 'A16'));
 
-        $this->assertCount(2, $named);
+        $this->assertCount(3, $named);
         $this->assertNotSame([], array_diff($named, $render['arrivals']),
             'the RED did not bite: with the taker planted as every cause, every cause is still an arrival');
+    }
+
+    /**
+     * ⛔ RED — THE RESERVED DESK OPENED WHEN NOBODY IS ELIGIBLE (card#11144, the operator's ruling Q3 A:
+     * the desk stays empty and reserved). Planted, `aimla-impl-2` — whose hash slot is the reserved
+     * desk — sits in it on `fx-office-none`, where nobody relays `pm`; shipped, it probes past it.
+     */
+    public function test_red_a_reserved_desk_opened_when_nobody_is_eligible_seats_a_hashed_seat_in_it(): void
+    {
+        $open = $this->mutatedModules([self::FLOOR_LAYOUT,
+            "    if (reservation !== null) {\n        taken.set(reservation.index, holder);",
+            "    if (holder !== null) {\n        taken.set(reservation.index, holder);",
+        ]);
+        $index = $this->documentSlots()['slots'][$this->documentSlots()['holder']];
+        $impl2 = self::ROOM.'/aimla-impl-2';
+
+        $this->assertSame($index, $this->fnv1a32($impl2) % $this->documentSlots()['modulus'],
+            '`aimla-impl-2` no longer hashes to the reserved desk, so this RED cannot see the desk opened');
+        $this->assertSame($index, $this->slotsOf($this->lastFloor($this->floorRun('fx-office-none', $open)), self::ROOM)[$impl2] ?? null,
+            'the RED did not bite: with the reserved desk opened, the seat hashing to it still did not sit there');
+        $this->assertNotContains($index, $this->slotsOf($this->lastFloor($this->floorRun('fx-office-none')), self::ROOM),
+            'the shipped assignment seats someone at a reserved desk nobody is eligible for');
+    }
+
+    /**
+     * ⛔ RED — THE RESERVED DESK SKIPPED IN THE PROBE INSTEAD OF COUNTED TAKEN. § 3.2: the ring stays
+     * `S` desks wide and a hash landing on the reserved desk probes on as one landing on a held desk
+     * does. Taking the desk OUT of the ring — hashing every seat over the `S − 1` others — re-hashes
+     * the whole room; § 3.2's worked table tells them apart on `aimla-impl-2`'s row.
+     */
+    public function test_red_a_ring_without_the_reserved_desk_rehashes_the_room(): void
+    {
+        $skipping = $this->mutatedModules([self::FLOOR_LAYOUT,
+            '            const slot = (seat.h + i) % S;',
+            "            const ring = [...Array(S).keys()].filter((n) => reservation === null || n !== reservation.index);\n"
+            .'            const slot = ring[(seat.h + i) % ring.length];',
+        ]);
+
+        $published = $this->documentSlots()['slots'];
+        $planted = $this->slotsOf($this->lastFloor($this->floorRun('slots', $skipping)), self::ROOM);
+
+        $this->assertNotSame($published, $planted,
+            'the RED did not bite: with the reserved desk taken out of the ring the room still drew § 3.2\'s table');
+        $this->assertNotSame($published[self::ROOM.'/aimla-impl-2'], $planted[self::ROOM.'/aimla-impl-2'] ?? null,
+            '`aimla-impl-2`\'s row does not tell the two rules apart');
+    }
+
+    /**
+     * The rig's own selftest (card#11144): `documentSlots()` holds § 3.2's table to the function it
+     * publishes. CONTROL — the document as written has no defect. PLANTS — the holder's row written
+     * with a numeric probe count (the loop never placed it), a hashed row whose probes land
+     * elsewhere, and a `role` row over a map that reserves nothing — each reds.
+     */
+    public function test_the_slot_table_reader_refuses_a_table_that_does_not_work_the_function(): void
+    {
+        $md = $this->floorMd();
+        $reservation = $this->shippedDefaultReservation();
+
+        $this->assertNotNull($reservation, 'the shipped default reserves no desk, so the `role` row has nothing to be held to');
+        $this->assertSame([], $this->slotTableDefects($this->slotTable($md), $reservation), 'CONTROL: the document reds');
+
+        $holderRow = '| `aimla/aimla-pm` | 2865560748 | 0 | role | **2** |';
+
+        $this->assertStringContainsString($holderRow, $md, 'the holder row moved, so the plants below would plant nothing');
+
+        foreach ([
+            'a numeric probe on the holder' => [$holderRow, '| `aimla/aimla-pm` | 2865560748 | 0 | 2 | **2** |', $reservation],
+            'probes that land elsewhere' => ['| `aimla/aimla-impl-2` | 688100750 | 2 | 2 | **4** |', '| `aimla/aimla-impl-2` | 688100750 | 2 | 1 | **4** |', $reservation],
+            'a hashed seat at the reserved desk' => ['| `aimla/aimla-impl-2` | 688100750 | 2 | 2 | **4** |', '| `aimla/aimla-impl-2` | 688100750 | 2 | 0 | **2** |', $reservation],
+            'a role row over no reservation' => [$holderRow, $holderRow, null],
+        ] as $name => [$from, $to, $planted]) {
+            $this->assertNotSame([], $this->slotTableDefects($this->slotTable(str_replace($from, $to, $md)), $planted),
+                "PLANT ({$name}) did not red the reader");
+        }
     }
 
     /**

@@ -132,6 +132,16 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
                     "[{$run}] {$desk['key']}'s slot is not the shipped file's object at slot {$desk['slot']} — the run did not read the shipped default");
             }
 
+            // card#11144: the shipped default reserves a desk, and the reserved slot is in (a)'s population —
+            // the run's PM sits there by its role, so the slot a seat is placed in BEFORE the probe loop is
+            // held to its object and its furniture to its rect like every other.
+            if ($run === self::SHIPPED) {
+                $atReserved = array_values(array_filter($scene['desks'], fn (array $d): bool => $d['slot'] === ($this->shippedDefaultReservation()['index'] ?? null)));
+
+                $this->assertSame([$this->documentSlots()['holder']], array_column($atReserved, 'key'),
+                    "[{$run}] the shipped default's reserved slot is not drawn holding § 3.2's `role` row, so (a) does not read the slot seated by role");
+            }
+
             $this->assertSame([], $this->f21Lines($frame), "[{$run}] the shipped default emitted an F21 line");
             $this->assertSame([], $this->containmentDefects($scene), "[{$run}] (a) on the shipped default");
             $this->assertSame([], $this->bubbleDefects($scene), "[{$run}] (b) on the shipped default");

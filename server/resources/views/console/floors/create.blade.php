@@ -39,7 +39,7 @@
         more seats than slots still draws every one of them, in an overflow row with a notice
         (<code>§ 3.2</code>). One desk object may carry a <code>string</code> property
         <code>reserved_for</code> naming a role, such as <code>pm</code>, to reserve that desk for
-        the role; a desk object may carry no other property. The floor does not seat by the
-        reservation yet.
+        the role; a desk object may carry no other property. The floor seats the room's one seat
+        relaying that role at the reserved desk, or nobody (<code>§ 3.2</code>).
     </p>
 @endsection

@@ -1,5 +1,5 @@
 // HEADLESS CHROMIUM OVER THE DEVTOOLS PROTOCOL — the one launcher the hand-run browser tools in this
-// directory share (`floor-preview.browser.mjs` its `findChrome()`; `lobby-label-contrast.browser.mjs` and `floor-chrome.browser.mjs` both). Node, no
+// directory share (`floor-preview.browser.mjs` its `findChrome()`; `lobby-label-contrast.browser.mjs`, `floor-chrome.browser.mjs` and `floor-fixture.browser.mjs` both). Node, no
 // dependencies: Chromium is spawned with a DevTools port and driven over the platform's own WebSocket.
 // Hoisted at its second caller (card#11045) rather than copied.
 
@@ -26,8 +26,12 @@ export function findChrome() {
 /**
  * The page is ready when its `document.title` reads `ready` — each tool's page sets the title it waits on.
  */
-export /** Headless Chromium over the DevTools protocol, one page, at a given VIEWPORT (never the surface's own size). */
-async function browser(chrome, width, height, ready = 'drawn') {
+export /**
+ * Headless Chromium over the DevTools protocol, one page, at a given VIEWPORT (never the surface's own size).
+ * `emulate` — `{ media, timezone }` — sets CSS media features (`[{ name, value }]`, e.g. reduced motion) and the
+ * page's time zone before anything loads (card#11144's fixture renderer, which needs both fixed).
+ */
+async function browser(chrome, width, height, ready = 'drawn', emulate = {}) {
   const proc = spawn(chrome, ['--headless', '--disable-gpu', '--no-sandbox', '--hide-scrollbars',
     '--remote-debugging-port=0', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
   const wsUrl = await new Promise((resolve, reject) => {
@@ -62,6 +66,8 @@ async function browser(chrome, width, height, ready = 'drawn') {
   const page = (method, params) => send(method, params, sessionId);
   await page('Page.enable');
   await page('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+  if (emulate.media) await page('Emulation.setEmulatedMedia', { features: emulate.media });
+  if (emulate.timezone) await page('Emulation.setTimezoneOverride', { timezoneId: emulate.timezone });
   const evaluate = async (expression) => {
     const r = await page('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
     if (r.exceptionDetails) throw new Error(`in page: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
@@ -77,7 +83,7 @@ async function browser(chrome, width, height, ready = 'drawn') {
       throw new Error(`the page never drew: ${url}`);
     },
     evaluate,
-    shot: async () => `data:image/png;base64,${(await page('Page.captureScreenshot', { format: 'png' })).data}`,
+    shot: async (clip) => `data:image/png;base64,${(await page('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { ...clip, scale: 1 } } : {}) })).data}`,
     close() { ws.close(); proc.kill(); },
   };
 }
