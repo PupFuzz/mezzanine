@@ -30,7 +30,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 - **card#11144** — **The PM sits at the desk reserved for it.** `assignSlots()` in
   `server/public/js/floor/floor-layout.js` seats a room's one seat whose relayed `protocol_agent_role` equals
   the map's `reserved_for` at the reserved desk, and takes that desk before the probe loop whether or not
-  anyone holds it, so every other seat hashes over the same six desks and probes past it. With nobody relaying
+  anyone holds it, so every other seat hashes over all of the room's `S` desks, as before, and probes past it. With nobody relaying
   the role the desk stays empty and the floor reads *reserved for `pm` (id 3) — no seat holds that role*; with
   two or more, neither sits there and § 9 F22's notice names them (the operator's rulings Q3 A and Q4 A). On
   the shipped default the PM sits at the back-row right corner, desk id 3, and a seat relaying any other role,
@@ -106,7 +106,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   an `id` another desk also declares, and a second reserved desk, at a save and at a restore alike; a reserved desk is still held
   to the furniture box. The revisions page lists each revision's reserved desk beside its slot count, and a
   save's result names the reserved desk before and after. `resources/floor/default.tmj` reserves `id 3` for
-  `pm`; the floor does not seat by the reservation yet, so the corner holds whichever seat hashes there.
+  `pm`, and the floor seats the room's one seat relaying `pm` there, or nobody.
   `tools/design/verify-floor.py` G8 holds the default's reserved desk equal to `FLOOR.md § 10.3`'s sentence
   and § 12's new Measured row. This replaces card#9071's allowlist of none for a desk object's properties.
 - **card#11187** — **A room map whose desks sit inside a Tiled group is seated.** The console already

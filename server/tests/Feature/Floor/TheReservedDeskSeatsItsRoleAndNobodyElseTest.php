@@ -22,8 +22,9 @@ use Tests\TestCase;
  * matching run must appear in that row verbatim.
  *
  * ⛔ EVERY GREEN HAS A RED, planted into a copy of the shipped tree: the reservation ignored, the
- * declined Q4 alternative (the lowest `(h, seat_id)` keeps the desk), and a holder change that writes
- * no A16. AT-D3-3 (`IdentityIsStableAcrossARestartTest`) carries the two REDs on the probe loop.
+ * declined Q4 alternative (the lowest `(h, seat_id)` keeps the desk), a holder change that writes
+ * no A16, relays that ignore the eligibility change, a relay's own cause never used, and a loose
+ * role comparison. AT-D3-3 (`IdentityIsStableAcrossARestartTest`) carries the REDs on the probe loop.
  */
 class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
 {
@@ -34,10 +35,14 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
     /** The runs whose final frame seats exactly one holder at the reserved desk. */
     private const SEATED = ['fx-office', 'fx-office-grouped', 'fx-office-helper', 'fx-office-first-appearance', 'fx-office-first-appearance-insert', 'fx-office-handover'];
 
+    /** Relayed roles that are not strings: an array, a boolean and a number. `['pm']` is the one JavaScript's `==` reads as `'pm'`. */
+    private const NON_STRING_ROLES = [['pm'], true, 1];
+
     /** Every run of `fx-office.json`. */
     private const RUNS = [
         'fx-office', 'fx-office-none', 'fx-office-first-appearance', 'fx-office-first-appearance-insert',
         'fx-office-two', 'fx-office-two-relayed', 'fx-office-handover', 'fx-office-grouped', 'fx-office-helper',
+        'fx-office-relay-with-arrival',
     ];
 
     /**
@@ -193,6 +198,57 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
         $this->assertGreaterThan(0, $checked, 'no run wrote an A16 row, so no cause was checked');
     }
 
+    /**
+     * GREEN — a role relay in the SAME render as an arrival (`fx-office-relay-with-arrival`): one
+     * discovery release applies `aimla-pm`'s delta relaying `pm`, `aimla-impl-2`'s relaying
+     * `impl-lead`, and the arriving `aimla-mac-1`'s. Each mover keeps its own cause — `aimla-pm`, whose
+     * eligibility the relay changed, names its delta; `aimla-impl-2`, whose relay changed no
+     * eligibility, names the arrival that took its slot.
+     */
+    public function test_green_a_relay_in_the_same_render_as_an_arrival_keeps_each_movers_cause(): void
+    {
+        $run = 'fx-office-relay-with-arrival';
+        $result = $this->floorRun($run);
+        [$index] = $this->reservation($run);
+
+        $this->assertSame($this->relayWithArrivalCauses(), $this->moversAndCauses($result));
+        $this->assertCount(1, array_unique(array_column($this->rowsFor($result, 'A16'), 'at')), 'the two moves were not written in one render');
+        $this->assertSame($index, $this->slotsOf($this->lastFloor($result), self::ROOM)[self::ROOM.'/aimla-pm'] ?? null);
+    }
+
+    /**
+     * ⛔ RED — relays that ignore the eligibility change: every held seat whose role a delta changed
+     * counts as a relay once the holder moves, so `aimla-impl-2`, whose `impl-lead` changed no
+     * eligibility, names its own delta instead of the arrival that took its slot.
+     */
+    public function test_red_relays_that_ignore_the_eligibility_change_red_the_same_render_run(): void
+    {
+        $ignoring = $this->mutatedModules([self::FLOOR_SCREEN,
+            "                : assignment.order.filter((key) => before.has(key) && relayed.has(key)\n                    && placed.eligible.includes(key) !== assignment.eligible.includes(key));",
+            '                : assignment.order.filter((key) => before.has(key) && relayed.has(key));',
+        ]);
+
+        $this->assertNotSame($this->relayWithArrivalCauses(), $this->moversAndCauses($this->floorRun('fx-office-relay-with-arrival', $ignoring)),
+            'the RED did not bite: with eligibility ignored, every mover still named the cause the GREEN expects');
+    }
+
+    /**
+     * ⛔ RED — a relay's own cause never used: the mover whose eligibility changed takes the
+     * arrival's cause whenever the render also carries an arrival, so `aimla-pm` names `aimla-mac-1`.
+     * A relay alone in its render still names its delta under this plant (the fallback), which is why
+     * only the same-render run can see it.
+     */
+    public function test_red_a_relay_cause_never_used_reds_the_same_render_run(): void
+    {
+        $unused = $this->mutatedModules([self::FLOOR_SCREEN,
+            'const cause = relays.includes(key)',
+            'const cause = false',
+        ]);
+
+        $this->assertNotSame($this->relayWithArrivalCauses(), $this->moversAndCauses($this->floorRun('fx-office-relay-with-arrival', $unused)),
+            'the RED did not bite: with the relay cause unused, every mover still named the cause the GREEN expects');
+    }
+
     /** ⛔ RED — a client that ignores the reservation seats `aimla-pm` at its hash slot. */
     public function test_red_a_client_that_ignores_the_reservation_reds_the_seated_runs(): void
     {
@@ -247,7 +303,84 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
             'the delta that took the seat out of `offline` carries no `protocol_agent_role`, so it is no cause for A16');
     }
 
+    /**
+     * GREEN — "compared as strings only" (§ 3.2's `eligible`, `floor-layout.js`'s `assignSlots()`): a
+     * relayed `protocol_agent_role` that is not a string matches no desk, even where its loose reading
+     * is the role — `['pm']` reads `'pm'` under JavaScript's `==`. A fixture run cannot carry these (D2
+     * publishes the member as a string or `null`), so the client's `assignSlots()` is driven directly
+     * over `fx-office`'s seats and map with `aimla-pm`'s role replaced. The `'pm'` row is the control:
+     * the same call seats `aimla-pm` when its role is the string, so the probe can seat a holder at all.
+     */
+    public function test_green_a_role_that_is_not_a_string_is_seated_by_no_reserved_desk(): void
+    {
+        [$index] = $this->reservation('fx-office');
+        $key = self::ROOM.'/aimla-pm';
+        $out = $this->assignWithPmRole(self::NON_STRING_ROLES);
+
+        foreach (self::NON_STRING_ROLES as $i => $role) {
+            $label = json_encode($role);
+
+            $this->assertNull($out[$i]['holder'], "a relayed role of {$label} was seated as the reserved desk's holder");
+            $this->assertSame([], $out[$i]['eligible'], "a relayed role of {$label} was counted eligible for the reserved desk");
+            $this->assertNotContains($index, $out[$i]['slots'], "a relayed role of {$label} put a seat at the reserved desk");
+        }
+
+        [$control] = $this->assignWithPmRole(['pm']);
+
+        $this->assertSame($key, $control['holder'], 'the control did not seat the string role, so the probe exercises nothing');
+        $this->assertSame($index, $control['slots'][$key] ?? null);
+    }
+
+    /**
+     * ⛔ RED — a client comparing roles loosely (`==`, no string guard) seats `['pm']` as the holder.
+     * Either guard alone holds the claim — the `typeof` test and the strict `===` each refuse a
+     * non-string against the map's string role — so the plant drops both; each dropped alone leaves
+     * the GREEN above green, and that is not a gap in this check but the two guards being one claim.
+     */
+    public function test_red_a_loose_role_comparison_seats_a_role_that_is_not_a_string(): void
+    {
+        $loose = $this->mutatedModules([self::FLOOR_LAYOUT,
+            "typeof seat.role === 'string' && seat.role === reservation.role",
+            'seat.role == reservation.role',
+        ]);
+
+        [$out] = $this->assignWithPmRole([['pm']], $loose);
+
+        $this->assertSame(self::ROOM.'/aimla-pm', $out['holder'],
+            'the RED did not bite: with a loose comparison, `[\'pm\']` was still not seated');
+    }
+
     // ── the oracle and its readers ──────────────────────────────────────────────────────────────
+
+    /**
+     * `assignSlots()` over `fx-office`'s last seat set and map, once per value, with `aimla-pm`'s
+     * relayed role replaced by that value — through `assign-slots-probe.mjs`, over the shipped tree or
+     * a planted copy.
+     *
+     * @param  list<mixed>  $roles
+     * @return list<array{slots: array<string, int>, holder: string|null, eligible: list<string>}>
+     */
+    private function assignWithPmRole(array $roles, ?string $dir = null): array
+    {
+        $reservation = $this->reservation('fx-office');
+        $cases = [];
+
+        foreach ($roles as $role) {
+            $seats = [];
+
+            foreach ($this->lastRoles('fx-office') as $key => $relayed) {
+                [$install, $seat] = explode('/', $key, 2);
+                $seats[] = ['install_id' => $install, 'seat_id' => $seat, 'protocol_agent_role' => $seat === 'aimla-pm' ? $role : $relayed];
+            }
+
+            $cases[] = ['seats' => $seats, 'slotCount' => 6, 'reservation' => ['index' => $reservation[0], 'id' => $reservation[1], 'role' => $reservation[2]]];
+        }
+
+        $out = $this->probe($cases, $dir, __DIR__.'/assign-slots-probe.mjs');
+        $this->assertCount(count($roles), $out);
+
+        return $out;
+    }
 
     /**
      * Every run whose last frame is not § 3.2's function over its last seat set.
@@ -326,6 +459,12 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
 
         foreach ($fixture['messages'] as $message) {
             $envelope = $message['envelope'];
+
+            // A `feed.heartbeat` names no seat (`fx-office-relay-with-arrival`'s starts the discovery).
+            if (! in_array($envelope['t'], ['seat.delta', 'seat.retired'], true)) {
+                continue;
+            }
+
             $key = "{$envelope['install_id']}/{$envelope['seat_id']}";
 
             if ($envelope['t'] === 'seat.retired') {
@@ -335,7 +474,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
             }
 
             if (! array_key_exists($key, $roles)) {
-                $roles[$key] = $fixture['http']["/api/fleet/seats/{$envelope['install_id']}/{$envelope['seat_id']}"][0]['body']['protocol_agent_role'];
+                $roles[$key] = $this->insertedRole($fixture, $envelope['install_id'], $envelope['seat_id']);
             }
 
             if (array_key_exists('protocol_agent_role', $envelope['patch'])) {
@@ -344,6 +483,63 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
         }
 
         return $roles;
+    }
+
+    /**
+     * `fx-office-relay-with-arrival`'s A16 rows as `[seat_id, cause]`, sorted.
+     *
+     * @param  array<string, mixed>  $result
+     * @return list<array{0: string, 1: int|string}>
+     */
+    private function moversAndCauses(array $result): array
+    {
+        $rows = array_map(static fn (array $r): array => [$r['seat_id'], $r['cause']], $this->rowsFor($result, 'A16'));
+
+        sort($rows);
+
+        return $rows;
+    }
+
+    /**
+     * What that run's movers must name: `aimla-impl-2` the arrival holding its former slot, and
+     * `aimla-pm`, whose eligibility its relay changed, that delta's `state_version`.
+     *
+     * @return list<array{0: string, 1: int|string}>
+     */
+    private function relayWithArrivalCauses(): array
+    {
+        return [
+            ['aimla-impl-2', self::ROOM.'/aimla-mac-1'],
+            ['aimla-pm', $this->roleDeltaVersion('fx-office-relay-with-arrival', 'aimla-pm')],
+        ];
+    }
+
+    /**
+     * The relayed role a seat the run's client did not hold arrives with: its insert fetch's body
+     * where that read succeeds, else the discovery snapshot that inserts it once the fetch has failed
+     * (§ 2.3; `fx-office-relay-with-arrival`).
+     *
+     * @param  array<string, mixed>  $fixture
+     */
+    private function insertedRole(array $fixture, string $install, string $seat): ?string
+    {
+        foreach ($fixture['http']["/api/fleet/seats/{$install}/{$seat}"] ?? [] as $response) {
+            if ($response['status'] === 200) {
+                return $response['body']['protocol_agent_role'];
+            }
+        }
+
+        foreach (array_reverse($fixture['http']['/api/fleet/snapshot']) as $response) {
+            foreach ($response['body']['installs'] ?? [] as $held) {
+                foreach ($held['seats'] as $row) {
+                    if ($row['install_id'] === $install && $row['seat_id'] === $seat) {
+                        return $row['protocol_agent_role'];
+                    }
+                }
+            }
+        }
+
+        $this->fail("no read of the run returns {$install}/{$seat}, so its role is not known");
     }
 
     /**
