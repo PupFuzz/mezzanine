@@ -5,10 +5,13 @@
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THIS FILE DECIDES NOTHING. Where every tile, desk element, bubble, line and § 6.2 form lands is
  * the scene's, read headlessly by AT-D3-19 and AT-D3-20; there is no browser on the build host, so
- * nothing here has been laid out or painted by a check. What IS checked is that the element it
- * addresses exists on the floor view (`FloorPageWiringTest`) and that the asset route serves the
+ * nothing here has been laid out or rasterised by a check. What IS checked is that the element it
+ * addresses exists on the floor view (`FloorPageWiringTest`), that the asset route serves the
  * two modules it imports (`TheArtRouteServesOnlyWhatTheGatesJudgedTest`, which reads the specifiers
- * below out of this file). A rule found here that is not in the scene is in the wrong file.
+ * below out of this file), and — over a fake DOM — the nodes it writes: each desk's at its layout
+ * element (`TheNewDeskKeepsEveryLeafTest`, `painter-probe.mjs`), and each tile as itself, in order,
+ * identical neighbours as one primitive (`TheFloorsTilesDrawWithoutSeamsTest`, `tile-seams-probe.mjs`).
+ * A rule found here that is not in the scene is in the wrong file.
  *
  * ⛔ ONE SPACE: SVG (§ 13 row 15 leaves the surface to the builder). Tiles, desks, nameplates,
  * bubbles and the thread line are drawn into one `<svg>` whose `viewBox` is the camera's view
@@ -31,7 +34,7 @@
 
 import { FONT, FONT_NAME, STOOL_GLYPH, TYPE_ROLES } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
-import { ROOM_THEMES } from './scene.js';
+import { ROOM_THEMES, tileRegions } from './scene.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
 
 /** The furniture box and the desk sprite — `resources/floor/furniture-box.js`, by the asset route. */
@@ -533,30 +536,46 @@ export function createPainter({ characters, failed, select }) {
             node('rect', { x: scene.slab.x, y: scene.slab.y, width: scene.slab.w, height: scene.slab.h, class: 'slab' }, svg);
         }
 
+        // The tiles, one PRIMITIVE per region (`scene.js`'s `tileRegions()`): a path over the region's rects,
+        // filled with its look as a pattern on the region's lattice, so identical neighbours are one coverage
+        // and meet at no edge of their own — a tile drawn alone left a hairline of the plane between neighbours
+        // wherever their edge fell on a fractional device pixel. The pattern draws the look as a single tile
+        // drew it: a window onto its image (`viewBox`), stretched to its cell, flipped about the window's centre.
+        // A region hands this its LOOK and never a tile, so what is drawn is what the regions were joined on.
         const tiles = node('g', { class: 'tiles' }, svg);
-        const tile = (t) => {
-            const holder = node('svg', {
-                x: t.x,
-                y: t.y,
-                width: t.w,
-                height: t.h,
-                viewBox: `${t.sx} ${t.sy} ${t.sw} ${t.sh}`,
-                preserveAspectRatio: 'none',
-                opacity: t.opacity === 1 ? null : t.opacity,
-            }, tiles);
-            const flip = [t.flip_h ? -1 : 1, t.flip_v ? -1 : 1];
+        let fills = 0;
+        const pass = (cells) => {
+            for (const { look, x, y, rects } of tileRegions(cells)) {
+                const id = `floor-tile-${fills++}`;
+                const fill = node('pattern', {
+                    id,
+                    patternUnits: 'userSpaceOnUse',
+                    x,
+                    y,
+                    width: look.w,
+                    height: look.h,
+                    viewBox: `${look.sx} ${look.sy} ${look.sw} ${look.sh}`,
+                    preserveAspectRatio: 'none',
+                }, defs);
+                const flip = [look.flip_h ? -1 : 1, look.flip_v ? -1 : 1];
 
-            image(holder, t.image, 0, 0, t.iw, t.ih, t.image, flip[0] === 1 && flip[1] === 1 ? {} : {
-                transform: `translate(${flip[0] === -1 ? 2 * t.sx + t.sw : 0} ${flip[1] === -1 ? 2 * t.sy + t.sh : 0}) scale(${flip[0]} ${flip[1]})`,
-            });
+                image(fill, look.image, 0, 0, look.iw, look.ih, look.image, flip[0] === 1 && flip[1] === 1 ? {} : {
+                    transform: `translate(${flip[0] === -1 ? 2 * look.sx + look.sw : 0} ${flip[1] === -1 ? 2 * look.sy + look.sh : 0}) scale(${flip[0]} ${flip[1]})`,
+                });
+                node('path', {
+                    d: rects.map((r) => `M${r.x} ${r.y}h${r.w}v${r.h}h${-r.w}Z`).join(''),
+                    fill: `url(#${id})`,
+                    opacity: look.opacity === 1 ? null : look.opacity,
+                }, tiles);
+            }
         };
 
         // The hallway's tiles first (§ 4.2); then each room in the scene's order, its plane under its own tiles.
-        scene.tiles.filter((t) => t.room === null).forEach(tile);
+        pass(scene.tiles.filter((t) => t.room === null));
 
         for (const plane of scene.planes) {
             node('rect', { x: plane.x, y: plane.y, width: plane.w, height: plane.h, class: `plane plane-${plane.theme}` }, tiles);
-            scene.tiles.filter((t) => t.room === plane.install_id).forEach(tile);
+            pass(scene.tiles.filter((t) => t.room === plane.install_id));
         }
 
         for (const d of scene.decorative) {

@@ -607,6 +607,217 @@ export function mapTiles(map, origin, tilesetFor, owner) {
     return out.map((cell) => Object.freeze(cell));
 }
 
+/**
+ * WHAT A TILE LOOKS LIKE — everything the painter draws a tile from, and nothing else: its image, the
+ * image's size, the window onto it, the cell it is stretched to, its flips and its opacity. Tiles with
+ * equal looks draw the same picture, so `tileRegions()` joins them on it, and the painter receives the
+ * look in place of the tile: what it can draw is exactly what is here, so the merge and the drawing
+ * read one list.
+ *
+ * ⚠ `flip_d` is not here because the painter does not draw it yet — card#11277.
+ */
+export function tileLook(t) {
+    return Object.freeze({
+        image: t.image,
+        iw: t.iw,
+        ih: t.ih,
+        sx: t.sx,
+        sy: t.sy,
+        sw: t.sw,
+        sh: t.sh,
+        w: t.w,
+        h: t.h,
+        flip_h: t.flip_h,
+        flip_v: t.flip_v,
+        opacity: t.opacity,
+    });
+}
+
+/**
+ * The tiles of one drawing pass (the hallway's, or one room's) as REGIONS: a region is one tile and every
+ * tile of the same look (`tileLook()`) joined to it edge to edge on its lattice — its copies at `x + c·w`,
+ * `y + r·h` — which the painter draws as ONE primitive. Every tile is in exactly one region; a tile with no
+ * neighbour of its look is a region of one. `rects` is the region's area, row by row: each run of copies
+ * side by side in a row is one rect, and the rects never overlap.
+ *
+ * ⛔ WHY: a tile drawn as its own primitive has its own antialiased edge, and where two tiles' shared edge
+ * lands on a fractional device pixel — any zoom but a whole one — each covers that pixel partly and the
+ * pair leaves a hairline of whatever is under them (the room's plane between the planks; a dotted ladder
+ * down a wall strip). One primitive is antialiased as one coverage, so the copies inside a region meet at
+ * no edge of their own whatever shape the region has — an L of wall strip included, which no single
+ * rectangle covers. ⚠ That was looked at in Chromium when this landed, and in no other engine. ⚠ Two tiles
+ * of DIFFERENT looks that meet are still two primitives and still meet at an edge.
+ *
+ * ⛔ A NEIGHBOUR IS FOUND BY ITS PLACE TO 1/1024 px, NEVER BY ITS EXACT COORDINATES. `mapTiles()` places a
+ * cell at `origin + offsets + col·w`, and a group or tileset offset such as 0.1 or 1/3 makes that differ in
+ * its last bits from the `x + w` the lookup computes, so an exact match misses identical neighbours and the
+ * seam is back. A dyadic coordinate of ten fractional bits or fewer is exact at that quantum, and one of up
+ * to six decimal places (or a third) lies at least 10⁻⁶ of a quantum from a rounding edge, where a sum's
+ * drift on a floor-sized coordinate is orders of magnitude smaller. Inside a region a copy's place is its
+ * whole-number column and row on the region's lattice, so `rects` are on that lattice exactly.
+ *
+ * ⛔ THE DRAW ORDER IS KEPT WHERE IT IS VISIBLE. A region is drawn where its first tile was, which moves
+ * its later copies earlier; that is only allowed past tiles they do not overlap. A copy that would move
+ * past a tile it overlaps — so that tile would now be drawn over a copy it used to be under — is held out
+ * of the region and starts one of its own at its own place, and the regions are found again until the
+ * order holds for every copy.
+ *
+ * @param {list<object>} tiles one pass's tiles, in draw order (`mapTiles()`'s cells)
+ * @returns {list<{look: object, x: number, y: number, rects: list<{x: number, y: number, w: number, h: number}>}>}
+ *          in draw order; `look` is the region's (`tileLook()`), and `x`, `y` its first tile's place — the
+ *          origin of its lattice
+ */
+export function tileRegions(tiles) {
+    const spot = (x, y) => `${Math.round(x * 1024)},${Math.round(y * 1024)}`;
+
+    // Each look by a small number, so a place is looked up by a short key.
+    const kinds = new Map();
+    const looks = [];
+    const keys = tiles.map((t) => {
+        const look = tileLook(t);
+        const kind = JSON.stringify(look);
+
+        if (!kinds.has(kind)) {
+            kinds.set(kind, kinds.size);
+            looks.push(look);
+        }
+
+        return kinds.get(kind);
+    });
+    const at = new Map();
+
+    tiles.forEach((t, i) => {
+        const k = `${keys[i]}@${spot(t.x, t.y)}`;
+
+        // Two identical tiles at one place (two layers) stay apart: the later one is a region of its own.
+        if (!at.has(k)) {
+            at.set(k, i);
+        }
+    });
+
+    const heldOut = new Set();
+    const regionOf = new Array(tiles.length);
+    let regions;
+
+    for (;;) {
+        regionOf.fill(-1);
+        regions = [];
+
+        tiles.forEach((t, first) => {
+            if (regionOf[first] !== -1) {
+                return;
+            }
+
+            const { w, h } = looks[keys[first]];
+            const id = regions.length;
+            const members = [first];
+            const cells = [[0, 0]];
+
+            regionOf[first] = id;
+
+            // Every tile of its look reachable edge to edge — a held-out tile joins no region but its own.
+            for (let m = 0; m < members.length && !heldOut.has(first); m++) {
+                const here = tiles[members[m]];
+
+                for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+                    const i = at.get(`${keys[first]}@${spot(here.x + dx * w, here.y + dy * h)}`);
+
+                    // Later than `first` (an earlier tile is already in a region), and never `first` itself —
+                    // which a tile of no width or height would otherwise find at every step.
+                    if (i !== undefined && i > first && regionOf[i] === -1 && !heldOut.has(i)) {
+                        regionOf[i] = id;
+                        members.push(i);
+                        cells.push([cells[m][0] + dx, cells[m][1] + dy]);
+                    }
+                }
+            }
+
+            regions.push({ first, members, cells });
+        });
+
+        const late = misordered(tiles, regions, regionOf);
+
+        if (late.length === 0) {
+            break;
+        }
+
+        for (const m of late) {
+            heldOut.add(m);
+        }
+    }
+
+    return regions.map(({ first, cells }) => {
+        const look = looks[keys[first]];
+        const { x, y } = tiles[first];
+        const runs = [];
+
+        // Row by row, each run of whole-number columns side by side one rect.
+        for (const [c, r] of [...cells].sort((a, b) => a[1] - b[1] || a[0] - b[0])) {
+            const last = runs[runs.length - 1];
+
+            if (last !== undefined && last.r === r && last.c + last.n === c) {
+                last.n += 1;
+            } else {
+                runs.push({ c, r, n: 1 });
+            }
+        }
+
+        const rects = runs.map(({ c, r, n }) => Object.freeze({ x: x + c * look.w, y: y + r * look.h, w: n * look.w, h: look.h }));
+
+        return Object.freeze({ look, x, y, rects: Object.freeze(rects) });
+    });
+}
+
+/**
+ * The copies a region draws too early: a member `m` of region `R` is now drawn at `R`'s first tile, so
+ * every tile between the two in the old order that `m` overlaps must still be drawn before it — in a
+ * region that starts before `R` does. Each such member is returned, to be held out of `R`.
+ */
+function misordered(tiles, regions, regionOf) {
+    const CELL = 64;
+    const span = (t) => [Math.floor(t.x / CELL), Math.floor((t.x + t.w) / CELL), Math.floor(t.y / CELL), Math.floor((t.y + t.h) / CELL)];
+    const grid = new Map();
+
+    tiles.forEach((t, i) => {
+        const [x0, x1, y0, y1] = span(t);
+
+        for (let gx = x0; gx <= x1; gx++) {
+            for (let gy = y0; gy <= y1; gy++) {
+                const k = `${gx},${gy}`;
+
+                if (!grid.has(k)) {
+                    grid.set(k, []);
+                }
+
+                grid.get(k).push(i);
+            }
+        }
+    });
+
+    const overlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const late = [];
+
+    regions.forEach(({ first, members }, r) => {
+        for (const m of members) {
+            const [x0, x1, y0, y1] = span(tiles[m]);
+            let crossed = false;
+
+            for (let gx = x0; gx <= x1 && !crossed; gx++) {
+                for (let gy = y0; gy <= y1 && !crossed; gy++) {
+                    crossed = (grid.get(`${gx},${gy}`) ?? []).some((a) => a > first && a < m && regionOf[a] !== r
+                        && regions[regionOf[a]].first > first && overlap(tiles[a], tiles[m]));
+                }
+            }
+
+            if (crossed) {
+                late.push(m);
+            }
+        }
+    });
+
+    return late;
+}
+
 function safeEmbedded(entry) {
     try {
         return readEmbedded(entry);
