@@ -206,6 +206,7 @@
                 <p data-panel-session></p>
                 <p>started <span data-panel-session-started></span> · source <span data-panel-session-source></span></p>
                 <p>project <span data-panel-session-project></span> · harness <span data-panel-session-harness></span> · model <span data-panel-model></span></p>
+                <p hidden><a data-panel-console target="_blank" rel="noopener noreferrer" hidden></a></p>
 
                 <h4>Counters — <span data-panel-counters-asof></span></h4>
                 <ul data-panel-counters hidden></ul>

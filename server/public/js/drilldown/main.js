@@ -211,6 +211,26 @@ export function renderDrillDown(root, model) {
     put(root, '[data-panel-session-harness]', session.present ? session.harness_label : null);
     put(root, '[data-panel-model]', session.model_label);
 
+    // § 4.3's console row (card#9416): a link the model gave a URL for, opening in a new tab, and NO
+    // LINE when it gave none — the paragraph hides with the link, so no bare label is left behind.
+    const link = root.querySelector('[data-panel-console]');
+
+    if (link !== null) {
+        if (model.console === null) {
+            link.removeAttribute('href');
+            link.textContent = '';
+        } else {
+            link.setAttribute('href', model.console.url);
+            link.textContent = model.console.text;
+        }
+
+        link.hidden = model.console === null;
+
+        if (link.parentElement) {
+            link.parentElement.hidden = link.hidden;
+        }
+    }
+
     const counters = model.counters;
 
     put(root, '[data-panel-counters-asof]', counters.available ? counters.as_of : counters.statement);

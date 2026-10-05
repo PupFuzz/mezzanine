@@ -127,9 +127,10 @@ final class KindRegistry
 
         // ── § 6.3 ────────────────────────────────────────────────────────────────────────────
         'turn.start' => [
-            'fields' => ['prompt_chars', 'project_label'],
+            'fields' => ['prompt_chars', 'project_label', 'console_url'],
             'bounds' => [
                 'project_label' => 48,
+                'console_url' => 95,
             ],
             'enums' => [],
         ],

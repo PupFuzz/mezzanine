@@ -172,7 +172,8 @@ php artisan mezzanine:user:create --role=operator --name=… --email=… --gener
 ```
 
 **`--role` is `observer` unless you say otherwise** (card#9415). An observer signs in and sees the
-floor, the lobby and each desk's detail; an operator also opens the admin console. The first account
+floor, the lobby and each desk's detail; an operator also opens the admin console, and a desk's detail
+offers an operator an **Open console on claude.ai** link to that agent's session (card#9416). The first account
 must be an operator, and the command refuses to create an observer on an install with no active
 operator, naming `--role=operator`, because nobody could administer such an install.
 

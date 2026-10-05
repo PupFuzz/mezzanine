@@ -111,6 +111,8 @@ const K = {
   REJECTED_TXT_CAP: 65536,       // § 11.1 64 KiB
   LOG_DAY_CAP: 1048576,          // § 11.1 1 MiB/day
   LOG_RETAIN_DAYS: 2,            // § 11.1
+  CONSOLE_TAIL_BYTES: 1048576,   // § 6.3 1 MiB — the most of a transcript's tail one hook reads
+  CONSOLE_CHUNK_BYTES: 65536,    // § 6.3 the step that walk takes back from the end
 };
 
 /* ── Harness-sourced enum value sets (§ 6.0). ─────────────────────────────────────────────────
@@ -1353,6 +1355,90 @@ function harnessLabel(cfg) {
   return /^[A-Za-z0-9._/-]{1,32}$/.test(v) ? v : null;
 }
 
+/* § 6.3's `console_url` (card#9416): the claude.ai address of this session's console, READ FROM
+ * THE SESSION'S OWN TRANSCRIPT — the file the payload's `transcript_path` names. No hook payload
+ * carries it, and Anthropic documents the transcript as an internal, unstable format, so this read
+ * is version-tolerant by construction: every way it can fail answers `null`, and none of them throws.
+ *
+ * WHICH RECORD ANSWERS. The transcript carries `{"type":"bridge-session","bridgeSessionId":
+ * "cse_<id>"}` records throughout a session, and the id CHANGES within one session; an empty id is
+ * the bridge ending. An `attachment` of type `remote_session_change` carried the URL itself on
+ * older builds and carries `url: null` on current ones; where both were present the URL was always
+ * `https://claude.ai/code/session_<id>` with `<id>` the bridge id minus `cse_` (D1 § 6.3 states
+ * the observation and its basis). So the NEWEST deciding record wins, scanning back from the end:
+ * a `remote_session_change` with a non-null `url` answers that url, one with a null `url` decides
+ * nothing, and a `bridge-session` answers the URL its id derives — or `null` for an empty id.
+ *
+ * BOUNDED: the read walks back from the end in CONSOLE_CHUNK_BYTES steps and stops at
+ * CONSOLE_TAIL_BYTES, because a transcript runs to many MiB and this runs inside P-5's 250 ms. A
+ * tail with no deciding record is `null` and counted (`console_url_tail_exhausted`); a value that
+ * fails the pattern is dropped and counted (`console_url_malformed`), so a harness that moved the
+ * shape is visible on the heartbeat rather than a quiet null.
+ *
+ * `descriptors` other than `full` sends `null` (§ 3.1): the key is how much a seat sends, and a seat
+ * that asked for less than the full label set did not ask for this either. */
+const CONSOLE_URL_RE = /^https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{8,64}$/;
+const BRIDGE_ID_RE = /^cse_([A-Za-z0-9]{8,64})$/;
+
+function consoleUrlOfRecord(line) {
+  if (!line.includes('"bridge-session"') && !line.includes('"remote_session_change"')) return undefined;
+  let o = null;
+  try { o = JSON.parse(line); } catch (e) { return undefined; }
+  if (!o || typeof o !== 'object') return undefined;
+  const a = o.attachment;
+  if (a && typeof a === 'object' && a.type === 'remote_session_change') {
+    if (a.url === null || a.url === undefined) return undefined;
+    if (typeof a.url === 'string' && CONSOLE_URL_RE.test(a.url)) return a.url;
+    count('console_url_malformed');
+    return null;
+  }
+  if (o.type !== 'bridge-session') return undefined;
+  const id = o.bridgeSessionId;
+  if (id === '' || id === null || id === undefined) return null;
+  const m = typeof id === 'string' ? BRIDGE_ID_RE.exec(id) : null;
+  if (m) return `https://claude.ai/code/session_${m[1]}`;
+  count('console_url_malformed');
+  return null;
+}
+
+function consoleUrl(payload, cfg) {
+  if (descriptorMode(cfg) !== 'full') return null;
+  const tp = key(payload, 'transcript_path');
+  if (typeof tp !== 'string' || !tp) return null;
+  const file = tp === '~' || tp.startsWith('~/') ? path.join(os.homedir(), tp.slice(1)) : tp;
+  let fd = null;
+  try {
+    fd = fs.openSync(file, 'r');
+    const size = fs.fstatSync(fd).size;
+    const floor = Math.max(0, size - K.CONSOLE_TAIL_BYTES);
+    let end = size;
+    let carry = Buffer.alloc(0);       // the head of a line whose start is further back
+    while (end > floor) {
+      const start = Math.max(floor, end - K.CONSOLE_CHUNK_BYTES);
+      const chunk = Buffer.alloc(end - start);
+      fs.readSync(fd, chunk, 0, chunk.length, start);
+      const buf = Buffer.concat([chunk, carry]);
+      end = start;
+      // Bytes before the first newline may belong to a line that starts in an earlier chunk, so
+      // they are carried — except at byte 0, where they are a whole line.
+      const cut = start === 0 ? -1 : buf.indexOf(0x0a);
+      if (start > 0 && cut === -1) { carry = buf; continue; }
+      carry = cut === -1 ? Buffer.alloc(0) : buf.subarray(0, cut);
+      const lines = buf.subarray(cut + 1).toString('utf8').split('\n');
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const v = consoleUrlOfRecord(lines[i]);
+        if (v !== undefined) return v;
+      }
+    }
+    if (floor > 0) count('console_url_tail_exhausted');
+    return null;
+  } catch (e) {
+    return null;                       // no transcript yet, or unreadable: absence, never an error
+  } finally {
+    if (fd !== null) { try { fs.closeSync(fd); } catch (e) { /* closing a read fd cannot lose data */ } }
+  }
+}
+
 function durationFor(entry, payload, atMs) {
   // § 6.6 — the harness's own duration_ms is STRICTLY BETTER than end-minus-start across two
   // processes and is immune to an NTP step. duration_source says which was used, so the two
@@ -1548,6 +1634,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         // Only the LENGTH transits — a size, not content (§ 6.3). The prompt text never does.
         prompt_chars: prompt === null ? null : clampInt(prompt.length, 0, 1000000, 'turn.start.prompt_chars'),
         project_label: projectLabel(payload),
+        console_url: consoleUrl(payload, ctx.config),
       }, atMs);
       break;
     }
@@ -3264,7 +3351,7 @@ function checkSanitizerFixtures() {
 const READS = {
   SessionStart: { keys: ['session_id', 'hook_event_name', 'source', 'cwd'], enums: { source: ENUM.session_start_source } },
   SessionEnd: { keys: ['session_id', 'hook_event_name', 'reason'], enums: { reason: ENUM.session_end_reason } },
-  UserPromptSubmit: { keys: ['session_id', 'hook_event_name', 'prompt_id', 'prompt', 'cwd'], enums: {} },
+  UserPromptSubmit: { keys: ['session_id', 'hook_event_name', 'prompt_id', 'prompt', 'cwd', 'transcript_path'], enums: {} },
   Stop: { keys: ['session_id', 'hook_event_name', 'prompt_id', 'stop_hook_active', 'background_tasks'], enums: {} },
   StopFailure: { keys: ['session_id', 'hook_event_name', 'error'], enums: { error: ENUM.stopfailure_error } },
   PreToolUse: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_input', 'tool_use_id', 'prompt_id', 'agent_id'], enums: {} },

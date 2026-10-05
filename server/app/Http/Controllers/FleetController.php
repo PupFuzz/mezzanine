@@ -81,7 +81,7 @@ class FleetController extends Controller
             return [
                 'api_version' => Snapshot::API_VERSION,
                 'server_time' => $this->serverTime(),
-            ] + $object + ['detail' => $this->detail((int) $row->seat_ref)];
+            ] + $object + ['detail' => $this->detail((int) $row->seat_ref, $this->mayOperate($request))];
         });
     }
 
@@ -270,11 +270,11 @@ class FleetController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function detail(int $seatRef): array
+    private function detail(int $seatRef, bool $operator): array
     {
         $state = DB::table('seat_state')->where('seat_ref', $seatRef)->first();
 
-        return [
+        return $this->console($state, $operator) + [
             // ⛔ ASSOCIATIVE DECODE IS OFF HERE FOR THE SAME REASON IT IS OFF IN `FoldEvent`
             // (card#9297), and this site is the one a consumer actually sees. These two members are
             // decoded out of the store and RE-ENCODED into the response, so `json_decode(…, true)`
@@ -327,6 +327,39 @@ class FleetController extends Controller
                 ['turn_started_at', 'last_turn_ended_at'],
             ),
         ];
+    }
+
+    /**
+     * The `operate` gate (card#9415), asked of the signed-in account. A machine read token
+     * (`mzr_`) carries no account, so it is never an operator — the watchdog reads the fleet, it
+     * does not open a seat's console.
+     */
+    private function mayOperate(Request $request): bool
+    {
+        return $request->user()?->can('operate') === true;
+    }
+
+    /**
+     * § 8.2.3's `detail.console_url` (card#9416) — the current session's claude.ai console address,
+     * PUBLISHED TO AN OPERATOR ONLY. The member is ABSENT from every other response, not `null`: an
+     * observer learns nothing about whether a link exists, and an operator's `null` means the
+     * current session reported none (no session, a reporter that predates the field, a seat whose
+     * `descriptors` key is not `full`, or a bridge that has ended).
+     *
+     * ⛔ THIS IS THE MEMBER'S ONE PUBLISHED SURFACE. It is on no seat object, so neither the
+     * snapshot nor a `seat.delta` on the stream can carry it (`SeatObject` builds both), and the
+     * timeline serves no event `data`. Adding it to `SeatObject` would hand it to every observer.
+     *
+     * @return array{console_url?: ?string}
+     */
+    private function console(object $state, bool $operator): array
+    {
+        if (! $operator) {
+            return [];
+        }
+
+        return ['console_url' => $state->current_session_ref === null ? null
+            : DB::table('sessions')->where('id', $state->current_session_ref)->value('console_url')];
     }
 
     /**
