@@ -200,8 +200,9 @@ export function createPainter({ characters, failed, select }) {
     };
     // THE ONE CACHE OF CHARACTER ART: asset → its frame URIs, made once per asset. The character tree
     // holds none (it is pure, `resources/characters/index.js`), so this Map is the whole of what a page
-    // keeps — and an intern's key is minted per dispatch, so an intern this paint no longer draws is
-    // dropped from it (`interns` below), which is what bounds it for as long as the page stays open.
+    // keeps. An intern's key is minted per dispatch, so an intern this paint no longer draws is dropped
+    // from it (`interns` below) — that is what bounds the INTERNS' entries. A seat's entry is kept, as the
+    // pixel tree's cache kept it: those are bounded by the distinct seats a page has drawn, not dropped.
     const frames = new Map();
     // The interns whose frames are held, and those this paint drew.
     const interns = new Set();

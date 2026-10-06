@@ -364,6 +364,11 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             // § 9 F14's two causes for a code-drawn character (§ 10.2): unreported, or thrown out of the paint.
             'a tree that failed to load left unreported' => ['../floor/painter.js',
                 "        if (characters === null) {\n            report(asset);", "        if (characters === null) {\n            void asset;"],
+            // § 9 F14's third cause (§ 10.2): an undecodable frame's <image> error event, unreported.
+            "an undecodable frame's error event left unreported" => ['../floor/painter.js',
+                "        el.addEventListener('error', () => report(asset ?? href), { once: true });\n", ''],
+            // The held loop's list reset at every paint, so no detached node is stepped for the page's life.
+            "the held loop's list kept across paints" => ['../floor/painter.js', "        stepping = [];\n", ''],
             "a generator's throw for one key let out of the paint" => ['../floor/painter.js',
                 "            } catch {\n                report(asset);\n\n                return null;\n            }", "            } finally {\n                void asset;\n            }"],
         ];

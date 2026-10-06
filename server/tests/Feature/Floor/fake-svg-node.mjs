@@ -23,7 +23,11 @@ export class Node {
 
     replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
 
-    addEventListener() {}
+    // Listeners are recorded so a probe can fire one (`dispatch`) — the painter's `<image>` error listener
+    // is § 9 F14's third cause (card#11046).
+    addEventListener(type, fn) { (this.listeners ??= {})[type] = [...(this.listeners?.[type] ?? []), fn]; }
+
+    dispatch(type) { for (const fn of this.listeners?.[type] ?? []) fn({ type, target: this }); }
 
     contains() { return false; }
 

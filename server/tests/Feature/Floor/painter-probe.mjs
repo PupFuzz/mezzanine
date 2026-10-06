@@ -612,4 +612,63 @@ for (const p of owedPoses) {
     }
 }
 
+// ── § 9 F14's third cause (card#11046, § 10.2): a frame the browser cannot decode fires the character
+// <image>'s `error` event, and the painter reports that asset — the character's, and nothing else ──
+{
+    const reported = [];
+    const desk = desks.find((d) => d.elements.some((e) => e.kind === 'character'));
+    const asset = desk.elements.find((e) => e.kind === 'character').asset;
+
+    createPainter({ characters, failed: (ids) => reported.push(...ids), select() {} }).paint({ ...scene, desks: [desk] }, { bounds: null });
+
+    const g = host.children[0].children.find((n) => n.getAttribute('class') === 'desks').children[0];
+    const img = g.children.find((n) => n.name === 'svg' && n.children[0] && classes(n.children[0]).includes('character'))?.children[0];
+
+    if (img === undefined) {
+        defects.push('F14 (c): the desk painted no character image to fail');
+    } else {
+        img.dispatch('error');
+
+        if (reported.length !== 1 || reported[0] !== asset) {
+            defects.push(`F14 (c): an undecodable character frame's error event reported ${JSON.stringify(reported)}, not ${asset} alone`);
+        }
+    }
+}
+
+// ── the held loop steps only what the LAST paint drew: one painter painting twice keeps no node of the
+// first paint in its loop (a list that only grows would step detached nodes for the page's life) ──
+{
+    const desk = desks.find((d) => d.elements.some((e) => e.kind === 'character'));
+    const moving = {
+        ...desk,
+        held: { ...(desk.held ?? {}), motion: true, frame_interval_ms: 250 },
+        elements: desk.elements.map((e) => (e.kind === 'character' ? { ...e, animation: { motion: true, frame_interval_ms: 250 } } : e)),
+    };
+    const twice = createPainter({ characters, failed() {}, select() {} });
+    const imagesOf = () => {
+        const walk = (n) => [n, ...n.children.flatMap(walk)];
+
+        return walk(host.children[0]).filter((n) => n.name === 'image');
+    };
+
+    loops.length = 0;
+    twice.paint({ ...scene, desks: [moving] }, { bounds: null });
+    const stale = imagesOf();
+    const before = stale.map((n) => n.getAttribute('href'));
+
+    twice.paint({ ...scene, desks: [moving] }, { bounds: null });
+    const live = imagesOf();
+    const liveBefore = live.map((n) => n.getAttribute('href'));
+
+    loops.at(-1)?.();
+
+    if (stale.some((n, i) => n.getAttribute('href') !== before[i])) {
+        defects.push('the held loop stepped a node of an earlier paint — the painter keeps every paint\'s characters in its loop');
+    }
+
+    if (!live.some((n, i) => n.getAttribute('href') !== liveBefore[i])) {
+        defects.push('the held loop stepped nothing the last paint drew');
+    }
+}
+
 console.log(JSON.stringify({ desks: desks.length, painted, interns, poses: [...poses].sort(), defects }));
