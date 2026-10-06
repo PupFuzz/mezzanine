@@ -52,6 +52,7 @@ import { ACTIVITY_STATES, BADGES, LINK_STATES } from '../wire/member-sets.js';
 import { NO_DATA_YET, UNTITLED } from '../wire/null-render.js';
 import { SEAT_CLOCK, derivationLagLine, seatClock } from '../wire/age-readout.js';
 import { deskDrawsCharacter, taskBubble } from './task-bubble.js';
+import { DESK } from './desk-poses.js';
 
 /** § 5.4 / AT-D3-11: an unrecognised member renders as unrecognised, carrying the raw string. */
 export const UNRECOGNISED = 'unrecognised';
@@ -114,27 +115,6 @@ export const SENDING_NOTHING = 'sending nothing';
 
 /** § 7.2's cluster line for `badges_since` — one line for the whole cluster, never per badge. */
 export const OLDEST_BADGE_SINCE = 'oldest badge since';
-
-/**
- * § 7.1's **Desk** column, as a picture per member: who is at the desk, in what pose, under what
- * light, and what the monitor shows. `glyph` is the state's own mark; `lighting` is § 7.3's
- * treatment column for the states it dims.
- *
- * ⛔ `stale` AND `offline` ARE THE EMPTY CHAIR, WITH NOBODY IN IT — never `idle`'s sleeper
- * (§ 7.5's *Asleep* bullet, AT-D3-5's third RED). "A sleeper is a *character*, an empty chair is
- * an *absence*, and neither needs the z's to be told from the other."
- */
-export const DESK = Object.freeze({
-    working: { pose: 'at-keyboard', glyph: 'working', lighting: 'full', monitor: 'on' },
-    idle: { pose: 'asleep', glyph: 'asleep', lighting: 'full', monitor: 'dimmed' },
-    blocked: { pose: 'raised-hand', glyph: 'attention', lighting: 'full', monitor: 'on' },
-    stalled: { pose: 'head-in-hands', glyph: 'stalled', lighting: 'full', monitor: 'on' },
-    unknown: { pose: 'present', glyph: 'question', lighting: 'full', monitor: 'on' },
-    catching_up: { pose: 'present', glyph: 'replay', lighting: 'desaturated', monitor: 'on' },
-    stale: { pose: 'empty-chair', glyph: 'empty-chair', lighting: 'dimmed', monitor: 'on' },
-    offline: { pose: 'empty-chair', glyph: 'empty-chair', lighting: 'dark', monitor: 'on' },
-    disabled: { pose: 'present', glyph: 'monitor-off', lighting: 'dimmed', monitor: 'off' },
-});
 
 /** § 7.1's A4 condition over a `working` seat: a turn open with no call is the THINK pose. */
 const THINKING = { pose: 'leaning-back', glyph: 'thinking', lighting: 'full', monitor: 'on' };

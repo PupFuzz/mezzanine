@@ -63,15 +63,17 @@
 
 import { Building } from '../wire/building.js';
 import { DeskFloor } from '../desk/desk-floor.js';
-import { heldRendering } from '../wire/animation-set.js';
+import { LOOP_FPS, heldRendering } from '../wire/animation-set.js';
 import { DrillDownPanel } from '../drilldown/drilldown-panel.js';
 import { coordModel } from '../coord/coord-model.js';
 import { correctedNowMs } from '../wire/duration.js';
+import { floorAgeReadouts } from '../wire/age-readout.js';
 import { floors, heldBody, roomsOf } from '../lobby/lobby-model.js';
 import { buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
-import { buildScene } from './scene.js';
+import { buildScene, threshold } from './scene.js';
+import { EffectsInFlight, inboundDesk } from './in-flight.js';
 import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, zoomStep } from '../wire/camera.js';
 import { TilesetLoader, tilesetUrl } from './tileset.js';
 import {
@@ -258,6 +260,18 @@ export class FloorScreen {
 
     /** The last frame a scene was built over — what the 1 s tick re-reads (`sceneView`). */
     #lastFrame = null;
+
+    /** The last frame `draw()` returned — what a walk's paint-only refresh re-paints (`walkEnded()`). */
+    #lastDrawn = null;
+
+    /** § 6.2's walk note items 6 and 8: every multi-frame edge drawing still running, and the walks. */
+    #inFlight = new EffectsInFlight(1000 / LOOP_FPS);
+
+    /** The timer that ends the next walk in flight with a paint-only refresh, or `null`. */
+    #walkTimer = null;
+
+    /** Who is handed a walk's paint-only refresh — the page's paint, the harness's record. */
+    #onRefresh = null;
 
     /** The camera (`wire/camera.js`) — the viewer's head, never the fleet's; framed while the floor is drawn. */
     #camera;
@@ -633,7 +647,7 @@ export class FloorScreen {
         const rows = this.#tap.take();
         // § 4.5: the room is drawn at every surface size — there is no size below which a frame
         // carries no scene.
-        const scene = this.#scene(frame, rows);
+        const scene = this.#scene(frame, rows, journal);
 
         // A frame with nothing to draw — no floor composed yet, the art not yet answered, or a floor
         // with nothing measurable on it (no map held and no desk, where the scene's extent is `null`,
@@ -659,24 +673,147 @@ export class FloorScreen {
             notices: Object.freeze([...frame.notices, ...(scene?.notices ?? [])]),
         };
 
-        return Object.freeze({ ...drawn, ...this.#drillDown(drawn) });
+        this.#lastDrawn = Object.freeze({ ...drawn, ...this.#drillDown(drawn) });
+
+        return this.#lastDrawn;
     }
 
-    /** Appendix B row 14's scene over one frame, or `null` with no inputs or no floor to draw. */
-    #scene(frame, rows) {
-        if (this.#sceneInput === null || frame.floor === null) {
+    /**
+     * Appendix B row 14's scene over one frame, or `null` with no inputs or no floor to draw — with
+     * § 6.2's effects in flight laid over it (`#overlay()`). This is a RENDER, so it is the one place a
+     * walk is cancelled: the holder asks the walk note's item 6 of it, over this render's journal.
+     */
+    #scene(frame, rows, journal = []) {
+        const drawable = this.#sceneInput !== null && frame.floor !== null;
+        const plain = drawable ? buildScene(frame, this.#sceneDocs(frame, rows)) : null;
+
+        if (drawable) {
+            this.#lastFrame = frame;
+        }
+
+        const now = this.#clock.now();
+
+        // Every render reaches the holder, a render that draws no scene included: it drained its journal
+        // once, so a touch it carries is tested now or never. With no scene there is no anchor for any
+        // seat, so item 6's anchor clause cancels every walk in flight — there is no floor to finish it on.
+        this.#inFlight.render(plain?.effects ?? [], now, {
+            journal,
+            anchors: new Map(Object.entries(plain?.anchors ?? {})),
+            threshold: threshold(plain?.band),
+            unconfirmed: (key) => frame.desks?.desks?.[key]?.unconfirmed ?? null,
+            stilled: (frame.failure?.sign_in ?? null) !== null,
+        });
+        this.#armWalkEnd(now);
+
+        if (plain === null) {
             return null;
         }
 
-        const scene = buildScene(frame, this.#sceneDocs(frame, rows));
+        this.#anchors = new Map(Object.entries(plain.anchors));
 
-        if (scene !== null) {
-            this.#anchors = new Map(Object.entries(scene.anchors));
+        return this.#overlay(frame, plain, now);
+    }
+
+    /**
+     * A scene with the effects in flight on it: every one at its elapsed frame (item 8), the elevator's
+     * leaves from the walks' door frames (item 10), and each desk an A1 walker is still on its way to
+     * drawn as `in-flight.js`'s `inboundDesk()` draws it (item 4).
+     */
+    #overlay(frame, plain, now) {
+        const inbound = this.#inFlight.inbound(now);
+        let scene = plain;
+
+        if (inbound.size > 0) {
+            const desks = { ...frame.desks.desks };
+
+            for (const key of inbound) {
+                if (desks[key] !== undefined) {
+                    desks[key] = inboundDesk(desks[key]);
+                }
+            }
+
+            scene = buildScene({ ...frame, desks: { ...frame.desks, desks } }, this.#sceneDocs(frame, []));
         }
 
-        this.#lastFrame = frame;
+        return Object.freeze({
+            ...scene,
+            // The static forms this render's own rows drew (§ 6.4: frames 0 — a bead, a broadcast
+            // marker) are this paint's alone, as they always were; everything with frames to run is the
+            // holder's, this render's new ones included.
+            effects: Object.freeze([...plain.effects.filter((e) => !(e.frames > 0)), ...this.#inFlight.current(now)]),
+            doors: Object.freeze(this.#inFlight.doors(now)),
+        });
+    }
 
-        return scene;
+    /** One timer at a time, for the next walk in flight to end — a paint-only refresh, never a render. */
+    #armWalkEnd(now) {
+        const timers = this.#options.timers ?? null;
+
+        if (timers === null) {
+            return;
+        }
+
+        if (this.#walkTimer !== null) {
+            timers.cancel(this.#walkTimer);
+            this.#walkTimer = null;
+        }
+
+        const ms = this.#inFlight.nextWalkEnd(now);
+
+        if (ms !== null) {
+            this.#walkTimer = timers.after(ms, () => {
+                this.#walkTimer = null;
+
+                const frame = this.walkEnded();
+
+                if (frame !== null) {
+                    this.#onRefresh?.(frame);
+                }
+            });
+        }
+    }
+
+    /**
+     * A walk's last frame (§ 6.2's walk note item 4): the PAINT-ONLY refresh. It re-paints the frame the
+     * last render drew with the walks that have ended taken off it — an A1's desk drawing its current
+     * state — and it drains nothing, applies nothing, writes no animation-log row and fires no edge, so
+     * it is not a render (§ 2.5) and cancels no walk.
+     *
+     * What the last render drew is the FLEET's half of the frame only. The viewer's half has moved since
+     * without a render — the camera (§ 4.5: a pan, a zoom, a fit or a resize paints nothing), the route's
+     * seat and the drill-down a user closed — and so have the ages, which the 1 s tick re-reads without
+     * one. The refresh takes each of those as it stands now, as the tick does, so a walk's end never
+     * moves the viewer back to where the applying render left them and never winds an age back.
+     *
+     * @returns {object|null} the frame to paint, or `null` with nothing drawn yet
+     */
+    walkEnded() {
+        if (this.#lastDrawn === null || this.#lastFrame === null || this.#lastDrawn.scene === null) {
+            return null;
+        }
+
+        const now = this.#clock.now();
+        const desks = this.#desks.view(floorAgeReadouts(this.#desks.seats, this.#desks.clockOffsetMs, now));
+        const frame = { ...this.#lastFrame, desks };
+        const plain = buildScene(frame, this.#sceneDocs(frame, []));
+
+        this.#armWalkEnd(now);
+
+        this.#lastDrawn = Object.freeze({
+            ...this.#lastDrawn,
+            desks,
+            scene: plain === null ? null : this.#overlay(frame, plain, now),
+            camera: this.#camera,
+            seat: this.#seatSegment,
+            panel: this.panelView(this.#lastDrawn.floor?.name ?? null),
+        });
+
+        return this.#lastDrawn;
+    }
+
+    /** Who a walk's paint-only refresh is handed to (`startFloorScreen()`'s `draw`). */
+    onRefresh(fn) {
+        this.#onRefresh = fn;
     }
 
     /**
@@ -689,7 +826,10 @@ export class FloorScreen {
             return null;
         }
 
-        return buildScene({ ...this.#lastFrame, desks }, this.#sceneDocs(this.#lastFrame, []));
+        const frame = { ...this.#lastFrame, desks };
+        const plain = buildScene(frame, this.#sceneDocs(frame, []));
+
+        return plain === null ? null : this.#overlay(frame, plain, this.#clock.now());
     }
 
     /** What the scene reads beside a frame: the inputs, the documents held, and what failed. */
@@ -1290,6 +1430,9 @@ function splitKey(key) {
  */
 export function startFloorScreen(client, fetchImpl, clock, log, draw, options = {}) {
     const screen = new FloorScreen(client, new Building(fetchImpl), clock, log, options, new TilesetLoader(fetchImpl));
+
+    // § 6.2's walk note item 4: a walk's last frame re-paints, through the same `draw`, under its own trigger.
+    screen.onRefresh((frame) => draw(frame, 'walk end'));
 
     return {
         // The desk floor the screen runs — the 1 s age tick's population (§ 2.5), for a page.

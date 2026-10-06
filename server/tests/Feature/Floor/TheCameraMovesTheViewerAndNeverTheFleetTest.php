@@ -253,8 +253,8 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     public function test_red_the_substitute_view_below_a_minimum_size(): void
     {
         $dir = $this->mutatedModules([self::FLOOR_SCREEN,
-            'const scene = this.#scene(frame, rows);',
-            'const scene = this.#camera.surface.width < 1280 || this.#camera.surface.height < 800 ? null : this.#scene(frame, rows);']);
+            'const scene = this.#scene(frame, rows, journal);',
+            'const scene = this.#camera.surface.width < 1280 || this.#camera.surface.height < 800 ? null : this.#scene(frame, rows, journal);']);
 
         $this->assertNotSame([], $this->anySizeDefects($dir), 'the third RED (a substitute view below a minimum size) did not bite');
     }

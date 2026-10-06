@@ -14,9 +14,9 @@ Reads the `--state-*` tokens OUT OF `server/public/css/mezzanine.css` (never tra
          m3), so both are scored and the worse counts. CSS compositing and the shorthand filter functions
          both operate in sRGB (Filter Effects Module Level 1: "Filter Functions must operate in the sRGB
          color space", read 2026-10-03), and the saturate() matrix is the spec's. Which state takes which
-         lighting is `desk-render.js:128-136`'s table;
+         lighting is `desk/desk-poses.js`'s `DESK` table;
        · the HOLLOW chip (confirm review m4): an unconfirmed seat's chip is paper with a dashed edge in the
-         state's token, and its desk is ALWAYS dimmed (`desk-render.js:436`), so the edge the eye meets is
+         state's token, and its desk is ALWAYS dimmed (`desk/desk-render.js`'s unconfirmed branch of `deskModel()`), so the edge the eye meets is
          the token at .72 over the plank, for every state alike.
   3. A per-state MINIMA table — for each reviewed state, condition × vision, the smallest ΔE2000 to any
      other drawn state and WHICH state — and an L* table, both printed and recorded, so the design cites
@@ -46,14 +46,14 @@ DRAWN = ['working', 'idle', 'blocked', 'stalled', 'unknown', 'catching_up', 'sta
 REVIEWED = ['stale', 'offline', 'disabled']
 VISIONS = ('normal', 'protan', 'deutan', 'tritan')
 
-# desk-render.js:128-136 — the lighting each state's desk group is painted with; painter.js:83 — the classes.
+# desk/desk-poses.js's DESK — the lighting each state's desk group is painted with; painter.js:83 — the classes.
 LIGHTING = {'working': 'full', 'idle': 'full', 'blocked': 'full', 'stalled': 'full', 'unknown': 'full',
             'catching_up': 'desaturated', 'stale': 'dimmed', 'offline': 'dark', 'disabled': 'dimmed'}
 OPACITY = {'full': 1.0, 'desaturated': 1.0, 'dimmed': 0.72, 'dark': 0.45}
 SATURATE = 0.3
 PLANK = '#d6a46c'   # floor-plane/planks.svg: the upper course (the mock sheet's background)
 PLANKS = {'upper': '#d6a46c', 'lower': '#cf9c63'}   # planks.svg:10-18 — the two courses the chip may sit on
-HOLLOW_OPACITY = OPACITY['dimmed']                   # desk-render.js:436: an unconfirmed seat's desk is dimmed
+HOLLOW_OPACITY = OPACITY['dimmed']                   # desk/desk-render.js, deskModel()'s unconfirmed branch: an unconfirmed seat's desk is dimmed
 CONDITIONS = ('tokens', 'hollow', 'drawn@upper', 'drawn@lower')
 
 # The bound a pair must clear, CHOSEN: ΔE2000 5 — about twice the ≈ 2.3 just-noticeable difference, the low

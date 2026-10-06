@@ -108,7 +108,8 @@
  *   `{ "records": [ … ], "final": <the last record>, "unscripted": [], "listeners": [ {type: n} ],
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
  *      "streams": [ {opened_at, open_fired, refused, ended_at, closed_at} ],
- *      "desk_renders": [ {at, trigger, frame, …} ], "floor_renders": [ {at, frame} ],
+ *      "desk_renders": [ {at, trigger, frame, …} ], "floor_renders": [ {at, trigger, frame} ] — `trigger`
+ *      `render` for a render, `walk end` for a walk's paint-only refresh,
  *      "lobby_renders": [ {at, frame, label} ], "camera_acts": [ {at, act, before, after, glide_ms} ] — on
  *      the lobby, each act also carrying `label: {after, mid}`, and a ride's `ride: {cab, route, resolves_to}`
  *      — `resolves_to` the floor the floor page's `resolveRoute()` finds for the route over the building the
@@ -581,14 +582,31 @@ async function replay(scenario) {
     }
 
     if ((scenario.floor ?? null) !== null) {
-        screen = startFloorScreen(client, buildingHttp.fetch, clock, log, (frame) => {
-            floorRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)) });
+        screen = startFloorScreen(client, buildingHttp.fetch, clock, log, (frame, trigger = 'render') => {
+            floorRenders.push({ at: now, trigger, frame: JSON.parse(JSON.stringify(frame)) });
         }, {
             floor: scenario.floor.key,
             seat: scenario.floor.seat ?? null,
             reduce: scenario.reduce === true,
             local_time: viewerTime(scenario.floor),
             surface: scenario.floor.viewport ?? HARNESS_SURFACE,
+            // FLOOR § 6.2's walk note item 4: a walk's last frame, on the scenario queue under its own
+            // label — a paint-only refresh the screen draws through the same callback as `walk end`,
+            // which the loop below never follows with a render.
+            timers: {
+                after: (ms, fire) => schedule(now + ms, 'walk end', () => {
+                    fire();
+
+                    return 'refreshed';
+                }),
+                cancel: (timer) => {
+                    const i = timers.indexOf(timer);
+
+                    if (i >= 0) {
+                        timers.splice(i, 1);
+                    }
+                },
+            },
         });
     }
 
@@ -833,9 +851,9 @@ async function replay(scenario) {
 
         await turn();
 
-        // A tick re-reads ages and a camera act moves the viewer's head: neither is an apply, and a
-        // page renders after neither.
-        if (timer.label !== 'age tick' && !timer.label.startsWith('camera ')) {
+        // A tick re-reads ages, a camera act moves the viewer's head, and a walk's end is a paint-only
+        // refresh (FLOOR § 6.2's walk note item 4): none is an apply, and a page renders after none.
+        if (timer.label !== 'age tick' && timer.label !== 'walk end' && !timer.label.startsWith('camera ')) {
             floor?.render();
 
             if (screen !== null) {

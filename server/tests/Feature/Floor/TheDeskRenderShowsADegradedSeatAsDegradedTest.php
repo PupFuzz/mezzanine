@@ -113,7 +113,7 @@ class TheDeskRenderShowsADegradedSeatAsDegradedTest extends TestCase
     /** Third RED — the sleeper on a dark desk: every label still correct, and the picture says the seat is resting. */
     public function test_third_red_the_sleeping_pose_on_a_dark_desk_is_caught_on_the_render(): void
     {
-        $result = $this->deskRun(self::RUN, $this->plantedDesk(...self::PLANT_DARK_SLEEPER));
+        $result = $this->deskRun(self::RUN, $this->plantedPoses(...self::PLANT_DARK_SLEEPER));
         $defects = $this->defects($result);
 
         $this->assertNotSame([], $defects['sleeper'], 'Third RED did not bite: the dark desks drew the sleeping pose and the render check passed');
