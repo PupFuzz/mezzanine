@@ -25,7 +25,7 @@ repository cannot honour.
   copies"*; `CC0-1.0` is a public-domain dedication and obliges none. So as soon as any row here
   declares such a licence, **this file** must reproduce that licence's permission notice, and as
   soon as a row **under `resources/characters/`** declares one, `resources/characters/LINEAGE.md`
-  must reproduce it too — [`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-the-munder-difflin-port)
+  must reproduce it too — [`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code)
   asks a port for both homes. Matched as the licence's own text, because a link is not a
   reproduction and neither is the label. ⭐ **The gate reads the obligation off the same table its
   allowlist is derived from**, so a licence cannot be admitted without its notice being decided —
@@ -148,7 +148,7 @@ sprite path, three ISC-derived files, and The Office's cast).
 
 **MIT obliges reproduction of the copyright notice and the permission notice, and a link is not
 a reproduction**, so the text is here in full — and again in the lineage file, because
-[`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-the-munder-difflin-port) requires it in both.
+[`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code) requires it in both.
 That duplication is deliberate and is the one kind that is correct: a licence notice has to
 *accompany* the distribution rather than point at it, and the text is immutable, so there is
 nothing here that can drift out of sync with the other copy.
