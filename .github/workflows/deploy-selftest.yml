@@ -163,8 +163,8 @@ jobs:
 
       # Two shells, from the GNU release tarballs, each pinned by sha256 — the checksums were read
       # from ftp.gnu.org and cross-checked against mirrors.kernel.org (the fallback source), so
-      # the pin is a transport check and not a second copy of a number nobody verified. An unpinned download compiled and
-      # RUN in CI is the shape this avoids.
+      # the pin is a transport check and not a second copy of a number nobody verified. An
+      # unpinned download compiled and RUN in CI is the shape this avoids.
       - name: Build GNU bash at the floor and at the minor below it
         env:
           FLOOR: ${{ steps.floor.outputs.floor }}
