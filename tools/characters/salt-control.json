@@ -1,0 +1,8 @@
+{
+  "note": "A CONTROL POPULATION, NOT FLEET (docs/design/FLOOR.md § 14 item 33(2), the seat's ruling of 2026-10-06, option (b)). These keys are the sample roster the card#11046 prototype searched the species salt `species:s1` over; most of them have no fleet record and nothing on the floor is drawn for them. AT-D3-24's salt leg uses them ONLY for its discrimination half: over this sample the unsalted draw repeats a body in some room, so the leg is known able to tell a salted draw from an unsalted one. The guarantee half — every room of the fleet draws distinct bodies — reads `roster.json`, never this file.",
+  "seats": [
+    "aimla/aimla-pm", "aimla/aimla-impl-1", "aimla/aimla-impl-2", "aimla/aimla-impl-3", "aimla/aimla-review", "aimla/aimla-design", "aimla/aimla-ops",
+    "sola/sola-pm", "sola/sola-impl", "sola/sola-review", "sola/sola-docs",
+    "mezzanine/mezzanine-solo", "kanban/kanban-solo", "kanban/kanban-review", "bridge/bridge-solo", "roundtable/roundtable-pm"
+  ]
+}

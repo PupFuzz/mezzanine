@@ -165,19 +165,28 @@ function coverage(drawFn) {
 }
 for (const [f, hit, total] of coverage(draw)) check(hit === total, `${f}: ${hit}/${total} members reached`);
 
-// ---- 4. the salt (FLOOR.md § 10.4) ----
-section(`4. the salt: under ${C.SPECIES_FIELD}, every room of the committed roster no larger than the species list draws distinct bodies`);
+// ---- 4. the salt (FLOOR.md § 10.4; § 14 item 33(2), the seat's ruling of 2026-10-06, option (b)) ----
+// Two halves, two populations. THE GUARANTEE reads the committed fleet roster: every room of it no larger
+// than the species list draws distinct bodies. THE DISCRIMINATION reads `salt-control.json`, the sample
+// the salt was searched over, committed as a CONTROL and never as fleet: over it the salted draw keeps
+// every room distinct and the unsalted draw does not, so this leg is known able to tell them apart.
+section(`4. the salt: under ${C.SPECIES_FIELD}, every room no larger than the species list draws distinct bodies`);
 check(roster.every((s) => typeof s.source === 'string' && s.source.length > 0), `every key of the committed roster states its source (${roster.length} keys)`);
-const rooms = new Map();
-for (const s of roster) rooms.set(s.install_id, [...(rooms.get(s.install_id) ?? []), s.seat_id]);
-const repeated = (fn) => [...rooms].filter(([, seats]) => seats.length <= KEYS.length)
+const roomsOf = (keys) => { const m = new Map(); for (const [i, s] of keys) m.set(i, [...(m.get(i) ?? []), s]); return m; };
+const repeated = (rooms, fn) => [...rooms].filter(([, seats]) => seats.length <= KEYS.length)
   .filter(([inst, seats]) => new Set(seats.map((s) => fn(`${inst}/${s}`))).size < seats.length).map(([inst]) => inst);
-const salted = repeated((k) => C.speciesOf(k));
-check(salted.length === 0, `every eligible room draws distinct species${salted.length ? ` — repeats in ${salted.join(', ')}` : ''}`);
-const unsalted = repeated((k) => pick(k, 'species', KEYS));
-check(unsalted.length > 0, unsalted.length > 0
-  ? `the unsalted draw repeats a body in ${unsalted.join(', ')}, so this roster discriminates a salted draw from an unsalted one`
-  : 'THE COMMITTED ROSTER IS TOO SMALL TO DISCRIMINATE: the unsalted draw repeats no body in any eligible room either, so a pass above reports nothing about the salt (FLOOR.md § 11 AT-D3-24)');
+const fleetRooms = roomsOf(roster.map((s) => [s.install_id, s.seat_id]));
+const salted = repeated(fleetRooms, (k) => C.speciesOf(k));
+check(salted.length === 0, `THE FLEET: every eligible room of the committed roster draws distinct species${salted.length ? ` — repeats in ${salted.join(', ')}` : ''}`);
+const control = JSON.parse(readFileSync(join(HERE, 'salt-control.json'), 'utf8'));
+check(/CONTROL/.test(control.note ?? ''), 'salt-control.json is labelled a CONTROL, not fleet');
+const controlRooms = roomsOf(control.seats.map((k) => k.split('/')));
+const controlSalted = repeated(controlRooms, (k) => C.speciesOf(k));
+const controlUnsalted = repeated(controlRooms, (k) => pick(k, 'species', KEYS));
+check(controlSalted.length === 0, `THE CONTROL: under ${C.SPECIES_FIELD} every eligible room of the search sample draws distinct species${controlSalted.length ? ` — repeats in ${controlSalted.join(', ')}` : ''}`);
+check(controlUnsalted.length > 0, controlUnsalted.length > 0
+  ? `THE CONTROL: the unsalted draw repeats a body in ${controlUnsalted.join(', ')}, so the leg discriminates a salted draw from an unsalted one`
+  : 'THE CONTROL IS TOO SMALL TO DISCRIMINATE: the unsalted draw repeats no body in it either, so a pass above reports nothing about the salt (FLOOR.md § 11 AT-D3-24)');
 
 // ---- 5. collisions, measured (FLOOR.md § 10.4, § 12's *Full-drawing collisions*) ----
 section('5. collisions: no two keys draw the same document, each in the frame it is drawn in');
