@@ -40,7 +40,7 @@
 # NO CREDENTIAL IS NEEDED BY ANY JOB HERE. The `deploy-selftest` job needs no network either:
 # bash + git + util-linux (flock, setsid) + psmisc (fuser) + the checkout, nothing else.
 # `env-mirror-differential` and `bash-floor` DO reach the network — packagist and ftp.gnu.org
-# respectively — and each says at its own header what it fetches and what a failed fetch means.
+# (falling back to mirrors.kernel.org) respectively — and each says at its own header what it fetches and what a failed fetch means.
 
 name: Deploy selftest
 
@@ -116,7 +116,7 @@ jobs:
   # to it makes the floor's evidence drift silently; the GNU release tarball and its sha256 do not
   # move. The ubuntu-latest runner supplies the same GNU userland the deploy's real host has.
   #
-  # NEEDS NETWORK (ftp.gnu.org) AND A COMPILER, and nothing else — no credential, no registry login.
+  # NEEDS NETWORK (ftp.gnu.org, or mirrors.kernel.org) AND A COMPILER, and nothing else — no credential, no registry login.
   # A download or a build that fails FAILS THE JOB: an unbuilt shell measures nothing, and a step
   # that cannot run is never a pass.
   bash-floor:
@@ -162,8 +162,8 @@ jobs:
           echo "bin/deploy.sh declares BASH_FLOOR=$floor; the control runs at $below"
 
       # Two shells, from the GNU release tarballs, each pinned by sha256 — the checksums were read
-      # from ftp.gnu.org and cross-checked against mirrors.kernel.org (the fallback source), so the pin is a transport
-      # check and not a second copy of a number nobody verified. An unpinned download compiled and
+      # from ftp.gnu.org and cross-checked against mirrors.kernel.org (the fallback source), so
+      # the pin is a transport check and not a second copy of a number nobody verified. An unpinned download compiled and
       # RUN in CI is the shape this avoids.
       - name: Build GNU bash at the floor and at the minor below it
         env:
@@ -187,7 +187,7 @@ jobs:
             # is not a failure of this check.
             got=
             for base in https://ftp.gnu.org/gnu/bash https://mirrors.kernel.org/gnu/bash; do
-              if curl -fsSL --retry 2 --connect-timeout 30 -o "/tmp/bash-$v.tar.gz" "$base/bash-$v.tar.gz"; then
+              if curl -fsSL --retry 2 --connect-timeout 30 --max-time 300 -o "/tmp/bash-$v.tar.gz" "$base/bash-$v.tar.gz"; then
                 got="$base"; break
               fi
               echo "::warning::bash $v not fetched from $base — trying the next source"
