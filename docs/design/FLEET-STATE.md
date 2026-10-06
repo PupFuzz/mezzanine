@@ -1531,6 +1531,15 @@ CREATE TABLE sessions (
   turn_open     TINYINT(1) NOT NULL DEFAULT 0,
   turn_started_at DATETIME(3) NULL,
   turn_prompt_chars INT UNSIGNED NULL,
+  console_url   VARCHAR(95) CHARACTER SET ascii COLLATE ascii_bin NULL,
+                                    -- card#9416, an amendment to this sketch: D1 § 6.3's link to the
+                                    -- session's console on claude.ai, as of the session's NEWEST
+                                    -- turn.start (an older one delivered late never replaces it;
+                                    -- a newer one carrying null clears it). The fold stores only a
+                                    -- value matching D1 § 6.3's pattern; any other value is
+                                    -- stored NULL and counts `console_url_refused` (§ 7.2). ⛔ Published to an OPERATOR
+                                    -- only, on § 8.2.3's `detail` — never on the seat object, so
+                                    -- never on the snapshot or a delta
   turn_close_source ENUM('wire','session_close','server_offline') NULL,
   last_turn_end_reason ENUM('stop_hook','api_error','session_cleared','session_ended',
                             'server_session_close') NULL,   -- the last is SERVER-side (§ 4.6.1)
@@ -2720,6 +2729,7 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `left_live_cleared_stalls` / `left_live_resolved_attention` | `seat_counters` | seat detail | the sweeper cleared a `stalled` flag or resolved an attention request at the seat's leaving-live boundary — `stale` at 300 s, or `offline` at 900 s on the one-pass jump ([§ 4.5](#45-link-states)) | rising ⇒ seats are going quiet while blocked or rate-limited, which is a different story from either state ending properly |
 | `compaction_ceiling_closed` | `seat_counters` | seat detail | the sweeper closed a `compaction_open_since` at its 15-minute ceiling ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | rising ⇒ `compaction.end` is not arriving; `PostCompact` is one of D1's un-driven hook stubs, so this is the instrument that says so |
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
+| `console_url_refused` | `seat_counters` | seat detail | the fold met a `turn.start` whose `console_url` fails [D1 § 6.3](EVENT-SCHEMA.md#63-turnstart)'s pattern and stored `NULL` in its place ([§ 6.4](#64-ddl)) | none rendered; the link is simply not offered. The reporter drops such a value before it is sent, so a count here is a reporter that does not check the pattern it owes, or a value that did not come from a reporter — a reason to look at the seat's token |
 | `fold_window_purged` | `seat_counters` | seat detail | the fold's emptiness proof found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge, so the cursor advances to the head that proof covered rather than the seat re-claiming forever ([§ 6.5](#65-the-fold)). Counted on the **proof**, not on the guarded cursor write: a pass that loses the race to an ingest advances nothing and still admits the purge, because the same window is jumped by the ordinary branch on a later pass and that jump must not be silent | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
 | `sweep_seat_error` | `seat_counters` | seat detail | a sweep pass's work on that seat threw anything but a concurrency error, and the pass skipped the seat and went on ([§ 2.1](#21-processes)) | that seat's time-derived transitions did not advance that pass; the pass counts it among its failed seats and `mezzanine:sweep` prints the count |
@@ -3204,7 +3214,7 @@ and `server_time` first, as the snapshot carries them, then the object's own mem
 member. `detail` carries the full
 `heartbeat_counters` and `heartbeat_predicates` snapshots, this plane's `seat_counters` rows, the open
 call list in full (not capped at 8), the open attention request if any, and the current session's turn
-statistics. It is the drill-down's source and is deliberately **not** in the fleet snapshot: putting
+statistics — and, **for an operator only**, `console_url` (card#9416). It is the drill-down's source and is deliberately **not** in the fleet snapshot: putting
 ~1.5 KiB of counters on every seat of every snapshot would multiply the fleet payload by ~2 to serve a
 panel that is open for one seat at a time.
 
@@ -3216,6 +3226,17 @@ cost is the ~1.5 KiB above: the counter snapshots, the uncapped call list, the t
 `call_id`, none of which any desk renders. The rule the promotion is admitted under is that a
 member belongs on the snapshot when **every** desk needs it to render honestly and it is bounded by a
 scalar; a member belongs here when one open panel needs it.
+
+**`detail.console_url` is the one member whose presence depends on WHO reads, and it lives here for
+that reason** (card#9416). It is the current session's [§ 6.4](#64-ddl) `sessions.console_url` — the
+address of that session's console on claude.ai ([D1 § 6.3](EVENT-SCHEMA.md#63-turnstart)) — and it is
+present only when the request's signed-in account passes the `operate` gate (card#9415): **absent**,
+not `null`, for an observer and for every `mzr_` machine token, which carries no account, so a reader
+who may not follow the link cannot tell whether one exists. For an operator it is `null` when the
+seat has no current session or the session reported none. ⛔ It is on no seat object, so the snapshot
+and every `seat.delta` — which every signed-in observer receives — cannot carry it; the drill-down
+fetches it from this response when it opens. Adding it to [§ 8.2.1](#821-the-seat-state-object)
+would publish a live console's address to every reader of the floor.
 
 #### 8.2.4 The fleet health object
 
@@ -4764,6 +4785,12 @@ an operator question, not a design one, and the operator ruled on 2026-09-13 tha
 [§ 14](#14-open-questions-for-the-review-loop) item 7 records the ruling, and it reopens before a second
 organisation's install reports in.
 
+**One member is decided by the reader's ROLE, and it narrows nothing above** (card#9416). § 8.2.3's
+`detail.console_url` reaches a signed-in account that passes the `operate` gate (card#9415) and no other
+reader: not an observer and not a `fleet_read` token. It changes what a reader may follow — a link into a
+live session's console — and not which installs it sees, so the all-or-nothing read above still holds
+for every fleet fact.
+
 ---
 
 ## 10. Worked example: the `/clear` trace, folded end to end
@@ -6078,7 +6105,7 @@ operator ruling.
 ## Appendix A — every D1 obligation, and where it is discharged
 
 [D1 § 12.6](EVENT-SCHEMA.md#126-the-five-d2-must-constraints) carries **five numbered `D2-MUST`
-constraints**. D1 also addresses this document in **twenty-nine** further places — a `D2` mention, a
+constraints**. D1 also addresses this document in **thirty** further places — a `D2` mention, a
 "constraining D2" note, a server-side rule that only this plane can implement. All of them are
 enumerated here, because an obligation a downstream document did not notice is indistinguishable from
 one it declined. The two counts above and the two tables' row counts are checked against each other by
@@ -6086,7 +6113,7 @@ one it declined. The two counts above and the two tables' row counts are checked
 
 **The population had two halves and only one was machine-derivable; D1's marker convention has since
 collapsed the gap, and the remainder is stated because that is where the last miss was.**
-**Twenty-eight** of the twenty-nine cite a D1 section carrying a marker on the obligation sentence
+**Twenty-nine** of the thirty cite a D1 section carrying a marker on the obligation sentence
 itself — `D2-MUST`, a `D2:` prefix, or a *constraining D2* note, the convention
 [D1 § 1](EVENT-SCHEMA.md#1-non-goals) declares; the remaining **one** is S25, whose D1-source column
 names a decision-register row rather than a section number, so no marker anywhere in D1 can reach it.
@@ -6094,8 +6121,8 @@ Both counts are re-derived by `tools/design/verify-fleet-state.py` on every run 
 obligation markers and from this table's D1-source column — rather than counted by hand, because an
 earlier revision of this paragraph claimed twenty-eight and one *against a real fourteen-row manual
 half*, and it was that understatement, not the sweep, that
-[§ 14](#14-open-questions-for-the-review-loop) item 8 scoped its closure by. The figure is twenty-eight
-and one again now; the difference is that a tool derives it and prints the remaining row by name.
+[§ 14](#14-open-questions-for-the-review-loop) item 8 scoped its closure by. The figure is twenty-nine
+and one now; the difference is that a tool derives it and prints the remaining row by name.
 
 **The tool checks two directions now, and they are different properties.** The first is coverage: every
 D1 section carrying the marker is cited by some row below, from a position this document attributes to
@@ -6118,7 +6145,7 @@ prints by name on every run rather than reporting a clean over it.
 | **4** | **Transitions ordered by `(event_time, seq)`, never arrival order; `received_at` the only clock for liveness, retention and cross-seat comparison; a repeated `(seq_epoch, seq)` with differing `event_id`s counted as `seq_collision`, not silently applied** | [§ 6.5](#65-the-fold) (the LWW comparator, with `seq_epoch` inserted — a refinement, filed at [§ 14](#14-open-questions-for-the-review-loop) item 4), [§ 4.7](#47-which-clock-each-ceiling-is-measured-from), [§ 6.7](#67-retention-and-purge), [§ 7.1](#71-d1s-server-side-counters--where-they-live) | [AT-D2-11](#at-d2-11-out-of-order-batches-converge), [AT-D2-18](#at-d2-18-seq-gaps-collisions-and-epoch-resets-are-visible) |
 | **5** | *(D1 § 12.6, stated in full at D1 § 6.13 with its resolution edges)* **Blocked only from `attention.request`, cleared only by its matching `attention.resolved` (by `request_id`), the session ending, or leaving live — never longer than the 60-minute ceiling; no second predicate over `notification_kind` is needed or wanted** | [§ 4.4](#44-activity-states-every-entry-and-exit-edge) `blocked` (all four exits — offline quiescence is not a fifth: [§ 4.5](#45-link-states)'s leaving-live resolve fires at `stale` **or** `offline` and has always run first), [§ 4.5](#45-link-states) (leaving live **resolves** the request at 300 s with `seat_left_live`, so the clause is discharged by clearing the fact and not by masking it), [§ 4.3](#43-the-derivation-function) (precedence rule 1), [§ 6.4](#64-ddl) (`notification_kind` has three members and no `other`) | [AT-D2-5](#at-d2-5-blocked-has-an-exit-including-when-the-exit-event-is-lost) |
 
-### The twenty-nine further obligations
+### The thirty further obligations
 
 | # | D1 source | Obligation | Discharged in |
 |---|---|---|---|
@@ -6151,6 +6178,7 @@ prints by name on every run rather than reporting a clean over it.
 | S27 | § 3.4, § 9.2 | The heartbeat plus a server-side staleness alarm is the structural backstop; no gating on undocumented environment markers; every predicate reports both branches and is alarmed when one goes constant | [§ 5](#5-server-side-predicates-and-their-controls) (all three rules, restated for this plane with its own predicates and controls) |
 | S28 | § 9.3, § 11.3 | `spool_dropped_events` badges the seat `lossy` **and the number is rendered** — a loss is never a badge alone | [§ 7.3](#73-how-the-reporters-own-counters-are-handled) (badges render with their counter value and `uptime_s`), [§ 7.1](#71-d1s-server-side-counters--where-they-live) (no server counter writes `lossy`, so the rendered number always belongs to the badge beside it) |
 | S29 | § 6.2 | **A consumer must not read `end_reason: "other"` as a degradation signal** — it is "a common value, not a residue", the majority of D1's own capture run, and what a non-interactive `claude -p` session ends with | [§ 6.4](#64-ddl) (`sessions.end_reason` carries `other` as an ordinary member), [§ 4.8](#48-what-may-never-mint-a-state) (the explicit row: no badge, no degradation, no rule reads it), [AT-D2-1](#at-d2-1-idle-is-minted-by-exactly-one-rule) (a `clean_turn_then_exit` with `end_reason: other` leaves `badges` empty and moves no counter) |
+| S30 | § 6.3 | `console_url` is stored against its session as of the newest `turn.start`, a value failing D1's pattern is refused at the fold, and the member reaches an **operator** only — never the seat object, the snapshot or the stream (card#9416) | [§ 6.4](#64-ddl) (`sessions.console_url`), [§ 7.2](#72-this-planes-own-counters-and-badges) (`console_url_refused`), [§ 8.2.3](#823-the-seat-detail-response) (`detail.console_url`, gated) |
 
 **Nothing in D1 addressed to D2 is undischarged.** Four obligations were discharged with a stated
 divergence rather than literally, and each was filed as a D1 amendment need in

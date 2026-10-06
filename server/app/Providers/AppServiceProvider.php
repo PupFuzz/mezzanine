@@ -55,8 +55,10 @@ class AppServiceProvider extends ServiceProvider
         /*
          * ⛔ `operate` — card#9415's ONE authorization gate: the account is an operator, not an
          * observer. Routes take it as the stock `can:operate` middleware — the admin console's group in
-         * `routes/web.php` does, and so does every per-desk write route that follows (card#9416's
-         * console link, card#9417's compose box) — and views as `@can('operate')`.
+         * `routes/web.php` does, and so does every per-desk write route that follows (card#9417's
+         * compose box) — and views as `@can('operate')`. A read that answers both tiers asks it of the
+         * request's account instead: `FleetController` puts card#9416's console link on an operator's
+         * seat detail only.
          *
          * It answers ONE question, the role. Who may sign in is `App\Auth\ActiveUserProvider`'s, the
          * second factor is `mfa`'s, and which fleet a session may READ is

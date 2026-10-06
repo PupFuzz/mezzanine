@@ -21,7 +21,8 @@ use Illuminate\Support\Facades\Route;
 | OPERATOR (`users.role`), and this whole console is operator-only: an observer who could reach user
 | management could promote itself, which would void the tier (the console-wide scope is the PM's
 | decision of 2026-10-05, appended to `docs/PLAN.md § 0`). Observers keep everything the floor,
-| the lobby and the drill-down show, which are outside this group. The gate is `operate`, defined
+| the lobby and the drill-down show, which are outside this group — except the drill-down's console
+| link, which `App\Http\Controllers\FleetController` publishes to an operator alone (card#9416). The gate is `operate`, defined
 | once in `App\Providers\AppServiceProvider`; the controllers make no `authorize` calls of their own,
 | because the group's middleware is the whole statement.
 |

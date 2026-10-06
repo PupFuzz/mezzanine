@@ -28,6 +28,30 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 ## [Unreleased]
 
 - **card#9566** — **A seat that leaves walks to the floor's elevator; one that returns walks back to its desk.** When a desk goes from staffed to an empty chair (`stale` or `offline`), the character walks to the elevator on the back wall, the leaves open, it steps in and the leaves close; when a seat comes back, the leaves open and it walks to its desk and sits. Under reduced motion the chair simply empties or the character is simply present. `docs/design/FLOOR.md § 6.2`'s walk note owns the rules: a walk is drawn only, the rows and the log are written at the apply as before, and anything that touches the seat mid-walk cancels the walk and draws its current state. The two rows used to be keyed on `offline` alone, which predicted a walk out of an already-empty chair when a `stale` seat turned `offline`; they now read § 7.1's staffed and empty sides. Every multi-frame floor effect — the coordination envelope and ring included — now survives the renders that land while it runs instead of being cut by the next one. AT-D3-23 (`ASeatLeavesByTheElevatorAndReturnsByItTest`, `fx-elevator`).
+
+- **card#11331** — **A reporter token carried to a seat by hand has one name, and Step 2 consumes it.**
+  When the Mezzanine server is on another host, `fleet-reporter/INSTALL-LINUX.md` Step 2 issues the
+  token on that host into a `0600` file holding the token alone, the operator carries it to the seat
+  as `~/.config/fleet-reporter/mezzanine-reporter-token`, and the seat writes its config from that
+  file and then shreds it on both hosts. Step 2's writer does both hops: `FR_TOKEN_OUT` writes the
+  token file from the issue output, and `FR_TOKEN_FILE` writes the config from the carried file,
+  refusing a file that is not a regular `0600` file of the seat account's, in a `0700` directory of
+  its own, holding exactly one well-formed token. Both issuing pipelines refuse to run without `node`
+  on `PATH`, so a token is never issued into a pipe nothing reads, and the clean-up shreds only a
+  regular file, removing a symlink alone and leaving its target for the operator. This replaces typing the token into the config with an editor (raised on
+  PupFuzz/agent-roundtable#597).
+
+- **card#9416** — **An operator opens an agent's console from its desk.** The drill-down shows
+  **Open console on claude.ai**, opening in a new tab, to operators only. `fleet-reporter` reads the
+  session's console address from the tail of its transcript (at most 1 MiB back) and sends it as
+  `console_url` on every `turn.start` (D1 § 6.3), `null` when the bridge has ended or the seat's
+  `descriptors` key is not `full`; a value of any other shape is dropped and counted
+  `console_url_malformed`. The fold stores only a value matching D1's pattern, in the new
+  `sessions.console_url` column, and counts `console_url_refused` for the rest. The seat detail
+  response carries `detail.console_url` for a signed-in operator only — the member is absent for an
+  observer and for a machine token, and no seat object, snapshot or stream message carries it.
+  Seats send the link once their reporter is re-copied (`fleet-reporter/INSTALL-LINUX.md` Step 1).
+
 - **card#9446** — **Every time shows in the viewer's browser timezone.** The floor, the lobby and the
   console show each instant in the zone the viewer's own browser reports, through one converter
   (`public/js/wire/clock.js`). The floor's header now agrees with itself: the sweep and ingest stamps sit in

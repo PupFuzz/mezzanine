@@ -4020,6 +4020,154 @@ redgreen("the roster entry's role is relayed, and is null whenever nothing selec
          f"{len(relay_bound['role'] or '')} B; open vocabulary {relay_open['role']!r}")
 
 
+print("\n== 19c. THE SEAT'S CONSOLE URL IS READ FROM THE TRANSCRIPT'S TAIL, AND NOTHING ELSE REACHES THE WIRE (D1 § 6.3, card#9416) ==")
+# Every id below is SYNTHETIC. A real session id is a link to a live console, so none is ever
+# written into a fixture, a log or a report.
+CU_ID_A = "SynthAAAAAAAAAAAAAAAAAAA"
+CU_ID_B = "SynthBBBBBBBBBBBBBBBBBBB"
+CU_URL_A = f"https://claude.ai/code/session_{CU_ID_A}"
+CU_URL_B = f"https://claude.ai/code/session_{CU_ID_B}"
+
+
+def cu_bridge(bid) -> dict:
+    return {"type": "bridge-session", "bridgeSessionId": bid, "sessionId": SID, "lastSequenceNum": 1}
+
+
+def cu_rsc(url) -> dict:
+    return {"type": "attachment", "attachment": {"type": "remote_session_change", "url": url,
+                                                 "commit": None, "pr": None}}
+
+
+def cu_filler(n_bytes: int) -> dict:
+    """An ordinary transcript line of about `n_bytes`, carrying neither marker."""
+    return {"type": "user", "message": {"role": "user", "content": "x" * max(0, n_bytes - 64)}}
+
+
+def cu_transcript(tag: str, records: list) -> Path:
+    d = tmpdir(f"fr-cu-{tag}-")
+    p = d / f"{SID}.jsonl"
+    with p.open("w", encoding="utf-8") as f:
+        for r in records:
+            f.write((r if isinstance(r, str) else json.dumps(r)) + "\n")
+    return p
+
+
+def cu_drive(tag: str, transcript, *, mode=ABSENT, reporter: Path = REPORTER) -> dict:
+    s = seat(f"cu-{tag}")
+    if mode is not ABSENT:
+        s.cfg["descriptors"] = mode
+        s.write_cfg()
+    payload = {"session_id": SID, "hook_event_name": "UserPromptSubmit", "prompt_id": "p1",
+               "prompt": "go", "cwd": "/home/agent/proj"}
+    if transcript is not None:
+        payload["transcript_path"] = str(transcript)
+    t0 = time.monotonic()
+    r = hook(s, "UserPromptSubmit", payload, reporter=reporter)
+    ms = (time.monotonic() - t0) * 1000
+    starts = [e for e in s.events() if e["kind"] == "turn.start"]
+    c = s.counters()
+    return {
+        "rc": r.returncode, "stdout": r.stdout,
+        "url": starts[0]["data"].get("console_url", "<absent>") if len(starts) == 1 else f"<{len(starts)} turn.start>",
+        "malformed": c.get("console_url_malformed", 0),
+        "exhausted": c.get("console_url_tail_exhausted", 0),
+        "missing_key": c.get("payload_key_missing.transcript_path", 0),
+        "ms": ms,
+    }
+
+
+MIB = 1024 * 1024
+FAR = 1536 * 1024                      # filler bytes AFTER a record: past the 1 MiB tail
+fx_bridge = cu_transcript("bridge", [cu_filler(500), cu_bridge(f"cse_{CU_ID_A}"), cu_filler(800)])
+fx_rsc = cu_transcript("rsc", [cu_bridge(f"cse_{CU_ID_A}"), cu_rsc(CU_URL_B), cu_filler(300)])
+fx_rsc_null = cu_transcript("rsc-null", [cu_bridge(f"cse_{CU_ID_A}"), cu_rsc(None), cu_filler(300)])
+fx_newest = cu_transcript("newest", [cu_bridge(f"cse_{CU_ID_A}"), cu_filler(400), cu_bridge(f"cse_{CU_ID_B}")])
+fx_ended = cu_transcript("ended", [cu_bridge(f"cse_{CU_ID_A}"), cu_filler(400), cu_bridge("")])
+fx_absent = cu_transcript("absent", [cu_filler(500), cu_filler(700)])
+fx_bad_id = cu_transcript("bad-id", [cu_bridge(f"cse_{CU_ID_A}"), cu_bridge("cse_bad/../id")])
+fx_bad_url = cu_transcript("bad-url", [cu_bridge(f"cse_{CU_ID_A}"), cu_rsc("https://claude.ai.example.net/code/session_" + CU_ID_B)])
+fx_torn = cu_transcript("torn", [cu_bridge(f"cse_{CU_ID_A}"), '{"type":"bridge-session","bridgeSessionId":"cse_' + CU_ID_B])
+fx_far = cu_transcript("far", [cu_bridge(f"cse_{CU_ID_A}")] + [cu_filler(64 * 1024)] * (FAR // (64 * 1024)))
+# A record that STRADDLES chunk boundaries: preceded by long lines and itself ~100 KiB, so its bytes
+# arrive across two of the walk's 64 KiB reads and only the carried head completes it.
+fx_straddle = cu_transcript("straddle", [cu_filler(300 * 1024),
+                                         dict(cu_bridge(f"cse_{CU_ID_B}"), pad="p" * (100 * 1024)),
+                                         cu_filler(90 * 1024)])
+# A transcript far larger than the tail, record near its end: answered without reading the head.
+fx_huge = cu_transcript("huge", [cu_filler(64 * 1024)] * 640 + [cu_bridge(f"cse_{CU_ID_A}"), cu_filler(2000)])
+
+cu_bridge_r = cu_drive("bridge", fx_bridge)
+cu_rsc_r = cu_drive("rsc", fx_rsc)
+cu_rsc_null_r = cu_drive("rsc-null", fx_rsc_null)
+cu_newest_r = cu_drive("newest", fx_newest)
+cu_ended_r = cu_drive("ended", fx_ended)
+cu_absent_r = cu_drive("absent", fx_absent)
+cu_nofile_r = cu_drive("nofile", fx_absent.parent / "no-such.jsonl")
+cu_nokey_r = cu_drive("nokey", None)
+cu_bad_id_r = cu_drive("bad-id", fx_bad_id)
+cu_bad_url_r = cu_drive("bad-url", fx_bad_url)
+cu_torn_r = cu_drive("torn", fx_torn)
+cu_far_r = cu_drive("far", fx_far)
+cu_straddle_r = cu_drive("straddle", fx_straddle)
+cu_huge_r = cu_drive("huge", fx_huge)
+cu_paths_r = cu_drive("paths", fx_bridge, mode="paths")
+cu_none_r = cu_drive("none", fx_bridge, mode="none")
+
+eq("present via the bridge id: the URL derived from it", CU_URL_A, cu_bridge_r["url"])
+eq("present via a non-null remote_session_change url, newer than the bridge record: that url", CU_URL_B, cu_rsc_r["url"])
+eq("a null remote_session_change url decides nothing: the bridge record behind it answers", CU_URL_A, cu_rsc_null_r["url"])
+eq("the newest bridge record wins — the id changes within a session", CU_URL_B, cu_newest_r["url"])
+eq("an empty bridge id after a live one: the bridge ended, so null", None, cu_ended_r["url"])
+eq("absent: a transcript with no deciding record is null", None, cu_absent_r["url"])
+eq("absent: a transcript that does not exist is null", None, cu_nofile_r["url"])
+eq("absent: no transcript_path is null, and the missing key is counted", (None, 1), (cu_nokey_r["url"], cu_nokey_r["missing_key"]))
+eq("malformed bridge id: dropped, counted", (None, 1), (cu_bad_id_r["url"], cu_bad_id_r["malformed"]))
+eq("malformed url on a foreign host: dropped, counted", (None, 1), (cu_bad_url_r["url"], cu_bad_url_r["malformed"]))
+eq("a torn last line is skipped, and the whole record before it answers", CU_URL_A, cu_torn_r["url"])
+eq("oversized: a record further back than the 1 MiB tail is never read — null, counted",
+   (None, 1), (cu_far_r["url"], cu_far_r["exhausted"]))
+eq("a record straddling the walk's chunk boundaries is read whole", CU_URL_B, cu_straddle_r["url"])
+eq(f"a {fx_huge.stat().st_size // MIB} MiB transcript, record near its end: found from the tail", CU_URL_A, cu_huge_r["url"])
+eq("descriptors \"paths\": null", None, cu_paths_r["url"])
+eq("descriptors \"none\": null", None, cu_none_r["url"])
+cu_all = (cu_bridge_r, cu_rsc_r, cu_rsc_null_r, cu_newest_r, cu_ended_r, cu_absent_r, cu_nofile_r, cu_nokey_r,
+          cu_bad_id_r, cu_bad_url_r, cu_torn_r, cu_far_r, cu_straddle_r, cu_huge_r, cu_paths_r, cu_none_r)
+eq("every read exits 0 and prints nothing (P-1, P-2: UserPromptSubmit stdout reaches the model)",
+   [(0, "")] * len(cu_all), [(r["rc"], r["stdout"]) for r in cu_all])
+cu_clean = (cu_bridge_r, cu_rsc_r, cu_newest_r, cu_ended_r, cu_straddle_r, cu_huge_r)
+eq("nothing counted malformed or exhausted where the read was clean",
+   [0] * len(cu_clean), [r["malformed"] + r["exhausted"] for r in cu_clean])
+print(f"  MEASURED  UserPromptSubmit wall time over the {fx_huge.stat().st_size // MIB} MiB transcript: "
+      f"{cu_huge_r['ms']:.0f} ms (bridge fixture: {cu_bridge_r['ms']:.0f} ms) — P-5's budget is 250 ms, asserted by § 3")
+
+# RED — each way the read dies, planted on a copy and seen to fail on its own fixture.
+p_cu_any = plant(("const m = typeof id === 'string' ? BRIDGE_ID_RE.exec(id) : null;",
+                  "const m = typeof id === 'string' ? [id, id.replace(/^cse_/, '')] : null;"))
+r_cu_any = cu_drive("red-any-id", fx_bad_id, reporter=p_cu_any)
+eq("RED: no pattern check on the id puts a malformed one on the wire",
+   "https://claude.ai/code/session_bad/../id", r_cu_any["url"])
+p_cu_host = plant(("if (typeof a.url === 'string' && CONSOLE_URL_RE.test(a.url)) return a.url;",
+                   "if (typeof a.url === 'string') return a.url;"))
+r_cu_host = cu_drive("red-host", fx_bad_url, reporter=p_cu_host)
+eq("RED: no pattern check on the url puts a foreign host on the wire",
+   "https://claude.ai.example.net/code/session_" + CU_ID_B, r_cu_host["url"])
+p_cu_whole = plant(("const floor = Math.max(0, size - K.CONSOLE_TAIL_BYTES);", "const floor = 0;"))
+r_cu_whole = cu_drive("red-whole", fx_far, reporter=p_cu_whole)
+eq("RED: an unbounded walk reads past the 1 MiB tail (and would read a huge transcript whole)", CU_URL_A, r_cu_whole["url"])
+p_cu_carry = plant(("carry = cut === -1 ? Buffer.alloc(0) : buf.subarray(0, cut);", "carry = Buffer.alloc(0);"))
+r_cu_carry = cu_drive("red-carry", fx_straddle, reporter=p_cu_carry)
+eq("RED: dropping the carried head loses a record that straddles a chunk boundary", False, r_cu_carry["url"] == CU_URL_B)
+p_cu_mode = plant(("  if (descriptorMode(cfg) !== 'full') return null;\n  const tp", "  const tp"))
+r_cu_mode = cu_drive("red-mode", fx_bridge, mode="none", reporter=p_cu_mode)
+eq("RED: a read that ignores `descriptors` sends the URL from a \"none\" seat", CU_URL_A, r_cu_mode["url"])
+redgreen("the console URL is read from the transcript's tail, pattern-checked, and bounded (D1 § 6.3, card#9416)",
+         f"any id -> {r_cu_any['url']!r}; any url -> {r_cu_host['url']!r}; unbounded -> {r_cu_whole['url']!r}; "
+         f"no carry -> {r_cu_carry['url']!r}; descriptors ignored -> {r_cu_mode['url']!r}",
+         f"bridge {cu_bridge_r['url']!r}; rsc {cu_rsc_r['url']!r}; malformed -> None x2 (counted); far -> "
+         f"{cu_far_r['url']!r} (exhausted {cu_far_r['exhausted']}); straddle {cu_straddle_r['url']!r}; huge "
+         f"{cu_huge_r['url']!r} in {cu_huge_r['ms']:.0f} ms; none/paths -> None")
+
+
 print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
 # detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —
