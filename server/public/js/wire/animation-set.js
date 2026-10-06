@@ -273,11 +273,12 @@ const gained = (a, b) => [...b].some((v) => !a.has(v));
  * unrecognised value. Keyed on one side alone, A2 would fire on `stale → offline` and on a re-sent
  * `offline` (a walk out of a chair already empty), and A1 on `working → idle`.
  *
- * ⛔ AND A1 EXCLUDES A13's CONDITION, THROUGH A13's OWN PREDICATE RATHER THAN A COPY OF IT. An
- * `offline → retired` delta leaves `offline` and is not an arrival: A13 removes the desk, and a
- * client that fired both played a character walking in to a desk it was deleting. § 6.2 hosts the
- * exclusion on A1 — the row that yields — exactly as it hosts A3's exclusion of A4 (card#7341
- * step 6), and `retiring` below is the one definition both rows read.
+ * ⛔ AND NEITHER FIRES WITH A13, BY CONSTRUCTION RATHER THAN BY A CLAUSE. An `offline → retired`
+ * delta is not an arrival and a `working → retired` one is not a departure: A13 removes the desk, and
+ * a client that fired both would play a walk to or from a desk it was deleting. § 6.2 states the
+ * exclusion on A1 and A2; it holds here because `retired` is on neither side — it is no `DESK` key and
+ * is one of `NO_CHARACTER_STATES` — so a `!retiring` clause on either row could never be reached.
+ * `retiring` below is A13's predicate alone.
  */
 const retiring = (before, after) => after.render_state === 'retired';
 

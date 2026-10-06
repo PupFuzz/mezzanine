@@ -67,6 +67,7 @@ import { LOOP_FPS, heldRendering } from '../wire/animation-set.js';
 import { DrillDownPanel } from '../drilldown/drilldown-panel.js';
 import { coordModel } from '../coord/coord-model.js';
 import { correctedNowMs } from '../wire/duration.js';
+import { floorAgeReadouts } from '../wire/age-readout.js';
 import { floors, heldBody, roomsOf } from '../lobby/lobby-model.js';
 import { buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
@@ -683,30 +684,32 @@ export class FloorScreen {
      * walk is cancelled: the holder asks the walk note's item 6 of it, over this render's journal.
      */
     #scene(frame, rows, journal = []) {
-        if (this.#sceneInput === null || frame.floor === null) {
-            return null;
+        const drawable = this.#sceneInput !== null && frame.floor !== null;
+        const plain = drawable ? buildScene(frame, this.#sceneDocs(frame, rows)) : null;
+
+        if (drawable) {
+            this.#lastFrame = frame;
         }
 
-        const plain = buildScene(frame, this.#sceneDocs(frame, rows));
+        const now = this.#clock.now();
 
-        this.#lastFrame = frame;
+        // Every render reaches the holder, a render that draws no scene included: it drained its journal
+        // once, so a touch it carries is tested now or never. With no scene there is no anchor for any
+        // seat, so item 6's anchor clause cancels every walk in flight — there is no floor to finish it on.
+        this.#inFlight.render(plain?.effects ?? [], now, {
+            journal,
+            anchors: new Map(Object.entries(plain?.anchors ?? {})),
+            threshold: threshold(plain?.band),
+            unconfirmed: (key) => frame.desks?.desks?.[key]?.unconfirmed ?? null,
+            stilled: (frame.failure?.sign_in ?? null) !== null,
+        });
+        this.#armWalkEnd(now);
 
         if (plain === null) {
             return null;
         }
 
-        const now = this.#clock.now();
-        const anchors = new Map(Object.entries(plain.anchors));
-
-        this.#inFlight.render(plain.effects, now, {
-            journal,
-            anchors,
-            threshold: threshold(plain.band),
-            unconfirmed: (key) => frame.desks?.desks?.[key]?.unconfirmed ?? null,
-            stilled: (frame.failure?.sign_in ?? null) !== null,
-        });
-        this.#anchors = anchors;
-        this.#armWalkEnd(now);
+        this.#anchors = new Map(Object.entries(plain.anchors));
 
         return this.#overlay(frame, plain, now);
     }
@@ -776,6 +779,12 @@ export class FloorScreen {
      * state — and it drains nothing, applies nothing, writes no animation-log row and fires no edge, so
      * it is not a render (§ 2.5) and cancels no walk.
      *
+     * What the last render drew is the FLEET's half of the frame only. The viewer's half has moved since
+     * without a render — the camera (§ 4.5: a pan, a zoom, a fit or a resize paints nothing), the route's
+     * seat and the drill-down a user closed — and so have the ages, which the 1 s tick re-reads without
+     * one. The refresh takes each of those as it stands now, as the tick does, so a walk's end never
+     * moves the viewer back to where the applying render left them and never winds an age back.
+     *
      * @returns {object|null} the frame to paint, or `null` with nothing drawn yet
      */
     walkEnded() {
@@ -784,11 +793,20 @@ export class FloorScreen {
         }
 
         const now = this.#clock.now();
-        const plain = buildScene(this.#lastFrame, this.#sceneDocs(this.#lastFrame, []));
+        const desks = this.#desks.view(floorAgeReadouts(this.#desks.seats, this.#desks.clockOffsetMs, now));
+        const frame = { ...this.#lastFrame, desks };
+        const plain = buildScene(frame, this.#sceneDocs(frame, []));
 
         this.#armWalkEnd(now);
 
-        this.#lastDrawn = Object.freeze({ ...this.#lastDrawn, scene: this.#overlay(this.#lastFrame, plain, now) });
+        this.#lastDrawn = Object.freeze({
+            ...this.#lastDrawn,
+            desks,
+            scene: plain === null ? null : this.#overlay(frame, plain, now),
+            camera: this.#camera,
+            seat: this.#seatSegment,
+            panel: this.panelView(this.#lastDrawn.floor?.name ?? null),
+        });
 
         return this.#lastDrawn;
     }

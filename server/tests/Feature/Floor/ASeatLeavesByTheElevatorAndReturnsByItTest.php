@@ -259,6 +259,36 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
         $noRow = $this->floorRun('reslot-no-row');
         $this->assertSame([], $this->walks($this->frameAt($noRow, 1500)), 'the room.map\'s render still draws the walker');
+
+        // Item 6's three clauses that need no entry for the seat: each run touches S by one of them alone,
+        // after a render that drew the walk still in flight (the same instant's first, where it has two).
+        foreach (['stilled' => [1500, 1500], 'unconfirmed' => [1750, 1750], 'elevator-moves' => [1000, 1500]] as $run => [$was, $at]) {
+            $result = $this->floorRun($run);
+
+            $this->assertNotSame([], $this->walks($this->frameAt($result, $was, 'render', false)), "[{$run}] no walk was in flight at {$was} ms");
+            $this->assertSame([], $this->walks($this->frameAt($result, $at)), "[{$run}] the render at {$at} ms still draws the walker");
+        }
+
+        $moved = $this->floorRun('elevator-moves');
+        [$before, $after] = [$this->frameAt($moved, 1000)['scene'], $this->frameAt($moved, 1500)['scene']];
+        $this->assertSame($before['anchors'][self::IMPL_1], $after['anchors'][self::IMPL_1], 'elevator-moves moved the desk\'s anchor too');
+        $this->assertNotSame($before['band']['elevator']['y'], $after['band']['elevator']['y'], 'elevator-moves did not move the elevator');
+    }
+
+    /**
+     * Item 4's refresh is paint-only, so it leaves the viewer where the viewer is (§ 4.5): the camera a
+     * zoom left after the applying render, and the ages at the refresh's own instant, as the 1 s tick reads them.
+     */
+    public function test_green_the_walk_end_keeps_the_viewer(): void
+    {
+        $result = $this->floorRun('zoom-mid-walk');
+        $zoomed = $result['camera_acts'][count($result['camera_acts']) - 1]['after'];
+        $end = $this->frameAt($result, $this->walkEnd($result), 'walk end');
+
+        $this->assertNotEquals($zoomed, $this->frameAt($result, 1000)['camera'], 'the zoom moved no camera');
+        $this->assertEquals($zoomed, $end['camera'], 'the walk\'s end moved the viewer back to the applying render\'s camera');
+        $this->assertGreaterThan($this->frameAt($result, 1000)['desks']['now_ms'], $end['desks']['now_ms'],
+            'the walk\'s end re-paints the applying render\'s ages');
     }
 
     public function test_green_effects_across_paints(): void
@@ -408,6 +438,43 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
                 || !samePoint(ctx.threshold, h.threshold);', 'const touched = touchedKeys.size > 0;']);
 
         $this->assertNotSame([], $this->walks($this->frameAt($this->floorRun('reslot-no-row', $dir), 1500)));
+    }
+
+    public function test_red_cancel_without_the_row_5_clause(): void
+    {
+        $dir = $this->mutatedModules([self::IN_FLIGHT, "                || ctx.unconfirmed(h.key) !== h.unconfirmed\n", '']);
+
+        $this->assertNotSame([], $this->walks($this->frameAt($this->floorRun('unconfirmed', $dir), 1750)));
+    }
+
+    public function test_red_cancel_without_the_stilled_clause(): void
+    {
+        $dir = $this->mutatedModules([self::IN_FLIGHT, "                || ctx.stilled !== h.stilled\n", '']);
+
+        $this->assertNotSame([], $this->walks($this->frameAt($this->floorRun('stilled', $dir), 1500)));
+    }
+
+    public function test_red_cancel_without_the_threshold_clause(): void
+    {
+        $dir = $this->mutatedModules([self::IN_FLIGHT, "\n                || !samePoint(ctx.threshold, h.threshold);", ';']);
+
+        $this->assertNotSame([], $this->walks($this->frameAt($this->floorRun('elevator-moves', $dir), 1500)));
+    }
+
+    public function test_red_the_walk_end_repaints_the_renders_camera(): void
+    {
+        $dir = $this->mutatedModules(['../floor/floor-screen.js', "            camera: this.#camera,\n            seat: this.#seatSegment,", '            seat: this.#seatSegment,']);
+        $result = $this->floorRun('zoom-mid-walk', $dir);
+
+        $this->assertEquals($this->frameAt($result, 1000)['camera'], $this->frameAt($result, $this->walkEnd($result), 'walk end')['camera']);
+    }
+
+    public function test_red_the_walk_end_repaints_the_renders_ages(): void
+    {
+        $dir = $this->mutatedModules(['../floor/floor-screen.js', 'this.#desks.view(floorAgeReadouts(this.#desks.seats, this.#desks.clockOffsetMs, now))', 'this.#lastFrame.desks']);
+        $result = $this->floorRun('zoom-mid-walk', $dir);
+
+        $this->assertSame($this->frameAt($result, 1000)['desks']['now_ms'], $this->frameAt($result, $this->walkEnd($result), 'walk end')['desks']['now_ms']);
     }
 
     public function test_red_the_desk_under_an_inbound_walk_drawn_as_its_render(): void
