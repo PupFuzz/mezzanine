@@ -88,10 +88,13 @@ its date, its decider and the scope of what it moved. The original row above sta
   every character is a cute animal or vegetable creature rather than a person, drawn at full
   resolution rather than in a block style, and approved the creature design sheet the seat drew
   from that ruling (card#11046 comments 9958 and 9963). **What moves:** the characters are original
-  creatures drawn by first-party code (the operator's ruling), and the munder-difflin port leaves the
-  tree whole (the maintainer's consequence of it, FLOOR's decision 53) — read file
+  animal and vegetable creatures (the operator's ruling). Three things follow from it and are the
+  maintainer's, not the operator's (FLOOR's decision 53): the creatures are drawn by first-party code as
+  SVG documents, the munder-difflin port leaves the tree whole, and the lineage check re-keys from the
+  character tree to a port in it — the port's retirement read file
   by file in [`docs/design/FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code),
-  nothing of upstream's ships, so its lineage file and attribution rows go with it. **What does NOT
+  nothing of upstream's ships once FLOOR's Appendix B row 19 lands, so its lineage file and attribution
+  rows go with it. **What does NOT
   move, and each is load-bearing:** the **first** clause (floor art from CC0 tilesets) is untouched;
   the **last** clause (*the upstream's commercial tilesets are never vendored*) is untouched and
   permanent; and appearance is still derived from `(install_id, seat_id)` through the seed module's
