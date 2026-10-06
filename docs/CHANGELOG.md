@@ -27,6 +27,18 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11331** — **A reporter token carried to a seat by hand has one name, and Step 2 consumes it.**
+  When the Mezzanine server is on another host, `fleet-reporter/INSTALL-LINUX.md` Step 2 issues the
+  token on that host into a `0600` file holding the token alone, the operator carries it to the seat
+  as `~/.config/fleet-reporter/mezzanine-reporter-token`, and the seat writes its config from that
+  file and then shreds it on both hosts. Step 2's writer does both hops: `FR_TOKEN_OUT` writes the
+  token file from the issue output, and `FR_TOKEN_FILE` writes the config from the carried file,
+  refusing a file that is not a regular `0600` file of the seat account's, in a `0700` directory of
+  its own, holding exactly one well-formed token. Both issuing pipelines refuse to run without `node`
+  on `PATH`, so a token is never issued into a pipe nothing reads, and the clean-up shreds only a
+  regular file, removing a symlink alone and leaving its target for the operator. This replaces typing the token into the config with an editor (raised on
+  PupFuzz/agent-roundtable#597).
+
 - **card#9416** — **An operator opens an agent's console from its desk.** The drill-down shows
   **Open console on claude.ai**, opening in a new tab, to operators only. `fleet-reporter` reads the
   session's console address from the tail of its transcript (at most 1 MiB back) and sends it as
