@@ -87,9 +87,10 @@ export const ART_W = 216;
 export const GUTTER = 4;
 
 /**
- * The interim pixel character's drawn scale over the tree's own `SCENE_W × SCENE_H` (18 × 32): the
- * character rect is 3 × that, 54 × 96 (§ 12's *Character rect* row, Chosen). An integer, because the
- * tree blits nearest-neighbour (`resources/characters/index.js`).
+ * The character rect over the tree's footprint unit `SCENE_W × SCENE_H` (18 × 32): the rect is 3 × that,
+ * 54 × 96 (§ 12's *Character rect* row, Chosen). Sized by card#11058 for the pixel tree and kept when the
+ * vector creatures replaced it (card#11046): they have no native size, so the unit is the rect's aspect
+ * and this its scale, and neither the box nor any rect moved (`resources/characters/index.js`).
  */
 export const CHARACTER_SCALE = 3;
 

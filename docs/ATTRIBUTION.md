@@ -24,9 +24,10 @@ repository cannot honour.
   them.** `MIT` and `ISC` both grant only *"provided that … this permission notice appear in all
   copies"*; `CC0-1.0` is a public-domain dedication and obliges none. So as soon as any row here
   declares such a licence, **this file** must reproduce that licence's permission notice, and as
-  soon as a row **under `resources/characters/`** declares one, `resources/characters/LINEAGE.md`
-  must reproduce it too — [`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code)
-  asks a port for both homes. Matched as the licence's own text, because a link is not a
+  soon as the character tree holds a **port** — a `licensed` row under `resources/characters/` —
+  `resources/characters/LINEAGE.md` must exist and reproduce the notice of every licence that tree's
+  rows declare — [`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code)
+  asks a port for both homes. A tree of first-party files only owes no lineage file (card#11046). Matched as the licence's own text, because a link is not a
   reproduction and neither is the label. ⭐ **The gate reads the obligation off the same table its
   allowlist is derived from**, so a licence cannot be admitted without its notice being decided —
   which is the defect card#8301's review found: admitting `ISC` had widened the list and left the
@@ -66,10 +67,9 @@ very fact it exists to check.
 
 | Path | Origin | Source URL | Author | SPDX | Retrieved | SHA-256 |
 |---|---|---|---|---|---|---|
-| `resources/characters/portrait-art.js` | licensed | https://github.com/chaitanyagiri/munder-difflin/blob/eb3df9fa70b63b68495a965c45f158105e87b2e6/src/renderer/src/scene/office/portraitArt.ts | Chaitanya Giri (upstream); Mezzanine contributors (port) | MIT | 2026-08-25 | `d19bdd0099f8c4578ced8331792082332325a1448db7ff80d8c33a61d94bca06` |
-| `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors; hair palette derived from Chaitanya Giri's recipes | MIT | 2026-08-25 | `21810d3b1f4c013eec9fcccc296027b07a4c66e7bdf61b37d528707b46e423ca` |
-| `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-08-25 | `c21d29fb45a19462611123d0d8a1ea14c413d1541e5053f5a92fec626db9b3ce` |
-| `resources/characters/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-08-25 | `f32a34a1152fcb506e020015b9eaa9a3d1ec8066774870ded36f5d7faef426d2` |
+| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-06 | `f6bdf68d412bdaee169fdb6b4ce391541976f836ed7d47d1e01c5687df8102d9` |
+| `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-06 | `cc2545e8fc6a13cae58f6887a44919a93823ae47d732bea7b71efdfbb467a709` |
+| `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-06 | `ee9798a180c84a10b3cb88305a1b9935e1b119950782c435afda0ad7c51c4f67` |
 | `resources/floor/tiles/furniture-kit/benchCushion.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `5665a099b17ccc7018ceebd9d33aa51fa6f26dc98317f3956385774acf47922c` |
 | `resources/floor/tiles/furniture-kit/bookcaseClosed.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `8a97317c91d7be94521634b33319a10279dd47277f1f8e8b13d18f4291c92366` |
 | `resources/floor/tiles/furniture-kit/bookcaseOpen.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `5ca87be1fe92f07eebb29d34c568c9bd6315a740b8824be7c3daa0005fd8d217` |
@@ -123,40 +123,33 @@ very fact it exists to check.
 | `resources/floor/tiles/floor-plane/wall-strip.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-04 | `7aa79c74d3a69ece6705c9e81072d2156d00aa4e2a2327449312034371c40200` |
 | `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `80daf87035c002e88cc71e8562c27547e5ccb275f3d9f539a09d32a3d4ef1db6` |
 | `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `90158ec868ded10645364bb62bb23993e634067b26bafafa3c38e1f581eae6b4` |
-| `resources/floor/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `065c71de48d40400a3ccd7e3dfefe35258184073f4b8c6dbfe1608525cc6a9fd` |
+| `resources/floor/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `36cc8c726cf8c1fc7486f7b07c95139814243a3c726e30d47fc295b55d67ef98` |
 <!-- asset-manifest:end -->
 
-**`portrait-art.js` is the one `licensed` row here, and that is the column doing its job.** It is
-the single upstream file the port took, so it came from **outside** and its URL is upstream's
-blob at the pinned commit. The other three were written here and point at this repository. The
-distinction was always true and was previously legible only by reading the URLs and knowing what
-they meant; it is now a value a gate can test.
+**Why first-party files are listed too.** The character tree's three files — `creatures.js`,
+`seed.js` and `index.js` — were written here, not taken from anywhere, and they are still under an
+asset tree, so they still get rows. The alternative is an exemption the author declares for their own
+files, which is exactly the judgement Gate 1 exists to take out of the author's hands: "this one is
+mine, it doesn't need a row" is how the one file that *did* come from somewhere else eventually gets in.
 
-**Why first-party files are listed too.** `seed.js`, `index.js` and `LINEAGE.md` were written
-here, not taken from anywhere — and they are still under an asset tree, so they still get rows.
-The alternative is an exemption the author declares for their own files, which is exactly the
-judgement Gate 1 exists to take out of the author's hands: "this one is mine, it doesn't need a
-row" is how the one file that *did* come from somewhere else eventually gets in.
+## The characters — first-party since card#11046
 
-## The character port
-
-The generator under `resources/characters/` is ported from **munder-difflin** at commit
-`eb3df9fa70b63b68495a965c45f158105e87b2e6` under the **MIT** licence.
-[`resources/characters/LINEAGE.md`](../resources/characters/LINEAGE.md) records the exact files
-taken, the changes made, and **what was deliberately not taken and why** (the LimeZu-bound
-sprite path, three ISC-derived files, and The Office's cast).
+Every character is an original animal or vegetable creature drawn by the code in
+`resources/characters/`, written for this repository
+([`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code)). The tree
+**holds no port**: the munder-difflin generator it held from card#7340 to card#11046 — and its
+`LINEAGE.md` and its `licensed` row — left whole, because no line of upstream's ships any more, read
+file by file in § 10.2. Its record stays in git at card#7340's commits and in `docs/PLAN.md § 0`'s
+D-07 appends. `upstream's commercial tilesets are never vendored` (D-07's last clause) is untouched.
 
 **MIT obliges reproduction of the copyright notice and the permission notice, and a link is not
-a reproduction**, so the text is here in full — and again in the lineage file, because
-[`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code) requires it in both.
-That duplication is deliberate and is the one kind that is correct: a licence notice has to
-*accompany* the distribution rather than point at it, and the text is immutable, so there is
-nothing here that can drift out of sync with the other copy.
+a reproduction.** Every `first-party` row above declares `MIT` — this repository's own licence — so
+the notice is here in full, as [`LICENSE`](../LICENSE) carries it:
 
 ```
 MIT License
 
-Copyright (c) 2026 Chaitanya Giri
+Copyright (c) 2026 PupFuzz
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -177,26 +170,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-**The port's pixel art is INTERIM.** The operator ratified a new art direction on 2026-08-26/27
-([`FLOOR.md § 10.4`](design/FLOOR.md#104-the-art-direction-as-a-specification)) under which the
-product ships original, high-resolution, resolution-independent art of its own. **None of the
-licence work above is undone by that** — the port is still here, the MIT obligations are still
-owed, and what the port actually bought was the **seed machinery**, which the art direction does
-not touch. What changed is `§ 10.1` Gate 2: it used to assert an **absence** — no image file in
-the character tree at all — and now asserts that **every asset is a file Gate 1 can see**. Every
-file carries an admitted file type — **the list and the reason for each member live at § 10.1
-and are deliberately not copied here**, because four copies of that list is what went stale the
-last time it moved — and no text-bearing file may carry a `data:image/` URI or a single
-base64-shaped literal over 1,024 B, because an asset embedded inside another file has no path,
-so no row, so no provenance.
-
-**Since card#7913, Gate 2 runs over ALL of `resources/`, not just the character tree** — the same
-population Gate 1 walks. It had been scoped to `resources/characters/`, which was right while it
-asserted an absence peculiar to that tree and was a leftover once its claim became a universal
-one. It also gained a **third clause** for the Tiled formats § 10.1 clause 1 now admits: layer
-data stored plainly as CSV, and **no embedded tileset image**, which is image bytes inside a map
-with no path and therefore no row here. As above, § 10.1 owns the clauses and this file does not
-restate them.
+**Gate 2 runs over ALL of `resources/`, not just the character tree** (card#7913) — the same
+population Gate 1 walks — and gained a **third clause** for the Tiled formats: layer data stored
+plainly as CSV, and **no embedded tileset image**. [`FLOOR.md § 10.1`](design/FLOOR.md#101-the-manifest-and-the-two-gates)
+owns the clauses and the admitted file types, and this file does not restate them.
 
 ## The floor tileset — and it is a BRIDGE, not the destination
 

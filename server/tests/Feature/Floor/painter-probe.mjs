@@ -21,12 +21,20 @@
  * Containment is kept beside it.
  *
  * ⛔ THE INTERNS (card#11058 PR-C): each is its sprite in a clipping viewport — static, the character
- * tree's standing frame painted under the intern key `seat~<call_id>`, which this probe writes from the
+ * tree's chibi frame drawn under the intern key `seat~<call_id>`, which this probe writes from the
  * published rule rather than importing it — inside a dashed edge when untitled; or, where its art
  * is reported failed, § 9 F14's glyph in its rect, that stool alone. The reorder check paints each seat
  * of two or more interns in the wire's order and reversed and reads each intern's sprite by its place;
- * the cache check paints the floor again with no intern and holds the painter to forgetting, in the tree,
- * every intern the first paint drew.
+ * the cache check paints the floor again with no intern, then again with them, and holds the painter to
+ * having dropped every intern the first paint drew (the tree is asked again) and nothing else.
+ *
+ * ⛔ AT-D3-24's PAINTER HALF (card#11046): every character is an `<image>` whose `href` is the tree's
+ * SVG document as a `data:image/svg+xml;charset=utf-8,` URI over encodeURIComponent — the rule written
+ * here, not imported — `xMidYMax meet`; no canvas is made for a character; a desk of every
+ * `(pose, glyph)` pair the desk model asks a character for draws that seat's standing frame (parity); a
+ * held loop steps the walk's frames and leaves an intern still; no frame list is copied onto an element;
+ * and AT-D3-19's two causes — a tree that failed to load, a generator that throws for one intern's key —
+ * reach the painter's report, the second for that intern alone, and never throw out of the paint.
  *
  * The desks are every planted seat (`desk-leaves/fx-desk-leaves-planted.json` — the bounds, the caps,
  * the badges, the nulls) confirmed, unconfirmed and as the placeholder, each placed at its own box on a
@@ -53,17 +61,22 @@ globalThis.document = {
     activeElement: null,
     getElementById: (id) => (id === 'floor-drawing' ? host : null),
     createElementNS: (ns, name) => new Node(name),
-    // A canvas whose 2D context records the font each measurement was taken in (`measurer()`'s check),
-    // and whose image names what the character tree painted on it — so a painted `href` says which key
-    // the tree was handed (the intern key's check).
+    // A canvas whose 2D context records the font each measurement was taken in (`measurer()`'s check).
+    // Every canvas made is counted: the painter makes none for a character (AT-D3-24).
     createElement: () => {
-        const context = { font: '', painted: '', measureText(text) { measured.push({ font: this.font, text }); return { width: String(text).length }; } };
+        canvases++;
+        const context = { font: '', measureText(text) { measured.push({ font: this.font, text }); return { width: String(text).length }; } };
 
-        return { getContext: () => context, toDataURL: () => `data:,${context.painted}` };
+        return { getContext: () => context, toDataURL: () => 'data:image/png;base64,' };
     },
 };
 const measured = [];
+let canvases = 0;
 globalThis.CSS = { escape: (s) => s };
+// The held loop's timer, captured so the probe can step it.
+const loops = [];
+globalThis.setInterval = (fn) => { loops.push(fn); return loops.length; };
+globalThis.clearInterval = () => {};
 
 const { deskModel } = await mod('desk/desk-render.js');
 const { placeDesk, placeBubbles } = await mod('floor/scene.js');
@@ -71,16 +84,24 @@ const { createPainter, measurer, STYLE } = await mod('floor/painter.js');
 const { TYPE_ROLES, STOOL_GLYPH, FONT, FONT_NAME } = await mod('floor/desk-layout.js');
 
 /**
- * The character tree, stubbed: a frame names the `(install, seat key, phase)` it was painted for. The
- * EXPECTED intern key is written here from the published rule — `seat~<call_id>` (§ 10.4, Q3) — and
- * never imported from the module under test, so a layout that keys interns otherwise reds.
+ * The character tree, stubbed: a frame is an SVG document naming the `(install, seat key, frame)` it was
+ * drawn for. The EXPECTED intern key is written here from the published rule — `seat~<call_id>` (§ 10.4,
+ * Q3) — and the URI from § 10.2's — never imported from the module under test, so a layout that keys
+ * interns otherwise, or a painter that makes another URI, reds.
  */
-const forgotten = [];
+const asked = { walk: [], chibi: [] };
+const doc = (what) => `<svg xmlns="http://www.w3.org/2000/svg"><title>${what}</title></svg>`;
+const uri = (d) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(d)}`;
+let throwFor = null;
 const characters = {
-    paintSceneFrame(context, installId, seatId, { phase }) { context.painted = `${installId}/${seatId}#${phase}`; },
-    forget(installId, seatId) { forgotten.push(`${installId}/${seatId}`); },
+    walkFrames(installId, seatId) { asked.walk.push(`${installId}/${seatId}`); return [0, 1, 2].map((p) => doc(`${installId}/${seatId}#${p}`)); },
+    chibiFrame(installId, key) {
+        asked.chibi.push(`${installId}/${key}`);
+        if (key === throwFor) throw new Error('a planted generator defect for one key');
+        return doc(`${installId}/${key}#chibi`);
+    },
 };
-const internFrame = (installId, seatId, callId) => `data:,${installId}/${seatId}~${callId}#0`;
+const internFrame = (installId, seatId, callId) => uri(doc(`${installId}/${seatId}~${callId}#chibi`));
 const { deskAgeReadout } = await mod('wire/age-readout.js');
 const { harnessMeasurer } = await import('../Support/harness-measurer.mjs');
 
@@ -169,11 +190,17 @@ function rectOf(n) {
  * What the painter owes one layout element, in order: `[node name, {x, y, w?, h?, text?}, extra check?]`.
  * The offsets are the painter's stated ones — and nothing else may move a node off its element.
  */
-function owed(e, seat, failed) {
+function owed(e, seat, failed, key) {
     const at = { x: e.x, y: e.y, w: e.w, h: e.h };
 
     switch (e.kind) {
         case 'character':
+            // The art's clipping viewport at the element's rect, the image at the viewport's origin — and
+            // the image is the seat's STANDING FRAME as an SVG-document URI, whatever the pose (AT-D3-24).
+            return [['svg', at, (n) => viewport(e)(n) ?? classIs(['character'])(n.children[0])
+                ?? (n.children[0].getAttribute('href') === uri(doc(`${key}#0`)) ? null
+                    : `its image is «${decodeURIComponent(String(n.children[0].getAttribute("href"))).slice(60, 140)}», not the seat's standing frame as an SVG-document URI`)
+                ?? (n.children[0].getAttribute('preserveAspectRatio') === 'xMidYMax meet' ? null : 'its image is not drawn xMidYMax meet')]];
         case 'desk-sprite':
             // The art's clipping viewport at the element's rect, the image at the viewport's origin.
             return [['svg', at, viewport(e)]];
@@ -203,7 +230,7 @@ function owed(e, seat, failed) {
 
             // § 8 / Q3: the sprite in its clipping viewport, the tree's standing frame under `seat~<call_id>`;
             // an untitled intern inside a dashed edge.
-            const look = e.untitled ? ['intern', 'pixel', 'untitled'] : ['intern', 'pixel'];
+            const look = e.untitled ? ['intern', 'untitled'] : ['intern'];
             const want = internFrame(seat.install_id, seat.seat_id, e.call_id);
             const sprite = ['svg', at, (n) => {
                 const img = n.children[0];
@@ -211,7 +238,7 @@ function owed(e, seat, failed) {
 
                 return shape ?? classIs(['art'])(n) ?? classIs(look)(img)
                     ?? (img.getAttribute('href') === want ? null : `its sprite is the tree's «${img.getAttribute('href')}», not the intern key's «${want}»`)
-                    ?? (img.dataset.frames === undefined ? null : 'its sprite carries frames to step — an intern stands still (§ 8)');
+                    ?? (img.getAttribute('preserveAspectRatio') === 'xMidYMax meet' ? null : 'its sprite is not drawn xMidYMax meet');
             }];
 
             // The untitled edge at the intern's own rect, its corners at rx 3 (the designer's ruling).
@@ -298,7 +325,7 @@ for (const g of layer?.children ?? []) {
 
     // ── equality: each element's nodes, in the painter's order ──
     desk.elements.forEach((e, i) => {
-        for (const want of owed(e, seatOf.get(key), failedOf.get(key))) {
+        for (const want of owed(e, seatOf.get(key), failedOf.get(key), key)) {
             defects.push(...compare(key, i, e, nodes[next], want));
             next++;
         }
@@ -346,24 +373,29 @@ if (layer === undefined) {
     defects.push('the painter drew no desks layer');
 }
 
-// ── the interns' caches are held to what is on screen: the floor painted again with no intern on it
-// forgets every intern the first paint drew as a sprite, in the tree too (`forget()`), and nothing else ──
+// ── the interns' frames are held to what is on screen: the floor painted again with no intern on it, and
+// then once more as at first, asks the tree again for every intern the first paint drew as a sprite — the
+// painter dropped them — and for no seat, whose frames it keeps (an intern's key is minted per dispatch) ──
 {
     const drawn = new Set(desks.flatMap((d) => d.elements
         .filter((e) => e.kind === 'stool' && !failedOf.get(d.key).has(e.asset))
         .map((e) => `${e.install_id}/${e.key}`)));
 
-    forgotten.length = 0;
     painter.paint({ ...scene, desks: [] }, { bounds: null });
+    asked.walk.length = 0;
+    asked.chibi.length = 0;
+    painter.paint(scene, { bounds: null });
 
-    const got = new Set(forgotten);
+    const got = new Set(asked.chibi);
     const missed = [...drawn].filter((k) => !got.has(k));
-    const extra = [...got].filter((k) => !drawn.has(k));
 
-    if (drawn.size === 0 || missed.length > 0 || extra.length > 0 || forgotten.length !== got.size) {
-        defects.push(`the painter forgot ${forgotten.length} of the ${drawn.size} interns no longer drawn `
-            + `(missed ${missed.slice(0, 2).join(', ')}; extra ${extra.slice(0, 2).join(', ')}) — an intern's key is minted per dispatch, `
-            + 'so a cache that keeps it grows for the page\'s life');
+    if (drawn.size === 0 || missed.length > 0) {
+        defects.push(`the painter kept ${missed.length} of the ${drawn.size} interns no longer drawn (e.g. ${missed.slice(0, 2).join(', ')}) — `
+            + "an intern's key is minted per dispatch, so frames it keeps grow for the page's life");
+    }
+
+    if (asked.walk.length > 0) {
+        defects.push(`the painter asked the tree again for ${asked.walk.length} seat(s) whose frames it held — a repaint re-draws nothing`);
     }
 }
 
@@ -465,4 +497,119 @@ for (const desk of desks) {
     }
 }
 
-console.log(JSON.stringify({ desks: desks.length, painted, interns, defects }));
+// ── AT-D3-24, parity: a desk of every `(pose, glyph)` pair the desk model asks a character for drew that
+// seat's standing frame (the equality above holds each), and every such pair was painted — the population
+// read from `desk/desk-poses.js`'s DESK and, for A4's THINKING, reached through `deskModel` itself (N5) ──
+const { DESK } = await mod('desk/desk-poses.js');
+const poses = new Set(desks.flatMap((d) => d.elements.filter((e) => e.kind === 'character').map((e) => e.pose)));
+const owedPoses = new Set([...Object.values(DESK).map((d) => d.pose).filter((p) => p !== 'empty-chair'), 'leaning-back']);
+
+for (const p of owedPoses) {
+    if (!poses.has(p)) {
+        defects.push(`no desk painted a character in the pose «${p}» — the parity leg read nothing for it`);
+    }
+}
+
+// ── AT-D3-24: no canvas for a character, and no frame list copied onto an element (N8) ──
+{
+    canvases = 0;
+    createPainter({ characters, failed() {}, select() {} }).paint(scene, { bounds: null });
+
+    if (canvases > 0) {
+        defects.push(`the painter made ${canvases} canvas(es) painting characters — a character is an SVG document, never a raster a canvas made`);
+    }
+
+    const walk = (n) => [n, ...n.children.flatMap(walk)];
+
+    for (const n of walk(host.children[0])) {
+        if (n.dataset?.frames !== undefined) {
+            defects.push(`a painted ${label(n)} carries its frame list on the element — frames are kilobytes, held in the painter's Map (N8)`);
+            break;
+        }
+
+        const href = n.name === 'image' ? n.getAttribute('href') : null;
+
+        if (href !== null && href.startsWith('data:') && !href.startsWith('data:image/svg+xml;charset=utf-8,')) {
+            defects.push(`a painted image's href is «${href.slice(0, 40)}» — a character's is an SVG-document URI`);
+            break;
+        }
+    }
+}
+
+// ── § 6.2's held loop steps the walk's frames on a moving character, and leaves an intern still ──
+{
+    const desk = desks.find((d) => d.elements.some((e) => e.kind === 'character') && d.elements.some((e) => e.kind === 'stool' && !failedOf.get(d.key).has(e.asset)));
+    const moving = {
+        ...desk,
+        held: { ...(desk.held ?? {}), motion: true, frame_interval_ms: 250 },
+        elements: desk.elements.map((e) => (e.kind === 'character' ? { ...e, animation: { motion: true, frame_interval_ms: 250 } } : e)),
+    };
+
+    loops.length = 0;
+    createPainter({ characters, failed() {}, select() {} }).paint({ ...scene, desks: [moving] }, { bounds: null });
+
+    const g = host.children[0].children.find((n) => n.getAttribute('class') === 'desks').children[0];
+    const character = g.children.find((n) => n.name === 'svg' && n.children[0] && classes(n.children[0]).includes('character'))?.children[0];
+    const intern = g.children.find((n) => n.name === 'svg' && n.children[0] && classes(n.children[0]).includes('intern'))?.children[0];
+    const internBefore = intern?.getAttribute('href');
+    const asset = moving.key;
+
+    if (character === undefined || intern === undefined) {
+        defects.push('the held-loop desk painted no character sprite or no intern sprite to step');
+    } else if (loops.length !== 1) {
+        defects.push(`a moving held render started ${loops.length} loop(s), not one`);
+    } else {
+        loops[0]();
+
+        if (character.getAttribute('href') !== uri(doc(`${asset}#1`))) {
+            defects.push('the held loop did not step the moving character to the walk\'s next frame');
+        }
+
+        if (intern.getAttribute('href') !== internBefore) {
+            defects.push('the held loop stepped an intern — an intern stands still (§ 8)');
+        }
+    }
+}
+
+// ── AT-D3-19's two causes for a code-drawn character (§ 10.2): a tree that failed to load reports every
+// character's and every intern's asset; a generator that throws for one intern's key reports that
+// intern alone; neither throws out of the paint ──
+{
+    const reported = [];
+    const owedAssets = new Set(desks.flatMap((d) => d.elements
+        .filter((e) => e.kind === 'character' || (e.kind === 'stool' && e.art))
+        .map((e) => e.asset)));
+    let threw = null;
+
+    try {
+        createPainter({ characters: null, failed: (ids) => reported.push(...ids), select() {} }).paint(scene, { bounds: null });
+    } catch (e) {
+        threw = e;
+    }
+
+    const missing = [...owedAssets].filter((a) => !reported.includes(a));
+
+    if (threw !== null || owedAssets.size === 0 || missing.length > 0) {
+        defects.push(`F14 (a): with the tree failed to load, the painter ${threw ? `threw (${threw.message})` : `left ${missing.length} of ${owedAssets.size} character assets unreported`}`);
+    }
+
+    const victim = desks.flatMap((d) => d.elements.filter((e) => e.kind === 'stool' && e.art)).at(0);
+    const one = [];
+
+    throwFor = victim.key;
+    threw = null;
+
+    try {
+        createPainter({ characters, failed: (ids) => one.push(...ids), select() {} }).paint(scene, { bounds: null });
+    } catch (e) {
+        threw = e;
+    }
+
+    throwFor = null;
+
+    if (threw !== null || one.length !== 1 || one[0] !== victim.asset) {
+        defects.push(`F14 (b): with the generator throwing for one intern's key, the painter ${threw ? `threw (${threw.message})` : `reported ${JSON.stringify(one.slice(0, 3))}, not that intern's asset alone`}`);
+    }
+}
+
+console.log(JSON.stringify({ desks: desks.length, painted, interns, poses: [...poses].sort(), defects }));

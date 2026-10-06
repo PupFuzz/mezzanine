@@ -17,8 +17,9 @@
  * bubbles and the thread line are drawn into one `<svg>` whose `viewBox` is the camera's view
  * (`wire/camera.js`, Appendix B row 15) over the scene's space, so the camera scales them together — the lesson `docs/design/floor-preview/README.md`
  * records of a bubble no gate measured. SVG is resolution-independent, which is § 4.5's property;
- * the bridge tileset's raster tiles and the interim pixel characters resample, and that is their
- * residue (§ 10.3), not the layer's.
+ * the bridge tileset's raster tiles resample, and that is their residue (§ 10.3), not the layer's. The
+ * characters do not: each frame is a standalone SVG document behind an `<image>` (§ 10.2, card#11046),
+ * which the browser draws as vector at every zoom — measured, not assumed (§ 10.2).
  *
  * ⛔ THE TWO ART MODULES ARE IMPORTED BY THE ASSET ROUTE's ABSOLUTE URLS, DYNAMICALLY. A relative
  * specifier from `server/public/js/` to `resources/` resolves on disk and 404s in a browser (row 14's
@@ -51,10 +52,12 @@ const MEET = 'xMidYMax meet';
 /** A text's type role when its element names none — `fit()`'s own default (`desk-layout.js`). */
 const FACT = 'fact';
 
-/** A seat's walk frames — stand, step-left, step-right — and an intern's one frame: it stands still (§ 8). */
-const WALK = [0, 1, 2];
-
-const STILL = [0];
+/**
+ * A character frame's URI: the character tree hands back a standalone SVG DOCUMENT and the painter alone
+ * makes it a URI — `data:image/svg+xml;charset=utf-8,` over `encodeURIComponent` (§ 10.2), so no file in
+ * the asset tree carries one (§ 10.1 clause 2).
+ */
+export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;
 
 /**
  * The drawing's own stylesheet — which palette token each class paints with, and the § 6.2 forms'
@@ -75,7 +78,6 @@ ${Object.keys(SKY_PAINT).map((phase) => `.sky-${phase}{fill:url(#sky-${phase})}`
 ${ROOM_THEMES.map((theme) => `.plane-${theme}{fill:url(#plane-${theme})}.plane-${theme}-top{stop-color:var(--room-${theme})}.plane-${theme}-bottom{stop-color:var(--room-${theme}-2)}`).join('')}
 .clock-face{fill:var(--scene-clock-face);stroke:var(--scene-trim);stroke-width:3}.clock.unset .clock-face{stroke-dasharray:6 4}
 .hand{stroke:var(--scene-ink);stroke-linecap:round}.hand.hour{stroke-width:4}.hand.minute{stroke-width:2}
-.pixel{image-rendering:pixelated}
 .chair{fill:var(--scene-chair)}.monitor{fill:var(--scene-monitor)}.monitor.lit-on{fill:var(--scene-monitor-on)}.monitor.lit-dimmed{fill:var(--scene-monitor-dim)}
 .placeholder{fill:var(--scene-placeholder);stroke:var(--scene-placeholder-edge);stroke-dasharray:4 3}
 .side-table{fill:var(--scene-side-table);stroke:var(--scene-side-table-edge)}.stool{fill:var(--scene-stool)}.stool.untitled{fill:none;stroke:var(--scene-stool);stroke-dasharray:3 2}
@@ -196,21 +198,28 @@ export function createPainter({ characters, failed, select }) {
             failed([id]);
         }
     };
+    // THE ONE CACHE OF CHARACTER ART: asset → its frame URIs, made once per asset. The character tree
+    // holds none (it is pure, `resources/characters/index.js`), so this Map is the whole of what a page
+    // keeps — and an intern's key is minted per dispatch, so an intern this paint no longer draws is
+    // dropped from it (`interns` below), which is what bounds it for as long as the page stays open.
     const frames = new Map();
-    // The interns whose frames are held, asset → [install, key], and those this paint drew: an intern no
-    // longer drawn is forgotten here and in the tree, because its key is minted per dispatch and the
-    // caches would otherwise grow for as long as the page stays open (`resources/characters/index.js`).
-    const interns = new Map();
+    // The interns whose frames are held, and those this paint drew.
+    const interns = new Set();
     let drawnInterns = new Set();
+    // The characters a held loop or a walk steps this paint, each with its frames (never a copy of the
+    // URIs on the element: a frame is kilobytes, and a tick would parse every one of them).
+    let stepping = [];
     let loop = null;
     let svg = null;
 
     /**
-     * A character's frames as image URLs, drawn once per asset (the tree caches the pixels): a seat's walk
-     * frames, or an intern's one standing frame — the tree handed the intern key (`internKey()`) in the
-     * seat's place.
+     * A character's frames as image URIs, made once per asset: a seat's walk frames — stand, step-left,
+     * step-right, the first being the standing frame every pose draws (§ 10.4's frame contract) — or an
+     * intern's one chibi frame, the tree handed the intern key (`internKey()`) in the seat's place. A
+     * tree that failed to load, or a generator that throws for this key, is § 9 F14 for this asset and
+     * never a throw out of the paint.
      */
-    const characterFrames = (installId, seatId, asset, phases = WALK) => {
+    const characterFrames = (installId, seatId, asset, intern = false) => {
         if (characters === null) {
             report(asset);
 
@@ -219,13 +228,9 @@ export function createPainter({ characters, failed, select }) {
 
         if (!frames.has(asset)) {
             try {
-                frames.set(asset, phases.map((phase) => {
-                    const canvas = document.createElement('canvas');
+                const docs = intern ? [characters.chibiFrame(installId, seatId)] : characters.walkFrames(installId, seatId);
 
-                    characters.paintSceneFrame(canvas.getContext('2d'), installId, seatId, { phase, scale: 1 });
-
-                    return canvas.toDataURL('image/png');
-                }));
+                frames.set(asset, docs.map(svgUri));
             } catch {
                 report(asset);
 
@@ -298,10 +303,10 @@ export function createPainter({ characters, failed, select }) {
                     const urls = characterFrames(desk.install_id, desk.seat_id, e.asset);
 
                     if (urls !== null) {
-                        const el = art(g, urls[0], e, e.asset, 'character pixel');
+                        const el = art(g, urls[0], e, e.asset, 'character');
 
                         if (e.animation?.motion === true && e.animation.frame_interval_ms !== null) {
-                            el.dataset.frames = JSON.stringify(urls);
+                            stepping.push([el, urls]);
                         }
                     }
 
@@ -334,18 +339,18 @@ export function createPainter({ characters, failed, select }) {
                 }
                 case 'stool':
                     if (e.art) {
-                        // § 8 / Q3: the intern's sprite in its clipping viewport — the tree's phase-0 front
-                        // stand frame under its own key, face-on, `xMidYMax meet`, foot on the rect's floor
+                        // § 8 / Q3: the intern's sprite in its clipping viewport — the tree's chibi frame
+                        // under its own key, face-on, `xMidYMax meet`, foot on the rect's floor
                         // line; static, because an intern takes no § 6.2 row. An untitled intern is drawn
                         // dashed (§ 8): its sprite inside a dashed edge at its own 20 × 32 rect — rx 3, no
                         // fill, `--scene-stool` at 1.5 wide, dashed `3 2` — and its fallback glyph below is
                         // dashed `3 2` with no fill (the designer's rulings on card#11058 PR-C).
-                        const urls = characterFrames(e.install_id, e.key, e.asset, STILL);
+                        const urls = characterFrames(e.install_id, e.key, e.asset, true);
 
                         if (urls !== null) {
-                            interns.set(e.asset, [e.install_id, e.key]);
+                            interns.add(e.asset);
                             drawnInterns.add(e.asset);
-                            art(g, urls[0], e, e.asset, e.untitled ? 'intern pixel untitled' : 'intern pixel');
+                            art(g, urls[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');
 
                             if (e.untitled) {
                                 node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 3, class: 'intern-edge' }, g);
@@ -471,9 +476,9 @@ export function createPainter({ characters, failed, select }) {
             return;
         }
 
-        const el = image(g, urls[0], -fx.size.w / 2, -fx.size.h, fx.size.w, fx.size.h, asset, { class: 'character pixel', preserveAspectRatio: MEET });
+        const el = image(g, urls[0], -fx.size.w / 2, -fx.size.h, fx.size.w, fx.size.h, asset, { class: 'character', preserveAspectRatio: MEET });
 
-        el.dataset.frames = JSON.stringify(urls);
+        stepping.push([el, urls]);
     }
 
     /**
@@ -678,16 +683,16 @@ export function createPainter({ characters, failed, select }) {
         const desks = node('g', { class: 'desks' }, svg);
 
         drawnInterns = new Set();
+        stepping = [];
 
         for (const desk of scene.desks) {
             paintDesk(desks, desk);
         }
 
-        for (const [asset, [installId, key]] of interns) {
+        for (const asset of interns) {
             if (!drawnInterns.has(asset)) {
                 interns.delete(asset);
                 frames.delete(asset);
-                characters.forget(installId, key);
             }
         }
 
@@ -711,7 +716,7 @@ export function createPainter({ characters, failed, select }) {
 
         // § 6.2's held loops, at the interval the scene carries — one interval for the whole floor,
         // stepping every character whose render the set drew with motion.
-        const moving = [...svg.querySelectorAll('image[data-frames]')];
+        const moving = stepping;
         const walking = scene.effects.some((fx) => (fx.animation_id === 'A1' || fx.animation_id === 'A2') && fx.frames > 0);
         const interval = scene.desks.find((d) => d.held?.motion)?.held.frame_interval_ms ?? (walking ? 1000 / scene.loop_fps : null);
 
@@ -721,8 +726,8 @@ export function createPainter({ characters, failed, select }) {
             loop = setInterval(() => {
                 tick = (tick + 1) % 3;
 
-                for (const el of moving) {
-                    el.setAttribute('href', JSON.parse(el.dataset.frames)[tick]);
+                for (const [el, urls] of moving) {
+                    el.setAttribute('href', urls[tick]);
                 }
             }, interval);
         }

@@ -331,7 +331,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             // (the probe's reorder check and its tree-key check both read it).
             'an intern keyed by its place in the row' => ['../floor/desk-layout.js',
                 'key: internKey(desk.seat_id, stool.call_id),', 'key: internKey(desk.seat_id, `intern${i}`),'],
-            'an untitled intern drawn solid' => ['../floor/painter.js', "e.untitled ? 'intern pixel untitled' : 'intern pixel'", "'intern pixel'"],
+            'an untitled intern drawn solid' => ['../floor/painter.js', "e.untitled ? 'intern untitled' : 'intern'", "'intern'"],
             "an untitled intern's dashed edge dropped" => ['../floor/painter.js',
                 "node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 3, class: 'intern-edge' }, g);", ''],
             // The designer's rulings on the untitled look (card#11058 PR-C): the edge's corners and width.
@@ -340,13 +340,32 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 'stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}', 'stroke:var(--scene-stool);stroke-dasharray:3 2}'],
             'an intern drawn as the glyph with its art intact' => ['../floor/painter.js', '                    if (e.art) {', '                    if (false) {'],
             "an intern's sprite outside its clipping viewport" => ['../floor/painter.js',
-                "art(g, urls[0], e, e.asset, e.untitled ? 'intern pixel untitled' : 'intern pixel');",
-                "image(g, urls[0], e.x, e.y, e.w, e.h, e.asset, { class: e.untitled ? 'intern pixel untitled' : 'intern pixel' });"],
-            // An intern's key is minted per dispatch: the painter forgets each one it no longer draws.
-            "an intern no longer drawn kept in the tree's cache" => ['../floor/painter.js', 'characters.forget(installId, key);', 'void key;'],
+                "art(g, urls[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');",
+                "image(g, urls[0], e.x, e.y, e.w, e.h, e.asset, { class: e.untitled ? 'intern untitled' : 'intern' });"],
+            // An intern's key is minted per dispatch: the painter drops the frames of each one it no longer
+            // draws — its Map is the only cache (card#11046: the tree holds none, and has no forget()).
+            "an intern no longer drawn kept in the painter's frames" => ['../floor/painter.js',
+                "                interns.delete(asset);\n                frames.delete(asset);", '                interns.delete(asset);'],
             'an intern animated' => ['../floor/painter.js',
-                "art(g, urls[0], e, e.asset, e.untitled ? 'intern pixel untitled' : 'intern pixel');",
-                "art(g, urls[0], e, e.asset, e.untitled ? 'intern pixel untitled' : 'intern pixel').dataset.frames = '[]';"],
+                "art(g, urls[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern');",
+                "stepping.push([art(g, urls[0], e, e.asset, e.untitled ? 'intern untitled' : 'intern'), [urls[0], 'x', 'y']]);"],
+            // card#11046 — AT-D3-24's painter half, each planted in the shipped painter.
+            'a character shown through an image that is not an SVG document (a raster frame)' => ['../floor/painter.js',
+                'export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;',
+                'export const svgUri = (doc) => `data:image/png;base64,${encodeURIComponent(doc)}`;'],
+            'a canvas made for a character' => ['../floor/painter.js',
+                '                frames.set(asset, docs.map(svgUri));', "                document.createElement('canvas');\n                frames.set(asset, docs.map(svgUri));"],
+            'a desk that loses its character for a pose it has no frame for' => ['../floor/painter.js',
+                'const urls = characterFrames(desk.install_id, desk.seat_id, e.asset);',
+                "const urls = e.pose === 'asleep' ? null : characterFrames(desk.install_id, desk.seat_id, e.asset);"],
+            // N8: a frame list copied onto the element instead of held in the painter's Map.
+            "a held loop's frames copied onto the element" => ['../floor/painter.js',
+                "                            stepping.push([el, urls]);\n                        }", "                            el.dataset.frames = JSON.stringify(urls);\n                        }"],
+            // § 9 F14's two causes for a code-drawn character (§ 10.2): unreported, or thrown out of the paint.
+            'a tree that failed to load left unreported' => ['../floor/painter.js',
+                "        if (characters === null) {\n            report(asset);", "        if (characters === null) {\n            void asset;"],
+            "a generator's throw for one key let out of the paint" => ['../floor/painter.js',
+                "            } catch {\n                report(asset);\n\n                return null;\n            }", "            } finally {\n                void asset;\n            }"],
         ];
 
         foreach ($controls as $what => $edit) {
