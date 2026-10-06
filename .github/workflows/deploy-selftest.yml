@@ -162,7 +162,7 @@ jobs:
           echo "bin/deploy.sh declares BASH_FLOOR=$floor; the control runs at $below"
 
       # Two shells, from the GNU release tarballs, each pinned by sha256 — the checksums were read
-      # from ftp.gnu.org and cross-checked against mirrors.kernel.org, so the pin is a transport
+      # from ftp.gnu.org and cross-checked against mirrors.kernel.org (the fallback source), so the pin is a transport
       # check and not a second copy of a number nobody verified. An unpinned download compiled and
       # RUN in CI is the shape this avoids.
       - name: Build GNU bash at the floor and at the minor below it
@@ -182,7 +182,18 @@ jobs:
           for v in "$FLOOR" "$BELOW"; do
             sum="$(awk -v v="$v" '$1 == v { print $2 }' /tmp/bash-sha256)"
             [ -n "$sum" ] || { echo "::error::no pinned sha256 for bash $v — add it above, from ftp.gnu.org"; exit 1; }
-            curl -fsSL --retry 3 -o "/tmp/bash-$v.tar.gz" "https://ftp.gnu.org/gnu/bash/bash-$v.tar.gz"
+            # GNU's primary first, then the kernel.org mirror: the sha256 pin below is what makes
+            # the bytes trustworthy, so the source is only transport and an outage of one host
+            # is not a failure of this check.
+            got=
+            for base in https://ftp.gnu.org/gnu/bash https://mirrors.kernel.org/gnu/bash; do
+              if curl -fsSL --retry 2 --connect-timeout 30 -o "/tmp/bash-$v.tar.gz" "$base/bash-$v.tar.gz"; then
+                got="$base"; break
+              fi
+              echo "::warning::bash $v not fetched from $base — trying the next source"
+            done
+            [ -n "$got" ] || { echo "::error::bash $v could not be fetched from any source"; exit 1; }
+            echo "fetched bash $v from $got"
             printf '%s  /tmp/bash-%s.tar.gz\n' "$sum" "$v" | sha256sum -c -
             mkdir -p "/tmp/src-$v"
             tar xzf "/tmp/bash-$v.tar.gz" -C "/tmp/src-$v" --strip-components=1
