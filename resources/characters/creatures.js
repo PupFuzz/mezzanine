@@ -547,6 +547,8 @@ function hatSvg(pen, H, kind, acc, acc2) {
       for (let i = 0; i < 5; i++) s += `<ellipse cx="${f(cx)}" cy="${f(cy - 4.2)}" rx="3.1" ry="4.4" transform="rotate(${i * 72 + 10} ${f(cx)} ${f(cy)})" fill="${pen.paint(col)}" stroke="${line(col)}" stroke-width=".9"/>`;
       return s + `<circle cx="${f(cx)}" cy="${f(cy)}" r="2.6" fill="#f2c44a" stroke="#b98a2a" stroke-width=".8"/>`;
     }
+    // Unreachable while `hat:sprig` is in WITHHELD (FLOOR.md § 14 item 33(1)) — kept, not dead code to delete:
+    // a reversal of that ruling is one line out of WITHHELD and redraws the hat the operator approved.
     case 'sprig': {
       const cx = x + w * 0.8, cy = y + w * 0.25, g = '#7fa65a';
       return `<g transform="translate(${f(cx)} ${f(cy)})"><path d="M0 0L5 -9" stroke="${line(g)}" stroke-width="1.3" stroke-linecap="round"/><path d="${leafD(11, 4.2)}" transform="rotate(18)" fill="${pen.paint(g)}" stroke="${line(g)}" stroke-width="1"/><path d="${leafD(10, 4)}" transform="rotate(58)" fill="${pen.paint(tint(g, 0.15))}" stroke="${line(g)}" stroke-width="1"/><circle cx="5" cy="-10" r="2" fill="#d65a4a"/></g>`;
