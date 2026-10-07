@@ -413,13 +413,12 @@ const APPROVED = {
 /**
  * WITHHELD — the one closed list a ruling on FLOOR.md § 14 item 33(1) edits. Each entry removes one
  * member from every list it appears in: `hat:<name>` from every species' hat list, `<species>:<hex>` one
- * colourway. EMPTY: the generator draws the lists exactly as the operator approved them on 2026-10-05.
- * The three members § 10.5 names for the operator — the `sprig` hat, the radish's near-white colourway
- * and the turnip's lavender one — are each withdrawn by adding ONE line here:
- *   'hat:sprig',  'radish:#e9d6d2',  'turnip:#7d6aa8',
- * Withdrawing a member moves every key whose draw landed past it, which is that ruling's stated cost.
+ * colourway. The operator's ruling of 2026-10-06 ("flagged items: Use your recommendations", applied by
+ * the seat as withholding all three) withholds the three members § 10.5 named for review: the `sprig`
+ * hat, the radish's near-white colourway and the turnip's lavender one. Withdrawing a member moves every
+ * key whose draw landed past it — that ruling's stated cost.
  */
-export const WITHHELD = Object.freeze([]);
+export const WITHHELD = Object.freeze(['hat:sprig', 'radish:#e9d6d2', 'turnip:#7d6aa8']);
 
 const withheld = new Set(WITHHELD);
 const keepHat = (h) => !withheld.has(`hat:${h}`);

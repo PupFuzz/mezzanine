@@ -67,7 +67,7 @@ very fact it exists to check.
 
 | Path | Origin | Source URL | Author | SPDX | Retrieved | SHA-256 |
 |---|---|---|---|---|---|---|
-| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-06 | `f6bdf68d412bdaee169fdb6b4ce391541976f836ed7d47d1e01c5687df8102d9` |
+| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-06 | `adbfa7e5efb468f2e985db5bfd373728e3e4476b80aebdd0f963e80f32a4a436` |
 | `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-06 | `cc2545e8fc6a13cae58f6887a44919a93823ae47d732bea7b71efdfbb467a709` |
 | `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-06 | `ee9798a180c84a10b3cb88305a1b9935e1b119950782c435afda0ad7c51c4f67` |
 | `resources/floor/tiles/furniture-kit/benchCushion.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `5665a099b17ccc7018ceebd9d33aa51fa6f26dc98317f3956385774acf47922c` |
