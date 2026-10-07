@@ -169,10 +169,10 @@ def generate(work: Path, *extra: str) -> subprocess.CompletedProcess:
 
 def lint(body: str, linter: Path = LINT) -> tuple[int, dict]:
     # NO `--title`, ON PURPOSE: with no title the linter judges the body as a RELEASE body, which
-    # runs EVERY rule it has — the release section set and scope line included. A change PR in CI
-    # is judged with its title and skips those two, so this is the stricter of the two verdicts,
-    # and the skeleton passing it implies passing the other. § 2's `scope-line` and
-    # `heading-not-allowed` mutations and § 5's house map only red under this one.
+    # runs EVERY rule it has — the release section set and scope line included. That is the verdict
+    # the `pr-body-lint` job's no-title step reaches on every change PR, and it covers the titled
+    # step's rules too. § 2's `scope-line` and `heading-not-allowed` mutations and § 5's house map
+    # only red under this one.
     proc = subprocess.run([sys.executable, str(linter), "--body-file=-", "--json"],
                           input=body, capture_output=True, text=True)
     if proc.returncode not in (0, 1):
