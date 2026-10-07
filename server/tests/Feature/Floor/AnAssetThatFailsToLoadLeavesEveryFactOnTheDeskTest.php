@@ -42,7 +42,8 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
     private const FAILS_AT = 50;
 
     /** The art a desk draws as images — what the placeholder stands in for. */
-    private const ART = ['character', 'chair', 'desk-sprite'];
+    /** FLOOR.md § 10.6's art elements and the character (card#11046 row 20): the placeholder stands in for these. */
+    private const ART = ['character', 'chair', 'desk-sprite', 'monitor-frame', 'desk-props', 'side-table'];
 
     public function test_green_with_the_tileset_failed_every_desk_is_the_placeholder_under_no_tiles_and_the_strip_says_so(): void
     {

@@ -248,16 +248,29 @@ function owed(e, seat, failed, key) {
         }
         case 'plate':
             return [['rect', at, classIs(['plate'])]];
+        case 'side-table': {
+            // FLOOR.md § 10.6 at row 20: the table, then one seat per seat it holds along its foot line —
+            // written here from the published rule (8 px inside the table, the interns' 24 px pitch, 20 wide).
+            const seats = Array.from({ length: e.seats }, (_, i) => ['rect', { x: e.x + 8 + i * 24, y: e.y + e.h - 6, w: 20, h: 6 }, classIs(['seat'])]);
+
+            return [['rect', at, classIs(['side-table'])], ...seats];
+        }
+        case 'desk-props':
+            // Emitted at row 20 and painted from row 22, when the floor's theme draws it (§ 10.6).
+            return [];
         case 'chair':
+        case 'monitor-frame':
         case 'monitor':
         case 'placeholder':
-        case 'side-table':
         case 'lag-overlay':
             return [['rect', at]];
         default:
             return typeof e.text === 'string' ? [['text', { ...at, text: e.text }]] : [];
     }
 }
+
+/** § 10.6's art elements and the character — every other element of a desk is a fact, painted after them. */
+const PAINT_ART = new Set(['chair', 'character', 'desk-sprite', 'monitor-frame', 'desk-props', 'side-table']);
 
 /** A clipping viewport at the element's rect holding the one image at the viewport's own origin (§ 10.4). */
 function viewport(e) {
@@ -322,14 +335,26 @@ for (const g of layer?.children ?? []) {
     const b = desk.box;
     const nodes = [...g.children];
     let next = 0;
+    const paintedKind = [];
 
     // ── equality: each element's nodes, in the painter's order ──
     desk.elements.forEach((e, i) => {
         for (const want of owed(e, seatOf.get(key), failedOf.get(key), key)) {
             defects.push(...compare(key, i, e, nodes[next], want));
+            paintedKind[next] = e.kind;
             next++;
         }
     });
+
+    // ── FLOOR.md § 10.6's rule 2, the paint-order leg (AT-D3-25's re-laid half): every node painted for a
+    // fact element comes after every node painted for an art element or the character. The art kinds are
+    // written here from § 10.6, never imported from the layout they check.
+    const lastArt = paintedKind.reduce((at, k, i) => (PAINT_ART.has(k) ? i : at), -1);
+    const firstFact = paintedKind.findIndex((k) => k !== undefined && !PAINT_ART.has(k));
+
+    if (lastArt >= 0 && firstFact >= 0 && firstFact < lastArt) {
+        defects.push(`${key}: paint order — the fact ${paintedKind[firstFact]} is painted before the art ${paintedKind[lastArt]} (§ 10.6 rule 2)`);
+    }
 
     if (desk.bubble !== null) {
         const bb = desk.bubble;

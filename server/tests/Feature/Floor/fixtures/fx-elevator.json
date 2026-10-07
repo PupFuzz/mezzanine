@@ -410,11 +410,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -853,11 +855,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -1317,11 +1321,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -1743,11 +1749,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -2181,11 +2189,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -2627,11 +2637,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -3155,11 +3167,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -3583,11 +3597,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -4027,11 +4043,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -4469,11 +4487,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -4999,11 +5019,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -5531,11 +5553,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -6086,11 +6110,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -7250,11 +7276,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -7702,11 +7730,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -8180,11 +8210,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -8657,11 +8689,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
@@ -9100,11 +9134,13 @@
           "measurer": {
             "glyph_w": {
               "fact": 6,
-              "name": 8
+              "name": 8,
+              "screen": 5
             },
             "line_h": {
               "fact": 12,
-              "name": 16
+              "name": 16,
+              "screen": 12
             }
           },
           "character": {
