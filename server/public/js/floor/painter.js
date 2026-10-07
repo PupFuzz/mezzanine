@@ -33,7 +33,7 @@
  * stylesheet's, at the cycle the scene states.
  */
 
-import { FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, characterAsset } from './desk-layout.js';
+import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, characterAsset } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
 import { ELEVATOR_DOOR } from './scene.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
@@ -96,8 +96,9 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 .t-chip{fill:var(--state-ink)}.t-chip.unconfirmed{fill:var(--state-ink-unconfirmed)}.t-chip.unrecognised{fill:var(--scene-unrecognised)}
 .flag{fill:var(--scene-flag);stroke:var(--scene-flag-edge)}.t-flag{fill:var(--scene-flag-ink)}
 .plate{fill:var(--scene-plate);stroke:var(--scene-plate-edge)}
+.facts-plate{fill:var(--scene-plate);stroke:var(--scene-plate-edge);stroke-opacity:.35}
 .gauge-track{fill:var(--scene-gauge-track)}.gauge-fill{fill:var(--scene-gauge-fill)}
-.bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-tail{stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
+.bubble{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-trail{fill:var(--scene-paper);stroke:var(--scene-trim)}.bubble-source{fill:var(--scene-bubble-source)}
 .lighting-dimmed{opacity:.72}.lighting-dark{opacity:.45}.lighting-desaturated{filter:saturate(.3)}
 .thread{fill:none;stroke:var(--scene-thread);stroke-width:3}.thread.ended{stroke-dasharray:8 6;opacity:.6}
 .thread.thread-moving{stroke-dasharray:4 8;stroke-linecap:round;animation-name:thread-flow;animation-iteration-count:infinite}
@@ -456,6 +457,10 @@ export function createPainter({ characters, themes = {}, failed, select }) {
                         }, g);
                     }
                     break;
+                case 'facts-plate':
+                    // § 10.6 (card#11468): the facts' one backdrop, painted after the art and before the facts on it.
+                    node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: e.rx, class: 'facts-plate' }, g);
+                    break;
                 case 'monitor':
                 case 'placeholder':
                 case 'plate':
@@ -479,12 +484,16 @@ export function createPainter({ characters, themes = {}, failed, select }) {
         if (desk.bubble !== null) {
             const b = desk.bubble;
 
-            node('line', { x1: b.tail.x, y1: b.y + b.h, x2: b.tail.x, y2: b.tail.y + 4, class: 'bubble-tail' }, g);
-            node('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 6, class: 'bubble' }, g);
-            text(g, { x: b.x + 3, y: b.y + 3, text: b.text, id: `${desk.key}:bubble` }, 'bubble-text');
+            // § 5.1 (card#11468): the thought trail, smallest first, then the cloud the scene traced round the rect.
+            for (const c of b.trail) {
+                node('circle', { cx: c.x, cy: c.y, r: c.r, class: 'bubble-trail' }, g);
+            }
+
+            node('path', { d: b.cloud.d, class: 'bubble' }, g);
+            text(g, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD, text: b.text, id: `${desk.key}:bubble` }, 'bubble-text');
 
             if (b.second !== null) {
-                text(g, { x: b.x + 3, y: b.y + 3 + TYPE_ROLES[FACT].line, text: b.second, id: `${desk.key}:bubble2` }, 'bubble-source');
+                text(g, { x: b.x + BUBBLE_PAD, y: b.y + BUBBLE_PAD + TYPE_ROLES[FACT].line, text: b.second, id: `${desk.key}:bubble2` }, 'bubble-source');
             }
         }
     }
