@@ -92,15 +92,19 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
         $this->assertSame([], $this->sandboxDefects($this->signedIn()->get('/art/floor/tiles/floor-plane/bookcase.svg'), 'image/svg+xml'));
         $this->assertSame([], $this->sandboxDefects($this->signedIn()->get('/art/floor/tiles/floor-plane.tsx'), 'application/xml'));
 
+        $unpolicied = function (string $uri, string $type): void {
+            $response = $this->signedIn()->get($uri);
+            $this->assertSame([], $this->servedDefects($response, $type), $uri);
+            $this->assertNull($response->headers->get('Content-Security-Policy'), "{$uri} gained a policy it was not meant to");
+        };
+
+        $unpolicied('/art/characters/index.js', 'text/javascript');
+        $unpolicied('/art/floor/furniture-box.js', 'text/javascript');
+
         // § 10.1 clause 1 admits `.png`, and since card#11046 retired the bridge kit no PNG ships: one is
-        // planted for the length of this arm, so the raster branch is still served and still checked.
-        $this->withPlantedPng(function (): void {
-            foreach (['/art/characters/index.js' => 'text/javascript', '/art/floor/furniture-box.js' => 'text/javascript', '/art/floor/'.self::PNG => 'image/png'] as $uri => $type) {
-                $response = $this->signedIn()->get($uri);
-                $this->assertSame([], $this->servedDefects($response, $type), $uri);
-                $this->assertNull($response->headers->get('Content-Security-Policy'), "{$uri} gained a policy it was not meant to");
-            }
-        });
+        // planted in a TEMPORARY floor tree for the length of this arm, so the raster branch is still served
+        // and still checked, and the repository's own tree is never written to.
+        $this->withPlantedPng(fn () => $unpolicied('/art/floor/'.self::PNG, 'image/png'));
     }
 
     public function test_the_painters_own_import_specifiers_are_served_as_javascript(): void
@@ -286,17 +290,32 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
         }
     }
 
+    /**
+     * `$body` run with the floor tree pointed at a temporary copy holding one planted PNG: the application's
+     * base path is moved under a temporary directory whose `../resources/floor/` is that tree (`FloorAssets::TREES`
+     * is relative to the base path), and moved back after — so nothing is ever written into the repository's tree.
+     */
     private function withPlantedPng(callable $body): void
     {
-        $path = FloorAssets::root().'/'.self::PNG;
+        $base = $this->app->basePath();
+        $tmp = sys_get_temp_dir().'/art-route-'.bin2hex(random_bytes(6));
 
+        mkdir($tmp.'/server', 0777, true);
+        mkdir($tmp.'/resources/floor', 0777, true);
         // A 1 × 1 transparent PNG — a real raster, so the route's media type is judged on a real file.
-        file_put_contents($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='));
+        file_put_contents($tmp.'/resources/floor/'.self::PNG, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='));
 
         try {
+            $this->app->setBasePath($tmp.'/server');
+            $this->assertNotNull(FloorAssets::resolve(self::PNG), 'the planted PNG is not in the temporary tree — this arm would prove nothing');
             $body();
         } finally {
-            @unlink($path);
+            $this->app->setBasePath($base);
+            @unlink($tmp.'/resources/floor/'.self::PNG);
+            @rmdir($tmp.'/resources/floor');
+            @rmdir($tmp.'/resources');
+            @rmdir($tmp.'/server');
+            @rmdir($tmp);
         }
     }
 

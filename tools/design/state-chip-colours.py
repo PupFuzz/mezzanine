@@ -366,7 +366,17 @@ if a.search:
 cur = report('SHEET (the tokens as read from --repo)', palette({}))
 new = report('PROPOSED', palette(PROPOSED))
 
-print('\nSibling checks (the same ink-on-fill shape elsewhere on the chip and beside it):')
+INK_FLOOR = 4.5   # WCAG 2's AA ratio for body text, the bar FLOOR.md § 10.6's rule 3 holds the facts' ink to
+
+def ink_below(surfaces, fallback):
+    """The FACTS' INK GATE (FLOOR.md § 10.6 rule 3, AT-D3-25's surfaces leg): `--scene-ink` over every colour a desk
+    can stand on — each theme's surfaces — and over the fallback plane fill, every one under 4.5:1, as
+    `(name, ratio)`. `--check` exits 1 on any."""
+    ink_ = hex2rgb(TOK['scene-ink'])
+    over = {**{f'{k} (facts text over the floor)': v for k, v in surfaces.items()}, 'scene-floor (the fallback fill)': fallback}
+    return [(k, contrast(ink_, hex2rgb(v))) for k, v in over.items() if contrast(ink_, hex2rgb(v)) < INK_FLOOR]
+
+print('\nSibling checks (the same ink-on-fill shape elsewhere on the chip and beside it; the facts\' ink over the floor GATES --check):')
 sib = {
     'state-ink-unconfirmed on scene-paper (hollow chip)': contrast(hex2rgb(TOK['state-ink-unconfirmed']), hex2rgb(TOK['scene-paper'])),
     'scene-unrecognised on scene-paper (unrecognised chip)': contrast(hex2rgb(TOK['scene-unrecognised']), hex2rgb(TOK['scene-paper'])),
@@ -377,7 +387,7 @@ sib = {
     'scene-ink on scene-floor (the fallback fill)': contrast(hex2rgb(TOK['scene-ink']), hex2rgb(TOK['scene-floor'])),
 }
 for k, v in sib.items():
-    print(f'  {v:5.2f}  {k}' + ('' if v >= 4.5 else '  <-- UNDER 4.5'))
+    print(f'  {v:5.2f}  {k}' + ('' if v >= INK_FLOOR else '  <-- UNDER 4.5'))
 
 if a.json:
     Path(a.json).write_text(json.dumps({'tokens_read': {k: v for k, v in TOK.items() if k.startswith('state-')}, 'model': {'lighting': LIGHTING, 'opacity': OPACITY, 'saturate': SATURATE, 'surfaces': SURFACES, 'bound': BOUND},
@@ -403,17 +413,28 @@ if a.selftest:
     assert len(tok) == len(VISIONS), f'control 3: the tokens-only duplicate was listed {len(tok)} times in the tokens, not {len(VISIONS)}'
     assert drawn_ok == [], 'control 3: the plant is not tokens-only — it also breached as drawn, so it proves nothing about the filter'
     assert not clean(planted), 'control 3: the acceptance stayed green on a tokens-only breach'
+    # Control 5: the facts' ink gate lists a surface too dark for --scene-ink, and holds the shipped surfaces clean.
+    assert ink_below({'planted/dark': '#8f8070'}, TOK['scene-floor']), 'control 5: a dark planted surface was not listed under the ink floor'
+    assert ink_below({}, '#171a28'), 'control 5: a dark fallback fill was not listed under the ink floor'
     # Control 4: the as-drawn model is not the identity.
     assert new['fills']['stale']['drawn_worst'] != new['fills']['stale']['token'], 'control 4: as_drawn is the identity'
     # The proposal: every reviewed fill holds the ink at full light; no reviewed pair under the bound in ANY condition.
     assert all(new['fills'][s]['ink_contrast'] >= 4.5 for s in REVIEWED), 'proposal under 4.5 at full light'
     assert clean(new), f"proposal has reviewed pairs under {BOUND}: {[b for b in new['below'] if b['reviewed']]}"
-    print(f'\nselftest: 4 controls red where planted; proposal clean at full light and in every condition (bound {BOUND})')
+    print(f'\nselftest: 5 controls red where planted; proposal clean at full light and in every condition (bound {BOUND})')
 
 if a.check:
     bad = reviewed_below(cur)
+    dim = ink_below(SURFACES, TOK['scene-floor'])
+    for k, v in dim:
+        print(f"check: --scene-ink holds {v:.2f}:1 on {k}, under {INK_FLOOR}", file=sys.stderr)
+    if dim and not bad:
+        sys.exit(f'check: the facts\' ink is under {INK_FLOOR}:1 on {len(dim)} surface(s)')
     if bad:
         for b in bad:
             print(f"check: {b['pair']} {b['de']} under {BOUND} — {b['condition']}, {b['vision']}", file=sys.stderr)
         sys.exit(f'check: {len(bad)} reviewed pair(s) on the sheet under ΔE2000 {BOUND}')
-    print(f'\ncheck: the sheet holds every pair involving {", ".join(REVIEWED)} at or above ΔE2000 {BOUND}, in every condition and vision')
+    if dim:
+        sys.exit(f'check: the facts\' ink is under {INK_FLOOR}:1 on {len(dim)} surface(s)')
+    print(f'\ncheck: the sheet holds every pair involving {", ".join(REVIEWED)} at or above ΔE2000 {BOUND}, in every condition and vision; '
+          f'--scene-ink holds {INK_FLOOR}:1 over every surface and the fallback fill')

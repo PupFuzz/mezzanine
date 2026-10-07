@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Admin;
 
+use App\Building\InvalidBuildingLayout;
+use App\Building\Layouts;
 use App\Building\Revisions;
 use App\Floor\RetiredArt;
 use App\Fold\Clock;
@@ -73,6 +75,36 @@ class TheConsoleListsMapsNamingRetiredArtTest extends TestCase
             'places tile 0 of `tiles/floor-plane.tsx` on 2 cells, a tile the repository no longer ships',
             'places tile 1 of `tiles/floor-plane.tsx` on 1 cell, a tile the repository no longer ships',
         ], RetiredArt::of(FloorMapFixture::encode($map)));
+    }
+
+    /**
+     * ⚠ AND ON A PLANNED FLOOR IT BLOCKS THE LAYOUT (code review r1, finding 1): the layout's overlap check
+     * measures every placed room's footprint from its stored map (`App\Building\RoomExtents`), and a map naming
+     * a tileset the repository no longer ships cannot be read — so a layout save that places that room is refused,
+     * naming the room and the tileset, until the room's map is re-saved. Pinned here, and stated in the CHANGELOG
+     * and in FLOOR.md § 10.6 item 9.
+     */
+    public function test_on_a_planned_floor_a_map_naming_the_kit_blocks_a_layout_save_until_it_is_re_saved(): void
+    {
+        $this->provisionTheRoom();
+        $this->plantACurrentMap($this->naming('tiles/furniture-kit.tsx', 1));
+        $layout = (string) json_encode(['floors' => [['rooms' => [
+            self::INSTALL => ['form' => 'open', 'origin' => ['x' => 0, 'y' => 0]],
+            'beta' => ['form' => 'office', 'origin' => ['x' => 8000, 'y' => 0]],
+        ]]]]);
+
+        try {
+            Layouts::save($layout, 'ops@example.com');
+            $this->fail('a layout placing a room whose map names the retired kit was saved');
+        } catch (InvalidBuildingLayout $e) {
+            $this->assertStringContainsString('Room `'.self::INSTALL.'`', $e->getMessage());
+            $this->assertStringContainsString('tiles/furniture-kit.tsx', $e->getMessage());
+        }
+
+        // THE CONTROL: once the room's map names only what ships, the same layout saves.
+        DB::table('floors')->where('install_id', self::INSTALL)->update(['map' => FloorMapFixture::valid(2)]);
+
+        $this->assertSame(1, Layouts::save($layout, 'ops@example.com'));
     }
 
     /** The valid fixture with its one tileset re-pointed and its every cell set to `$gid`. */

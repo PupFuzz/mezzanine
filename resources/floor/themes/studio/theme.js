@@ -109,6 +109,17 @@ const shade = (c, t) => mix(c, RULES.shade, t);
 const tint = (c, t) => mix(c, RULES.highlight, t);
 const line = (c) => mix(c, RULES.line, 0.5);
 
+/**
+ * A size this theme draws over, REFUSED when it is not a finite number: no scene hands one (every size comes
+ * from a validated, byte-capped map or the scene's own constants), and a loop over an infinite or `NaN` width
+ * would never end or would write `NaN` into a document. The throw is the painter's unit failure (§ 9 F14).
+ */
+function finite(...sizes) {
+    if (!sizes.every((v) => Number.isFinite(v) && v >= 0)) {
+        throw new RangeError(`a theme document asked for over a size that is not a finite number: ${sizes.join(', ')}`);
+    }
+}
+
 /** Two decimals, the precision every coordinate is written at. */
 const f = (v) => Number((+v).toFixed(2));
 
@@ -311,6 +322,8 @@ function books(pen, x, y, w, colours, maxH, next) {
  *        band-relative: the band's size, its reserved zone, the elevator's frame and the clock's rect, and every window's glazing
  */
 export function band({ w, h, zone, elevator, clock, windows }) {
+    finite(w, h);
+
     const pen = new Pen();
     const P = PALETTE.wall;
     const s = [];
@@ -376,6 +389,8 @@ export function band({ w, h, zone, elevator, clock, windows }) {
  * @param {{index: number, glazing: {w: number, h: number}}} input the window's index and its glazing's size
  */
 export function windowSurround({ index, glazing }) {
+    finite(glazing.w, glazing.h);
+
     const pen = new Pen();
     const P = PALETTE.window;
     const gw = glazing.w;
@@ -508,6 +523,12 @@ const over = (c, layer, a) => mix(c, layer, a);
  *        merged runs, the cell they are runs of, whether its top edge is the band's foot, and the threshold
  */
 export function plane({ w, h, seed, desks, walls, accents, cell, band_foot: bandFoot, threshold }) {
+    finite(w, h, cell.w, cell.h);
+
+    if (cell.w === 0 || cell.h === 0) {
+        throw new RangeError('a plane asked for over a grid of empty cells');
+    }
+
     const pen = new Pen();
     const base = PALETTE.floor.boards;
     const s = [];
@@ -719,6 +740,8 @@ export function surfaces() {
  *        the grid's seed and the cell's index
  */
 export function scenery({ kind, w, h, seed, index }) {
+    finite(w, h);
+
     const pen = new Pen();
     const key = `${seed}#${index}`;
     const next = stream(key, `theme:${kind}`);
@@ -961,6 +984,8 @@ const TABLE = Object.freeze({ w: 228, h: 42, seat_x: 8, seat_pitch: 24, seat_w: 
  * @param {{install_id: string, seat_id: string, seats: number}} input the desk's key and the seat count
  */
 export function sideTable({ install_id: installId, seat_id: seatId, seats }) {
+    finite(seats);
+
     const pen = new Pen();
     const key = deskKey(installId, seatId);
     const P = PALETTE['side-table'];

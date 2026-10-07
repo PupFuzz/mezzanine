@@ -562,7 +562,9 @@ function surfacesLeg(o) {
     try {
         execFileSync('python3', [o.t.tool, '--repo', o.t.root, '--surfaces', out, '--check'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (e) {
-        defects.push(`the chip tool's --check fails over the surfaces: ${String(e.stderr).trim().split('\n').slice(0, 2).join(' | ')}`);
+        const lines = String(e.stderr).trim().split('\n');
+
+        defects.push(`the chip tool's --check fails over the surfaces: ${[...lines.slice(0, 2), lines[lines.length - 1]].join(' | ')}`);
     }
 
     return defects;
@@ -643,7 +645,9 @@ const PLANTS = [
         (t) => edit(t.tool, "REVIEWED = ['stale', 'offline', 'disabled']", "REVIEWED = ['stale', 'disabled']")],
     ['a surface that is not a floor: the landing\'s colour', 'surfaces', "the landing's — an exclusion",
         (t) => edit(THEME(t), "        darkest,\n", "        darkest,\n        doorstep: PALETTE.landing.top,\n")],
-    ['the floor that breaks a chip: the house floor darkened', 'surfaces', "the chip tool's --check fails",
+    ['the floor that breaks a chip: the house floor darkened', 'surfaces', "reviewed pair(s) on the sheet under ΔE2000",
+        (t) => edit(THEME(t), "floor: Object.freeze({ boards: '#d9c7a5' }),", "floor: Object.freeze({ boards: '#8f8070' }),")],
+    ['the floor too dark for the facts\' ink: the chip tool\'s ink gate', 'surfaces', "--check fails over the surfaces: check: --scene-ink holds",
         (t) => edit(THEME(t), "floor: Object.freeze({ boards: '#d9c7a5' }),", "floor: Object.freeze({ boards: '#8f8070' }),")],
     ['a draw that is not the key\'s: Math.random() for one seeded choice', 'totality', 'is not one document per input',
         (t) => edit(THEME(t), "const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);", 'const c = PALETTE.chair.colours[Math.floor(Math.random() * PALETTE.chair.colours.length)];')],
@@ -674,6 +678,10 @@ const shapes = (big.match(/<(path|rect|ellipse|circle)\b/g) ?? []).length;
 check(wellFormed(big) === null && vectorDefect(big) === null && commands > 400 && shapes > 200,
     `CONTROL (b) — a genuinely complex document, the house floor (${shapes} shapes, ${commands} path commands, ${big.length} B), passes the self-contained leg`);
 check(wellFormed('<svg xmlns="http://www.w3.org/2000/svg"><g>a & b</g></svg>') !== null, 'CONTROL — the reader refuses an unescaped "&"');
+const refuses = (fn, input) => { try { house[fn](input); return false; } catch (e) { return e instanceof RangeError; } };
+check(refuses('plane', { w: Infinity, h: 8, seed: 's', desks: [], walls: [], accents: [], cell: { w: 8, h: 8 }, band_foot: false, threshold: null })
+    && refuses('scenery', { kind: 'plant', w: NaN, h: 8, seed: 's', index: 0 }) && refuses('band', { w: Infinity, h: 160 }),
+    'CONTROL — a size that is not a finite number is refused by name, never looped over or written as NaN');
 
 console.log(failures === 0 ? '\nALL THEME GATES PASS' : `\n${failures} THEME GATE FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

@@ -5196,7 +5196,10 @@ theme draws INTO and never moves.
      refuses a map naming a tileset the repository does not ship ([§ 10.3](#103-the-floor-map)'s
      `tilesets[]` row, `FloorMap`'s write check) and so refuses it at its next save, and at a restore of a
      revision that names it; until then the floor draws it with those tiles missing under F14's line, naming the
-     tileset. One that places the plank or the rug tile of the still-shipped `floor-plane.tsx` is neither refused
+     tileset. ⚠ **On a planned floor it also blocks the layout**: the layout's overlap check measures every placed
+     room's footprint from its stored map (`App\Building\RoomExtents`), and a map the parser refuses has none,
+     so every layout save that places the room is refused, naming it, until its map is re-saved
+     (`Tests\Feature\Admin\TheConsoleListsMapsNamingRetiredArtTest`). One that places the plank or the rug tile of the still-shipped `floor-plane.tsx` is neither refused
      nor F14-lined — the write checks tilesets, not tiles — and the removed tiles are simply undrawn, which is
      the intended result: the theme's plane is the floor, and the operator removed the rug.
    - *Finding them:* **the EXTENSION of § 14 item 28(1)(iii), adopted** (item 36(5), the maintainer's call,
