@@ -13,10 +13,11 @@ directory is a precedent for what the product ships.**
 
 This directory is **vendored art**, not a port: no upstream code is taken, adapted or executed.
 What a port owes (`FLOOR.md` § 10.2 — an upstream commit, what was changed) does not apply, and
-this file is not the lineage file `bin/asset-provenance.py`'s lineage check reads; that check is
-`resources/characters/LINEAGE.md`'s, and it is about a *port*. What **is** owed, and is here, is
-the same thing that file exists for: where these bytes came from, under what terms, what was
-taken, and — the part easiest to leave out — **what was deliberately not taken, and why**.
+this file is not the lineage file `bin/asset-provenance.py`'s lineage check reads; that check reads
+`resources/characters/LINEAGE.md`, and only when the character tree holds a *port* (a `licensed`
+row under it — it holds none since card#11046). What **is** owed, and is here, is the same thing a
+port's lineage file exists for: where these bytes came from, under what terms, what was taken, and —
+the part easiest to leave out — **what was deliberately not taken, and why**.
 
 The machine-checked manifest of the same facts is [`docs/ATTRIBUTION.md`](../../docs/ATTRIBUTION.md);
 `bin/asset-provenance.py` Gate 1 fails the build for any file here without a row.

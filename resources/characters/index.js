@@ -1,134 +1,58 @@
-// The character tree's public surface. Everything a consumer needs is here; nothing else in
-// this directory should be imported directly by app code.
+// The character tree's public surface (docs/design/FLOOR.md § 10.2, § 10.4). Everything the floor
+// needs is here; nothing else in this directory should be imported directly by app code.
 //
-// Two layers under this one: `portrait-art.js` is the ported pixel generator (see `LINEAGE.md`)
-// and `seed.js` turns a seat's identity into one of its recipes. This file adds only the two
-// things neither of them should own — a cache keyed on the seat, and the canvas blit.
+// Two layers under this one: `seed.js`, the seed machinery (first-party), and `creatures.js`, the
+// creature generator (first-party, card#11046). This file adds the frame contract's three entry
+// points and the size the scene reads — no cache: the generator is pure and the PAINTER caches the
+// URIs it makes per asset, and drops an intern's when it stops drawing it (`floor/painter.js`).
+//
+// ⛔ Every entry point returns standalone SVG DOCUMENTS. The painter turns each into a
+// SVG `data:` URI (UTF-8, encodeURIComponent) — this tree carries no URI, and no text naming one.
 
-import { composePortrait, composeScene, PORTRAIT_W, PORTRAIT_H, SCENE_W, SCENE_H } from './portrait-art.js';
-import { characterFor, seatKey } from './seed.js';
+import { frameDocument } from './creatures.js';
+import { seatKey } from './seed.js';
 
-export { characterFor, seatKey, fnv1a32, draw } from './seed.js';
-export { PORTRAIT_W, PORTRAIT_H, SCENE_W, SCENE_H } from './portrait-art.js';
-
-/** @typedef {import('./portrait-art.js').Recipe} Recipe */
-/** @typedef {Uint8ClampedArray} Buf */
-/** @typedef {{ front: Buf[], back: Buf[] }} SceneFrames */
-
-// Composition is a few thousand `set()` calls, so it is cached per seat rather than per paint —
-// a floor repaints its desks far more often than the fleet gains a seat. For SEATS the key space
-// is the rendered seat set, which the feed already bounds. An INTERN is drawn under its own key,
-// `seat~<call_id>` (docs/design/FLOOR.md section 10.4), and a call id is minted per dispatch, so
-// that key space grows for as long as a page stays open: the consumer that draws interns calls
-// `forget()` for each one it no longer draws, which keeps the cache to what is on screen.
-/** @type {Map<string, Buf>} */
-const portraitCache = new Map();
-/** @type {Map<string, SceneFrames>} */
-const sceneCache = new Map();
+export { seatKey, fnv1a32, draw } from './seed.js';
+export {
+  SPECIES, SPECIES_KEYS, SPECIES_FIELD, WITHHELD, EYES, MOUTHS, BLUSH, BROWS, SIZES, STOUT, TILTS, ACCENTS, GREENS,
+  RIM, RIM_W, SEAT_VIEWBOX, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, recipe, describe, chibiGeometry, frameDocument,
+} from './creatures.js';
 
 /**
- * The seat's portrait as raw RGBA, `PORTRAIT_W * PORTRAIT_H * 4` bytes. No DOM needed — this is
- * the layer a test or a server-side renderer reads.
- * @param {string} installId @param {string} seatId @returns {Buf}
+ * The character's footprint unit, in floor pixels: the character rect is `CHARACTER_SCALE` (3) times
+ * this — 54 x 96 (`floor/desk-layout.js`, FLOOR.md § 12's *Character rect*). The creatures are vector
+ * and have no native size; this is the rect's aspect and scale unit, kept from the pixel tree so the
+ * box and every rect stay where they are (Appendix B row 19). A seat's frame draws 108 x 192 units into
+ * it — two per floor pixel.
  */
-export function portraitBuf(installId, seatId) {
+export const SCENE_W = 18;
+export const SCENE_H = 32;
+
+/**
+ * THE STANDING FRAME — what a desk with a character draws for every pose (FLOOR.md § 10.4's frame
+ * contract: parity with today), and phase 0 of the walk.
+ * @param {string} installId @param {string} seatId @returns {string} an SVG document
+ */
+export function standingFrame(installId, seatId) {
+  return frameDocument(seatKey(installId, seatId), { phase: 0 });
+}
+
+/**
+ * THE WALK — stand, step-left, step-right, front-facing: the walker's frames, and what a held loop
+ * steps through, as the painter does today.
+ * @param {string} installId @param {string} seatId @returns {string[]} three SVG documents
+ */
+export function walkFrames(installId, seatId) {
   const key = seatKey(installId, seatId);
-  let buf = portraitCache.get(key);
-  if (!buf) {
-    buf = composePortrait(characterFor(installId, seatId));
-    portraitCache.set(key, buf);
-  }
-  return buf;
+  return [0, 1, 2].map((phase) => frameDocument(key, { phase }));
 }
 
 /**
- * The seat's in-scene walk frames — stand, step-left, step-right — front and back, as raw RGBA
- * at `SCENE_W * SCENE_H`. This is the ONLY animation source for a character: the floor derives
- * its walk cycle from these frames, never from a vendored sprite sheet.
- * @param {string} installId @param {string} seatId @returns {SceneFrames}
+ * THE INTERN'S CHIBI FRAME — handed the intern key `seat~<call_id>` in the seat's place
+ * (`floor/desk-layout.js`'s `internKey()`): the same recipe re-proportioned, its head at least half
+ * the drawn height, for the 20 x 32 rect.
+ * @param {string} installId @param {string} internKey @returns {string} an SVG document
  */
-export function sceneFrames(installId, seatId) {
-  const key = seatKey(installId, seatId);
-  let frames = sceneCache.get(key);
-  if (!frames) {
-    const r = characterFor(installId, seatId);
-    frames = {
-      front: [composeScene(r, 0, false), composeScene(r, 1, false), composeScene(r, 2, false)],
-      back: [composeScene(r, 0, true), composeScene(r, 1, true), composeScene(r, 2, true)],
-    };
-    sceneCache.set(key, frames);
-  }
-  return frames;
-}
-
-/**
- * Drop a key's cached pixels — the portrait and the scene frames. The next paint composes them
- * again, byte-identical (the recipe is a pure function of the key), so forgetting is never
- * visible; it only stops a key nobody draws any more from holding memory.
- * @param {string} installId @param {string} seatId
- */
-export function forget(installId, seatId) {
-  const key = seatKey(installId, seatId);
-  portraitCache.delete(key);
-  sceneCache.delete(key);
-}
-
-/**
- * Stage an RGBA buffer on a 1x offscreen canvas. Needs a DOM.
- * @param {Buf} buf @param {number} w @param {number} h @returns {HTMLCanvasElement}
- */
-function stage(buf, w, h) {
-  const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;
-  const sctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
-  const img = sctx.createImageData(w, h);
-  img.data.set(buf);
-  sctx.putImageData(img, 0, 0);
-  return canvas;
-}
-
-/**
- * Blit a buffer onto `ctx`'s canvas at `scale`, nearest-neighbour.
- *
- * THE PAINTER SIZES THE CANVAS. It does not accept one and hope the caller sized it to match,
- * because a canvas sized at one scale and painted at another crops the sprite to a corner —
- * and a cropped pixel character still looks like a pixel character, so nobody notices. Taking
- * the destination's geometry away from the caller is what makes that unrepresentable rather
- * than merely unlikely; these entry points already owned the whole canvas (upstream cleared it
- * outright), so this only finishes an assumption that was already being made.
- *
- * Smoothing OFF is the other half: at 18 px wide, bilinear scaling turns a face into a smudge.
- *
- * @param {CanvasRenderingContext2D} ctx @param {Buf} buf @param {number} w @param {number} h
- * @param {number} scale integer >= 1
- */
-function blit(ctx, buf, w, h, scale) {
-  if (!Number.isInteger(scale) || scale < 1) throw new RangeError(`scale must be a positive integer, got ${scale}`);
-  // Assigning width/height resizes AND clears AND resets 2D context state — so smoothing has to
-  // be turned off after it, not before.
-  ctx.canvas.width = w * scale;
-  ctx.canvas.height = h * scale;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(stage(buf, w, h), 0, 0, w, h, 0, 0, w * scale, h * scale);
-}
-
-/**
- * Paint a seat's portrait, RESIZING `ctx`'s canvas to `PORTRAIT_W x PORTRAIT_H` at `scale`.
- * @param {CanvasRenderingContext2D} ctx @param {string} installId @param {string} seatId
- * @param {number} [scale]
- */
-export function paintPortrait(ctx, installId, seatId, scale = 2) {
-  blit(ctx, portraitBuf(installId, seatId), PORTRAIT_W, PORTRAIT_H, scale);
-}
-
-/**
- * Paint one in-scene frame of a seat, RESIZING `ctx`'s canvas to `SCENE_W x SCENE_H` at `scale`.
- * @param {CanvasRenderingContext2D} ctx @param {string} installId @param {string} seatId
- * @param {{ phase?: 0|1|2, back?: boolean, scale?: number }} [opts]
- */
-export function paintSceneFrame(ctx, installId, seatId, opts = {}) {
-  const { phase = 0, back = false, scale = 2 } = opts;
-  const frames = sceneFrames(installId, seatId);
-  const buf = (back ? frames.back : frames.front)[phase];
-  blit(ctx, buf, SCENE_W, SCENE_H, scale);
+export function chibiFrame(installId, internKey) {
+  return frameDocument(seatKey(installId, internKey), { chibi: true });
 }

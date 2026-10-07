@@ -7,10 +7,10 @@ they are actually doing right now — with a drill-down into their tasks and sub
 > Status: **early build.** The Laravel host exists in [`server/`](server/) — an MFA-gated
 > shell with no floor behind it yet, plus the **admin console** at `/admin` (users, agent
 > manage/remove, and floors + their maps) and `php artisan mezzanine:user:create`, which is what makes a fresh deploy
-> reachable at all — see [The first account](#the-first-account-and-the-way-back-from-a-lockout). The **procedural character generator** exists in
-> [`resources/characters/`](resources/characters/) — dependency-free ES modules that draw a
-> seat's character from its identity alone; open `tools/characters/harness.html` over a local
-> static server to see it. The kanban automation in `.github/workflows/` also runs; see
+> reachable at all — see [The first account](#the-first-account-and-the-way-back-from-a-lockout). The **creature generator** exists in
+> [`resources/characters/`](resources/characters/) — dependency-free ES modules that draw each
+> seat's animal or vegetable creature, as vector SVG, from its identity alone; open
+> `tools/characters/harness.html` (the creature sheet) over a local static server to see it. The kanban automation in `.github/workflows/` also runs; see
 > [Kanban](#kanban) below.
 
 ## What it is
@@ -42,7 +42,7 @@ posts the JSON. No model is asked to describe itself.
 ```
 server/                     the Laravel host + MFA-gated shell   ← exists
 server/public/js/            the pages' ES modules — floor/, lobby/, desk/, wire/ (the camera: wire/camera.js)
-resources/characters/       the procedural character generator + LINEAGE.md ← exists
+resources/characters/       the creature generator (first-party, vector) ← exists
 resources/floor/            the CC0 tileset (interim) + LINEAGE.md ← exists; Tiled map: card #7341
 fleet-reporter/             cross-platform hook bundle + by-hand Linux install runbook
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
@@ -343,13 +343,12 @@ terms as read at the source, the downloaded archive's hash, what was curated and
 deliberately not taken — including the pack's 3D sources, which the asset allowlist refuses
 outright.
 
-The character generator is a **port** of munder-difflin's (MIT), at a pinned commit:
-`resources/characters/LINEAGE.md` records the upstream, the commit, the reproduced MIT notice,
-and — the part that makes it a port rather than a fork — what was deliberately not taken and
-why. **Its pixel art is interim** — the operator ratified a high-resolution, whimsical, modern
-art direction on 2026-08-26/27 (`docs/design/FLOOR.md § 10.4`); what the port bought and keeps
-is the **seed machinery**, so a seat's appearance is a pure function of `(install_id, seat_id)`
-and looks the same on every browser with nothing stored.
+The characters are **first-party**: original animal and vegetable creatures drawn by the code in
+`resources/characters/` as vector SVG (`docs/design/FLOOR.md § 10.2`, card#11046), replacing the
+interim pixel people that came with an earlier port of munder-difflin's generator — that port left the
+tree whole, and its record stays in git and in `docs/PLAN.md § 0`'s D-07 appends. A seat's appearance
+is a pure function of `(install_id, seat_id)`, so it looks the same on every browser with nothing
+stored.
 
 Two CI gates enforce the licence claim rather than leaving it to discipline: **every asset
 needs a provenance row** — hash, SPDX from a closed allowlist, and an `origin` of `first-party`

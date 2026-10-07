@@ -75,8 +75,10 @@ WHAT IT DOES.
   Gate 1 needs in order to mean anything.
 
   The lineage check — AT-D3-12's lineage half, and NOT a third gate: section 10.1 names two and
-  this invents no more. It reads resources/characters/LINEAGE.md rather than the tree and
-  requires the fields section 10.2 obliges a port to record — upstream URL, the COMMIT, a
+  this invents no more. It fires when the character tree holds a PORT — a `licensed` row under
+  resources/characters/, a file that came from outside (card#11046: the tree is first-party since the
+  creatures, and a first-party tree owes no lineage). Then it reads resources/characters/LINEAGE.md
+  and requires the fields section 10.2 obliges a port to record — upstream URL, the COMMIT, a
   copyright line, the permission notice OF EVERY LICENCE THE CHARACTER TREE'S ROWS DECLARE
   reproduced in full, and what was deliberately not taken. That notice requirement runs the SAME
   check as the manifest's, over the same table: section 10.2 says the notice ships in both files,
@@ -773,9 +775,11 @@ def gate2(assets: list[str]) -> None:
 # upstream commit nobody recorded is a port nobody can tell from a fork.
 
 # The character tree is the LINEAGE CHECK's tree and, since card#7913, nothing else's. It used to
-# double as Gate 2's scope; that was the leftover card#7913 removed. Here it is load-bearing and
-# correct: the port is a fact about `resources/characters/` specifically, and a lineage file is
-# owed by a tree that was ported, not by every tree that holds assets.
+# double as Gate 2's scope; that was the leftover card#7913 removed. A lineage file is owed by a tree
+# that holds a PORT, not by every tree that holds assets — and since card#11046 not by the character
+# tree merely for existing either: the trigger is a `licensed` row under it (FLOOR section 10.2).
+# What that trigger gives up is stated there: a port written `first-party` with an in-repo URL passes
+# with no lineage file, and Gate 1's URL-against-origin check is the only machine catch left.
 CHARACTER_TREE = "resources/characters"
 LINEAGE = CHARACTER_TREE + "/LINEAGE.md"
 
@@ -798,6 +802,11 @@ COPYRIGHT_LINE_RE = re.compile(r"Copyright \(c\) \d{4}\s+\S")
 def lineage_check(assets: list[str], rows: dict[str, dict[str, str]]) -> None:
     if not any(a.startswith(CHARACTER_TREE + "/") for a in assets):
         notes.append(f"{LINEAGE}: no character tree — lineage check has nothing to read")
+        return
+    ports = sorted(rel for rel, r in rows.items()
+                   if rel.startswith(CHARACTER_TREE + "/") and r["origin"].strip("`").lower() == ORIGIN_LICENSED)
+    if not ports:
+        notes.append(f"{LINEAGE}: the character tree holds no port (no `licensed` row) — no lineage owed")
         return
     path = REPO / LINEAGE
     if not path.is_file():

@@ -83,6 +83,24 @@ its date, its decider and the scope of what it moved. The original row above sta
   is untouched and permanent, and nothing here widens the licence allowlist, which remains an
   operator decision taken separately.
 
+- **D-07 · the middle clause retired — operator, 2026-10-05 (card#11046).**
+  The 2026-08-27 append made the ported pixel generator's art interim. The operator then ruled that
+  every character is a cute animal or vegetable creature rather than a person, drawn at full
+  resolution rather than in a block style, and approved the creature design sheet the seat drew
+  from that ruling (card#11046 comments 9958 and 9963). **What moves:** the characters are original
+  animal and vegetable creatures (the operator's ruling). Three things follow from it and are the
+  maintainer's, not the operator's (FLOOR's decision 53): the creatures are drawn by first-party code as
+  SVG documents, the munder-difflin port leaves the tree whole, and the lineage check re-keys from the
+  character tree to a port in it — the port's retirement read file
+  by file in [`docs/design/FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code),
+  nothing of upstream's ships once FLOOR's Appendix B row 19 lands, so its lineage file and attribution
+  rows go with it. **What does NOT
+  move, and each is load-bearing:** the **first** clause (floor art from CC0 tilesets) is untouched;
+  the **last** clause (*the upstream's commercial tilesets are never vendored*) is untouched and
+  permanent; and appearance is still derived from `(install_id, seat_id)` through the seed module's
+  hash, which was first-party all along and stays. This append records the decision; the build that
+  carries it out is FLOOR's Appendix B row 19.
+
 - **D-08 · the target is named — operator, 2026-09-14.**
   D-08 reads *"App deploys to a **separate host** (operator provisions; target TBD)"*. The
   operator named the target on the 2026-09-14 Decision Docket: the production host is
