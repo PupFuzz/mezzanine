@@ -18,12 +18,13 @@ THE ARMS, AND WHY THEY ARE KEPT APART.
     adds a rule reds this arm for under-coverage instead of leaving it quietly incomplete.
   * § 2b UPSTREAM AI-ATTRIBUTION — the lines the operator's 2026-09-27 instruction forbids (the
     Claude Code model line this generator used to emit, a session link, a co-author trailer),
-    planted back into the body and judged by the newest cached coord linter (0.58.0 or later),
-    which has the `ai-attribution` rule the vendored copy does not yet carry. That linter is read
-    from the plugin cache (`CPB_UPSTREAM_LINT` overrides the path, and an override naming no file
-    FAILS) and is NOT vendored here, so where it is absent — a CI runner — the arm prints
-    `NOT RUN` by name instead of passing; § 4's whole-body pattern check still runs there. Once the
-    vendored copy carries the rule, § 2 drives the same mutations against it on every run.
+    planted back into the body and judged by the newest cached coord linter (0.58.0 or later).
+    The vendored copy carries the same `ai-attribution` rule since its coord 0.63.0 re-vendor
+    (card#10493), so § 2 drives these mutations against it on every run, CI included; this arm
+    is the second reading, against whichever coord release is newest on the machine running it.
+    That linter is read from the plugin cache (`CPB_UPSTREAM_LINT` overrides the path, and an
+    override naming no file FAILS) and is NOT vendored here, so where it is absent — a CI runner
+    — the arm prints `NOT RUN` by name instead of passing.
   * § 3 REFUSALS (rc 2) — the inputs the generator must decline instead of inventing. A
     generator that invents a `Built:` value produces a fabricated attestation, which is worse
     than the gap it fills, so the refusal is the behaviour under test and not an edge case.
@@ -167,6 +168,11 @@ def generate(work: Path, *extra: str) -> subprocess.CompletedProcess:
 
 
 def lint(body: str, linter: Path = LINT) -> tuple[int, dict]:
+    # NO `--title`, ON PURPOSE: with no title the linter judges the body as a RELEASE body, which
+    # runs EVERY rule it has — the release section set and scope line included. That is the verdict
+    # the `pr-body-lint` job's no-title step reaches on every change PR, and it covers the titled
+    # step's rules too. § 2's `scope-line` and `heading-not-allowed` mutations and § 5's house map
+    # only red under this one.
     proc = subprocess.run([sys.executable, str(linter), "--body-file=-", "--json"],
                           input=body, capture_output=True, text=True)
     if proc.returncode not in (0, 1):

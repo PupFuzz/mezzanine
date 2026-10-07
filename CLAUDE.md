@@ -801,17 +801,21 @@ old ones, so a run of it measures how far the ADOPTION has travelled and never h
 is. A red there blocks nothing: the job judges open PRs only. Judge a single body you are about to
 push with the second command below instead.
 
-### The standard binds a CHANGE PR too, and this is the shape it leaves
+### Mezzanine holds a change PR to the same allowed section set, by choice
 
-⛔ **DO NOT READ THE ALLOWED SET AS RELEASE-ONLY BECAUSE ITS EXAMPLES ARE RELEASE-SHAPED.** The
-question was settled by reading the standard rather than inferring it from the linter. § PR body's
-opening paragraph says it in one sentence — *"it governs **every** PR body an agent writes —
-feature, fix, docs, dependency, release"* — in the same breath as explaining that it lives in the
-release skill only because the release PR is the largest body the framework drafts. The sections a
-change PR has no use for are marked as such **in the standard's own IN table**: `Bundled` and
-`Release artifacts` both come from the row that reads `Release PRs only`, and no other admitted
-section carries that restriction. ⇒ The allowed set is an ALLOWLIST, never a required list —
-nothing obliges a change PR to carry a section — so what it leaves a PR into `dev` is exactly:
+⛔ **A CHANGE PR HERE IS HELD TO THE RELEASE SECTION SET AND SCOPE LINE, AND CI ENFORCES IT.** Since
+coord 0.63.0 (upstream card#10493), § PR body owns the shape of the PR whose title opens `release:`.
+It leaves a feature, fix, docs or dependency PR's shape to its repository, and the linter follows
+the title. **Mezzanine chooses the same allowed set for its change PRs** (seat ruling on #298:
+the gate stays as strict as it was before the re-vendor). The `pr-body-lint` job therefore judges a
+change PR's body twice. The first run passes the title, as upstream's workflow does, and applies
+the every-PR rules: banned openers, live-state readings, `Built:`, `**Coordinated in:**` and both
+attribution rules. The second run passes NO title, which is the linter's full release standard, so
+the closed section set and the scope line hold on every change PR as well. A `release:` PR gets
+the full standard from the first run. The OUT table binds every body. `bin/change-pr-body.py` emits
+the shape below, and `bin/change-pr-body.selftest.py` holds that skeleton to the same no-title
+verdict on every CI run. The allowed set is an ALLOWLIST, never a required list — nothing obliges a
+change PR to carry a section — so what it leaves a PR into `dev` is exactly:
 
 | Part | When |
 |---|---|
@@ -843,7 +847,8 @@ Everything this repository used to put in a body keeps its obligation and change
 -->
 
 ⚠ **The map's left column is not a closed list of what an author might invent** — the RULE is that
-any H2 outside the allowlist has a home outside the body, and the linter's finding names it. The
+any H2 outside the allowlist has a home outside the body, and the job's no-title run names it on
+every PR. The
 map covers the sections this repository actually used; re-derive that population from the merged
 bodies rather than trusting the column:
 
@@ -891,7 +896,9 @@ a body (release bodies especially — `release-pr-body` emits neither), put them
 a line window: put them anywhere outside a fenced block, in either the bold or the plain spelling.
 `built-line.md` owns the `Built:` value set.
 
-Read the verdict on a body before you push it, the same verdict the check will reach:
+Read the verdict on a body before you push it, the same verdict the check will reach. These
+commands pass no title on purpose: the no-title run applies every rule the titled run does and the
+section set besides, so one run reproduces both of the job's verdicts.
 
 ```
 gh api repos/PupFuzz/mezzanine/pulls/<N> --jq .body | python3 bin/pr-body-lint.py --body-file=-

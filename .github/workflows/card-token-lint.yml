@@ -7,7 +7,8 @@
 #                            requiring this context cannot merge past it. Whether a branch
 #                            requires it is a repository setting, read with the command below —
 #                            never from this file. The file keeps its name from this job.
-#   job `pr-body-lint`     — the PR's BODY, against the FLEET's PR-body standard (card#9767). A
+#   job `pr-body-lint`     — the PR's BODY, against the FLEET's PR-body standard (card#9767), the
+#                            release section set and scope line included on every PR. A
 #                            body with findings FAILS this job (card#9801), and so does a linter
 #                            run that could not judge the body. Its other steps judge the CHECKOUT
 #                            (vendored bytes, the linter's own controls, this repo's body
@@ -135,9 +136,11 @@ jobs:
         run: python3 bin/card-token-lint.py --branch="$HEAD_REF" --title="$PR_TITLE"
 
   # ── pr-body-lint (card#9767, blocking since card#9801) ───────────────────────────────────────
-  # WHAT IT DOES. Reads this PR's BODY, judges it against the fleet's PR-body standard with
-  # upstream's own linter, prints the whole verdict — and FAILS THE JOB when the body has findings,
-  # or when the linter could not judge the body at all. The pin and selftest steps below judge the
+  # WHAT IT DOES. Reads this PR's BODY and TITLE, judges the body against the fleet's PR-body
+  # standard with upstream's own linter — once with the title, as upstream runs it, and on a change
+  # PR once more with no title, which holds it to the release section set and scope line as well —
+  # prints each verdict, and FAILS THE JOB when the body has findings, or when the linter could not
+  # judge the body at all. The pin and selftest steps below judge the
   # CHECKOUT and red it as well, so a red here is about the body only when the body step is the one
   # that failed. `bin/pr-body-lint.py`'s docstring is the contract; the standard itself is
   # `skills/release-pr/SKILL.md § PR body` in a coord install, and neither is restated here.
@@ -195,8 +198,12 @@ jobs:
       # is byte-indistinguishable from a body that complies. It also re-asserts a pinned sha256 for
       # each fixture, which is what pins `bin/pr-body-lint-fixtures/` (there is no manifest row for
       # those — `bin/vendor-pin-check.sh`'s own header says why, and why this pin is the better one).
+      # `--workflow` names THIS file because the selftest's arm i reads the workflow that runs the
+      # lint and checks that it passes the PR title; upstream's default path is the plugin's own
+      # template layout, which this tree does not have (upstream card#10719). The vendored
+      # selftest's header owns the reason.
       - name: Self-test (upstream's red-then-green controls for every rule)
-        run: python3 bin/pr-body-lint.selftest.py
+        run: python3 bin/pr-body-lint.selftest.py --workflow .github/workflows/card-token-lint.yml
 
       # THE BODY IS READ FROM `env:`, NEVER `${{ }}` INSIDE `run:`, which is a script-injection
       # sink and a PR body is the most attacker-controlled text on the whole event. `--env` is the
@@ -218,14 +225,30 @@ jobs:
       # edited body and needs no new push. Observed, not assumed: on #209 a body edit at
       # 2026-09-22T00:27:56Z started a second run of this workflow on the SAME head SHA two seconds
       # later, with no push, retitle or reopen between them. Judge a body before pushing it with
-      # `python3 bin/pr-body-lint.py --body-file=<file>`, the same program this step runs.
+      # `python3 bin/pr-body-lint.py --body-file=<file>`, the same program this step runs; with no
+      # title it gives the strict verdict, which covers this step's and the next one's.
+      #
+      # ⛔ THE TITLE AND THE AUTHOR'S ACCOUNT TYPE COME THROUGH THE SAME `env:` DOOR, spelled as
+      # upstream's own workflow spells them (`templates/workflows/pr-body-lint.yml` in a coord
+      # install, which owns the reasoning). The TITLE decides which rules run: a title opening
+      # `release:` is judged by the full release standard, and every other PR by everything except
+      # the release section set and scope line. Drop it and every PR is judged as a release again,
+      # which the linter announces in this step's log. The AUTHOR TYPE is GitHub's own `User` |
+      # `Bot` | `Organization`, and a `Bot` PR is not asked for `Built:` / `**Coordinated in:**`;
+      # nothing else is waived. `edited` fires on a retitle too, so a PR retitled to or from a
+      # release is re-judged. The variable names are the ones `bin/pr-body-lint.selftest.py` arm i
+      # checks for in this file, which is why they carry upstream's `COORD_` prefix.
       - name: Judge this PR's body against the fleet standard (fails the job on findings)
+        id: body-titled
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          COORD_PR_TITLE: ${{ github.event.pull_request.title }}
+          COORD_PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
         run: |
           rc=0
-          python3 bin/pr-body-lint.py --env=PR_BODY --label="PR #$PR_NUMBER" || rc=$?
+          python3 bin/pr-body-lint.py --env=PR_BODY --label="PR #$PR_NUMBER" \
+            --title-env COORD_PR_TITLE --author-type-env COORD_PR_AUTHOR_TYPE || rc=$?
           echo
           case "$rc" in
             0) echo "pr-body-lint · rc=0 — this body meets the standard." ;;
@@ -238,6 +261,39 @@ jobs:
                echo "fault). No verdict was produced. This is a WIRING defect in this step, not a"
                echo "finding about the body, and a check that could not judge fails rather than"
                echo "passes. Editing the body does not fix it; the workflow or the linter does." ;;
+          esac
+          exit "$rc"
+
+      # ⛔ MEZZANINE HOLDS A CHANGE PR TO THE RELEASE SECTION SET TOO, AND THIS STEP IS WHAT ENFORCES
+      # IT (seat ruling on #298). The titled run above judges a change PR by the every-PR rules only,
+      # because upstream scopes the closed section set and the scope line to `release:` PRs. This
+      # repository keeps them for its change PRs by choice (`CLAUDE.md § PR bodies are judged
+      # against the fleet standard`), so a change PR's body is judged a second time with NO title,
+      # which is the linter's full release standard. A `release:` PR skips this step: the run above
+      # already gave it that judgement. GitHub's `startsWith` ignores letter case, as the linter
+      # does, but does not trim leading spaces; a title that differs only there gets this strict
+      # pass as well, which is the strict side.
+      # It runs only when the titled step RAN, whatever its verdict: that step runs only after the
+      # pin and the vendored selftest passed, so this verdict always comes from a verified linter,
+      # and an author with findings in both runs sees both in one log.
+      - name: Judge a change PR's body against the full section set (fails the job on findings)
+        if: ${{ !cancelled() && steps.body-titled.conclusion != 'skipped' && !startsWith(github.event.pull_request.title, 'release:') }}
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COORD_PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+        run: |
+          rc=0
+          python3 bin/pr-body-lint.py --env=PR_BODY --label="PR #$PR_NUMBER" \
+            --author-type-env COORD_PR_AUTHOR_TYPE || rc=$?
+          echo
+          case "$rc" in
+            0) echo "pr-body-lint (no title) · rc=0 — this body meets the full section set." ;;
+            1) echo "pr-body-lint (no title) · rc=1 — this job fails. Mezzanine holds a change PR to the"
+               echo "release section set and scope line; the findings above name what to move. Edit the"
+               echo "PR body to clear them. A traceback instead of findings is a linter crash." ;;
+            *) echo "pr-body-lint (no title) · rc=$rc — the linter could not judge this body: a WIRING"
+               echo "defect in this step, not a finding about the body." ;;
           esac
           exit "$rc"
 
