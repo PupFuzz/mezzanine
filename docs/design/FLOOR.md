@@ -5082,7 +5082,7 @@ theme draws INTO and never moves.
      cell of the contrast table below falls to 4.44:1 over the glow and 4.47:1 over the landing, under the bar
      by hundredths. On the shipped default the landing (about 72 px either side of the threshold and 26 px deep)
      and its glow (about 52 px deep) reach only into the top-left desk object's bubble band, its top 30 px, where
-     no chip and no bare text stands — every bare text begins at box y 36 and the chip's rect at box y 212 (`deskRects()`'s `chip.y`, the box's height less 16); that is measured by
+     no chip, no facts plate and no fact stands — the facts plate begins at box y 48 at the cap (card#11468; every fact on it lower), the one bare text, the *+N more* tag, at box y 190, and the chip's rect at box y 212 (`deskRects()`'s `chip.y`, the box's height less 16); that is measured by
      hand on the default's grid and held by no check. The chip tool reads `surfaces()` through
      one node step, `tools/floor-themes/surfaces.mjs`, which imports every theme the registry names and prints
      `{theme: {name: colour}}` as JSON on its standard output — the Python tool never parses a module. The house theme is **`studio`** — A2+C, below. Like the creature tree it is **pure, total and
@@ -5403,7 +5403,9 @@ different rows crosses whatever lies between them, and on the shipped default su
 desk's plate at the cap — the line from desk object 1 to desk object 5 crosses object 4's, measured on
 card#11468 by intersecting each pair's segment with every slot's plate at the cap. No anchor in the art column removes those — a plate is opaque
 like the art it sits beside, and a desk drawn over a line hides it there. Painting threads over plates would mean
-splitting the desk group across the line layer, which this change does not take on. A bubble stays off
+splitting the desk group across the line layer — the plates of every desk drawn under the lines, out of the desk's
+own group, its dimming and its click target — and would draw a line across the facts the plate holds, which reads
+worse than a line passing under it, so this change does not take it on. A bubble stays off
 every other desk's box by AT-D3-20 *(b)*, and that box includes the new art.
 
 - ⭐ **The 3 px where the creature and the monitor's frame overlap is ALLOWED, at x 51** (the brief's
@@ -7718,8 +7720,8 @@ and AT-D3-19's test and `TheFloorDrawsItsFrameTest` holding the failure leg's sc
 - **RED — a draw that is not the key's:** take one seeded choice from `Math.random()` → the identity leg names
   the document.
 - **Discriminating controls:** *(a)* the desk as § 10.6 lays it and the house theme as built pass every leg —
-  possible because no leg asks art and facts not to overlap, only that facts paint last and bare text stands on
-  the floor; *(b)* a genuinely complex document — the house floor, thousands of path commands — passes the
+  possible because no leg asks art and the art column's facts not to overlap, only that facts paint last and that
+  the facts column — since card#11468 its plate, the facts on it and the one bare text — meets no art; *(b)* a genuinely complex document — the house floor, thousands of path commands — passes the
   self-contained leg, so it is not satisfied by refusing every path; *(c)* a floor naming the house theme by
   name draws exactly what a floor naming none draws, so the selection half is not satisfied by a notice on every
   floor.
