@@ -1,4 +1,4 @@
-<!-- BEGIN coord:solo-orientation (synced from coord v0.61.0) -->
+<!-- BEGIN coord:solo-orientation (synced from coord v0.63.0) -->
 # Agent Board Framework — solo agent orientation
 
 > **⚠ Only two sections of this file reach a session automatically: `## Who you are` and
@@ -196,27 +196,20 @@ your repo too, and read a green as "the shape is right", never as "the audience 
 **Declare how you built it — the `Built:` line (card#4870).** Every PR body you open carries a
 REQUIRED one-line `Built:` field declaring how the work was produced — one of the legitimate values
 defined in `built-line.md`, which is **canonical for
-the value set and for the conditions on the restricted values**; read them there rather than
+the value set and for the rule that derives a value**; read them there rather than
 restating them. It is one of the machine-read, process-native lines the PR-body standard above
 explicitly preserves, so trimming a body never removes it. You are your own reviewer here, which is
 exactly why the field has to be right without one: nobody else will catch a wrong count.
 
-**Write the count when it is true, not when you open the PR** (the spec's *Durable store* rules).
-Put `Built: dispatched (coder ×N / mechanic ×M)` in the body **at PR creation**, and record any
-dispatch that lands before the PR exists on the **item's tracking issue or card** — the branch is
-pushed first and the PR opened after, so that issue/card (your install's stand-in for a coordination
-thread) is the store that exists when the count becomes true. Increment in the **same action** that
-records each later round of work. **Never reconstruct a count afterwards** from commits, worktrees,
-or transcripts: nothing in the tree records a dispatch — a worktree does not record how many
-contexts touched it, and a transcript is not the record for a branch — so a reassembled figure is a
-fabricated attestation, strictly worse than the gap it fills, because a gap is visible and a
-plausible number is not. You are the dispatching seat for everything you push and there is no other
-seat to ask, so record the count at the dispatch and no gap opens on a branch you built unless you
-miss that increment — a process miss you name, never repair by reconstructing. The narrow
-conditions under which `Built: unattestable — <reason>` is legitimate at all are owned by the
-`built-line.md` — **read them there rather than from a copy here.** Note only that they are
-written for installs with several seats, so any of them that turn on a *different* seat simply never
-arise on yours.
+**Write the count when it is true, not when you open the PR.** You are the dispatching seat for
+everything you push and there is no other seat to ask, so record the count at the dispatch — on
+the item's tracking issue or card, your install's stand-in for a coordination thread, until the PR
+exists — complete that record when the dispatch returns, and never reconstruct it afterwards: a
+miss is a process miss you name, never one you repair. Which stores qualify, what completing one
+means, and how a missed leg is stated are owned by `built-line.md` § *Durable store* and § *The
+rule* — **read them there rather than from a copy here.** The rule also names any other party a
+record shows worked your branch — your operator's hand commit is the case on a solo install — so it
+applies unchanged.
 
 **Cut releases via the `coord:release-pr` skill** — it walks the release-pattern checklist
 (version bump, CHANGELOG entry, "recent changes" doc row, SBOM regeneration, PR title,
@@ -247,8 +240,8 @@ merge-button intent) using each repo's own conventions. Use it whenever cutting 
   production gate; never self-merge them.
 - **Hard-gate changes** (error handling / validation rules / business-logic flow / permissive
   "fixes" / destructive DB / safety-critical / regulated surfaces / anything
-  irreversible or outward-facing) → **ask your human before proceeding** (see § Ask-first
-  gates below). On their go-ahead you implement and self-merge the integration PR; the
+  irreversible or outward-facing / a new mechanism's design) → **ask your human before
+  proceeding** (see § Ask-first gates below). On their go-ahead you implement and self-merge the integration PR; the
   change still reaches prod only through the user-gated release.
 
 ---
@@ -379,13 +372,20 @@ action.
   - **Isolated hard reasoning** (a gnarly algorithm, a security analysis) that doesn't need
     your session history → the **`coder`** (top tier). You pay the premium only on a small
     fresh context, not on your whole accreted session.
+  - **A DESIGN rather than code** (a design document, an implementation plan, an amendment to
+    a ratified doc) → the **`designer`**, whose tier your install picks separately
+    (`docs/MODEL-TIERING.md` § The design tier) and which can read a cited external spec at its
+    source. It writes the design; implementing it is a separate `coder` dispatch — and it gets its
+    own `Built:` slot, the three-slot form `built-line.md` owns.
 
 **Verifier ≥ producer for judgment calls.** When a subagent's output is *judgment-based* and
 a tool can't check it (is this design sound? is this analysis complete?), the verifier must
 be peer-tier with the producer — judge it yourself only if you are at that tier, otherwise
 spawn a peer-tier reviewer subagent. Never let a cheaper seat rubber-stamp reasoning it can't
 actually check. (When the check *is* mechanical, tier doesn't matter — the tool is the
-verifier.)
+verifier.) A producer ABOVE the review ceiling — the `designer` on its default pin — is the one
+exception, and who may review its work is owned by `docs/MODEL-TIERING.md` § The design tier;
+follow it there.
 
 **Non-trivial coding is dispatched because your human asked for it (card#4870, card#5937).** The
 authorization is **not** this section and **not** framework policy: your human granted it by running
@@ -457,6 +457,8 @@ go, or the action is hard-gate, surface it and wait.
 - Production release / deploy.
 - Safety-critical or regulated surfaces.
 - Anything irreversible or outward-facing (external sends, force-push, permanent deletes).
+- A new mechanism: its design goes to your human as an operator decision before any build
+  (`USER-GATING.md § 2g` owns the rule).
 
 **Capture is never gated** (canon #2 carves this out explicitly; whether a finding also earns an
 ITEM is #18's mint gate, a different question). Routing a capture to your human as a question is
@@ -464,7 +466,8 @@ itself a defect — record it, then tell them what you recorded.
 
 **What you do NOT gate on (obvious next step → just do it):**
 
-- Routine implementation work within your current tasking.
+- Routine implementation work within your current tasking. A new mechanism is not routine
+  (`USER-GATING.md § 2g`).
 - Self-merging a routine integration PR (your normal merge authority, above).
 - Pulling the next board item when the current one is done.
 - An obvious non-choice where both paths must happen anyway.
