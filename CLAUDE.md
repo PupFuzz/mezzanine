@@ -788,10 +788,11 @@ here** — a count of failing merged bodies is false at the next merge and nothi
 it:
 
 ```
-gh pr list --repo PupFuzz/mezzanine --state merged --limit 20 --jq '.[].number' --json number |
-while read -r n; do
+gh pr list --repo PupFuzz/mezzanine --state merged --limit 20 --json number,title \
+  --jq '.[] | [.number, .title] | @tsv' |
+while IFS=$'\t' read -r n t; do
   gh api "repos/PupFuzz/mezzanine/pulls/$n" --jq .body |
-    python3 bin/pr-body-lint.py --body-file=- --label="#$n" >/dev/null || echo "#$n FAILS"
+    python3 bin/pr-body-lint.py --body-file=- --title="$t" --label="#$n" >/dev/null || echo "#$n FAILS"
 done
 ```
 
@@ -801,17 +802,21 @@ old ones, so a run of it measures how far the ADOPTION has travelled and never h
 is. A red there blocks nothing: the job judges open PRs only. Judge a single body you are about to
 push with the second command below instead.
 
-### The standard binds a CHANGE PR too, and this is the shape it leaves
+### A change PR takes the release standard's shape here, by this repository's choice
 
-⛔ **DO NOT READ THE ALLOWED SET AS RELEASE-ONLY BECAUSE ITS EXAMPLES ARE RELEASE-SHAPED.** The
-question was settled by reading the standard rather than inferring it from the linter. § PR body's
-opening paragraph says it in one sentence — *"it governs **every** PR body an agent writes —
-feature, fix, docs, dependency, release"* — in the same breath as explaining that it lives in the
-release skill only because the release PR is the largest body the framework drafts. The sections a
-change PR has no use for are marked as such **in the standard's own IN table**: `Bundled` and
-`Release artifacts` both come from the row that reads `Release PRs only`, and no other admitted
-section carries that restriction. ⇒ The allowed set is an ALLOWLIST, never a required list —
-nothing obliges a change PR to carry a section — so what it leaves a PR into `dev` is exactly:
+⛔ **THE STANDARD'S SECTION SET IS THE RELEASE BODY'S, AND THE CHECK APPLIES IT TO RELEASE PRs ONLY.**
+Since coord 0.63.0 (upstream card#10493) § PR body owns the shape of the PR whose title opens
+`release:`, and says a feature, fix, docs or dependency PR's shape is its repository's own; the
+linter follows the title. The `pr-body-lint` job passes the PR title, so a `release:` PR is held to
+the closed section set and the scope line, and every PR — release or change — is held to the banned
+openers, the live-state readings, `Built:`, `**Coordinated in:**` and both attribution rules. The
+OUT table binds every body. **This repository takes the release standard's IN table as its
+change-PR shape** — the standard names it as the model for a repository without a shape of its own
+— so the shape below is what `bin/change-pr-body.py` emits, and `bin/change-pr-body.selftest.py`
+holds that skeleton to the release-strict verdict on every CI run. On a change PR, keeping a house
+heading out of the body is the generator's and the author's job; the body step judges a change PR
+by the every-PR rules. The allowed set is an ALLOWLIST, never a required list — nothing obliges a
+change PR to carry a section — so what it leaves a PR into `dev` is exactly:
 
 | Part | When |
 |---|---|
@@ -843,7 +848,8 @@ Everything this repository used to put in a body keeps its obligation and change
 -->
 
 ⚠ **The map's left column is not a closed list of what an author might invent** — the RULE is that
-any H2 outside the allowlist has a home outside the body, and the linter's finding names it. The
+any H2 outside the allowlist has a home outside the body, and the linter names it whenever it
+judges a body as a release (a title opening `release:`, or no `--title` at all). The
 map covers the sections this repository actually used; re-derive that population from the merged
 bodies rather than trusting the column:
 
@@ -864,7 +870,7 @@ class here until `bin/change-pr-body.py` (card#9801). Use it, then fill the mark
 python3 bin/change-pr-body.py \
   --built 'dispatched (coder ×N / mechanic ×M)' --coordinated-in 'card#NNNN' \
   > /tmp/body.md                                          # add --upgrade-warnings only if needed
-python3 bin/pr-body-lint.py --body-file /tmp/body.md      # must be rc 0 BEFORE `gh pr create`
+python3 bin/pr-body-lint.py --body-file /tmp/body.md --title="<the PR title>"   # rc 0 BEFORE `gh pr create`
 ```
 
 It refuses rather than guessing: `--built` and `--coordinated-in` are required (a count nothing
@@ -894,7 +900,8 @@ a line window: put them anywhere outside a fenced block, in either the bold or t
 Read the verdict on a body before you push it, the same verdict the check will reach:
 
 ```
-gh api repos/PupFuzz/mezzanine/pulls/<N> --jq .body | python3 bin/pr-body-lint.py --body-file=-
+gh api repos/PupFuzz/mezzanine/pulls/<N> --jq .body |
+  python3 bin/pr-body-lint.py --body-file=- --title="$(gh api repos/PupFuzz/mezzanine/pulls/<N> --jq .title)"
 ```
 
 ## Burn-down

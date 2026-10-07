@@ -331,7 +331,7 @@ def main(argv: list[str]) -> int:
         "  * `--built` / `--coordinated-in` are written VERBATIM; the lint below is what\n"
         "    judges the body you actually push.\n"
         "  * read it back as the person INSTALLING this, then judge it:\n"
-        "      python3 bin/pr-body-lint.py --body-file <the body file>\n"
+        "      python3 bin/pr-body-lint.py --body-file <the body file> --title \"<the PR title>\"\n"
         % (base_ref, base_tip, merge_base[:12], AUTHOR_MARK))
     return 0
 
