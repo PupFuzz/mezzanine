@@ -80,8 +80,8 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST=(
   "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|8ce23f47b6761e6f2f712e0fce52a66ab2fd4ed1bf97c86671ff26598ad63657"
   "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|e9f6f87704f14541c2e194c926d0b0a44399f858b31cbdf607605648fcc53cf5"
-  "bin/pr-body-lint.py|coord 0.54.0 @ 2d6f7f0e549381184709c7ea7f3036f753f37fc6|7bcc6612fba86837e9ead44be9d44f8263bb7c145e415f5466c116dfbfe565ee"
-  "bin/pr-body-lint.selftest.py|coord 0.54.0 @ 2d6f7f0e549381184709c7ea7f3036f753f37fc6|73e3f5bd695280d7e7557e37b18e4a88a7e91fa2caf16c447362cca79239fa07"
+  "bin/pr-body-lint.py|coord 0.63.0 @ 239712e97fb685ac8ea7fdb18d69dc338d5ac8e8|ec258eea827108fced25178d6918cf023699d0a4802c79450125d8a851d3bc93"
+  "bin/pr-body-lint.selftest.py|coord 0.63.0 @ 239712e97fb685ac8ea7fdb18d69dc338d5ac8e8|949de7e303165e569958508e06f6381aba8a61114d18d7670ba8f52164f588f4"
 )
 
 # --- The declared local edits: <repo-relative path>|<what the site is>|<unbroken fragment>
