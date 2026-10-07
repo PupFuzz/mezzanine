@@ -281,7 +281,8 @@ export const DRAWN_MEMBERS = Object.freeze({
     side_table: ['side-table', 'stool', 'stool-more'],
     bubble: ['bubble'],
     held: ['character'],
-    unconfirmed: ['chair'],
+    // Drawn on the chip's hollow dashed form; the desk's dimming is the group's lighting class (FLOOR.md decision 63).
+    unconfirmed: ['chip'],
 });
 
 /**
