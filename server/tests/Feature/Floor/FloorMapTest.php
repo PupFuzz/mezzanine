@@ -133,7 +133,7 @@ class FloorMapTest extends TestCase
 
     public function test_a_projection_other_than_orthogonal_is_refused_by_name(): void
     {
-        // § 10.3: the floor is an ELEVATION drawn from the tileset's `Side/` renders. An isometric
+        // § 10.3: the floor is drawn under one projection over an orthogonal grid. An isometric
         // map is a different projection, and drawing it flat would be the renderer inventing what
         // the author meant.
         $this->refuses(FloorMapFixture::isometric(), 'declares the orientation `isometric`');
@@ -335,7 +335,7 @@ class FloorMapTest extends TestCase
     {
         // THE CONTROL for the two arms above — without it they would both pass against a resolver
         // that refused every path.
-        $this->assertNotNull(FloorAssets::resolve('tiles/furniture-kit.tsx'));
+        $this->assertNotNull(FloorAssets::resolve('tiles/floor-plane.tsx'));
         $this->assertNull(FloorAssets::resolve('tiles/nobody-vendored-this.tsx'));
     }
 

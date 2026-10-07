@@ -7,8 +7,10 @@ use Tests\TestCase;
 
 /**
  * **The floor draws its frame — around and under any map, never over an author's grid.** card#11045
- * PR-D: `docs/design/FLOOR.md` § 4.2's frame list, § 9 F13's wrapping bench, § 10.4's room theme and
- * AT-D3-20's clock clause, read from the scene's emitted rects.
+ * PR-D: `docs/design/FLOOR.md` § 4.2's frame list, § 9 F13's wrapping bench and AT-D3-20's clock clause,
+ * read from the scene's emitted rects; and since card#11046 (Appendix B row 22) the frame's plane under
+ * EVERY grid — each room's and the hallway's — which the floor's theme draws (§ 10.6), AT-D3-25's band leg
+ * for the planned floor.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE RUNS ARE THE ROOM SHAPES A CONFIGURABLE PLAN PRODUCES (`fixtures/fx-frame.json`): the smallest
@@ -62,7 +64,7 @@ class TheFloorDrawsItsFrameTest extends TestCase
 
     /**
      * The band's parts in their places: the elevator and the clock inside the reserved zone, every window
-     * and sill on the wall past it, the slab under the floor — and NOTHING the frame draws over an author's
+     * and its surround on the wall past it, the slab under the floor — and NOTHING the frame draws over an author's
      * grid (a room's footprint or the hallway's): each room's plane is exactly its own grid, under its tiles.
      */
     public function test_green_the_frame_stands_around_and_under_every_map_and_over_no_authors_grid(): void
@@ -85,22 +87,6 @@ class TheFloorDrawsItsFrameTest extends TestCase
         }
 
         $this->assertSame([], $this->sweepDefects());
-    }
-
-    /** Each room's plane takes its seeded theme — `fnv1a32(install_id) mod 4` over § 10.4's four. */
-    public function test_green_each_room_takes_its_own_seeded_theme(): void
-    {
-        $scene = $this->sceneOf(self::PLANNED);
-
-        $this->assertSame([], $this->themeDefects($scene));
-        $this->assertNotSame($scene['planes'][0]['theme'], $scene['planes'][1]['theme'],
-            'the two rooms of the planned run take one theme, so a theme keyed on anything but the room would pass here');
-    }
-
-    /** Every theme keeps the scene's ink at least as legible as oak, the default, on both ends of its shade. */
-    public function test_green_every_theme_keeps_the_desk_text_as_legible_as_the_default(): void
-    {
-        $this->assertSame([], $this->contrastDefects($this->sheet()));
     }
 
     /**
@@ -167,7 +153,7 @@ class TheFloorDrawsItsFrameTest extends TestCase
             'the band' => ['export const BAND_H = 160;', 'export const BAND_H = 161;'],
             'the zone' => ['const ZONE_W = 272;', 'const ZONE_W = 273;'],
             'the pitch' => ['pitch: 360,', 'pitch: 361,'],
-            'the glazing' => ['h: 124, dy: 16,', 'h: 125, dy: 16,'],
+            'the glazing' => ['h: 80, dy: 22 };', 'h: 81, dy: 22 };'],
         ] as $what => [$from, $to]) {
             $this->assertSame(1, substr_count($scene, $from), "the control's anchor for {$what} is not in scene.js exactly once");
             $this->assertNotSame([], $this->figureDefects($md, str_replace($from, $to, $scene)), "RED ({$what} moved in scene.js alone) did not bite");
@@ -215,8 +201,8 @@ class TheFloorDrawsItsFrameTest extends TestCase
     public function test_red_a_plane_drawn_over_the_band(): void
     {
         $dir = $this->mutatedModules(['../floor/scene.js',
-            'planes.push(Object.freeze({ install_id: installId, x: f.x, y: f.y, w: f.width, h: f.height,',
-            'planes.push(Object.freeze({ install_id: installId, x: f.x, y: f.y - BAND_H, w: f.width, h: f.height + BAND_H,']);
+            "            y: extent.y,\n            w: extent.w,\n            h: extent.h,\n            doc:",
+            "            y: extent.y - BAND_H,\n            w: extent.w,\n            h: extent.h + BAND_H,\n            doc:"]);
         $result = $this->floorRun(self::PLANNED, $dir);
 
         $this->assertNotSame([], $this->frameDefects($this->lastScene($result, self::PLANNED), $this->lastFloor($result)),
@@ -226,8 +212,8 @@ class TheFloorDrawsItsFrameTest extends TestCase
     public function test_red_a_plane_for_the_mapless_room(): void
     {
         $dir = $this->mutatedModules(['../floor/scene.js',
-            "        if (!room.mapless && map !== null) {\n            if (room.footprint !== null) {",
-            "        if (room.footprint !== null || room.mapless) {\n            planes.push(Object.freeze({ install_id: installId, x: room.origin.x, y: room.origin.y, w: 440, h: 228, theme: 'oak' }));\n        }\n\n        if (!room.mapless && map !== null) {\n            if (room.footprint !== null) {"]);
+            "        if (!room.mapless && map !== null && room.footprint !== null) {\n            grids.push({ install_id: installId, map, origin: room.origin, seed: installId, footprint: room.footprint });\n        }",
+            "        if (!room.mapless && map !== null && room.footprint !== null) {\n            grids.push({ install_id: installId, map, origin: room.origin, seed: installId, footprint: room.footprint });\n        } else if (room.mapless) {\n            grids.push({ install_id: installId, map: { orientation: 'orthogonal', width: 55, height: 29, tilewidth: 8, tileheight: 8, layers: [] }, origin: room.origin, seed: installId, footprint: { x: room.origin.x, y: room.origin.y, width: 440, height: 232 } });\n        }"]);
         $result = $this->floorRun(self::MAPLESS, $dir);
 
         $this->assertNotSame([], $this->frameDefects($this->lastScene($result, self::MAPLESS), $this->lastFloor($result)),
@@ -243,32 +229,21 @@ class TheFloorDrawsItsFrameTest extends TestCase
             'RED (the slab over the grid) did not bite');
     }
 
-    /** The back corner's end post (option B) stood on the floor line instead of up the band — over the room's grid. */
-    public function test_red_an_end_post_planted_over_the_grid(): void
+    /**
+     * AT-D3-25's band leg, its planned-floor half (card#11046): every grid of the planned floor draws a plane,
+     * the hallway's included — the hallway's planks retired at row 22, so a hallway with no plane would be the
+     * drawing's dark ground under the corridor.
+     */
+    public function test_red_no_plane_for_the_hallway(): void
     {
         $dir = $this->mutatedModules(['../floor/scene.js',
-            'Object.freeze({ x: span.x, y, w: SLAB_H, h: BAND_H }),', 'Object.freeze({ x: span.x, y: floor, w: SLAB_H, h: BAND_H }),']);
-        $result = $this->floorRun(self::SPARSE, $dir);
-        $defects = $this->frameDefects($this->lastScene($result, self::SPARSE), $this->lastFloor($result));
+            "        grids.push({ install_id: null, map: input.hallway, origin: { x: 0, y: 0 }, seed: frame.floor.key });",
+            "        void 0;"]);
+        $result = $this->floorRun(self::PLANNED, $dir);
+        $defects = $this->frameDefects($this->lastScene($result, self::PLANNED), $this->lastFloor($result));
 
-        $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_contains($d, 'end post sits over')),
-            'RED (an end post over the grid) did not fail the over-a-grid clause: '.json_encode($defects));
-    }
-
-    public function test_red_a_theme_keyed_on_the_floor_and_not_the_room(): void
-    {
-        $dir = $this->mutatedModules(['../floor/scene.js', 'theme: roomTheme(installId) }));', 'theme: roomTheme(frame.floor.key) }));']);
-
-        $this->assertNotSame([], $this->themeDefects($this->sceneOf(self::PLANNED, $dir)), 'RED (the floor\'s theme on every room) did not bite');
-    }
-
-    public function test_red_a_theme_too_dark_for_the_desk_text(): void
-    {
-        $sheet = $this->sheet();
-        $dark = (string) preg_replace('/--room-walnut-2:\s*#[0-9a-f]{6};/i', '--room-walnut-2: #5a3d2b;', $sheet);
-
-        $this->assertNotSame($sheet, $dark, 'the contrast control\'s anchor is gone — it mutated nothing');
-        $this->assertNotSame([], $this->contrastDefects($dark), 'RED (a theme too dark for the desk text) did not bite');
+        $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_contains($d, 'the hallway')),
+            'RED (no plane for the hallway) did not name the grid: '.json_encode($defects));
     }
 
     /** The card#11058 design's dark `offline` grey, which the chip's word cannot be read on. */
@@ -304,7 +279,7 @@ class TheFloorDrawsItsFrameTest extends TestCase
                 const spare = objects[free];
 
                 desks.push(placeDesk(model, `${d.key}/spare`, installId, null, { x: room.origin.x + spare.x, y: room.origin.y + spare.y }, {
-                    box, measure: input.measure, character: input.character, sprite, placeholder: true, failed,
+                    box, measure: input.measure, character: input.character, theme: null, placeholder: true, failed,
                 }, { overflow: false, slot: free, object_id: spare.id }));
             }
 JS;
@@ -368,8 +343,20 @@ JS;
             }
         }
 
-        // Each plane: exactly its own room's grid, for every room whose map is drawn, and no other room's.
-        $planes = array_column($scene['planes'], null, 'install_id');
+        // Each plane: exactly its own room's grid, for every room whose map is drawn, and no other room's —
+        // and on a planned floor, the hallway's: one plane exactly its grid, the first drawn.
+        $hallways = array_values(array_filter($scene['planes'], fn (array $p): bool => $p['install_id'] === null));
+        $planes = array_column(array_filter($scene['planes'], fn (array $p): bool => $p['install_id'] !== null), null, 'install_id');
+
+        if ($frame['hallway'] !== null) {
+            $grid = ['x' => 0, 'y' => 0, 'w' => $frame['hallway']['pixel_width'], 'h' => $frame['hallway']['pixel_height']];
+
+            if (count($hallways) !== 1 || array_intersect_key($hallways[0], $grid) !== $grid || $scene['planes'][0]['install_id'] !== null) {
+                $defects[] = 'the hallway has no plane exactly its grid, drawn first';
+            }
+        } elseif ($hallways !== []) {
+            $defects[] = 'a floor with no hallway draws a hallway plane';
+        }
 
         foreach ($frame['rooms'] as $room) {
             $drawn = ! $room['mapless'] && $room['footprint'] !== null;
@@ -384,14 +371,14 @@ JS;
             }
         }
 
-        if (count($planes) !== count($scene['planes'])) {
+        if (count($planes) + count($hallways) !== count($scene['planes'])) {
             $defects[] = 'a room has two planes';
         }
 
-        // The planes come in the frame's draw order, so the painter puts each under its own room's tiles.
-        $order = array_values(array_intersect($frame['draw_order'], array_keys($planes)));
+        // The planes come in the frame's draw order, so the painter puts each under its own room's scenery.
+        $order = array_values(array_intersect($frame['draw_order'], array_map('strval', array_keys($planes))));
 
-        if (array_column($scene['planes'], 'install_id') !== $order) {
+        if (array_values(array_filter(array_column($scene['planes'], 'install_id'), fn ($id) => $id !== null)) !== $order) {
             $defects[] = 'the planes are not in the floor\'s draw order';
         }
 
@@ -400,7 +387,7 @@ JS;
 
     /**
      * One band's own parts in their places: the elevator and the clock inside the reserved zone, each window
-     * and sill on the wall past the zone and inside the band, the windows pairwise apart.
+     * glazing past the zone, each surround inside the band, the windows pairwise apart.
      *
      * @return list<string>
      */
@@ -420,37 +407,26 @@ JS;
             }
         }
 
-        // The end posts (§ 4.2, the operator's ruling of 2026-10-04 on the back corner, option B): one up each
-        // end of the band, its full height — the side walls' end faces rising to the back wall's.
-        $posts = $band['posts'] ?? [];
-
-        if (count($posts) !== 2) {
-            $defects[] = "at width {$band['w']} the band draws ".count($posts).' end post(s), not one at each end';
-        } else {
-            foreach (['left' => $posts[0], 'right' => $posts[1]] as $end => $post) {
-                if (! $this->inside($post, $wall) || $post['y'] !== $band['y'] || $post['h'] !== $band['h']) {
-                    $defects[] = "at width {$band['w']} the {$end} end post does not stand the band's height inside its span";
-                }
-            }
-
-            if ($posts[0]['x'] !== $band['x'] || $posts[1]['x'] + $posts[1]['w'] !== $band['x'] + $band['w']) {
-                $defects[] = "at width {$band['w']} the end posts do not stand at the band's two ends";
-            }
+        // The elevator's surround — the frame the floor's theme draws (§ 10.6) — stays on the wall too.
+        if (! $this->inside($band['elevator']['surround'], $zone)) {
+            $defects[] = "at width {$band['w']} the elevator's surround is not inside the reserved zone";
         }
 
+        // Each window's GLAZING stays past the zone (its surround may reach into it, clear of the clock — the
+        // clock clause holds that); glazing and surround stay on the wall, and no two windows meet.
         foreach ($band['windows'] as $i => $window) {
-            foreach (['window' => $window, 'sill' => $window['sill']] as $part => $rect) {
-                if ($rect['x'] < $zone['x'] + $zone['w']) {
-                    $defects[] = "at width {$band['w']} {$part} {$i} enters the reserved zone";
-                }
+            if ($window['x'] < $zone['x'] + $zone['w']) {
+                $defects[] = "at width {$band['w']} window {$i} enters the reserved zone";
+            }
 
+            foreach (['window' => $window, 'surround' => $window['surround']] as $part => $rect) {
                 if (! $this->inside($rect, $wall)) {
                     $defects[] = "at width {$band['w']} {$part} {$i} leaves the wall";
                 }
             }
 
             foreach (array_slice($band['windows'], $i + 1) as $j => $other) {
-                if ($this->intersect($window['sill'], $other['sill']) || $this->intersect($window, $other)) {
+                if ($this->intersect($window['surround'], $other['surround']) || $this->intersect($window, $other)) {
                     $defects[] = "at width {$band['w']} windows {$i} and ".($i + 1 + $j).' meet';
                 }
             }
@@ -463,17 +439,13 @@ JS;
     private function bandParts(array $band): array
     {
         $parts = [
-            'the wall\'s skirting' => $band['skirting'],
             'the elevator' => $band['elevator']['frame'],
+            'the elevator\'s surround' => $band['elevator']['surround'],
         ];
-
-        foreach (array_values($band['posts'] ?? []) as $i => $post) {
-            $parts[$i === 0 ? 'the left end post' : ($i === 1 ? 'the right end post' : "end post {$i}")] = $post;
-        }
 
         foreach ($band['windows'] as $i => $window) {
             $parts["window {$i}"] = $window;
-            $parts["window {$i}'s sill"] = $window['sill'];
+            $parts["window {$i}'s surround"] = $window['surround'];
         }
 
         return array_map(fn (array $r): array => ['x' => $r['x'], 'y' => $r['y'], 'w' => $r['w'], 'h' => $r['h']], $parts);
@@ -501,8 +473,8 @@ JS;
             $population['the slab'] = $scene['slab'];
         }
 
-        foreach ($scene['tiles'] as $i => $tile) {
-            $population["tile {$i} ({$tile['image']})"] = $tile;
+        foreach ($scene['scenery'] as $i => $piece) {
+            $population["scenery piece {$i} ({$piece['kind']})"] = $piece;
         }
 
         foreach ($scene['desks'] as $desk) {
@@ -553,7 +525,7 @@ JS;
                 $defects[] = "at width {$width} the band is narrower than its span";
             }
 
-            foreach ([...$this->bandDefects($band), ...$this->clockDefects(['band' => $band, 'planes' => [], 'slab' => null, 'tiles' => [], 'desks' => [], 'strip' => null])] as $defect) {
+            foreach ([...$this->bandDefects($band), ...$this->clockDefects(['band' => $band, 'planes' => [], 'slab' => null, 'scenery' => [], 'desks' => [], 'strip' => null])] as $defect) {
                 $defects[] = "{$defect} (span {$width})";
             }
 
@@ -569,55 +541,6 @@ JS;
         }
 
         return array_slice($defects, 0, 20);
-    }
-
-    /** @return list<string> */
-    private function themeDefects(array $scene): array
-    {
-        $this->assertSame(1, preg_match('/export const ROOM_THEMES = Object\.freeze\(\[([^\]]*)\]\);/',
-            (string) file_get_contents($this->jsRoot().'/floor/scene.js'), $m), 'scene.js\'s ROOM_THEMES did not parse');
-        preg_match_all("/'([a-z]+)'/", $m[1], $names);
-        $themes = $names[1];
-        $defects = [];
-
-        $this->assertNotSame([], $scene['planes'], 'the scene drew no plane — the theme check would read nothing');
-
-        foreach ($scene['planes'] as $plane) {
-            $expected = $themes[$this->fnv1a32($plane['install_id']) % count($themes)];
-
-            if ($plane['theme'] !== $expected) {
-                $defects[] = "{$plane['install_id']}'s plane is `{$plane['theme']}`, not its seeded `{$expected}`";
-            }
-        }
-
-        return $defects;
-    }
-
-    /** @return list<string> */
-    private function contrastDefects(string $sheet): array
-    {
-        $root = $this->rootBlock($sheet);
-        $tokens = $this->tokensOf($root);
-        preg_match_all('/^\s*--room-([a-z]+):/m', $root, $themes);
-
-        $this->assertContains('oak', $themes[1], 'the sheet declares no oak theme — the default every theme is held to');
-        $this->assertCount(4, array_unique($themes[1]), 'the sheet does not declare the four room themes');
-
-        $ink = $tokens['scene-ink'];
-        $floor = [$this->contrast($ink, $tokens['room-oak']), $this->contrast($ink, $tokens['room-oak-2'])];
-        $defects = [];
-
-        foreach (array_unique($themes[1]) as $theme) {
-            foreach (['' => 0, '-2' => 1] as $suffix => $end) {
-                $ratio = $this->contrast($ink, $tokens["room-{$theme}{$suffix}"]);
-
-                if ($ratio < $floor[$end] - 0.005) {
-                    $defects[] = sprintf('--room-%s%s holds the scene\'s ink at %.2f:1, under oak\'s %.2f:1', $theme, $suffix, $ratio, $floor[$end]);
-                }
-            }
-        }
-
-        return $defects;
     }
 
     /** @return list<string> */

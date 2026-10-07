@@ -50,7 +50,7 @@ class TheFloorResolvesItsThemeTest extends TestCase
 
     public function test_red_the_silent_substitute(): void
     {
-        $dir = $this->mutatedModules(['../floor/scene.js', 'if (resolved.notice !== null) {', 'if (false) {']);
+        $dir = $this->mutatedModules(['../floor/scene.js', 'if (theme.notice !== null) {', 'if (false) {']);
 
         [, $frame] = $this->themed('nowhere', $dir);
 

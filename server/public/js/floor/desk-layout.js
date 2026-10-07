@@ -355,9 +355,10 @@ export const NOT_DRAWN_MEMBERS = Object.freeze({
  * hatch is over the art and the chip, and the plate is above the hatch.
  *
  * @param {object} desk one desk model (`desk/desk-render.js`'s `deskModel()`)
- * @param {object} ctx `{ box: {width, height}, measure, character: {w, h}, sprite: {url, w, h}|null,
- *        placeholder: boolean, failed: Set<string> }` — `placeholder` is § 9 F14's: every fact, no art;
- *        `failed` the asset ids the painter reported, which an intern's sprite is looked up in
+ * @param {object} ctx `{ box: {width, height}, measure, character: {w, h}, theme: string|null,
+ *        placeholder: boolean, failed: Set<string> }` — `theme` the floor's theme that draws the furniture
+ *        set; `placeholder` is § 9 F14's: every fact, no art; `failed` the asset ids the painter reported,
+ *        which an intern's sprite is looked up in
  * @returns {{elements: list<object>, bubble: object|null}}
  */
 export function deskLayout(desk, ctx) {
@@ -394,27 +395,35 @@ export function deskLayout(desk, ctx) {
     if (ctx.placeholder) {
         rect('placeholder', null, R.placeholder);
     } else {
+        // § 10.6 item 8: the desk's FURNITURE SET — one theme document per art element, each at its rect, all
+        // drawn or none (the painter generates the set before it emits any), reported under one asset id.
+        const key = { install_id: desk.install_id, seat_id: desk.seat_id };
+        const set = furnitureAsset(ctx.theme, desk);
+        const doc = (fn, input = key) => ({ set, theme: ctx.theme, fn, input });
+
         // § 10.6: the chair stands behind every creature; with nobody in it, it is § 7.1's empty chair —
         // an absence, never a sleeper (§ 7.5).
-        rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed, occupied: desk.character });
+        rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed, occupied: desk.character, doc: doc('chair') });
 
         if (desk.character) {
             rect('character', 'character', R.character, { asset: characterAsset(desk), pose: desk.pose, animation: desk.held });
         }
 
-        rect('desk-sprite', 'lighting', R['desk-sprite'], { asset: ctx.sprite?.url ?? null, lighting: desk.lighting });
-        rect('monitor-frame', 'monitor', R['monitor-frame']);
-        rect('desk-props', 'lighting', R['desk-props']);
+        rect('desk-sprite', 'lighting', R['desk-sprite'], { lighting: desk.lighting, doc: doc('desk') });
+        rect('monitor-frame', 'monitor', R['monitor-frame'], { doc: doc('monitorFrame') });
+        rect('desk-props', 'lighting', R['desk-props'], { doc: doc('deskProps') });
         // § 10.6: the side table at every desk with art, with its seats — at least SIDE_TABLE_SEATS, one
-        // more per intern drawn past them, so its width says nothing the row of interns does not.
-        // Each seat under an intern's place on the table's foot line, as offsets inside the table so they move
-        // with the desk (the badge's `text_dx` pattern): the interns stand from `STOOL_PITCH`'s row at `R.stool.x`.
+        // more per intern drawn past them, so its width says nothing the row of interns does not. The theme
+        // is handed the seat count and nothing else about the seat; it lays each seat under an intern's
+        // place, the row `seat_dx` states as offsets inside the table (the interns stand from `STOOL_PITCH`'s
+        // row at `R.stool.x`).
         const seats = Math.max(SIDE_TABLE_SEATS, shown.length);
 
         rect('side-table', 'side_table', R['side-table'], {
             seats,
             seat_dx: Array.from({ length: seats }, (_, i) => R.stool.x - R['side-table'].x + i * STOOL_PITCH),
             seat: { dy: R['side-table'].h - SEAT_H, w: STOOL_W, h: SEAT_H },
+            doc: doc('sideTable', { ...key, seats }),
         });
     }
 
@@ -576,6 +585,14 @@ export function clusterOrder(desk) {
         ...known.filter((id) => TREATMENT_BADGES.includes(id)),
         ...known.filter((id) => !TREATMENT_BADGES.includes(id)),
     ];
+}
+
+/**
+ * The asset id a desk's FURNITURE SET is reported under when the painter cannot draw it (§ 9 F14, FLOOR.md
+ * § 10.6 item 8): `theme:<name>/desk:<install_id>/<seat_id>` — the five documents are one unit.
+ */
+export function furnitureAsset(theme, desk) {
+    return `theme:${theme}/desk:${desk.install_id}/${desk.seat_id}`;
 }
 
 /** The asset id a desk's character is reported under when the painter cannot draw it (§ 9 F14). */

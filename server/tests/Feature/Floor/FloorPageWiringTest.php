@@ -189,7 +189,7 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('undeclared', $this->wiringDefects($undrawn, $js),
             'CONTROL (the view without the painter\'s drawing element) did not bite');
 
-        $unpainted = str_replace("import { createPainter, loadArt, measurer } from './painter.js';", '', $js);
+        $unpainted = str_replace("import { createPainter, loadArt, measurer, themeInputs } from './painter.js';", '', $js);
         $this->assertNotSame($unpainted, $js);
         $this->assertArrayHasKey('painter', $this->painterDefects($unpainted),
             'CONTROL (an entry that never constructs the painter) did not bite');
@@ -635,7 +635,7 @@ class FloorPageWiringTest extends TestCase
     /** @return array<string, string> */
     private function painterDefects(string $js): array
     {
-        return str_contains($js, "import { createPainter, loadArt, measurer } from './painter.js';")
+        return str_contains($js, "import { createPainter, loadArt, measurer, themeInputs } from './painter.js';")
             && preg_match('/=\s*createPainter\(/', $js) === 1
             ? []
             : ['painter' => 'the entry does not construct the room drawing\'s painter from floor/painter.js'];

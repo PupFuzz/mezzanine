@@ -649,7 +649,7 @@ class BuildingLayoutTest extends TestCase
         $this->refuses(
             ['floors' => [[
                 'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]],
-                'hallway' => 'tiles/furniture-kit.tsx',
+                'hallway' => 'tiles/floor-plane.tsx',
             ]]],
             'declares a `hallway` that is not a Tiled document',
         );

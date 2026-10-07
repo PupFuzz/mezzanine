@@ -52,46 +52,33 @@
     --warn: #f0b455;
     --alarm: #d97b6c;
 
-    /* The floor's elevator, as the lobby's cab draws it — copies, held equal by a test (above) — in its frame. */
+    /* The floor's elevator leaves, as the lobby's cab draws them — copies, held equal by a test (above) — and
+       the seam between them. */
     --door: #dbe5ee;
     --door-edge: #9fb1c4;
     --door-frame: #2b3340;
-    --door-header: #3a4556;
 
-    /* The floor's frame (card#11045 PR-D): the back wall in the house palette, its skirting and the slab
-       under the rooms, the windows' frames and sills. One house for every floor — a re-key recolours nothing. */
+    /* The floor's frame's FALLBACK (docs/design/FLOOR.md § 10.6 item 8): what the painter draws under the
+       floor's theme on every paint, so it is what is left where a theme's document is not — the band's flat
+       wall, the slab under the rooms, and a plane's flat fill. One sheet token for every theme, held to the
+       facts' ink at 4.5:1 by AT-D3-25 (`tools/floor-themes/selftest.mjs`): a failed theme is legible rather
+       than pretty. The art is the theme's (`resources/floor/themes/<name>/theme.js`). */
     --house-wall: #2a454f;
     --house-wall-2: #35565f;
     --house-trim: #1f3540;
-    --window-frame: #f0e6d6;
-
-    /* Each room's plane, by its seeded theme (`floor/scene.js`'s `roomTheme()`, § 10.4): top and bottom of
-       the plane's shade. Each keeps the scene's ink at least as legible as oak, the default
-       (`Tests\Feature\Floor\TheFloorDrawsItsFrameTest`). */
-    --room-oak: #b98d5f;
-    --room-oak-2: #9e744a;
-    --room-walnut: #bc8d70;
-    --room-walnut-2: #a2765b;
-    --room-sage: #a3ad88;
-    --room-sage-2: #89946f;
-    --room-slate: #9ba4ae;
-    --room-slate-2: #828c97;
+    --scene-floor: #e8dcc4;
 
     /* The room drawing's palette — `public/js/floor/painter.js`'s classes read these. */
     --scene-ink: #3b2f2a;
     --scene-glass: #cfe6f5;
     --scene-trim: #8a6f5a;
     --scene-clock-face: #fffaf2;
-    --scene-chair: #b59a86;
     --scene-monitor: #2d3342;
     --scene-monitor-on: #7fd3c4;
     --scene-monitor-dim: #4c6b73;
-    --scene-monitor-frame: #efe2cc;
     --scene-screen-ink-dim: #fff6e6;
     --scene-placeholder: #f1ece6;
     --scene-placeholder-edge: #b8a99a;
-    --scene-side-table: #f7efe4;
-    --scene-side-table-edge: #d9c7b3;
     --scene-stool: #c98b5b;
     --scene-badge: #fde2c7;
     --scene-badge-edge: #d9905a;
@@ -124,9 +111,9 @@
     --state-stalled: #d97b6c;
     --state-unknown: #c9a7e8;
     --state-catching_up: #8ecfdb;
-    --state-stale: #b8d1d1;
-    --state-offline: #5398c3;
-    --state-disabled: #8188a4;
+    --state-stale: #e2f3fe;
+    --state-offline: #cbd6d8;
+    --state-disabled: #8289a5;
     --state-retired: #828a9a;
     --state-ink: #1b1f2b;
     --state-ink-unconfirmed: #5c6270;

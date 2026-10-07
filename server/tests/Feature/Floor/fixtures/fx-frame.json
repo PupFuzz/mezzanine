@@ -423,10 +423,10 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ]
       }
@@ -930,10 +930,10 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ]
       }
@@ -1681,10 +1681,10 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ]
       }
@@ -2357,10 +2357,10 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ]
       }

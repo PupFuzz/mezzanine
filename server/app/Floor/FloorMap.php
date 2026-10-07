@@ -336,9 +336,10 @@ final class FloorMap
      * the refusal has to be here rather than at the plan, because the plan is the document that
      * does NOT get to say how big a room is.
      *
-     * `orientation` is checked in the same pass for § 10.3's own reason: the floor is an
-     * ELEVATION drawn from the tileset's `Side/` renders, and no other projection is asked for or
-     * vendored, so a map in one is refused by name rather than drawn flat.
+     * `orientation` is checked in the same pass for § 10.3's own reason: the floor is drawn under
+     * § 10.4's one projection — the back wall's face, everything else from the one viewer — over an
+     * orthogonal grid the floor's theme draws into, and no other projection is drawn, so a map in one
+     * is refused by name rather than drawn flat.
      *
      * @return array{width: int, height: int, tilewidth: int, tileheight: int}
      */
@@ -349,8 +350,8 @@ final class FloorMap
         if ($orientation !== 'orthogonal') {
             throw new InvalidFloorMap(sprintf(
                 '%s declares the orientation %s. docs/design/FLOOR.md § 10.3 admits `orthogonal` '
-                .'and nothing else: the floor is an ELEVATION drawn from the tileset\'s `Side/` '
-                .'renders, and an isometric map recedes along two axes — a different projection, '
+                .'and nothing else: the floor is drawn under one projection over an orthogonal grid, '
+                .'and an isometric map recedes along two axes — a different projection, '
                 .'refused by name rather than drawn flat.',
                 $what,
                 is_scalar($orientation) ? '`'.$orientation.'`' : 'none',
@@ -498,7 +499,7 @@ final class FloorMap
                     .'resolve to a vendored tileset — one the two asset gates have a manifest row '
                     .'for (§ 10.1) — because a map whose tiles nothing serves draws as an empty '
                     .'room and says nothing about why. The tileset shipped today is '
-                    .'`tiles/furniture-kit.tsx`.',
+                    .'`tiles/floor-plane.tsx`.',
                     $what,
                     $source,
                 ));

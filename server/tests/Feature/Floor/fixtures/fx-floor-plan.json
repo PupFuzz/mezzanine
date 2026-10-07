@@ -1174,7 +1174,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -1779,7 +1779,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -1909,7 +1909,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -2640,7 +2640,7 @@
                       "tilesets": [
                         {
                           "firstgid": 1,
-                          "source": "tiles/furniture-kit.tsx"
+                          "source": "tiles/floor-plane.tsx"
                         }
                       ],
                       "layers": [
@@ -2931,7 +2931,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -3536,7 +3536,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -3666,7 +3666,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -4411,7 +4411,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -5016,7 +5016,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -5146,7 +5146,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -5889,7 +5889,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -6019,7 +6019,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -6731,7 +6731,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -7336,7 +7336,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -7466,7 +7466,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -8199,7 +8199,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -8802,7 +8802,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -9429,7 +9429,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -9559,7 +9559,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -10331,7 +10331,7 @@
                       "tilesets": [
                         {
                           "firstgid": 1,
-                          "source": "tiles/furniture-kit.tsx"
+                          "source": "tiles/floor-plane.tsx"
                         }
                       ],
                       "layers": [
@@ -10622,7 +10622,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -11227,7 +11227,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -11357,7 +11357,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -11551,7 +11551,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -12156,7 +12156,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -12286,7 +12286,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -13019,7 +13019,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -13635,7 +13635,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -13765,7 +13765,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [

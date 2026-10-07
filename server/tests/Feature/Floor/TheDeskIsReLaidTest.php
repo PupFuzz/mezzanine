@@ -79,8 +79,8 @@ class TheDeskIsReLaidTest extends TestCase
     public function test_red_art_painted_over_a_fact(): void
     {
         foreach ([
-            'the chair emitted after the screen text' => ["rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed, occupied: desk.character });\n", '',
-                "    // Q4 (a): the chip reads the model's glyph", "    rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed, occupied: desk.character });\n    // Q4 (a): the chip reads the model's glyph"],
+            'the chair emitted after the screen text' => ["        rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed, occupied: desk.character, doc: doc('chair') });\n", '',
+                "    // Q4 (a): the chip reads the model's glyph", "    if (!ctx.placeholder) { rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed, occupied: desk.character }); }\n    // Q4 (a): the chip reads the model's glyph"],
             "today's order, the side table after the flag" => ["        rect('side-table', 'side_table', R['side-table'], {", "        false && rect('side-table', 'side_table', R['side-table'], {",
                 '    // § 8: one sprite per intern, in front of the side table', "    if (!ctx.placeholder) { rect('side-table', 'side_table', R['side-table'], { seats: 4, seat_dx: [], seat: { dy: 36, w: 20, h: 6 } }); }\n    // § 8: one sprite per intern, in front of the side table"],
         ] as $what => [$from1, $to1, $from2, $to2]) {

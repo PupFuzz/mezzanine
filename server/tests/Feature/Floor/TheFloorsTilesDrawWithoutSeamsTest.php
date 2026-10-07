@@ -6,27 +6,26 @@ use Tests\Feature\Support\DrivesAShippedClientModule;
 use Tests\TestCase;
 
 /**
- * **The floor's tiles draw without seams at any zoom** — `docs/design/FLOOR.md` Appendix B row 14's
- * painter. Each tile used to be drawn as a primitive of its own, and wherever two neighbours' shared edge
- * fell on a fractional device pixel the antialiased edges let the plane under them through: the room's
- * theme in thin lines between the planks, a dotted ladder down an 8 px wall strip.
+ * **The floor's walls and accents draw without seams at any zoom** — `docs/design/FLOOR.md` Appendix B row
+ * 14's region pass, which since card#11046's row 22 feeds the floor's theme (§ 10.6 item 6). A run drawn cell
+ * by cell has an edge at every cell, and wherever that edge fell on a fractional device pixel the antialiased
+ * edges let what is under it through: a dotted ladder down an 8 px wall strip.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ NO BROWSER RUNS HERE, SO THE CHECK READS THE CAUSE, NOT THE PIXELS. `tile-seams-probe.mjs` paints
- * the SHIPPED default room and generated strata through the shipped painter over a fake DOM and reads back
- * what it wrote: every primitive expanded into the tiles it draws must be exactly the scene's tiles, any
- * two that overlap in the scene's order, no primitive spanning two rooms, and two identical tiles sharing
- * an edge must be ONE primitive. Whether one primitive is in fact rasterised without a seam is the
- * browser's, and was looked at on a screenshot when this landed (the PR's review round), not here.
+ * ⛔ NO BROWSER RUNS HERE, SO THE CHECK READS THE CAUSE, NOT THE PIXELS. `tile-seams-probe.mjs` runs the
+ * SHIPPED default room's `wall` and `accent` cells and planted cases through `scene.js`'s `tileRegions()` and
+ * reads back the regions the plane document is handed: they are exactly the cells — none missing, none extra,
+ * no rect twice — two cells of one kind and size sharing an edge are ONE region, and a cell listed after one
+ * it overlaps is never drawn ahead of it. It also paints a scene of the shipped room's plane and standing
+ * pieces and holds the painter to drawing no tile's image: every image a theme's document, and no pattern
+ * but the hatch. Whether a strip is rasterised without a seam is the browser's, and is looked at on the
+ * screenshots at review, not here.
  *
- * ⛔ WHAT A TILE LOOKS LIKE IS WRITTEN ONCE, in `scene.js`'s `tileLook()`: the regions are joined on it and
- * the painter is handed it in place of the tile. The probe's reader is closed — anything the painter
- * writes on a tile's nodes, or on the tiles layer, the defs and the drawing above them, that it cannot
- * read into the picture is a defect — and a look field the merge ignores, or one the painter drops, shows
- * as a tile not painted as itself; the value stratum puts each field at its pool's values for that.
+ * ⛔ WHAT A TILE IS, TO THE FLOOR, IS WRITTEN ONCE, in `scene.js`'s `tileLook()` — its kind and its cell's
+ * size — and the regions are joined on it.
  *
- * ⛔ EACH CHECK IS SEEN TO FAIL: the controls below re-mint one defect each in a copy of the shipped
- * modules (or of the probe, for its own count) and watch the probe name it.
+ * ⛔ EACH CHECK IS SEEN TO FAIL: the controls below re-mint one defect each in a copy of the shipped modules
+ * and watch the probe name it.
  */
 class TheFloorsTilesDrawWithoutSeamsTest extends TestCase
 {
@@ -42,41 +41,26 @@ class TheFloorsTilesDrawWithoutSeamsTest extends TestCase
         return __DIR__.'/tile-seams-probe.mjs';
     }
 
-    public function test_every_tile_is_painted_as_itself_in_order_and_identical_neighbours_are_one_primitive(): void
+    public function test_every_run_reaches_the_plane_as_itself_in_order_and_identical_neighbours_are_one_region(): void
     {
         $result = $this->probe([]);
 
         foreach ($result['cases'] as $name => $case) {
-            $this->assertGreaterThan(0, $case['tiles'], "[{$name}] the case painted no tile — every check below would read nothing");
-        }
-
-        $this->assertNotSame([], $result['strata'], 'the probe planted no stratum');
-
-        foreach ($result['strata'] as $name => $stratum) {
-            $this->assertGreaterThan(0, $stratum['cells'], "[{$name}] the stratum planted no cell");
+            $this->assertGreaterThan(0, $case['cells'], "[{$name}] the case has no cell — every check below would read nothing");
         }
 
         $this->assertSame([], $result['defects']);
+        $this->assertGreaterThan(1, $result['images'], 'the painter drew no standing piece — the no-tile-image check read nothing');
 
-        $shipped = $result['cases']['the shipped default room'];
+        $walls = $result['cases']['the shipped default room\'s walls'];
 
-        $this->assertLessThan($shipped['tiles'], $shipped['primitives'],
-            'the shipped room painted a primitive per tile — its identical neighbours were never joined');
+        $this->assertLessThan($walls['cells'], $walls['regions'],
+            'the shipped room\'s walls are a region per cell — their identical neighbours were never joined');
     }
 
     /** ⛔ THE CONTROLS — each re-mints one defect in the shipped modules and watches its check red. */
     public function test_each_check_goes_red_against_the_defect_it_exists_to_catch(): void
     {
-        // The neighbour lookup in `tileRegions()`, and three wrong ones: a fallback that matches a tile by its
-        // image alone — looking down and up (the review's J), leftward (its L), or only from a chain's
-        // second tile on (so only a chain of two before the differing tile can see it).
-        $lookup = <<<'JS'
-            const i = at.get(`${keys[first]}@${spot(here.x + dx * w, here.y + dy * h)}`);
-            JS;
-        $byImage = fn (string $when, string $x, string $y): string => substr($lookup, 0, -1)
-            .' ?? ('.$when.' ? new Map(tiles.map((q, n) => [`${q.image}@${spot(q.x, q.y)}`, n]))'
-            .'.get(`${here.image}@${spot('.$x.', '.$y.')}`) : undefined);';
-
         $controls = [
             'identical neighbours never joined' => [
                 ['scene.js', 'if (i !== undefined && i > first && regionOf[i] === -1 && !heldOut.has(i)) {', 'if (false) {'],
@@ -84,88 +68,25 @@ class TheFloorsTilesDrawWithoutSeamsTest extends TestCase
             ],
             'the draw-order guard gone' => [
                 ['scene.js', 'if (late.length === 0) {', 'if (true) {'],
-                'which the scene draws first',
+                'is drawn first',
             ],
             'one look for every tile' => [
                 ['scene.js', 'const kind = JSON.stringify(look);', "const kind = 'one';"],
-                'is not painted as itself',
-            ],
-            'a vertical neighbour matched by its image alone' => [
-                ['scene.js', $lookup, $byImage('dy !== 0', 'here.x', 'here.y + dy * h')],
-                'the merge stratum: the scene\'s tile',
-            ],
-            'a leftward neighbour matched by its image alone' => [
-                ['scene.js', $lookup, $byImage('dx === -1', 'here.x - w', 'here.y')],
-                'the merge stratum: the scene\'s tile',
-            ],
-            'a neighbour matched by its image alone past a chain\'s first tile' => [
-                ['scene.js', $lookup, $byImage('m > 0', 'here.x + dx * w', 'here.y + dy * h')],
-                'the merge stratum: the scene\'s tile',
-            ],
-            'neighbours of one look split by their layer' => [
-                ['scene.js', "        opacity: t.opacity,\n    });", "        opacity: t.opacity,\n        layer: t.layer,\n    });"],
-                ['the merge stratum: ', 'are painted as two primitives'],
+                'is not in the regions as itself',
             ],
             'a neighbour found by its exact float coordinates' => [
                 ['scene.js', 'const spot = (x, y) => `${Math.round(x * 1024)},${Math.round(y * 1024)}`;', 'const spot = (x, y) => `${x},${y}`;'],
-                ['the offsets stratum: ', 'are painted as two primitives'],
+                ['under offsets', 'the edge between them is a seam'],
             ],
-            'a tile\'s opacity dropped' => [
-                ['painter.js', 'opacity: look.opacity === 1 ? null : look.opacity,', 'opacity: null,'],
-                'is not painted as itself',
-            ],
-            'a tile\'s flip dropped' => [
-                ['painter.js', 'const flip = [look.flip_h ? -1 : 1, look.flip_v ? -1 : 1];', 'const flip = [1, 1];'],
-                'is not painted as itself',
-            ],
-            'an attribute on the path the reader does not read' => [
-                ['painter.js', 'fill: `url(#${id})`,', "fill: `url(#\${id})`,\n                    'data-region': 1,"],
-                'the painter writes «data-region» the probe cannot attribute to a look field',
-            ],
-            'a second child in the pattern' => [
-                ['painter.js', "                node('path', {\n                    d: rects", "                node('rect', { width: 1, height: 1 }, fill);\n                node('path', {\n                    d: rects"],
-                'the painter writes a child «rect» the probe cannot attribute to a look field',
-            ],
-            'every room\'s tiles merged in one pass' => [
-                ['painter.js', 'pass(scene.tiles.filter((t) => t.room === null));', 'pass(scene.tiles); scene = { ...scene, tiles: [] };'],
-                'one primitive paints tiles of two passes',
-            ],
-            // The review's three merges wrong only at particular values, which the merge stratum's one base
-            // could not reach: a flip ignored while the other flip is set, opacity 1 taken for 0.5, and sy
-            // ignored where sx is 0.
-            'flip_v ignored while flip_h is set' => [
-                ['scene.js', 'const kind = JSON.stringify(look);', 'const kind = JSON.stringify(look.flip_h ? { ...look, flip_v: 0 } : look);'],
-                ['the value stratum: the scene\'s tile', 'is not painted as itself'],
-            ],
-            'opacity 1 joined with opacity 0.5' => [
-                ['scene.js', 'const kind = JSON.stringify(look);', 'const kind = JSON.stringify({ ...look, opacity: look.opacity === 1 ? 0.5 : look.opacity });'],
-                ['the value stratum: the scene\'s tile', 'is not painted as itself'],
-            ],
-            'sy ignored where sx is 0' => [
-                ['scene.js', 'const kind = JSON.stringify(look);', 'const kind = JSON.stringify(look.sx === 0 ? { ...look, sy: 0 } : look);'],
-                ['the value stratum: the scene\'s tile', 'is not painted as itself'],
-            ],
-            // Every node between a tile and the drawing is closed as the tile's own are.
-            'an opacity on the tiles layer' => [
-                ['painter.js', "const tiles = node('g', { class: 'tiles' }, svg);", "const tiles = node('g', { class: 'tiles', opacity: 0.5 }, svg);"],
-                'the tiles layer: the painter writes «opacity» the probe cannot attribute to a look field',
-            ],
-            'an opacity on the drawing' => [
-                ['painter.js', "class: 'floor-scene', role: 'group',", "class: 'floor-scene', opacity: 0.5, role: 'group',"],
-                'the drawing: the painter writes «opacity» the probe cannot attribute to a look field',
-            ],
-            'a style on the defs' => [
-                ['painter.js', "node('defs', {}, svg)", "node('defs', { style: 'opacity:.5' }, svg)"],
-                'the drawing\'s defs: the painter writes «style» the probe cannot attribute to a look field',
-            ],
-            'an empty pattern ahead of each fill, under its id' => [
-                ['painter.js', 'const id = `floor-tile-${fills++}`;', "const id = `floor-tile-\${fills++}`;\n                node('pattern', { id }, defs);"],
-                'two of the drawing\'s defs share an id',
+            'a tile\'s image drawn' => [
+                ['painter.js', '                    art(tiles, uris[0], piece, piece.doc.asset, `scenery ${piece.kind}`);',
+                    '                    art(tiles, \'/art/floor/tiles/floor-plane/bookcase.svg\', piece, piece.doc.asset, `scenery ${piece.kind}`);'],
+                'the floor never draws a tile\'s image',
             ],
         ];
 
         // One per field of `tileLook()`, as the probe reads it off the shipped module, dropped from the look in
-        // turn: the merge then ignores it and the painter draws without it.
+        // turn: the merge then joins cells that differ in it.
         $look = $this->probe([])['look'];
 
         $this->assertNotSame([], $look, 'the probe read no field of tileLook() — no control below would run');
@@ -173,36 +94,15 @@ class TheFloorsTilesDrawWithoutSeamsTest extends TestCase
             (string) file_get_contents($this->moduleDir().'/scene.js'), $fn), 'scene.js has no tileLook() to drop a field from');
 
         foreach ($look as $field) {
-            $line = "        {$field}: t.{$field},\n";
+            $edited = str_replace(["{$field}: t.{$field}, ", ", {$field}: t.{$field}"], '', $fn[0]);
 
-            $this->assertSame(1, substr_count($fn[0], $line), "tileLook() does not read «{$field}» on a line of its own");
+            $this->assertNotSame($fn[0], $edited, "tileLook() does not read «{$field}» where the control can drop it");
 
-            $controls["«{$field}» dropped from the look"] = [
-                ['scene.js', $fn[0], str_replace($line, '', $fn[0])],
-                'is not painted as itself',
-            ];
+            $controls["«{$field}» dropped from the look"] = [['scene.js', $fn[0], $edited], 'is not in the regions as itself'];
         }
 
-        // Each control names the defect text it must produce — every one of them, where it lists several.
         foreach ($controls as $name => [$edit, $named]) {
             $this->assertControlNames($name, $this->probe([], $this->mutatedModules($edit))['defects'], (array) $named);
-        }
-
-        // The probe's own count: one merge cell left unplanted must red as a stratum short of its product.
-        $probe = (string) file_get_contents($this->probeScript());
-        $anchor = 'const other = field in base ? differIn(base, field) : null;';
-
-        $this->assertSame(1, substr_count($probe, $anchor), "the count control's anchor is not in the probe exactly once");
-
-        $copy = dirname($this->probeScript()).'/.tile-seams-probe.control-'.bin2hex(random_bytes(6)).'.mjs';
-
-        try {
-            file_put_contents($copy, str_replace($anchor, 'const other = cells === 0 && order === ORDERS[0] ? null : '.substr($anchor, strlen('const other = ')), $probe));
-
-            $this->assertControlNames('one merge cell left unplanted', $this->probe([], null, $copy)['defects'],
-                ['the merge stratum planted', 'not the product of its factors']);
-        } finally {
-            @unlink($copy);
         }
     }
 

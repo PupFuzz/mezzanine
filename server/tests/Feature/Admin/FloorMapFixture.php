@@ -56,7 +56,7 @@ final class FloorMapFixture
             // would make the VALID fixture invalid, and every refusal below would then be earned
             // for the wrong reason.
             'tilesets' => [
-                ['firstgid' => 1, 'source' => 'tiles/furniture-kit.tsx'],
+                ['firstgid' => 1, 'source' => 'tiles/floor-plane.tsx'],
             ],
             'layers' => [
                 [
