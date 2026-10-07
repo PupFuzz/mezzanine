@@ -74,7 +74,8 @@ export const FONT_SCREEN = '8px sans-serif';
 
 /**
  * THE DESK's THREE TYPE ROLES — the facts, the nameplate (Q2) and the monitor's screen (card#11046) — the
- * font each is measured and drawn in, its line, and the baseline's offset from the line's top. `fit()` measures in a role, the page's measurer answers in a role
+ * font each is measured and drawn in, its line, and the baseline's offset from the line's top. `fit()`
+ * measures in a role, the page's measurer answers in a role
  * (`painter.js`'s `measurer()`), and the painter draws a text at its role's baseline; a role not in
  * this table is refused by the measurer rather than measured in a guessed font.
  */
