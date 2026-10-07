@@ -13,9 +13,12 @@ use Tests\TestCase;
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE RUNS REPLAY `fx-snapshot-4` ON THE SHIPPED DEFAULT MAP ITSELF (`fixtures/fx-scene.json`,
- * `@json:resources/floor/default.tmj`) with the vendored tileset served by the asset route's URL, so
- * "every image of the room's tileset" is the vendored pack's own image list, read by the tileset
- * reader — never a list written here.
+ * `@json:resources/floor/default.tmj`) with the shipped tileset served by the asset route's URL and the
+ * theme registry and every theme it names imported from disk, as the page imports them (card#11046,
+ * Appendix B row 22). F14's causes since row 22 are the theme's (FLOOR.md § 10.6 item 8): the floor's theme
+ * failed, one desk's furniture set failed, the registry's import rejected — and a seat's character, an
+ * intern's sprite and a tileset, as before. A desk's art is its theme's, never a tile's, so a tileset that
+ * fails costs the room its walls, accents and scenery and no desk its art.
  *
  * ⛔ THE STRIP's WORDS ARE § 9 F14's, READ OUT OF THE DOCUMENT on every run.
  *
@@ -30,7 +33,11 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
 
     private const TILESET_FAILS = 'scene_default_tileset_fails';
 
-    private const KIT_FAILS = 'scene_default_kit_fails';
+    private const THEME_FAILS = 'scene_default_theme_fails';
+
+    private const DESK_SET_FAILS = 'scene_default_desk_set_fails';
+
+    private const REGISTRY_FAILS = 'scene_default_registry_fails';
 
     private const CHARACTER_FAILS = 'scene_default_character_fails';
 
@@ -44,48 +51,74 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
     /** FLOOR.md § 10.6's art elements and the character (card#11046 row 20): the placeholder stands in for these. */
     private const ART = ['character', 'chair', 'desk-sprite', 'monitor-frame', 'desk-props', 'side-table'];
 
-    public function test_green_with_the_tileset_failed_every_desk_is_the_placeholder_under_no_tiles_and_the_strip_says_so(): void
+    /**
+     * A tileset that fails (its fetch answered 404) costs the room every tile the floor draws by its kind —
+     * the walls, the accent and the standing pieces — and no desk its art, because a desk's art is its theme's
+     * (FLOOR.md § 10.6 item 8); the plane is still drawn, and the strip names the tileset.
+     */
+    public function test_green_with_the_tileset_failed_no_tile_is_drawn_and_every_desk_keeps_its_art(): void
     {
         $result = $this->floorRun(self::TILESET_FAILS);
         $frame = $this->lastFloor($result);
         $scene = $this->lastScene($result, self::TILESET_FAILS);
 
-        $this->assertSame([], $this->placeholderDefects($scene, array_column($scene['desks'], 'key')));
-        $this->assertSame([], $scene['tiles'], 'tiles whose images failed are still drawn');
+        $this->assertSame([], $this->placeholderDefects($scene, []));
+        $this->assertSame([], $scene['scenery'], 'standing pieces of a tileset that failed are still drawn');
+        $this->assertSame([], $this->runsDrawn($scene), 'walls or accents of a tileset that failed are still drawn');
+        $this->assertNotSame([], $scene['planes'], 'the plane is not drawn');
+        $this->assertSame(['/art/floor/tiles/floor-plane.tsx'], $scene['failed']);
         $this->assertSame($this->f14Line(), $frame['strip']['art'], 'the strip does not read F14\'s line');
-        $this->assertSame([], $this->logDefects($result));
+        $this->assertSame([], array_values(array_filter($result['animation_log'], fn ($r) => $r['class'] === 'edge')),
+            'the tileset\'s failure wrote an edge row');
     }
 
     /**
-     * The room's two tilesets fail independently (PR #232 round 2, MINOR-D): with the bridge kit's images
-     * alone failed, every desk is the placeholder — the desk sprite is the kit's — and the first-party
-     * floor plane's tiles are still drawn under them, none of the kit's among them.
+     * AT-D3-25's failure leg, the theme's import rejected (reported at t=50): every desk draws F14's
+     * placeholder with every fact as on the intact desk, the band and every plane draw only their flat
+     * fallback fills — no theme document is asked for — and the strip names `theme:studio`.
      */
-    public function test_green_with_the_kit_alone_failed_every_desk_is_the_placeholder_over_the_planes_tiles(): void
+    public function test_green_with_the_theme_failed_every_desk_is_the_placeholder_over_the_fallback_fills(): void
     {
-        $result = $this->floorRun(self::KIT_FAILS);
-        $frame = $this->lastFloor($result);
-        $scene = $this->lastScene($result, self::KIT_FAILS);
-        $failed = array_column($this->fixture(self::KIT_FAILS)['floor']['asset_failures'], 'tileset_images');
+        $result = $this->floorRun(self::THEME_FAILS);
+        $scene = $this->lastScene($result, self::THEME_FAILS);
 
-        $this->assertCount(1, $failed, 'the run fails exactly one tileset — the kit');
-        $this->assertSame([], $this->placeholderDefects($scene, array_column($scene['desks'], 'key')));
-        $this->assertNotSame([], $scene['tiles'], 'the plane\'s tiles are not drawn');
-        $this->assertSame([], array_values(array_filter($scene['tiles'], fn ($t) => in_array($t['tileset'], $failed, true))),
-            'a tile of the failed kit is still drawn');
-        $this->assertSame($this->f14Line(), $frame['strip']['art'], 'the strip does not read F14\'s line');
+        $this->assertSame([], $this->themeFailedDefects($scene, ['theme:studio']));
+        $this->assertSame($this->f14Line(), $this->lastFloor($result)['strip']['art'], 'the strip does not read F14\'s line');
         $this->assertSame([], $this->logDefects($result));
     }
 
-    public function test_green_with_one_characters_art_failed_that_desk_alone_is_the_placeholder_and_the_tiles_are_drawn(): void
+    /** The registry's import rejected (card#11046 review finding): the same fallback, the registry named. */
+    public function test_green_with_the_registry_failed_every_desk_is_the_placeholder_and_the_registry_is_named(): void
+    {
+        $result = $this->floorRun(self::REGISTRY_FAILS);
+        $scene = $this->lastScene($result, self::REGISTRY_FAILS);
+
+        $this->assertSame([], $this->themeFailedDefects($scene, ['/art/floor/themes/index.js']));
+        $this->assertSame($this->f14Line(), $this->lastFloor($result)['strip']['art'], 'the strip does not read F14\'s line');
+    }
+
+    /** One desk's furniture set failing: that desk alone draws the placeholder, and its asset alone is named. */
+    public function test_green_with_one_desks_furniture_set_failed_that_desk_alone_is_the_placeholder(): void
+    {
+        $result = $this->floorRun(self::DESK_SET_FAILS);
+        $scene = $this->lastScene($result, self::DESK_SET_FAILS);
+
+        $this->assertSame([], $this->placeholderDefects($scene, ['aimla/aimla-pm']));
+        $this->assertSame(['theme:studio/desk:aimla/aimla-pm'], $scene['failed']);
+        $this->assertNotNull($scene['band_docs'], 'one desk\'s set failing cost the band its theme');
+        $this->assertSame($this->f14Line(), $this->lastFloor($result)['strip']['art']);
+        $this->assertSame([], $this->logDefects($result));
+    }
+
+    public function test_green_with_one_characters_art_failed_that_desk_alone_is_the_placeholder_and_the_room_is_drawn(): void
     {
         $result = $this->floorRun(self::CHARACTER_FAILS);
         $scene = $this->lastScene($result, self::CHARACTER_FAILS);
         $intact = $this->sceneOf(self::INTACT);
 
         $this->assertSame([], $this->placeholderDefects($scene, ['aimla/aimla-pm']));
-        $this->assertNotSame([], $scene['tiles'], 'the room\'s tiles are not drawn');
-        $this->assertCount(count($intact['tiles']), $scene['tiles'], 'one seat\'s character failing cost the room tiles');
+        $this->assertNotSame([], $scene['scenery'], 'the room\'s scenery is not drawn');
+        $this->assertCount(count($intact['scenery']), $scene['scenery'], 'one seat\'s character failing cost the room scenery');
         $this->assertSame($this->f14Line(), $this->lastFloor($result)['strip']['art']);
         $this->assertSame([], $this->logDefects($result));
     }
@@ -117,8 +150,8 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
     {
         $plants = [
             'the whole desk drawn as the placeholder' => ['../floor/scene.js',
-                'return sprite === null || (desk.character && failed.has(character));',
-                'return sprite === null || (desk.character && failed.has(character)) || desk.side_table.stools.some((s) => failed.has(`intern:${desk.install_id}/${desk.seat_id}~${s.call_id}`));'],
+                'return set === null || failed.has(set) || (desk.character && failed.has(character));',
+                'return set === null || failed.has(set) || (desk.character && failed.has(character)) || desk.side_table.stools.some((s) => failed.has(`intern:${desk.install_id}/${desk.seat_id}~${s.call_id}`));'],
             'every intern of the desk falling back' => ['../floor/desk-layout.js',
                 'art: !ctx.failed.has(asset),', 'art: ![...ctx.failed].some((id) => id.startsWith(`intern:${desk.install_id}/${desk.seat_id}~`)),'],
             'the failure ignored' => ['../floor/desk-layout.js', 'art: !ctx.failed.has(asset),', 'art: true,'],
@@ -178,7 +211,9 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
         $scene = $this->lastScene($result, self::INTACT);
 
         $this->assertSame([], $this->placeholderDefects($scene, []));
-        $this->assertNotSame([], $scene['tiles']);
+        $this->assertNotSame([], $scene['scenery']);
+        $this->assertNotSame([], $this->runsDrawn($scene));
+        $this->assertNotNull($scene['band_docs']);
         $this->assertSame([], $scene['failed']);
         $this->assertNull($this->lastFloor($result)['strip']['art']);
     }
@@ -189,21 +224,41 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
             "    if (ctx.placeholder) {\n        rect('placeholder', null, R.placeholder);\n",
             "    if (ctx.placeholder) {\n        return { elements: [{ kind: 'placeholder', member: null, x: 0, y: 0, w: 1, h: 1 }], bubble: null };\n"]);
 
-        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::TILESET_FAILS, $dir), ['aimla/aimla-pm']),
+        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::THEME_FAILS, $dir), ['aimla/aimla-pm']),
             'RED (the blank desk) did not fail');
     }
 
-    public function test_red_the_failed_tile_drawn(): void
+    /** A theme reported failed whose desks keep drawing its furniture: the failure leg reds. */
+    public function test_red_the_failed_theme_drawn_anyway(): void
     {
-        // A tile whose image the painter reported failed is drawn anyway: with the kit alone failed, the
-        // scene puts a kit tile beside the plane's, and the kit-alone leg reds on it.
         $dir = $this->mutatedModules(['../floor/scene.js',
-            'if (cell.image === null || failed.has(cell.image)) {', 'if (cell.image === null) {']);
-        $failed = array_column($this->fixture(self::KIT_FAILS)['floor']['asset_failures'], 'tileset_images');
-        $tiles = $this->sceneOf(self::KIT_FAILS, $dir)['tiles'];
+            "    const held = (themes.modules?.[resolved.theme] ?? null) !== null && !failed.has(asset);",
+            "    const held = (themes.modules?.[resolved.theme] ?? null) !== null;"]);
 
-        $this->assertNotSame([], array_values(array_filter($tiles, fn ($t) => in_array($t['tileset'], $failed, true))),
-            'RED (the failed tile drawn) did not put a kit tile on the floor');
+        $this->assertNotSame([], $this->themeFailedDefects($this->sceneOf(self::THEME_FAILS, $dir), ['theme:studio']),
+            'RED (the failed theme drawn anyway) did not fail');
+    }
+
+    /** The registry's failure surfacing nothing — card#11046 row 21's review finding 1, as it stood. */
+    public function test_red_the_registry_failure_silent(): void
+    {
+        $dir = $this->mutatedModules(['../floor/scene.js',
+            "    if (themes.registry === null) {\n        used.add(themes.asset);\n",
+            "    if (themes.registry === null) {\n"]);
+
+        $this->assertNotSame([], $this->themeFailedDefects($this->sceneOf(self::REGISTRY_FAILS, $dir), ['/art/floor/themes/index.js']),
+            'RED (the registry failure surfacing nothing) did not fail');
+    }
+
+    /** One desk's set failing that takes every desk down with it: the per-desk leg reds. */
+    public function test_red_one_desks_set_failing_every_desk(): void
+    {
+        $dir = $this->mutatedModules(['../floor/scene.js',
+            'return set === null || failed.has(set) ||',
+            'return set === null || [...failed].some((id) => id.startsWith(`theme:${theme.name}/desk:`)) ||']);
+
+        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::DESK_SET_FAILS, $dir), ['aimla/aimla-pm']),
+            'RED (one desk\'s set failing every desk) did not fail');
     }
 
     public function test_red_the_silent_strip(): void
@@ -211,7 +266,7 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
         $dir = $this->mutatedModules(['../floor/floor-screen.js',
             'art_failed: scene?.art_failed === true ||', 'art_failed: false &&']);
 
-        $this->assertNotSame($this->f14Line(), $this->lastFloor($this->floorRun(self::TILESET_FAILS, $dir))['strip']['art'] ?? null,
+        $this->assertNotSame($this->f14Line(), $this->lastFloor($this->floorRun(self::THEME_FAILS, $dir))['strip']['art'] ?? null,
             'RED (the silent strip) did not fail');
     }
 
@@ -220,7 +275,7 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
             'row.forEach((badge, i) => {', '(ctx.placeholder ? [] : row).forEach((badge, i) => {']);
 
-        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::TILESET_FAILS, $dir), ['aimla/aimla-pm']),
+        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::THEME_FAILS, $dir), ['aimla/aimla-pm']),
             'RED (the badge row dropped with the art) did not fail');
     }
 
@@ -231,7 +286,7 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
             "    rect('monitor', 'monitor', R.monitor, { lit: desk.monitor.lit });\n\n    if (desk.monitor.lit !== 'off') {",
             "    if (!ctx.placeholder) rect('monitor', 'monitor', R.monitor, { lit: desk.monitor.lit });\n\n    if (desk.monitor.lit !== 'off' && !ctx.placeholder) {"]);
 
-        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::TILESET_FAILS, $dir), ['aimla/aimla-pm']),
+        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::THEME_FAILS, $dir), ['aimla/aimla-pm']),
             'RED (the monitor dropped with the art) did not fail');
     }
 
@@ -241,7 +296,7 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
             '    return { elements, bubble: desk.bubble };', '    return { elements, bubble: ctx.placeholder ? null : desk.bubble };']);
 
-        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::TILESET_FAILS, $dir), ['aimla/aimla-pm']),
+        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::THEME_FAILS, $dir), ['aimla/aimla-pm']),
             'RED (the bubble dropped with the art) did not fail');
     }
 
@@ -302,6 +357,49 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
         }
 
         return $defects;
+    }
+
+    /**
+     * The theme that cannot draw (FLOOR.md § 10.6 item 8): every desk the placeholder with every fact, the band
+     * and every plane with no theme document — their flat fallback fills alone — no standing piece, and the
+     * strip's failed assets exactly `$named`.
+     *
+     * @param  list<string>  $named
+     * @return list<string>
+     */
+    private function themeFailedDefects(array $scene, array $named): array
+    {
+        $defects = $this->placeholderDefects($scene, array_column($scene['desks'], 'key'));
+
+        if ($scene['band_docs'] !== null) {
+            $defects[] = 'the band still asks the failed theme for its documents';
+        }
+
+        foreach ($scene['planes'] as $plane) {
+            if ($plane['doc'] !== null) {
+                $defects[] = 'a plane still asks the failed theme for its document';
+            }
+        }
+
+        if ($scene['planes'] === []) {
+            $defects[] = 'no plane is drawn — the flat fallback fills are gone too';
+        }
+
+        if ($scene['scenery'] !== []) {
+            $defects[] = 'standing pieces are still drawn by the failed theme';
+        }
+
+        if ($scene['failed'] !== $named) {
+            $defects[] = 'the strip names ['.implode(', ', $scene['failed']).'], not ['.implode(', ', $named).']';
+        }
+
+        return $defects;
+    }
+
+    /** The wall and accent runs every plane document carries. @return list<array<string, mixed>> */
+    private function runsDrawn(array $scene): array
+    {
+        return array_merge(...array_map(fn (array $p): array => $p['doc'] === null ? [] : [...$p['doc']['input']['walls'], ...$p['doc']['input']['accents']], $scene['planes']), ...[[]]);
     }
 
     /**

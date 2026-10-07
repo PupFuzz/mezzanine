@@ -17,16 +17,11 @@
 // computed. An edit that computes either number is refused by name rather than read as a guess.
 //
 // ⛔ THE BOX IS THE ART's OWN SIZE, so it moves when the art does (§ 14 item 28(1)(iii)): the
-// desk sprite, the character's drawn size, the stool, the badge chip and the line the scene lays
-// text on are what it must hold, and `Tests\Feature\Floor\SeatFurnitureNeverOverlapsTest` (AT-D3-20)
+// desk's rects (§ 10.6's re-laid table, which the floor's theme draws its furniture into), the
+// character's drawn size, the stool, the badge chip and the line the scene lays text on are what
+// it must hold, and `Tests\Feature\Floor\SeatFurnitureNeverOverlapsTest` (AT-D3-20)
 // reds when what the scene draws at the cap no longer fits it. Changing a number here is changing
 // what every stored map is validated against.
 
 export const FURNITURE_BOX = Object.freeze({ width: 440, height: 228 });
 
-// The desk sprite the scene draws at the box's anchor — a tile of the vendored bridge tileset
-// (§ 10.3): the tileset that declares it, and its image, each by its path under `resources/floor/`,
-// so the scene resolves it through the same tileset reader every tile goes through and the page
-// loads that tileset whether or not a room's map names it. Its size is the tileset's to state,
-// never this file's.
-export const DESK_SPRITE = Object.freeze({ tileset: 'tiles/furniture-kit.tsx', image: 'tiles/furniture-kit/desk.png' });

@@ -22,6 +22,7 @@ const REPO = join(HERE, '..', '..');
 const TREE = join(REPO, 'resources', 'characters');
 const C = await import(pathToFileURL(join(TREE, 'index.js')).href);
 const { draw, pick } = await import(pathToFileURL(join(TREE, 'seed.js')).href);
+const { wellFormed, vectorDefect } = await import(pathToFileURL(join(REPO, 'tools', 'design', 'svg-document.mjs')).href);
 
 const SEED = 11046;          // the synthetic populations' seed — printed with every measurement
 const CAP = 8;               // § 8.1's cap of interns drawn (desk-layout.js's STOOL_CAP), read below
@@ -57,45 +58,7 @@ const desks = Array.from({ length: DESKS }, (_, d) => {
 });
 console.log(`populations: committed roster ${roster.length} seats; synthetic roster ${FLEET} seats and ${DESKS} desks at the cap of ${CAP}, seed ${SEED}`);
 
-// ---- a strict XML well-formedness reader (N2): what the browser's SVG decoder needs, refused by name ----
-const ENTITY = /^&(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);/;
-function wellFormed(doc) {
-  const stack = [];
-  let i = 0, root = null;
-  while (i < doc.length) {
-    const lt = doc.indexOf('<', i);
-    const text = doc.slice(i, lt < 0 ? doc.length : lt);
-    for (let j = text.indexOf('&'); j >= 0; j = text.indexOf('&', j + 1)) {
-      if (!ENTITY.test(text.slice(j))) return `an unescaped "&" in text near ${JSON.stringify(text.slice(j, j + 16))}`;
-    }
-    if (lt < 0) break;
-    const gt = doc.indexOf('>', lt);
-    if (gt < 0) return 'an unterminated tag';
-    const tag = doc.slice(lt + 1, gt);
-    if (tag.startsWith('/')) {
-      const name = tag.slice(1).trim();
-      if (stack.pop() !== name) return `a closing </${name}> that closes nothing open`;
-    } else {
-      const self = tag.endsWith('/');
-      const m = tag.replace(/\/$/, '').match(/^([A-Za-z][\w:-]*)((?:\s+[\w:-]+="[^"<]*")*)\s*$/);
-      if (!m) return `a malformed tag <${tag.slice(0, 40)}>`;
-      for (const [, v] of m[2].matchAll(/="([^"]*)"/g)) {
-        for (let j = v.indexOf('&'); j >= 0; j = v.indexOf('&', j + 1)) {
-          if (!ENTITY.test(v.slice(j))) return `an unescaped "&" in an attribute of <${m[1]}>`;
-        }
-      }
-      if (root === null) root = { name: m[1], attrs: m[2] };
-      if (!self) stack.push(m[1]);
-    }
-    i = gt + 1;
-  }
-  if (stack.length) return `unclosed <${stack.join('>, <')}>`;
-  if (root === null || root.name !== 'svg') return 'the root is not <svg>';
-  if (!/\sxmlns="http:\/\/www\.w3\.org\/2000\/svg"/.test(root.attrs)) return 'the root <svg> carries no xmlns="http://www.w3.org/2000/svg"';
-  return null;
-}
-const vectorDefect = (doc) => (/<image\b/.test(doc) ? 'an <image>' : /data:/.test(doc) ? 'a data: URI'
-  : /href="(?!#)/.test(doc) ? 'an href that leaves the document' : /url\((?!#)/.test(doc) ? 'a url() that leaves the document' : null);
+// ---- the one strict reader of a standalone SVG document (N2) — `tools/design/svg-document.mjs` ----
 
 // ---- 1. identity, and totality ----
 section('1. identity and totality — every key of every population draws, none throws; the same key, the same document');

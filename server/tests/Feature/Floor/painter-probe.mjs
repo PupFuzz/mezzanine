@@ -102,6 +102,18 @@ const characters = {
     },
 };
 const internFrame = (installId, seatId, callId) => uri(doc(`${installId}/${seatId}~${callId}#chibi`));
+
+/**
+ * The floor's theme, stubbed (FLOOR.md § 10.6, card#11046 row 22): every document names the function and the
+ * inputs it was drawn for. What each art element owes is written here from the published rule — the
+ * element's kind to the API function, the desk's key `(install_id, seat_id)` and the side table's seat
+ * count — never imported from the module under test.
+ */
+const theme = Object.fromEntries(['chair', 'desk', 'monitorFrame', 'deskProps', 'sideTable', 'band', 'windowSurround', 'elevatorSurround', 'clockCase', 'plane', 'scenery']
+    .map((fn) => [fn, (input) => doc(`theme ${fn} ${JSON.stringify(input)}`)]));
+const FURNITURE = { chair: 'chair', 'desk-sprite': 'desk', 'monitor-frame': 'monitorFrame', 'desk-props': 'deskProps', 'side-table': 'sideTable' };
+const furnitureFrame = (seat, e) => uri(doc(`theme ${FURNITURE[e.kind]} ${JSON.stringify(e.kind === 'side-table'
+    ? { install_id: seat.install_id, seat_id: seat.seat_id, seats: e.seats } : { install_id: seat.install_id, seat_id: seat.seat_id })}`));
 const { deskAgeReadout } = await mod('wire/age-readout.js');
 const { harnessMeasurer } = await import('../Support/harness-measurer.mjs');
 
@@ -138,7 +150,7 @@ for (const seat of seats) {
         // variants of one seat would otherwise share a bubble.
         const room = `room-${desks.length}`;
         const key = `${room}/${seat.seat_id}`;
-        const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, sprite: { url: 'desk.png', w: 116, h: 57 }, placeholder: v.placeholder, failed: failing(seat, v.fails) };
+        const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, theme: 'studio', placeholder: v.placeholder, failed: failing(seat, v.fails) };
 
         seatOf.set(key, seat);
         failedOf.set(key, ctx.failed);
@@ -148,8 +160,8 @@ for (const seat of seats) {
 
 placeBubbles(desks, measure, BOX.width, desks.map((d) => d.key));
 
-const scene = { band: null, slab: null, tiles: [], planes: [], decorative: [], lines: [], desks, strip: null, effects: [] };
-const painter = createPainter({ characters, failed() {}, select() {} });
+const scene = { band: null, band_docs: null, slab: null, scenery: [], planes: [], decorative: [], lines: [], desks, strip: null, effects: [] };
+const painter = createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} });
 
 painter.paint(scene, { bounds: null });
 
@@ -201,9 +213,18 @@ function owed(e, seat, failed, key) {
                 ?? (n.children[0].getAttribute('href') === uri(doc(`${key}#0`)) ? null
                     : `its image is «${decodeURIComponent(String(n.children[0].getAttribute("href"))).slice(60, 140)}», not the seat's standing frame as an SVG-document URI`)
                 ?? (n.children[0].getAttribute('preserveAspectRatio') === 'xMidYMax meet' ? null : 'its image is not drawn xMidYMax meet')]];
+        case 'chair':
         case 'desk-sprite':
-            // The art's clipping viewport at the element's rect, the image at the viewport's origin.
-            return [['svg', at, viewport(e)]];
+        case 'monitor-frame':
+        case 'desk-props':
+        case 'side-table':
+            // FLOOR.md § 10.6 item 2: the floor's theme's document for the element — its kind's function over
+            // the desk's key (and the side table's seat count) — in a clipping viewport at the element's rect,
+            // the image at the viewport's origin, drawn `xMidYMax meet`.
+            return [['svg', at, (n) => viewport(e)(n) ?? classIs([e.kind])(n.children[0])
+                ?? (n.children[0].getAttribute('href') === furnitureFrame(seat, e) ? null
+                    : `its image is «${decodeURIComponent(String(n.children[0].getAttribute('href'))).slice(60, 160)}», not the theme's ${FURNITURE[e.kind]} for the desk`)
+                ?? (n.children[0].getAttribute('preserveAspectRatio') === 'xMidYMax meet' ? null : 'its image is not drawn xMidYMax meet')]];
         case 'gauge-bar':
             return [['rect', at], ['rect', { ...at, w: e.w * (e.pct / 100) }]];
         case 'badge':
@@ -248,18 +269,6 @@ function owed(e, seat, failed, key) {
         }
         case 'plate':
             return [['rect', at, classIs(['plate'])]];
-        case 'side-table': {
-            // FLOOR.md § 10.6 at row 20: the table, then one seat per seat it holds along its foot line —
-            // written here from the published rule (8 px inside the table, the interns' 24 px pitch, 20 wide).
-            const seats = Array.from({ length: e.seats }, (_, i) => ['rect', { x: e.x + 8 + i * 24, y: e.y + e.h - 6, w: 20, h: 6 }, classIs(['seat'])]);
-
-            return [['rect', at, classIs(['side-table'])], ...seats];
-        }
-        case 'desk-props':
-            // Emitted at row 20 and painted from row 22, when the floor's theme draws it (§ 10.6).
-            return [];
-        case 'chair':
-        case 'monitor-frame':
         case 'monitor':
         case 'placeholder':
         case 'lag-overlay':
@@ -472,7 +481,7 @@ for (const desk of desks) {
         const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, sprite: { url: 'desk.png', w: 116, h: 57 }, placeholder: false, failed: new Set() };
         const desk = placeDesk(model, `swap/${seat.seat_id}`, seat.install_id, null, { x: 0, y: 0 }, ctx, { overflow: false, slot: null, object_id: null });
 
-        createPainter({ characters, failed() {}, select() {} }).paint({ ...scene, desks: [desk] }, { bounds: null });
+        createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} }).paint({ ...scene, desks: [desk] }, { bounds: null });
 
         const g = host.children[0].children.find((n) => n.getAttribute('class') === 'desks').children[0];
         const sprites = g.children.filter((n) => n.name === 'svg' && classes(n.children[0]).includes('intern'))
@@ -538,7 +547,7 @@ for (const p of owedPoses) {
 // ── AT-D3-24: no canvas for a character, and no frame list copied onto an element (N8) ──
 {
     canvases = 0;
-    createPainter({ characters, failed() {}, select() {} }).paint(scene, { bounds: null });
+    createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} }).paint(scene, { bounds: null });
 
     if (canvases > 0) {
         defects.push(`the painter made ${canvases} canvas(es) painting characters — a character is an SVG document, never a raster a canvas made`);
@@ -571,7 +580,7 @@ for (const p of owedPoses) {
     };
 
     loops.length = 0;
-    createPainter({ characters, failed() {}, select() {} }).paint({ ...scene, desks: [moving] }, { bounds: null });
+    createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} }).paint({ ...scene, desks: [moving] }, { bounds: null });
 
     const g = host.children[0].children.find((n) => n.getAttribute('class') === 'desks').children[0];
     const character = g.children.find((n) => n.name === 'svg' && n.children[0] && classes(n.children[0]).includes('character'))?.children[0];
@@ -607,7 +616,7 @@ for (const p of owedPoses) {
     let threw = null;
 
     try {
-        createPainter({ characters: null, failed: (ids) => reported.push(...ids), select() {} }).paint(scene, { bounds: null });
+        createPainter({ characters: null, themes: { studio: theme }, failed: (ids) => reported.push(...ids), select() {} }).paint(scene, { bounds: null });
     } catch (e) {
         threw = e;
     }
@@ -625,7 +634,7 @@ for (const p of owedPoses) {
     threw = null;
 
     try {
-        createPainter({ characters, failed: (ids) => one.push(...ids), select() {} }).paint(scene, { bounds: null });
+        createPainter({ characters, themes: { studio: theme }, failed: (ids) => one.push(...ids), select() {} }).paint(scene, { bounds: null });
     } catch (e) {
         threw = e;
     }
@@ -644,7 +653,7 @@ for (const p of owedPoses) {
     const desk = desks.find((d) => d.elements.some((e) => e.kind === 'character'));
     const asset = desk.elements.find((e) => e.kind === 'character').asset;
 
-    createPainter({ characters, failed: (ids) => reported.push(...ids), select() {} }).paint({ ...scene, desks: [desk] }, { bounds: null });
+    createPainter({ characters, themes: { studio: theme }, failed: (ids) => reported.push(...ids), select() {} }).paint({ ...scene, desks: [desk] }, { bounds: null });
 
     const g = host.children[0].children.find((n) => n.getAttribute('class') === 'desks').children[0];
     const img = g.children.find((n) => n.name === 'svg' && n.children[0] && classes(n.children[0]).includes('character'))?.children[0];
@@ -669,7 +678,7 @@ for (const p of owedPoses) {
         held: { ...(desk.held ?? {}), motion: true, frame_interval_ms: 250 },
         elements: desk.elements.map((e) => (e.kind === 'character' ? { ...e, animation: { motion: true, frame_interval_ms: 250 } } : e)),
     };
-    const twice = createPainter({ characters, failed() {}, select() {} });
+    const twice = createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} });
     const imagesOf = () => {
         const walk = (n) => [n, ...n.children.flatMap(walk)];
 

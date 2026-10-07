@@ -253,12 +253,12 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
             }
 
             // § 6.3's third test is about the ELEMENT: motion on anything a § 6.2 row draws is
-            // claim-bearing. So every decoration must be a map tile that declares itself one — never
-            // a desk element, whose every kind a row or the desk model draws. (A rect test against
-            // the desk's box would be a proxy, and a wrong one: a wall lamp behind a desk drawn past
-            // an undersized slot is still a lamp.)
-            $tile = collect($scene['tiles'])->first(fn ($t) => [$t['x'], $t['y'], $t['w'], $t['h']] === [$d['x'], $d['y'], $d['w'], $d['h']]
-                && ($t['properties']['decoration'] ?? null) === $d['decoration']);
+            // claim-bearing. So every decoration must be a map tile that declares itself one — a standing
+            // scenery piece placed by the map (FLOOR.md § 10.6 item 6), never a desk element, whose every
+            // kind a row or the desk model draws. (A rect test against the desk's box would be a proxy, and
+            // a wrong one: a lamp behind a desk drawn past an undersized slot is still a lamp.)
+            $tile = collect($scene['scenery'])->first(fn ($t) => [$t['x'], $t['y'], $t['w'], $t['h']] === [$d['x'], $d['y'], $d['w'], $d['h']]
+                && ($t['decoration'] ?? null) === $d['decoration']);
 
             if ($tile === null) {
                 $defects[] = 'a decoration is on no map tile that declares it one: '.json_encode($d);

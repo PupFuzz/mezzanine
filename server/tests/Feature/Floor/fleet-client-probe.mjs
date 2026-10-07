@@ -248,6 +248,11 @@ const plateLabel = (camera) => shownLabel(showLabels, camera);
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const furniture = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'furniture-box.js')).href);
 const themeRegistry = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'themes', 'index.js')).href);
+// FLOOR.md § 10.6 item 1: every theme the registry names, from disk, as the page imports each by the asset route.
+const themeModules = Object.fromEntries(await Promise.all(themeRegistry.THEMES.map(async (name) => [
+    name,
+    await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'themes', name, 'theme.js')).href),
+])));
 
 /** The payload with every `@json:` / `@text:` / `@box.` reference replaced (see the header). */
 function substitute(node) {
@@ -611,20 +616,25 @@ async function replay(scenario) {
         });
     }
 
-    // Appendix B row 14's scene inputs, as the painter supplies them on a page: the furniture box and
-    // the desk sprite from `resources/floor/furniture-box.js`, a measurer that answers a stated width
-    // per glyph in each type role, and the character's size as the fixture states it.
+    // Appendix B row 14's scene inputs, as the painter supplies them on a page: the furniture box from
+    // `resources/floor/furniture-box.js`, a measurer that answers a stated width per glyph in each type
+    // role, the character's size as the fixture states it, and the themes (FLOOR.md § 10.6) through the
+    // page's own `themeInputs()`. A run may reject the registry's import (`themes.registry: false`) or a
+    // theme's (`themes.reject: [name]`), and each is reported failed as `loadArt()` reports it.
     if (screen !== null && scenario.floor.scene !== undefined) {
-        const { measurer, character, box } = scenario.floor.scene;
+        const { measurer, character, box, themes: spec = {} } = scenario.floor.scene;
+        const { themeInputs, THEME_REGISTRY } = await import(pathToFileURL(join(dir, '..', 'floor', 'painter.js')).href);
+        const registry = spec.registry === false ? null : themeRegistry;
+        const rejected = registry === null ? [] : registry.THEMES.filter((name) => (spec.reject ?? []).includes(name));
+        const modules = registry === null ? {} : Object.fromEntries(registry.THEMES.map((name) => [name, rejected.includes(name) ? null : themeModules[name]]));
 
         screen.sceneInputs({
             box: box ?? furniture.FURNITURE_BOX,
-            desk_sprite: furniture.DESK_SPRITE,
             measure: harnessMeasurer(measurer),
             character,
-            // FLOOR.md § 10.6 item 5: the registry, from disk, as the page imports it by the asset route.
-            themes: { names: themeRegistry.THEMES, house: themeRegistry.HOUSE_THEME },
+            themes: themeInputs(registry, modules),
         });
+        screen.assetsFailed([...(registry === null ? [THEME_REGISTRY] : []), ...rejected.map((name) => `theme:${name}`)]);
     }
 
     // § 9 F14, as the painter reports it — each an event on the scenario queue, followed by a render

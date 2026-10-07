@@ -166,6 +166,11 @@ because a gate can only be proven on a defect of its own class:
                walls are why this exists: G-walls leg 1 holds every wall-strip cell of the shipped
                default outside every `desks` object, and no other kind can paint a cell.  The GID is
                read out of the layer's first cell -- the left side wall's -- so the plant stores none.
+  `piece-cell`
+            -- write, at the anchored map cell, the first non-zero GID the anchored tile layer places
+               before it, which is the class "a standing piece was placed inside a desk slot".
+               card#11046's scenery is why this exists: G-scenery leg 2 holds every standing piece's
+               whole cell outside every `desks` object.  The GID is read out of the layer itself.
 
 TWO VERDICTS.  `PLANTS` must RED, as described above.  `HOLDS` must NOT: the mutant must carry no
 line containing the named substring that the control lacks -- the same differential, pointed the
@@ -828,7 +833,7 @@ PLANTS = [
     ),
     (
         # card#11144 walls — G-walls leg 1 over the FILE: a wall-strip cell painted inside a slot.  The
-        # anchor walks to the SECOND tile layer's data (`walls`, between `plane` and `furniture`) and
+        # anchor walks to the SECOND tile layer's data (`walls`, between `accent` and `furniture`) and
         # to row 3, column 13 -- 8 px inside the first `desks` object's top-left corner -- and the
         # `wall-cell` kind writes there the GID that layer's own first cell carries (the left side
         # wall's), so the plant stores no GID of its own.
@@ -841,28 +846,28 @@ PLANTS = [
         "lies inside `desks` object id",
     ),
     (
-        # G-walls leg 2: the kit's elevation-only ids are read out of section 10.4's bullet.  Widening
-        # the range's low end by one takes in kit id 23 -- the floor lamp, which the shipped default
-        # DOES place -- so the leg must now find a placed elevation-only tile.  A doc-side plant,
-        # because the ids' one home is the bullet.
+        # card#11046 G-scenery leg 2 over the FILE: a standing piece placed inside a slot.  The anchor
+        # walks to the THIRD tile layer's data (`furniture`) and to row 20, column 20 -- a bookcase
+        # bottom-aligned there stands inside the first `desks` object -- and the `piece-cell` kind writes
+        # there the first GID that layer places (the left strip's bookcase), so the plant stores none.
         "verify-floor.py",
-        "docs/design/FLOOR.md",
-        r"(elevation-only\s+tiles\s+are\s+ids\s+)(\d+)(-)",
-        "shrink",
-        "section 10.4's elevation-only kit range widened to take in a tile the shipped default "
-        "places, which G-walls leg 2 must then refuse on the map (card#11144)",
-        "places the kit's elevation-only tile id",
+        "resources/floor/default.tmj",
+        r"(\"data\":\[[\s\S]*?\"data\":\[[\s\S]*?\"data\":\[\n(?:[^\n]*\n){20}    (?:\d+, ){20})(0)(, )",
+        "piece-cell",
+        "a standing piece planted inside the shipped default's first `desks` object, which G-scenery "
+        "leg 2 must refuse as scenery under a desk's facts (card#11046)",
+        "meets `desks` object id",
     ),
     (
-        # G-walls leg 3: the wall strip's fill is a COPY of `--house-trim`; one hex digit moved in the
-        # SVG alone is the class "the copy drifted from the sheet".
+        # G-walls leg 2: the wall tile declares `kind: wall`.  Its kind dropped in the tileset is the
+        # class "a stored map's walls lost their meaning" (FLOOR.md section 10.6's retirements).
         "verify-floor.py",
-        "resources/floor/tiles/floor-plane/wall-strip.svg",
-        r"(fill=\"#[0-9a-fA-F]{5})(\d)(\")",
-        "bump",
-        "the wall strip's fill moved off the sheet's `--house-trim` in the SVG alone, which G-walls "
-        "leg 3 must refuse (card#11144)",
-        "the two homes disagree",
+        "resources/floor/tiles/floor-plane.tsx",
+        r"(<property name=\"kind\" value=\")(wall)(\"/>)",
+        "drop",
+        "the wall-strip tile's `kind` dropped in the tileset, which G-walls leg 2 must refuse "
+        "(card#11046)",
+        "the wall-strip marker's, declares",
     ),
     (
         # PR #232 round 2, MINOR-B — G8e reads the box with the DECLARATION's `\d` bound to ASCII, as
@@ -1128,6 +1133,9 @@ MUTATIONS = {
     "drop": lambda m: m.group(1) + m.group(3),
     # The GID the anchored layer's own first cell carries, written at the anchored cell (G-walls leg 1).
     "wall-cell": lambda m: m.group(1) + re.findall(r'"data":\[\n    (\d+), ', m.group(1))[-1] + m.group(3),
+    # The first GID the anchored layer places, written at the anchored cell (G-scenery leg 2).
+    "piece-cell": lambda m: (m.group(1) + re.search(r'[1-9]\d*', m.group(1)[m.group(1).rindex('"data":['):].replace('"data":[', '', 1)).group(0)
+                             if re.search(r'[1-9]', m.group(1)[m.group(1).rindex('"data":['):]) else m.group(1) + m.group(2)) + m.group(3),
     # The previous object's `x` and `width` are the first of each after the layer's name in
     # group(1); `x + width - 1` is the last pixel column of its half-open span.
     "overlap": lambda m: (m.group(1)

@@ -35,7 +35,7 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                disjoint on half-open rects (each is the furniture
                                                box its desk is drawn inside, section 10.3); absent,
                                                section 10.3 must SAY so and no map may exist in the tree;
-                                               the desk sprite's size against its PNG; and the
+                                               and the
                                                READ PATHS section 10.3 says a room's map is fetched
                                                from must be exactly the ones D2 section 8.7 declares;
                                                and the worked floors laid at the furniture box --
@@ -44,10 +44,13 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                and the shipped default's RESERVED DESK, its id and
                                                role read out of the map and held equal to section
                                                10.3's sentence and section 12's row (card#11144)
-  G-walls the PM office walls (card#11144)     on the shipped default: every wall-strip cell outside every
-                                               `desks` object; none of the kit's elevation-only tiles (ids
-                                               read from section 10.4) placed; the strip's fill equal to
-                                               the sheet token it copies, the SVG parsed as XML
+  G-walls the PM office walls (card#11144)     on the shipped default: every wall cell (a tile declaring
+                                               the kind `wall`) outside every `desks` object; the wall
+                                               tile declares `kind: wall` and its marker parses as XML
+  G-scenery the standing pieces (card#11046)   on the shipped default: every tile names a shipped tileset
+                                               and a tile declaring a kind of the theme registry's set;
+                                               every standing piece's cell rect inside the grid and
+                                               outside every `desks` object
   G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
                                                bearing members without `fetch-fresh` / `dark-only`;
                                                a section 5 table this gate has no column for; a table
@@ -1831,47 +1834,9 @@ else:
         fail.append("G8 CONTROL: section 10.3 no longer restates the shipped default's slot count in "
                     "the form this leg closes against section 3.2, so the two homes are unguarded")
 
-# ---- G8c. the desk sprite's declared size, against the FILE -----------------------------------
-# Section 12's viewport row waited on "a desk's rendered width [being] a measured number rather than
-# a design intent" (section 14 item 7).  The tileset landed on 2026-09-12 and section 10.3 now states
-# that width -- which makes it a number with two homes, a document and a PNG, and the document is the
-# copy nothing re-derives.  G4 already binds section 12's row to section 10.3's sentence; this leg
-# binds that sentence to the bytes, so the pair cannot drift from the file together.
-#
-# BOTH POPULATIONS ARE READ OUT OF THE DOCUMENT: the dimensions AND the path come from section 10.3's
-# own sentence, so re-curating the tileset or renaming the file moves this check with it rather than
-# leaving a stored `116` behind.  The PNG header is the authority -- IHDR width/height at a fixed
-# offset, which is the format's own declaration about itself and needs no decoder.
-#
-# Two branches, and the summary prints which one ran.  DECLARED: the file must exist, be a PNG, and
-# agree.  UNDECLARED: section 10.3 states no sprite measurement, which is the correct state while no
-# tileset is vendored -- and it is not a silent skip, because section 12 cannot then carry the row
-# either: G4 reds any figure that is not a whole token at the section it cites.
-SPRITE_DECL = prose(r"A desk sprite is (\d+) px wide and (\d+) px tall\*\* \(`([^`]+)`\)")
-m_sprite = re.search(SPRITE_DECL, sec103)
-g8c_branch = "UNDECLARED — section 10.3 measures no sprite, so section 12 may cite none (G4 holds that half)"
-if m_sprite:
-    _dw, _dh, _rel = int(m_sprite.group(1)), int(m_sprite.group(2)), m_sprite.group(3)
-    _sprite = ROOT / _rel
-    if not _sprite.is_file():
-        g8c_branch = f"MISSING — `{_rel}`"
-        fail.append(f"G8: section 10.3 states a desk sprite is {_dw}x{_dh} px and names "
-                    f"`{_rel}`, and no such file exists — a measurement of a file that is not "
-                    f"there is the defect card#9208 found in `S`, in a second number")
-    else:
-        _hdr = _sprite.read_bytes()[:24]
-        if _hdr[:8] != b"\x89PNG\r\n\x1a\n" or len(_hdr) < 24:
-            g8c_branch = f"UNREADABLE — `{_rel}`"
-            fail.append(f"G8: `{_rel}` is not a PNG this gate can read a size out of — clause 1 of "
-                        f"section 10.1 admits the suffix and nothing established the dimensions, "
-                        f"and a size this gate could not establish is a red rather than a skip")
-        else:
-            _aw, _ah = struct.unpack(">II", _hdr[16:24])
-            g8c_branch = f"MEASURED from {_rel}: {_aw}x{_ah} px"
-            if (_aw, _ah) != (_dw, _dh):
-                fail.append(f"G8: section 10.3 states the desk sprite is {_dw}x{_dh} px and "
-                            f"`{_rel}` is {_aw}x{_ah} px — the document and the file disagree, and "
-                            f"section 12's viewport row rests on the document's copy")
+# ---- G8c, the desk sprite's declared size against its PNG, RETIRED with the sprite (card#11046, Appendix B
+# row 22): the bridge kit and its desk PNG left the tree, the floor's theme draws the desk as code with no
+# native size (FLOOR.md section 10.6), and section 12's *Desk sprite width* row retired with the file it measured.
 
 # ---- G8e. the FURNITURE BOX at the cap and the shipped default's GRID, against their FILES ---------
 # Appendix B row 14's slice B (card#7341 step 11) gave section 12 two more Measured rows -- the
@@ -2094,45 +2059,30 @@ elif S and parsed:
 
 # ---- G-walls. the PM office walls on the shipped default, under section 10.4's projection rule (card#11144) ----
 # Section 10.4's projection bullet, item 4: every wall but the band shows only its TOP EDGE -- a strip one cell
-# wide, drawn with the floor-plane tileset's wall-strip tile, under every standing thing -- and the kit's
-# elevation-only renders are never placed.  The shipped default carries the PM office's walls, so three legs
-# hold it, each re-derived from the files on every run and never from a list stored here:
-#   leg 1  every cell of the shipped default whose GID resolves to the wall-strip tile lies OUTSIDE every
-#          `desks` object -- G8's half-open rects, the cell's whole 8 x 8 against the object.  A wall cell
-#          inside a slot is drawn UNDER that desk (tile layers draw under every desk, section 10.3), so it
-#          is a wall that silently vanishes, and the console does not refuse one (it validates documents).
-#   leg 2  no tile layer of the shipped default places one of the kit's ELEVATION-ONLY tiles, whose ids are
-#          read out of section 10.4's bullet (`the kit's elevation-only tiles are ids ...`) and resolved to
-#          GIDs through the map's own `firstgid` for the kit -- so the list has one home, the document.
-#   leg 3  the wall-strip SVG parses as well-formed XML, and its one fill equals the sheet token its own
-#          comment names (`house-trim`, read as `--house-trim`): a tile is an isolated SVG document that cannot
-#          read the page's custom properties, so the value is a COPY, and this leg is the guard canon #16 asks
-#          of a copy a program loads (section 10.4 item 4).  Parsed because a malformed tile is one the
-#          browser refuses to draw -- the first draft of this tile carried `--` in its comment and drew no
-#          wall at all while every grep-level check passed.
-# Each leg carries a CONTROL that reds rather than reporting clean when its population is empty: a map with
-# no wall cell at all, a bullet this leg cannot read, an SVG with no fill or no named token.
+# wide, painted with the tileset's wall tile, the `wall` kind the floor's theme draws as a strip on the grid's
+# plane (section 10.6 item 6, card#11046).  The shipped default carries the PM office's walls, so two legs hold
+# it, each re-derived from the files on every run and never from a list stored here:
+#   leg 1  every cell of the shipped default whose GID resolves to a tile declaring `kind: wall` lies OUTSIDE
+#          every `desks` object -- G8's half-open rects, the cell's whole 8 x 8 against the object.  A wall cell
+#          inside a slot is drawn UNDER that desk (the plane draws under every desk), so it is a wall that
+#          silently vanishes, and the console does not refuse one (it validates documents).
+#   leg 2  the wall tile -- the one drawn from the wall-strip marker, tile 2 since the planks and the rug
+#          retired -- declares `kind: wall`, so every stored map's walls keep their meaning; and its marker
+#          parses as well-formed XML, the shape Gate 2 and Tiled read.
+# Until row 22 a second leg held the bridge kit's elevation-only tiles off the shipped default; it is
+# G-scenery's first now, over every tile.  Until row 22 a third held the strip's fill equal to `--house-trim`;
+# nothing draws the marker's fill since the theme draws the walls, so the copy and its guard retired together.
+# Each leg carries a CONTROL that reds rather than reporting clean when its population is empty.
 # What it does NOT check, said rather than implied: an authored map (the console validates documents, not
 # pictures -- section 10.3's residue), where on the plane a wall runs, the doorway's width, and whether the
 # walls LOOK right -- that is the screenshot's, at review.
 gw_status = "NOT MEASURED"
+gs_status = "NOT MEASURED"
 GW_TILE = "wall-strip.svg"
-GW_KIT = "furniture-kit.tsx"
-sec104 = section_text("104-the-art-direction-as-a-specification") or ""
-m_elev = re.search(r"the kit's\s+elevation-only\s+tiles\s+are\s+ids\s+((?:\d+(?:-\d+)?(?:,\s+|\s+and\s+)?)+)\*\*", sec104)
-CSS = ROOT / "server/public/css/mezzanine.css"
-
-
-def gw_ids(spec):
-    """`24-37 and 44` -> {24, ..., 37, 44}."""
-    out = set()
-    for part in re.split(r",\s+|\s+and\s+", spec.strip()):
-        if "-" in part:
-            a, b = part.split("-")
-            out.update(range(int(a), int(b) + 1))
-        elif part:
-            out.add(int(part))
-    return out
+REGISTRY = ROOT / "resources/floor/themes/index.js"
+_kinds = re.search(r"^export const KINDS = Object\.freeze\(\[([^\]]*)\]\);$", REGISTRY.read_text() if REGISTRY.is_file() else "", re.M)
+KINDS = re.findall(r"'([a-z][a-z0-9-]*)'", _kinds.group(1)) if _kinds else []
+PLANE_KINDS = {"wall", "accent"}
 
 
 def gw_tile_layers(layers):
@@ -2144,15 +2094,36 @@ def gw_tile_layers(layers):
             yield l
 
 
-if not m_elev:
-    fail.append("G-walls CONTROL: section 10.4's projection bullet no longer states the kit's elevation-only "
-                "tiles in the form this leg reads (`the kit's elevation-only tiles are ids N-M and K**`), so "
-                "leg 2 would hold the shipped default against an empty list and report it clean")
+def gw_tiles(map_path, doc):
+    """GID -> (tileset path, tile id, kind or None, width, height) over every tileset the map names, read out of
+    each `.tsx`; a `source` that resolves to no file is listed under None with its path, for G-scenery."""
+    out, missing = {}, []
+    for ts in doc.get("tilesets", []):
+        src = ts.get("source")
+        if not isinstance(src, str):
+            missing.append(("(embedded)", int(ts.get("firstgid", 0))))
+            continue
+        tsx = (map_path.parent / src).resolve()
+        if not tsx.is_file():
+            missing.append((src, int(ts["firstgid"])))
+            continue
+        for t in ET.parse(tsx).getroot().findall("tile"):
+            img = t.find("image")
+            kind = next((p.get("value") for p in t.iter("property") if p.get("name") == "kind"), None)
+            out[int(ts["firstgid"]) + int(t.get("id"))] = (tsx, int(t.get("id")), kind,
+                                                           int(img.get("width")) if img is not None else 0,
+                                                           int(img.get("height")) if img is not None else 0,
+                                                           img.get("source") if img is not None else None)
+    return out, missing
+
+
+if not KINDS:
+    fail.append("G-walls/G-scenery CONTROL: the theme registry's `KINDS` did not parse out of "
+                "`resources/floor/themes/index.js`, so no tile's kind could be held against the set")
 elif not g8_maps:
     fail.append("G-walls: no shipped default map was read (see the G8 lines above), so the walls on it were "
                 "never measured")
 else:
-    _elev = gw_ids(m_elev.group(1))
     for _mrel in g8_maps:
         _mp = ROOT / _mrel
         if _mp.suffix != ".tmj":
@@ -2161,82 +2132,80 @@ else:
             continue
         _doc = json.loads(_mp.read_text())
         _tw, _th = int(_doc["tilewidth"]), int(_doc["tileheight"])
-        _strip_gid, _strip_svg, _kit_first = None, None, None
-        for _ts in _doc.get("tilesets", []):
-            _src = _ts.get("source")
-            if not isinstance(_src, str):
-                continue
-            _tsx = (_mp.parent / _src).resolve()
-            if _tsx.name == GW_KIT:
-                _kit_first = int(_ts["firstgid"])
-            for _t in ET.parse(_tsx).getroot().findall("tile"):
-                _img = _t.find("image")
-                if _img is not None and pathlib.PurePosixPath(_img.get("source", "")).name == GW_TILE:
-                    _strip_gid = int(_ts["firstgid"]) + int(_t.get("id"))
-                    _strip_svg = (_tsx.parent / _img.get("source")).resolve()
-        if _strip_gid is None:
-            fail.append(f"G-walls CONTROL: no tileset `{_mrel}` names resolves a tile drawn from `{GW_TILE}`, so "
+        _gw, _gh = int(_doc["width"]) * _tw, int(_doc["height"]) * _th
+        _tiles, _missing = gw_tiles(_mp, _doc)
+        _objs = g8_maps[_mrel][0]
+        _inside = lambda x, y, w, h, o: x < o[1] + o[3] and o[1] < x + w and y < o[2] + o[4] and o[2] < y + h
+        # leg 2 first: the wall tile and its marker.
+        _strip = [(g, t) for g, t in _tiles.items() if t[5] is not None and pathlib.PurePosixPath(t[5]).name == GW_TILE]
+        if not _strip:
+            fail.append(f"G-walls CONTROL: no tileset `{_mrel}` names declares a tile drawn from `{GW_TILE}`, so "
                         f"the shipped default's walls cannot be found -- leg 1 would read nothing")
             continue
-        if _kit_first is None:
-            fail.append(f"G-walls CONTROL: `{_mrel}` names no `{GW_KIT}` tileset, so the kit's elevation-only "
-                        f"ids resolve to no GID and leg 2 would read nothing")
-            continue
-        _elev_gids = {_kit_first + i for i in _elev}
-        _objs = g8_maps[_mrel][0]
-        _walls, _placed = 0, []
+        for _g, _t in _strip:
+            if _t[2] != "wall":
+                fail.append(f"G-walls leg 2: tile {_t[1]} of `{_t[0].name}`, the wall-strip marker's, declares "
+                            f"{'no kind' if _t[2] is None else f'the kind `{_t[2]}`'} -- it must declare `kind: wall`, "
+                            f"so every stored map's walls keep their meaning (section 10.6's retirements)")
+            try:
+                ET.parse(_t[0].parent / _t[5])
+            except ET.ParseError as exc:
+                fail.append(f"G-walls leg 2: `{GW_TILE}` is not well-formed XML ({exc}) -- Tiled and Gate 2 read it")
+        _wall_gids = {g for g, t in _tiles.items() if t[2] == "wall"}
+        _walls, _pieces, _bad_tiles = 0, 0, []
         for _l in gw_tile_layers(_doc.get("layers", [])):
             _cols = int(_l.get("width", _doc["width"]))
             for _i, _cell in enumerate(_l.get("data", [])):
                 _gid = int(_cell) & 0x1FFFFFFF                    # Tiled's three flip bits, cleared
-                if _gid in _elev_gids:
-                    _placed.append((_l.get("name"), _i % _cols, _i // _cols, _gid - _kit_first))
-                if _gid != _strip_gid:
+                if _gid == 0:
                     continue
-                _walls += 1
-                _cx, _cy = (_i % _cols) * _tw, (_i // _cols) * _th
+                _col, _row = _i % _cols, _i // _cols
+                _t = _tiles.get(_gid)
+                # G-scenery leg 1: a shipped tileset, and a tile declaring a kind of the registry's set.
+                if _t is None or _t[2] not in KINDS:
+                    _bad_tiles.append((_l.get("name"), _col, _row, _gid,
+                                       "names a tileset the repository does not ship, or a tile it does not declare"
+                                       if _t is None else ("declares no kind" if _t[2] is None
+                                                           else f"declares the kind `{_t[2]}`, which the registry does not name")))
+                    continue
+                if _gid in _wall_gids:
+                    _walls += 1
+                    _cx, _cy = _col * _tw, _row * _th
+                    for _o in _objs:
+                        if _inside(_cx, _cy, _tw, _th, _o):
+                            fail.append(f"G-walls leg 1: `{_mrel}` `{_l.get('name')}` wall cell ({_col}, {_row}) lies "
+                                        f"inside `desks` object id {_o[0]} -- a wall cell inside a slot is drawn under "
+                                        f"that desk and vanishes (section 10.4 item 4)")
+                    continue
+                if _t[2] in PLANE_KINDS:
+                    continue
+                # G-scenery leg 2: a standing piece's WHOLE cell rect, bottom-aligned as drawn (mapTiles()).
+                _pieces += 1
+                _x, _y = _col * _tw, (_row + 1) * _th - _t[4]
+                if _x < 0 or _y < 0 or _x + _t[3] > _gw or _y + _t[4] > _gh:
+                    fail.append(f"G-scenery leg 2: `{_mrel}` `{_l.get('name')}` places a `{_t[2]}` at ({_col}, {_row}) "
+                                f"whose {_t[3]} x {_t[4]} cell leaves the grid")
                 for _o in _objs:
-                    if _cx < _o[1] + _o[3] and _o[1] < _cx + _tw and _cy < _o[2] + _o[4] and _o[2] < _cy + _th:
-                        fail.append(f"G-walls leg 1: `{_mrel}` `{_l.get('name')}` wall cell "
-                                    f"({_i % _cols}, {_i // _cols}) lies inside `desks` object id {_o[0]} -- a "
-                                    f"wall cell inside a slot is drawn under that desk and vanishes (section "
-                                    f"10.4 item 4; section 10.3: tile layers draw under every desk)")
+                    if _inside(_x, _y, _t[3], _t[4], _o):
+                        fail.append(f"G-scenery leg 2: `{_mrel}` `{_l.get('name')}` places a `{_t[2]}` at ({_col}, {_row}) "
+                                    f"whose {_t[3]} x {_t[4]} cell meets `desks` object id {_o[0]} -- scenery never "
+                                    f"sits under a desk's facts (section 10.6 item 6)")
+        for _m in _missing:
+            fail.append(f"G-scenery leg 1: `{_mrel}` names the tileset `{_m[0]}`, which the repository does not ship")
+        for _ln, _c, _r, _g, _why in _bad_tiles:
+            fail.append(f"G-scenery leg 1: `{_mrel}` `{_ln}` cell ({_c}, {_r}), GID {_g}, {_why}")
         if _walls == 0:
-            fail.append(f"G-walls CONTROL: `{_mrel}` places no wall-strip cell (GID {_strip_gid}) on any tile "
-                        f"layer, and section 10.3 says the shipped default draws the PM office's walls -- leg 1 "
-                        f"read an empty population")
-        for _ln, _c, _r, _kid in _placed:
-            fail.append(f"G-walls leg 2: `{_mrel}` `{_ln}` places the kit's elevation-only tile id {_kid} at "
-                        f"({_c}, {_r}) -- section 10.4 item 4: no wall but the band shows a face, and the kit's "
-                        f"elevation-only renders are never placed")
-        # leg 3: the copy and its token.  The SVG is PARSED, not grepped: a tile that is not well-formed XML
-        # is an image the browser refuses to draw (a `--` inside its comment is enough), and a grep would
-        # read the fill out of it and pass.  The comment names the token without its leading `--`, which
-        # an XML comment may not carry.
-        _svg = _strip_svg.read_text() if _strip_svg.is_file() else ""
-        try:
-            _root = ET.fromstring(_svg)
-            _fills = {e.get("fill") for e in _root.iter() if e.get("fill") not in (None, "none")}
-        except ET.ParseError as exc:
-            _fills = set()
-            fail.append(f"G-walls leg 3: `{GW_TILE}` is not well-formed XML ({exc}) -- the browser refuses to "
-                        f"draw it, and every wall on the floor is reported as failed art (section 9 F14)")
-        _tok = re.search(r"COPY OF the sheet token `([a-z0-9-]+)`", _svg)
-        _tok_name = f"--{_tok.group(1)}" if _tok else None
-        _css = re.search(rf"^\s*{re.escape(_tok_name)}:\s*(#[0-9a-fA-F]{{3,8}});", CSS.read_text(), re.M) if _tok else None
-        if len(_fills) != 1 or not _tok or not _css:
-            fail.append(f"G-walls CONTROL: `{_strip_svg.relative_to(ROOT.resolve()) if _strip_svg.is_file() else GW_TILE}` "
-                        f"carries fills {sorted(_fills)} and names token {_tok_name} "
-                        f"({'declared' if _css else 'not declared'} in `{CSS.relative_to(ROOT)}`) -- leg 3 needs "
-                        f"exactly one fill and a token the sheet declares, or the copy is guarded by nothing")
-        elif next(iter(_fills)).lower() != _css.group(1).lower():
-            fail.append(f"G-walls leg 3: `{_strip_svg.relative_to(ROOT.resolve())}` fills {next(iter(_fills))} and the sheet's "
-                        f"`{_tok_name}` is {_css.group(1)} -- the wall strip is a copy of the one wall colour "
-                        f"and the two homes disagree")
-        else:
-            gw_status = (f"MEASURED from {_mrel}: {_walls} wall-strip cell(s) (GID {_strip_gid}) outside all "
-                         f"{len(_objs)} `desks` objects; {len(_elev_gids)} elevation-only kit GID(s) absent from "
-                         f"every tile layer; `{GW_TILE}` well-formed, fill {next(iter(_fills))} = `{_tok_name}`")
+            fail.append(f"G-walls CONTROL: `{_mrel}` places no wall cell on any tile layer, and section 10.3 says the "
+                        f"shipped default draws the PM office's walls -- leg 1 read an empty population")
+        if _pieces == 0:
+            fail.append(f"G-scenery CONTROL: `{_mrel}` places no standing piece, and section 10.6 says the shipped "
+                        f"default lays the house picture's scenery -- leg 2 read an empty population")
+        if not _missing and not _bad_tiles and _walls and _pieces:
+            gw_status = (f"MEASURED from {_mrel}: {_walls} wall cell(s) outside all {len(_objs)} `desks` objects; "
+                         f"the `{GW_TILE}` tile declares `kind: wall` and its marker parses")
+            gs_status = (f"MEASURED from {_mrel}: every placed tile names a shipped tileset and a kind of the "
+                         f"registry's {len(KINDS)}; {_pieces} standing piece(s), each cell inside the grid and "
+                         f"outside every `desks` object")
 
 # ---- G8f. section 12's VIEWPORT arithmetic, re-derived from the map, the box and the reference viewport ----
 # The viewport row restates, in prose, how wide the shipped default is in furniture boxes and what the
@@ -3596,9 +3565,6 @@ print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's
       f"was held against nothing but this document's own declaration that there is no file, "
       f"which is the strongest true claim available and is NOT evidence about the number. The "
       f"tree sweep for a map skips {sorted(SWEEP_SKIP)}.")
-print(f"    G8 the desk sprite section 12's viewport row waited on: {g8c_branch}. MEASURED means "
-      f"the size was read out of the PNG's own IHDR header and held against section 10.3's "
-      f"sentence, both the dimensions and the path re-derived from that sentence.")
 print(f"    G8 the furniture box at the cap (Appendix B row 14, slice B): {g8e_box}. MEASURED means the box "
       f"was read out of its one declaration line — the shape `App\\Floor\\FurnitureBox` admits — and held "
       f"against section 10.3's sentence, the path re-derived from that sentence.")
@@ -3617,9 +3583,12 @@ print(f"    G8 section 12's viewport arithmetic: {g8f}. MEASURED means the rows,
 print(f"    G8 the worked floors laid at the furniture box: {g8g}. Each figure section 4.6's two rows and D2 "
       f"§ 8.7 state was re-derived from the box above, the rows' own tile counts and the worked JSON, and held.")
 print(f"G-walls the PM office walls on the shipped default (card#11144): {gw_status}. MEASURED means every "
-      f"wall-strip cell was held outside every `desks` object, the kit's elevation-only ids read out of section "
-      f"10.4 were held absent from every tile layer, and the strip's SVG was parsed and its one fill held equal "
-      f"to the sheet token its comment names. NOT checked: an authored map, where a wall runs, and how the walls look")
+      f"wall cell was held outside every `desks` object and the wall-strip tile was held to `kind: wall`, its "
+      f"marker parsed. NOT checked: an authored map, where a wall runs, and how the walls look")
+print(f"G-scenery the shipped default's standing pieces (card#11046): {gs_status}. MEASURED means every placed "
+      f"tile resolved to a shipped tileset and a tile declaring a kind of the registry's set, and every standing "
+      f"piece's whole cell rect, bottom-aligned as drawn, was held inside the grid and outside every `desks` "
+      f"object. NOT checked: where an `accent` is painted, which is the author's, and how the pieces look")
 print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase pairs re-derived from "
       f"section 7.6, section 7.1's worked instance held against them, section 5.1's verbatim "
       f"illustration held against the MEMBERS; both predicates fed their own defect on this run and "

@@ -607,7 +607,8 @@ print("\n11b. ⭐ THE IMAGE-COLLECTION TILESET — the OTHER Tiled shape, unexer
 # IMAGE COLLECTION — `columns="0"`, no tileset-level <image>, and one <tile><image source=…/></tile>
 # per file — and it is the shape a set of individually-sized renders requires, because packing a
 # 190 px wall and a 5 px keyboard into one grid either crops them or pads the sheet with empty
-# cells. `resources/floor/tiles/furniture-kit.tsx` (card#7341) is that shape.
+# cells. `resources/floor/tiles/floor-plane.tsx` is that shape (and the bridge kit's tileset was, card#7341 to
+# card#11046's row 22, which retired it).
 #
 # ⛔ WHY IT IS HERE AND NOT ASSUMED. Clause 3 walks `root.iter("image")` and `root.iter("data")`,
 # which reaches a per-tile <image> as readily as a tileset-level one — but "reads the same to me"

@@ -70,3 +70,9 @@ jobs:
       # which is what keeps a seat's face and a seat's desk agreeing about who it is.
       - name: Character generator self-test
         run: node tools/characters/selftest.mjs
+
+      # The theme gates — AT-D3-25's theme half (docs/design/FLOOR.md § 10.6, card#11046): the registry and every
+      # theme it names, drawn over populations derived on the run, each planted RED watched failing in a mirror of
+      # the tree. It runs `state-chip-colours.py --check` over the themes' surfaces, so Python is on the path too.
+      - name: Theme gates self-test
+        run: node tools/floor-themes/selftest.mjs

@@ -56,7 +56,7 @@ import { livePage } from '../wire/live-page.js';
 import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
 import { renderDrillDown } from '../drilldown/main.js';
-import { createPainter, loadArt, measurer } from './painter.js';
+import { createPainter, loadArt, measurer, themeInputs } from './painter.js';
 import { cameraView } from '../wire/camera-view.js';
 import { cameraGestures } from '../wire/camera-gestures.js';
 import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
@@ -318,9 +318,10 @@ startAgeTicker(screen.desks, clock, window, (readouts) => {
 
 // Appendix B row 14: the art modules, by the asset route. The screen draws no scene until they have
 // answered; a module that failed is reported as the failed asset it is (§ 9 F14).
-loadArt().then(({ furniture, characters, themes, failed }) => {
+loadArt().then(({ furniture, characters, registry, themes, failed }) => {
     painter = createPainter({
         characters,
+        themes,
         failed: (ids) => {
             screen.assetsFailed(ids);
             requestRender();
@@ -331,12 +332,12 @@ loadArt().then(({ furniture, characters, themes, failed }) => {
     if (furniture !== null) {
         screen.sceneInputs({
             box: furniture.FURNITURE_BOX,
-            desk_sprite: furniture.DESK_SPRITE,
             measure: measurer(),
             character: { w: characters?.SCENE_W ?? 0, h: characters?.SCENE_H ?? 0 },
-            // FLOOR.md § 10.6 item 5: the registry each floor's `theme` is resolved against (§ 9 F23);
-            // a registry that failed to load is § 9 F14's, and resolves nothing.
-            themes: themes === null ? null : { names: themes.THEMES, house: themes.HOUSE_THEME },
+            // FLOOR.md § 10.6: the registry each floor's `theme` is resolved against (item 5, § 9 F23) and
+            // which themes the page holds (item 8). A registry or a theme whose import was rejected is
+            // § 9 F14's: the floor draws its fallback, and the strip names the asset.
+            themes: themeInputs(registry, themes),
         });
     }
 

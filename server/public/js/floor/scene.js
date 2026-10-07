@@ -30,9 +30,9 @@
  */
 
 import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
-import { fnv1a32, footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
-import { FLOOR_ART, readEmbedded, resolvePath, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_BAND, BUBBLE_PAD, CHARACTER_SCALE, LINE, characterCentre, deskLayout, fit, union } from './desk-layout.js';
+import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
+import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
+import { BUBBLE_BAND, BUBBLE_PAD, CHARACTER_SCALE, LINE, characterCentre, deskLayout, fit, furnitureAsset, union } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 
 /**
@@ -67,25 +67,28 @@ export const BAND_H = 160;
  * window — or its sill — could only be drawn inside the zone. A stored map can be that narrow (F21).
  */
 const ZONE_W = 272;
-const ELEVATOR = { dx: 32, w: 84, h: 144, frame: 6, header: 14, lamp_r: 3 };
+const ELEVATOR = { dx: 32, w: 84, h: 144, frame: 6, header: 14 };
 const CLOCK = { dx: 164, size: 64 };
-const WINDOW = { margin: 24, pitch: 360, w: 200, min_w: 96, gap: 24, h: 124, dy: 16, sill_h: 6, sill_out: 6, transom: 0.62 };
-const SKIRTING_H = 8;
+const WINDOW = { margin: 24, pitch: 360, w: 208, min_w: 96, gap: 24, h: 80, dy: 22 };
+
+/**
+ * THE RECTS A FLOOR's THEME DRAWS THE BAND's SURROUNDS IN (FLOOR.md § 10.6 item 2, § 12): a window's surround
+ * is its glazing grown by the surround margin — 32 px each side, 16 above, 18 below — and the elevator's is
+ * its frame grown 18 px to the right, where the call buttons hang. Both stay clear of the clock's face at
+ * every width (AT-D3-25's band leg).
+ */
+export const SURROUND = Object.freeze({ side: 32, above: 16, below: 18, elevator_reach: 18 });
 
 /** The slab under the floor's rooms — the front wall's top edge, scenery, outside every grid (§ 4.2). */
 export const SLAB_H = 8;
 
 /**
- * § 10.4's seeded room theme (Q2, the operator's 2026-10-01 ruling on card#11045): each room's plane
- * takes one of these by `fnv1a32(install_id) mod 4` — keyed on the ROOM, whose key never moves, never on
- * the floor's (§ 4.6: a floor's key moves when a lower-sorting room joins it). Appearance, no fact; the
- * band stays in the house palette. The paint is `public/css/mezzanine.css`'s `--room-<theme>` pair.
+ * FLOOR.md § 10.6 item 6's two classes of tile kind: the PLANE kinds, whose cells are merged into runs by the
+ * one region pass (`tileRegions()`) and handed to the grid's plane document, and every other kind of the
+ * registry's set, which STANDS — drawn at its tile's cell rect by the floor's theme. A tile with no kind, or
+ * a kind the registry does not name, is drawn by nothing: the floor never draws a tile's image.
  */
-export const ROOM_THEMES = Object.freeze(['oak', 'walnut', 'sage', 'slate']);
-
-export function roomTheme(installId) {
-    return ROOM_THEMES[fnv1a32(installId) % ROOM_THEMES.length];
-}
+export const PLANE_KINDS = Object.freeze(['wall', 'accent']);
 
 /** The overflow strip's gap below the floor's extent, and its header — § 3.2's labelled row. */
 export const STRIP_GAP = 24;
@@ -155,6 +158,66 @@ export function floorTheme(floor, themes) {
     return themes.names.includes(floor.theme)
         ? { theme: floor.theme, notice: null }
         : { theme: themes.house, notice: unshippedThemeNotice(floor.theme, floor.name) };
+}
+
+/**
+ * THE FLOOR's THEME, AND WHETHER IT CAN DRAW (FLOOR.md § 10.6 items 5 and 8): the registry the page loaded
+ * (`themes.registry`, or `null` where its import was rejected), the theme module of each name it holds
+ * (`themes.modules`, a name's `null` where that import was rejected) and what has failed. A floor whose theme
+ * cannot draw — no registry, its module rejected or reported failed — draws every desk's placeholder and the
+ * band's and every plane's flat fallback fills, and § 9 F14's strip names what failed: the registry by its
+ * asset id, the module as `theme:<name>`. Each is added to `used` so the strip can name it.
+ *
+ * @returns {{name: string|null, resolved: string|null, drawn: boolean, kinds: list<string>, notice: string|null}}
+ */
+function themeOf(floor, themes, failed, used) {
+    if (themes === null || themes === undefined) {
+        return { name: null, resolved: null, drawn: false, kinds: [], notice: null };
+    }
+
+    if (themes.registry === null) {
+        used.add(themes.asset);
+
+        return { name: null, resolved: null, drawn: false, kinds: [], notice: null };
+    }
+
+    const resolved = floorTheme(floor, themes.registry);
+    const asset = `theme:${resolved.theme}`;
+    const held = (themes.modules?.[resolved.theme] ?? null) !== null && !failed.has(asset);
+
+    if (!held) {
+        used.add(asset);
+    }
+
+    return { name: resolved.theme, resolved: resolved.theme, drawn: held, kinds: [...themes.registry.kinds], notice: resolved.notice };
+}
+
+/**
+ * The band's theme documents, each at the rect the scene decides (§ 10.6 item 2): the wall at the band, a
+ * surround per window, the elevator's surround and the clock's case — band-relative inputs, scene rects.
+ * Exported for the theme gates (`tools/floor-themes/selftest.mjs`), which draw them over every band width.
+ */
+export function bandDocuments(band) {
+    const rel = (r) => Object.freeze({ x: r.x - band.x, y: r.y - band.y, w: r.w, h: r.h });
+    const docs = [
+        {
+            fn: 'band',
+            rect: { x: band.x, y: band.y, w: band.w, h: band.h },
+            input: {
+                w: band.w,
+                h: band.h,
+                zone: Object.freeze({ x: band.zone.x - band.x, w: band.zone.w }),
+                elevator: rel(band.elevator.frame),
+                clock: rel(band.clock),
+                windows: Object.freeze(band.windows.map(rel)),
+            },
+        },
+        ...band.windows.map((w, index) => ({ fn: 'windowSurround', rect: w.surround, input: { index, glazing: Object.freeze({ w: w.w, h: w.h }) } })),
+        { fn: 'elevatorSurround', rect: band.elevator.surround, input: {} },
+        { fn: 'clockCase', rect: { x: band.clock.x, y: band.clock.y, w: band.clock.w, h: band.clock.h }, input: {} },
+    ];
+
+    return Object.freeze(docs.map((d) => Object.freeze({ fn: d.fn, rect: Object.freeze(d.rect), input: Object.freeze(d.input) })));
 }
 
 export function undersizedNotice(id, installId, seats) {
@@ -233,10 +296,11 @@ const ONE_FRAME = new Set(['A5', 'A11', 'A12', 'A14', 'A17']);
  * The scene for one floor frame, or `null` when the frame composed no floor.
  *
  * @param {object} frame `FloorScreen#draw()`'s frame
- * @param {object} input `{ box, desk_sprite, measure, character, maps, hallway, tilesets, failed,
- *        reduce, effects, previous }` — `maps` is install_id → the held map document or `null`;
- *        `tilesets` is `TilesetLoader#held`; `failed` the asset ids the painter reported; `effects`
- *        the animation-log rows this render wrote; `previous` key → the box the last scene drew
+ * @param {object} input `{ box, measure, character, themes, maps, hallway, tilesets, failed,
+ *        reduce, effects, previous }` — `themes` is `painter.js`'s `themeInputs()`; `maps` is
+ *        install_id → the held map document or `null`; `tilesets` is `TilesetLoader#held`; `failed` the
+ *        asset ids the painter reported; `effects` the animation-log rows this render wrote; `previous`
+ *        key → the box the last scene drew
  */
 export function buildScene(frame, input) {
     if (frame.floor === null || frame.floor === undefined || frame.rooms.length === 0) {
@@ -267,33 +331,113 @@ export function buildScene(frame, input) {
         return held.tileset;
     };
 
-    // ── The desk sprite (resources/floor/furniture-box.js), through the tileset reader ─────────
-    const spriteUrl = resolvePath(FLOOR_ART, input.desk_sprite.image);
-    const spriteTileset = tilesetFor(tilesetUrl(input.desk_sprite.tileset));
-    const spriteTile = spriteTileset === null ? null : spriteTileset.imageTile(spriteUrl);
-    const sprite = spriteTile === null || failed.has(spriteUrl)
-        ? null
-        : { url: spriteUrl, w: spriteTile.sw, h: spriteTile.sh };
+    // ── The floor's theme (FLOOR.md § 10.6 item 5, § 9 F23), and whether it can draw (§ 10.6 item 8) ──
+    const theme = themeOf(frame.floor, input.themes, failed, used);
 
-    if (spriteTile !== null) {
-        used.add(spriteUrl);
+    /**
+     * One theme document the painter is to draw — the asset it is reported under, the API function, and
+     * the inputs the scene hands it (§ 10.6 item 2) — or `null` where the theme cannot draw it: none held,
+     * or that asset already reported failed. The painter's flat fallback is drawn under it either way.
+     */
+    const docOf = (asset, fn, docInput) => {
+        if (!theme.drawn) {
+            return null;
+        }
+
+        used.add(asset);
+
+        return failed.has(asset) ? null : Object.freeze({ asset, theme: theme.name, fn, input: Object.freeze(docInput) });
+    };
+
+    // ── Each grid in draw order — the hallway's, then each room's: its plane, its scenery ─────────
+    const grids = [];
+
+    if (frame.planned && input.hallway !== null && input.hallway !== undefined) {
+        grids.push({ install_id: null, map: input.hallway, origin: { x: 0, y: 0 }, seed: frame.floor.key });
     }
 
-    // ── Tiles: the hallway, then each room in draw order, each map's layers bottom first ──────
-    const tiles = [];
-    const drawMap = (map, origin, owner) => {
-        for (const cell of mapTiles(map, origin, tilesetFor, owner)) {
-            if (cell.image !== null) {
-                used.add(cell.image);
-            }
+    const byRoom = new Map(frame.rooms.map((room) => [room.install_id, room]));
 
-            if (cell.image === null || failed.has(cell.image)) {
+    for (const installId of frame.draw_order) {
+        const room = byRoom.get(installId);
+        const map = input.maps.get(installId) ?? null;
+
+        // F16: a room whose map is not drawn has no plane — "every fact, no room".
+        if (!room.mapless && map !== null && room.footprint !== null) {
+            grids.push({ install_id: installId, map, origin: room.origin, seed: installId, footprint: room.footprint });
+        }
+    }
+
+    // ⛔ THE FRAME's ONE PER-GRID PRIMITIVE: a plane under the grid's whole extent, opaque over the hallway as
+    // a room is (§ 4.2), drawn before that grid's scenery — so it is under everything the author placed. Its
+    // flat `--scene-floor` fill is drawn on every paint, and the theme's plane document over it.
+    const band = frame.band === null ? null : backWall(frame.band, frame.room);
+    const door = threshold(band);
+    const planes = [];
+    const scenery = [];
+    const standing = theme.kinds.filter((kind) => !PLANE_KINDS.includes(kind));
+    // The landing is drawn on the plane of the TOPMOST grid in draw order that holds the threshold (§ 10.6 item 7).
+    const holds = (g, extent) => door !== null && door.x >= extent.x && door.x < extent.x + extent.w && door.y >= extent.y && door.y < extent.y + extent.h;
+    // A room's extent is its footprint (`floor-layout.js`'s `placeRooms()`); the hallway's, its grid at the origin.
+    const extents = grids.map((g) => {
+        const grid = mapGrid(g.map);
+        const f = g.footprint ?? (grid === null ? null : { x: g.origin.x, y: g.origin.y, width: grid.width * grid.tilewidth, height: grid.height * grid.tileheight });
+
+        return grid === null || f === null ? null : { x: f.x, y: f.y, w: f.width, h: f.height, cell: { w: grid.tilewidth, h: grid.tileheight } };
+    });
+    const landingAt = extents.findLastIndex((e, i) => e !== null && holds(grids[i], e));
+
+    grids.forEach((g, i) => {
+        const extent = extents[i];
+
+        if (extent === null) {
+            return;
+        }
+
+        const cells = mapTiles(g.map, g.origin, tilesetFor, g.install_id);
+        const of = (kind) => tileRegions(cells.filter((c) => c.kind === kind))
+            .flatMap((region) => region.rects)
+            .map((r) => Object.freeze({ x: r.x - extent.x, y: r.y - extent.y, w: r.w, h: r.h }));
+        const desksOn = mapDesks(g.map).map((o) => Object.freeze({ x: o.x, y: o.y, w: o.width, h: o.height }));
+        const asset = `theme:${theme.name}/plane:${g.install_id ?? 'hallway'}`;
+
+        planes.push(Object.freeze({
+            install_id: g.install_id,
+            x: extent.x,
+            y: extent.y,
+            w: extent.w,
+            h: extent.h,
+            doc: docOf(asset, 'plane', {
+                w: extent.w,
+                h: extent.h,
+                seed: g.seed,
+                desks: Object.freeze(desksOn),
+                walls: Object.freeze(of('wall')),
+                accents: Object.freeze(of('accent')),
+                cell: Object.freeze(extent.cell),
+                band_foot: band !== null && band.y + band.h === extent.y,
+                threshold: i === landingAt ? Object.freeze({ x: door.x - extent.x, y: door.y - extent.y }) : null,
+            }),
+        }));
+
+        // § 10.6 item 6: every standing kind at its tile's cell rect, in tile order (the row-major y-sort).
+        for (const cell of cells) {
+            if (!standing.includes(cell.kind)) {
                 continue;
             }
 
-            tiles.push(cell);
+            const doc = docOf(`theme:${theme.name}/scenery:${cell.kind}`, 'scenery', { kind: cell.kind, w: cell.w, h: cell.h, seed: g.seed, index: cell.index });
 
-            if (typeof cell.properties?.decoration === 'string') {
+            if (doc === null) {
+                continue;
+            }
+
+            const decoration = typeof cell.properties?.decoration === 'string' ? cell.properties.decoration : null;
+
+            scenery.push(Object.freeze({ room: g.install_id, kind: cell.kind, x: cell.x, y: cell.y, w: cell.w, h: cell.h, decoration, doc }));
+
+            // § 6.3's decorative glow — a floor lamp's — the painter's, inside the tile of the piece it lights.
+            if (decoration !== null) {
                 decorative.push(Object.freeze({
                     decoration: cell.properties.decoration,
                     x: cell.x,
@@ -309,47 +453,28 @@ export function buildScene(frame, input) {
                 }));
             }
         }
-    };
-
-    if (frame.planned && input.hallway !== null && input.hallway !== undefined) {
-        drawMap(input.hallway, { x: 0, y: 0 }, null);
-    }
-
-    const byRoom = new Map(frame.rooms.map((room) => [room.install_id, room]));
-    // ⛔ THE FRAME's ONE PER-ROOM PRIMITIVE: a plane under the room's whole grid, opaque over the hallway as
-    // a room is (§ 4.2), drawn before that room's tiles — so it is UNDER the author's content and over no
-    // author's grid but its own. A room whose map is not drawn (F16) has no plane: F16 is "every fact, no
-    // room". The painter draws each plane and then the tiles whose `room` is its `install_id`.
-    const planes = [];
-
-    for (const installId of frame.draw_order) {
-        const room = byRoom.get(installId);
-        const map = input.maps.get(installId) ?? null;
-
-        if (!room.mapless && map !== null) {
-            if (room.footprint !== null) {
-                const f = room.footprint;
-
-                planes.push(Object.freeze({ install_id: installId, x: f.x, y: f.y, w: f.width, h: f.height, theme: roomTheme(installId) }));
-            }
-
-            drawMap(map, room.origin, installId);
-        }
-    }
+    });
 
     // ── Desks: inside their slots, the later `id` on top; F21's notices per room ──────────────
     const desks = [];
     const notices = [];
     const models = frame.desks.desks;
 
+    // § 9 F14: a desk draws its placeholder when its art cannot be drawn — the floor's theme held by
+    // nothing, its furniture set reported failed (all or nothing, § 10.6 item 8), or its character's.
     const artFor = (desk) => {
         const character = `character:${desk.install_id}/${desk.seat_id}`;
+        const set = theme.drawn ? furnitureAsset(theme.name, desk) : null;
 
         if (desk.character) {
             used.add(character);
         }
 
-        return sprite === null || (desk.character && failed.has(character));
+        if (set !== null) {
+            used.add(set);
+        }
+
+        return set === null || failed.has(set) || (desk.character && failed.has(character));
     };
 
     for (const installId of frame.draw_order) {
@@ -390,7 +515,7 @@ export function buildScene(frame, input) {
                 box,
                 measure: input.measure,
                 character: input.character,
-                sprite,
+                theme: theme.drawn ? theme.name : null,
                 // F16: a mapless room's every desk is the placeholder, in a plain grid.
                 placeholder: room.mapless || artFor(model),
                 failed,
@@ -398,12 +523,9 @@ export function buildScene(frame, input) {
         }
     }
 
-    // ── § 9 F23: the floor's theme, resolved against the registry (FLOOR.md § 10.6 item 5). Row 21 draws
-    // nothing by it yet — the floor is drawn as it was, in the theme the scene names.
-    const resolved = floorTheme(frame.floor, input.themes);
-
-    if (resolved.notice !== null) {
-        notices.push(resolved.notice);
+    // § 9 F23: an unshipped name draws the house theme, and says so.
+    if (theme.notice !== null) {
+        notices.push(theme.notice);
     }
 
     // ── § 3.2's overflow row: the strip below the floor, each desk at the box, no slot ────────
@@ -432,7 +554,7 @@ export function buildScene(frame, input) {
                 box,
                 measure: input.measure,
                 character: input.character,
-                sprite,
+                theme: theme.drawn ? theme.name : null,
                 placeholder: artFor(model),
                 failed,
             }, { overflow: true, slot: null, object_id: null }));
@@ -461,7 +583,15 @@ export function buildScene(frame, input) {
     placeBubbles(desks, input.measure, W, Object.keys(models));
 
     // ── The frame: the band over the floor's whole extent (§ 4.2) and the slab under it ────────
-    const band = frame.band === null ? null : backWall(frame.band, frame.room);
+    // The band's documents are ONE failure unit (§ 10.6 item 8): the wall and every surround, drawn all or
+    // none over the band's flat fallback fill.
+    const bandAsset = `theme:${theme.name}/band`;
+
+    if (band !== null && theme.drawn) {
+        used.add(bandAsset);
+    }
+
+    const bandDocs = band === null || !theme.drawn || failed.has(bandAsset) ? null : Object.freeze({ asset: bandAsset, theme: theme.name, docs: bandDocuments(band) });
     const slab = band === null || extent === null ? null : Object.freeze({
         x: band.x,
         y: extent.y + extent.height,
@@ -490,15 +620,16 @@ export function buildScene(frame, input) {
         extent: union(all),
         band,
         slab,
+        band_docs: bandDocs,
         planes: Object.freeze(planes),
-        tiles: Object.freeze(tiles),
+        scenery: Object.freeze(scenery),
         desks: Object.freeze(desks),
         strip,
         lines,
         effects,
         decorative: Object.freeze(decorative),
         notices: Object.freeze(notices),
-        theme: resolved.theme,
+        theme: theme.resolved,
         failed: Object.freeze(failedAssets),
         art_failed: failedAssets.length > 0,
         // Where each desk's lines and walks meet it — what the NEXT render's walks start from.
@@ -688,6 +819,10 @@ export function mapTiles(map, origin, tilesetFor, owner) {
                 flip_d,
                 opacity: alpha,
                 properties: tile?.properties ?? null,
+                // § 10.6 item 6: what the floor's theme draws the tile as — never its image.
+                kind: typeof tile?.properties?.kind === 'string' ? tile.properties.kind : null,
+                // The cell's place in its layer — a standing piece's seeded choices are the cell's.
+                index: i,
             });
         });
     }
@@ -696,53 +831,33 @@ export function mapTiles(map, origin, tilesetFor, owner) {
 }
 
 /**
- * WHAT A TILE LOOKS LIKE — everything the painter draws a tile from, and nothing else: its image, the
- * image's size, the window onto it, the cell it is stretched to, its flips and its opacity. Tiles with
- * equal looks draw the same picture, so `tileRegions()` joins them on it, and the painter receives the
- * look in place of the tile: what it can draw is exactly what is here, so the merge and the drawing
- * read one list.
- *
- * ⚠ `flip_d` is not here because the painter does not draw it yet — card#11277.
+ * WHAT A TILE IS, TO THE FLOOR — its KIND and its cell's size, and nothing about its image (FLOOR.md § 10.6
+ * item 6: the floor draws a placed tile by its kind in the floor's theme and never draws the tile's image).
+ * Tiles of one look are one kind at one size, so `tileRegions()` joins them on it into the runs a plane
+ * document draws.
  */
 export function tileLook(t) {
-    return Object.freeze({
-        image: t.image,
-        iw: t.iw,
-        ih: t.ih,
-        sx: t.sx,
-        sy: t.sy,
-        sw: t.sw,
-        sh: t.sh,
-        w: t.w,
-        h: t.h,
-        flip_h: t.flip_h,
-        flip_v: t.flip_v,
-        opacity: t.opacity,
-    });
+    return Object.freeze({ kind: t.kind, w: t.w, h: t.h });
 }
 
 /**
- * The tiles of one drawing pass (the hallway's, or one room's) as REGIONS: a region is one tile and every
- * tile of the same look (`tileLook()`) joined to it edge to edge on its lattice — its copies at `x + c·w`,
- * `y + r·h` — which the painter draws as ONE primitive. Every tile is in exactly one region; a tile with no
- * neighbour of its look is a region of one. `rects` is the region's area, row by row: each run of copies
- * side by side in a row is one rect, and the rects never overlap.
+ * The tiles of one grid as REGIONS — THE SCENE's ONE REGION PASS (§ 10.6 item 6): a region is one tile and
+ * every tile of the same look (`tileLook()`) joined to it edge to edge on its lattice — its copies at
+ * `x + c·w`, `y + r·h`. Every tile is in exactly one region; a tile with no neighbour of its look is a region
+ * of one. `rects` is the region's area, row by row: each run of copies side by side in a row is one rect,
+ * and the rects never overlap. A grid's `wall` and `accent` cells reach its plane document as these rects.
  *
- * ⛔ WHY: a tile drawn as its own primitive has its own antialiased edge, and where two tiles' shared edge
- * lands on a fractional device pixel — any zoom but a whole one — each covers that pixel partly and the
- * pair leaves a hairline of whatever is under them (the room's plane between the planks; a dotted ladder
- * down a wall strip). One primitive is antialiased as one coverage, so the copies inside a region meet at
- * no edge of their own whatever shape the region has — an L of wall strip included, which no single
- * rectangle covers. ⚠ That was looked at in Chromium when this landed, and in no other engine. ⚠ Two tiles
- * of DIFFERENT looks that meet are still two primitives and still meet at an edge.
+ * ⛔ WHY ONE AREA AND NOT ITS CELLS: a run drawn cell by cell has an edge of its own at every cell, and where
+ * that edge lands on a fractional device pixel the pair leaves a hairline of whatever is under them (a dotted
+ * ladder down a wall). The plane document draws a run as one shape, so its cells meet at no edge of their own.
  *
  * ⛔ A NEIGHBOUR IS FOUND BY ITS PLACE TO 1/1024 px, NEVER BY ITS EXACT COORDINATES. `mapTiles()` places a
  * cell at `origin + offsets + col·w`, and a group or tileset offset such as 0.1 or 1/3 makes that differ in
- * its last bits from the `x + w` the lookup computes, so an exact match misses identical neighbours and the
- * seam is back. A dyadic coordinate of ten fractional bits or fewer is exact at that quantum, and one of up
- * to six decimal places (or a third) lies at least 10⁻⁶ of a quantum from a rounding edge, where a sum's
- * drift on a floor-sized coordinate is orders of magnitude smaller. Inside a region a copy's place is its
- * whole-number column and row on the region's lattice, so `rects` are on that lattice exactly.
+ * its last bits from the `x + w` the lookup computes, so an exact match misses identical neighbours. A dyadic
+ * coordinate of ten fractional bits or fewer is exact at that quantum, and one of up to six decimal places
+ * (or a third) lies at least 10⁻⁶ of a quantum from a rounding edge, where a sum's drift on a floor-sized
+ * coordinate is orders of magnitude smaller. Inside a region a copy's place is its whole-number column and
+ * row on the region's lattice, so `rects` are on that lattice exactly.
  *
  * ⛔ THE DRAW ORDER IS KEPT WHERE IT IS VISIBLE. A region is drawn where its first tile was, which moves
  * its later copies earlier; that is only allowed past tiles they do not overlap. A copy that would move
@@ -977,14 +1092,19 @@ export function backWall(span, room) {
             w: ww,
             h: WINDOW.h,
             sky: room?.sky ?? null,
-            // Two mullions and a transom, drawn inside the glazing; the sill under it.
-            mullions: Object.freeze([x + ww / 3, x + (2 * ww) / 3]),
-            transom: top + WINDOW.h * WINDOW.transom,
-            sill: Object.freeze({ x: x - WINDOW.sill_out, y: top + WINDOW.h, w: ww + 2 * WINDOW.sill_out, h: WINDOW.sill_h }),
+            // The rect the floor's theme draws the window's frame, mullions, curtains, rod and sill in (§ 10.6
+            // item 2): the glazing grown by the surround margin. The glazing itself is the painter's (A17).
+            surround: Object.freeze({
+                x: x - SURROUND.side,
+                y: top - SURROUND.above,
+                w: ww + 2 * SURROUND.side,
+                h: WINDOW.h + SURROUND.above + SURROUND.below,
+            }),
         }));
     }
 
     const lift = { x: span.x + ELEVATOR.dx, y: floor - ELEVATOR.h, w: ELEVATOR.w, h: ELEVATOR.h };
+    const frameRect = { x: lift.x - ELEVATOR.frame, y: lift.y - ELEVATOR.header, w: lift.w + 2 * ELEVATOR.frame, h: lift.h + ELEVATOR.header };
 
     return Object.freeze({
         x: span.x,
@@ -993,18 +1113,13 @@ export function backWall(span, room) {
         h: BAND_H,
         // The reserved zone the elevator and the clock hang in — no window enters it.
         zone: Object.freeze({ x: span.x, y, w: ZONE_W, h: BAND_H }),
-        skirting: Object.freeze({ x: span.x, y: floor - SKIRTING_H, w, h: SKIRTING_H }),
-        // The two-door elevator: its frame and header plate, the lamp over it, and the two leaves.
+        // The two-door elevator: its two leaves (the painter's, in the building's door colours), its frame,
+        // and the surround the floor's theme draws the frame, the header plate, the lamp, the recess and the
+        // call buttons in — the frame grown 18 px to the right (§ 10.6 item 2).
         elevator: Object.freeze({
             ...lift,
-            frame: Object.freeze({
-                x: lift.x - ELEVATOR.frame,
-                y: lift.y - ELEVATOR.header,
-                w: lift.w + 2 * ELEVATOR.frame,
-                h: lift.h + ELEVATOR.header,
-            }),
-            header: Object.freeze({ x: lift.x - ELEVATOR.frame, y: lift.y - ELEVATOR.header, w: lift.w + 2 * ELEVATOR.frame, h: ELEVATOR.header - 2 }),
-            lamp: Object.freeze({ cx: lift.x + lift.w / 2, cy: lift.y - ELEVATOR.header / 2, r: ELEVATOR.lamp_r }),
+            frame: Object.freeze(frameRect),
+            surround: Object.freeze({ ...frameRect, w: frameRect.w + SURROUND.elevator_reach }),
             seam: lift.x + lift.w / 2,
         }),
         // § 6.5: a room with no value is drawn as having none — `set: false`, never a plausible time.
@@ -1021,16 +1136,6 @@ export function backWall(span, room) {
             label: room?.label ?? null,
         }),
         windows: Object.freeze(windows),
-        // The back corner (§ 4.2; the operator's ruling of 2026-10-04, option B): a post `SLAB_H` wide up each
-        // end of the band, its full height, in the wall colour — the side walls' end faces rising beside the
-        // back wall's, so the corner where the map's side strips meet the band closes. The frame's, because
-        // the band lies outside every grid; drawn on an authored map with no side strips too, where it reads
-        // as the back wall's own end thickness. Clear of the clock by construction: the elevator starts at
-        // `ELEVATOR.dx`, past the left post, and the clock past it.
-        posts: Object.freeze([
-            Object.freeze({ x: span.x, y, w: SLAB_H, h: BAND_H }),
-            Object.freeze({ x: span.x + w - SLAB_H, y, w: SLAB_H, h: BAND_H }),
-        ]),
     });
 }
 

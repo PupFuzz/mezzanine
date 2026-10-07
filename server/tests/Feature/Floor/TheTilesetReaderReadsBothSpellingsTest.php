@@ -15,7 +15,7 @@ use Tests\TestCase;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE XML SPELLING IS HELD TO A REAL XML PARSER. The reader decodes `.tsx` without `DOMParser` —
  * there is none under `node`, and the scene is a model the harness drives — so its answer over the
- * VENDORED tileset (`resources/floor/tiles/furniture-kit.tsx`) is compared with PHP's SimpleXML
+ * SHIPPED tileset (`resources/floor/tiles/floor-plane.tsx`) is compared with PHP's SimpleXML
  * reading of the same bytes, tile by tile. The JSON spelling is then the same tileset re-spelled from
  * that SimpleXML reading, and must decode to the same tiles: two spellings, one tileset.
  *
@@ -26,7 +26,7 @@ class TheTilesetReaderReadsBothSpellingsTest extends TestCase
 {
     use DrivesAShippedClientModule;
 
-    private const TSX = '/art/floor/tiles/furniture-kit.tsx';
+    private const TSX = '/art/floor/tiles/floor-plane.tsx';
 
     protected function moduleDir(): string
     {
@@ -38,7 +38,7 @@ class TheTilesetReaderReadsBothSpellingsTest extends TestCase
         return __DIR__.'/tileset-probe.mjs';
     }
 
-    public function test_the_vendored_tsx_decodes_as_a_real_xml_parser_reads_it(): void
+    public function test_the_shipped_tsx_decodes_as_a_real_xml_parser_reads_it(): void
     {
         $this->assertSame([], $this->xmlDefects());
     }
@@ -85,7 +85,7 @@ class TheTilesetReaderReadsBothSpellingsTest extends TestCase
         [$expected, $ids] = $this->oracle();
         $read = $this->read([['url' => self::TSX, 'text' => $this->tsx(), 'ids' => $ids]], $dir)[0];
 
-        $this->assertTrue($read['ok'], 'the vendored tileset did not decode: '.($read['error'] ?? ''));
+        $this->assertTrue($read['ok'], 'the shipped tileset did not decode: '.($read['error'] ?? ''));
 
         return $this->tileDiff($expected, $read['tiles']);
     }
@@ -100,7 +100,7 @@ class TheTilesetReaderReadsBothSpellingsTest extends TestCase
             $expected[$ids[0]] = ['sx' => 3, 'sw' => $expected[$ids[0]]['sw'] - 3] + $expected[$ids[0]];
         }
 
-        $read = $this->read([['url' => '/art/floor/tiles/furniture-kit.tsj', 'text' => json_encode($json), 'ids' => $ids]], $dir)[0];
+        $read = $this->read([['url' => '/art/floor/tiles/floor-plane.tsj', 'text' => json_encode($json), 'ids' => $ids]], $dir)[0];
 
         $this->assertTrue($read['ok'], 'the .tsj spelling did not decode: '.($read['error'] ?? ''));
 
@@ -159,11 +159,11 @@ class TheTilesetReaderReadsBothSpellingsTest extends TestCase
 
     private function tsx(): string
     {
-        return (string) file_get_contents(__DIR__.'/../../../../resources/floor/tiles/furniture-kit.tsx');
+        return (string) file_get_contents(__DIR__.'/../../../../resources/floor/tiles/floor-plane.tsx');
     }
 
     /**
-     * SimpleXML's reading of the vendored tileset: `id => the tile` as the reader should answer it,
+     * SimpleXML's reading of the shipped tileset: `id => the tile` as the reader should answer it,
      * and the ids to ask for — every id declared, and one past the last, which must answer `null`.
      *
      * @return array{0: array<int, array<string, mixed>|null>, 1: list<int>}
@@ -172,7 +172,7 @@ class TheTilesetReaderReadsBothSpellingsTest extends TestCase
     {
         $xml = simplexml_load_string($this->tsx());
 
-        $this->assertNotFalse($xml, 'SimpleXML could not read the vendored tileset');
+        $this->assertNotFalse($xml, 'SimpleXML could not read the shipped tileset');
 
         $expected = [];
 

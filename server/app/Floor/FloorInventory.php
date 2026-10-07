@@ -10,7 +10,9 @@ use App\Read\Snapshot;
  * What the floors module SHOWS: every floor this deploy has, the map it was given, the two
  * disagreements between the two that an operator can only fix here — and, since Appendix B row 14's
  * slice C, every current map that fails a furniture box it was not validated against
- * (`docs/design/FLOOR.md § 14` item 28(1)(iii)), listed and never refused.
+ * (`docs/design/FLOOR.md § 14` item 28(1)(iii)), listed and never refused — and, since card#11046's Appendix
+ * B row 22 (item 36(5)), every current map naming a tileset or a tile the repository no longer ships
+ * (`App\Floor\RetiredArt`), listed and never refused alike.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE SEAT SIDE IS `App\Read\Snapshot::seats()` — THE READ THE FLOOR ITSELF USES — AND NOT A
@@ -41,7 +43,8 @@ final class FloorInventory
      * @return list<array{
      *     install_id: string, floor: string|null, form: string|null, seats: int, renders: bool,
      *     authored: bool, map_version: int|null, slots: int|null, unreadable: string|null,
-     *     fails_the_box: list<string>, short_by: int, updated_at: string|null, updated_by: string|null
+     *     fails_the_box: list<string>, retired_art: list<string>, short_by: int, updated_at: string|null,
+     *     updated_by: string|null
      * }>
      */
     public static function rows(): array
@@ -130,6 +133,9 @@ final class FloorInventory
                 // Each item-28(1) refusal the current map earns against today's box, when it was
                 // not validated against this box at its write; empty for a map that passes.
                 'fails_the_box' => $failsTheBox,
+                // § 14 item 36(5): what the current map names that the repository no longer ships — read out
+                // of the stored document, because the parser refuses such a map at a write.
+                'retired_art' => $floor === null ? [] : RetiredArt::of($floor->map),
                 // § 3.2's overflow: "If the floor's seat count exceeds `S`… the floor shows a
                 // persistent notice reading *floor map is short N desks*". Shown here too,
                 // because here is where the map can actually be made longer.

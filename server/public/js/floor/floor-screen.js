@@ -41,8 +41,8 @@
  * someone else's floor needs the very document that failed".
  *
  * ⛔ THE ROOM DRAWING IS THIS FRAME's `scene` (Appendix B row 14, card#7341 step 11). Once the page
- * has handed this screen the scene's inputs (`sceneInputs()` — the furniture box, the desk sprite,
- * its measurer and the character's size) every frame carries `floor/scene.js`'s model of what is
+ * has handed this screen the scene's inputs (`sceneInputs()` — the furniture box, its measurer, the
+ * character's size and the themes the page holds) every frame carries `floor/scene.js`'s model of what is
  * drawn where, built from this frame, the maps and tilesets the client holds, the assets the painter
  * reported failed (`assetsFailed()`) and the § 6.2 rows this very render wrote. The scene's F21
  * notices join the frame's, and its F14 verdict is the status strip's `art` line — one strip, the
@@ -242,13 +242,13 @@ export class FloorScreen {
     /** The tapped log — the one AT-D3-1 reads, with this render's rows kept for the scene. */
     #tap;
 
-    /** The tilesets the held maps name, and the desk sprite's (`floor/tileset.js`). */
+    /** The tilesets the held maps name (`floor/tileset.js`). */
     #tilesets;
 
     /**
-     * The scene's inputs no module may import (Appendix B row 14) — `{ box, desk_sprite, measure,
-     * character }` — or `null` until the page (or the harness) supplies them. With none, a frame
-     * carries no scene.
+     * The scene's inputs no module may import (Appendix B row 14) — `{ box, measure, character,
+     * themes }` — or `null` until the page (or the harness) supplies them. With none, a frame carries no
+     * scene.
      */
     #sceneInput = null;
 
@@ -454,7 +454,7 @@ export class FloorScreen {
     }
 
     /**
-     * The scene's inputs (Appendix B row 14): `{ box, desk_sprite, measure, character }`. The page
+     * The scene's inputs (Appendix B row 14): `{ box, measure, character, themes }`. The page
      * supplies them once its imports of the asset route's modules have answered; the harness from
      * its fixture. The next render draws the scene.
      */
@@ -463,8 +463,9 @@ export class FloorScreen {
     }
 
     /**
-     * § 9 F14: the painter reports each asset it could not draw — a tile's image, the desk sprite,
-     * a seat's character (`character:<install>/<seat>`), a tileset. Held for the page's life, because
+     * § 9 F14: the painter reports each asset it could not draw — a theme document's unit
+     * (`theme:<name>/…`, FLOOR.md § 10.6 item 8), a seat's character (`character:<install>/<seat>`), a
+     * tileset; and the page each art module whose import was rejected. Held for the page's life, because
      * F14's recovery is *retry on reload*. An asset failure is not a state change: it moves no desk's
      * `render_state` and writes no animation row (AT-D3-19).
      */
@@ -555,7 +556,7 @@ export class FloorScreen {
 
     /**
      * Appendix B row 14's tileset reader, fed: every tileset a held map or the floor's hallway names
-     * by `source`, and the desk sprite's — each fetched once (`floor/tileset.js`'s loader).
+     * by `source` — each fetched once (`floor/tileset.js`'s loader).
      */
     async #loadTilesets() {
         const target = this.#target();
@@ -572,7 +573,7 @@ export class FloorScreen {
             .filter((entry) => typeof entry?.source === 'string')
             .map((entry) => tilesetUrl(entry.source)));
 
-        await this.#tilesets.load([tilesetUrl(this.#sceneInput.desk_sprite.tileset), ...urls]);
+        await this.#tilesets.load(urls);
     }
 
     /**

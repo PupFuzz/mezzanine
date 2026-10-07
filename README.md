@@ -43,7 +43,7 @@ posts the JSON. No model is asked to describe itself.
 server/                     the Laravel host + MFA-gated shell   ← exists
 server/public/js/            the pages' ES modules — floor/, lobby/, desk/, wire/ (the camera: wire/camera.js)
 resources/characters/       the creature generator (first-party, vector) ← exists
-resources/floor/            the CC0 tileset (interim) + LINEAGE.md ← exists; Tiled map: card #7341
+resources/floor/            the floor's themes (first-party, vector), its tileset of kinds and the shipped default map ← exists
 fleet-reporter/             cross-platform hook bundle + by-hand Linux install runbook
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
 docs/changelog/             archived releases, one file per tag (v0.2.0.md, …)
@@ -332,16 +332,15 @@ to the telemetry title, marked degraded. `GET /api/fleet/health` counts polls in
 ## Licensing and attribution
 
 MIT (see `LICENSE`). Mezzanine's floor derives from prior open-source work and ships
-`docs/ATTRIBUTION.md` naming every upstream. Office tiles are CC0. **No commercially-licensed
-assets are vendored here.**
+`docs/ATTRIBUTION.md` naming every upstream and every asset. **No commercially-licensed assets are
+vendored here.**
 
-The office tiles are Kenney's **Furniture Kit** (CC0), and they are a **bridge, not the
-destination**: the operator chose them on 2026-09-12 explicitly as a stand-in for first-party
-vector art, and being pre-rendered raster they do not meet the resolution-independence the ratified
-art direction requires (`docs/design/FLOOR.md § 10.4`). `resources/floor/LINEAGE.md` records the
-terms as read at the source, the downloaded archive's hash, what was curated and what was
-deliberately not taken — including the pack's 3D sources, which the asset allowlist refuses
-outright.
+The room is **first-party**: each floor is drawn in a THEME, a module in `resources/floor/themes/` that
+draws the wall, the windows, the floor, the scenery and every desk's furniture as vector SVG
+(`docs/design/FLOOR.md § 10.6`, card#11046), and the house theme is the room the operator chose. The CC0
+tiles that stood in for it from 2026-09-12 (Kenney's Furniture Kit, a bridge chosen explicitly as a
+stand-in) left the tree when it landed; their record stays in git and in `docs/PLAN.md § 0`'s D-07
+appends.
 
 The characters are **first-party**: original animal and vegetable creatures drawn by the code in
 `resources/characters/` as vector SVG (`docs/design/FLOOR.md § 10.2`, card#11046), replacing the
