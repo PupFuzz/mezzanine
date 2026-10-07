@@ -137,8 +137,9 @@ jobs:
 
   # ── pr-body-lint (card#9767, blocking since card#9801) ───────────────────────────────────────
   # WHAT IT DOES. Reads this PR's BODY and TITLE, judges the body against the fleet's PR-body
-  # standard with upstream's own linter (the title says whether it is a release PR), prints the whole verdict — and FAILS THE JOB when the body has findings,
-  # or when the linter could not judge the body at all. The pin and selftest steps below judge the
+  # standard with upstream's own linter (the title says whether it is a release PR), prints the
+  # whole verdict — and FAILS THE JOB when the body has findings, or when the linter could not
+  # judge the body at all. The pin and selftest steps below judge the
   # CHECKOUT and red it as well, so a red here is about the body only when the body step is the one
   # that failed. `bin/pr-body-lint.py`'s docstring is the contract; the standard itself is
   # `skills/release-pr/SKILL.md § PR body` in a coord install, and neither is restated here.
