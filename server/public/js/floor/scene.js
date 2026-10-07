@@ -125,6 +125,38 @@ export function intersectNotice(a, b, installId, seats) {
     return `desk objects \`${a}\` and \`${b}\` intersect — ${roomSuffix(installId, seats)}`;
 }
 
+/**
+ * § 9 F23's notice, in § 5.5's words (card#11046, FLOOR.md § 10.6 item 5): the theme as the layout names
+ * it, and the floor by its name — `label ?? key`, the one rendering rule § 4.6 states.
+ */
+export function unshippedThemeNotice(name, floorName) {
+    return `floor theme \`${name}\` is not installed — drawn in the house theme — \`${floorName}\``;
+}
+
+/**
+ * The theme a floor is drawn in (FLOOR.md § 10.6 item 5): the one its layout entry names when the registry
+ * holds it; the house theme when it names none; and the house theme under § 9 F23's notice when it names
+ * one the build does not ship. With no registry held (`themes` absent — it failed to load, which is § 9
+ * F14's), nothing is resolved and nothing is claimed.
+ *
+ * @param {{theme: string|null, name: string}} floor the frame's floor
+ * @param {{names: list<string>, house: string}|null|undefined} themes the registry's `THEMES` and `HOUSE_THEME`
+ * @returns {{theme: string|null, notice: string|null}}
+ */
+export function floorTheme(floor, themes) {
+    if (themes === null || themes === undefined) {
+        return { theme: null, notice: null };
+    }
+
+    if (floor.theme === null || floor.theme === undefined) {
+        return { theme: themes.house, notice: null };
+    }
+
+    return themes.names.includes(floor.theme)
+        ? { theme: floor.theme, notice: null }
+        : { theme: themes.house, notice: unshippedThemeNotice(floor.theme, floor.name) };
+}
+
 export function undersizedNotice(id, installId, seats) {
     return `desk object \`${id}\` is smaller than the furniture box — ${roomSuffix(installId, seats)}`;
 }
@@ -366,6 +398,14 @@ export function buildScene(frame, input) {
         }
     }
 
+    // ── § 9 F23: the floor's theme, resolved against the registry (FLOOR.md § 10.6 item 5). Row 21 draws
+    // nothing by it yet — the floor is drawn as it was, in the theme the scene names.
+    const resolved = floorTheme(frame.floor, input.themes);
+
+    if (resolved.notice !== null) {
+        notices.push(resolved.notice);
+    }
+
     // ── § 3.2's overflow row: the strip below the floor, each desk at the box, no slot ────────
     const extent = frame.extent;
     let strip = null;
@@ -458,6 +498,7 @@ export function buildScene(frame, input) {
         effects,
         decorative: Object.freeze(decorative),
         notices: Object.freeze(notices),
+        theme: resolved.theme,
         failed: Object.freeze(failedAssets),
         art_failed: failedAssets.length > 0,
         // Where each desk's lines and walks meet it — what the NEXT render's walks start from.

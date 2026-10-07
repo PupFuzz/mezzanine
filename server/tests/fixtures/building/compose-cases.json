@@ -6,10 +6,11 @@
     "are held to every case here (Tests\\Feature\\Building, Tests\\Feature\\Lobby). A case is the",
     "RAW authored document (a list of floor records, each carrying its `rooms` — a mapping of",
     "install id to that room's RECORD, `{\"form\": …}` and, on a planned floor, `{\"origin\": …}`",
-    "(card#9292) — and optionally its `label` (card#9273) and its `hallway`), the installs the",
+    "(card#9292) — and optionally its `label` (card#9273), its `theme` (card#11046) and its `hallway`), the installs the",
     "fleet reports, and the floors that must come out: floor keys ascending, each floor's `label`",
     "(null where the layout names no label, and null on every implicit floor), rooms by install",
-    "ascending, each room's `origin` where the floor is planned, and `reported` per room.",
+    "ascending, each room's `origin` where the floor is planned, and `reported` per room —",
+    "and each floor's `theme` as the entry names it (null where it names none, and null on every implicit floor — card#11046).",
     "⚠ A floor's `hallway` is deliberately NOT among them: it is a whole Tiled document that only",
     "the floor SCREEN draws, and the cases pin both runtimes to leaving it in the layout.",
     "Add a case here and both suites gain it; a rule that lives in one runtime and not the other",
@@ -27,6 +28,7 @@
         {
           "floor": "aimla",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "aimla",
@@ -38,6 +40,7 @@
         {
           "floor": "sola",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -70,6 +73,7 @@
         {
           "floor": "sola",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -111,6 +115,7 @@
         {
           "floor": "aimla",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "aimla",
@@ -165,6 +170,7 @@
         {
           "floor": "mira",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "mira",
@@ -181,6 +187,7 @@
         {
           "floor": "sola",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -219,6 +226,7 @@
         {
           "floor": "aimla",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "aimla",
@@ -230,6 +238,7 @@
         {
           "floor": "sola",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -266,6 +275,7 @@
         {
           "floor": "sola",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -300,6 +310,7 @@
         {
           "floor": "sola",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -333,6 +344,7 @@
         {
           "floor": "sola",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -365,6 +377,7 @@
         {
           "floor": "42",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "42",
@@ -403,6 +416,7 @@
         {
           "floor": "sola",
           "label": "the solos",
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -453,6 +467,7 @@
         {
           "floor": "mira",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "mira",
@@ -469,6 +484,7 @@
         {
           "floor": "sola",
           "label": "the solos",
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -508,6 +524,7 @@
         {
           "floor": "aimla",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "aimla",
@@ -519,6 +536,7 @@
         {
           "floor": "sola",
           "label": "the solos",
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -554,6 +572,7 @@
         {
           "floor": "nova",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "nova",
@@ -565,6 +584,7 @@
         {
           "floor": "sola",
           "label": "nova",
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -598,6 +618,7 @@
         {
           "floor": "sola",
           "label": "sola",
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -644,6 +665,7 @@
         {
           "floor": "sola",
           "label": "the solos",
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -726,6 +748,7 @@
         {
           "floor": "sola",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -791,6 +814,7 @@
         {
           "floor": "mira",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "mira",
@@ -807,6 +831,7 @@
         {
           "floor": "sola",
           "label": null,
+          "theme": null,
           "rooms": [
             {
               "install": "sola",
@@ -824,6 +849,109 @@
                 "x": 320,
                 "y": 0
               },
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a floor naming a theme carries it as authored, and an unplaced install beside it is the house theme's (card#11046)",
+      "layout": [
+        {
+          "theme": "studio",
+          "rooms": {
+            "sola": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola",
+        "aimla"
+      ],
+      "floors": [
+        {
+          "floor": "aimla",
+          "label": null,
+          "theme": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "sola",
+          "label": null,
+          "theme": "studio",
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an explicit null theme is an absent one: the house theme (card#11046)",
+      "layout": [
+        {
+          "theme": null,
+          "rooms": {
+            "sola": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola"
+      ],
+      "floors": [
+        {
+          "floor": "sola",
+          "label": null,
+          "theme": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a theme the build does not ship is carried by the READ in both runtimes — the write refuses it, and the floor screen draws the house theme under F23 (card#11046)",
+      "layout": [
+        {
+          "theme": "nowhere",
+          "rooms": {
+            "sola": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola"
+      ],
+      "floors": [
+        {
+          "floor": "sola",
+          "label": null,
+          "theme": "nowhere",
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
               "reported": true
             }
           ]

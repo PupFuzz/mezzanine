@@ -44,6 +44,9 @@ export const FURNITURE_MODULE = '/art/floor/furniture-box.js';
 /** The character tree's entry — `resources/characters/index.js`, by the asset route. */
 export const CHARACTER_TREE = '/art/characters/index.js';
 
+/** The theme registry — `resources/floor/themes/index.js`, by the asset route (FLOOR.md § 10.6 item 1). */
+export const THEME_REGISTRY = '/art/floor/themes/index.js';
+
 const SVG = 'http://www.w3.org/2000/svg';
 
 /** § 10.4's art contract: a desk's art is drawn in proportion, centred, on its rect's floor line. */
@@ -119,7 +122,7 @@ ${RENDER_STATES.map((state) => `.chip.state-${state}{fill:var(--state-${state});
 /**
  * The two art modules, each or `null` with the failed asset id beside it.
  *
- * @returns {Promise<{furniture: object|null, characters: object|null, failed: list<string>}>}
+ * @returns {Promise<{furniture: object|null, characters: object|null, themes: object|null, failed: list<string>}>}
  */
 export async function loadArt() {
     const failed = [];
@@ -133,9 +136,9 @@ export async function loadArt() {
         }
     };
 
-    const [furniture, characters] = await Promise.all([load(FURNITURE_MODULE), load(CHARACTER_TREE)]);
+    const [furniture, characters, themes] = await Promise.all([load(FURNITURE_MODULE), load(CHARACTER_TREE), load(THEME_REGISTRY)]);
 
-    return { furniture, characters, failed };
+    return { furniture, characters, themes, failed };
 }
 
 /**

@@ -318,7 +318,7 @@ startAgeTicker(screen.desks, clock, window, (readouts) => {
 
 // Appendix B row 14: the art modules, by the asset route. The screen draws no scene until they have
 // answered; a module that failed is reported as the failed asset it is (§ 9 F14).
-loadArt().then(({ furniture, characters, failed }) => {
+loadArt().then(({ furniture, characters, themes, failed }) => {
     painter = createPainter({
         characters,
         failed: (ids) => {
@@ -334,6 +334,9 @@ loadArt().then(({ furniture, characters, failed }) => {
             desk_sprite: furniture.DESK_SPRITE,
             measure: measurer(),
             character: { w: characters?.SCENE_W ?? 0, h: characters?.SCENE_H ?? 0 },
+            // FLOOR.md § 10.6 item 5: the registry each floor's `theme` is resolved against (§ 9 F23);
+            // a registry that failed to load is § 9 F14's, and resolves nothing.
+            themes: themes === null ? null : { names: themes.THEMES, house: themes.HOUSE_THEME },
         });
     }
 
