@@ -41,7 +41,6 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
     /** The instant the fixture's painter reports the failure. */
     private const FAILS_AT = 50;
 
-    /** The art a desk draws as images — what the placeholder stands in for. */
     /** FLOOR.md § 10.6's art elements and the character (card#11046 row 20): the placeholder stands in for these. */
     private const ART = ['character', 'chair', 'desk-sprite', 'monitor-frame', 'desk-props', 'side-table'];
 

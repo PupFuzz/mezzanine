@@ -467,6 +467,9 @@ class TheBuildingStacksTheComposedFloorsTest extends FeedTestCase
                 // and the browser drops reds HERE, on the fixture's own cases, rather than being
                 // caught by whichever screen noticed first.
                 'label' => $row['label'],
+                // card#11046 row 21: the floor's `theme`, the same pin — a theme PHP carries and the
+                // browser drops reds here.
+                'theme' => $row['theme'],
                 'rooms' => array_map(
                     // ⛔ AND FOR card#9292's `origin`, for the same reason and in the same place.
                     // Appendix B row 11 calls this projection a CROSS-RUNTIME PIN in terms: the

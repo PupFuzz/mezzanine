@@ -123,6 +123,7 @@ very fact it exists to check.
 | `resources/floor/tiles/floor-plane/wall-strip.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-04 | `7aa79c74d3a69ece6705c9e81072d2156d00aa4e2a2327449312034371c40200` |
 | `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `80daf87035c002e88cc71e8562c27547e5ccb275f3d9f539a09d32a3d4ef1db6` |
 | `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `90158ec868ded10645364bb62bb23993e634067b26bafafa3c38e1f581eae6b4` |
+| `resources/floor/themes/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `084aedec11906eb303001e99f9ddf05414d931417c7d47695912fdd313d60157` |
 | `resources/floor/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `36cc8c726cf8c1fc7486f7b07c95139814243a3c726e30d47fc295b55d67ef98` |
 <!-- asset-manifest:end -->
 

@@ -1110,6 +1110,9 @@ export class FloorScreen {
                 // § 4.6's one rendering rule: `label ?? key`, decided once by `floors()` and read
                 // here rather than restated.
                 name: floor.name,
+                // § 4.6's `theme` (card#11046): the name the layout entry carries, or null — the scene
+                // resolves it against the theme registry (FLOOR.md § 10.6 item 5, § 9 F23).
+                theme: floor.theme ?? null,
             }),
             redirect: null,
             planned: placement.planned,

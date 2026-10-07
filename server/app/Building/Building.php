@@ -61,7 +61,7 @@ final class Building
      * floor has no authored position to honour anyway.
      *
      * @param  list<string>  $installs  the installs the fleet reports, in any order
-     * @return list<array{floor: string, label: string|null, rooms: list<array{install: string, form: string, origin?: array{x: int, y: int}, reported: bool}>}>
+     * @return list<array{floor: string, label: string|null, theme: string|null, rooms: list<array{install: string, form: string, origin?: array{x: int, y: int}, reported: bool}>}>
      */
     public static function compose(BuildingLayout $layout, array $installs): array
     {
@@ -72,6 +72,8 @@ final class Building
         foreach ($layout->floors as $floor) {
             $floors[$floor['floor']] = [
                 'label' => $floor['label'],
+                // § 4.6 (card#11046): absent on the layout's floor is the house theme, null here.
+                'theme' => $floor['theme'] ?? null,
                 'rooms' => array_map(
                     fn (array $room) => $room + ['reported' => isset($reported[$room['install']])],
                     $floor['rooms'],
@@ -95,6 +97,9 @@ final class Building
                 // key" — the `install_id` the wire already carries, which is a name and not a
                 // placeholder. Naming this floor means placing it.
                 'label' => null,
+                // An implicit floor has no entry to carry a theme either, so it is the house theme
+                // (docs/design/FLOOR.md § 10.6 item 5, card#11046).
+                'theme' => null,
                 'rooms' => [[
                     'install' => $installId,
                     'form' => BuildingLayout::DEFAULT_FORM,
@@ -108,7 +113,7 @@ final class Building
         $out = [];
 
         foreach ($floors as $floorKey => $floor) {
-            $out[] = ['floor' => (string) $floorKey, 'label' => $floor['label'], 'rooms' => $floor['rooms']];
+            $out[] = ['floor' => (string) $floorKey, 'label' => $floor['label'], 'theme' => $floor['theme'], 'rooms' => $floor['rooms']];
         }
 
         return $out;

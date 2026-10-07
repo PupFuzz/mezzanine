@@ -247,6 +247,7 @@ const plateLabel = (camera) => shownLabel(showLabels, camera);
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const furniture = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'furniture-box.js')).href);
+const themeRegistry = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'themes', 'index.js')).href);
 
 /** The payload with every `@json:` / `@text:` / `@box.` reference replaced (see the header). */
 function substitute(node) {
@@ -621,6 +622,8 @@ async function replay(scenario) {
             desk_sprite: furniture.DESK_SPRITE,
             measure: harnessMeasurer(measurer),
             character,
+            // FLOOR.md § 10.6 item 5: the registry, from disk, as the page imports it by the asset route.
+            themes: { names: themeRegistry.THEMES, house: themeRegistry.HOUSE_THEME },
         });
     }
 

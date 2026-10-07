@@ -91,7 +91,7 @@ final class BuildingLayout
     public const DEFAULT_FORM = 'open';
 
     /** § 4.6's floor record. A member outside this set is refused BY NAME, never read past. */
-    private const FLOOR_MEMBERS = ['rooms', 'label', 'hallway'];
+    private const FLOOR_MEMBERS = ['rooms', 'label', 'theme', 'hallway'];
 
     /** § 4.6's room record (card#9292). `form` is required; `origin` is the plan's whole say. */
     private const ROOM_MEMBERS = ['form', 'origin'];
@@ -123,7 +123,7 @@ final class BuildingLayout
          * `install_id` ascending (`docs/design/FLOOR.md § 2.1` row 6). This is the shape
          * `GET /api/building` delivers to the browser, so the client is handed keys and never derives one.
          *
-         * @var list<array{floor: string, label: string|null, rooms: list<array{install: string, form: string, origin?: array{x: int, y: int}}>, hallway?: \stdClass}>
+         * @var list<array{floor: string, label: string|null, theme?: string, rooms: list<array{install: string, form: string, origin?: array{x: int, y: int}}>, hallway?: \stdClass}>
          */
         public readonly array $floors,
 
@@ -260,7 +260,7 @@ final class BuildingLayout
             if (! $entry instanceof \stdClass) {
                 throw new InvalidBuildingLayout(sprintf(
                     "Floor #%d is not a mapping — a floor's entry is ['rooms' => [install => "
-                    ."['form' => …], …]], optionally with 'label' and, on a planned floor, "
+                    ."['form' => …], …]], optionally with 'label', 'theme' and, on a planned floor, "
                     ."'hallway' (docs/design/FLOOR.md § 4.6).",
                     $position,
                 ));
@@ -276,7 +276,7 @@ final class BuildingLayout
                 throw new InvalidBuildingLayout(sprintf(
                     'Floor #%d declares the member%s %s, which a floor record does not carry: an '
                     ."entry is ['rooms' => [install => ['form' => …], …]], optionally with "
-                    ."'label' and, on a planned floor, 'hallway'. "
+                    ."'label', 'theme' and, on a planned floor, 'hallway'. "
                     .'A floor has NO id — its key is DERIVED, the lexically least `install_id` '
                     .'among its rooms (docs/design/FLOOR.md § 4.6) — so the member is refused '
                     .'rather than read past.',
@@ -318,6 +318,7 @@ final class BuildingLayout
             }
 
             $label = self::label($entry, $position);
+            $theme = self::theme($entry, $position);
 
             $onThisFloor = [];
 
@@ -382,6 +383,15 @@ final class BuildingLayout
                 'label' => $label,
                 'rooms' => array_values($onThisFloor),
             ];
+
+            // § 4.6's `theme` (card#11046, row 21): carried only where the entry names one, as `origin`
+            // and `hallway` are — so a layout that names none is served byte for byte as it was, and
+            // D2 § 8.7's worked response stands. Whether the build SHIPS the name is the write's to
+            // refuse (`App\Building\Layouts`), never this reader's: a layout stored before a theme left
+            // the tree must still read, and the floor draws it in the house theme under § 9 F23.
+            if ($theme !== null) {
+                $floor['theme'] = $theme;
+            }
 
             $hallway = self::hallway($entry, $position, $floorKey, $placed !== []);
 
@@ -449,6 +459,31 @@ final class BuildingLayout
         }
 
         return $label;
+    }
+
+    /**
+     * ⭐ § 4.6's optional `theme` (card#11046, docs/design/FLOOR.md § 10.6 item 5): the name of the
+     * theme the floor is drawn in. Absent or `null` is the house theme, as `label => null` is an
+     * absent label; any other non-string is refused at load, by name. A string is kept exactly as
+     * authored, and a name the build does not ship is NOT refused here — that is the write's
+     * (`App\Building\Layouts::refuseUnshippedThemes()`), because a read-time refusal would take
+     * the building down for an appearance.
+     */
+    private static function theme(\stdClass $entry, int $position): ?string
+    {
+        $theme = $entry->theme ?? null;
+
+        if ($theme !== null && ! is_string($theme)) {
+            throw new InvalidBuildingLayout(sprintf(
+                'Floor #%d declares a `theme` of type %s. A floor\'s theme is the NAME of a theme the '
+                .'build ships, a string, or absent for the house theme (docs/design/FLOOR.md § 4.6, '
+                .'§ 10.6); it is never coerced.',
+                $position,
+                get_debug_type($theme),
+            ));
+        }
+
+        return $theme;
     }
 
     /**

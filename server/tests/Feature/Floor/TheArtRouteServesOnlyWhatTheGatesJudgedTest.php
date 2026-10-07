@@ -222,9 +222,10 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
     /** Each asset-route specifier the painter imports is served by the route as JavaScript. */
     private function specifierDefects(string $painter): array
     {
-        preg_match_all("/^export const (?:CHARACTER_TREE|FURNITURE_MODULE) = '([^']+)';$/m", $painter, $m);
+        preg_match_all("/^export const (?:CHARACTER_TREE|FURNITURE_MODULE|THEME_REGISTRY) = '([^']+)';$/m", $painter, $m);
 
-        $this->assertCount(2, $m[1], 'the painter\'s two import specifiers were not read out of its source');
+        // The furniture box, the character tree and (card#11046 row 21) the theme registry.
+        $this->assertCount(3, $m[1], 'the painter\'s import specifiers were not read out of its source');
 
         $defects = [];
 
