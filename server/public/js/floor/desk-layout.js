@@ -65,14 +65,23 @@ export const FONT_NAME = 'bold 13px sans-serif';
 export const LINE_NAME = 16;
 
 /**
- * THE DESK's TWO TYPE ROLES — the font each is measured and drawn in, its line, and the baseline's
- * offset from the line's top. `fit()` measures in a role, the page's measurer answers in a role
+ * The SCREEN role (FLOOR.md § 10.6's *The desk, re-laid*, card#11046 — the operator's "The monitor screen
+ * text can be smaller so that more letters can fit"): the one string the desk draws in it is the monitor's
+ * text, measured and drawn at 8 px on the facts' 12 px line (§ 12's *Screen type size* row — the smallest
+ * that read at fit on a device-scale-1 screen, measured in headless Chromium).
+ */
+export const FONT_SCREEN = '8px sans-serif';
+
+/**
+ * THE DESK's THREE TYPE ROLES — the facts, the nameplate (Q2) and the monitor's screen (card#11046) — the
+ * font each is measured and drawn in, its line, and the baseline's offset from the line's top. `fit()` measures in a role, the page's measurer answers in a role
  * (`painter.js`'s `measurer()`), and the painter draws a text at its role's baseline; a role not in
  * this table is refused by the measurer rather than measured in a guessed font.
  */
 export const TYPE_ROLES = Object.freeze({
     fact: Object.freeze({ font: FONT, line: LINE, baseline: LINE - 2 }),
     name: Object.freeze({ font: FONT_NAME, line: LINE_NAME, baseline: LINE_NAME - 3 }),
+    screen: Object.freeze({ font: FONT_SCREEN, line: LINE, baseline: 9 }),
 });
 
 /** The bubble's inner padding, and the band at the top of the box the bubble is drawn in. */
@@ -96,6 +105,12 @@ export const CHARACTER_SCALE = 3;
 
 /** § 8's cap on the interns drawn: the array D2 caps at 8 (§ 8.1's chosen cap). */
 export const STOOL_CAP = 8;
+
+/** The side table's least seat count (§ 12's *Side-table seats* row): an empty table shows its seats. */
+export const SIDE_TABLE_SEATS = 4;
+
+/** A seat's height on the side table, along its foot line (§ 10.6; row 20's flat shape). */
+const SEAT_H = 6;
 
 /**
  * D2 § 8.2.1's bound on `badges` — "the union of D1's 12 `degraded` members and § 7.2's 7, of
@@ -170,7 +185,7 @@ const FLAG_PAD = 4;
  * Cut by CODE POINT, for `desk/task-bubble.js`'s reason: a cut that splits an astral character
  * draws a replacement glyph, which is the one way a truncation mark lies about what was cut.
  *
- * @param {string} role a key of `TYPE_ROLES`; every desk string but the nameplate is the fact role
+ * @param {string} role a key of `TYPE_ROLES`; every desk string but the nameplate and the monitor's text is the fact role
  * @returns {{text: string, truncated: boolean, w: number, h: number}}
  */
 export function fit(text, width, measure, role = 'fact') {
@@ -222,14 +237,24 @@ export function deskRects(box, character) {
     const mid = ART_W / 2;
     const cw = character.w * CHARACTER_SCALE;
     const ch = character.h * CHARACTER_SCALE;
+    // § 10.6: the desk is 180 wide under the art column's centre, and the creature's centre stands at a
+    // third of its width (the operator's ruling of 2026-10-06, card#11046); the chair follows it.
+    const desk = { x: mid - 90, y: slab, w: 180, h: 60 };
+    const sitter = desk.x + desk.w / 3 - cw / 2;
+    // The monitor's frame: 96 × 46, its right edge the desk's, standing on the desk's top; the screen
+    // inset 4 px inside it and 31 px tall; the text 3 px inside the screen (§ 12's monitor row).
+    const frame = { x: desk.x + desk.w - 96, y: slab - 46, w: 96, h: 46 };
 
     return Object.freeze({
-        character: { x: mid - cw / 2, y: slab - 70, w: cw, h: ch },
-        chair: { x: mid - cw / 2, y: slab - 38, w: cw, h: 64 },
+        character: { x: sitter, y: slab - 70, w: cw, h: ch },
+        chair: { x: sitter, y: slab - 38, w: cw, h: 64 },
         placeholder: { x: 0, y: top, w: ART_W, h: H - 36 - top },
-        'desk-sprite': { x: mid - 90, y: slab, w: 180, h: 60 },
-        monitor: { x: mid + 28, y: slab - 44, w: 64, h: 44 },
-        'monitor-text': { x: mid + 32, y: slab - 28, w: 56, h: LINE },
+        'desk-sprite': desk,
+        'monitor-frame': frame,
+        // The desk's left third: the lamp and its light, the mug or the plant (§ 10.6).
+        'desk-props': { x: desk.x - 12, y: slab - 34, w: 68, h: 50 },
+        monitor: { x: frame.x + 4, y: frame.y + 4, w: 88, h: 31 },
+        'monitor-text': { x: frame.x + 7, y: frame.y + 13, w: 82, h: LINE },
         chip: { x: mid, y: H - 16, w: CHIP_MAX_W, h: 14 },
         label: { x: colB, y: top + 6, w: widthB, h: LINE },
         currency: { x: colB, y: top + 18, w: widthB, h: LINE },
@@ -239,12 +264,25 @@ export function deskRects(box, character) {
         badge: { x: colB, y: top + 70, w: BADGE_W, h: LINE },
         flag: { x: colB, y: top + 82, w: widthB, h: LINE },
         stool: { x: colB, y: top + 104, w: STOOL_W, h: STOOL_H },
-        'side-table': { x: colB, y: top + 138, w: widthB, h: 8 },
+        // § 10.6: drawn at every desk with art, between the flag row and the *+N more* row; its foot line
+        // (its bottom edge) is the interns' foot line, so they stand in front of it.
+        'side-table': { x: colB - 8, y: top + 94, w: widthB + 8, h: 42 },
         'stool-more': { x: colB, y: top + 148, w: widthB, h: LINE },
         'quiet-age': { x: colB, y: top + 160, w: widthB, h: LINE },
         'lag-overlay': { x: 0, y: top, w: ART_W, h: H - top },
         plate: { x: mid - 80, y: H - 36, w: 160, h: 18 },
     });
+}
+
+/**
+ * THE DESK's ANCHOR — the character rect's centre line, box-relative (FLOOR.md § 10.6: the bubble is
+ * anchored to the character, § 5.1 rule 3, and the thread line and the walks meet the desk where its
+ * sitter sits). The one primitive every anchor reads, so a re-laid character moves them all.
+ */
+export function characterCentre(box, character) {
+    const r = deskRects(box, character).character;
+
+    return r.x + r.w / 2;
 }
 
 /**
@@ -268,12 +306,12 @@ export const DRAWN_MEMBERS = Object.freeze({
     glyph: ['chip'],
     character: ['character', 'chair'],
     pose: ['character', 'chair'],
-    lighting: ['desk-sprite'],
+    lighting: ['desk-sprite', 'desk-props'],
     render_state: ['chip'],
     desk_label: ['label', 'monitor-text'],
     desk_currency: ['currency'],
     lag: ['lag-overlay', 'lag'],
-    monitor: ['monitor', 'monitor-text'],
+    monitor: ['monitor', 'monitor-text', 'monitor-frame'],
     quiet_age: ['quiet-age'],
     gauge: ['gauge-bar', 'gauge-pct'],
     badges: ['badge', 'flag'],
@@ -311,8 +349,9 @@ export const NOT_DRAWN_MEMBERS = Object.freeze({
 
 /**
  * One desk's elements, relative to its box's top-left, in § 2.2's layer order (bottom first): the
- * painter draws them in this order, so the hatch is over the art and the chip and the plate is above
- * the hatch.
+ * painter draws them in this order — the art pass first (the chair, the character, the desk, the
+ * monitor's frame, the desk props, the side table), then every fact (FLOOR.md § 10.6's rule 2) — so the
+ * hatch is over the art and the chip, and the plate is above the hatch.
  *
  * @param {object} desk one desk model (`desk/desk-render.js`'s `deskModel()`)
  * @param {object} ctx `{ box: {width, height}, measure, character: {w, h}, sprite: {url, w, h}|null,
@@ -334,7 +373,7 @@ export function deskLayout(desk, ctx) {
             return null;
         }
 
-        const cut = fit(String(value), r.w, measure);
+        const cut = fit(String(value), r.w, measure, extra.role ?? 'fact');
         const e = { kind, member, x: r.x, y: r.y, w: cut.w, h: cut.h, text: cut.text, truncated: cut.truncated, ...extra };
 
         elements.push(e);
@@ -342,18 +381,40 @@ export function deskLayout(desk, ctx) {
         return e;
     };
 
-    // ── Layers 1–3: the art column. § 9 F14's placeholder stands in for the IMAGES only ─────────
+    // § 8 / Q1 (B): the interns drawn, up to the cap and none hidden; a skewed wire past the cap is
+    // counted into the tag, never dropped.
+    const stools = desk.side_table.stools;
+    const shown = stools.slice(0, STOOL_CAP);
+    const more = (desk.side_table.more ?? 0) + (stools.length - shown.length);
+
+    // ── THE ART PASS, then THE FACTS (FLOOR.md § 10.6's rule 2): every fact element is emitted — and so
+    // painted — after every art element and the character, so no art can cover a fact wherever their rects
+    // lie. § 9 F14's placeholder stands in for the art, and the facts are drawn over it as on an intact desk.
     if (ctx.placeholder) {
         rect('placeholder', null, R.placeholder);
     } else {
+        // § 10.6: the chair stands behind every creature; with nobody in it, it is § 7.1's empty chair —
+        // an absence, never a sleeper (§ 7.5).
+        rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed, occupied: desk.character });
+
         if (desk.character) {
             rect('character', 'character', R.character, { asset: characterAsset(desk), pose: desk.pose, animation: desk.held });
-        } else {
-            // § 7.1: the empty chair — an absence, never a sleeper (§ 7.5).
-            rect('chair', 'character', R.chair, { pose: desk.pose, unconfirmed: desk.unconfirmed });
         }
 
         rect('desk-sprite', 'lighting', R['desk-sprite'], { asset: ctx.sprite?.url ?? null, lighting: desk.lighting });
+        rect('monitor-frame', 'monitor', R['monitor-frame']);
+        rect('desk-props', 'lighting', R['desk-props']);
+        // § 10.6: the side table at every desk with art, with its seats — at least SIDE_TABLE_SEATS, one
+        // more per intern drawn past them, so its width says nothing the row of interns does not.
+        // Each seat under an intern's place on the table's foot line, as offsets inside the table so they move
+        // with the desk (the badge's `text_dx` pattern): the interns stand from `STOOL_PITCH`'s row at `R.stool.x`.
+        const seats = Math.max(SIDE_TABLE_SEATS, shown.length);
+
+        rect('side-table', 'side_table', R['side-table'], {
+            seats,
+            seat_dx: Array.from({ length: seats }, (_, i) => R.stool.x - R['side-table'].x + i * STOOL_PITCH),
+            seat: { dy: R['side-table'].h - SEAT_H, w: STOOL_W, h: SEAT_H },
+        });
     }
 
     // The monitor is a fact (its light, Q1 B's task text), drawn on the placeholder too.
@@ -361,8 +422,9 @@ export function deskLayout(desk, ctx) {
 
     if (desk.monitor.lit !== 'off') {
         // § 5.1: the current action's descriptor, or with no call open the desk's state text — in
-        // its non-raw form (Q0).
-        text('monitor-text', 'monitor', desk.action === null ? desk.desk_label : desk.monitor.text, R['monitor-text']);
+        // its non-raw form (Q0) — in the screen role, in the ink of its lit state.
+        text('monitor-text', 'monitor', desk.action === null ? desk.desk_label : desk.monitor.text, R['monitor-text'],
+            { role: 'screen', lit: desk.monitor.lit });
     }
 
     // ── Layer 4: the chip, then the facts column ────────────────────────────────────────────────
@@ -443,36 +505,27 @@ export function deskLayout(desk, ctx) {
         });
     }
 
-    // § 8 / Q1 (B): one sprite per intern up to the cap, none hidden; a skewed wire past the cap is
-    // counted into the tag, never dropped.
-    const stools = desk.side_table.stools;
-    const shown = stools.slice(0, STOOL_CAP);
-    const more = (desk.side_table.more ?? 0) + (stools.length - shown.length);
+    // § 8: one sprite per intern, in front of the side table (emitted in the art pass above).
+    shown.forEach((stool, i) => {
+        const asset = internAsset(desk, stool.call_id);
 
-    if (shown.length > 0 || more > 0) {
-        rect('side-table', 'side_table', R['side-table']);
-
-        shown.forEach((stool, i) => {
-            const asset = internAsset(desk, stool.call_id);
-
-            // Q3: the sprite is keyed by the intern's call, never by its place in the row; § 9 F14: an
-            // intern whose art failed falls back to the glyph, that stool alone.
-            rect('stool', 'side_table', { ...R.stool, x: R.stool.x + i * STOOL_PITCH }, {
-                call_id: stool.call_id,
-                untitled: stool.untitled,
-                index: i,
-                // What the character tree is handed — the install and the intern key in the seat's place —
-                // from the same model the asset id is, so the two can never name different interns.
-                install_id: desk.install_id,
-                key: internKey(desk.seat_id, stool.call_id),
-                asset,
-                art: !ctx.failed.has(asset),
-            });
+        // Q3: the sprite is keyed by the intern's call, never by its place in the row; § 9 F14: an
+        // intern whose art failed falls back to the glyph, that stool alone.
+        rect('stool', 'side_table', { ...R.stool, x: R.stool.x + i * STOOL_PITCH }, {
+            call_id: stool.call_id,
+            untitled: stool.untitled,
+            index: i,
+            // What the character tree is handed — the install and the intern key in the seat's place —
+            // from the same model the asset id is, so the two can never name different interns.
+            install_id: desk.install_id,
+            key: internKey(desk.seat_id, stool.call_id),
+            asset,
+            art: !ctx.failed.has(asset),
         });
+    });
 
-        if (more > 0) {
-            text('stool-more', 'side_table', MORE(more), R['stool-more']);
-        }
+    if (more > 0) {
+        text('stool-more', 'side_table', MORE(more), R['stool-more']);
     }
 
     // Q5 (b): *nothing done for N* stays on the desk.

@@ -120,7 +120,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
         [$list, $layout] = $this->probeRun([
             $this->listDropped('stool-more'),
             $this->mutatedModules(['../floor/desk-layout.js',
-                "            text('stool-more', 'side_table', MORE(more), R['stool-more']);\n", '']),
+                "        text('stool-more', 'side_table', MORE(more), R['stool-more']);\n", '']),
         ])['results'];
 
         $this->assertNotSame([], array_filter($list['findings'], fn ($f) => $f['rule'] === 'i-list' && $f['kind'] === 'stool-more'),
@@ -186,7 +186,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
         $layout = '../floor/desk-layout.js';
         $plants = [
             'the hatch' => [[$layout, "        rect('lag-overlay', 'lag', R['lag-overlay'], { overlay: desk.lag.overlay });\n", ''], 'ii-missing', 'lag-overlay'],
-            'the descriptor' => [[$layout, "        text('monitor-text', 'monitor', desk.action === null ? desk.desk_label : desk.monitor.text, R['monitor-text']);\n", ''], 'ii-missing', 'monitor-text'],
+            'the descriptor' => [[$layout, "        text('monitor-text', 'monitor', desk.action === null ? desk.desk_label : desk.monitor.text, R['monitor-text'],\n            { role: 'screen', lit: desk.monitor.lit });\n", ''], 'ii-missing', 'monitor-text'],
             'the quiet age' => [[$layout, "    text('quiet-age', 'quiet_age', desk.quiet_age, R['quiet-age']);\n", ''], 'ii-missing', 'quiet-age'],
             'the flag off by one' => [[$layout, 'const n = flagCount(desk, row);', 'const n = flagCount(desk, row) + 1;'], 'ii-missing', 'flag'],
             'the flag dropped' => [[$layout, "        elements.push({\n            kind: 'flag',", "        false && elements.push({\n            kind: 'flag',"], 'ii-missing', 'flag'],

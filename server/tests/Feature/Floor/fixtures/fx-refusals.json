@@ -3284,8 +3284,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": { "fact": 6, "name": 8 },
-            "line_h": { "fact": 12, "name": 16 }
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,

@@ -32,7 +32,7 @@
 import { ANIMATION_SET, LOOP_FPS, loops } from '../wire/animation-set.js';
 import { fnv1a32, footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
 import { FLOOR_ART, readEmbedded, resolvePath, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_BAND, BUBBLE_PAD, ART_W, CHARACTER_SCALE, LINE, deskLayout, fit, union } from './desk-layout.js';
+import { BUBBLE_BAND, BUBBLE_PAD, CHARACTER_SCALE, LINE, characterCentre, deskLayout, fit, union } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 
 /**
@@ -481,6 +481,9 @@ export function placeDesk(model, key, installId, slot, at, ctx, extra) {
         ...extra,
         slot_rect: slot === null ? null : Object.freeze(slot),
         box: Object.freeze({ x: at.x, y: at.y, w: ctx.box.width, h: ctx.box.height }),
+        // FLOOR.md § 10.6: where the bubble, the thread line and the walks meet this desk — its sitter's
+        // centre line, through the one primitive (`characterCentre()`).
+        anchor_x: at.x + characterCentre(ctx.box, ctx.character),
         placeholder: ctx.placeholder,
         elements: Object.freeze(moved),
         furniture: Object.freeze(union(moved)),
@@ -523,7 +526,7 @@ export function placeBubbles(desks, measure, W, delivered) {
         const h = (line2 === null ? LINE : 2 * LINE) + 2 * BUBBLE_PAD;
         // Above the character's column, kept inside the box: the anchor is the character's centre
         // line, moved only as far as the bubble's own width needs to stay within the box.
-        const centre = Math.min(Math.max(desk.box.x + ART_W / 2, desk.box.x + w / 2), desk.box.x + W - w / 2);
+        const centre = Math.min(Math.max(desk.anchor_x, desk.box.x + w / 2), desk.box.x + W - w / 2);
 
         wanted.push({
             install_id: desk.install_id,
@@ -562,7 +565,7 @@ export function placeBubbles(desks, measure, W, delivered) {
             second: want.lines[1]?.text ?? null,
             source: want.source,
             degraded_note: want.degraded_note,
-            tail: Object.freeze({ x: desk.box.x + ART_W / 2, y: desk.box.y + BUBBLE_BAND }),
+            tail: Object.freeze({ x: desk.anchor_x, y: desk.box.y + BUBBLE_BAND }),
         });
     }
 
@@ -992,7 +995,7 @@ export function backWall(span, room) {
 
 /** Where a line or an envelope meets a desk: the character's column, at the desk's mid-height. */
 function anchorOf(desk) {
-    return Object.freeze({ x: desk.box.x + ART_W / 2, y: desk.box.y + desk.box.h / 2 });
+    return Object.freeze({ x: desk.anchor_x, y: desk.box.y + desk.box.h / 2 });
 }
 
 /**

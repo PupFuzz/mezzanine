@@ -214,7 +214,10 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
                     [$e['x'], $e['y'] + $e['height']], [$e['x'] + $e['width'], $e['y'] + $e['height']],
                 ]));
 
-                if ($fx['radius'] < $far) {
+                // A floating-point hair, not a short ring: `Math.hypot` and PHP's `hypot()` may differ in the last
+                // place for one corner (measured: 1217.9343167839552 against …554 once the anchor moved to the
+                // character's centre line, card#11046 row 20), so the reach is compared to 1e-9 of the corner.
+                if ($fx['radius'] < $far * (1 - 1e-9)) {
                     $defects[] = 'the ring fades before it reaches the floor\'s far corner';
                 }
 

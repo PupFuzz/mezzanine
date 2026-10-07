@@ -223,8 +223,15 @@ export const EXPECTED = [
     { kind: 'placeholder', when: (m, v) => v.placeholder, value: () => 'present', ruling: '§ 9 F14 — the placeholder stands in for the images only (spec)' },
     { kind: 'character', when: (m, v) => art(v) && m.character, value: (m) => m.pose, ruling: 'Q0 (a) — the character' },
     { kind: 'character.motion', when: (m, v) => art(v) && m.character, value: (m) => (m.held?.motion === true ? 'moving' : 'still'), ruling: 'Q0 (a) — the character; § 7.4 / § 6.2 — motion stops under a treatment' },
-    { kind: 'chair', when: (m, v) => art(v) && !m.character, value: (m, v) => (v.missing ? 'unconfirmed' : 'empty-chair'), ruling: '§ 7.1 — stale / offline; § 2.3 row 5 — the unconfirmed chair' },
+    {
+        kind: 'chair',
+        when: (m, v) => art(v),
+        value: (m, v) => (m.character ? 'occupied' : (v.missing ? 'unconfirmed' : 'empty-chair')),
+        ruling: '§ 10.6 — the chair behind every creature; § 7.1 — stale / offline\'s empty chair; § 2.3 row 5 — the unconfirmed chair',
+    },
     { kind: 'desk-sprite', when: (m, v) => art(v), value: () => 'present', ruling: 'furniture — the desk itself (§ 10.4)' },
+    { kind: 'monitor-frame', when: (m, v) => art(v), value: () => 'present', ruling: '§ 10.6 — the monitor\'s frame, the art round the screen' },
+    { kind: 'desk-props', when: (m, v) => art(v), value: () => 'present', ruling: '§ 10.6 — the desk props, the desk\'s left third' },
     { kind: 'monitor.lit', when: () => true, value: (m) => m.monitor.lit, ruling: 'Q1 (B) — the monitor; § 7.1 — disabled\'s monitor is off' },
     {
         kind: 'monitor-text',
@@ -244,7 +251,12 @@ export const EXPECTED = [
     { kind: 'gauge-pct', when: (m) => m.gauge.reported, value: (m) => m.gauge.pct, ruling: 'Q1 (B) — the context % (the model\'s own string, criterion 8)' },
     { kind: 'badge', when: (m) => badgeOrder(m).length > 0, value: (m) => badgeOrder(m).slice(0, BADGES_ON_DESK), ruling: 'Q1 (B) — up to two badges, treatment first; Q0 (a) — the two treatment badges; no unrecognised id' },
     { kind: 'flag', when: (m) => flagN(m) > 0, value: (m) => `⚠ +${flagN(m)}`, ruling: 'Q0 (a) — one flag ⚠ +N for anything else unusual (N as design § 2.2 defines it)' },
-    { kind: 'side-table', when: (m) => m.side_table.stools.length > 0 || internsMore(m) > 0, value: () => 'present', ruling: 'Q1 (B) — the intern sprites; § 8' },
+    {
+        kind: 'side-table',
+        when: (m, v) => art(v),
+        value: (m) => String(Math.max(4, Math.min(m.side_table.stools.length, INTERN_CAP))),
+        ruling: '§ 10.6 — the side table at every desk with art, at least four seats and one per intern past them (§ 12)',
+    },
     { kind: 'stool', when: (m) => m.side_table.stools.length > 0, value: (m) => m.side_table.stools.slice(0, INTERN_CAP).map((s) => (s.untitled ? 'untitled' : 'titled')), ruling: 'Q1 (B) — the intern sprites; Q3; § 8 — none hidden' },
     { kind: 'stool-more', when: (m) => internsMore(m) > 0, value: (m) => MORE(internsMore(m)), ruling: '§ 8 — the +N more tag past the cap (criterion 4)' },
     { kind: 'quiet-age', when: (m) => m.quiet_age !== null, value: (m) => m.quiet_age, ruling: 'Q5 (b) — the quiet age stays on the desk' },
@@ -278,11 +290,13 @@ function adapt(desk) {
                 add('character.motion', e.animation?.motion === true ? 'moving' : 'still');
                 break;
             case 'chair':
-                add('chair', e.unconfirmed ? 'unconfirmed' : 'empty-chair');
+                add('chair', e.occupied ? 'occupied' : (e.unconfirmed ? 'unconfirmed' : 'empty-chair'));
+                break;
+            case 'side-table':
+                add('side-table', e.seats);
                 break;
             case 'desk-sprite':
             case 'plate':
-            case 'side-table':
             case 'lag-overlay':
             case 'placeholder':
                 add(e.kind, 'present');
@@ -332,10 +346,10 @@ const cutOf = (drawn, value) => drawn === value || (drawn.endsWith('…') && dra
  */
 const FACTS_W = BOX.width - (216 + 4);
 
-/** The type role each text kind is measured in — design § 2.4: the nameplate alone is the name role (Q2). */
-const roleOf = (kind) => (kind === 'nameplate' ? 'name' : 'fact');
+/** The type role each text kind is measured in — the nameplate is the name role (Q2), the monitor's text the screen role (FLOOR.md § 10.6). */
+const roleOf = (kind) => ({ nameplate: 'name', 'monitor-text': 'screen' }[kind] ?? 'fact');
 const TEXT_W = {
-    nameplate: 148, 'monitor-text': 56, chip: 160 - 12, badge: 108 - 6, label: FACTS_W, currency: FACTS_W, lag: FACTS_W,
+    nameplate: 148, 'monitor-text': 82, chip: 160 - 12, badge: 108 - 6, label: FACTS_W, currency: FACTS_W, lag: FACTS_W,
     'gauge-pct': 60, flag: FACTS_W, 'stool-more': FACTS_W, 'quiet-age': FACTS_W, bubble: BOX.width - 6, 'bubble.second': BOX.width - 6,
 };
 

@@ -33,7 +33,7 @@
  * stylesheet's, at the cycle the scene states.
  */
 
-import { FONT, FONT_NAME, STOOL_GLYPH, TYPE_ROLES, characterAsset } from './desk-layout.js';
+import { FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, characterAsset } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
 import { ELEVATOR_DOOR, ROOM_THEMES, tileRegions } from './scene.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
@@ -68,7 +68,7 @@ export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComp
  * step count is the scene's, set per element; nothing here decides WHETHER anything moves.
  */
 export const STYLE = `
-text{font:${FONT};fill:var(--scene-ink)}text.role-name{font:${FONT_NAME}}
+text{font:${FONT};fill:var(--scene-ink)}text.role-name{font:${FONT_NAME}}text.role-screen{font:${FONT_SCREEN}}
 .wall{fill:url(#house-wall)}.wall-top{stop-color:var(--house-wall)}.wall-bottom{stop-color:var(--house-wall-2)}
 .skirting,.slab,.end-post{fill:var(--house-trim)}
 .window{fill:var(--scene-glass);stroke:var(--window-frame);stroke-width:5}.mullion{stroke:var(--window-frame);stroke-width:3}.sill{fill:var(--window-frame)}
@@ -78,7 +78,8 @@ ${Object.keys(SKY_PAINT).map((phase) => `.sky-${phase}{fill:url(#sky-${phase})}`
 ${ROOM_THEMES.map((theme) => `.plane-${theme}{fill:url(#plane-${theme})}.plane-${theme}-top{stop-color:var(--room-${theme})}.plane-${theme}-bottom{stop-color:var(--room-${theme}-2)}`).join('')}
 .clock-face{fill:var(--scene-clock-face);stroke:var(--scene-trim);stroke-width:3}.clock.unset .clock-face{stroke-dasharray:6 4}
 .hand{stroke:var(--scene-ink);stroke-linecap:round}.hand.hour{stroke-width:4}.hand.minute{stroke-width:2}
-.chair{fill:var(--scene-chair)}.monitor{fill:var(--scene-monitor)}.monitor.lit-on{fill:var(--scene-monitor-on)}.monitor.lit-dimmed{fill:var(--scene-monitor-dim)}
+.chair{fill:var(--scene-chair)}.monitor-frame{fill:var(--scene-monitor-frame)}.monitor{fill:var(--scene-monitor)}.monitor.lit-on{fill:var(--scene-monitor-on)}.monitor.lit-dimmed{fill:var(--scene-monitor-dim)}
+.t-monitor-text.lit-on{fill:var(--state-ink)}.t-monitor-text.lit-dimmed{fill:var(--scene-screen-ink-dim)}.seat{fill:var(--scene-stool)}
 .placeholder{fill:var(--scene-placeholder);stroke:var(--scene-placeholder-edge);stroke-dasharray:4 3}
 .side-table{fill:var(--scene-side-table);stroke:var(--scene-side-table-edge)}.stool{fill:var(--scene-stool)}.stool.untitled{fill:none;stroke:var(--scene-stool);stroke-dasharray:3 2}
 .intern-edge{fill:none;stroke:var(--scene-stool);stroke-width:1.5;stroke-dasharray:3 2}
@@ -368,10 +369,23 @@ export function createPainter({ characters, failed, select }) {
                         }, g);
                     }
                     break;
+                case 'side-table':
+                    // § 10.6 at row 20, a flat shape until the floor's theme draws it (row 22): the table,
+                    // and its seats along its foot line, one under each intern's place.
+                    node('rect', { x: e.x, y: e.y, width: e.w, height: e.h, class: 'side-table' }, g);
+
+                    for (const dx of e.seat_dx) {
+                        node('rect', { x: e.x + dx, y: e.y + e.seat.dy, width: e.seat.w, height: e.seat.h, class: 'seat' }, g);
+                    }
+                    break;
+                case 'desk-props':
+                    // Emitted at row 20 for the paint order and the box; nothing is painted for it until the
+                    // floor's theme draws the lamp and the mug (row 22, FLOOR.md § 10.6).
+                    break;
                 case 'chair':
+                case 'monitor-frame':
                 case 'monitor':
                 case 'placeholder':
-                case 'side-table':
                 case 'plate':
                 case 'lag-overlay':
                     node('rect', {
@@ -384,7 +398,8 @@ export function createPainter({ characters, failed, select }) {
                     break;
                 default:
                     if (typeof e.text === 'string') {
-                        text(g, { ...e, id }, `t-${e.kind}`);
+                        // The monitor's text carries its lit state, so its ink is the screen's (§ 10.6).
+                        text(g, { ...e, id }, e.lit ? `t-${e.kind} lit-${e.lit}` : `t-${e.kind}`);
                     }
             }
         });

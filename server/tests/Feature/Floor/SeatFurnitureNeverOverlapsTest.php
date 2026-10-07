@@ -49,6 +49,9 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
     /** Every run but the two whose defect is (f)'s subject. */
     private const CLEAN = [self::SHIPPED, self::REORDERED, self::OVERFLOW, self::CAP, self::BOUND];
 
+    /** FLOOR.md § 10.6's art elements and the character — (e) holds an intern off every OTHER element, the facts. */
+    private const ART_KINDS = ['chair', 'character', 'desk-sprite', 'monitor-frame', 'desk-props', 'side-table'];
+
     // ── GREEN ──────────────────────────────────────────────────────────────────────────────────
 
     public function test_green_a_every_desk_lies_inside_its_slot_and_no_two_desks_meet(): void
@@ -173,16 +176,29 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
 
         $this->assertNotSame([], $this->containmentDefects($scene), 'RED (the primitive that does not cut) did not fail (a)');
 
-        // (e) in BOTH of the desk's type roles (card#11058 Q2), each named so neither role's cut goes
-        // unread: the cap leg's descriptor, cut in the fact role, and the bound seat's 48 B nameplate, cut
-        // in the name role.
+        // (e) in EVERY role of `TYPE_ROLES` (card#11058 Q2, card#11046's screen role), each named so no role's
+        // cut goes unread: the cap leg's descriptor, cut in the screen role; the bound seat's 48 B nameplate,
+        // cut in the name role; and, in the fact role, a facts-column string the cap leg stretches past the box
+        // when the primitive does not cut it — read below, element by element.
         foreach ([
-            'fact' => [self::CAP, "'s descriptor at its bound is not drawn cut"],
+            'screen' => [self::CAP, "'s descriptor at its bound is not drawn cut"],
             'name' => [self::BOUND, "'s nameplate at its bound is not drawn cut"],
         ] as $role => [$run, $says]) {
             $this->assertNotSame([], array_filter($this->boundDefects($run, $dir), fn (string $d): bool => str_contains($d, $says)),
                 "RED (the primitive that does not cut) did not fail (e) in the {$role} role on {$run}");
         }
+
+        $past = [];
+
+        foreach ($scene['desks'] as $desk) {
+            foreach ($desk['elements'] as $e) {
+                if (is_string($e['text'] ?? null) && ($e['role'] ?? 'fact') === 'fact' && $e['x'] + $e['w'] > $desk['box']['x'] + $desk['box']['w']) {
+                    $past[] = "{$desk['key']}'s {$e['kind']}";
+                }
+            }
+        }
+
+        $this->assertNotSame([], $past, 'RED (the primitive that does not cut) drew no fact-role string past its box on the cap leg');
     }
 
     public function test_red_the_hidden_stool(): void
@@ -531,7 +547,8 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
      * size `docs/design/FLOOR.md` § 10.4's art-contract bullet (*The desk's art contract*) and § 8's
      * first row (*one intern per open subagent*) state — keyed
      * `seat~<call_id>` by the intern the wire put at that place (Q3), on one row in the wire's order, no two
-     * meeting and none meeting another element of its desk. These runs fail no art, so every intern is the
+     * meeting and none meeting another FACT element of its desk — the art it stands in front of (the side table)
+     * is painted first, which is FLOOR.md § 10.6's rule 2 and AT-D3-25's to hold. These runs fail no art, so every intern is the
      * sprite rather than § 9 F14's per-stool glyph.
      *
      * @param  array<string, mixed>  $desk
@@ -564,7 +581,7 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
             }
 
             foreach ($desk['elements'] as $other) {
-                if ($other !== $e && $this->intersect($e, $other)) {
+                if ($other !== $e && ! in_array($other['kind'], self::ART_KINDS, true) && $this->intersect($e, $other)) {
                     $defects[] = "{$at} meets the desk's {$other['kind']}";
                 }
             }
