@@ -101,6 +101,19 @@ its date, its decider and the scope of what it moved. The original row above sta
   hash, which was first-party all along and stays. This append records the decision; the build that
   carries it out is FLOOR's Appendix B row 19.
 
+- **D-07 · the floor-art clause superseded — operator, 2026-10-07 (card#11046).**
+  D-07's *"floor art from **CC0 tilesets**"*, exercised on 2026-09-12 by Kenney's Furniture Kit as an
+  explicit bridge, is superseded: the operator chose the room (card#11046 comments 10124 and 10137 — the
+  A2+C picture, and a design per building floor), and the room is drawn by first-party code — a floor
+  THEME, one module per theme drawing the band, the windows, the floor, the scenery and every desk's
+  furniture as vector SVG ([`docs/design/FLOOR.md § 10.6`](design/FLOOR.md#106-themes--a-floors-design-and-the-house-theme),
+  its decision 56). **What moves:** the kit, its `docs/ATTRIBUTION.md` rows and `resources/floor/LINEAGE.md`
+  leave the tree at FLOOR's Appendix B row 22, and no licensed asset is left under `resources/floor/`.
+  **What does NOT move, and each is load-bearing:** the **last** clause (*the upstream's commercial
+  tilesets are never vendored*) is untouched and permanent, and nothing here vendors anything; the licence
+  allowlist is untouched, an operator decision taken separately; and the asset gates still hold every
+  file under `resources/` to a row.
+
 - **D-08 · the target is named — operator, 2026-09-14.**
   D-08 reads *"App deploys to a **separate host** (operator provisions; target TBD)"*. The
   operator named the target on the 2026-09-14 Decision Docket: the production host is

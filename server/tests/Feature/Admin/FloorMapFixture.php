@@ -69,7 +69,9 @@ final class FloorMapFixture
                     'height' => self::tilesHigh(),
                     'opacity' => 1,
                     'visible' => true,
-                    'data' => array_fill(0, self::tilesWide($slots) * self::tilesHigh(), 1),
+                    // GID 4 is the shipped tileset's `accent` tile (id 3) — a tile the repository ships, so the
+                    // valid map names no retired art (card#11046, `App\Floor\RetiredArt`).
+                    'data' => array_fill(0, self::tilesWide($slots) * self::tilesHigh(), 4),
                 ],
                 [
                     'id' => 2,
@@ -178,7 +180,7 @@ final class FloorMapFixture
         $map['height'] = $tilesHigh;
         $map['layers'][0]['width'] = $tilesWide;
         $map['layers'][0]['height'] = $tilesHigh;
-        $map['layers'][0]['data'] = array_fill(0, $tilesWide * $tilesHigh, 1);
+        $map['layers'][0]['data'] = array_fill(0, $tilesWide * $tilesHigh, 4);
 
         return self::encode($map);
     }
@@ -282,7 +284,7 @@ final class FloorMapFixture
         unset($map['layers'][0]['data']);
         $map['layers'][0]['chunks'] = [[
             'x' => 0, 'y' => 0, 'width' => 16, 'height' => 16,
-            'data' => array_fill(0, 256, 1),
+            'data' => array_fill(0, 256, 4),
         ]];
 
         return self::encode($map);

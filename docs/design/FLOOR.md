@@ -1242,18 +1242,24 @@ under it seen from a little above, the author's furniture and the built desks st
 configurable plan renders well because the floor supplies the frame and the map supplies the interior, so
 an author places floor, interior walls, furniture and desk slots and nothing else. **Nothing the frame draws
 sits over an author's grid**: the band and the slab lie outside every room's footprint and the hallway's, and
-each room's plane lies exactly under its own grid. The layer order is the build's, with the frame inside it:
-the band and the slab, the hallway's tiles, each room's plane then its own tiles in draw order, the
-coordination lines, the desks, the strip's header, the transient effects. The frame, top to bottom:
+each grid's plane lies exactly under its own grid. The layer order is the build's, with the frame inside it:
+the band and the slab, the hallway's plane and its scenery, each room's plane then its own scenery in draw
+order, the decorative glows, the coordination lines, the desks, the strip's header, the transient effects.
+Since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 22 (card#11046) everything in the
+frame that carries no fact is drawn by the **floor's THEME** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme),
+the operator's ruling of 2026-10-07: a design per building floor), over a flat fallback fill the painter
+draws on every paint. The frame, top to bottom:
 
 - **The exterior** — the floor's bare ground beyond every room and hallway, which is the drawing's own
   background (`server/public/css/mezzanine.css`'s `#floor-drawing`: `--ground` fading to `--ground-deep`) and
   not a scene element, so it lies behind wherever the camera looks.
-- **The back-wall band, 160 px tall**, spanning the floor's extent above the slab, in the house palette on
-  every floor — ⚠ **from [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 22, in its floor's THEME** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), the operator's ruling of
-  2026-10-07): the theme draws the wall and the surrounds of the elevator, the clock and each window, and the
-  leaves, the clock's hands and the glazing stay the painter's on every theme. Its left **272 px is a reserved zone**: the **two-door elevator** — two leaves meeting at a
-  seam in a frame with a header plate and the lamp over it, the lobby cab's form in the lobby's own door
+- **The back-wall band, 160 px tall**, spanning the floor's extent above the slab, **in its floor's THEME**
+  ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)): the theme draws the wall — its skirting and
+  its end posts among it — and the surrounds of the elevator, the clock and each window, over the band's flat
+  fallback fill (`--house-wall`); the leaves, the clock's hands and its unset treatment, and the glazing with
+  its sky stay the painter's on every theme. Its left **272 px is a reserved zone**: the **two-door elevator** — two leaves meeting at a
+  seam in the theme's surround, which draws the frame, the header plate with its plain dial, the lamp, the
+  recess and the call buttons; the leaves are the lobby cab's, in the lobby's own door
   colours (`--door` / `--door-edge`, [§ 10.4](#104-the-art-direction-as-a-specification)), so the floor and
   the lobby read as one building — and the **wall clock**, A17's, hung at mid-wall right of it. **The elevator
   is where a seat leaves the floor and where it comes back** (card#9566, the operator's request of
@@ -1276,23 +1282,24 @@ coordination lines, the desks, the strip's header, the transient effects. The fr
   furniture box wide clears; below that width the band draws **no** window, because the only place one could
   stand is inside the zone. **No window and no other band primitive ever meets the clock's face**
   ([AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor)'s clock
-  clause). **The end posts** (the operator's ruling of 2026-10-04 on the back corner, option B): a post
-  `SLAB_H` (8 px) wide and the band's full height up each end of the band, in the wall colour
-  (`--house-trim`) — the side walls' end faces rising beside the back wall's, so the corner where a map's side
-  strips meet the band closes. They lie inside the band's span and outside every grid, and stand on an
-  authored map with no side strips too, where they read as the back wall's own end thickness.
+  clause), and no window's surround or the elevator's does either ([AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s
+  band leg). **The end posts** (the operator's ruling of 2026-10-04 on the back corner, option B): a post
+  8 px wide and the band's full height up each end of the band — the side walls' end faces rising beside the
+  back wall's, so the corner where a map's side strips meet the band closes — drawn by the floor's theme in
+  its wall (the house theme's `#9aa982`). They lie inside the band's span and outside every grid, and stand on
+  an authored map with no side strips too, where they read as the back wall's own end thickness.
 - **The slab** — the front wall's top edge, a strip under the floor's extent in the wall colour, across the
   band's span, outside every grid.
-- **Each room's plane** — for every room whose map is drawn, a fill over exactly that room's grid, opaque
-  over the hallway as a room is (above), drawn before that room's own tiles and so under everything the
-  author placed. Its colour is the room's **seeded theme** ([§ 10.4](#104-the-art-direction-as-a-specification),
-  [decision 40](#13-decisions-taken-revisable-at-review)) — ⚠ **until row 22**, which draws the plane as the
-  floor's theme's drawing of the grid over a flat `--scene-floor` fill, the hallway's included ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)); the
-  seeded tints' fate is per [decision 58](#13-decisions-taken-revisable-at-review), pending the operator. This is the whole of what the frame draws per room;
-  a per-room sign and a baseboard were both refused in design, because each would sit over an author's grid
-  edge or inside an abutting neighbour's. Two rooms are told apart by their themes, by § 12's gap on an
-  unplanned floor and by the author's own walls — ⚠ the first of those stops being true at row 22 if
-  [decision 58](#13-decisions-taken-revisable-at-review) is confirmed, since one storey is then one theme and one floor colour.
+- **Each grid's plane** — for every room whose map is drawn, and for a planned floor's hallway, a plane over
+  exactly that grid, a room's opaque over the hallway as a room is (above), drawn before that grid's scenery
+  and so under everything the author placed: the floor's theme's drawing of the grid — its floor, the light
+  on it, its `accent` region, its `wall` runs and, on the topmost grid holding the elevator's threshold, the
+  landing ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) items 2, 6 and 7) — over a flat
+  `--scene-floor` fill. This is the whole of what the frame draws per grid; a per-room sign and a baseboard
+  were both refused in design, because each would sit over an author's grid edge or inside an abutting
+  neighbour's. Two rooms on one storey are drawn in one theme and one floor ([decision 58](#13-decisions-taken-revisable-at-review)),
+  and are told apart by § 12's gap on an unplanned floor, by the author's own walls and by their names —
+  [decision 40](#13-decisions-taken-revisable-at-review)'s seeded per-room tints retired at row 22.
 - **The overflow bench** — [§ 3.2](#32-the-desk-slot-function)'s overflow row, drawn only when a seat is on
   it, which **wraps** at the floor's width into further rows (F13).
 - **A mapless room** ([§ 9](#9-failure-paths-and-their-observables) F16) — its desks are placeholders at its
@@ -1300,10 +1307,11 @@ coordination lines, the desks, the strip's header, the transient effects. The fr
   `server/public/js/floor/floor-layout.js`'s `placeRooms()`), so the band spans it; it gets no plane, because
   F16 draws every fact and no room.
 
-**An unused slot is plain floor** — from row 22 plain floor under the lamplight pool every slot has ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)), and still no desk — no spare desk stands at a slot no seat holds
+**An unused slot is plain floor** — plain floor under the lamplight pool every slot has ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)), and still no desk — no spare desk stands at a slot no seat holds
 ([decision 41](#13-decisions-taken-revisable-at-review)). `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` holds
 the frame over the smallest room a valid map makes, a sparse map, a planned floor of two abutting rooms over
-a hallway and a mapless room, and sweeps the band at every whole width from 1 px up to the test's own bound;
+a hallway — the hallway's plane among its planes — and a mapless room, and sweeps the band at every whole
+width from 1 px up to the test's own bound;
 it reads rects, so the look is the screenshots' to show.
 
 The desk is the unit. Everything on it is [§ 5.1](#51-the-desk)'s table; every motion on it is
@@ -1694,10 +1702,9 @@ each with its reason — and the list is the count, so nothing here states one:
    origin says where a room begins and nothing the client holds says how far its content reaches.
    **F18 is untouched:** an overlap is a determination over footprints, and a room with none is left
    out of it exactly as it was. ⚠ **The point carries NO SIZE, and what that leaves unchecked is
-   named rather than filled:** nothing the client holds gives a placeholder grid a width, and the one
-   figure that could — [§ 12](#12-every-number-and-where-it-comes-from)'s desk sprite width — is
-   measured off the bridge tileset that row retires with, so a size derived from it would pin a
-   permanent geometry to a temporary asset. ⇒ A mapless room at the union's right or bottom edge has
+   named rather than filled:** nothing the client holds gives a placeholder grid a width — the one
+   figure that could, § 12's desk sprite width, was measured off the bridge tileset and retired with it at
+   Appendix B row 22 (card#11046), so no size was ever derived from it. ⇒ A mapless room at the union's right or bottom edge has
    its placeholder grid drawn from that edge outward, and keeping the grid inside the band is the
    drawing layer's — the same residue this section already carries for an absurd `origin`, and for
    the same reason: a number with no derivation is worse than a named gap.
@@ -3203,9 +3210,11 @@ permits this one.
   is § 5.1's question and is not answered here.
 
   **Where a glow is drawn** (card#11045): the scene, not the painter, places it — an ellipse INSIDE its
-  lamp tile's own rect, at the tile's top where the kit's lamps carry their shade, the tile's width
+  lamp tile's own rect, at the tile's top where a floor lamp carries its shade, the tile's width
   across — so a glow reaches no further than its tile, and a lamp kept inside the room's grid glows
-  inside it.
+  inside it. Since card#11046's row 22 the lamp is a standing `floor-lamp` piece its floor's theme draws
+  ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 6), and its glow is drawn only where the
+  piece is.
   `Tests\Feature\Floor\TheSceneDrawsOnlyWhatTheSetLoggedTest` holds every decoration's glow inside its
   tile. Until then the painter drew it twice its tile's size, centred on the lamp's foot, and a lamp at
   the room's edge glowed below the floor.
@@ -3831,7 +3840,7 @@ indistinguishable from a fleet that has gone home.
 | F11 | **Seat-detail request fails** | the status code | the drill-down opens with the seat object it already holds and the sections that need `detail` read **unavailable**; the intern list falls back to `subagents[]` **and says it is capped**, worded ***unavailable — seat detail could not be read; showing the first 8 interns only***, the 8 being `subagents[]`'s cap ([§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)) (ratified by the operator on card#7342, 2026-09-25) | retry | showing a capped list as if it were complete |
 | F12 | **A delta names a seat the client does not hold** | the seat map | none — the client fetches it ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)); the client's event log records *seat added to the floor* | — | applying a shallow-merge patch to a partial object |
 | F13 | **Floor map has fewer slots than the install has seats** | `S` against the rendered seat count | the surplus seats render in a labelled **overflow row**, and a persistent notice reads *floor map is short N desks* — one per short room, naming it, on a floor of several rooms ([§ 3.2](#32-the-desk-slot-function), card#9292). The row **wraps**: as many desks to a row as the floor is wide, at least one, and further rows below, so it never runs past the floor's width however many seats it holds ([§ 4.2](#42-the-floor)'s frame, card#11045) | an operator edits the map | dropping a seat |
-| F14 | **An asset fails to load** — a tile, a sprite sheet, the character tree's module, a floor's theme module or one of its documents ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 8, row 22); or the creature generator throws for one key, which is how one character's art fails alone now that no character is a file ([§ 10.2](#102-characters-original-creatures-drawn-by-code)) | the load error, or the throw | the desk renders its **placeholder**: a plain rectangle in place of the art's images only (since row 20 the side table is part of the art, so a placeholder desk draws none, its interns standing on the floor; from row 22 a desk's theme furniture set is its art: [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 8) — the nameplate, the chip and the label line, the badge row and the flag, the monitor's text, the bubble and every other fact draw as on an intact desk; every fact, no art — and the status strip reads *some art failed to load*. **An intern's sprite is an asset of its own** (`intern:<install_id>/<seat_id>~<call_id>`): when it fails, that intern alone is drawn as the glyph inside its own 20 × 32 rect (dashed when untitled) — the desk's placeholder is not triggered, the other interns keep their sprites — and the strip reads the same line (card#11058). Reachable since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14, which builds the layer the art is drawn on, and asserted by [AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk) | retry on reload | a blank desk, which reads as an empty office |
+| F14 | **An asset fails to load** — a tileset, the character tree's module, **the theme registry** (`/art/floor/themes/index.js`), a floor's theme module (`theme:<name>`) or one of its documents ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 8, built at row 22); or the creature generator throws for one key, which is how one character's art fails alone now that no character is a file ([§ 10.2](#102-characters-original-creatures-drawn-by-code)), or a theme's document throws for one input | the load error, or the throw | the desk renders its **placeholder**: a plain rectangle in place of the art's images only (since row 20 the side table is part of the art, so a placeholder desk draws none, its interns standing on the floor; since row 22 a desk's art is its theme's furniture set, all or nothing — [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 8). A registry or a theme module that fails is every desk's placeholder on every floor drawn in it, and the band and every plane draw only their flat fallback fills — no floor resolves a theme without the registry, so its failure is named rather than drawn as the house theme with no word ([§ 9](#9-failure-paths-and-their-observables) F23's *Never*); a tileset that fails costs the room the tiles drawn by its kinds — walls, accents, scenery — and no desk its art. On every placeholder desk the nameplate, the chip and the label line, the badge row and the flag, the monitor's text, the bubble and every other fact draw as on an intact desk; every fact, no art — and the status strip reads *some art failed to load*. **An intern's sprite is an asset of its own** (`intern:<install_id>/<seat_id>~<call_id>`): when it fails, that intern alone is drawn as the glyph inside its own 20 × 32 rect (dashed when untitled) — the desk's placeholder is not triggered, the other interns keep their sprites — and the strip reads the same line (card#11058). Reachable since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14, which builds the layer the art is drawn on, and asserted by [AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk) | retry on reload | a blank desk, which reads as an empty office |
 | F15 | **The browser tab is backgrounded and returns** | the gap in the age ticker, or a stream the platform closed | on return, the client re-runs [§ 2.2](#22-connect-snapshot-deltas) from step 1 and renders **without animation** ([§ 6.5](#65-a-snapshot-never-animates)) | — | replaying the deltas that arrived while hidden, which would animate a history the operator did not watch |
 | F16 | **A room's map request fails** — any non-200 from `GET /api/building/rooms/{install_id}/map`, the `503` included ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the status code | the room renders its desks with **no map**: every desk is F14's placeholder in a plain grid — every fact as F14 draws it, no room — under a notice reading **room map could not be loaded — HTTP N**, naming the room. For the floor's arithmetic ([§ 4.6](#46-the-building-layout) — an unplanned floor's origins, a planned floor's extent, F18) the mapless room keeps the extent of the last map the client held for it, and with none held it has **no footprint**: the placeholder grid is drawn at the room's origin over whatever lies there, under this notice, and F18's determination leaves the room out — an overlap a failed fetch causes is this failure's render, already named, never a plan defect (card#9292). ⭐ **The room is in the FLOOR's extent all the same, as the point its origin is** ([§ 4.6](#46-the-building-layout) rule 5, operator-ruled on card#7341): that union is taken over every room placed on the floor, so [§ 4.2](#42-the-floor)'s back-wall band spans this room too. ⚠ **This row used to say the mapless room had no extent for a planned floor's extent, and that one sentence was answering two questions** — the room's own footprint and the floor's union. The footprint half stands and the union half is REVERSED: a room the union left out drew its desks outside the building's backdrop, where a real map outage is indistinguishable from a rendering defect | retry on the user's action, and on the next `room.map` for that room | **drawing the shipped default in its place.** A default drawn silently is a room the operator authored rendering as one they did not — the *which of the two am I looking at* defect [§ 4.6](#46-the-building-layout) refuses at building scale — and for a `503` it is D2's forbidden clean zero one surface over |
 | F17 | **The layout request fails** — any non-200 from `GET /api/building` ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), on connect or after a `building.layout` | the status code | the lobby renders a full-width statement **the building layout could not be loaded — HTTP N** over the floors it already holds, labelled *last known layout*; on a cold start there is no layout to keep, so under that statement it lists the snapshot's installs as rooms with **no floor claimed**, each a link to `/floor/{install_id}` that [§ 4.4](#44-routes-and-what-each-one-fetches) resolves **once the layout is readable** — until then, following it lands on this same render. **The floor route renders the same statement**: over the rooms it already holds when the layout was fetched before, and, on a cold-start deep link ([§ 4.4](#44-routes-and-what-each-one-fetches)), over the same uncomposed list — it does **not** compose the segment into a one-room floor, because deciding whether a segment is a floor's key or a room on someone else's floor needs the very document that failed. Every seat stays reachable; no composition is asserted on either screen | retry with backoff, and on the next `building.layout` | **composing the EMPTY layout's building** — one floor per install, `open` — from a failed fetch. An empty layout is a legal document ([§ 4.6](#46-the-building-layout)); a failed fetch is not that document, and a building composed from it is the wrong building drawn with confidence, which is F16's silent default one level up |
@@ -3968,9 +3977,10 @@ files RED, not one of them for an embedded-bytes reason.**
    allowlist whose members have no reasons is a denylist that has not noticed yet:
    - **`.ts`, `.js`** — the creature generator's source: the characters are drawn by code, and
      appearance is computed from the key ([§ 10.2](#102-characters-original-creatures-drawn-by-code)).
-   - **`.md`** — a lineage file: `resources/floor/LINEAGE.md` for the tileset, and a port's own should
-     one ever be taken into the character tree ([§ 10.2](#102-characters-original-creatures-drawn-by-code)).
-     Once Appendix B row 19 lands, that tree holds none (card#11046).
+   - **`.md`** — a lineage file: a port's own should one ever be taken into an asset tree
+     ([§ 10.2](#102-characters-original-creatures-drawn-by-code)). None ships today: the character tree's left
+     at Appendix B row 19 and the floor tileset's, `resources/floor/LINEAGE.md`, at row 22, each with what it
+     recorded (card#11046).
    - **`.svg`** — the ratified direction is **vector-first**, and vector is what
      [§ 4.5](#45-the-viewport-rule-and-the-camera)'s resolution-independence requirement
      actually needs. It is also **text**, so clause 2 can read inside it, which no raster format
@@ -4084,10 +4094,11 @@ anything below; what stands in its place is weaker and is worth naming exactly:
 - the closed **`origin`** set with its per-value checks, which cannot detect a lie but can detect an
   **inconsistency** — the vendored asset whose author cell names somebody outside this project, or
   whose source URL is external while its origin says `first-party`;
-- a lineage file's *what was deliberately not taken and why* — `resources/floor/LINEAGE.md`'s for the
-  tileset — which is a human statement and is the only artifact here that addresses intent at all. The
-  character tree will have none once row 19 lands (card#11046), because it will have taken nothing
-  ([§ 10.2](#102-characters-original-creatures-drawn-by-code)); for the creatures that statement is
+- a lineage file's *what was deliberately not taken and why*, for a port, which is a human statement and
+  is the only artifact here that addresses intent at all. No tree has one today (card#11046): the
+  character tree took nothing at row 19 and the floor took nothing at row 22
+  ([§ 10.2](#102-characters-original-creatures-drawn-by-code), [§ 10.6](#106-themes--a-floors-design-and-the-house-theme));
+  for the creatures and the themes that statement is
   [§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate)'s review note;
 - the **IP line** ([§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate));
 - and **review**, which is now doing more of the work than it was and should be told so.
@@ -4309,42 +4320,28 @@ only. This subsection says where the creatures come from and what they replaced;
   build otherwise for the vendored default, and the console refuses an authored map for the same
   clause (below). Both are Tiled export settings, not code.
 
-⭐ **THE TILESET IS CHOSEN AND VENDORED, AND IT IS A BRIDGE — operator ruling, 2026-09-12, which
-closes [§ 14](#14-open-questions-for-the-review-loop) item 7.** The floor's tiles are Kenney's
-**Furniture Kit** (<https://kenney.nl/assets/furniture-kit>, author Kenney, **`CC0-1.0`**), vendored
-as the Tiled tileset `resources/floor/tiles/furniture-kit.tsx` over the PNG renders beside it, each
-with the `docs/ATTRIBUTION.md` row Gate 1 requires. `resources/floor/LINEAGE.md` records the terms as
-read at the source, the archive's hash, what was curated, and what was deliberately not taken — the
-same job `resources/characters/LINEAGE.md` does for the port — until card#11046's row 19 retires both — for a vendoring rather than a port.
-Four things belong here rather than there, because they are this document's rulings and not that
-file's notes:
+⭐ **THE TILESET IS FIRST-PARTY, AND IT DECLARES KINDS, NOT PICTURES** (card#11046, [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
+row 22). The one tileset the repository ships is `resources/floor/tiles/floor-plane.tsx`, an image collection
+whose every tile declares a `kind` from the theme registry's closed set — `wall` and `accent`, the plane
+kinds, and `bookcase`, `plant`, `floor-lamp`, `armchair`, `cushion` and `book-pile`, the standing ones — and
+whose every image is an authoring MARKER for Tiled, a plain labelled outline the floor never draws: the floor
+draws a placed tile by its kind, in its floor's theme ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)
+item 6). Each marker carries the `docs/ATTRIBUTION.md` row Gate 1 requires. ⚠ **Until row 22 the floor's
+tiles were a BRIDGE**: Kenney's CC0 **Furniture Kit**, vendored on the operator's ruling of 2026-09-12 (which
+closed [§ 14](#14-open-questions-for-the-review-loop) item 7) explicitly as a stand-in for first-party vector
+art, pre-rendered raster that did not meet [§ 10.4](#104-the-art-direction-as-a-specification)'s bar and was
+never meant to. It left the tree at row 22 with its rows and `resources/floor/LINEAGE.md`, and the plank and
+rug tiles of this tileset left with it ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s
+retirements); the record of what it was stays in git and in `docs/PLAN.md § 0`'s D-07 appends. Three things
+belong here, because they are this document's rulings:
 
-- ⭐ **AND IT LEAVES AT [Appendix B](#appendix-b--what-an-implementer-builds-from-this) ROW 22** — the house theme's first-party furniture replaces it, rect
-  for rect, and its rows and `resources/floor/LINEAGE.md` go with it ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s retirements). Until then
-  the bullets below describe the tree.
-- ⚠ **IT DOES NOT MEET [§ 10.4](#104-the-art-direction-as-a-specification)'s BAR, AND IT IS NOT MEANT
-  TO.** That subsection requires the shipped look to be **resolution-independent**, which is
-  [§ 4.5](#45-the-viewport-rule-and-the-camera)'s capability and not a style note; this pack
-  is **pre-rendered raster at one scale**, so it fails that requirement by construction. The operator
-  chose it **explicitly as a bridge to first-party vector art** — so the floor can be built, laid out
-  and measured against real sprites instead of against an intent, while the art that ships is drawn.
-  **Nothing about it is a precedent for what ships**, and the day the vector art lands this tileset
-  leaves the tree with its rows. Written here, and again where a reader meets the files, because an
-  interim asset nobody labelled is an interim asset somebody later mistakes for a decision.
-- **The `Side/` renders, not the `Isometric/` ones.** The ratified reference is a building seen in
+- **One projection, and it is not isometric.** The ratified reference is a building seen in
   **cross-section** — [§ 4.1](#41-the-lobby--the-building-summary)'s stacked floor plates with an
   elevator between them — and [§ 4.5](#45-the-viewport-rule-and-the-camera)'s camera zooms
   and pans over it. That is an **elevation**: each floor is a horizontal band and the camera's zoom is
-  a scale change inside one projection. Isometric tiles recede along two axes, which is a *different*
-  projection whose floors cannot stack into a section without occluding each other. **Nothing in
-  this document asks for that projection**, and until this bullet was written the word did not occur
-  in it at all — every occurrence today is in this bullet, explaining the choice. Taking both was
-  rejected rather than overlooked: a renderer draws one projection, and the second set is four renders
-  per object that every Gate 1 row would have to keep true for nothing drawn.
-- **A desk sprite is 116 px wide and 57 px tall** (`resources/floor/tiles/furniture-kit/desk.png`),
-  which is the measurement [§ 12](#12-every-number-and-where-it-comes-from)'s viewport row has been
-  waiting on. What that settles, and the half of the derivation it does **not** settle, is that
-  table's row to say and is not restated here.
+  a scale change inside one projection, [§ 10.4](#104-the-art-direction-as-a-specification)'s 3/4 oblique.
+  Isometric tiles recede along two axes, which is a *different* projection whose floors cannot stack into
+  a section without occluding each other, so the console refuses a map in one by name.
 - **A tileset is not a map, and this bullet was written before the map existed.** What
   [§ 14](#14-open-questions-for-the-review-loop) item 7 asked for was the tileset *recorded*; the
   map — the **shipped default** below, since card#9208's reversal — was **card#9269's** and is in the
@@ -4362,44 +4359,44 @@ file's notes:
   2026-09-25). **The composition is the operator's ruling of 2026-10-01 (card#11045): a six-desk office —
   two rows of three slots, each slot the box, on a drawn FLOOR PLANE, with a narrow scenery strip at each
   side and no conference room, no lounge and no wall of its own.** Its side walls and the PM office's
-  walls came with card#11144 (below); the back wall is still the band's. **The shipped default reserves `id 3`
+  walls came with card#11144 (below), and the house picture's scenery and the PM office's oak with card#11046
+  (row 22, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)); the back wall is still the band's. **The shipped default reserves `id 3`
   for `pm`** — the back-row right corner carries `reserved_for: pm` (the `desks` row of the table below),
   the operator's ruling of 2026-10-03 (card#11144) — and the floor seats there the room's one seat
   relaying `pm`, or nobody ([§ 3.2](#32-the-desk-slot-function)): a seat hashing to it probes past it. **The shipped default draws
   walls** (card#11144, under [§ 10.4](#104-the-art-direction-as-a-specification)'s projection rule): the
   room's two side edges, and a partition with a front return and a doorway around the reserved desk, as
-  top-edge strips of the floor-plane tileset — a tile layer named `walls` between `plane` and `furniture`,
-  one cell wide, every cell outside every slot (held by `tools/design/verify-floor.py` G-walls), the doorway
-  a 96 px gap in the front return facing the room. An author marks walls the same way: the wall-strip tile
-  painted on any tile layer (`walls` by convention — the renderer looks for no layer name), one cell wide,
-  a doorway left unpainted, every cell kept out of every `desks` object (a cell inside one is hidden under
-  the desk, not refused); the kit's wall panels and doorways are not placed. It is laid out from the desks
+  top-edge strips: cells of the tileset's `wall` tile on a tile layer named `walls` between `accent` and
+  `furniture`, one cell wide, every cell outside every slot (held by `tools/design/verify-floor.py` G-walls),
+  the doorway a 96 px gap in the front return facing the room, and the floor's theme draws each straight
+  stretch as one strip ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 6). An author marks
+  walls the same way: the `wall` tile painted on any tile layer (`walls` by convention — the renderer looks
+  for no layer name), one cell wide, a doorway left unpainted, every cell kept out of every `desks` object (a
+  cell inside one is hidden under the desk, not refused). It is laid out from the desks
   outward: three boxes across with 32 px aisles between them and a 96 px strip at each side
   (96 + 3 × 440 + 2 × 32 + 96 = 1,576), two rows with a 40 px aisle between them and 24 px at the back and
   the front (24 + 2 × 228 + 40 + 24 = 544) — how many rows and how many slots each is
   [§ 12](#12-every-number-and-where-it-comes-from)'s viewport row's to state, and the gate re-derives both
-  from the file. The scenery is small and only around the desks: a bookcase and two plants in the left
-  strip, a floor lamp, a plant and a bin in the right one, and a rug in the aisle between the rows — ⚠ until
-  row 22, which re-lays the scenery as standing tiles the floor's theme draws, with no rug ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme));
-  a slot nobody holds is plain floor — from row 22 under the lamplight pool every slot has. **The map paints no BACK wall: the floor's back-wall band IS the room's
+  from the file. The scenery is small and only around the desks — standing pieces of the tileset's kinds the
+  floor's theme draws, as [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The shipped default*
+  lays them, each whole cell outside every slot (G-scenery), and no rug; the PM office's floor is painted
+  with the `accent` tile on a tile layer of its own, `accent`, inside its walls; a slot nobody holds is plain
+  floor under the lamplight pool every slot has. **The map paints no BACK wall: the floor's back-wall band IS the room's
   back wall** ([§ 4.2](#42-the-floor)'s frame, drawn above every room's grid), so an author lays floor,
   interior walls, furniture and desk slots and needs no back wall of their own — one painted inside the
   grid reads as a second wall under the band. The plane is the ratified reference's cheated depth
-  ([§ 10.4](#104-the-art-direction-as-a-specification)'s worked example stands its desks on one), which
-  the bridge kit's `Side/` renders cannot give because they hold no floor plane; so the plane is
-  **first-party vector art** — `resources/floor/tiles/floor-plane.tsx` over the SVG tiles beside it, a
-  seamless plank course and a rug, and the wall-strip tile (⚠ at row 22 the planks and the rug retire, the
-  floor becomes the theme's plane and the wall strip a marker — [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)) — drawn to § 10.4's bar (resolution-independent, warm, whimsical) under
-  Gate 1's rows and Gate 2's clauses like every other asset, and the first art in the tree that meets that
-  bar ([§ 14](#14-open-questions-for-the-review-loop) item 28(2)). The planks cover the whole grid, laid in
-  courses from the front edge back, the course against the wall the narrow one; the floor's per-room
-  plane fill is under them ([§ 4.2](#42-the-floor)). The back row's slots begin 24 px below the band, the
+  ([§ 10.4](#104-the-art-direction-as-a-specification)'s worked example stands its desks on one): every
+  grid's floor is its floor's theme's PLANE — the floor's boards, the light on them, the accent region, the
+  walls and the landing, drawn as code over the grid ([§ 4.2](#42-the-floor), [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)
+  items 2 and 6) — so no tile paints a floor and nothing an author places is needed for a floor to be there.
+  The back row's slots begin 24 px below the band, the
   front row's end 24 px short of the room's front edge; the room is drawn under § 10.4's projection rule — the back wall's face, everything else from the one viewer — and the
-  plane is what the reference draws under its desks. ⚠ The box and the grid are the BRIDGE tileset's as
-  the sprite's is: the box holds that sprite and the character rects at their drawn size — the creatures
-  draw into the same rects, so they do not move it once row 19 lands — and it moves when the furniture art does ([§ 14](#14-open-questions-for-the-review-loop) item 28(1)(iii)); the grid moves with
-  the box. ⚠ **Row 22's furniture does not move it:** the house theme draws into rects laid inside the same box,
-  so at row 22 the box is re-confirmed rather than re-measured ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid*).
+  plane is what the reference draws under its desks. ⚠ The box holds the desk's rects
+  ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid*) — every piece of the
+  theme's furniture set draws into one of them — and the character rects at their drawn size; it moves when
+  the furniture art's rects do ([§ 14](#14-open-questions-for-the-review-loop) item 28(1)(iii)), and the grid
+  moves with the box. **Row 22's furniture did not move it:** the house theme draws into rects laid inside the
+  same box, so at row 22 the box was re-confirmed rather than re-measured.
 
 - The map declares an **object layer named `desks`** whose objects are the slots of
   [§ 3.2](#32-the-desk-slot-function), and `S` is their count in `id` order. The shipped default map
@@ -4492,10 +4489,10 @@ console checks, exactly these members of the document:
 
 | Member | The floor reads it as | Refused at the write when |
 |---|---|---|
-| `orientation`, `width`, `height`, `tilewidth`, `tileheight` | the room's grid: its pixel size is `width × tilewidth` by `height × tileheight`, and it is the room's own — a floor of N rooms draws N such grids ([§ 4.2](#42-the-floor)). **And that pixel size is the room's FOOTPRINT on a planned floor**: [§ 4.6](#46-the-building-layout)'s plan places the grid and never sizes it (card#9292), so this row is the one home of a room's extent | any is absent or not a positive integer; or `orientation` is anything but `orthogonal` — the floor is [§ 10.4](#104-the-art-direction-as-a-specification)'s 3/4 top-down oblique, for which the kit's `Side/` renders are the face-on objects, and an isometric map is a second projection; the tileset bullet above is the ruling that no other projection is asked for or vendored, so a map in any other is refused by name rather than drawn flat |
-| `tilesets[]` | the tile art, each entry's `source` resolving to a tileset **the repository ships** under `resources/floor/` and serves as a static asset with its image — in either of [§ 10.1](#101-the-manifest-and-the-two-gates) clause 1's tileset spellings, `.tsx` or `.tsj`, so the client decodes both; the two shipped today are XML — `resources/floor/tiles/furniture-kit.tsx`, the bridge, and the first-party `resources/floor/tiles/floor-plane.tsx` (the bullet above) — and a JSON map naming them is the ordinary case rather than an edge | an entry embeds an image, or names a `source` the repository does not ship — which **closes** the residue the 2026-09-09 revision of this section named — that a map naming a tileset nobody vendored was a broken reference the console could not see (its wording, since replaced): with the console serving the map it can see it, and does; and `tilesets` is present, not `null` and not a JSON array, or an entry of it is not a JSON object — `{}` is not the empty list `[]` (card#9322) |
-| `layers[]` of `type: "tilelayer"` | drawn in document order, bottom first — *floor*, *walls*, *furniture* are conventions an author names, never members the renderer looks for by name | a layer's `data` is not a plain array of GIDs — [§ 10.1](#101-the-manifest-and-the-two-gates) clause 3 in full, enforced at the write as it was before this ruling: CSV, no `compression`, no embedded tileset image, each refusal naming the clause, and every rule of this row reaches the layers inside a `group` layer; and `layers` — the map's own, or a `group` layer's — is not a JSON array (a `group` layer whose `layers` is absent or `null` is an empty group), or a layer is not a JSON object (card#9322) |
-| the one `objectgroup` named `desks` | the slots — found at any depth, inside a `group` layer exactly as at the top level, by the console's write and by the client's read alike, so the map the console accepted is the map the floor seats (card#11187) — `S` is the object count in `id` order, and each object's `x`, `y`, `width`, `height` is that slot's **furniture box**: the rect **everything the scene draws for the desk at rest, except the bubble**, is laid out INSIDE — so that two disjoint slots hold two disjoint desks by construction, which is card#7341's ruling (*static placement is collision-free by construction at the slot function*) made true by [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's scene and held by [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor). *At rest* is the layout every run of that test reads, because a snapshot never animates ([§ 6.5](#65-a-snapshot-never-animates)); a character in transit on one of [§ 6.2](#62-the-animation-table--the-closed-set)'s `edge` rows that walk the character is between desks and at none, and those transit frames are the second exclusion beside the bubble: the ruling is about static placement, and a walk is the fleet doing something. **What bounds the box's contents, so that *inside* is a construction and not a hope:** the sprite and the character are the art's own size; the desk holds [§ 8](#8-interns--subagent-rendering-and-the-cap)'s cap of interns, one sprite each, and its *+N more* tag, and **an intern is never hidden** ([§ 14](#14-open-questions-for-the-review-loop) item 28: a hidden stool is a dropped intern); the badge row draws two badges whatever `badges` carries and the flag ⚠ +N counts the rest ([§ 5.1](#51-the-desk)'s *the glance set*) — [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bound on `badges` ([§ 7.2](#72-badges-every-member-has-a-render)) is upstream's, this client enforces nothing on it, and [§ 9](#9-failure-paths-and-their-observables) F9 treats a skewed wire as reachable, so the row is bounded here and not by trust; **what the row keeps is ordered, not arbitrary**: the badges a [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) treatment reads first ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s and [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s), then recognised badges in the wire's own order, and the flag counts what is left — an unrecognised badge is never drawn on the desk, so it is always counted (operator ruling 2026-10-02, card#11058); and **every string drawn on the desk — [§ 5.1](#51-the-desk)'s rows and [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s marks, each as the string step 5's model already decided — is truncated to the box with a visible mark**, as [§ 5.1](#51-the-desk) rule 4 truncates the bubble's title: never clipped silently and never drawn past the edge, **through ONE truncation primitive in the scene** — a function of the string, the box's width and the measurer, returning the string cut with the mark — that every drawing site takes its string from and none re-implements, so that a string the fixtures never bound is cut by the same code as the ones they do (row 14; AT-D3-20's second RED is planted at it). The untruncated value is on [§ 4.5](#45-the-viewport-rule-and-the-camera)'s list view, below the drawing, and in the drill-down, row 10's — which is [§ 4.2](#42-the-floor)'s standing split between what the floor shows and what approaching shows, and is the dependency Appendix B's order note states. The box's worst case is therefore the cap of interns with the tag, the badge row of two with the flag, and every string cut to fit — a size that depends on no wire string's length and on no array's — and that is the size [§ 12](#12-every-number-and-where-it-comes-from) carries as a Measured row since row 14's slice B. The bubble is [§ 5.1](#51-the-desk) rule 5's own pass and the one element that may leave the box. **A slot sits where Tiled shows it (card#11252, operator ruling 2026-10-04)**: its position is the object's own `x`/`y` plus the summed `offsetx`/`offsety` of the `desks` layer and of every `group` above it — the sum the room's tiles are drawn at, so a group an author drags carries its desks with its furniture — and that position is the one the floor draws the desk at and the one every refusal in this row judges, by `App\Floor\FloorMap` at the write and by `floor/floor-layout.js`'s `mapDesks()` at the read, each summing through its side's one walk of the layer tree. Rects are **half-open**, `[x, x + w) × [y, y + h)`, as [§ 4.6](#46-the-building-layout)'s footprints are, so two slots may share an edge and never a pixel. **At most one object carries `reserved_for`, a role name: the desk reserved for that role (card#11144)** — named by its Tiled `id` on every operator-facing surface; the console lists it beside `S` on the revisions page and in a save's result; the floor's client reads it with each desk — `floor/floor-layout.js`'s `mapDesks()` returns every slot with its `reserved_for` role or `null`, read through the same layer walk that finds the `desks` layer, so the reserved desk's index is its position after the `id` sort (card#11144) — and seats the room's one seat relaying that role there, taking the desk before [§ 3.2](#32-the-desk-slot-function)'s probe loop whether or not anyone holds it; otherwise a reserved slot is a slot like any other — held to the box, counted in `S`. ⭐ **The shipped default's objects are at least the furniture box since row 14's slice B (2026-09-25)** — they were sprite-sized, the width and height the sprite bullet above measures, because nothing drew furniture when they were authored; the re-authoring is the box bullet above. Two objects that intersect, and an object smaller than the box, are refused at the write since row 14's slice C (2026-09-25) — this row's refusal column states both, at a restore as at a save ([§ 14](#14-open-questions-for-the-review-loop) item 28, ruled 2026-09-25) — and only at the write: a reader never refuses a stored map for either, so a map stored before that slice, or validated against a box that has since moved, stays on the floor under [§ 9](#9-failure-paths-and-their-observables) F21's notice and is listed on the console's room index until its author saves one that passes (item 28(1)(iii); each revision records the box it was validated against, [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `authored_revisions.furniture_box`); the shipped default is held pairwise disjoint and at least the box by `tools/design/verify-floor.py` G8 on every run | there is no such layer, or more than one; or its `objects` is not a JSON array (card#9322); or an object carries any property but `reserved_for` — an allowlist of ONE since card#11144 (it was none under card#9071), because the property an author reaches for is a seat's name, and a slot that named a seat would be a stored position ([§ 3.2](#32-the-desk-slot-function)); or `properties` is not a JSON array; or `reserved_for` is not a Tiled `string` (an absent `type` is Tiled's default, `string`) holding a role name — the shape of [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s `protocol_agent_name`, lowercase `[a-z0-9-]` and at most 48 bytes — or appears twice on one object; or the reserved object declares no `id`, or an `id` another object in the layer also declares, because the reservation is resolved by its `id`; or more than one object carries it — a room has one reserved desk, and the refusal names both by Tiled `id`; or the `desks` layer or a `group` above it declares an `offsetx` or `offsety` that is not a number, because the slot's position cannot then be read (card#11252); or an object is not **wholly inside the grid** at that position — `x < 0`, `y < 0`, `x + width` past `width × tilewidth` or `y + height` past `height × tileheight` — refused by name since card#9292, because the grid is the room's footprint on a planned floor ([§ 4.6](#46-the-building-layout)) and a desk drawn past it would overhang a neighbour the footprint check had passed; **or — since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice C (2026-09-25), operator ruling 2026-09-25 ([§ 14](#14-open-questions-for-the-review-loop) item 28) — two objects whose half-open rects intersect, refused naming both, or an object smaller than [§ 12](#12-every-number-and-where-it-comes-from)'s furniture box at the cap, at a restore exactly as at a save**, because a restore is a forward revision that puts a document in front of viewers as a save does ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)). ⛔ **card#9071, operator ruling 2026-09-12: the console may not pin a seat to a desk** — this row keeps an identity out of the *document*; what it cannot keep out is stated under the table |
+| `orientation`, `width`, `height`, `tilewidth`, `tileheight` | the room's grid: its pixel size is `width × tilewidth` by `height × tileheight`, and it is the room's own — a floor of N rooms draws N such grids ([§ 4.2](#42-the-floor)). **And that pixel size is the room's FOOTPRINT on a planned floor**: [§ 4.6](#46-the-building-layout)'s plan places the grid and never sizes it (card#9292), so this row is the one home of a room's extent | any is absent or not a positive integer; or `orientation` is anything but `orthogonal` — the floor is [§ 10.4](#104-the-art-direction-as-a-specification)'s 3/4 top-down oblique, and an isometric map is a second projection; the projection bullet above is the ruling that no other projection is drawn, so a map in any other is refused by name rather than drawn flat |
+| `tilesets[]` | the tile art, each entry's `source` resolving to a tileset **the repository ships** under `resources/floor/` and serves as a static asset with its image — in either of [§ 10.1](#101-the-manifest-and-the-two-gates) clause 1's tileset spellings, `.tsx` or `.tsj`, so the client decodes both; the one shipped today is XML — the first-party `resources/floor/tiles/floor-plane.tsx` (the tileset paragraph above), whose every tile declares a `kind`; the bridge kit's `tiles/furniture-kit.tsx` left at row 22, so a map stored before naming it is refused at its next save and drawn without its tiles meanwhile, and the console LISTS it ([§ 14](#14-open-questions-for-the-review-loop) item 36(5)) — and a JSON map naming it is the ordinary case rather than an edge | an entry embeds an image, or names a `source` the repository does not ship — which **closes** the residue the 2026-09-09 revision of this section named — that a map naming a tileset nobody vendored was a broken reference the console could not see (its wording, since replaced): with the console serving the map it can see it, and does; and `tilesets` is present, not `null` and not a JSON array, or an entry of it is not a JSON object — `{}` is not the empty list `[]` (card#9322) |
+| `layers[]` of `type: "tilelayer"` | read in document order, bottom first — *accent*, *walls*, *furniture* are conventions an author names, never members the renderer looks for by name. A cell is drawn BY ITS TILE's `kind` and never by its image ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 6): a plane kind's cells are merged into runs for its grid's plane, a standing kind is drawn at its tile's cell rect in tile order, and a tile with no kind, or a kind the theme registry does not name, draws nothing | a layer's `data` is not a plain array of GIDs — [§ 10.1](#101-the-manifest-and-the-two-gates) clause 3 in full, enforced at the write as it was before this ruling: CSV, no `compression`, no embedded tileset image, each refusal naming the clause, and every rule of this row reaches the layers inside a `group` layer; and `layers` — the map's own, or a `group` layer's — is not a JSON array (a `group` layer whose `layers` is absent or `null` is an empty group), or a layer is not a JSON object (card#9322) |
+| the one `objectgroup` named `desks` | the slots — found at any depth, inside a `group` layer exactly as at the top level, by the console's write and by the client's read alike, so the map the console accepted is the map the floor seats (card#11187) — `S` is the object count in `id` order, and each object's `x`, `y`, `width`, `height` is that slot's **furniture box**: the rect **everything the scene draws for the desk at rest, except the bubble**, is laid out INSIDE — so that two disjoint slots hold two disjoint desks by construction, which is card#7341's ruling (*static placement is collision-free by construction at the slot function*) made true by [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's scene and held by [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor). *At rest* is the layout every run of that test reads, because a snapshot never animates ([§ 6.5](#65-a-snapshot-never-animates)); a character in transit on one of [§ 6.2](#62-the-animation-table--the-closed-set)'s `edge` rows that walk the character is between desks and at none, and those transit frames are the second exclusion beside the bubble: the ruling is about static placement, and a walk is the fleet doing something. **What bounds the box's contents, so that *inside* is a construction and not a hope:** the desk's art rects and the character are the art's own size ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid*); the desk holds [§ 8](#8-interns--subagent-rendering-and-the-cap)'s cap of interns, one sprite each, and its *+N more* tag, and **an intern is never hidden** ([§ 14](#14-open-questions-for-the-review-loop) item 28: a hidden stool is a dropped intern); the badge row draws two badges whatever `badges` carries and the flag ⚠ +N counts the rest ([§ 5.1](#51-the-desk)'s *the glance set*) — [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bound on `badges` ([§ 7.2](#72-badges-every-member-has-a-render)) is upstream's, this client enforces nothing on it, and [§ 9](#9-failure-paths-and-their-observables) F9 treats a skewed wire as reachable, so the row is bounded here and not by trust; **what the row keeps is ordered, not arbitrary**: the badges a [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) treatment reads first ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s and [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s), then recognised badges in the wire's own order, and the flag counts what is left — an unrecognised badge is never drawn on the desk, so it is always counted (operator ruling 2026-10-02, card#11058); and **every string drawn on the desk — [§ 5.1](#51-the-desk)'s rows and [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s marks, each as the string step 5's model already decided — is truncated to the box with a visible mark**, as [§ 5.1](#51-the-desk) rule 4 truncates the bubble's title: never clipped silently and never drawn past the edge, **through ONE truncation primitive in the scene** — a function of the string, the box's width and the measurer, returning the string cut with the mark — that every drawing site takes its string from and none re-implements, so that a string the fixtures never bound is cut by the same code as the ones they do (row 14; AT-D3-20's second RED is planted at it). The untruncated value is on [§ 4.5](#45-the-viewport-rule-and-the-camera)'s list view, below the drawing, and in the drill-down, row 10's — which is [§ 4.2](#42-the-floor)'s standing split between what the floor shows and what approaching shows, and is the dependency Appendix B's order note states. The box's worst case is therefore the cap of interns with the tag, the badge row of two with the flag, and every string cut to fit — a size that depends on no wire string's length and on no array's — and that is the size [§ 12](#12-every-number-and-where-it-comes-from) carries as a Measured row since row 14's slice B. The bubble is [§ 5.1](#51-the-desk) rule 5's own pass and the one element that may leave the box. **A slot sits where Tiled shows it (card#11252, operator ruling 2026-10-04)**: its position is the object's own `x`/`y` plus the summed `offsetx`/`offsety` of the `desks` layer and of every `group` above it — the sum the room's tiles are drawn at, so a group an author drags carries its desks with its furniture — and that position is the one the floor draws the desk at and the one every refusal in this row judges, by `App\Floor\FloorMap` at the write and by `floor/floor-layout.js`'s `mapDesks()` at the read, each summing through its side's one walk of the layer tree. Rects are **half-open**, `[x, x + w) × [y, y + h)`, as [§ 4.6](#46-the-building-layout)'s footprints are, so two slots may share an edge and never a pixel. **At most one object carries `reserved_for`, a role name: the desk reserved for that role (card#11144)** — named by its Tiled `id` on every operator-facing surface; the console lists it beside `S` on the revisions page and in a save's result; the floor's client reads it with each desk — `floor/floor-layout.js`'s `mapDesks()` returns every slot with its `reserved_for` role or `null`, read through the same layer walk that finds the `desks` layer, so the reserved desk's index is its position after the `id` sort (card#11144) — and seats the room's one seat relaying that role there, taking the desk before [§ 3.2](#32-the-desk-slot-function)'s probe loop whether or not anyone holds it; otherwise a reserved slot is a slot like any other — held to the box, counted in `S`. ⭐ **The shipped default's objects are at least the furniture box since row 14's slice B (2026-09-25)** — they were sprite-sized, the bridge kit's desk sprite's 116 × 57, because nothing drew furniture when they were authored; the re-authoring is the box bullet above. Two objects that intersect, and an object smaller than the box, are refused at the write since row 14's slice C (2026-09-25) — this row's refusal column states both, at a restore as at a save ([§ 14](#14-open-questions-for-the-review-loop) item 28, ruled 2026-09-25) — and only at the write: a reader never refuses a stored map for either, so a map stored before that slice, or validated against a box that has since moved, stays on the floor under [§ 9](#9-failure-paths-and-their-observables) F21's notice and is listed on the console's room index until its author saves one that passes (item 28(1)(iii); each revision records the box it was validated against, [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `authored_revisions.furniture_box`); the shipped default is held pairwise disjoint and at least the box by `tools/design/verify-floor.py` G8 on every run | there is no such layer, or more than one; or its `objects` is not a JSON array (card#9322); or an object carries any property but `reserved_for` — an allowlist of ONE since card#11144 (it was none under card#9071), because the property an author reaches for is a seat's name, and a slot that named a seat would be a stored position ([§ 3.2](#32-the-desk-slot-function)); or `properties` is not a JSON array; or `reserved_for` is not a Tiled `string` (an absent `type` is Tiled's default, `string`) holding a role name — the shape of [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s `protocol_agent_name`, lowercase `[a-z0-9-]` and at most 48 bytes — or appears twice on one object; or the reserved object declares no `id`, or an `id` another object in the layer also declares, because the reservation is resolved by its `id`; or more than one object carries it — a room has one reserved desk, and the refusal names both by Tiled `id`; or the `desks` layer or a `group` above it declares an `offsetx` or `offsety` that is not a number, because the slot's position cannot then be read (card#11252); or an object is not **wholly inside the grid** at that position — `x < 0`, `y < 0`, `x + width` past `width × tilewidth` or `y + height` past `height × tileheight` — refused by name since card#9292, because the grid is the room's footprint on a planned floor ([§ 4.6](#46-the-building-layout)) and a desk drawn past it would overhang a neighbour the footprint check had passed; **or — since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice C (2026-09-25), operator ruling 2026-09-25 ([§ 14](#14-open-questions-for-the-review-loop) item 28) — two objects whose half-open rects intersect, refused naming both, or an object smaller than [§ 12](#12-every-number-and-where-it-comes-from)'s furniture box at the cap, at a restore exactly as at a save**, because a restore is a forward revision that puts a document in front of viewers as a save does ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)). ⛔ **card#9071, operator ruling 2026-09-12: the console may not pin a seat to a desk** — this row keeps an identity out of the *document*; what it cannot keep out is stated under the table |
 | everything else | **ignored**, and preserved byte for byte by the store — an author's other object layers, custom properties on the map or on a tile layer, Tiled's editor settings | never: a document's members the floor does not read are not the floor's to refuse, and a future renderer that reads one is a change to this table |
 
 **The floor's `hallway` is read by this table too, with one row inverted (card#9292,
@@ -4586,14 +4583,13 @@ creature generator's sheet is their worked example.
   The interior convention per element class is Space Station 14's *Art* guide's: structures face-on with
   the viewer above them, mobs flat at eye level, floor tiles from above, walls by their top.
   1. **The floor is seen from above.** The map's `y` axis is depth: lower on the grid is nearer the viewer.
-     Floor tiles — the planks, the rug — lie flat, show no face and no thickness (from row 22 the floor is the
-     theme's plane drawing, its `accent` regions and the landing, all flat; the planks and the rug retire —
-     [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). *Eye-judged:* that the
-     picture in a floor tile is a plan. (No check reads a tile's picture; the plane tile's cell footprint,
-     216 × 48 over 27 × 6 cells in `floor-plane.tsx`, is the author's, not a gate's.)
+     The floor — its floor's theme's plane drawing of the grid, its `accent` regions and the landing — lies
+     flat, shows no face and no thickness ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme); the
+     plank and rug tiles that drew it until row 22 retired with it). *Eye-judged:* that the plane is drawn as a
+     plan. (No check reads a picture.)
   2. **A standing thing is drawn face-on and anchored at its foot.** Furniture and scenery (desks, monitors,
      chairs, shelves, lamps, plants, bins, the elevator) are drawn face-on; **a top sliver is permitted, not
-     required** — the kit's desk shows one (`desk.png`), its chairs and plants do not, and all comply.
+     required** — the house theme's desk shows one, its chairs and plants do not, and all comply.
      ⭐ **The face drawn is the side that faces the viewer — for furniture used from behind, its BACK** (the
      operator's ruling of 2026-10-06, card#11046 comment 10125, verbatim: *"The desks need to be reversed. The
      agents are sitting behind the desk, so the drawers face the agent (we shouldn't see the the desk drawers -
@@ -4603,18 +4599,15 @@ creature generator's sheet is their worked example.
      front. **The monitor is the one ruled exception** (comment 10126, verbatim: *"yes, the monitors face us and
      show the status"*): its screen faces the viewer because it carries the desk's action and state line
      ([§ 5.1](#51-the-desk)) — a deliberate 3/4-game cheat, and the only one. *Eye-judged:* that a desk's
-     drawing is its back; no check reads a picture. Built at row 22 ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). **A
+     drawing is its back; no check reads a picture. Built at row 22 ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)), the house theme's `desk`. **A
      character is flat** — straight-on, no top — so its face stays legible (SS14's mob rule). The foot — the
      bottom edge of the image or rect — is where it stands on the floor. *Code-cited, not test-held:* Tiled
      image tiles are bottom-aligned to their cell (`server/public/js/floor/scene.js`'s `mapTiles()`,
      `y = (row + 1) × tileheight − h`; `tileset-probe.mjs` holds the reader, not a placed tile's `y`); the
-     desk's art is `xMidYMax meet` inside its rect (`painter.js`'s `MEET`) — the clipping viewport is held
-     by `painter-probe.mjs` (one image child, `overflow` hidden), the `meet` attribute is not held by any
-     probe. Until a check holds them they are **eye-judged**; the one-line probe leg (`preserveAspectRatio`
-     equals `MEET` on every `.art` image, the character's SVG-document images included —
-     [§ 10.2](#102-characters-original-creatures-drawn-by-code)) belongs to
-     card#11046's build ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 19), and from row 22
-     the theme's documents too.
+     desk's art is `xMidYMax meet` inside its rect (`painter.js`'s `MEET`) — the clipping viewport and the
+     `meet` attribute are held by `painter-probe.mjs` on every character's image and every one of a desk's
+     theme documents (card#11046, rows 19 and 22); a standing scenery piece's image and the band's documents
+     are drawn through the same `art()` and held by no probe, so for them it is **eye-judged**.
   3. **Y-sort: a thing with a lower foot draws later, over a thing whose foot is higher.** *Within a tile
      layer* — row-major cell order (`mapTiles()`), code-cited, no test. *Within a desk* — the desk's layer
      order (`desk-layout.js`): the character's foot at `slab + 26`, the desk's at `slab + 60`, so the desk
@@ -4630,14 +4623,13 @@ creature generator's sheet is their worked example.
   4. **Walls.** The floor's **back wall shows its face**: it is [§ 4.2](#42-the-floor)'s band, 160 px
      tall, with the windows, the clock and the elevator on it, and the map paints no back wall. **Every
      other wall shows only its top edge**: a strip **one cell wide (8 px, the map's `tilewidth`)**, flat on
-     the plane, in the one wall colour, drawn as a tile and so under every standing thing. Side walls,
+     the plane, in the one wall colour, cells of the tileset's `wall` kind that the floor's theme draws on the
+     grid's plane, each straight stretch one strip ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)
+     item 6), and so under every standing thing. Side walls,
      walls running front-to-back, and walls running left-to-right inside the room are all this strip; a
      wall's **doorway is a gap in the strip**, at least as wide as a character (54 px). No wall but the
-     band shows a face, so the bridge kit's face-on panels and doorways are not placed — **the kit's
-     elevation-only tiles are ids 24-37 and 44** (the wall lamp, the wall panels, the doorways, the
-     edge-on floor slices and the edge-on rug), renders the plan floor cannot use, retired with the kit
-     when the vector art lands (card#11046) — at row 22, where every wall becomes a `wall` tile the floor's
-     theme draws ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). Where a side wall's top meets the band, the band's two ends
+     band shows a face. (Until row 22 the bridge kit carried face-on wall panels and doorways — its
+     elevation-only renders — which were never placed and left with it, card#11046.) Where a side wall's top meets the band, the band's two ends
      carry the side walls' **end posts** — the frame's, by the operator's ruling of 2026-10-04 on the back
      corner (option B; [§ 4.2](#42-the-floor)). *Code-held* on the shipped default by
      `tools/design/verify-floor.py` G-walls. *Eye-judged* on an authored map: the console validates
@@ -4652,10 +4644,9 @@ creature generator's sheet is their worked example.
 
   What this bullet replaces: [§ 4.2](#42-the-floor)'s *dollhouse elevation* wording and
   [§ 10.3](#103-the-floor-map)'s *the room is an elevation — one back wall, one projection* (both reworded
-  with it); the kit's `Side/` choice stands, because its furniture renders are face-on standing objects —
-  only its walls, doorways, floor slices and rug are elevation-only (item 4's ids). **Where a check holds
-  the rule, and where only the eye does — stated plainly:** item 4 on the shipped default (G-walls, three
-  legs with controls). Everything else — the pictures in items 1-2, the `meet` anchor and the tile anchor
+  with it). **Where a check holds
+  the rule, and where only the eye does — stated plainly:** item 4 on the shipped default (G-walls, two
+  legs with controls, and G-scenery for every standing piece's cell). Everything else — the pictures in items 1-2, the `meet` anchor and the tile anchor
   (code-cited), every draw order, item 5, a character's silhouette edge against the floor (the rim
   bullet below, card#11046), and anything on an authored map — is review by eye, stated as
   [§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate) states its own gap, so a green build is not
@@ -4833,16 +4824,12 @@ creature generator's sheet is their worked example.
   rather than joining it, a null task draws nothing, and it is not drawn on a desk with no character
   to anchor to. Those four are [§ 5.1](#51-the-desk)'s, stated there in full with the upstream
   behaviour that was refused and why, and this bullet states none of them a second time.
-- ⚠ **AN INTERIM FLOOR TILESET IS VENDORED AND IT DOES NOT MEET THE FIRST BULLET — see
-  [§ 10.3](#103-the-floor-map)** — until row 22 retires it ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). It is pre-rendered raster at one scale, so it fails the
-  resolution-independence requirement by construction, and the operator's ruling of 2026-09-12 chose
-  it **as a bridge to first-party vector art** rather than as a reading of this subsection. Nothing
-  above is relaxed by it: the reasoning, the view chosen and what retires with the pack are
-  § 10.3's, stated there once. **It is flagged here because this is the subsection a reader consults
-  to find out what may be drawn**, and an interim asset that only the asset tree admits to being
-  interim is one somebody eventually reads as a decision — which is the same failure mode the port's
-  interim pixel art needed a bullet to prevent, until the creatures replaced it
-  ([§ 10.2](#102-characters-original-creatures-drawn-by-code)).
+- **The interim floor tileset is gone, and nothing on the floor is raster** (card#11046, [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
+  row 22). The bridge kit the operator chose on 2026-09-12 as a stand-in — pre-rendered raster that failed
+  the first bullet by construction, flagged here while it stood so nobody read it as a decision — left the
+  tree when the floor's themes landed ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)), as the
+  creatures replaced the port's interim pixel art ([§ 10.2](#102-characters-original-creatures-drawn-by-code)).
+  Every piece of the room is now a vector document drawn by code, and § 10.3 keeps the record.
 - **The palette has one home in the build: `server/public/css/mezzanine.css`'s `:root` custom
   properties** (card#11045 PR-A). The page chrome reads them, and so does the floor's drawing —
   `server/public/js/floor/painter.js`'s embedded style names every colour as a `var(--…)` token, the frame's
@@ -4863,24 +4850,28 @@ creature generator's sheet is their worked example.
   4.5:1 at full light, and `tools/design/state-chip-colours.py --check`, which CI runs on every pull request,
   reds when a pair involving a quiet state (`stale`, `offline`, `disabled`) falls under the tool's bound as
   the tokens, as the hollow chip's edge or as drawn (card#11218). This states WHERE the palette lives; the
-  values stay unspecified, as the *What is deliberately NOT specified* bullet below says. ⚠ **Row 22
-  adds a second home for ART colours only** — each theme's module, whose palette export the theme's own
-  documents read ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)) — and the rows add sheet tokens for what stays the painter's: row 20 the
-  screen text's ink per lit state, row 22 `--scene-floor`, a plane's fallback fill; the `--room-<theme>` pairs'
-  fate is per [decision 58](#13-decisions-taken-revisable-at-review), pending the operator.
+  values stay unspecified, as the *What is deliberately NOT specified* bullet below says. ⚠ **Since row 22
+  there is a second home for ART colours only** — each theme's module, whose palette export the theme's own
+  documents read ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)) — and the rows added sheet tokens for what stays the painter's: row 20 the
+  screen text's ink per lit state, row 22 `--scene-floor`, a plane's fallback fill. Row 22 retired the
+  `--room-<theme>` pairs with the seeded tints ([decision 58](#13-decisions-taken-revisable-at-review)), and the
+  frame's own flat shapes' tokens with the shapes the theme now draws (`--window-frame`, `--door-header`,
+  `--scene-chair`, `--scene-monitor-frame`, `--scene-side-table` and its edge).
 - **The desk's art contract — where a desk's art is drawn, and the clip that holds it there** (card#11058).
-  A desk's art — the character and the desk sprite — is drawn into the rects
+  A desk's art — the character and its floor's theme's furniture set — is drawn into the rects
   `server/public/js/floor/desk-layout.js`'s `deskRects()` derives from the furniture box
   ([§ 12](#12-every-number-and-where-it-comes-from)'s *Desk element rects* row): the character 54 × 96,
-  the desk 180 × 60. Each is drawn `xMidYMax meet` — kept in proportion, centred and standing on its
+  the chair 54 × 64, the desk 180 × 60, the monitor's frame 96 × 46, the desk props 68 × 50 and the side
+  table 228 × 42. Each is drawn `xMidYMax meet` — kept in proportion, centred and standing on its
   rect's floor line — inside a **clipping viewport**, a nested `<svg>` at the rect with `overflow: hidden`,
   so whatever the art draws past its own frame is cut at the rect it was given and never reaches a
   neighbouring element or the box's edge. `server/tests/Feature/Floor/painter-probe.mjs` (driven by
   `Tests\Feature\Floor\TheNewDeskKeepsEveryLeafTest`) holds every node the painter draws for a desk at
-  its layout element's own rect, the viewport included. Since row 20 (card#11046, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk,
-  re-laid*) the chair (54 × 64, behind every creature), the monitor's frame (96 × 46) and its screen (88 × 31,
-  in its three lit states), the side table (228 × 42) with its seats, and the plate are drawn as shapes in their
-  own rects; the desk props' rect is laid and nothing is painted in it until row 22. ⚠ **The chair carries no
+  its layout element's own rect, the viewport included. Since row 22 (card#11046, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme))
+  the chair (behind every creature), the desk's back, the monitor's frame, the desk props and the side table
+  with its seats are each the floor's theme's document in its own rect, all five drawn or none (§ 10.6 item 8);
+  the screen (88 × 31, in its three lit states) inside the frame and the plate stay the painter's shapes,
+  facts painted after the art. ⚠ **The chair carries no
   unconfirmed treatment** — this bullet said *dashed when unconfirmed* until card#11046's review, which
   is false of `painter.js`: it draws the chair as a plain rect and reads `unconfirmed` only for the chip, though
   `desk-layout.js`'s `DRAWN_MEMBERS` maps the member to the chair. The claim is withdrawn rather than built ([decision 63](#13-decisions-taken-revisable-at-review)): an
@@ -4894,8 +4885,8 @@ creature generator's sheet is their worked example.
   character's art is a vector document shown as an image** ([§ 10.2](#102-characters-original-creatures-drawn-by-code)):
   each frame is a standalone SVG document behind an `<image href="data:image/svg+xml;…">`, so the camera
   scales a curve rather than resampling a picture (measured, § 10.2), and each document's ids are its own.
-  The desk sprite is still the bridge kit's PNG until furniture art replaces it rect for rect — row 22, over
-  the rects row 20 re-lays ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid*).
+  The bridge kit's desk PNG that stood in for the desk until row 22 is gone: the desk's back is the theme's
+  document, drawn into the rect row 20 re-laid ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid*).
 - ⭐ **THE FRAME CONTRACT — what the character tree draws for every key, and it is PARITY with today**
   (card#11046; the seat's ruling of 2026-10-06). Until this card the tree drew a portrait and a walk, and
   the painter drew the walk's standing frame for whatever pose the desk asked for — stepping the walk's
@@ -4928,10 +4919,11 @@ creature generator's sheet is their worked example.
   ([§ 14](#14-open-questions-for-the-review-loop) item 33(3)). It is one of this subsection's eye-judged
   items with the pictures in the projection bullet's items 1–2 and its item 5, and is stated as such so a
   green build is not read as the question having been asked.
-- ⚠ **HALF REVERSED, AND THE OTHER HALF OPEN** — *the back wall stays the house's* is reversed by the
-  operator's ruling of 2026-10-07 that a theme is authored per building floor, band included ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme));
-  whether the seeded tints retire at row 22 or become the house theme's plane variants is per [decision 58](#13-decisions-taken-revisable-at-review),
-  pending the operator. What the bullet said, kept as the record:
+- ⚠ **REVERSED, BOTH HALVES** — *the back wall stays the house's* by the operator's ruling of 2026-10-07 that
+  a theme is authored per building floor, band included ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme));
+  and the seeded per-room tints RETIRED at row 22 rather than becoming the house theme's plane variants
+  ([decision 58](#13-decisions-taken-revisable-at-review), the seat's ruling of 2026-10-07 recorded on card#11046),
+  so one storey is one theme and one floor. What the bullet said, kept as the record:
   **Each room's floor plane takes a SEEDED THEME, and the back wall stays the house's** (card#11045, the
   operator's ruling of 2026-10-01 on Q2, [decision 40](#13-decisions-taken-revisable-at-review)). The plane
   ([§ 4.2](#42-the-floor)'s frame) takes one of four themes — oak, walnut, sage, slate — by
@@ -5016,22 +5008,19 @@ need to site exactly in the middle of the desk; the character can be moved to 1/
 (comment 10128). And the complaint they answer: *"The current vibe is like an early nintendo video game. The
 character sprites are great, but the rest of the floor doesn't match."* (comment 10118).
 
-⚠ **DESIGNED HERE AND NOT BUILT: [Appendix B](#appendix-b--what-an-implementer-builds-from-this) rows
-20–22 build it, in that order** — row 20 re-lays the desk with the painter's flat shapes, row 21 adds the
-theme registry and the layout's `theme` member, and row 22 paints the house room and retires what it
-replaces. Until a row lands, the tree is what the sections this one amends describe as built — the bridge
-kit, the plank and rug tiles, the seeded room tints and the house-palette band — and every sentence a gate
-holds against a file (§ 10.3's sprite, box and grid sentences, § 10.4's elevation-only ids, § 12's Measured
-and code-held rows) keeps describing the file until the row that changes both. A sentence in this subsection
-says what those rows build; a sentence elsewhere marked with a row says what that row replaces.
+✅ **BUILT: [Appendix B](#appendix-b--what-an-implementer-builds-from-this) rows 20–22 built it, in that
+order** — row 20 re-laid the desk with the painter's flat shapes, row 21 added the theme registry and the
+layout's `theme` member, and row 22 (card#11046, 2026-10-07) painted the house room and retired what it
+replaced: the bridge kit, the plank and rug tiles, the seeded room tints and the house-palette band's flat
+shapes. A sentence elsewhere marked with a row records what that row replaced.
 
-⚠ **The decisions marked OPEN are open with the operator, and nothing here states them as settled**:
-[decision 58](#13-decisions-taken-revisable-at-review) (the seeded room tints retire) and
-[decision 61](#13-decisions-taken-revisable-at-review) (the windows' glazing follows the approved picture).
-Every sentence that depends on either says *per decision 58* or *per decision 61, pending the operator*.
-**Row 22 does not start at all until both are answered** — its plane replaces the tinted plane and its colour
-round is measured over the floor the answer chooses, so no part of it is independent of decision 58, and its
-band is decision 61's ([§ 14](#14-open-questions-for-the-review-loop) item 36).
+**The two decisions this subsection waited on are SEAT RULINGS, recorded on card#11046 (2026-10-07)**: the
+operator was asked in chat and had not answered, and both follow from the operator's own later rulings and
+can be reversed cheaply. [Decision 58](#13-decisions-taken-revisable-at-review): the seeded room tints
+RETIRE — the operator approved one floor colour and chose a design per FLOOR, and seeded tints would put
+mid-tone floors back beside the approved one; reversing it re-adds them as palette variants, a palette change
+plus a chip-gate re-run. [Decision 61](#13-decisions-taken-revisable-at-review): the windows' glazing is the
+approved picture's 208 × 80; reversing it is one § 12 row and the band's geometry.
 
 **What this subsection owns, and what it does not.** It owns the theme MODEL (what a theme is, where it
 lives, how a floor selects one, what it may and may not draw), the HOUSE THEME's specification, the desk's
@@ -5057,7 +5046,7 @@ theme draws INTO and never moves.
    - **`surfaces()`** — the opaque colours **a desk group can stand on**, which are what its chip and its bare
      text (the facts column, the quiet age, the *+N more* tag) are composited over: the floor's board tones at
      both extremes, the lamplight pool's composite at its centre, the darkening's composite at its darkest, and
-     each accent floor at both ends of its gradient and under its pool — each returned as `#rrggbb` under a
+     each accent floor at both ends of its gradient, under its pool and at the darkening's darkest — each returned as `#rrggbb` under a
      name, computed by the same colour arithmetic the plane draws with, never transcribed. **Excluded, because
      no desk object may stand on them:** the band (above every grid), `wall` runs (kept out of every `desks`
      object, § 10.4 item 4) and standing scenery (G-scenery, item 6). **Excluded, and stated honestly rather
@@ -5176,7 +5165,10 @@ theme draws INTO and never moves.
    the hallway's — under that grid's tiles, and where the threshold lies
    over the exterior there is no landing, a stated gap and not a defect.
 8. **A theme that fails is [§ 9](#9-failure-paths-and-their-observables) F14, and its floor keeps every
-   fact.** The failure units are these asset ids — `theme:<name>` for the module, `theme:<name>/band`,
+   fact.** The failure units are these asset ids — the theme registry's (`/art/floor/themes/index.js`, every
+   floor's, since no floor resolves a theme without it), `theme:<name>` for the module, `theme:<name>/band` for
+   the band's documents together — its wall, each window's surround, the elevator's surround and the clock's
+   case, drawn all or none like a desk's set —
    `theme:<name>/plane:<install_id>` (and `theme:<name>/plane:hallway` for a floor's hallway),
    `theme:<name>/scenery:<kind>`, and `theme:<name>/desk:<install_id>/<seat_id>` for one desk's **furniture
    set**: the documents of `chair`, `desk`, `monitorFrame`, `deskProps` and `sideTable`, each its own `<image>`,
@@ -5198,22 +5190,26 @@ theme draws INTO and never moves.
      draw [§ 9](#9-failure-paths-and-their-observables) F17 — so rolling back past row 21 means first saving
      the layout without the member, and row 21's CHANGELOG entry says so.
    - *A stored hallway:* one that laid the plank tile for its corridor keeps a floor — the theme's hallway
-     plane draws under its tiles — and its plank cells, a tile row 22 removes from `floor-plane.tsx`, are
+     plane draws under its tiles — and its plank cells, a tile row 22 removed from `floor-plane.tsx`, are
      undrawn; kit pieces on it are the next case.
-   - *A stored room map:* one that names the bridge kit's tileset names a tileset row 22 removes. The console
-     already refuses a map naming a tileset the repository does not ship ([§ 10.3](#103-the-floor-map)'s
-     `tilesets[]` row, `FloorMap`'s write check) and so refuses it at its next save; until then the floor draws
-     it with those tiles missing under F14's line. One that places the plank or the rug tile of the still-shipped
-     `floor-plane.tsx` is neither refused nor F14-lined — the write checks tilesets, not tiles — and the removed
-     tiles are simply undrawn, which is the intended result: the theme's plane is the floor, and the operator
-     removed the rug.
-   - *Finding them:* ⇢ **an EXTENSION of § 14 item 28(1)(iii), proposed and not yet ruled**
-     ([§ 14](#14-open-questions-for-the-review-loop) item 36(5)): that ruling re-validates stored maps against a
-     change of the furniture BOX, which this design does not make; the extension runs the same listing on row
-     22's landing with *names a tileset or a tile the repository no longer ships* beside *smaller than the box*,
-     each room left on the floor until its author saves one that passes. The build measures every store it can
-     reach before it removes anything and records the count on the card.
-   - *The shipped default* is re-authored by row 22 (below), so an unauthored room draws the house picture.
+   - *A stored room map:* one that names the bridge kit's tileset names a tileset row 22 removed. The console
+     refuses a map naming a tileset the repository does not ship ([§ 10.3](#103-the-floor-map)'s
+     `tilesets[]` row, `FloorMap`'s write check) and so refuses it at its next save, and at a restore of a
+     revision that names it; until then the floor draws it with those tiles missing under F14's line, naming the
+     tileset. One that places the plank or the rug tile of the still-shipped `floor-plane.tsx` is neither refused
+     nor F14-lined — the write checks tilesets, not tiles — and the removed tiles are simply undrawn, which is
+     the intended result: the theme's plane is the floor, and the operator removed the rug.
+   - *Finding them:* **the EXTENSION of § 14 item 28(1)(iii), adopted** (item 36(5), the maintainer's call,
+     recorded on card#11046): the floors module lists every room whose CURRENT map *names a tileset or a tile
+     the repository no longer ships* beside the rooms whose map is *smaller than the box*, each with what it
+     names and how many cells place each retired tile, and each left on the floor until its author saves one
+     that names only what ships (`App\Floor\RetiredArt`, read out of the stored document because the parser
+     refuses such a map; `Tests\Feature\Admin\TheConsoleListsMapsNamingRetiredArtTest`). **Measured before
+     anything was removed, on 2026-10-07, over every store the build can reach** — the development sandbox's
+     database (no production host exists): **no current room map and no hallway names retired art**; one
+     room-map revision in the log does — a map of the kit's tileset placing the plank and the rug tiles — and
+     it is not current (a later removal is), so it draws nowhere, and a restore of it is refused by the write.
+   - *The shipped default* was re-authored by row 22 (below), so an unauthored room draws the house picture.
 10. ⭐ **Why code and not image files — decided, with the reason.** The pieces are PARAMETRIC: a band of any
     width with windows at computed places, a plane over a grid of any size with a light pool at each slot and
     an accent region of any shape, a side table for the seats it holds, a desk whose chair and props are seeded
@@ -5221,9 +5217,9 @@ theme draws INTO and never moves.
     ([§ 10.2](#102-characters-original-creatures-drawn-by-code), [decision 53](#13-decisions-taken-revisable-at-review)),
     met here a second time — and a set of fixed pieces stretched to fit is the tile-grid look the operator
     called *an early nintendo video game*. It is resolution-independent by the mechanism the creatures rest on
-    — measured for the creatures' small frames, and NOT yet for a plane document the size of a room, whose
-    paint time and blank-tile behaviour at the camera's deepest zoom are row 22's screenshot step to read (§ 14
-    item 36(3)). It is text, which Gate 2 reads. **What the gates then mean:** *Gate 1* — a `first-party` /
+    — measured for the creatures' small frames, and for a plane document the size of a room by row 22's
+    screenshot step at the camera's deepest zoom (§ 14 item 36(3)), which reads its paint time and whether a
+    tile goes blank. It is text, which Gate 2 reads. **What the gates then mean:** *Gate 1* — a `first-party` /
     `MIT` row per source file (the registry, each `theme.js`, each marker SVG); the drawings are not files and
     have no rows, the source being the asset. *Gate 2* — clause 1 admits `.js` and `.svg`; clause 2 reads the
     source; clause 3 reads the tileset, which keeps declaring each marker's image by path. ⚠ **The residue is the
@@ -5237,7 +5233,7 @@ theme draws INTO and never moves.
 The operator approved a PICTURE — the seat's prototype *A2 + C — with oak office and lit landing* — and not a
 list of colours: **every hex value below was taken from that approved prototype**, ported and not
 redesigned. The prototype was drawn in the seat's scratch space and is not in the repository, so the
-reference that survives is this table, the module row 22 builds from it, and the operator's screenshots of
+reference that survives is this table, the module row 22 built from it, and the operator's screenshots of
 2026-10-07 — the arrangement § 10.2 records for the creatures' sheet. **This table is the colours'
 statement and the module's palette export is their one home in the build**, held equal to it by AT-D3-25's
 drift leg in both directions — the [§ 10.4](#104-the-art-direction-as-a-specification) creature table's
@@ -5304,8 +5300,8 @@ box does **not** move: every new rect lies inside it at the cap, so the box-base
 **The element kinds and their members** (`deskLayout()`'s, partitioned by `DRAWN_MEMBERS`): the chair keeps
 `chair` and the member `character`; the desk keeps `desk-sprite` and `lighting`; the side table keeps `side-table`
 and `side_table`; and two kinds are new at row 20 — `monitor-frame` under `monitor`, and `desk-props` under
-`lighting` — since row 20 the frame a flat shape in `--scene-monitor-frame` and the props' rect laid with nothing
-painted in it; both the floor's theme's documents at row 22.
+`lighting` — at row 20 the frame a flat shape and the props' rect laid with nothing painted in it, and since
+row 22 both the floor's theme's documents.
 
 **How a desk's elements may lie on one another — the rules below, each held by one mechanical check.** The product
 need is that **no fact is ever hidden or unreadable**; whether two rects overlap was only ever a proxy for that,
@@ -5420,36 +5416,41 @@ every other desk's box by AT-D3-20 *(b)*, and that box includes the new art.
 
 #### The retirements
 
-At row 22, each with what holds its absence afterwards:
+Retired at row 22 (card#11046, 2026-10-07), each with what holds its absence afterwards:
 
 - **The bridge kit** — `resources/floor/tiles/furniture-kit.tsx`, every PNG beside it, their
   `docs/ATTRIBUTION.md` rows, and `resources/floor/LINEAGE.md` with its row, because nothing vendored is left
   for it to describe. [§ 10.3](#103-the-floor-map)'s *it is a bridge* and *the day the vector art lands this
-  tileset leaves the tree with its rows* are discharged, and D-07's middle clause — *floor art from CC0
+  tileset leaves the tree with its rows* are discharged, and D-07's floor-art clause — *floor art from CC0
   tilesets* — is superseded by a third append beside it in `docs/PLAN.md § 0` (its last clause, *the
   upstream's commercial tilesets are never vendored*, is permanent and untouched: nothing here vendors
-  anything). `resources/floor/furniture-box.js` loses its `DESK_SPRITE` line, because no sprite is drawn.
-  [§ 12](#12-every-number-and-where-it-comes-from)'s *Desk sprite width* row retires with the PNG it measured,
-  as it says it will, and G8's sprite leg with it.
-- **The elevation-only tile ids** — § 10.4 item 4's *ids 24-37 and 44* are the kit's and leave with it; G-walls'
-  second leg, which holds them off the shipped default, becomes G-scenery's first: *every tile on the shipped
-  default names a tileset the repository ships and a tile that declares a kind*.
+  anything). `resources/floor/furniture-box.js` lost its `DESK_SPRITE` line, because no sprite is drawn, and
+  the page loads no tileset for a desk. [§ 12](#12-every-number-and-where-it-comes-from)'s *Desk sprite width*
+  row retired with the PNG it measured, and G8's sprite leg with it.
+- **The elevation-only tile ids** — § 10.4 item 4's ids, the kit's, left with it; G-walls' second leg, which
+  held them off the shipped default, became G-scenery's first: *every tile on the shipped default names a
+  tileset the repository ships and a tile that declares a kind*.
 - **The plank tile and the rug** — `floor-plane/planks.svg` and `floor-plane/rug.svg`, tiles 0 and 1 of
   `floor-plane.tsx`, with their rows: the theme draws the floor, and the operator removed the rug
   (*"remove it"*). [§ 14](#14-open-questions-for-the-review-loop) item 35's translucent plank never lands.
-- **The seeded room tints** — `ROOM_THEMES`, `roomTheme()` and the `--room-<theme>` pairs: per
-  [decision 58](#13-decisions-taken-revisable-at-review), pending the operator — retired rather than kept as
-  palette variants if the decision is confirmed, and drawn by the house theme as plane variants if it is not.
+- **The seeded room tints** — `ROOM_THEMES`, `roomTheme()` and the `--room-<theme>` pairs, retired rather than
+  kept as palette variants ([decision 58](#13-decisions-taken-revisable-at-review), the seat's ruling recorded
+  on card#11046); `TheFloorDrawsItsFrameTest`'s seeded-theme and theme-contrast legs retired with them, and
+  the floor's ink is held over every theme's surfaces by AT-D3-25's surfaces leg instead.
+- **The band's flat shapes** — the painter's window frames, mullions and sills, its elevator frame, header and
+  lamp, its skirting and end posts, and their tokens (`--window-frame`, `--door-header`): the theme draws them.
 - **The wall strip's image** — `floor-plane/wall-strip.svg` stays as tile 2's MARKER with `kind: wall`, so
   every stored map's walls keep their meaning; its fill no longer has to be `--house-trim`, because nothing
-  draws it, and G-walls' third leg becomes *tile 2 declares `kind: wall`*.
+  draws it, and G-walls' copy leg became its second, *tile 2 declares `kind: wall`*.
 
 **The provenance that replaces them, all `first-party` / `MIT` under the repository's own URL:** the theme
-registry, `themes/studio/theme.js`, and one marker SVG per kind the tileset declares beyond the wall's. No
+registry, `themes/studio/theme.js`, and one marker SVG per tile the tileset declares beyond the wall's — a kind
+the tileset carries at two sizes has a marker at each, since Tiled draws an image-collection tile at its
+image's own size. No
 licensed asset is left under `resources/floor/`; the manifest's MIT notice stands for the first-party rows
 ([§ 10.2](#102-characters-original-creatures-drawn-by-code)'s *the manifest still owes an MIT notice*).
 
-**The shipped default after row 22 keeps** its `desks` objects as they are — [§ 12](#12-every-number-and-where-it-comes-from)'s
+**The shipped default since row 22 keeps** its `desks` objects as they are — [§ 12](#12-every-number-and-where-it-comes-from)'s
 *Desk slots* row, which G8 measures, its reserved desk and the worked assignment all stand — its grid, and its
 `walls` layer with the PM office's partition, front return and doorway. **It loses** the `plane` layer of
 planks, the rug and every kit piece on its `furniture` layer. **It gains** an `accent` layer painted over the
@@ -5457,8 +5458,8 @@ PM office's floor inside its walls, and a `furniture` layer of standing kinds la
 them — a bookcase, a fern, a floor lamp and cushions in the left strip; the PM's library inside the office, a
 tall bookcase and a plant; a reading nook in the right strip, a floor lamp, an armchair, a book pile and a
 plant; and narrow plants standing wholly in the aisle between the columns — every cell outside every `desks`
-object (G-scenery). Where each stands is the map's to say and the screenshots' to show; no coordinate of it is
-stated here.
+object (G-scenery). The aisle's plants stand in a 28 px cell, so they are drawn narrow and tall. Where each
+stands is the map's to say and the screenshots' to show; no coordinate of it is stated here.
 
 ---
 
@@ -7007,19 +7008,27 @@ model and painted nothing, so this row was unreachable and row 8's note said so.
 scene's, which is why the harness can read it: the painter reports which assets failed, and the scene draws
 the placeholder for the desks that lost their art.*
 
-- **Build:** replay `fx-snapshot-4` with the scene told — as the painter tells it — that every image of the
-  room's tileset failed to load — the vendored pack is an image collection, one file per tile; then that the bridge kit's images alone failed while the first-party floor plane's loaded ([§ 10.3](#103-the-floor-map)'s two tilesets — a leg rewritten at row 22, gated there, where the kit leaves and [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s failure leg holds the theme's); then, from an intact floor, that one seat's character art failed; then, on
+- **Build:** replay `fx-snapshot-4` on the shipped default with the room's tileset answered `404`; then with
+  the scene told — as the painter tells it — that the floor's theme failed (`theme:studio`); then with the theme
+  registry's import rejected; then, from an intact floor, that one desk's furniture set failed
+  (`theme:studio/desk:<install_id>/<seat_id>`), and that one seat's character art failed (the kit leg as it
+  stood until row 22 — the bridge kit's images failing alone — is rewritten here for the theme that replaced
+  it, and [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s
+  failure leg holds the fallback fills); then, on
   `fx-interns`' cap leg, that one intern's art failed; then the same floors with every asset loaded. And,
   through the painter over the fake DOM, the causes a code-drawn character fails by
   ([§ 10.2](#102-characters-original-creatures-drawn-by-code), card#11046): a character tree whose import
   rejects, and a generator that throws for one intern's key. **Reads:** **the harness**, the **scene**, the **placeholder**, the **status
   strip**, the **animation log**, the **painter**.
-- **GREEN:** with the tileset failed, every desk of that room draws the placeholder — a plain rectangle in
-  place of the art's images only, every fact drawn as on the intact desk (the nameplate, the chip and the label
-  line, the badge row and the flag, the monitor and its text, the bubble) and no art — under no tiles, and
-  the status strip reads *some art failed to load*; with the kit alone failed, every desk draws the placeholder
-  — the desk sprite is the kit's — over the plane's tiles, none of the kit's among them; with one seat's character failed, that desk alone draws
-  the placeholder and the room's tiles are drawn; with one intern's art failed, that intern alone is drawn as
+- **GREEN:** with the floor's theme failed, or the registry's import rejected, every desk draws the
+  placeholder — a plain rectangle in place of the art's images only, every fact drawn as on the intact desk
+  (the nameplate, the chip and the label line, the badge row and the flag, the monitor and its text, the
+  bubble) and no art — the band and every plane ask the theme for nothing and no standing piece is drawn, and
+  the status strip reads *some art failed to load*, the strip's failed assets naming `theme:studio` or the
+  registry; with the tileset failed, no wall, accent or standing piece is drawn, every desk keeps its art, and
+  the strip names the tileset; with one desk's furniture set failed, that desk alone draws the placeholder and
+  its asset alone is named; with one seat's character failed, that desk alone draws
+  the placeholder and the room's scenery is drawn; with one intern's art failed, that intern alone is drawn as
   the glyph in its own rect — no desk draws the placeholder, every other intern keeps its sprite — and the strip
   reads the same line; the animation log gains no row from either failure and
   every held render entered before it is still open, because an asset failure is not a state change
@@ -7039,6 +7048,9 @@ the placeholder for the desks that lost their art.*
   for one intern's art, or fall back every intern of the desk, or ignore the failure, or leave it off the
   strip → one intern's missing art costs the seat its look, or its siblings theirs, or nobody can tell why
   the intern is a glyph.
+- **Fifth RED — the theme's failure ignored, spread or silent (card#11046):** draw a failed theme's furniture
+  anyway, or let one desk's set failing take every desk down, or leave the registry's rejection off the strip
+  (row 21's review finding) → the placeholder leg names the desk, or the strip names nothing.
 - **Not mechanised:** F14's recovery — *retry on reload* — is a request the browser makes, which the scene
   cannot show; it is read by a human on the built page and asserted by nothing here.
 - **Discriminating control:** with every asset loaded, no desk draws the placeholder, every intern is its
@@ -7429,8 +7441,8 @@ painter's legs in `server/tests/Feature/Floor/painter-probe.mjs`.*
   leaves the document (a `<use>` naming an id inside it stays inside it). Through the painter, the desk's, the walker's and every intern's
   character is an `<image>` in its clipping viewport whose `href` is a `data:image/svg+xml` URI, with
   `preserveAspectRatio` `xMidYMax meet`; a held loop steps `href` among the cached frame URLs; and the
-  painter creates no canvas and no PNG for a character. (The desk sprite's PNG and the text measurer's
-  canvas are not characters and are outside this leg.)
+  painter creates no canvas and no PNG for a character. (The text measurer's canvas is not a character
+  and is outside this leg.)
 - **RED — the salt dropped:** draw species under the field name `species` with no salt → a room of the
   committed control draws one body twice, and the salt leg names the room (watched: aimla and sola). Watch
   it once: it is the operator's *"the AIMLA floor has a repeated body"*, re-made. **A control on which the
@@ -7476,8 +7488,11 @@ re-laid half at **step 20**, the selection half at **step 21**, the theme half a
 `Tests\Feature\Floor\TheFloorResolvesItsThemeTest` over the scene, `Tests\Feature\Building\BuildingLayoutTest`,
 `Tests\Feature\Admin\LayoutConsoleTest` and `Tests\Feature\Floor\TheThemeRegistryHasOneSourceTest` for the
 selection half, with the composition legs over `server/tests/fixtures/building/compose-cases.json`, the one fixture
-both runtimes are already held to; and the **theme gates** — a selftest over the theme registry and every theme it
-names — for the third.*
+both runtimes are already held to; and for the third the **theme gates** — `tools/floor-themes/selftest.mjs`, a
+selftest over the theme registry and every theme it names, which plants each of the theme half's node REDs in a
+mirror of the tree on every run — with `Tests\Feature\Floor\AFloorIsDrawnInItsThemeTest` running it, holding the
+painter's legs through `theme-painter-probe.mjs` and the scene's over the shipped default and the planned floor,
+and AT-D3-19's test and `TheFloorDrawsItsFrameTest` holding the failure leg's scene half and the hallway's plane.*
 
 - **Build — the re-laid half:** replay `fx-snapshot-4` and `fx-interns`' cap leg on the shipped default through
   the scene and the painter over the fake DOM, then under every
@@ -7536,7 +7551,9 @@ names — for the third.*
   directories are one set; every theme exports every name in `API` and draws every kind in `KINDS`; every tile of
   the shipped tileset declares a kind in `KINDS`.
 - **GREEN — the theme half, the drift leg:** every colour § 10.6's house table states is in the module's
-  `PALETTE` for that piece, and every colour in `PALETTE` is in the table — both directions.
+  `PALETTE` for that piece (the piece named in the table by its `PALETTE` key), and every colour in `PALETTE`
+  is in the table — both directions; and every colour the module writes is a `PALETTE` colour or one of the
+  paint rules' three (`RULES`), so a colour drawn and stated nowhere reds too.
 - **GREEN — the theme half, the band leg:** every window's surround rect is its glazing grown by § 12's surround
   margin and the elevator's is its frame grown by its stated reach; no window surround and no elevator surround
   meets the clock face, and the clock's case is drawn at the clock's own rect and nowhere else, over the band at
@@ -7553,9 +7570,11 @@ names — for the third.*
   gating nothing.
 - **GREEN — the theme half, a theme that fails keeps every fact:** with the import rejected, every desk draws
   F14's placeholder, the band and every plane their flat fallback fills, every fact as on the intact desk, and
-  the strip reads *some art failed to load*, naming `theme:<name>` among the failed assets; with one desk's
-  furniture document throwing, that desk alone draws the placeholder and its asset alone is reported; the
-  animation log gains no row from either.
+  the strip reads *some art failed to load*, naming `theme:<name>` among the failed assets — and the same with
+  the theme registry's import rejected, the strip naming the registry; with one desk's furniture document
+  throwing, the painter draws none of that desk's set and reports its asset alone, and the next render draws
+  that desk alone as the placeholder; with one of the band's documents throwing, the band draws its flat fill
+  and none of its documents; the animation log gains no row from either.
 - **RED — art painted over a fact:** emit the chair after the screen's text, or the desk after it → the
   paint-order leg names the desk and the pair; **and** keep today's order, the side table after the flag → it
   names that pair.
@@ -7582,6 +7601,8 @@ names — for the third.*
   directory → the API leg names it.
 - **RED — the theme that reaches out:** give one document an `<image href="https://…">` → the theme half names
   the theme and the document.
+- **RED — a half-drawn set:** draw the documents of a furniture set or the band that did not throw when one did
+  → the painter's set and band legs name the desk and the band.
 - **RED — an undecodable document:** an unescaped `&`, an unclosed `<g>`, or a root without its `xmlns` → the
   well-formedness leg names the defect.
 - **RED — the kind a theme forgot:** remove `armchair` from the house theme → the API leg names the theme and
@@ -7604,7 +7625,8 @@ names — for the third.*
 - **RED — the floor that breaks a chip:** darken the house floor's surfaces until a reviewed pair falls under the
   bound → the surfaces leg fails on the chip tool's check, naming the pair and the surface.
 - **RED — the blank floor:** draw nothing for a plane whose theme failed → the facts' ink stands on the drawing's
-  dark ground, and the failure leg fails; **and** draw no plane for the hallway → the band leg names the grid.
+  dark ground, and the painter's fallback leg fails; **and** draw no plane for the hallway → the band leg's
+  planned-floor half (`TheFloorDrawsItsFrameTest`) names the hallway.
 - **RED — a draw that is not the key's:** take one seeded choice from `Math.random()` → the identity leg names
   the document.
 - **Discriminating controls:** *(a)* the desk as § 10.6 lays it and the house theme as built pass every leg —
@@ -7680,7 +7702,6 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | Back wall's reserved zone | **272 px** | **Chosen** (card#11045) — the band's left, holding the two-door elevator and the wall clock with their margins, so no window is ever laid over the clock. **What re-derives it:** the elevator's and the clock's own widths, which move it with them. `scene.js`'s `ZONE_W` is its other home, held equal to this cell by the same test | [§ 4.2](#42-the-floor) |
 | Window pitch / glazing | **360 px** / **208 × 80 px** | **Chosen** — the pitch by card#11045, one window per 360 px of wall past the zone; the glazing by [decision 61](#13-decisions-taken-revisable-at-review) (card#11046, the seat's ruling of 2026-10-07): the approved A2+C picture's 208 by 80 px, 22 px below the band's top, short windows above a rail and a sage lower wall, kept from the jail card#11045 refused by their curtains and sills ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). Card#11045's 200 × 124 stood until row 22. **What re-derives it:** the operator's reading of the band as drawn. `scene.js`'s `WINDOW` is their other home, held equal to this cell by the same test | [§ 4.2](#42-the-floor) |
 | Wall strip width | **one cell, 8 px** | **Derived** — the map's `tilewidth`: every wall but the band shows only its top edge, a strip one grid cell wide ([§ 10.4](#104-the-art-direction-as-a-specification)'s projection rule, item 4), so the width moves with the grid and mints no number of its own. **What re-derives it:** the grid ([§ 10.3](#103-the-floor-map)'s `tilewidth` row) | [§ 10.4](#104-the-art-direction-as-a-specification) |
-| **Desk sprite width** | **116 px** | **Measured** — the IHDR width of `resources/floor/tiles/furniture-kit/desk.png`, the sprite of the tileset [§ 10.3](#103-the-floor-map) vendors, read out of the file's own header by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence — **both the number and the path re-derived from that sentence**, so re-curating the tileset moves the check with it. ⚠ **It is the BRIDGE tileset's number** ([§ 10.3](#103-the-floor-map)): [§ 10.4](#104-the-art-direction-as-a-specification)'s art is resolution-independent and has no native pixel width at all, so this figure retires with the pack rather than surviving it ⚠ **Retires at row 22 with the PNG it measures** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s retirements), and G8's sprite leg with it | [§ 10.3](#103-the-floor-map) |
 | **Furniture box at the cap** | **440 × 228 px** | **Measured** — the one `FURNITURE_BOX` declaration line of `resources/floor/furniture-box.js`, the box's one source ([§ 10.3](#103-the-floor-map); the scene takes it as an input and `App\Floor\FurnitureBox` parses the same line), read out of the file by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence — both the numbers and the path re-derived from that sentence — and the number [§ 14](#14-open-questions-for-the-review-loop) item 28(1)'s console refusal reads and [§ 9](#9-failure-paths-and-their-observables) F21 compares every `desks` object against. It is what the scene draws for one desk at rest, except the bubble, at the worst case — the art at its drawn size, [§ 8](#8-interns--subagent-rendering-and-the-cap)'s cap of interns with its tag, the badge row of two with the flag, and every string cut to fit. **The rects are `server/public/js/floor/desk-layout.js`'s exported table (`deskRects()`), derived from the box** (card#11058), and [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) reds when the box shrinks below the table at the cap. ⚠ It holds the BRIDGE tileset's sprite and the character rects (which the creatures keep, card#11046), so [§ 10.4](#104-the-art-direction-as-a-specification)'s art re-measures it (item 28(1)(iii)), and every stored map is validated against the figure of the day ⚠ **Row 22's furniture re-confirms the box and does not re-measure it** — every rect of [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid* lies inside it at the cap | [§ 10.3](#103-the-floor-map) |
 | **The shipped default's grid** | **1,576 × 544 px** | **Measured** — `width × tilewidth` by `height × tileheight` of `resources/floor/default.tmj` ([§ 10.3](#103-the-floor-map)'s grid row, the room's footprint on a planned floor), read out of the file by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence, which also holds every `desks` object at least the box above. **What it is made of** is the map's own composition (§ 10.3): across, the boxes per row the viewport row below states and the gate re-derives, the 32 px aisles between them and a 96 px scenery strip at each side; in height, the rows of the box the viewport row states, the 40 px aisle between them and 24 px at the back and the front. **What re-derives it:** the map — a re-authoring moves this row, and the gate is what makes that mandatory rather than remembered. ⚠ **A building planned against an older footprint is not re-checked:** an unauthored room's footprint is this grid, measured from that room's `origin`, so any room — authored or not — that now shares a pixel with an unauthored room's 1,576 × 544 px overlaps it. The footprint was 1,836 × 200 px until slice B and 3,024 × 496 px until card#11045; the six-desk default is narrower than the second but 48 px taller, so a room placed 496 to 543 px below an unauthored room, and within 1,576 px of it across, overlaps it from that change on. While any two rooms overlap, the console refuses every room map save, restore or removal that leaves an overlap standing (`App\Floor\Floors` runs `App\Building\Layouts::refuseOverlaps` at each, over the pending map's own extent — so a save whose map clears the overlap is accepted), refuses re-saving the layout unchanged as a no-op, and the floor draws the rooms overlapping under [§ 9](#9-failure-paths-and-their-observables) F18's notice. The way out is either: move the rooms apart and save the layout, or save a smaller map for one of the overlapping rooms ([§ 4.6](#46-the-building-layout), [D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) | [§ 10.3](#103-the-floor-map) |
 | **Desk element rects** | the table `deskRects()` derives from the furniture box | **Measured** — `server/public/js/floor/desk-layout.js`'s exported table, derived from the box above, read by [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) on every run (card#11058) | [§ 5.1](#51-the-desk) |
@@ -7695,7 +7716,7 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | **Badges drawn on the desk** / **badge chip** | **2** / **108** px | **Chosen** — the operator's ruling of 2026-10-02 (Q1 B: "up to two badges, treatment first"); an id fits a chip when its measured width is at most the chip's less its padding, and `SeatFurnitureNeverOverlapsTest` *(e)* holds every chip's text cut with the mark at the suite's measurer when it does not | [§ 5.1](#51-the-desk) |
 | **The flag** | **⚠ +N** | **Chosen** — the operator's ruling of 2026-10-02 (Q0 a); N is defined once, in [§ 5.1](#51-the-desk)'s *the glance set*, and re-derived by `TheNewDeskKeepsEveryLeafTest` | [§ 5.1](#51-the-desk) |
 | **Nameplate type size** | **13 px** bold, on a **16 px** line | **Chosen** — the operator's ruling of 2026-10-02 on card#11058 Q2, which accepted the nameplate at 13 px bold as a second measured type role: `server/public/js/floor/desk-layout.js`'s `FONT_NAME` / `LINE_NAME`, the name role of its `TYPE_ROLES`. The nameplate is the one string in it — measured, cut with the mark and centred on its plate in it by `fit()`, and drawn in it by the painter — and every other desk string is the fact role (`FONT`, 10 px). The page's measurer answers per role (`server/public/js/floor/painter.js`'s `measurer()`), and the suite's measurer measures each role at the glyph width its fixture states (`server/tests/Feature/Support/harness-measurer.mjs`). `TheCameraMovesTheViewerAndNeverTheFleetTest` re-derives the CSS size the viewport row below states from `FONT_NAME` ⚠ **Since row 20 a third role joins them**, the screen role at 8 px for the screen's text alone (§ 12's *Screen type size* row, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)), so *every other desk string is the fact role* becomes every string but the nameplate and the screen's text | [§ 5.1](#51-the-desk) |
-| Floor reference viewport | **1,280 × 800 CSS px** | **Chosen** — the window size the camera's fit is measured at, and **no minimum**: the floor is drawn at every viewport size and the viewer pans and zooms it ([§ 4.5](#45-the-viewport-rule-and-the-camera), the operator's ruling of 2026-10-01 on card#7341, which removed the capability floor this row stated until then — below this size the route served the list view instead of the map). The measurement below is what this row is for now: how small the room's text is at fit in a common laptop window, and so how far a viewer zooms in to read it. ⭐ **The input this row was waiting on arrived on 2026-09-12:** a desk sprite is a measured 116 px (the sprite row above), and since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice B a desk's slot is the measured furniture box and the room it stands in a measured grid (the two rows above). **Since card#11045 (the operator's ruling of 2026-10-01) the shipped default is sized so that this window shows its room legibly at fit:** it lays its slots in **2 rows of 3 furniture boxes: 3 × 440 px = 1,320 px** of desk across, on a grid **1,576 px wide** whose two 96 px side strips hold the scenery — still wider than this viewport, by less than a quarter — so at this viewport the camera's fit zoom is **1,280 ÷ 1,576 ≈ 0.81** over the bare grid, width-bound. ⚠ The bold figures are prose, and every one of them is RE-DERIVED: `tools/design/verify-floor.py` (G8) recomputes the rows, the boxes per row, the product, the grid width and the zoom from `resources/floor/default.tmj`, `resources/floor/furniture-box.js` and this row's own viewport on every run, so this cell can drift from the map only by that gate going red — a claim this cell made before it was true (PR #232 round 1, MAJOR-2), and `tools/design/verify-design-docs.selftest.py` plants each figure that leg re-derives. Until card#11045 the default laid two rows of six on a 3,024 px grid, fitted at 0.42 and drew its text at 4.2 CSS px, which no viewer reads without zooming in; before slice B this cell said 1,608 px, on the sprite pitch and re-derived by no run — card#7341's review N-7. ⭐ **Measured by [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15's camera, on the page's own surface (card#11045 PR-E).** The floor page gives the camera `#floor-drawing`'s own box (card#11045 PR-A; `server/public/js/floor/main.js`'s `surface()`): the window's width by the height the page chrome above and below the drawing leaves — the header, the status strip, the camera row, the hint's row and the reveal of the sections below, with no notice shown. So on the page at this viewport the drawing is **1,280 × 579 CSS px**, which `tools/design/floor-chrome.browser.mjs` measures on the rendered page and reds when it is not this figure. Entered at that surface over the shipped default with `fx-snapshot-4`'s seats, the camera's fit at this viewport is **0.8122** — it frames the scene's whole extent, the band over the grid, width-bound — and at that fit it draws the scene's 10 px text — the facts' text at **8.1 CSS px**: the chip, the facts column and the badges — and the nameplate's 13 px name role at **10.6 CSS px** (the operator's ruling of 2026-10-02 on card#11058 Q2: the nameplate is the one string in a second measured type role, the *Nameplate type size* row above). **Method, re-run on every build:** `Tests\Feature\Floor\TheCameraMovesTheViewerAndNeverTheFleetTest` enters the route with the camera's surface at the page surface this row states (its `camera_page` run, held to the figure above), reads the camera's zoom on the first frame that draws the floor, multiplies it by the font size of each type role `server/public/js/floor/desk-layout.js` declares — `FONT` for the facts, `FONT_NAME` for the nameplate — and reds when any bold figure here is not what the camera measures. ⚠ **The page surface is a browser's to measure, and no browser runs on the build host:** `floor-chrome.browser.mjs` is run by hand, so a change to the page chrome that moves the drawing's height reds there and not in CI, and this row is re-measured when it does. **What it settles:** at fit on a laptop window the room's text is drawn at four-fifths of the 10 px the scene draws it at — legible without zooming in, which is what the six-desk default is for. A wider room, or a smaller window, is read by ZOOMING IN, which [§ 4.5](#45-the-viewport-rule-and-the-camera)'s camera gives at any window size: at zoom 1 the text is at its own 10 px and the view spans the window's own size in scene px. That is why the ruling of 2026-10-01 on card#7341 left no minimum to set: a smaller window shows less of the room at a legible zoom, and the viewer pans to the rest. ⚠ **The sprite measured is the bridge's, not the ship's**, so [§ 10.4](#104-the-art-direction-as-a-specification)'s art re-measures the box, the scene's text size and so the fit. **What re-derives it:** the method above, re-run on every build; moving the reference size itself carries no rule and only moves where the measurement is taken | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
+| Floor reference viewport | **1,280 × 800 CSS px** | **Chosen** — the window size the camera's fit is measured at, and **no minimum**: the floor is drawn at every viewport size and the viewer pans and zooms it ([§ 4.5](#45-the-viewport-rule-and-the-camera), the operator's ruling of 2026-10-01 on card#7341, which removed the capability floor this row stated until then — below this size the route served the list view instead of the map). The measurement below is what this row is for now: how small the room's text is at fit in a common laptop window, and so how far a viewer zooms in to read it. ⭐ **The input this row was waiting on:** since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice B a desk's slot is the measured furniture box and the room it stands in a measured grid (the two rows above); the desk sprite measured on 2026-09-12 retired with the bridge tileset at row 22. **Since card#11045 (the operator's ruling of 2026-10-01) the shipped default is sized so that this window shows its room legibly at fit:** it lays its slots in **2 rows of 3 furniture boxes: 3 × 440 px = 1,320 px** of desk across, on a grid **1,576 px wide** whose two 96 px side strips hold the scenery — still wider than this viewport, by less than a quarter — so at this viewport the camera's fit zoom is **1,280 ÷ 1,576 ≈ 0.81** over the bare grid, width-bound. ⚠ The bold figures are prose, and every one of them is RE-DERIVED: `tools/design/verify-floor.py` (G8) recomputes the rows, the boxes per row, the product, the grid width and the zoom from `resources/floor/default.tmj`, `resources/floor/furniture-box.js` and this row's own viewport on every run, so this cell can drift from the map only by that gate going red — a claim this cell made before it was true (PR #232 round 1, MAJOR-2), and `tools/design/verify-design-docs.selftest.py` plants each figure that leg re-derives. Until card#11045 the default laid two rows of six on a 3,024 px grid, fitted at 0.42 and drew its text at 4.2 CSS px, which no viewer reads without zooming in; before slice B this cell said 1,608 px, on the sprite pitch and re-derived by no run — card#7341's review N-7. ⭐ **Measured by [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15's camera, on the page's own surface (card#11045 PR-E).** The floor page gives the camera `#floor-drawing`'s own box (card#11045 PR-A; `server/public/js/floor/main.js`'s `surface()`): the window's width by the height the page chrome above and below the drawing leaves — the header, the status strip, the camera row, the hint's row and the reveal of the sections below, with no notice shown. So on the page at this viewport the drawing is **1,280 × 579 CSS px**, which `tools/design/floor-chrome.browser.mjs` measures on the rendered page and reds when it is not this figure. Entered at that surface over the shipped default with `fx-snapshot-4`'s seats, the camera's fit at this viewport is **0.8122** — it frames the scene's whole extent, the band over the grid, width-bound — and at that fit it draws the scene's 10 px text — the facts' text at **8.1 CSS px**: the chip, the facts column and the badges — and the nameplate's 13 px name role at **10.6 CSS px** (the operator's ruling of 2026-10-02 on card#11058 Q2: the nameplate is the one string in a second measured type role, the *Nameplate type size* row above). **Method, re-run on every build:** `Tests\Feature\Floor\TheCameraMovesTheViewerAndNeverTheFleetTest` enters the route with the camera's surface at the page surface this row states (its `camera_page` run, held to the figure above), reads the camera's zoom on the first frame that draws the floor, multiplies it by the font size of each type role `server/public/js/floor/desk-layout.js` declares — `FONT` for the facts, `FONT_NAME` for the nameplate — and reds when any bold figure here is not what the camera measures. ⚠ **The page surface is a browser's to measure, and no browser runs on the build host:** `floor-chrome.browser.mjs` is run by hand, so a change to the page chrome that moves the drawing's height reds there and not in CI, and this row is re-measured when it does. **What it settles:** at fit on a laptop window the room's text is drawn at four-fifths of the 10 px the scene draws it at — legible without zooming in, which is what the six-desk default is for. A wider room, or a smaller window, is read by ZOOMING IN, which [§ 4.5](#45-the-viewport-rule-and-the-camera)'s camera gives at any window size: at zoom 1 the text is at its own 10 px and the view spans the window's own size in scene px. That is why the ruling of 2026-10-01 on card#7341 left no minimum to set: a smaller window shows less of the room at a legible zoom, and the viewer pans to the rest. Row 22's theme draws into the box's own rects (card#11046), so it moved neither the box, the scene's text size nor the fit. **What re-derives it:** the method above, re-run on every build; moving the reference size itself carries no rule and only moves where the measurement is taken | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
 | **Seeded appearance dimensions** | the rows of [§ 10.4](#104-the-art-direction-as-a-specification)'s table | **Derived** — the creature generator's own closed lists, its one home, held to that table by [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom). ⚠ **No figure for the space's size**: until card#11046 this table carried *10* dimensions, a space of *8,064,000* and a birthday estimate of *1 in 6,583* at 50 seats — the pixel reference's, retired with it. § 10.4 says why none replaces them | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | **Full-drawing collisions** | **0** on the committed roster, **0** on the synthetic 50-seat roster | **Measured** — by [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom) on every run, two keys colliding when the frame document each is drawn in — a seat's standing frame, an intern's chibi frame — is byte-identical; the synthetic roster's seed is printed with its count. A threshold, not a tally: it is the acceptance § 10.4 states | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | Gate 2's embedded-literal bound | **1,024 B** | **Chosen**, and **re-derived against the real tree rather than an intent**: the longest look-encoded run of base64's own alphabet anywhere under `resources/` is **107 B**, in the whitespace-stripped prose of `resources/floor/LINEAGE.md` and, at the same length, in the whitespace-stripped path data of the floor plane's `resources/floor/tiles/floor-plane/rug.svg` — its row of tassel strokes, `M6 37v2M14 37v2…`, once the spaces go (re-measured 2026-09-25, when the first-party floor plane was drawn — the lineage file alone held it on 2026-09-12, when the tileset was vendored, and it was 62 B in `index.js` on 2026-08-27; this row's own trigger is what moved it each time). Still an order of magnitude under the ceiling and far below the smallest useful sprite sheet, so clause 2 cannot fire on the tree and cannot miss a vendored asset. ⚠ **Note what the longest run now IS:** English prose with its spaces removed, and an SVG path's stroke list with the same treatment — drawing commands, not a picture's bytes — which is the residue [§ 10.1](#101-the-manifest-and-the-two-gates) clause 2 already names, observed rather than supposed. **What re-derives it:** the same measurement, whenever art is added. ⚠ **The bound is not what keeps clause 2 off legitimate SVG — the ALPHABET is** ([§ 10.1](#101-the-manifest-and-the-two-gates)): minified path data can exceed 1,024 B easily and is excluded because `.`, `-`, `,` and spaces are not base64 characters | [§ 10.1](#101-the-manifest-and-the-two-gates) |
@@ -7734,8 +7755,8 @@ belongs in its own round.
 | **G12 the duration format** | [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s seven clauses re-implemented as a function, and **every row of that section's boundary table reproduced** — the capability control, since a formatter that agreed with nothing would pass the two legs below by rejecting everything. Then the legs: every duration-shaped token inside a **rendered string** — § 2.4's own Verbatim column and [§ 7.1](#71-the-render-per-state)'s Label line cells, read as the published span rather than as cell prose — must be a **fixed point** of the function, so *11m 00s*, *2h 6m* and *0m 50s* red where *11m*, *2h 06m* and *50s* pass; and § 7.1's `stale` and `offline` cells are re-derived **arithmetically** from the timestamp in their own span and the corrected clock their own prose states, so a worked pair that stops describing one moment reds. What it does NOT reach is a duration in **prose**, which is the same residue G9 has and for the same reason | ✅ |
 | **G13 an empty-desk Never cell, scoped** | the comment block at G13 in `tools/design/verify-floor.py`, which states what it reads, what it reds on and what it cannot do | **tool-checked** |
 | **G14 the lobby label's one statement** | [§ 4.1](#41-the-lobby--the-building-summary)'s plate label, two legs: the label-contract vocabulary `verify-floor.py`'s G14 names, found anywhere in this document outside § 4.1's claim region (its lead-in through its last numbered claim) or in a `card#7343` bullet of the CHANGELOG, reds; and every numbered claim of § 4.1 must end with the check that holds it or a declaration that none does, each test method it names must exist in the file it names, and each contrast-tool control it names must exist in that tool | **tool-checked** — never whether a claim is true, or whether the check it names asserts it, which is a reviewer's; nor a paraphrase that uses no listed term, an unnumbered bullet inside the claim region, or code and test docblocks, `tools/design/README.md` and the tool headers |
-| **G-walls the PM office walls** | [§ 10.4](#104-the-art-direction-as-a-specification)'s projection rule, item 4, on the shipped default, three legs: every wall-strip cell outside every `desks` object (half-open rects, G8's own test); none of the kit's elevation-only tiles — the ids item 4 states — on any tile layer; and the wall-strip SVG parsed as well-formed XML — a malformed tile is one the browser refuses to draw — with its one fill equal to the sheet token its own comment names (`--house-trim`), the guard on that copy. Each leg has a control that reds rather than reporting clean over an empty population. **Not checked:** an authored map, where a wall runs, the doorway's width, and how the walls look | **tool-checked** on the shipped default |
-| **G-scenery the shipped default's standing pieces** (designed, built at row 22) | on the shipped default: every tile names a tileset the repository ships and a tile that declares a kind in the theme registry's set; every standing kind's cell rect — bottom-aligned, as drawn — lies inside the grid and outside every `desks` object (half-open, G8's own test). **Not checked:** where an `accent` is painted, which is the author's. Each leg with a control that reds rather than reporting clean over an empty population. From row 22 G-walls' second leg is this one's first and its third becomes *the wall tile declares `kind: wall`* ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)) | **designed** — row 22 builds it |
+| **G-walls the PM office walls** | [§ 10.4](#104-the-art-direction-as-a-specification)'s projection rule, item 4, on the shipped default, two legs: every wall cell — a cell whose tile declares the kind `wall` — outside every `desks` object (half-open rects, G8's own test); and the wall-strip tile (tile 2 of `floor-plane.tsx`) declaring `kind: wall`, its marker parsed as well-formed XML. Until row 22 (card#11046) a leg held the bridge kit's elevation-only tiles off the map, which became G-scenery's first, and a leg held the strip's fill equal to `--house-trim`, which retired when the theme began drawing the walls. Each leg has a control that reds rather than reporting clean over an empty population. **Not checked:** an authored map, where a wall runs, the doorway's width, and how the walls look | **tool-checked** on the shipped default |
+| **G-scenery the shipped default's standing pieces** (card#11046, built at row 22) | on the shipped default: every tile names a tileset the repository ships and a tile that declares a kind in the theme registry's set; every standing kind's cell rect — bottom-aligned, as drawn — lies inside the grid and outside every `desks` object (half-open, G8's own test). **Not checked:** where an `accent` is painted, which is the author's. Each leg with a control that reds rather than reporting clean over an empty population; `tools/design/verify-design-docs.selftest.py` plants a standing piece inside a slot and watches it red | **tool-checked** on the shipped default |
 | Whether a rendering is *good* | — | **hand-verified**, and it is a review question this document cannot mechanise: the tool checks that every rendered fact has a field and every **claim-bearing** animation has an event, never that the floor is legible — and **never** that decorative motion ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)) stays inside its bound, which no gate reaches at all |
 | Whether a **Cited** number matches what D2 says | — | **hand-verified**: the tool checks the number's presence at its D3 home, not its truth at D2's |
 
@@ -7800,7 +7821,7 @@ review can reverse it deliberately rather than discover it later.
 | 37 | **Decided 2026-09-27 — operator rulings on card#7343, the name at F1 and the status line at r2: the camera does not scale a plate's text in the lobby.** What a plate's label does now is [§ 4.1](#41-the-lobby--the-building-summary)'s, the one statement of it | **(A)** the plate's text is scene text and scales with the plate, and a viewer zooms to read it — [§ 12](#12-every-number-and-where-it-comes-from)'s rule for the floor, carried to the lobby; this is what row 16's slice A first built | The lobby exists to pick a floor, so a plate must be read before any zoom. Plates keep a storey's proportions, so at whole-building fit a plate's text shrinks as the stack grows — the name was measured at 19.2 px on two floors and 3.8 px on ten on a 1,280 × 800 surface (card#7343 comment 6974) — and a lobby whose floors can be told apart only after zooming into each is the floor list failing at the one thing it is for. Zoom-to-read is the floor's rule because a floor is read at desk scale; a lobby is read at building scale | the bounds a plate's label accepts are the claims [§ 4.1](#41-the-lobby--the-building-summary) declares unchecked; this cell records none of its own |
 | 38 | **Decided 2026-09-29 — the seat's ruling, card#7343 r3b (comment 7632): a label standing on its plate is anchored at the plate's top-left and grows down.** The operator's ruling of 2026-09-30 (option A) made that placement the fallback; what a plate's label does now is [§ 4.1](#41-the-lobby--the-building-summary)'s | **(A)** the label anchored at its plate's bottom-left, growing up — what row 16's slice A built through r3 | At the time, a label too tall for its plate had to lose the line that mattered least, and the name is the one the lobby exists to show. Anchored at the bottom, a label taller than its plate ran up past the building's top edge, where the surface's clip cut the top floor's name first; anchored at the top, what ran past was the building's bottom edge, where the clip cut trailing lines first | the bounds a label on its plate accepts are the claims [§ 4.1](#41-the-lobby--the-building-summary) declares unchecked; this cell records none of its own |
 | 39 | **Decided 2026-10-01 — operator rulings on card#11045: the plain wheel and a trackpad's two-finger scroll PAN the view in any direction; Ctrl+wheel and a trackpad's pinch (which browsers deliver as a Ctrl+wheel) zoom about the pointer; a touch screen's two-finger pinch zooms about the fingers' midpoint and one finger drags to pan; and at the drawing's edge the plain wheel scrolls the page on** ([§ 4.5](#45-the-viewport-rule-and-the-camera)), on the floor and in the lobby through one camera wire, said on the page by a one-line gesture hint. It supersedes [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15's *wheel-zoom to the cursor* | the wheel zooms, as the ratified reference and this camera did until card#11045; or the wheel pans and the page never scrolls over the drawing | A page reads by scrolling: a wheel that zoomed turned every scroll that crossed the drawing into a zoom, and a drawing that took every wheel trapped a mouse user above the sections below it. Zoom stays one modifier or one gesture away | a viewer who expects the wheel to zoom zooms with Ctrl or a pinch, as the hint under the drawing says; the trackpad pinch's gain (`wire/camera.js`'s `PINCH_GAIN`) was not verified on a real device by this card. Safari, which delivers a trackpad pinch as its own `gesture*` events, is handled since card#11045 PR-C (the [§ 4.5](#45-the-viewport-rule-and-the-camera) bullet), verified with synthetic events only: a real Mac trackpad and a real iPhone or iPad remain unverified |
-| 40 | **Decided 2026-10-01 — operator ruling on card#11045 Q2: each room's floor plane takes one of four seeded themes (oak, walnut, sage, slate) by `fnv1a32(install_id) mod 4`, and the back wall stays in the house palette** ([§ 4.2](#42-the-floor)'s frame, [§ 10.4](#104-the-art-direction-as-a-specification)) | one palette for every room | Two rooms on one floor are told apart at a glance by their floors as well as by name, and the theme is keyed on the ROOM, whose key never moves, so it is stable for the room's life and agrees in every browser with nothing stored; keyed on the floor it would recolour a floor's rooms whenever a lower-sorting room joined it | a theme reads as a fact about the room (it is none — appearance, like a character's look), or a theme makes the desk text drawn over it harder to read; the second is checked, the first is the art direction's to keep plain ⚠ **2026-10-07: the band half REVERSED** by the operator's ruling that a theme is authored per building floor (card#11046); **the tints' half is OPEN** — retired at row 22 if [decision 58](#13-decisions-taken-revisable-at-review) is confirmed, kept as the house theme's plane variants if not |
+| 40 | **Decided 2026-10-01 — operator ruling on card#11045 Q2: each room's floor plane takes one of four seeded themes (oak, walnut, sage, slate) by `fnv1a32(install_id) mod 4`, and the back wall stays in the house palette** ([§ 4.2](#42-the-floor)'s frame, [§ 10.4](#104-the-art-direction-as-a-specification)). ⚠ **Superseded at Appendix B row 22 (card#11046)**: the back wall by the operator's ruling of 2026-10-07 (a theme per building floor), and the seeded tints by [decision 58](#13-decisions-taken-revisable-at-review) | one palette for every room | Two rooms on one floor are told apart at a glance by their floors as well as by name, and the theme is keyed on the ROOM, whose key never moves, so it is stable for the room's life and agrees in every browser with nothing stored; keyed on the floor it would recolour a floor's rooms whenever a lower-sorting room joined it | a theme reads as a fact about the room (it is none — appearance, like a character's look), or a theme makes the desk text drawn over it harder to read; the second is checked, the first is the art direction's to keep plain ⚠ **2026-10-07: the band half REVERSED** by the operator's ruling that a theme is authored per building floor (card#11046); **the tints' half is OPEN** — retired at row 22 if [decision 58](#13-decisions-taken-revisable-at-review) is confirmed, kept as the house theme's plane variants if not |
 | 41 | **Decided 2026-10-01 — operator ruling on card#11045 Q1: an unused slot is plain floor; no spare desk stands at a slot no seat holds** ([§ 4.2](#42-the-floor)'s frame) | a spare, unoccupied desk at every unused slot, saying *room to grow* | [§ 3.5](#35-retirement-and-the-only-removal)'s ruling (card#9078) is that a retired seat's desk goes away immediately; with spare desks a retirement would leave a bare desk where the seat was, the render that ruling removed. The room's scenery carries an emptier room | a sparse room looks emptier than a furnished one; a map author who wants furniture there places it as scenery |
 | 42 | **Decided 2026-10-02 — operator ruling on card#11058 Q0 (a) and Q1 (B): the desk draws a fixed glance set, and ONE flag ⚠ +N for anything else unusual; no raw unrecognised string is drawn on the desk** ([§ 5.1](#51-the-desk)'s *the glance set*) | every fact the desk model emits, drawn on the desk at desk-adjacent size | a desk that carried every fact read as a spreadsheet at fit; the details are guaranteed in the drill-down and the desk list, which `TheNewDeskKeepsEveryLeafTest` holds of every leaf the desk drew before | a fact a viewer used to read at a glance is now a click away; the flag says *something else is unusual here* |
 | 43 | **Decided 2026-10-02 — operator ruling on card#11058 Q4 (a): the state chip shows the model's glyph** — *thinking*, *asleep*, *empty-chair* … — **and the fixed word *unrecognised* for a glyph carrying a raw string** ([§ 7.1](#71-the-render-per-state)) | the chip reads `render_state` | the glyph is the desk model's own word for what it draws, including the A4 think pose `render_state` does not name | the glyph strings become a visible vocabulary before they are ratified as display words |
@@ -7816,12 +7837,12 @@ review can reverse it deliberately rather than discover it later.
 | 53 | **Decided 2026-10-06 — on the operator's rulings of 2026-10-05 on card#11046: every character is an original animal or vegetable creature, drawn by first-party code as standalone SVG documents the painter shows as `data:image/svg+xml` images; the munder-difflin port retires whole, and the lineage check re-keys from the character tree to a `licensed` row in it** ([§ 10.2](#102-characters-original-creatures-drawn-by-code), [§ 10.4](#104-the-art-direction-as-a-specification)). The look and the chibi interns are the operator's (*"yes, I love them"*, *"A"*); the asset shape, the port's retirement and the re-key are this seat's, as the repository's maintainer | **(A)** creature art as image files under Gate 1's rows; **(B)** keep `resources/characters/LINEAGE.md` as a record of the retired port, so the lineage check passes unchanged | **(A)** cannot exist: the look is a seeded space and an intern's key is minted per dispatch, so no file set holds the drawings, and a raster would fail § 4.5's resolution independence besides. **(B)** keeps a check green by keeping a document whose subject is gone: a lineage file in a tree that took nothing tells the next reader the tree is a port, and the gate would go on asking every first-party file in it for an upstream commit. Nothing of the port ships, read file by file, so MIT's condition has no copy to attach to | if a ported line is missed and ships, it ships with no notice — which is why the retirement is read from the code file by file in § 10.2 and not asserted; and the re-key loses one catch, stated exactly: the old trigger asked a FIRST port into a fresh character tree for a lineage file whatever its row said, and the re-keyed one does not — **a port whose row is written `first-party` with an in-repo source URL passes with no lineage file at all**, and Gate 1's URL-against-origin check, which reds only when the URL is somebody else's, is the only machine catch left; review carries the rest |
 | 54 | **Decided 2026-10-06 — card#11046, by this seat as the repository's maintainer: an intern's species is drawn from its own key and re-drawn over the other species only where it lands on its seat's** ([§ 10.4](#104-the-art-direction-as-a-specification)'s interns bullet) | **(A)** the prototype's plain draw, under which an intern wears its seat's body at the chance of drawing one species from the list; **(B)** a draw over the other species for every intern | the operator's ruling is that an intern *differs from its seat*, and at the body that is the one claim a pure function can make true — the intern key carries the seat's. (A) leaves it to chance; (B) makes it true too, but re-draws every intern whose body already differed — most of them — away from the approved sheet | interns of one seat are slightly likelier to share a body with each other than under (A), because one body is removed from their draw — the measured sibling repeat rate is what shows it, and siblings were never kept apart by body under either rule |
 | 55 | **Decided 2026-10-07 — the operator's ruling on card#11046 (*"2. A"*): a THEME is authored per building floor; one optional `theme` member of the floor's layout entry names it; absent is the house theme, `studio`; an unshipped name is refused at the write and drawn in the house theme under F23 at read** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), [§ 4.6](#46-the-building-layout)). The storey is the operator's; the member, its default and its failure render are this seat's, as the repository's maintainer | a theme per ROOM, on decision 40's key — the seat's other reading, which the operator did not choose; a theme keyed by the floor's KEY | a storey reads as one place, so its band — which spans every room on it — its hallway and its rooms share one design; a member of the entry moves with the floor, so a re-key moves no theme, which is what keying on the derived key would have broken | two rooms on one storey cannot differ in design; an operator who wants that composes them onto two storeys; and a rollback past row 21 must first save the layout without the member (§ 4.6's row) |
-| 56 | **Decided 2026-10-07 — card#11046, by this seat as the repository's maintainer: a theme is CODE — one first-party module per theme emitting standalone SVG documents the painter shows as `data:image/svg+xml` images — and not image files** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 10) | a tileset of SVG pieces per theme, under Gate 1's rows | the pieces are parametric — a band of any width, a plane of any grid with a pool at each slot and an accent of any shape, a side table for its seats, seeded props — which no file set holds, and fixed pieces stretched to fit are the tile-grid look the operator rejected; it is decision 53's shape, so the painter, the cache and the failure path are the creatures' | no gate sees what a theme draws, only that its documents are well-formed, self-contained and total; review carries the look, as it does for the creatures; and a room-sized document's paint time at deep zoom is unmeasured until row 22's screenshots |
+| 56 | **Decided 2026-10-07 — card#11046, by this seat as the repository's maintainer: a theme is CODE — one first-party module per theme emitting standalone SVG documents the painter shows as `data:image/svg+xml` images — and not image files** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 10) | a tileset of SVG pieces per theme, under Gate 1's rows | the pieces are parametric — a band of any width, a plane of any grid with a pool at each slot and an accent of any shape, a side table for its seats, seeded props — which no file set holds, and fixed pieces stretched to fit are the tile-grid look the operator rejected; it is decision 53's shape, so the painter, the cache and the failure path are the creatures' | no gate sees what a theme draws, only that its documents are well-formed, self-contained and total; review carries the look, as it does for the creatures; and a room-sized document's paint time at deep zoom is a screenshot's to read (row 22's, item 36(3)) |
 | 57 | **Decided 2026-10-07 — card#11046, by this seat: the MAP places scenery and paints the PM's oak, as tiles of a `kind` the floor's theme draws; every grid's floor — a room's and a hallway's — is the theme's plane, with no floor kind; the landing is derived from the elevator's threshold** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) items 6–7) | the theme placing scenery itself; the oak region derived from the reserved desk and the walls; a new map member for regions | a theme cannot know an authored room's free space; a flood fill leaks through the doorway, the reserved slot alone is a rug, and either hands the theme a fact about seating; a new member is a validation and a table row for what Tiled already paints — decision 49's argument for walls | every theme must draw every kind, and an author's map is valid only in the kinds the registry names |
-| 58 | **Proposed 2026-10-07 — card#11046, by this seat, ⚠ OPEN WITH THE OPERATOR ([§ 14](#14-open-questions-for-the-review-loop) item 36(1)): decision 40's seeded per-room tints RETIRE, and are not kept as plane variants inside a theme**. Row 22 does not start until this and decision 61 are answered | keep oak, walnut, sage and slate as four plane variants of the house theme, seeded per room as today | the operator approved one floor, a pale oat chosen because direction A's floor was *"too dark and close to the desk color"*, and the tints are that mid-tone again; every variant is a surface the facts' ink and the state chip's colours must clear, multiplying a gate that already fails over the oat floor (decision 62); and the operator's *"each floor to have a different design"* is answered at the storey | two rooms on one storey share a floor; they are told apart by their walls, the gap between them and their names, as decision 40's own *cost if wrong* allowed |
+| 58 | **Decided 2026-10-07 — card#11046, a SEAT RULING recorded on the card ([§ 14](#14-open-questions-for-the-review-loop) item 36(1)): decision 40's seeded per-room tints RETIRE, and are not kept as plane variants inside a theme**. The operator was asked and had not answered; the ruling follows from the operator's own later rulings — one approved floor colour, a design per FLOOR — and is cheap to reverse: re-add the tints as palette variants, a palette change and a chip-gate re-run. Built at row 22 | keep oak, walnut, sage and slate as four plane variants of the house theme, seeded per room as today | the operator approved one floor, a pale oat chosen because direction A's floor was *"too dark and close to the desk color"*, and the tints are that mid-tone again; every variant is a surface the facts' ink and the state chip's colours must clear, multiplying a gate that already fails over the oat floor (decision 62); and the operator's *"each floor to have a different design"* is answered at the storey | two rooms on one storey share a floor; they are told apart by their walls, the gap between them and their names, as decision 40's own *cost if wrong* allowed |
 | 59 | **Decided 2026-10-06 and 2026-10-07 — the operator's rulings on card#11046: a desk is drawn from its far side; the monitor faces the viewer as the one exception; the monitor is wider; the creature sits at a third of the desk** ([§ 10.4](#104-the-art-direction-as-a-specification) item 2, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). The 3 px the creature shares with the monitor's frame is allowed rather than moving the creature to 48, by this seat | the creature centred; the creature at 48, clear of the frame | the rulings; and the overlap is the monitor standing on the desk in front of its sitter, which covers no fact (the screen begins clear of the character's rect, and AT-D3-25 holds the overlap to 3 px) | a creature whose drawing reaches its rect's right edge loses 3 px of it behind the monitor |
 | 60 | **Decided 2026-10-07 — card#11046, by this seat: the screen's text is a third measured type role at 8 px, its ink chosen per lit state, and the contrast it holds stated at every lighting that draws it** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)) | 9 px, legible with margin; one ink on every lit state, as today | 8 px is the smallest that read at fit on a device-scale-1 screen, and the operator asked for the smallest that fits more; the dimmed screen held today's ink at 2.25:1 at full light, a defect a smaller face makes worse | on a screen narrower or blurrier than the measured one, the monitor is read by zooming in, as the facts are; and a dimmed or dark desk's monitor holds less than 4.5:1, by § 7.3's design, with every string in the list and the drill-down |
-| 61 | **Proposed 2026-10-07 — card#11046, by this seat, ⚠ OPEN WITH THE OPERATOR (item 36(2)): the windows' glazing follows the approved picture, 208 by 80 px, rather than card#11045's 200 by 124** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), [§ 12](#12-every-number-and-where-it-comes-from)). Row 22 does not start until this and decision 58 are answered | keep the 124 px glazing and draw the sage lower wall under it | the operator chose the A2+C picture, whose short windows sit above a rail and a sage lower wall; 124 px of glass leaves the lower wall a strip and is not the picture approved. The curtains and the sills are what keep it from the jail card#11045's ruling refused | the operator meant card#11045's tall glazing to stand under any design: one constant and one § 12 row |
+| 61 | **Decided 2026-10-07 — card#11046, a SEAT RULING recorded on the card (item 36(2)): the windows' glazing follows the approved picture, 208 by 80 px, rather than card#11045's 200 by 124** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), [§ 12](#12-every-number-and-where-it-comes-from)) — the picture the operator approved (*"1. A2+C"*), the operator having been asked and not yet answered; reversing it is one § 12 row and the band's geometry. Built at row 22 | keep the 124 px glazing and draw the sage lower wall under it | the operator chose the A2+C picture, whose short windows sit above a rail and a sage lower wall; 124 px of glass leaves the lower wall a strip and is not the picture approved. The curtains and the sills are what keep it from the jail card#11045's ruling refused | the operator meant card#11045's tall glazing to stand under any design: one constant and one § 12 row |
 | 62 | **Decided 2026-10-07 — card#11046, by this seat: the state chip's quiet colours are measured over every shipped theme's floor surfaces, read from the theme, at [§ 12](#12-every-number-and-where-it-comes-from)'s bound, and are re-derived IN row 22 — the first row that paints the oat floor, so no row lands red** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), [§ 14](#14-open-questions-for-the-review-loop) item 35's closure) | measure the chip over a fixed plank colour as today; or take the chip off the floor's composite by changing how § 7.3 dims a desk | over the house theme's oat floor the sheet's quiet colours fail the tool's own bound in several reviewed pairs (measured 2026-10-07 by re-running `state-chip-colours.py --check` with its plank surfaces swapped for the oat floor's composites, and re-measured by card#11046's review), so the colours must move with the floor; binding the gate to every theme makes a theme that breaks the chip red, which is the right failure for a theme to meet; changing § 7.3's dimming is a § 7 change outside this card and would need the same re-check | a later theme (B) reopens the chip's colours if its floor differs enough; and the colour round may find no colours for the quiet states that clear every surface — surfaced to the operator with the measurement (item 36(4)), never by moving the bound. A scratch spike on 2026-10-07 found a set clearing the bound over the oat floor's computed surfaces (item 36(4)) |
 | 63 | **Decided 2026-10-07 — card#11046, by this seat: the unconfirmed seat has NO chair treatment; it is drawn on the hollow chip and its dimmed desk, as the product does today** ([§ 10.4](#104-the-art-direction-as-a-specification)'s art-contract bullet, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). It reverses the design review's round-1 direction that the painter draw a dashed outline over the chair, which rested on § 10.4's sentence *dashed when unconfirmed* — false of the code, which never drew it | the painter's dashed outline over the theme's chair; a dashed mark of its own beside the plate | from row 20 the chair stands behind the creature, the desk and the desk props, so an outline painted last crosses all three and one painted under them is mostly hidden — a fact whose form needs it to sit under art, which § 10.6's paint-order rule exists to forbid; and the fact is already carried twice, by the chip and the dimming. `desk-layout.js`'s `DRAWN_MEMBERS` is corrected in the same change to map `unconfirmed` to the chip | a viewer who reads an unconfirmed seat by its chair has nothing there; the chip, the dimmed desk and the drill-down say it |
 
@@ -8775,42 +8796,43 @@ reason to leave two readings live.
     as drawn (§ 10.4's rim bullet). **Closes it:** a card that lands the overlay and the chip colours
     together, each measured against the other.
 
-36. **⇢ Operator — the house room (card#11046): what the design reads from the approved picture and cannot settle
-    alone.** Each with the seat's recommendation and what stands meanwhile.
+36. **✅ CLOSED 2026-10-07 — SEAT RULINGS, recorded as card#11046's comment of 2026-10-07, so row 22 could
+    start.** The operator was asked in chat and had not answered; each part follows from the operator's own later
+    rulings and is cheap to reverse. What each part asked, and how it closed:
 
-    *(1)* **[decision 58](#13-decisions-taken-revisable-at-review) — the seeded room tints retire.** Recommendation: retire them (the decision's reasons).
-    Meanwhile: nothing is retired, and row 22 does not start.
+    *(1)* **[decision 58](#13-decisions-taken-revisable-at-review) — the seeded room tints retire.** RETIRED: the
+    operator approved one floor colour (pale oat, after calling direction A's floor *"too dark and close to the
+    desk color"*) and chose a design per FLOOR, and seeded per-room tints would put mid-tone floors back beside
+    the approved one. Reversal: re-add the tints as palette variants — a palette change and a chip-gate re-run.
 
-    *(2)* **[decision 61](#13-decisions-taken-revisable-at-review) — the windows are the picture's 208 by 80, not card#11045's 200 by 124.**
-    Recommendation: the picture's, because it is the one the operator chose. Meanwhile: row 22 does not start.
+    *(2)* **[decision 61](#13-decisions-taken-revisable-at-review) — the windows are the picture's 208 by 80, not
+    card#11045's 200 by 124.** RULED: 208 × 80, as in the A2+C picture the operator approved (*"1. A2+C"*).
+    Reversal: one § 12 row and the band's geometry.
 
-    *(3)* **The screenshot step, before row 22 merges** — at 1× and 4× on the real floor: an unused slot (its
-    pool of lamplight on plain floor), an empty side table with its seats, a side table at the cap, the
-    monitor's 8 px text at fit on a laptop window, the dimmed screen in its new ink, the plants narrowed to
-    stand in the aisle, the leaves in the building's door colours, the windows with no hills and clouds and no
-    daylight on the floor, a planned floor's hallway in the theme's floor, and each pose — the raised hand, the head in hands, the sleeper — still readable under the desk and its props — each a reading of the picture the
-    operator has not seen drawn; and a paint-time and blank-tile read at the camera's deepest zoom on the largest
-    map the build can author, because the creatures' vector measurement covered small frames and not a
-    room-sized document.
+    *(3)* **The screenshot step, before row 22 merges** — real Chromium, on fixtures and on the live sandbox: a
+    true-size room on every room form; one full side table at the cap; each lit state's monitor at 1× and 2×; the
+    deepest zoom with its paint time; each pose's legibility under the desk and its props; and the chip's quiet
+    colours before and after. They go to the operator before the merge. Taken by row 22's build
+    (`tools/design/floor-fixture.browser.mjs` on the fixtures; the build's report names each shot), each a
+    reading of the picture the operator has not yet seen drawn — among them an unused slot under its pool, an
+    empty side table with its seats, the narrowed aisle plants, the leaves in the building's door colours, the
+    windows with no hills and clouds and no daylight on the floor, and a planned floor's hallway in the theme's
+    floor.
 
     *(4)* **The chip's quiet colours over the oat floor** ([decision 62](#13-decisions-taken-revisable-at-review)).
-    ⭐ **A spike on 2026-10-07 says a solution exists**: the tool's own model, every condition and vision, run
-    over the house floor's surfaces as the prototype's arithmetic computes them (the board tones' extremes, the
-    lamplight pool, the darkening's darkest, the oak's extremes and pool), searched within each quiet state's hue
-    family (within 45° of today's hue, chroma at most 32) and at 4.5:1 for `--state-ink`. Today's tokens fall to
-    1.9 there; the search found a set at a least ΔE2000 of 5.31. The spike's script was a scratch run and is not
-    in the repository, so its figures are not an authority and no candidate colour is written here: row 22's
-    colour round re-derives the colours against the surfaces the built theme returns, and brings the operator the before and after. If the built surfaces leave no set at the bound, the
-    round brings the operator the measurement and the options (a lighter floor, a different treatment of the
-    dimmed chip), never a moved bound.
+    CLOSED BY THE COLOUR ROUND, in row 22 as decision 62 requires, the bound unmoved: `tools/design/state-chip-colours.py --search`
+    takes, over the surfaces the built theme returns (through `tools/floor-themes/surfaces.mjs`), every
+    candidate within 45° of each quiet state's token hue, chroma at most 32 and holding `--state-ink` at 4.5:1,
+    and of the sets whose every reviewed pair keeps the bound plus the tool's `MARGIN` in every condition and
+    vision, the one closest to the tokens they replace. Measured on 2026-10-07 (re-printed by the same command,
+    and by `--check` on the sheet): the tokens before the round held a least reviewed-pair ΔE2000 of **1.90**
+    over the oat floor — `catching_up`/`offline` over the lamplight pool — and the chosen set holds **5.67**.
+    The chosen fills are the sheet's `--state-stale`, `--state-offline` and `--state-disabled` and the tool's
+    `PROPOSED`, held equal by `--check`; the screenshots of (3) show both sets.
 
-    *(5)* **An extension of item 28(1)(iii)** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 9): run the console's re-validation listing on row
-    22's landing for *names a tileset or a tile the repository no longer ships*, as it runs today for a change of
-    the box. Recommendation: yes, because a stored map that names the kit draws with tiles missing until its
-    author saves, and the listing is what tells the author.
-
-    **Closes it:** the operator's answers on (1), (2) and (5), and on the screenshots of (3); (4) closes with the
-    colour round's result.
+    *(5)* **An extension of item 28(1)(iii)** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 9).
+    ADOPTED (the maintainer's call) and built: the floors module lists every room whose current map names a
+    tileset or a tile the repository no longer ships (`App\Floor\RetiredArt`).
 
 ## Appendix A — every obligation addressed to this document
 
@@ -8953,7 +8975,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | 19 | ✅ landed 2026-10-06 (card#11046) — the **creature generator**: [§ 10.2](#102-characters-original-creatures-drawn-by-code)'s creatures, ported from the approved prototype and not redesigned, with the seat's rim and softened hedgehog spines, under `resources/characters/` — drawing every field through `seed.js`'s first-party `fnv1a32`, `mix32` and `draw`, which stay — and [§ 10.4](#104-the-art-direction-as-a-specification)'s frame contract at parity with today: one standing frame per key, drawn for every pose the desk model asks for, the 3-phase front walk and the intern's chibi frame (pose art is [§ 14](#14-open-questions-for-the-review-loop) item 34's, not this row's), with the intern's species re-drawn off its seat's ([decision 54](#13-decisions-taken-revisable-at-review)), and the three members [§ 14](#14-open-questions-for-the-review-loop) item 33(1)'s ruling withholds kept out through the generator's one `WITHHELD` list; the munder-difflin port removed whole — `portrait-art.js`, `seed.js`'s human recipe, `index.js`'s RGBA cache and canvas blit, the portrait and the back view, `resources/characters/LINEAGE.md`, and its `docs/ATTRIBUTION.md` rows and notice section, that section replaced by the repository's own MIT notice, and `docs/ATTRIBUTION.md`'s rules bullet that states the old lineage trigger (*as soon as a row under `resources/characters/` declares one*) restated as the re-keyed one; `bin/asset-provenance.py`'s lineage check re-keyed from the character tree to a `licensed` row under it, with its selftest's REDs and control; the painter showing each character frame as an `<image href="data:image/svg+xml;…">` in its clipping viewport, its frame URIs cached per asset in the painter's own Map — the tree holds no cache and has no `forget()` (§ 10.2) — and an intern's dropped when it is no longer drawn, drawing the standing frame for every pose and swapping `href` among the walk's frames where a held loop moves, as today, the canvas-and-PNG path for characters and its `pixel` class removed, and the character size the scene reads (`desk-layout.js`'s `CHARACTER_SCALE` over the tree's exported size) re-stated so the 54 × 96 and 20 × 32 rects do not move; the committed fleet roster and the salt check over it, with the search sample committed beside it as the salt leg's control (`tools/characters/salt-control.json`, § 14 item 33(2)); the **creature gates** — `tools/characters/selftest.mjs`, rebuilt over the creatures to run AT-D3-24, with its painter legs in `server/tests/Feature/Floor/painter-probe.mjs` — and the tree's browser harness rebuilt as the creature sheet beside it (the pixel tree's node render sheet retired with it); the translucent plank tile of card#11046 comment 9325 is NOT this row's — it is [§ 14](#14-open-questions-for-the-review-loop) item 35's, because the state chip's colours fail their gate over a visible theme; the D-07 append in `docs/PLAN.md § 0`; and `README.md`'s character-tree lines. The operator sees real-floor screenshots of the walk, the chibi frames, the rim and the spines before it merges ([§ 14](#14-open-questions-for-the-review-loop) item 33) | [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom), [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)**, and [AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk)'s painter legs |
 | 20 | ✅ landed 2026-10-07 (card#11046 row 20) — the **desk re-layout** — [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid* (card#11046, the operator's rulings of 2026-10-06 and 2026-10-07), drawn with the painter's flat shapes and no theme: `deskRects()` re-laid (the character at a third, the monitor's frame, the screen and its text, the desk props' rect, the side table's rect at every desk with art with its seats); the screen type role at 8 px on its line and baseline, with `harness-measurer.mjs`'s glyph width for it; the screen text's ink per lit state; the chair drawn behind every creature (today only an empty desk draws one); the desk's elements emitted art first and facts after (§ 10.6's rule 2, read through `painter-probe.mjs`); the bubble's and the desk's anchor as one primitive on the character's centre line; the element kinds `monitor-frame` and `desk-props` added to `DRAWN_MEMBERS` under `monitor` and `lighting`; `desk-layout.js`'s comments that say the desk has two type roles re-stated for three, and every source string a `SeatFurnitureNeverOverlapsTest` RED plants in `desk-layout.js` or `painter.js` re-targeted where this row moves it; AT-D3-20's *(e)* clause and second RED rewritten as § 11 marks them; and § 12's re-laid rows built. **Rows 20 to 22 land on `dev` one by one and release to `main` together**: until row 22 draws the desk's back, row 20's wider monitor frame hangs past the kit's desk sprite, a look no release ships | [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text) **(re-laid half)**, [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) |
 | 21 | ✅ landed 2026-10-07 (card#11046 row 21) — the **theme registry** (`resources/floor/themes/index.js` — `THEMES`, `HOUSE_THEME`, `KINDS` and `API` — and its PHP reader) and the **layout theme member** — [§ 4.6](#46-the-building-layout)'s `theme` in both runtimes over `compose-cases.json`, the console's refusal at save and restore, F23 and § 5.5's line, and the CHANGELOG's note that a rollback past this row first saves the layout without the member. No theme draws yet: the registry names `studio`, whose directory row 22 adds — its registry-against-directories leg is the theme half's — and every floor resolves to a theme name and is drawn as today | [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text) **(selection half)** |
-| 22 | the **house room** — the **house theme** (`resources/floor/themes/studio/theme.js`, A2+C ported from the approved prototype: its palette export, `surfaces()` and every document the registry's API names, the hallway's plane among them) and the **theme gates** (the selftest that runs AT-D3-25's theme half, with its painter legs in `painter-probe.mjs`); the scene and the painter showing each theme document as a `data:image/svg+xml` image in its clipping viewport at the scene's rect over the flat fallback fills, and F14's theme causes; `floor-plane.tsx`'s tiles each declaring a `kind`, with first-party marker SVGs; the shipped default re-authored; **the colour round in this same row** — the state chip's quiet colours re-derived over the house theme's surfaces and `state-chip-colours.py` reading every theme's `surfaces()` through `tools/floor-themes/surfaces.mjs`, so the first row that paints the oat floor lands green (decision 62); the retirements — the bridge kit and its rows, `resources/floor/LINEAGE.md`, the plank and rug tiles and `DESK_SPRITE` — and the seeded tints and the window glazing as the operator's answers to decisions 58 and 61 decide. **This row does not start until both are answered**: its plane replaces the tinted plane and its colour round is measured over the floor the answer chooses; § 10.3's, § 10.4's and § 12's *row 22* sentences rewritten as built; G-walls amended and G-scenery added to `tools/design/verify-floor.py`; AT-D3-19's kit leg rewritten; D-07's third append in `docs/PLAN.md § 0`; D2 § 8.7's worked hallway re-pointed off the kit's tileset; every store the build can reach measured for maps naming retired art, and the console's listing extended if item 36(5) is ruled yes. The operator sees the screenshots of [§ 14](#14-open-questions-for-the-review-loop) item 36(3) before it merges | [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text) **(theme half)**, [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(manifest half)**, [AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk), [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) |
+| 22 | ✅ landed 2026-10-07 (card#11046 row 22) — the **house room** — the **house theme** (`resources/floor/themes/studio/theme.js`, A2+C ported from the approved prototype: its palette export, `surfaces()` and every document the registry's API names, the hallway's plane among them) and the **theme gates** (`tools/floor-themes/selftest.mjs`, the selftest that runs AT-D3-25's theme half's node legs, with its painter legs in `painter-probe.mjs` and `theme-painter-probe.mjs`); the scene and the painter showing each theme document as a `data:image/svg+xml` image in its clipping viewport at the scene's rect over the flat fallback fills, and F14's theme causes, the theme registry's own among them (row 21's review finding); `floor-plane.tsx`'s tiles each declaring a `kind`, with first-party marker SVGs; the shipped default re-authored; **the colour round in this same row** — the state chip's quiet colours re-derived over the house theme's surfaces and `state-chip-colours.py` reading every theme's `surfaces()` through `tools/floor-themes/surfaces.mjs`, so the first row that paints the oat floor lands green (decision 62); the retirements — the bridge kit and its rows, `resources/floor/LINEAGE.md`, the plank and rug tiles and `DESK_SPRITE` — and the seeded tints and the window glazing as decisions 58 and 61 decide (seat rulings recorded on card#11046, 2026-10-07: the tints retire, the glazing is 208 × 80); § 10.3's, § 10.4's and § 12's *row 22* sentences rewritten as built; G-walls amended and G-scenery added to `tools/design/verify-floor.py`; AT-D3-19's kit leg rewritten; D-07's third append in `docs/PLAN.md § 0`; D2 § 8.7's worked hallway re-pointed off the kit's tileset; every store the build can reach measured for maps naming retired art, and the console's listing extended (item 36(5), adopted). The operator sees the screenshots of [§ 14](#14-open-questions-for-the-review-loop) item 36(3) before it merges | [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text) **(theme half)**, [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(manifest half)**, [AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk), [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) |
 
 **Three of these are hard requirements before anything downstream may treat this floor as honest:**
 **AT-D3-1** (no animation without its event — the operator's principle, made into a test),

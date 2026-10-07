@@ -4460,8 +4460,8 @@ from the snapshot's row.
                    { "install": "zeta", "form": "office", "origin": { "x": 480, "y": 160 } } ],
         "hallway": { "type": "map", "orientation": "orthogonal", "width": 50, "height": 5,
                      "tilewidth": 32, "tileheight": 32,
-                     "tilesets": [ { "firstgid": 1, "source": "tiles/furniture-kit.tsx" } ],
-                     "layers": [ { "type": "tilelayer", "name": "corridor", "data": [ 1, 1, 1 ] } ] } }
+                     "tilesets": [ { "firstgid": 1, "source": "tiles/floor-plane.tsx" } ],
+                     "layers": [ { "type": "tilelayer", "name": "corridor", "data": [ 4, 4, 4 ] } ] } }
     ]
   },
   "rooms": [
@@ -4508,8 +4508,8 @@ authored, and what the floor reads of it is [FLOOR.md § 10.3](FLOOR.md#103-the-
   "updated_at": "2026-09-12T09:13:58.402Z",
   "map": { "type": "map", "orientation": "orthogonal", "width": 40, "height": 25,
            "tilewidth": 32, "tileheight": 32,
-           "tilesets": [ { "firstgid": 1, "source": "tiles/furniture-kit.tsx" } ],
-           "layers": [ { "type": "tilelayer", "name": "floor", "data": [ 1, 1, 1 ] },
+           "tilesets": [ { "firstgid": 1, "source": "tiles/floor-plane.tsx" } ],
+           "layers": [ { "type": "tilelayer", "name": "floor", "data": [ 4, 4, 4 ] },
                        { "type": "objectgroup", "name": "desks",
                          "objects": [ { "id": 1, "x": 64, "y": 96, "width": 440, "height": 228 } ] } ] }
 }

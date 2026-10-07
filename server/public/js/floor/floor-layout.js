@@ -60,10 +60,9 @@ const FNV_OFFSET_BASIS = 2166136261;
 const FNV_PRIME = 16777619;
 
 /**
- * FNV-1a-32 over the UTF-8 bytes of `text`, with § 3.2's published constants — the one hash this
- * client seeds anything from: a seat's slot (`hashSeat()`) and a room's plane theme
- * (`floor/scene.js`'s `roomTheme()`, card#11045). The encoder is the platform's, so a non-ASCII
- * string hashes its real bytes rather than its code units.
+ * FNV-1a-32 over the UTF-8 bytes of `text`, with § 3.2's published constants — the hash a seat's slot
+ * is seeded from (`hashSeat()`). The encoder is the platform's, so a non-ASCII string hashes its real
+ * bytes rather than its code units.
  */
 export function fnv1a32(text) {
     const bytes = new TextEncoder().encode(text);

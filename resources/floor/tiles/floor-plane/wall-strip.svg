@@ -1,15 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- The wall strip — FIRST-PARTY vector art under docs/design/FLOOR.md § 10.4's projection rule: every
-     wall but the back wall shows only its TOP EDGE, a strip one map cell wide, flat on the plane, seen from
-     above. One 8 × 8 cell, a flat fill and no detail, because a highlight or an outline on a square tile
-     would show every 8 px along a run; an author paints a run cell by cell and leaves a doorway unpainted.
-     ⛔ THE FILL IS A COPY OF the sheet token `house-trim` (server/public/css/mezzanine.css's `:root`) — the
-     one wall colour, which the slab, the skirting and the band's end posts read. A tile is an isolated SVG
-     document and cannot read the page's custom properties, so the value is copied, and
-     tools/design/verify-floor.py G-walls reds when the two differ. (The token is named without its two
-     leading hyphens because XML forbids a double hyphen inside a comment, and a comment carrying one
-     makes the file malformed — an image the browser refuses to draw.) No raster, no embedded data
-     (§ 10.1 Gate 2). -->
+<!-- The wall strip — a TILE MARKER since card#11046's Appendix B row 22, FIRST-PARTY: the tile it marks (tile 2
+     of floor-plane.tsx) declares the kind `wall`, and the floor draws every wall cell as part of a run of its
+     floor's theme's wall strip (docs/design/FLOOR.md § 10.4 item 4, § 10.6 item 6) — never this image. It keeps
+     its place as tile 2 so every stored map's walls keep their meaning, and tools/design/verify-floor.py G-walls
+     holds the tile to its kind. One 8 x 8 cell, a flat fill: an author paints a run cell by cell in Tiled and
+     leaves a doorway unpainted. No raster, no embedded data (§ 10.1 Gate 2). -->
 <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8">
   <rect width="8" height="8" fill="#1f3540"/>
 </svg>
