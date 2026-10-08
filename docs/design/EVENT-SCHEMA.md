@@ -1582,7 +1582,9 @@ desk that was merely thinking, so the number had to be generous enough to cover 
 Now the desk's liveness is the heartbeat's job
 ([§ 9](#9-liveness-heartbeat-staleness-and-the-predicate-alarm)), this event closes a *session row*
 rather than a seat, and an early close is **reversible**. **D2:** an event arriving for a session
-already closed by `inferred_silence` **re-opens it** server-side and counts `session_reopened`. So the number is
+already closed by `inferred_silence` **re-opens it** server-side and counts `session_reopened`. An event
+also re-opens a session the sweeper closed when its seat went offline (`closed_by = server_offline`), and
+that reopen is not counted, because it says nothing about this number ([D2 § 4.6](FLEET-STATE.md#46-every-open-fact-has-a-ceiling)). So the number is
 derived from the longest legitimate silence *inside a live session* — a session with an open `Task`
 call can legitimately emit nothing until that call's 60-minute orphan ceiling
 ([§ 12.5](#125-late-completions-and-orphan-timeouts)) — and 90 min is 1.5× that. `session_reopened`
@@ -4623,7 +4625,7 @@ members: raised while the counter rose within the last 24 h
 | `late_completion` | a `match: "tombstone_ref"` close overriding an `aborted` one | **a design signal**: a rising count means a reap rule is too eager ([§ 12.5](#125-late-completions-and-orphan-timeouts)) |
 | `late_close_cross_session` | a `match: "tombstone_ref"` close arrived under a **different** `session_id` than its call was opened in, and was **refused** ([§ 8.6](#86-server-side-interpretation-of-open-call-state)) | **the kill's own volume**: on this build every `/clear` that kills a call produces one, so it is expected to track `/clear`s rather than to sit at zero. It is separated from `late_completion` precisely so that signal keeps meaning "a reap is too eager" — folded together, the eagerness instrument would read one-per-clear forever and could never report |
 | `orphan_timeout_closes` | the ledger closed a call nobody ever closed | informational per seat; a spike means the reporter stopped closing calls |
-| `session_reopened` | an event arrived for a session closed by `inferred_silence` | **re-derives the 90-minute rule** ([§ 6.2](#62-sessionend)) |
+| `session_reopened` | an event arrived for a session closed by `inferred_silence`. An event also re-opens a session the sweeper closed when its seat went offline (`closed_by = server_offline`), and that reopen is **not** counted here ([D2 § 4.6](FLEET-STATE.md#46-every-open-fact-has-a-ceiling)) | **re-derives the 90-minute rule** ([§ 6.2](#62-sessionend)) |
 | `seq_gap` | a missing `seq` inside an epoch | the **server's own** `seq_gap` badge on that seat, per the rule above — **not** a `lossy` member of [§ 9.3](#93-degradation-counters)'s array, which only the reporter mints ([§ 10.2](#102-ordering-seq-and-gap-detection)) |
 | `seq_collision` | one `(seq_epoch, seq)` carrying two different `event_id`s | seat badge `degraded`; the only mechanism that produces it is two flushers ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)) |
 | `seq_epoch_change` | a batch arrived under a new `seq_epoch` on a seat that has already sent under an earlier one; a seat's first epoch is not a change | seat renders `epoch_reset`, informational — a re-numbering, not a loss |

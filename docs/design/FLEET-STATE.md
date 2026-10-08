@@ -861,8 +861,15 @@ Why quiesce at all, when the render already shows `offline`? Because a seat that
 inherit an hour-old open call as *current work*, and because the facts feed counters and the drill-down.
 When the seat returns, its events re-open exactly what is still real: `tool.end` for a call the server
 already closed is a late close and takes D1's override path
-([D1 § 12.5](EVENT-SCHEMA.md#125-late-completions-and-orphan-timeouts)), and an event for a closed
-session re-opens it and counts `session_reopened` ([D1 § 12.7](EVENT-SCHEMA.md#127-server-side-counters)).
+([D1 § 12.5](EVENT-SCHEMA.md#125-late-completions-and-orphan-timeouts)), and an event for a session
+quiescence closed re-opens it, through the same path that re-opens a session the flusher closed on
+`inferred_silence` (card#11547). Both closes are inferences that the session's next event disproves; a
+`clear`, a `logout` or any other `end_reason` the seat sent is its own observation and stays closed. Only
+the `inferred_silence` reopen counts `session_reopened` and `sessions.reopened`, because that counter's
+consequence is to re-derive the 90-minute rule
+([D1 § 12.7](EVENT-SCHEMA.md#127-server-side-counters)): an offline reopen follows every seat that goes
+offline mid-session and comes back in it, says nothing about that number, and was counted once already,
+at the close, by `offline_quiesced_sessions`.
 The projections are idempotent upserts precisely so this path is ordinary rather than special.
 
 #### 4.6.1 The turn has no timer of its own
@@ -6324,7 +6331,7 @@ prints by name on every run rather than reporting a clean over it.
 | S16 | § 12.7 | The nineteen server-side counters (and the `clock_skew_ms` gauge), each with its consequence | [§ 7.1](#71-d1s-server-side-counters--where-they-live) (one row each: storage, surface, badge) |
 | S17 | § 6.14 | `enabled: false` renders **disabled** — a seat that is off and a seat that is gone must not look alike | [§ 4.2](#42-render-precedence), [§ 4.5](#45-link-states) |
 | S18 | § 6.14, § 9.3 | The `degraded` array is the badge source so a consumer never re-derives badges from raw counters; twelve members, closed | [§ 7.2](#72-this-planes-own-counters-and-badges) (server badges kept **separate**, never merged into D1's array), [§ 7.3](#73-how-the-reporters-own-counters-are-handled) |
-| S19 | § 6.2, § 12.7 | An event for a session closed by `inferred_silence` **re-opens it** server-side and counts `session_reopened` | [§ 4.6](#46-every-open-fact-has-a-ceiling), [§ 6.4](#64-ddl) (`sessions.reopened`) |
+| S19 | § 6.2, § 12.7 | An event for a session closed by `inferred_silence` **re-opens it** server-side and counts `session_reopened`. An event also re-opens a session the sweeper closed when its seat went offline (`closed_by = server_offline`), and that reopen is not counted ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | [§ 4.6](#46-every-open-fact-has-a-ceiling), [§ 6.4](#64-ddl) (`sessions.reopened`) |
 | S20 | § 6.6 | A close with no open is **synthesized at the reporter**, so the ledger is total and the anomaly is a visible flag rather than a negative count | [§ 6.4](#64-ddl) (`calls.synthesized`), [§ 4.8](#48-what-may-never-mint-a-state) (the `match: synthesized` row: created already closed, flag stored and rendered) |
 | S21 | § 6.8 | The subagent title lives on `subagent.spawn` only; the consumer joins on `call_id`; a lost spawn yields a **title-less stop**, an honest orphan never papered over | [§ 8.2.1](#821-the-seat-state-object) (`subagents[].title` is nullable and **never invented** — a later `subagent.spawn` for the same `call_id` does fill it, and what is forbidden is deriving a title from anything else) |
 | S22 | § 6.11 | `used_pct_source` keeps the two branches distinguishable rather than silently averaged | [§ 8.2.1](#821-the-seat-state-object) (`context.source` rides every object; no aggregate mixes them) |
