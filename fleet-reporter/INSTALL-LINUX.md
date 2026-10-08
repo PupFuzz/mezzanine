@@ -466,7 +466,8 @@ restart.
 can only read that from this config key (see the note in the README's open-questions table). Claude Code
 updates itself, so a version written here once stops being true at the next update, and the desk would
 then show a wrong version as a fact. Unset, the field is an honest `null` and the
-`payload_key_missing.harness_label` counter records the gap.
+`harness_label_unset` counter records the gap. That counter raises no badge: an unset key is a correct
+install.
 
 ## Step 4 — wire the hooks, and optionally the statusLine
 
@@ -960,6 +961,14 @@ processes, as Step 5 reports.
   new build loads the same total. Deleting `state.json` does not clear it either: the next batch
   arrives under a new `seq_epoch`, and the server badges the seat `epoch_reset` from its own
   `seq_epoch_change`. Whether and how a badge clears is card#9491.
+- **A seat installed from a build before card#11330 is badged `harness_contract_moved`.** That build
+  counted the unset `harness_label` from Step 3 as `payload_key_missing.harness_label`, which raises the
+  badge whose line is *the harness payload moved under this reporter*, so every seat installed by this
+  runbook carried it. A build that includes card#11330 counts the gap as `harness_label_unset`, which
+  raises nothing. Its flusher also moves the total an older build saved in `state.json` to the new
+  name. The badge then clears at the first heartbeat after Step 1's artifact is replaced and Step 5's
+  flusher restarted, unless a missing harness payload key also raises it. The restart is needed
+  because a running flusher keeps the code it started with.
 - **No context gauge** while Step 4(b) is not applied, which is the sandbox's state.
 - **No Windows procedure exists yet.** One is owed when the Windows agent seat onboards, a real
   Windows machine. By operator ruling on 2026-09-13, D1 § 13's Windows validation is not required

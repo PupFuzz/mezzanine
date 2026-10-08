@@ -1509,7 +1509,11 @@ operator answer "which seats are on a build this document has never been measure
 stream instead of from a survey. ⚠ **No hook payload carries the version, so the reporter reads it from
 a `harness_label` config key**, and `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves that key unset on
 purpose: a version written once goes stale at the harness's next self-update. On a seat installed that
-way the field is `null`, and `payload_key_missing.harness_label` counts the gap.
+way the field is `null`, and `harness_label_unset` counts the gap. **It is not a
+`payload_key_missing.<key>` counter**, because that family names a harness payload key and raises
+`harness_contract_moved` ([§ 9.3](#93-degradation-counters)); a config value the runbook leaves unset
+is neither, so counting it there badged every correctly installed seat "the harness payload moved"
+(card#11330).
 
 **`previous_session_id` names the session this reporter just reaped — it is not a payload field.**
 The `SessionStart` payload carries **no** predecessor-session key of any kind: the captured
@@ -3749,6 +3753,7 @@ statusLine processes reach the flusher through the counter sink
 | `protocol_agent_name_unchecked` | the seat declares a protocol agent name and **no coordination roster was readable on this box** to check it against ([§ 3.1](#31-the-seat-config-file)) | informational, and the fleet-wide measurement of how much of the join rests on an unchecked declaration. **It raises no `degraded` member on purpose**: the state rides every heartbeat as `protocol_agent_name_check`, dated by `uptime_s` beside it, which is strictly more than a badge carries |
 | `protocol_agent_name_disagreed` | a roster **was** readable here and the declared name is not a member of it — the two identity surfaces disagree ([§ 3.1](#31-the-seat-config-file)) | the `selftest` check `protocol_agent_name_in_roster` **fails**, so the act fails visibly and `selftest` carries the failure on every heartbeat; the name is emitted exactly as declared and **resolves to no desk**. **It raises no `degraded` member, deliberately**: the reporter is not degraded — it is reporting a coordination-config defect correctly — and badging the seat's own health would name the wrong subject |
 | `project_label_home_suppressed` | a `cwd` equal to the home directory, whose basename is the OS username, so `project_label` was sent as `null` ([§ 6.1](#61-sessionstart)) | informational, and the record that the § 1 non-goal is enforced rather than merely stated. It also distinguishes this `null` from a `null` caused by an absent `cwd` |
+| `harness_label_unset` | a `session.start` was emitted with `harness_label` `null` because the seat's config carries no `harness_label` string (absent, empty or not a string), and absent is the state `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves on purpose ([§ 6.1](#61-sessionstart)) | informational, and the measurement of how many sessions the fleet's version pin is missing for. **It raises no `degraded` member**: the key is the reporter's config, not a harness payload key, so it is not a `payload_key_missing.<key>` counter. Builds before card#11330 counted it as `payload_key_missing.harness_label`; a later build's flusher moves a total saved under that name to this one at its next sink fold, so an upgraded seat's `harness_contract_moved` clears |
 | `console_url_malformed` | a transcript record that decides [§ 6.3](#63-turnstart)'s `console_url` carried an id or url that fails the field's pattern, so `null` was sent | informational, and the observable for that row's UNVERIFIED basis: a non-zero here on real seats means the harness moved the record's shape and § 6.3 owes an edit |
 | `console_url_tail_exhausted` | [§ 6.3](#63-turnstart)'s read walked its whole 1 MiB tail of a larger transcript without finding a deciding record, so `null` was sent | informational; a rising share of turns means the bridge records have drifted further apart than the bound, which § 6.3 re-derives |
 | `statusline_suppressed` | sampling suppressions | informational; a *zero* here on an active seat means sampling is broken |

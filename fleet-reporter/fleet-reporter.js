@@ -1348,10 +1348,17 @@ function projectLabel(payload) {
  * inside the 250 ms budget — and is honestly `null` plus a counter until then. There is no installer
  * (card #7336 is won't-do), and `INSTALL-LINUX.md` Step 3 leaves the key unset on purpose, because
  * a version written once goes stale at Claude Code's next self-update.
- * Filed as a D1 amendment request rather than guessed at. */
+ * Filed as a D1 amendment request rather than guessed at.
+ *
+ * THE GAP IS COUNTED `harness_label_unset`, NEVER `payload_key_missing.*` (card#11330). The key is
+ * a CONFIG value the runbook leaves unset, not a harness payload key, and `payload_key_missing.*`
+ * raises `harness_contract_moved` (§ 9.3) — so counting it there badged every correctly installed
+ * seat "the harness payload moved under this reporter", and taught the operator to ignore the one
+ * badge that reports a Claude Code upgrade moving the hook payloads. A seat that counted it under
+ * the old name keeps that total in state.json; `RENAMED_COUNTERS` moves it. */
 function harnessLabel(cfg) {
   const v = typeof cfg.harness_label === 'string' ? cfg.harness_label : null;
-  if (!v) { count('payload_key_missing.harness_label'); return null; }
+  if (!v) { count('harness_label_unset'); return null; }
   return /^[A-Za-z0-9._/-]{1,32}$/.test(v) ? v : null;
 }
 
@@ -2370,6 +2377,24 @@ function foldCounterSink(spool, state) {
       if (r.p === 'hook' && r.t && (!state.last_hook_at || r.t > state.last_hook_at)) state.last_hook_at = r.t;
     }
     state.counter_offsets[b] = from + nl + 1;
+  }
+  renameCounters(state.counters);
+}
+
+/* A COUNTER AN EARLIER BUILD WROTE UNDER THE WRONG NAME, MOVED TO ITS RIGHT ONE (card#11330).
+ * The totals live in state.json across flusher restarts, so renaming a counter in the code does not
+ * rename it on a seat that already counted it: the old name stays in the total, and every heartbeat
+ * keeps raising the member that name maps to. Builds before card#11330 counted an unset
+ * `harness_label` config key as `payload_key_missing.harness_label`, which `DEGRADED` maps to
+ * `harness_contract_moved`. This runs at the end of every sink fold, and a fold opens every flusher
+ * pass, so it moves the total an earlier flusher saved AND a delta an older hook wrote into a sink
+ * bucket not folded yet. Applied again to a total that holds no old name, it changes nothing. */
+const RENAMED_COUNTERS = [['payload_key_missing.harness_label', 'harness_label_unset']];
+function renameCounters(counters) {
+  for (const [from, to] of RENAMED_COUNTERS) {
+    if (!(from in counters)) continue;
+    counters[to] = (counters[to] || 0) + counters[from];
+    delete counters[from];
   }
 }
 
