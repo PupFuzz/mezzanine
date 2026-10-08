@@ -1859,8 +1859,8 @@ CREATE TABLE seat_counters (
   updated_at DATETIME(3) NOT NULL,
   -- § 7.2's badge window (card#9491): when the counter last rose, on the server clock, and never
   -- moved backwards. For a counter a badge is windowed on it is the RECEIPT of the evidence: the
-  -- ingest's write time for the ingest's counters, the event's `received_at` for the fold's, so a
-  -- rebuild that replays the event re-stamps the same instant. NULL only on a row an older build
+  -- ingest's write time for the ingest's counters, the event's `received_at` for the fold's. A
+  -- rebuild's replay writes neither column (§ 6.6, card#11549). NULL only on a row an older build
   -- inserted after a rollback (§ 6.9 rule 3), which the window reads as no recent rise.
   last_increased_at DATETIME(3) NULL,
   PRIMARY KEY (seat_ref, name)
@@ -2424,7 +2424,14 @@ projections, resets its cursor — `fold_cursor_event_id` to `0` and `fold_curso
 [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)'s lag stays computable and honest for the
 length of the run — and replays `events` in `id` order through the identical `project()`
 path used by the live fold, counting `state_rebuilds`. **The command shares the fold's code, not a copy
-of it** — a rebuild that runs different code is a rebuild that proves nothing. The replay's transaction
+of it** — a rebuild that runs different code is a rebuild that proves nothing. **The replay counts
+nothing** (card#11549): every `seat_counters` write the fold makes for the seat being replayed is
+dropped for the length of the replay (`Counters::replaying()`), so each counter keeps the `value` and
+`last_increased_at` the live pipeline gave it. The fold's counters record what the live fold observed,
+and a replay re-applies events they already counted; [§ 7.2](#72-this-planes-own-counters-and-badges)
+never resets them, because a row counts events the retention window has since purged, which no replay
+can count back. `state_rebuilds` and `rebuild_truncated` are the command's own, counted after the
+replay. The replay's transaction
 takes the seat's `seat_state` row lock as its first statement, before anything is deleted, and is run
 again from a clean rollback on a concurrency error ([§ 6.5](#65-the-fold), card#9466).
 
@@ -2826,7 +2833,9 @@ no seat caused them and degrading a desk for them would be the attribution error
 fleet-wide is ever written to it.
 
 **Reset and overflow, for both tables.** Neither is ever reset — not on a rebuild, not on a deploy, not
-on a flusher restart (the *reporter's* counters, [§ 7.3](#73-how-the-reporters-own-counters-are-handled),
+on a flusher restart — and a rebuild adds nothing to either: its replay writes no counter, so a fold
+counter is not counted a second time for events the live fold already counted
+([§ 6.6](#66-rebuild-from-the-log), card#11549) (the *reporter's* counters, [§ 7.3](#73-how-the-reporters-own-counters-are-handled),
 are a different population) — and [§ 6.7](#67-retention-and-purge) retains both forever, because
 a monotonic counter whose baseline moves is a counter no rate can be computed from. Neither can
 overflow in practice: `BIGINT UNSIGNED` tops out at 1.8 × 10¹⁹, and the fastest-moving counter here is
@@ -2856,8 +2865,9 @@ seat degraded now from one that had a one-time event weeks ago. The count stays 
 on the seat detail, so a cleared badge still reads back to what raised it. The sweeper recomputes every
 seat every pass ([§ 2.1](#21-processes)), so a badge clears within one sweep cadence of its window's
 end, on a seat that sends nothing as well. A rise is dated at the receipt of its evidence, never at the
-fold's own clock, so [§ 6.6](#66-rebuild-from-the-log)'s rebuild re-stamps the instant the live fold stamped and the
-two agree on the badge (AT-D2-10). The other three are not counter-derived and are not windowed:
+fold's own clock, so a fold catching up after an outage dates an old gap when it arrived rather than when
+the fold reached it. [§ 6.6](#66-rebuild-from-the-log)'s rebuild writes no counter, so it leaves every
+`last_increased_at` where the live pipeline left it and moves no badge (AT-D2-10). The other three are not counter-derived and are not windowed:
 `clock_skew` and `fold_lag` are current gauges, and `derivation_error` reads `seat_state.fold_errors`,
 which states that the derived state is missing an event until a rebuild clears it, a condition that
 holds until then rather than an event that happened once. [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters)
