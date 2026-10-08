@@ -5167,6 +5167,8 @@ theme draws INTO and never moves.
      tile carries `decoration: lamp` as the kit's lamps did, and [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s
      glow inside its tile stands unchanged.
 
+   **Tiled's flip flags are ignored** (card#11277): a cell's horizontal, vertical and diagonal flip bits are stripped from its GID and never read, so every placed tile — plane or standing — draws unrotated and unmirrored in its kind's theme art.
+
    **There is no floor kind**: the floor of every grid — a room's and a hallway's — is its plane document, so
    nothing an author paints is needed for a floor to be there. ⇒ **A map drawn under one theme is drawn under
    every theme**: the author places kinds, the theme draws them, and swapping a floor's theme re-authors

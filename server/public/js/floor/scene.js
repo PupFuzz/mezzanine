@@ -790,7 +790,8 @@ export function mapTiles(map, origin, tilesetFor, owner) {
         const columns = layer.width ?? grid.width;
 
         layer.data.forEach((cell, i) => {
-            const { gid, flip_h, flip_v, flip_d } = splitGid(cell);
+            // Tiled's flip bits are stripped and never carried: the floor draws every tile unrotated (§ 10.6 item 6).
+            const { gid } = splitGid(cell);
 
             if (gid === 0) {
                 return;
@@ -826,9 +827,6 @@ export function mapTiles(map, origin, tilesetFor, owner) {
                 sy: tile?.sy ?? 0,
                 sw: w,
                 sh: h,
-                flip_h,
-                flip_v,
-                flip_d,
                 opacity: alpha,
                 properties: tile?.properties ?? null,
                 // § 10.6 item 6: what the floor's theme draws the tile as — never its image.
