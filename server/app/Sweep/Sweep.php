@@ -489,7 +489,8 @@ final class Sweep
         // are already at their post-write values on both sides and never reach the patch.
         //
         // ⚠ AND UNLIKE THE TWO JOBS ABOVE THIS ONE HAS NO EARLY RETURN TO SIT UNDER, SO IT COSTS
-        // A LONG-OFFLINE SEAT ~5 INDEXED SELECTS PER PASS THAT IT DID NOT COST BEFORE. The reason
+        // A LONG-OFFLINE SEAT A HANDFUL OF INDEXED SELECTS PER PASS THAT IT DID NOT COST BEFORE
+        // (card#11559's seal read below is one more). The reason
         // is structural rather than an oversight: the settle at the foot of this method is guarded
         // on `$calls + $turns + $sessions > 0`, and `$turns` and `$sessions` are the affected-row
         // counts of UPDATEs that have not run yet — so "will this job act" is not knowable here
@@ -499,6 +500,21 @@ final class Sweep
         // today and would move `Predicates::record()`'s zero-count observation — card #7712's job
         // shape and card #7834's budget, not this card's. NAMED rather than absorbed.
         $before = SeatFacts::versionBearing($seatRef);
+
+        // ⛔ THE TURN AND SESSION CLOSES ARE STAMPED ON THE SEAT'S CLOCK, NEVER ON `$nowSql`
+        // (card#11559). `last_turn_ended_at` and `ended_at` are seat-clock columns: every wire close
+        // writes its event's `event_time`, the fold orders the seat's next event against them
+        // (`Projector::groupIsOlder`), and § 4.3's `L` is the session whose `last_turn_ended_at` is
+        // greatest. A server instant in them refused every event the seat stamped before it — a
+        // `turn.end` spooled through a network outage, or any event from a seat whose clock runs
+        // behind — as older than a close the seat never made. The stamp is the earliest seat-clock
+        // instant the close can have happened at: one millisecond after the newest event the fold
+        // applied to any of this seat's sessions, because every one of those was observed while
+        // the turn being closed was still open. So the close sorts after everything the seat said
+        // before it went quiet and before anything it says once it is back (FLEET-STATE.md § 4.6).
+        // The server's own instant is `updated_at`, and the transition row this job owes.
+        $newest = DB::table('sessions')->where('seat_ref', $seatRef)->max('applied_event_time');
+        $sealSql = $newest === null ? null : Clock::fromMs(Clock::toMs($newest) + 1);
 
         foreach ($calls as $call) {
             DB::table('calls')->where('id', $call->id)->update([
@@ -522,7 +538,7 @@ final class Sweep
                 // `unknown` / `session_closed_turn_open` rather than on a null `L`" (§ 4.6). Never
                 // `idle`: no `turn.end(stop_hook, [])` was ever observed.
                 'last_turn_end_reason' => 'server_session_close',
-                'last_turn_ended_at' => $nowSql,
+                'last_turn_ended_at' => $sealSql,
                 // ZERO, and § 4.6 says why in terms: "the calls were closed by the step before this
                 // one and counted there, so this turn close aborts none of its own".
                 'last_turn_aborted_count' => 0,
@@ -535,7 +551,7 @@ final class Sweep
 
         $sessions = DB::table('sessions')
             ->where('seat_ref', $seatRef)->whereNull('ended_at')
-            ->update(['ended_at' => $nowSql, 'closed_by' => 'server_offline', 'updated_at' => $nowSql]);
+            ->update(['ended_at' => $sealSql, 'closed_by' => 'server_offline', 'updated_at' => $nowSql]);
 
         Counters::seat($seatRef, 'offline_quiesced_calls', $calls->count());
         Counters::seat($seatRef, 'offline_quiesced_sessions', $sessions);
