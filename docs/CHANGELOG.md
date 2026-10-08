@@ -27,6 +27,7 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+- **card#11277** — **The floor ignores Tiled's tile flips.** A tile an author rotates or mirrors in Tiled draws unrotated and unmirrored, in its kind's art from the floor's theme, as every tile already did; `docs/design/FLOOR.md` § 10.6 item 6 now says so. The flip bits are still stripped from each cell's tile id, so a flipped cell names the same tile as an unflipped one.
 - **card#11468** — **Each desk's facts sit on one soft plate beside its side table, and the task above the creature is a thought cloud.** The label, currency, lag line, context gauge, badges, flag and *nothing done for* now stack together just above the side table, on one rounded cream plate as tall as the rows the desk carries; the side table stands on the desk's own floor line with its interns in front, and the *+N more* tag sits under it. Rows a desk does not carry take no space, so a new row moves the rows above it up by one line. The badge chips are 104 px wide (they were 108). The task bubble is drawn as a scalloped cloud, joined to the creature by three small circles that grow from just above its head to the cloud; the text, its truncation and where bubbles sit are unchanged. Coordination lines and walks now meet a desk at the desk's own mid-height instead of the box's, below every plate. FLOOR § 5.1, § 10.6, § 12, AT-D3-20 and AT-D3-25 and decision 64 record it.
 
 ## [0.8.0] — 2026-10-07
