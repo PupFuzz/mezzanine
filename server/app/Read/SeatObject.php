@@ -60,6 +60,12 @@ final class SeatObject
         $action = SeatFacts::action($state);
         $session = SeatFacts::session($state);
         $subagents = SeatFacts::openSubagents($seatRef);
+        // § 8.2.1's `idle_nudge_after_s` (card#9418): the horizon this seat resolves to. The record
+        // contract (rt#478 ask 2) makes it the RESOLVED per-seat value, "seat override else install
+        // default; where it comes from is ours" — this install has no per-seat override, so every
+        // seat resolves to the configured install value. CONFIGURATION, not state, so it is read
+        // here and never fingerprinted: § 6.5 names why it rides no delta.
+        $idleNudgeAfterS = config('mezzanine.idle_nudge_after_s');
 
         return [
             'install_id' => (string) $seat->install_id,
@@ -71,6 +77,13 @@ final class SeatObject
             'unknown_reason' => $state->unknown_reason,
             'api_error_type' => SeatFacts::apiErrorType($seatRef, (string) $state->activity_state),
             'blocked_since' => Clock::wire(SeatFacts::blockedSince($state)),
+            // card#9418: the server-clock instant the fold entered `idle`, null on every other
+            // state — written on the edge by `StateRecompute`, published here as stored.
+            'idle_since' => Clock::wire($state->idle_since),
+            // ⛔ ABSENT, NOT NULL, WHEN NO HORIZON IS DECLARED (rt#479): a consumer tells a declared
+            // horizon from an undeclared one by the key's presence, so no default is ever emitted.
+            // Snapshot and detail only — § 6.5 keeps it out of the delta.
+            ...($idleNudgeAfterS === null ? [] : ['idle_nudge_after_s' => $idleNudgeAfterS]),
 
             'action' => $action === null ? null : [
                 'call_id' => (string) $action->call_id,
