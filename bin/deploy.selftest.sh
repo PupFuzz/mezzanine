@@ -107,6 +107,19 @@ REPO="$(cd "$HERE/.." && pwd)"
 # shellcheck source=bin/supervision.sh
 . "$HERE/supervision.sh"
 
+# The assertion basics — ok, bad, notverified, eq, exits, has, hasnt, section and the counters — are
+# bin/lib/selftest-assert.sh's, shared with bin/deploy-gate-inputs.selftest.sh (card#11562). Sourced
+# FAIL-CLOSED: without them this suite has no assertions, and a run with none must not reach a summary.
+# ⛔ WHAT `exits` CAN PRINT HERE IS FIXTURE DATA ONLY: every case runs deploy.sh against a fixture root this
+# suite built in a temp dir, whose .env write_env (or a case) writes with FAKE_KEY and FAKE_PW, so no real
+# credential is in reach of what it prints. deploy.sh itself prints no credential's value (A5 prints APP_ENV,
+# APP_DEBUG, DB_CONNECTION and CACHE_STORE); the `no DB password is printed` and `leaks no APP_KEY` cases
+# check that on the paths they run.
+# shellcheck source=bin/lib/selftest-assert.sh
+. "$HERE/lib/selftest-assert.sh" || { echo "selftest: cannot source $HERE/lib/selftest-assert.sh" >&2; exit 1; }
+declare -F ok bad notverified eq exits has hasnt section >/dev/null \
+  || { echo "selftest: $HERE/lib/selftest-assert.sh did not define every assertion this suite uses" >&2; exit 1; }
+
 # Resolved, because deploy.sh resolves the php it writes into crontab entries (readlink -f): a T
 # under a symlinked /tmp would make every fixture's installed entries differ from what it expects.
 T="$(readlink -f "$(mktemp -d)")"
@@ -132,45 +145,7 @@ trap cleanup EXIT
 export CALL_LOG="$T/calls.log"; : > "$CALL_LOG"
 ME="$(/usr/bin/id -un)"
 
-fails=0; cases=0; unverified=0
-ok()  { printf '  ok   %s\n' "$1"; }
-bad() { printf '  FAIL %s\n' "$1" >&2; fails=$((fails + 1)); }
-# notverified <headline> <detail line…> — a CONDITION THIS RUNNER COULD NOT PRODUCE. It is not a
-# pass and not a failure: the case did not run, and saying so BY NAME is the result (card#9646).
-# ⛔ A SILENT SKIP IS WORSE THAN A RED, because it is shaped exactly like coverage. Every caller
-# names the knob or the state it needed, what this runner answered instead, and what would have to
-# be true to exercise it — so the next reader gets the measurement rather than a mystery. The
-# summary at the bottom repeats the count, so it cannot scroll past unseen.
-notverified() {
-  unverified=$((unverified + 1))
-  printf '  ⚠ NOT VERIFIED HERE  %s\n' "$1" >&2
-  local l; for l in "${@:2}"; do printf '                       %s\n' "$l" >&2; done
-}
-eq()  { cases=$((cases+1)); [ "$2" = "$3" ] && ok "$1" || bad "$1 — expected '$2', got '$3'"; }
-# exits <label> <expected> [status] [output] — THE exit-code assertion: <status> (default $RC) is <expected>, and on
-# a mismatch everything <output> holds (default $OUT — what the same run printed, stdout and stderr together) is
-# printed under the FAIL line (card#11557). A status alone cannot say which gate returned it: deploy.sh's 2 is every
-# in-window failure there is, and a red that names no step can only be rerun, never read.
-# ⚠ THE WHOLE OUTPUT, NOT ITS TAIL: the in-window banner (in_window_failure) is itself longer than a short tail, and
-# the line naming the gate that failed is printed just above it — measured, a 20-line tail showed the banner and
-# not the cause. A red is the only time this prints, and it is the time the whole of it is wanted.
-# Every site that captures a status captures the run's output beside it (`run`, `run_via`, `run_full` and the
-# inline `OUT=…; RC=$?` sites), so the output is always the run the status came from.
-# ⛔ WHAT IT CAN PRINT IS FIXTURE DATA ONLY: every case runs deploy.sh against a fixture root this suite built in a
-# temp dir, whose .env write_env (or a case) writes with FAKE_KEY and FAKE_PW, so no real credential is in reach of
-# what it prints. deploy.sh itself prints no credential's value (A5 prints APP_ENV, APP_DEBUG, DB_CONNECTION and
-# CACHE_STORE); the `no DB password is printed` and `leaks no APP_KEY` cases check that on the paths they run.
-exits() {
-  local label="$1" want="$2" got="${3-$RC}" out="${4-$OUT}"
-  cases=$((cases+1))
-  if [ "$want" = "$got" ]; then ok "$label"; return 0; fi
-  bad "$label — expected '$want', got '$got'"
-  printf '         ┆ what it printed:\n' >&2
-  printf '%s\n' "$out" | sed 's/^/         ┆ /' >&2
-}
 neq() { cases=$((cases+1)); [ "$2" != "$3" ] && ok "$1" || bad "$1 — expected anything but '$2'"; }
-has() { cases=$((cases+1)); case "$3" in *"$2"*) ok "$1" ;; *) bad "$1 — output did not contain '$2'" ;; esac; }
-hasnt() { cases=$((cases+1)); case "$3" in *"$2"*) bad "$1 — output unexpectedly contained '$2'" ;; *) ok "$1" ;; esac; }
 logged()   { cases=$((cases+1)); grep -q -- "$2" "$CALL_LOG" && ok "$1" || bad "$1 — '$2' was never called"; }
 unlogged() { cases=$((cases+1)); grep -q -- "$2" "$CALL_LOG" && bad "$1 — '$2' WAS called" || ok "$1"; }
 # before — ordering inside the call log. The cache-rebuild order is load-bearing, so it is pinned
@@ -183,7 +158,6 @@ before() {
   if [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; then ok "$1"
   else bad "$1 — '$2' (line ${a:-none}) is not before '$3' (line ${b:-none})"; fi
 }
-section() { printf '\n── %s\n' "$1"; }
 
 # no_shell_death <label> — the run printed no bash DIAGNOSTIC of its own. ⛔ THIS IS THE BASH-FLOOR
 # TRIPWIRE, and it is the only assertion in this file whose job is to fail on a DIFFERENT INTERPRETER

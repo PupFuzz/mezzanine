@@ -43,19 +43,17 @@ REPO="$(cd "$HERE/.." && pwd)"
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 
-fails=0; cases=0; unverified=0
-ok()  { printf '  ok   %s\n' "$1"; }
-bad() { printf '  FAIL %s\n' "$1" >&2; fails=$((fails + 1)); }
-# notverified <reason> — a case THIS RUNNER COULD NOT BUILD. Not a pass and not a failure: the case did
-# not run, and naming it is the result (card#10368). The summary repeats the count.
-notverified() { unverified=$((unverified + 1)); printf '  ⚠ NOT VERIFIED HERE  %s\n' "$1" >&2; }
-# `eq` branches rather than chaining `A && ok || bad`: in that chain the reporter's OWN exit status
-# is a second way to reach `bad`, so a printf that fails (a closed or full stdout under a CI lane's
-# redirection) turns a case that PASSED into a FAIL, for a reason that is not about the check.
-eq()  { cases=$((cases+1)); if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 — expected '$2', got '$3'"; fi; }
-has() { cases=$((cases+1)); case "$3" in *"$2"*) ok "$1" ;; *) bad "$1 — output did not contain '$2'" ;; esac; }
-hasnt() { cases=$((cases+1)); case "$3" in *"$2"*) bad "$1 — output unexpectedly contained '$2'" ;; *) ok "$1" ;; esac; }
-section() { printf '\n── %s\n' "$1"; }
+# The assertion basics — ok, bad, notverified, eq, exits, has, hasnt, section and the counters — are
+# bin/lib/selftest-assert.sh's, shared with bin/deploy.selftest.sh (card#11562). Every exit-code assertion
+# is `exits`, so a red prints what the run said: deploy-gate-inputs.sh's 1 is every gate that refused, and
+# a status alone cannot say which. Sourced FAIL-CLOSED: without them this suite has no assertions.
+# ⛔ WHAT `exits` CAN PRINT HERE is deploy-gate-inputs.sh's output over a fixture built from this
+# repository's tracked tree in a temp dir: the gates' own words and the paths they read. The fixture has
+# no .env, and the check opens none (its header: NO CREDENTIAL).
+# shellcheck source=bin/lib/selftest-assert.sh
+. "$HERE/lib/selftest-assert.sh" || { echo "selftest: cannot source $HERE/lib/selftest-assert.sh" >&2; exit 1; }
+declare -F ok bad notverified eq exits has hasnt section >/dev/null \
+  || { echo "selftest: $HERE/lib/selftest-assert.sh did not define every assertion this suite uses" >&2; exit 1; }
 
 # git, with an identity and no signing: the fixtures are commits, and a machine whose global config
 # signs or names nobody must not turn this suite red for a reason that is not about the check.
@@ -98,7 +96,7 @@ A11='/^gate_a11_trusted_proxies() {$/'
 # ── the control ────────────────────────────────────────────────────────────────────────────────
 section "CONTROL — the repository as it is"
 mkcase; run
-eq  "control: exit 0"                                  0 "$RC"
+exits "control: exit 0"                                  0
 has "control: says every declared gate passes"         "every target-tree gate bin/deploy.sh declares host-free passes" "$OUT"
 has "control: the gates are RUN, not parsed"           "its target-tree gates, RUN over" "$OUT"
 # Every row the fixture's own bin/deploy.sh declares host-free is reported as run — read out of that
@@ -127,22 +125,22 @@ has "control: names the card that built the ledger"    "card#9745" "$OUT"
 section "FINDINGS — a gate REFUSES this commit, so a real deploy of it would"
 
 mkcase; rm -f "$DIR/server/package-lock.json"; run
-eq  "an absent lockfile: exit 1 (a finding, not a failure)" 1 "$RC"
+exits "an absent lockfile: exit 1 (a finding, not a failure)" 1
 has "absent lockfile: the refusing gate is named"      "REFUSES" "$OUT"
 has "absent lockfile: …as the gate function"            "REFUSED  gate_a12_target_lockfile" "$OUT"
 has "absent lockfile: in the deploy's own words"        "server/package-lock.json is missing from" "$OUT"
 has "absent lockfile: says it is the deploy's gate, not a rule of this lane" "This is the deploy's OWN gate" "$OUT"
 
 mkcase; : > "$DIR/server/composer.json"; run
-eq  "an empty composer.json: exit 1"                   1 "$RC"
+exits "an empty composer.json: exit 1"                   1
 has "empty composer.json: A6's refusal"                "server/composer.json is missing or empty" "$OUT"
 
 mkcase; rm -f "$DIR/server/bootstrap/app.php"; ln -s ../top.txt "$DIR/server/bootstrap/app.php"; run
-eq  "app.php committed as a SYMLINK: exit 1"           1 "$RC"
+exits "app.php committed as a SYMLINK: exit 1"           1
 has "symlink: the deploy's reader refuses it by its mode" "is a symbolic link at" "$OUT"
 
 mkcase; rm -f "$DIR/bin/supervision.sh"; run
-eq  "no bin/supervision.sh: exit 1"                    1 "$RC"
+exits "no bin/supervision.sh: exit 1"                    1
 has "no bin/supervision.sh: A13's target half refuses" "bin/supervision.sh is missing or empty" "$OUT"
 
 # ⭐ THE CONTENT PREDICATES — what this lane did not assert before card#9745. Each red beside a control
@@ -155,34 +153,68 @@ return new class { public function up(): void { Schema::table('events', fn (\$t)
 MIG
 }
 mkcase; alter_events ""; run
-eq  "an ALTER on events with no ALGORITHM=: exit 1"    1 "$RC"
+exits "an ALTER on events with no ALGORITHM=: exit 1"    1
 has "ALTER without ALGORITHM=: A10's refusal, naming the migration" "2099_01_01_000000_alter_events_selftest.php" "$OUT"
 has "ALTER without ALGORITHM=: in the deploy's words"  "without stating an ALGORITHM" "$OUT"
 mkcase; alter_events "ALGORITHM=INSTANT"; run
-eq  "the control: the same ALTER declaring ALGORITHM=INSTANT: exit 0" 0 "$RC"
+exits "the control: the same ALTER declaring ALGORITHM=INSTANT: exit 0" 0
 
 mkcase
 # shellcheck disable=SC2016  # PHP source, written as it is: `$m` is PHP's, not the shell's
 printf '<?php return Application::configure()->withMiddleware(fn ($m) => $m->trustProxies(at: '"'"'*'"'"'))->create();\n' \
   > "$DIR/server/bootstrap/app.php"
 run
-eq  "trustProxies('*'): exit 1"                        1 "$RC"
+exits "trustProxies('*'): exit 1"                        1
 has "trustProxies('*'): A11's refusal"                 "trusts ALL proxies" "$OUT"
 mkcase
 # shellcheck disable=SC2016  # PHP source, written as it is: `$m` is PHP's, not the shell's
 printf '<?php return Application::configure()->withMiddleware(fn ($m) => $m->trustProxies(at: '"'"'10.0.0.1'"'"'))->create();\n' \
   > "$DIR/server/bootstrap/app.php"
 run
-eq  "the control: trustProxies naming one proxy: exit 0" 0 "$RC"
+exits "the control: trustProxies naming one proxy: exit 0" 0
 hasnt "the control: and no warning that none is configured" "no trustProxies() configured" "$OUT"
 
+# ⭐ A WRITER THAT OUTLIVES grep (card#11562). A10 and A11 judge a file's text through text_matches. Its
+# grep must read ALL of the text: one that left at its first match (`grep -q`) killed the writer still
+# feeding it with SIGPIPE, and under `pipefail` a line that MATCHED read as one that did not — a refusal
+# of a clean tree in one direction, a `trustProxies('*')` waved through in the other. That race needs
+# host load to show, so these cases hold the writer 0.2 s after its first 2400 bytes, every time: the
+# same three verdicts must come out. Each file puts the line that decides it in the first 2400 bytes and
+# enough padding after it that the writer is still writing when an early grep would have gone.
+LATE="$(cat <<'SED'
+/^text_matches() {/s/printf '%s' "\$3" |/{ printf '%s' "${3:0:2400}"; sleep 0.2; printf '%s' "${3:2400}"; } |/
+SED
+)"
+pad="$(for i in $(seq 1 60); do printf '// padding line %02d, past the 2400 bytes the writer is held after\n' "$i"; done)"
+mkcase; mutate "$LATE"
+# shellcheck disable=SC2016  # PHP source, written as it is: `$t` is PHP's, not the shell's
+printf '<?php\n// ALGORITHM=INSTANT\n%s\nreturn new class { public function up(): void { Schema::table('"'"'events'"'"', fn ($t) => $t->string('"'"'x'"'"')->nullable()); } };\n' \
+  "$pad" > "$DIR/server/database/migrations/2099_01_01_000000_alter_events_selftest.php"
+run
+exits "a held writer: an ALTER on events declaring ALGORITHM= early in a long file: exit 0" 0
+mkcase; mutate "$LATE"
+# shellcheck disable=SC2016  # PHP source, written as it is: `$t` is PHP's, not the shell's
+printf '<?php\nreturn new class { public function up(): void { Schema::table('"'"'events'"'"', fn ($t) => $t->string('"'"'x'"'"')->nullable()); } };\n%s\n' \
+  "$pad" > "$DIR/server/database/migrations/2099_01_01_000000_alter_events_selftest.php"
+run
+exits "a held writer: an ALTER on events early in a long file, with no ALGORITHM=: exit 1" 1
+# On its offender line (`| <path>`), not merely anywhere: every path A10 reads is printed (`read  <path>`).
+has "a held writer: A10's refusal, naming the migration" "| server/database/migrations/2099_01_01_000000_alter_events_selftest.php" "$OUT"
+mkcase; mutate "$LATE"
+# shellcheck disable=SC2016  # PHP source, written as it is: `$m` is PHP's, not the shell's
+printf '<?php return Application::configure()->withMiddleware(fn ($m) => $m->trustProxies(at: '"'"'*'"'"'))->create();\n%s\n' \
+  "$pad" > "$DIR/server/bootstrap/app.php"
+run
+exits "a held writer: trustProxies('*') early in a long app.php: exit 1" 1
+has "a held writer: A11's refusal"                     "trusts ALL proxies" "$OUT"
+
 mkcase; printf '{"lockfileVersion":9}\n' > "$DIR/server/package-lock.json"; run
-eq  "a lockfileVersion A12 cannot map: exit 1"         1 "$RC"
+exits "a lockfileVersion A12 cannot map: exit 1"         1
 has "unmappable lockfileVersion: A12's refusal"        "which A12 cannot map to an npm floor" "$OUT"
 
 # Every gate is run, not only the first to refuse: a PR author learns every refusal in one round.
 mkcase; rm -f "$DIR/server/package-lock.json"; : > "$DIR/server/composer.json"; run
-eq  "two gates refuse at once: exit 1"                 1 "$RC"
+exits "two gates refuse at once: exit 1"                 1
 has "two refusals: both are named"                     "gate_a6_target_php_floor gate_a12_target_lockfile" "$OUT"
 
 # ── LEG 3: every git process of a gate run is a git_at call ────────────────────────────────────
@@ -192,7 +224,7 @@ mkcase
 # shellcheck disable=SC2016  # injected source
 mutate "${A11}a \\  git -C \"\$DEPLOY_ROOT\" cat-file -e \"\$1:server/artisan\""
 run
-eq  "a BARE git call inside a gate: exit 2"            2 "$RC"
+exits "a BARE git call inside a gate: exit 2"            2
 has "bare git: named as a git process with no git_at call, by its arguments" \
     "git process with NO git_at call:   git -C" "$OUT"
 has "bare git: …which are the ones it was given"       "cat-file -e" "$OUT"
@@ -201,7 +233,7 @@ mkcase
 # shellcheck disable=SC2016  # injected source
 mutate 's/^  git -C "\$DEPLOY_ROOT" "\$@"$/  command -p git -C "$DEPLOY_ROOT" "$@"/'
 run
-eq  "git_at itself bypassing the shim (a git found without PATH): exit 2" 2 "$RC"
+exits "git_at itself bypassing the shim (a git found without PATH): exit 2" 2
 has "shim bypassed: every call is named as one no git process answered" \
     "git_at call that NO git process answered through the shim" "$OUT"
 
@@ -211,7 +243,7 @@ mutate "${A11}i extra_reader() { local x; git_read_at x \"\$1\" server/artisan |
 # shellcheck disable=SC2016  # injected source
 mutate "${A11}a \\  extra_reader \"\$1\""
 run
-eq  "a gate reading through a helper the declaration does not name: exit 2" 2 "$RC"
+exits "a gate reading through a helper the declaration does not name: exit 2" 2
 has "undeclared helper: named, with the path it read" \
     "gate_a11_trusted_proxies read server/artisan through extra_reader, which bin/deploy.sh" "$OUT"
 
@@ -219,7 +251,7 @@ mkcase
 # shellcheck disable=SC2016  # injected source
 mutate "${A11}a \\  local __h; git_read_at __h HEAD server/artisan || true"
 run
-eq  "a host-free gate reading a rev that is not the commit: exit 2" 2 "$RC"
+exits "a host-free gate reading a rev that is not the commit: exit 2" 2
 has "another rev: named, as a read of this host's checkout" "gate_a11_trusted_proxies read HEAD:server/artisan" "$OUT"
 
 # ── the declaration ────────────────────────────────────────────────────────────────────────────
@@ -228,30 +260,30 @@ section "THE DECLARATION — what is run is what bin/deploy.sh declares, and it 
 mkcase
 mutate '/^GATE_TREE_READERS=(/,/^)$/d'
 run
-eq  "no GATE_TREE_READERS: exit 2"                     2 "$RC"
+exits "no GATE_TREE_READERS: exit 2"                     2
 has "no declaration: says so"                          "declares no GATE_TREE_READERS" "$OUT"
 
 mkcase
 mutate "s/^  'gate_a11_trusted_proxies host-free'\$/  'gate_a11_trusted_proxies host-free'\n  'gate_nowhere host-free'/"
 run
-eq  "a declared function that is not defined: exit 2"  2 "$RC"
+exits "a declared function that is not defined: exit 2"  2
 has "undefined: named"                                 "declares gate_nowhere in GATE_TREE_READERS and defines no such function" "$OUT"
 
 mkcase
 mutate "s/^  'gate_a11_trusted_proxies host-free'\$/  'gate_a11_trusted_proxies host-free'\n  'gate_reads_nothing host-free'/"
 printf '%s\n' 'gate_reads_nothing() { :; }' >> "$DIR/bin/deploy.sh"
 run
-eq  "a declared reader that reads nothing: exit 2"     2 "$RC"
+exits "a declared reader that reads nothing: exit 2"     2
 has "reads nothing: named as stale"                    "gate_reads_nothing is declared a reader of the release" "$OUT"
 
 mkcase
 mutate "s/^\\(  '[a-z0-9_]*\\) host-free'\$/\\1 not run by this case'/"
 run
-eq  "no host-free row at all: exit 2"                  2 "$RC"
+exits "no host-free row at all: exit 2"                  2
 has "no host-free row: an empty population is refused" "declares no host-free reader" "$OUT"
 
 mkcase; rm -f "$DIR/bin/deploy.sh"; run
-eq  "no bin/deploy.sh at the commit: exit 2"           2 "$RC"
+exits "no bin/deploy.sh at the commit: exit 2"           2
 has "no deploy script: says nothing was measured"      "is not readable at" "$OUT"
 
 # ── could not speak ────────────────────────────────────────────────────────────────────────────
@@ -274,7 +306,7 @@ else
     notverified "a git object at mode 000 is still readable on this runner (root?), so the failed-read case did not run"
   else
     OUT="$(cd "$DIR" && bash "$CHECK" --ref HEAD 2>&1)"; RC=$?
-    eq  "a read of the release git could not complete: exit 2, NOT 1" 2 "$RC"
+    exits "a read of the release git could not complete: exit 2, NOT 1" 2
     has "failed read: named as not established, not as a finding" "could not establish a read of" "$OUT"
   fi
   chmod 644 "$obj"
@@ -285,7 +317,7 @@ fi
 mkcase
 mkdir -p "$T/stub"; printf '#!/bin/sh\nexit 3\n' > "$T/stub/mktemp"; chmod +x "$T/stub/mktemp"
 OUT="$(cd "$DIR" && PATH="$T/stub:$PATH" bash "$CHECK" --ref HEAD 2>&1)"; RC=$?
-eq  "a tool the check needs fails: exit 2, NOT 1"      2 "$RC"
+exits "a tool the check needs fails: exit 2, NOT 1"      2
 has "a crash says it established nothing, and is not a finding" "established NOTHING" "$OUT"
 
 # ── the invocation ─────────────────────────────────────────────────────────────────────────────
@@ -294,15 +326,15 @@ section "THE INVOCATION — a mistyped command line is never a verdict about the
 
 mkcase
 OUT="$(cd "$DIR" && bash "$CHECK" --ref 2>&1)"; RC=$?
-eq  "--ref with no value: exit 2, NOT 1"               2 "$RC"
+exits "--ref with no value: exit 2, NOT 1"               2
 has "--ref with no value: stops with the banner"       "⛔ deploy-gate-inputs.sh — --ref needs a value" "$OUT"
 
 OUT="$(cd "$DIR" && bash "$CHECK" --ref '' 2>&1)"; RC=$?
-eq  "--ref with an empty value: exit 2, NOT 1"         2 "$RC"
+exits "--ref with an empty value: exit 2, NOT 1"         2
 has "--ref with an empty value: stops with the banner" "⛔ deploy-gate-inputs.sh — --ref needs a value" "$OUT"
 
 OUT="$(cd "$DIR" && bash "$CHECK" --reff HEAD 2>&1)"; RC=$?
-eq  "an unknown argument: exit 2"                      2 "$RC"
+exits "an unknown argument: exit 2"                      2
 has "an unknown argument: stops with the banner, naming it" "⛔ deploy-gate-inputs.sh — unknown argument: --reff" "$OUT"
 
 printf '\n──────────────────────────────────────────────\n'
