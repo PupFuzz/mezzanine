@@ -58,6 +58,7 @@ card"* by inventing one would be the failure this whole product exists to preven
 | The write: the input table's fields and semantics, and the one transaction | [§ 7](#7-the-write) |
 | The merge function the fold and the sweeper run, tier 1 included | [§ 8](#8-the-merge) |
 | Failure paths and their observables; acceptance tests; every number | [§ 9](#9-failure-paths) · [§ 11](#11-acceptance-tests) · [§ 12](#12-every-number-and-where-it-comes-from) |
+| **The compose path** — the ONE write this product makes to the board, its credential, its target rule, its channel seam, and the hop it cannot verify | [§ 15](#15-the-compose-path--one-verb) (`card#9417`) |
 
 ### 1.2 Non-goals — stated so an implementer cannot widen scope in good faith
 
@@ -65,7 +66,7 @@ card"* by inventing one would be the failure this whole product exists to preven
 |---|---|
 | **The tier table, the precedence, the `task.*` wire members, the 30-minute bound** | [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here) and [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object). This document produces an input; it does not re-specify the merge's contract. Where it needs one of those facts it cites the section and does not paraphrase it. |
 | **Anything GitHub-sourced** | Nothing is owed. Tier 2 was the GitHub-sourced title and it is **retired** by operator ruling (card#9234) — the number 2 with it. The coordination producer ([D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer)) and the thread line it feeds are untouched by that retirement and by this document. |
-| **Writing to the board** | The credential is read-scoped ([§ 5](#5-the-credential)) and the poller issues `GET` only. Mezzanine never moves a card, never assigns one, and never comments. A floor that could edit its own subject would be an instrument inside the thing it measures. |
+| **Writing to the board — with ONE exception, owned by [§ 15](#15-the-compose-path--one-verb)** | The poller's credential is read-scoped ([§ 5](#5-the-credential)) and the poller issues `GET` only: **the poller** never moves a card, never assigns one, and never comments. ⭐ **Amended on `card#9417`.** Until that card this row read *"Mezzanine never moves a card, never assigns one, and never comments"*, and the product now makes exactly one write to the board: **a comment, authored by a signed-in operator (`can:operate`, card#9415) and posted under a named read/write board account the floor holds, on the card the seat's desk is showing** — never a move, never an assign, never a comment on any other card, and never a write that a timer, a poll or an inference originates. It rides a second, write-scoped credential the poller never reads ([§ 5.3](#53-the-compose-credential)). The sentence this row carried — *a floor that could edit its own subject would be an instrument inside the thing it measures* — still stands as the rule, and [§ 15.3](#153-the-one-verb-and-why-it-is-not-an-instrument-inside-the-measurement) is the argument that this verb does not breach it: the floor derives a seat's state from telemetry and from six fields of a card row ([§ 6.2](#62-the-fields-consumed)); a comment writes none of them, and the one field it *might* move — `updated_at`, unverified ([§ 14](#14-open-questions) item 9) — on the one card a compose can reach, the seat's current [§ 4.2](#42-which-card-answers-when-several-could) winner, can only confirm that choice and never change it. |
 | **Deciding that cards get assigned** | An operator workflow convention, ruled on 2026-09-10 (card#7582). This document designs against `assigned_user_id` being populated; it does not populate it and does not backfill it. |
 | **Alerting** | [D2 § 1.2](FLEET-STATE.md#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)'s position, inherited deliberately: a degraded poll surfaces as a counter and as `task.degraded` on the wire, and there is no notifier. |
 | **A second producer for the same fact** | There is one board producer and there must not be a second — the rule [D1 § 18.11](EVENT-SCHEMA.md#1811-one-producer-and-the-one-consumer-it-serves) states for its own producer, applied here for the same reason. |
@@ -358,14 +359,17 @@ the column; today it would be a column with one value.
 | `BOARD_API_BASE` | e.g. `https://<kanban-host>/api/v3` | No trailing slash. HTTPS only; a plain-`http` base is refused at startup. |
 | `BOARD_API_TOKEN` | a **read-scoped** bearer token | Sent as `Authorization: Bearer …`. |
 | `BOARD_IDS` | comma-separated board ids | Empty or unset ⇒ the poller is **unconfigured**, which is a clean no-op, not a failure ([§ 9](#9-failure-paths)). |
+| `BOARD_COMPOSE_TOKEN` | a **write-scoped** bearer token, for [§ 15](#15-the-compose-path--one-verb)'s compose path **only** | `card#9417`. Sent as `Authorization: Bearer …` on the one request shape § 15.7 states. **Never read by the poller.** Empty or unset ⇒ compose is **unconfigured** — refused by name at the panel and at the route ([§ 15.11](#1511-failure-paths)) — and the poller is unaffected. Shares `BOARD_API_BASE`; it does not get a base of its own, because two bases is two boards |
 
-Read through `config/mezzanine.php` (`mezzanine.board.api_base`, `.api_token`, `.board_ids`), never
-`env()` at a call site. The three keys are in `server/.env.example`, empty.
+Read through `config/mezzanine.php` (`mezzanine.board.api_base`, `.api_token`, `.board_ids`,
+`.compose_token`), never `env()` at a call site. The four keys are in `server/.env.example`, empty.
 
-**Read-scoped is a requirement, not a preference.** The poller issues `GET` only and there is no path
-in this design that writes to the board; a token that *could* write is a token that turns a bug in a
-read loop into a board mutation. The scope is the operator's act at the board, and the design's
-obligation is to need nothing more.
+**Read-scoped is a requirement, not a preference — for the poller's token.** The poller issues `GET`
+only and there is no path in the *poller* that writes to the board; a token that *could* write is a
+token that turns a bug in a read loop into a board mutation. The scope is the operator's act at the
+board, and the design's obligation is to need nothing more. ⭐ `card#9417` **does not loosen this; it
+adds a second credential beside it** ([§ 5.3](#53-the-compose-credential)) so that the read loop keeps
+a token that cannot write, and the one path that writes holds a token the read loop never sees.
 
 ### 5.1 ⛔ The token value never reaches an output stream
 
@@ -391,6 +395,35 @@ find a leak rather than to assert one is absent.
 A missing, malformed or refused (`401`/`403`) credential is a **degraded read**, and a degraded read
 writes nothing at all — see [§ 7.3](#73-a-failed-poll-writes-nothing), which is the single most
 important behavioural rule in this document after [§ 2](#2-the-rebuildability-question).
+
+### 5.3 The compose credential
+
+*`card#9417`.* **Two tokens, two scopes, one base.** `BOARD_API_TOKEN` is the poller's and is read-scoped;
+`BOARD_COMPOSE_TOKEN` is the compose path's ([§ 15](#15-the-compose-path--one-verb)) and is
+write-scoped. The poller reads only the first; `App\Board\BoardPoll::credential()` is the one site that
+reads it today, and that site does not change. The compose path reads only the second. Nothing in the
+application reads both, so no code path can post with the read token or poll with the write one — and
+[§ 15.12](#1512-acceptance-tests)'s AT-C4 is the test that a missing compose token does **not** fall
+back to the poller's.
+
+**What the scope buys, and what Mezzanine can and cannot check about it.** Which operations a token may
+perform is the board's to decide and the operator's to issue; Mezzanine cannot read a token's scope.
+What it CAN check locally, and does: the two values are **not equal** — an operator who pasted one
+read/write token into both keys has made the read loop a writer, which is the exact state § 5's rule
+exists to forbid, and it is the one misconfiguration of that shape a program can see. Equal values
+refuse the compose path by name (`credential_shared`, [§ 15.11](#1511-failure-paths)) and leave the
+poller running: the poller is not the party at fault, and stopping it would turn a credential mistake
+into a dark floor. ⚠ Whether the board issues per-token scopes at all is **unverified here**
+([§ 14](#14-open-questions) item 6); if it does not, the one-verb rule is enforced by this
+application's code alone — § 15.7's single request shape and AT-C2's request-population assertion —
+and the operator provisions a dedicated board account whose *role* at the board is the narrowest that
+can comment.
+
+**§ 5.1's resolution rule applies to this token unchanged**: a header and never a query; a non-2xx as
+a status and a class and never a body; every logged URL with its userinfo redacted. The shared client
+that enforces it for both tokens is [§ 15.7](#157-the-write-and-the-receipt)'s `App\Board\BoardHttp`,
+hoisted out of `BoardPoll` at the second real caller rather than written twice (canon #5), and
+AT-D4-4's planted defect — the token moved into the query — is re-run over the compose path as AT-C5.
 
 ---
 
@@ -922,3 +955,480 @@ against.
    README states for every gate. The shape a guard would be written against has stopped moving.
 5. **⇢ Deferred — the server-side assignee filter** ([§ 13](#13-what-is-deliberately-not-built)).
    **Blocks:** nothing. **Closes it:** one assigned card, which makes a discriminating control possible.
+6. **⇢ Operator — the compose credential and the floor's board account** (`card#9417`,
+   [§ 5.3](#53-the-compose-credential), [§ 15.13](#1513-what-the-operator-provisions)). A board
+   account for the floor — the comment author the board records — and a write-scoped token for it,
+   distinct from `BOARD_API_TOKEN` and from any seat's. **Blocks:** [§ 15](#15-the-compose-path--one-verb)
+   condition 1 — compose is unconfigured on every host until it exists. **Closes it:** the token and the
+   account's name. ⚠ Whether the board can scope a token to *comment only* is part of the answer, and it
+   is not readable from this repository; [§ 5.3](#53-the-compose-credential) says what holds either way.
+7. **⇢ Operator — the product fork the hop opens** ([§ 15.2](#152-the-hop-and-what-this-repository-cannot-verify)).
+   `card#9417` rests on *"posts into a channel the agent already reads"*, and for a card comment the
+   live half of that is false today: this install's bridge subscription carries `task.created` alone,
+   the bridge classifies no `comment.created`, and the bridge owner's own tool documentation says
+   *"Do not rely on a comment to wake another seat."* The comment still reaches the agent the way every
+   card comment does — at the agent's next read of the card, which the build brief orders on every
+   dispatch — so the audit trail and the one-verb amendment stand either way. **The fork:** (a) build
+   `BoardCommentChannel` first as the card says, render the receipt as *posted* and never *delivered*,
+   and raise the bridge-side feature request (`comment.created` in the subscription filter; a
+   `card_comment` intent routed to the seat whose card it is) with kanban-solo now, so the live hop
+   lands as a bridge change and not a Mezzanine one; or (b) make the coordination-channel thread the
+   first channel, which delivers live today and costs a GitHub credential, a participant identity for
+   the server and a thread model (item 8). **Recommendation: (a)**, with the request filed in the same
+   round as the build; the seam in [§ 15.9](#159-the-composechannel-seam) is what makes (b) additive
+   later rather than a redesign.
+8. **⇢ Operator — the coordination-channel target** ([§ 15.6](#156-target-resolution)). The second
+   target in the card's resolution order is *a roundtable thread addressed to the seat's declared
+   `protocol_agent_name`*. Three facts gate it, none of them this repository's to decide: the declared
+   name is the **roster** name (`mezzanine` on this install, read from the reporter's config) while the
+   roundtable's addressing identity is `cross_project.identity` (`mezzanine-solo`) — they are not the
+   same string, so a `to:<declared name>` label addresses nobody on the roundtable, and only on a
+   multi-agent install, where the coordination repo IS the channel and its `to:` labels ARE roster
+   names, does the declared name address a seat directly; posting needs a GitHub credential with
+   issues-write on the channel repo and a `from:` identity for the floor, which makes the server a
+   roundtable participant; and a compose must land on *some* thread — a new issue per message is a
+   fan-out the roundtable's own guidance argues against. **Blocks:** nothing in the first build — the
+   resolver reaches this arm and refuses by name ([§ 15.6](#156-target-resolution) step 3) until a
+   channel is declared for the install. **Closes it:** a ruling on which repo, which identity, which
+   credential and which thread; then `CoordThreadChannel` is the second `ComposeChannel`
+   implementation, before Slack.
+9. **⇢ Measured at build — does a comment move the card's `updated_at`?** Neither the board's API
+   contract (`kbcard` records it as *the kanban API contract's to state*) nor this repository knows.
+   It decides nothing about correctness — [§ 15.3](#153-the-one-verb-and-why-it-is-not-an-instrument-inside-the-measurement)
+   holds in both cases, and AT-C7 pins the half that is this repository's — but the answer belongs on
+   the record. **Closes it:** one comment on a scratch card with the compose token, and the card's
+   `updated_at` read before and after.
+
+---
+
+## 15. The compose path — one verb
+
+*`card#9417`. The design for the desk compose box: the one write this product makes to the board, the
+credential it rides, how its target is chosen, the seam a second channel plugs into, and — first,
+because it decides what the panel may claim — the hop between the board and the seat that this
+repository cannot verify. This section designs; it builds nothing. Where it needs a change in D2, D3,
+`README.md` or `.env.example` it states the change as a request, per [§ 1.3](#13-the-boundary-stated-as-a-rule),
+and [§ 15.14](#1514-amendments-owed-to-other-surfaces) is the list.*
+
+### 15.1 The problem, in the product's terms
+
+An operator watching a desk can see what the agent is doing (D3's drill-down, card#7341) and can open
+the agent's console on claude.ai (card#9416), and has no way to say one sentence to the agent from the
+floor. The operator's ruling of 2026-09-13 sequenced this card after the console link for exactly that
+reason — *"commanding an agent directly is not useful unless I can see what the agent is outputting"*
+— and bounded the shape: the floor **writes into a channel the agent already reads** rather than
+commanding the seat. `docs/PLAN.md § 0` (the card#9415 entry) pins the same bound from the other side:
+D-10 stands, Mezzanine owns no actuator, and this box is *not a server→seat command path*.
+
+**Where a message can enter, read at the source rather than from the card.** The bridge
+(`agent-webhook-bridge`, local checkout at commit `a4cfb0f`) exposes HMAC-signed provider webhooks
+and a loopback-only `POST /agent-tools/call`; neither is a free-text door for a named agent from
+another host. The seat's channel socket is local to the seat. So the floor can reach an agent only by
+writing something the agent reads: the card it is working on, or a coordination-channel thread
+addressed to it. Of those two, the card is the one this repository already joins a seat to
+([§ 4](#4-identity-and-the-join)) and already holds a credential for ([§ 5](#5-the-credential)); the
+thread is [§ 14](#14-open-questions) item 8.
+
+### 15.2 The hop, and what this repository cannot verify
+
+The card's premise is that a comment on the joined card is **delivered** to the seat — *"the kanban
+webhook → bridge → channel push chain then delivers it exactly as measured"*. ⛔ **That chain was not
+what the card measured, and it does not exist on this install today.** Read, not recalled:
+
+| Leg | What was read | Where |
+|---|---|---|
+| the measurement | two pushes **into the seat's channel socket directly**; a turn opened in ~14 s idle, delivered at the next tool boundary mid-turn | the card's own probe log. It proves the **last** hop only — socket → agent — and nothing upstream of it |
+| the board emits the event | the board records a `comment.created` webhook for a comment | the bridge's `docs/board-tools.md` § `board_comment_card`, which also says, in the bridge owner's own words: **"Do not rely on a comment to wake another seat. Use the coordination surface for anything that needs an answer."** |
+| the bridge receives it | this install's kanban subscription is provisioned with `event_filter: ["task.created"]` — the filter is written INTO the board's webhook (`KanbanProvisionClient`), so a `comment.created` is never sent to the bridge for this scope | `~/.config/agent-webhook-bridge/mezzanine.yml` § `subscriptions`; `mezzanine-solo.yml` subscribes to the roundtable repo only |
+| the bridge classifies it | `InboxOnlyClassifier::classify()` matches `task.created`, `task.moved`, `task.updated` and the four `LIFECYCLE` types; everything else is `default => null` — no intent, no inbox row, no push. `grep -rn 'comment\.created' app/ routes/ config/` on the bridge prints nothing | `app/Bridge/Classifiers/InboxOnlyClassifier.php` |
+
+So for a card comment, every leg between the board and the socket is dark, and two of them are the
+bridge owner's to light (the subscription filter; a classifier arm that routes a `card_comment` intent
+to the seat whose card it is). **What is true today is weaker and still real:** the comment is on the
+card, and the agent reads the card — the build brief every dispatch on this install carries opens with
+*"The CARD is the spec. Read it in full, including its comments"*, and a solo seat reads its board at
+every session start. A comment therefore reaches the agent at its next read of the card, with no
+bridge in the path; what it does not do is open a turn.
+
+**This is canon #7's seam, and the three things it owes are stated here rather than assumed.**
+
+- **DECLARE.** The floor declares the guarantee a post carries on the surface the operator reads: the
+  receipt line names the comment and the card — ***posted as comment#M on card#N*** — and **never the
+  word *delivered***. [§ 15.10](#1510-the-panel) is the exact wording. The bridge owner has declared
+  the far end's guarantee on its own surface, quoted above; this document cites it rather than
+  restating it as a Mezzanine fact.
+- **CHECK.** This repository checks that its declaration is true of its own code: AT-C2 asserts the
+  request population a compose issues (one `POST`, one path) and AT-C8 asserts the receipt wording
+  (the comment id present, *delivered* absent) — so the panel cannot drift into a claim the hop does
+  not back.
+- **NAME WHAT CANNOT BE VERIFIED.** Whether the board's webhook for this scope carries
+  `comment.created`, whether the bridge forwards it, and whether the seat's channel is live are not
+  establishable from this repository; the receipt says so in one clause — ***the floor does not
+  confirm delivery*** — and [§ 14](#14-open-questions) item 7 carries the product fork and the
+  bridge-side request that would close it. ⚠ The card's acceptance line *"the seat's channel receives
+  it (control on a live seat, not a mock)"* is therefore a **live, cross-boundary** check that no test
+  in this suite can run; it is owed on the real surface once the bridge change lands, exactly as
+  [§ 13](#13-what-is-deliberately-not-built) still owes the poller's first real tier-1 read.
+
+### 15.3 The one verb, and why it is not an instrument inside the measurement
+
+[§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)'s rule is that a
+floor that could edit its own subject would be an instrument inside the thing it measures. The
+amendment admits one verb, and the argument that the rule survives it has four legs, each checkable:
+
+1. **The floor measures six fields and telemetry; a comment writes none of them.** Tier 1 is derived
+   from `id`, `name`, `assigned_user_id`, `updated_at`, `board_id`, `archived_at`, `deleted_at`
+   ([§ 6.2](#62-the-fields-consumed)); every other `seat_state` column is folded from events. A comment
+   is a new row in the card's `comments` relation — `kbcard`'s measured semantics: `POST
+   /tasks/<id>/comments.json`, `201`, the row echoed — and touches no stage, no assignee, no name, no
+   archive flag. The one field it *may* touch is `updated_at` ([§ 14](#14-open-questions) item 9).
+2. **On the one card a compose can reach, a later `updated_at` cannot change what the desk shows.**
+   The target is the seat's **current** tier-1 card ([§ 15.6](#156-target-resolution)) — by
+   [§ 4.2](#42-which-card-answers-when-several-could) the candidate with the greatest `updated_at`.
+   Moving the greatest value later keeps it the greatest; the choice is confirmed, never flipped, and
+   a card the board's own activity would later promote still wins when that activity lands. AT-C7
+   pins this half; the other half (whether the field moves at all) is item 9's measurement.
+3. **The floor originates nothing.** Every comment is one signed-in operator's deliberate act, carries
+   that operator's name in its body, and lands on the card whose title that operator is looking at. No
+   timer, poll, sweep or inference may call the compose path — the same rule [§ 4.1](#41-seat--board-user)
+   states for `seats.board_user_id`'s writer, and for the same reason. The route is the only caller
+   ([§ 15.4](#154-the-routes-and-the-gate)); there is no command, no job and no schedule entry.
+4. **The write and the read never share a credential**, so a defect in the read loop cannot become a
+   board mutation ([§ 5.3](#53-the-compose-credential)).
+
+Never a move, never an assign, never a comment on a card the seat is not joined to — and
+[§ 15.12](#1512-acceptance-tests)'s AT-C2 is the request-population assertion that makes *never* a
+measured word rather than a promise.
+
+### 15.4 The routes and the gate
+
+| Route | Stack | Name | Serves |
+|---|---|---|---|
+| `POST /desk/{install_id}/{seat_id}/compose` | `web` → `auth` → `mfa` → `can:operate` → `throttle:compose` | `desk.compose` | the post. `{install_id}` constrained to `App\Support\Slug::INSTALL_ID`, `{seat_id}` to `Slug::SEAT_ID`, so a malformed segment is the router's `404` and reaches no gate and no store |
+
+**Why `routes/web.php` and not `routes/fleet.php`.** The read plane's stack is `web` + `fleet.read`
+and admits an `mzr_` machine token (D2 § 9); a write must never be reachable by a credential that
+carries no account, and `can:operate` cannot even be asked of one (`FleetController::mayOperate()`:
+*"a machine read token carries no account, so it is never an operator"*). D2 § 8.2's REST surface is
+also `GET`-only by contract, and putting a `POST` under `/api/fleet/` would amend D2 for a route D2 has
+no reason to own. So the route sits beside the floor page it serves, inside the same `['auth', 'mfa']`
+group in `routes/web.php`, with `can:operate` added — the stack `routes/admin.php` already documents
+for the console, which `App\Providers\AppServiceProvider`'s gate comment names as *"every per-desk
+write route that follows (card#9417's compose box)"*.
+
+**The gate, in two places, both the server's.** The route refuses an observer `403` (Laravel's
+`can:` middleware); the page renders the compose block under `@can('operate')`, so an observer's floor
+page carries **no compose slot at all** — not a hidden one — which is the card's *"compose control
+absent"* in the strongest form the page can give it. `Tests\Feature\Admin\AnObserverReadsTheFleetTest::test_no_route_outside_the_admin_console_requires_the_operate_gate`
+already anticipates this route by name: `desk.compose` joins its allow-list, which is the one edit
+that says *a write control and not a read surface is being gated*, and the test reds if the gate is
+ever dropped from the route.
+
+**CSRF and the throttle.** The route is in `web`, so the group's CSRF check applies to the `POST`
+(the read plane never needed one: every route behind `fleet.read` is a `GET`, as `routes/fleet.php`
+records); the compose form carries `@csrf` as `resources/views/dashboard.blade.php` already does, and
+the client sends that token with the post. `throttle:compose` is a per-account limiter (`RateLimiter::for('compose', …)` keyed on
+`users.id`), defined in `AppServiceProvider::boot()` beside the `operate` gate it pairs with — not in
+`FortifyServiceProvider`, whose limiters are one authentication surface's story. The figure is in
+[§ 15.15](#1515-every-number).
+
+### 15.5 Where the credential lives, and how a missing one fails loud
+
+`BOARD_COMPOSE_TOKEN` → `config('mezzanine.board.compose_token')` ([§ 5](#5-the-credential)'s table,
+[§ 5.3](#53-the-compose-credential)). It lives in `server/.env` and nowhere else: not in the store, not
+per operator, not in the session.
+
+**Missing is loud at two moments.** At page render, an operator's panel reads the config and, when
+the key is empty, draws the compose block **disabled** with the sentence
+***compose is not configured — set `BOARD_COMPOSE_TOKEN`*** in place of the target line, so no
+operator types a message into a box that cannot post it. At the route, the post is refused by name
+(`unconfigured`, [§ 15.11](#1511-failure-paths)) **whatever the page said**, because configuration
+can change between render and post. ⛔ **The block is never hidden for a missing credential.** A
+hidden block reads as *this floor has no compose box*, which is a different fact; the role gate hides
+it for an observer, and nothing else does.
+
+**Per-operator board tokens, considered and rejected.** They would make the board's own `user_id`
+the attribution and spare the body its name line. They cost a credential store in Mezzanine (one
+secret per operator, with issue, rotation and retirement paths the application does not have), and
+they buy nothing the body line does not already give an audit: the board records *which token* posted;
+the body records *which person*. One floor account, one key, the person in the text.
+
+### 15.6 Target resolution
+
+Resolved **on the server, at the post, from the same row the desk is rendered from** — the
+`seat_state` ⋈ `seats` ⋈ `installs` row `FleetController::seat()` selects, through
+`App\Read\RetirementFilter::renderable()` so a retired seat is a `404` here exactly as it is on the
+read plane. That selection is hoisted into one primitive (`App\Read\SeatRow`, [§ 15.9](#159-the-composechannel-seam))
+at this second caller rather than copied.
+
+**The order, closed, and what each arm reads:**
+
+| # | Arm | Predicate | Target |
+|---|---|---|---|
+| 1 | **the joined card** | `task_source = 'board_card'` and `task_ref` matches `^card#([1-9][0-9]*)$` | `BoardComment(card_id)` |
+| 2 | **the declared agent name** | `protocol_agent_name` non-null and `protocol_agent_name_check = 'checked'` | `CoordThread(name)` — **refused by name in the first build** (`no_channel_for_agent`), because no coordination channel is declared for the install ([§ 14](#14-open-questions) item 8). The arm exists so the refusal names *the seat declares `<name>` and no channel is configured for it* rather than *no target* |
+| 3 | **neither** | — | refused: `no_target`, naming both facts — the task source that answered (`telemetry` or none) and the name-check state (`undeclared`, `unchecked` or `disagreed`) |
+
+**Why arm 1 reads the projection and not `seat_board_task`.** The projection is what the operator is
+looking at. It carries the 30-minute bound ([§ 8.1](#81-the-function)): a card whose row has aged out
+is a card the desk has **dropped** and labelled degraded, and a compose that posted to it would be
+posting to a target the floor has stopped showing. Reading the input table would re-implement the
+bound a second time or skip it; reading the projection reuses it. The cost is [§ 2.5](#25-the-one-bounded-window-stated-rather-than-glossed)'s
+window — for one sweep cadence after a rebuild, `task_*` is null and arm 1 refuses — and that refusal
+is honest, self-healing, and the same window every other derived column has.
+
+**Why arm 2 requires `checked` and not merely a name.** D1 § 3.1's state table: `unchecked` is a name
+no roster could confirm, `disagreed` is a name the roster does not hold. A thread addressed to either
+is addressed to a string, not a seat, and D3 § 5.7 already renders both as *unresolved* for that
+reason. The compose path adopts the same bar rather than a looser one.
+
+**Why the order is card first.** The card is the target the floor already joins, already shows and
+already holds a credential for; the thread is a target three rulings away. When both resolve, the
+card wins because it is the one the operator can see on the panel at the moment of composing — the
+target line names it, so there is no surprise about where the message went.
+
+### 15.7 The write, and the receipt
+
+**One request shape, and only one.** `POST {BOARD_API_BASE}/tasks/{card_id}/comments.json` with the
+body `{"content": "<text>"}` — flat, which `kbcard` measured against the wrapped form that `422`s — and
+`Authorization: Bearer <compose token>`, `Accept: application/json`, no redirects followed, connect and
+read timeouts at [§ 12](#12-every-number-and-where-it-comes-from)'s 20 s. The channel issues this request
+and no other: no `GET` before it, no `PATCH`, no second `POST`.
+
+**The content.** One attribution line, then a blank line, then the operator's text verbatim:
+
+```
+Posted from the Mezzanine floor by <users.name> at 2026-10-08T14:03:11Z
+<blank line>
+<the operator's text>
+```
+
+`users.name` and not the email — the comment is readable by every account on the board and by every
+agent that reads the card, and a name is what an audit needs. The timestamp is the server's, in D2's
+`rfc3339_ms` form truncated to seconds. The text is trimmed, must be non-empty, and is bounded in
+bytes ([§ 15.15](#1515-every-number)); it is otherwise untouched — D1 § 7's sanitizer is the reporter's
+and this is an operator's own words on an operator's own board.
+
+**The receipt is the board's own confirmation, not ours.** Success is `201` whose body carries
+`data.id` as an integer; that integer is the receipt (`comment#M`). A `2xx` with no integer id is
+**`unverified`** — the post may have landed, the panel says so and tells the operator to read the
+card before posting again, and nothing is retried. ⛔ No retry anywhere on this path: a retried comment
+is a duplicate comment, and the operator is present to decide.
+
+**The shared client.** `BoardPoll` today owns the base validation, the token shape check, the
+`Http::withToken()…withoutRedirecting()` builder and `redact()`. The compose path is the second real
+caller of every one of them, so they are hoisted into `App\Board\BoardHttp` and both callers use it
+(canon #5) — a hoist, not a rewrite: `BoardPoll`'s behaviour and every AT-D4 test are unchanged by it,
+and that is asserted by the Board suite staying green across the hoist with no test edited.
+
+### 15.8 The audit trail — the comment itself, and no new table
+
+The board holds the row: its `id`, `task_id`, `user_id` (the floor's account), `content` (the name
+line and the text) and `created_at`. That is who, what, when and where, on the surface the agent reads
+and the operator can open, and it survives a Mezzanine rebuild because Mezzanine never held it.
+**No table is added**, no `events` kind, no `seat_state` column: a compose changes nothing the fold
+derives, so there is nothing for a rebuild to reproduce (the rule [§ 2.3](#23-the-rule-this-establishes)
+states, applied in the direction of writing nothing).
+
+One application log line per outcome, at the fields [§ 5.1](#51--the-token-value-never-reaches-an-output-stream)
+admits: `compose posted seat=<install>/<seat> card=<id> comment=<id> user=<users.id>` or
+`compose refused seat=… class=<class> status=<n>` — never the text, never a header, never a body.
+**No counter**: a compose fails synchronously in front of the operator who sent it, so the failure is
+legible by construction and a `compose_failed` on `GET /api/fleet/health` would count what a person
+has already read.
+
+### 15.9 The `ComposeChannel` seam
+
+```php
+namespace App\Compose;
+
+interface ComposeChannel
+{
+    /** 'board_comment' now; 'coord_thread' and 'slack' later. One kind per implementation. */
+    public function kind(): string;
+
+    /** @throws ComposeRefused  one of § 15.11's classes; never a free-text message */
+    public function post(ComposeTarget $target, ComposeMessage $message): ComposeReceipt;
+}
+
+final class ComposeTarget  { kind, address, label }        // 'board_comment', 9234, 'card#9234'
+final class ComposeMessage { authorName, text, composedAt } // the attribution line is the CHANNEL's to render
+final class ComposeReceipt { kind, address, ref, postedAt } // 'board_comment', 9234, 'comment#117', …
+final class ComposeRefused extends \RuntimeException        // BoardPollFailed's shape: class, status, redactedUrl — NO message parameter
+final class TargetResolver { public function resolve(object $seatRow): ComposeTarget; }   // § 15.6, throws ComposeRefused
+final class ComposeChannels { public function for(ComposeTarget $t): ComposeChannel; }    // kind ⇒ implementation; unknown kind throws
+final class BoardCommentChannel implements ComposeChannel   // § 15.7
+```
+
+**What the seam fixes and what it leaves open.** `ComposeMessage` is channel-neutral — a name, a
+text, a time — and each channel renders attribution in its own idiom (a comment body line here; a
+`FROM:` line and labels on a coordination thread; a Slack `username` later). The target's `kind`
+selects the channel, so *"chosen per agent"* (the card's phrase for Slack) is a resolver change —
+a per-seat declaration of which kinds it reads, on the model of `seats.board_user_id` — and not a
+channel change. The controller, `App\Http\Controllers\DeskComposeController::store()`, is the one
+caller: resolve, select, post, render; it holds no channel logic.
+
+**Shape (b) stays what the card said.** A bridge endpoint that stages a free-text intent for one agent
+is the bridge owner's build; if it lands, `BridgeMessageChannel` is one more implementation behind
+this interface and the resolver gains an arm. Nothing here pre-builds it.
+
+### 15.10 The panel
+
+A D3 § 4.3 amendment, stated as a request ([§ 15.14](#1514-amendments-owed-to-other-surfaces)); the
+behaviour it specifies:
+
+- **An operator's panel gains a `compose` block**: a target line, a text box, a ***Post to card#N***
+  button, and a receipt line. The block is rendered under `@can('operate')`; an observer's page does
+  not carry it. Its slots are `data-panel-compose-target`, `data-panel-compose-text`,
+  `data-panel-compose-post` and `data-panel-compose-receipt`, and they join the slot contract
+  `Tests\Feature\DrillDown\DrillDownModuleWiringTest` checks both ways — which means that test fetches
+  the page **as an operator**, and a new arm fetches it as an observer and asserts no
+  `data-panel-compose` slot in the HTML at all.
+- **The target line is computed by the client from the seat object alone** — `task.ref` when
+  `task.source` is `board_card`; else the declared name when `protocol_agent_name_check` is `checked`,
+  worded as the refusal the server will give; else [§ 15.6](#156-target-resolution) arm 3's sentence —
+  and **the server re-resolves at the post**; the two can disagree for exactly one sweep cadence or
+  one delta, and the post's named refusal is the answer that stands. The button is disabled whenever
+  the client's resolution is a refusal, so the common case costs no request.
+- **The receipt line, verbatim forms:** ***posted as comment#M on card#N at HH:MM:SS — the floor does
+  not confirm delivery*** on success; ***posted, unverified — read card#N before posting again*** on
+  `unverified`; otherwise the refusal class's sentence from [§ 15.11](#1511-failure-paths). The text
+  box is cleared on success and on nothing else. ⛔ The word *delivered* appears in no form, which
+  AT-C8 holds.
+- **While a post is in flight** the button is disabled and the receipt line reads ***posting…***; a
+  delta arriving meanwhile re-renders the target line and nothing else of the block.
+
+### 15.11 Failure paths
+
+Every path, its posture and the sentence the panel renders. The classes are a closed set on
+`ComposeRefused`; the HTTP status to the client is `422` for a refusal the seat's state or the
+request's shape produced, `502` for a board that did not answer as the contract says, `503` for an
+unconfigured path, and `403` for the gate.
+
+| Condition | Class | Status | Panel sentence | Requests issued |
+|---|---|---|---|---|
+| observer | — (`can:operate`) | `403` | no block exists to render one | 0 |
+| `BOARD_COMPOSE_TOKEN` empty, or `BOARD_API_BASE` empty or not `https` | `unconfigured` | `503` | *compose is not configured — set `BOARD_COMPOSE_TOKEN`* (or `BOARD_API_BASE`) | 0 |
+| compose token equals the poller's token ([§ 5.3](#53-the-compose-credential)) | `credential_shared` | `503` | *compose is refused — `BOARD_COMPOSE_TOKEN` is the same value as `BOARD_API_TOKEN`* | 0 |
+| seat not found or retired | — | `404` | *this desk is gone* (D3's own notice) | 0 |
+| no joined card and no checked name | `no_target` | `422` | *no target: this desk shows no board card (task answered by `telemetry`) and declares no checked agent name (`undeclared`)* — the two values substituted | 0 |
+| a checked name and no channel for it | `no_channel_for_agent` | `422` | *this desk declares `mezzanine` and no coordination channel is configured for this install* | 0 |
+| text empty after trim, or over the byte bound | `text` | `422` | *write something* / *the message is over N bytes* | 0 |
+| board `401` / `403` | `auth` | `502` | *the board refused the floor's credential (`403`)* | 1 |
+| board other non-`201` | `status` | `502` | *the board answered `422`* — the status, never the body | 1 |
+| transport failure / timeout | `transport` | `502` | *the board did not answer — the message was not posted* | 1 |
+| `2xx` with no integer `data.id` | `unverified` | `502` | [§ 15.10](#1510-the-panel)'s unverified sentence | 1 |
+| no response reaches the browser | — (client) | — | *the floor could not reach the server — the message was not posted* (a D3 § 9 row, requested in [§ 15.14](#1514-amendments-owed-to-other-surfaces)) | ≤ 1 |
+
+⛔ **Zero requests on every row above the board rows is a property, not a convenience**: a refusal
+decided from local state must never have cost the board a request, and AT-C3/AT-C4 assert the count.
+
+### 15.12 Acceptance tests
+
+*In `server/tests/Feature/Compose/`, on a `ComposeTestCase` that extends
+`Tests\Feature\Board\BoardTaskTestCase` — its `Http::fake()` for the fixture host and its
+`configure()` are reused, the latter gaining the compose token. Every test names its RED and is seen
+red before it is trusted (the build brief's rule).*
+
+- **AT-C1 the gate.** *Build:* an observer and an operator, both `twoFactorConfirmed()`. *GREEN:* the
+  observer's `GET /floor/{install}/{seat}` carries no `data-panel-compose` slot; the observer's
+  `POST desk.compose` is `403` with zero board requests; the operator's page carries the four slots.
+  *RED:* drop `can:operate` from the route — the observer's post is answered by the resolver, and
+  `AnObserverReadsTheFleetTest`'s population arm reds in the same run. *Control:* the operator's post
+  on the same fixture reaches the fake board, so the `403` is a measurement.
+- **AT-C2 one request, one shape, the right token.** *Build:* a mapped seat with a fresh
+  `seat_board_task` row (`card_id = 9234`) and a folded `seat_state` showing it; fake the board to
+  `201 {"data":{"id":117}}`. *GREEN:* `Http::recorded()` holds **exactly one** request — `POST`,
+  `/tasks/9234/comments.json`, body `{"content": "…"}` opening with the attribution line, `Authorization:
+  Bearer <compose token>` and not the poller's; the response carries `comment#117`; the log line names
+  seat, card, comment and user id and nothing else. *RED (two):* swap the tokens in the channel — the
+  header assertion fails; add a `GET /tasks/9234.json` read-back — the population is two.
+- **AT-C3 refusal by name, zero requests.** *Build:* a seat with `task_source = telemetry` and
+  `protocol_agent_name_check = undeclared`. *GREEN:* `422 no_target`, both facts substituted into the
+  sentence, `Http::recorded()` empty. Repeat for `checked` with a name → `422 no_channel_for_agent`
+  naming it. *RED:* a resolver that falls through to tier 3's title or to any card the user holds — a
+  request appears.
+- **AT-C4 unconfigured does not borrow the poller's token.** *Build:* `compose_token` empty,
+  `api_token` set, a joined card. *GREEN:* `503 unconfigured` naming the key, zero requests, and the
+  operator's page renders the block disabled with the same sentence. *Second build:* both keys equal →
+  `503 credential_shared`, zero requests, **and `mezzanine:board-poll` still runs clean** on the same
+  config. *RED:* a channel that reads `api_token` when `compose_token` is empty — the request goes
+  out with the read token.
+- **AT-C5 the credential is never emitted** — AT-D4-4's build over the compose path: every row of
+  [§ 15.11](#1511-failure-paths) at maximum verbosity, the token's value occurring zero times in
+  stdout, stderr, the log and the response bodies. *RED, required first:* move the token into the
+  query string in `BoardHttp` — the logged redacted URL must show it.
+- **AT-C6 the live control — cross-boundary, not in this suite.** On the sandbox, an operator posts
+  on a live seat's joined card; `kbcard comments --task <N>` shows the row with the name line.
+  Whether the seat's channel receives it is **not asserted** ([§ 15.2](#152-the-hop-and-what-this-repository-cannot-verify)); the
+  run is recorded on the card with what was and was not observed, as [§ 13](#13-what-is-deliberately-not-built)
+  records the poller's.
+- **AT-C7 a compose cannot flip the desk's card.** *Build:* one board user holding cards A and B,
+  `A.updated_at > B.updated_at`, so A answers; then a second poll fixture in which A's `updated_at` is
+  later still (the compose having moved it). *GREEN:* A answers both times; `card_id` and `title`
+  unchanged. *Control:* a fixture in which B's `updated_at` moves past A's — B answers, so the
+  comparison is known to be able to see a flip.
+- **AT-C8 the receipt never claims delivery.** *Build:* drive the shipped drill-down client (the
+  `DrivesTheDrillDownClient` probe) over a success response, an `unverified` one and each refusal.
+  *GREEN:* the receipt slot's text matches [§ 15.10](#1510-the-panel)'s forms exactly; the string
+  `delivered` occurs in none; the text box is cleared on success only. *RED:* a client that writes
+  *delivered to the agent* on `201`.
+
+### 15.13 What the operator provisions
+
+Three acts, each a declaration only the operator can make, and compose stays unconfigured — by name,
+at the panel and at the route — until the first two are done:
+
+1. **A board account for the floor** (the comment author the board records), with the narrowest role
+   that can comment on board 14's cards, and **a write-scoped token for it** — `BOARD_COMPOSE_TOKEN`
+   in `server/.env` on each host, beside the existing three keys ([§ 14](#14-open-questions) item 6).
+   ⛔ Not the poller's token, and not any seat's.
+2. **The seat → board-user mapping and an assigned card** — [§ 10](#10-dark-on-arrival)'s conditions 2
+   and 3, unchanged: arm 1 has nothing to resolve until tier 1 is lit. Compose arrives as dark as tier
+   1 did, and for the same reasons, each separately legible.
+3. **The bridge-side request** ([§ 14](#14-open-questions) item 7), if the operator takes fork (a): a
+   roundtable feature request to kanban-solo for `comment.created` in the subscription filter and a
+   `card_comment` intent routed to the seat whose card it is. Until it lands, a comment reaches the
+   agent at its next read of the card and the panel says so.
+
+### 15.14 Amendments owed to other surfaces
+
+Stated as exact requests, per [§ 1.3](#13-the-boundary-stated-as-a-rule); ratified before anything is
+built against them; landed by the build in the same change.
+
+| Surface | Amendment |
+|---|---|
+| D3 § 4.3 (the panel table) | a row **`compose` — an operator's only**: *a target line naming where a message goes (`task.ref` when `task.source` is `board_card`; else the refusal § 15.6 names), a text box, a **Post to card#N** button and a receipt line in § 15.10's forms; rendered under `@can('operate')`, so an observer's page carries no compose slot; source: `task.*`, `protocol_agent_name`, `protocol_agent_name_check`, and the `desk.compose` response* |
+| D3 § 5.2 (the drill-down render map) | a row **the compose receipt** — source *the `desk.compose` response*; example `comment#117`; rule *rendered in § 15.10's exact forms; never the word* delivered; *`fetch-fresh` by construction — no delta carries it* |
+| D3 § 9 (failure paths) | a row for the post that gets no response: render ***the floor could not reach the server — the message was not posted***, the text left in the box |
+| D3 § 1.2 (non-goals) | a row stating that the compose box is the floor's one write, that it writes to the board and never to a seat, and that this document owns it — D3 states no read-only claim of its own to narrow (a grep of `FLOOR.md` for *read-only* finds none), but a non-goals table that does not name the one write the panel now carries would be read as excluding it. The phrase *read-only telemetry* lives in `AnObserverReadsTheFleetTest`'s docblock, where it describes the read surfaces and stays true |
+| D2 | **none.** No route under `/api/fleet`, no store column, no counter, no event kind, no process row ([§ 15.8](#158-the-audit-trail--the-comment-itself-and-no-new-table)); D2 § 9's gate text already names *every per-desk write route* |
+| `README.md § The board card on a desk` (the step that lists `BOARD_API_TOKEN`) and `§ The admin console` (the sentence on what an operator's desk detail offers) | the fourth key in the first; in the second, one sentence: an operator's desk detail also offers a compose box that posts a comment on the agent's current card |
+| `server/.env.example` | `BOARD_COMPOSE_TOKEN=` with the comment block naming it write-scoped, compose-only and never the poller's |
+| `docs/PLAN.md § 0` (the card#9415 entry) | no change: *"writes into a channel the agent already reads"* stays true of the card as a document the agent reads; what this section adds is that the live hop is the bridge's and is dark today |
+| `AnObserverReadsTheFleetTest` | `desk.compose` in the allow-list |
+
+### 15.15 Every number
+
+| Value | Number | Basis |
+|---|---|---|
+| message bound | **2,000 bytes** of operator text, after trim | **Chosen** — a sentence or a short paragraph is the product (*say one thing to the agent*); the board's own `content` limit is unknown here and a `422` from it is reported as class `status`. Re-derive if item 9's measurement finds a lower board bound |
+| `throttle:compose` | **10 per minute per account** | **Chosen** — a person composing by hand cannot reach it; a stuck client or a pasted loop does, and the limit is what keeps one account from filling a card with duplicates. Keyed on `users.id`, never IP: an operator is a person, not an address |
+| request timeout | 20 s connect and read | **Cited** — [§ 12](#12-every-number-and-where-it-comes-from), the same client |
+| refusal statuses | `403` / `404` / `422` / `502` / `503` | **Chosen** — [§ 15.11](#1511-failure-paths)'s four meanings, one status each, so the client branches on the class and a reverse proxy on the status |
+
+### 15.16 Rejected shapes, priced
+
+- **Posting to `seat_board_task.card_id` directly** — cheaper by one join and wrong by one bound
+  ([§ 15.6](#156-target-resolution)).
+- **A `compose` member on D2 § 8.2.3's `detail`, operator-only, carrying the resolved target** — the
+  console-link precedent, and a wire change for a value the client can compute from members the seat
+  object already carries. It would also let the server resolve once and the client post against a
+  target that a delta has since moved; the post re-resolves anyway. Rejected: no wire change.
+- **A `compose_failed` counter** ([§ 15.8](#158-the-audit-trail--the-comment-itself-and-no-new-table)).
+- **A read-back of the card after the post** — `kbcard` does one, against pitfalls of its own shell
+  parsing (an unsuffixed path that `404`s with a well-formed body). Here success is decided on the
+  status class and an integer `data.id`, which closes that trap without a second request; the receipt
+  is the board's own echo.
+- **Retrying a failed post** — a duplicate comment is the worse outcome, and the operator is present.
+- **Hiding the block when unconfigured** ([§ 15.5](#155-where-the-credential-lives-and-how-a-missing-one-fails-loud)).
