@@ -178,6 +178,8 @@ REAL_PHP="$(command -v php)" || { echo "selftest: php not found (deploy.sh parse
 REAL_MKTEMP="$(command -v mktemp)" || { echo "selftest: mktemp not found" >&2; exit 1; }
 REAL_GIT="$(command -v git)" || { echo "selftest: git not found" >&2; exit 1; }
 REAL_BASH="$(command -v bash)" || { echo "selftest: bash not found" >&2; exit 1; }
+REAL_DATE="$(command -v date)" || { echo "selftest: date not found" >&2; exit 1; }
+REAL_SLEEP="$(command -v sleep)" || { echo "selftest: sleep not found" >&2; exit 1; }
 mkdir -p "$T/bin" "$T/knobs"; export PATH="$T/bin:$PATH"
 # `mezzanine:extra` is in no release this repo ships: it is the daemon the ACROSS RELEASES case's target
 # release adds, and the stub has to know to hold a lock for it.
@@ -417,6 +419,42 @@ case "${1:-}" in
   *)  /usr/bin/id "$@" ;;
 esac
 STUB
+# date and sleep: the REAL ones — and, while the `clock` knob exists, ONE CLOCK THAT MOVES ONLY WHEN THE DEPLOY
+# SLEEPS WHOLE SECONDS (card#11565). The knob holds an epoch: `date +%s` prints it, and `sleep N` for a whole N adds
+# N to it and returns at once, logging `sleep N` to the `sleeps` knob. The opcache wait reads its clock with
+# `date +%s` and waits with `sleep`, so under this clock the seconds that "pass since the last code write" are
+# exactly the seconds the deploy chose to sleep — the work in between (the daemon restart, feed-reload, the
+# drain) adds none, however loaded the host. On the real clock it did: a mutant with the wait cut out measured
+# 5 to 10 s under load, and a check that it waited less than 4 s went red for a reason that was not about the
+# wait. A FRACTIONAL sleep is a poll for a real process (a daemon taking its lock), so it really sleeps and does
+# not move this clock — and a poll loop whose deadline is on this clock would then never time out, so after
+# CLOCK_POLLS of them the clock jumps an hour and says so: a stuck poll loop reaches its deadline and the deploy
+# refuses, rather than hanging the suite. Every other `date` (`date -u +%FT%TZ`, …) and every sleep while the knob is absent is the real one.
+{
+  printf '#!%s\nKNOBS=%q\nREAL_DATE=%q\n' "$REAL_BASH" "$T/knobs" "$REAL_DATE"
+  cat <<'STUB'
+if [ -e "$KNOBS/clock" ] && [ "$#" -eq 1 ] && [ "$1" = +%s ]; then cat "$KNOBS/clock"; exit 0; fi
+exec "$REAL_DATE" "$@"
+STUB
+} > "$T/bin/date"
+{
+  printf '#!%s\nKNOBS=%q\nREAL_SLEEP=%q\nCLOCK_POLLS=300\n' "$REAL_BASH" "$T/knobs" "$REAL_SLEEP"
+  cat <<'STUB'
+if [ -e "$KNOBS/clock" ] && [ "$#" -eq 1 ]; then
+  printf 'sleep %s\n' "$1" >> "$KNOBS/sleeps"
+  case "$1" in
+    *[!0-9]*|'') ;;
+    *) printf '%s\n' "$(( $(cat "$KNOBS/clock") + 10#$1 ))" > "$KNOBS/clock"; exit 0 ;;
+  esac
+  n=$(( $(cat "$KNOBS/polls" 2>/dev/null || echo 0) + 1 )); printf '%s\n' "$n" > "$KNOBS/polls"
+  if [ "$n" -eq "$CLOCK_POLLS" ]; then
+    printf '%s\n' "$(( $(cat "$KNOBS/clock") + 3600 ))" > "$KNOBS/clock"
+    echo "selftest clock: $n polls with the clock stopped — it jumped an hour so their deadlines expire" >&2
+  fi
+fi
+exec "$REAL_SLEEP" "$@"
+STUB
+} > "$T/bin/sleep"
 chmod +x "$T/bin/"*
 
 # The host's FPM configuration, shaped like the Virtualmin sandbox's: php-fpm.conf beside php.ini,
@@ -460,7 +498,7 @@ reset_stubs() {
   : > "$T/knobs/dies_after_start"; : > "$T/knobs/ignores_term"; : > "$T/knobs/transient_loser"
   rm -f "$T/knobs/slow_fuser" "$T/knobs/mktemp_passes" "$T/knobs/git_magic" \
         "$T/knobs/bash_calls" "$T/knobs/git_remote_fail" "$T/knobs/mktemp_fill_after" \
-        "$T/knobs/git_stderr_unreadable"
+        "$T/knobs/git_stderr_unreadable" "$T/knobs/clock" "$T/knobs/sleeps" "$T/knobs/polls"
   # 9.2.0 is ABOVE the npm 7 the fixture's lockfileVersion 3 implies without BEING it, so a case
   # that passes A12 here is not passing on an accidental exact match (card#9616).
   export STUB_NPM_VERSION=9.2.0 STUB_NPM_VERSION_RC=0
@@ -3806,17 +3844,24 @@ hasnt "full run leaks no DB password"                   "$FAKE_PW"  "$OUT"
 hasnt "full run never mentions systemctl"               "systemctl" "$OUT"
 
 section "THE OPCACHE WAIT — seen to fail against a release that skips it"
-# revalidate_freq=3 and no daemon settle, so the only thing that can make ≥ 4 s pass between the
-# last code write and `up` is the wait. The mutant is the RELEASE's own deploy.sh with the sleep cut
-# out — the re-exec runs it — and a clean result from it would be a check that cannot fail.
+# revalidate_freq=3 and no daemon settle, so the wait's is the only sleep of whole seconds that is not 0. The mutant
+# is the RELEASE's own deploy.sh with the sleep cut out — the re-exec runs it — and a clean result from it would be
+# a check that cannot fail.
+# ⛔ EVERY CASE OF THE WAIT RUNS ON THE STOPPED CLOCK (stop_clock; the `date`/`sleep` stubs say how it moves), so
+# the seconds `waited` reads are the whole seconds the deploy SLEPT and nothing else: 4 here, and 0 with the wait
+# cut out, at any host load — unless a stuck poll made the clock jump, which the run's output then says. On the
+# real clock they were the wall time of the daemon restart, feed-reload and the drain as well, and a loaded host
+# made the mutant "wait" 5 s and more with no sleep at all (card#11565).
 waited() { printf '%s\n' "$OUT" | sed -n 's/.*and \([0-9]*\) s have passed since the last code write.*/\1/p'; }
-mkfix fpm_wait; export STUB_OPCACHE_FREQ=3 MEZZ_DAEMON_SETTLE_S=0
+stop_clock() { "$REAL_DATE" +%s > "$T/knobs/clock"; : > "$T/knobs/sleeps"; }
+mkfix fpm_wait; export STUB_OPCACHE_FREQ=3 MEZZ_DAEMON_SETTLE_S=0; stop_clock
 run
 exits  "wait control: exit 0"                               0
 has "wait control: a host whose daemons were already dead still gets them relaunched" "stopped — pid(s) none were running" "$OUT"
 eq  "wait control: ≥ revalidate_freq + 1 s passed before up" "yes" "$([ "$(waited)" -ge 4 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
+eq  "wait control: the wait itself slept revalidate_freq + 1 s" 1 "$(grep -cx 'sleep 4' "$T/knobs/sleeps")"
 cut_wait() { sed -i 's/^  if \[ "\$wait_s" -gt 0 \]; then sleep "\$wait_s"; fi$/  : wait cut out by the selftest mutant/' "$1/bin/deploy.sh"; }
-mkfix fpm_wait_cut cut_wait; export STUB_OPCACHE_FREQ=3 MEZZ_DAEMON_SETTLE_S=0
+mkfix fpm_wait_cut cut_wait; export STUB_OPCACHE_FREQ=3 MEZZ_DAEMON_SETTLE_S=0; stop_clock
 run
 eq  "wait mutant: the mutator really cut the wait"        1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'wait cut out by the selftest mutant')"
 eq  "wait mutant: less than revalidate_freq + 1 s passed" "yes" "$([ "$(waited)" -lt 4 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
@@ -3829,7 +3874,7 @@ section "THE OPCACHE WAIT — after a release that LOWERS revalidate_freq in its
 uini_freq() { mkdir -p "$1/server/public"; printf 'opcache.revalidate_freq = %s\n' "$2" > "$1/server/public/.user.ini"; }
 uini_freq_4() { uini_freq "$1" 4; }
 uini_freq_1() { uini_freq "$1" 1; }
-mkfix fpm_floor uini_freq_1 uini_freq_4; export MEZZ_DAEMON_SETTLE_S=0
+mkfix fpm_floor uini_freq_1 uini_freq_4; export MEZZ_DAEMON_SETTLE_S=0; stop_clock
 run
 exits  "floor: exit 0"                                                    0
 has "floor: phase A read the previous release's 4 s"                  "revalidates a changed file within 4 s" "$OUT"
@@ -3838,7 +3883,7 @@ cut_floor() {
   uini_freq_1 "$1"
   sed -i 's/^  if \[ "\$floor" -gt "\$wait_for" \]; then wait_for="\$floor"; fi$/  : floor cut out by the selftest mutant/' "$1/bin/deploy.sh"
 }
-mkfix fpm_floor_cut cut_floor uini_freq_4; export MEZZ_DAEMON_SETTLE_S=0
+mkfix fpm_floor_cut cut_floor uini_freq_4; export MEZZ_DAEMON_SETTLE_S=0; stop_clock
 run
 eq  "floor mutant: the mutator really cut the floor"                   1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'floor cut out by the selftest mutant')"
 eq  "floor mutant: less than the previous release's revalidate_freq + 1 s passed" "yes" "$([ "$(waited)" -lt 5 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
@@ -3846,7 +3891,7 @@ eq  "floor mutant: less than the previous release's revalidate_freq + 1 s passed
 section "WHOLE SECONDS READ FROM OUTSIDE — a leading zero is base 10; a non-number is refused before the window"
 # bash arithmetic reads `08` as a bad octal and aborts the script — exit 1, no ERR trap, no banner, the window open —
 # and `010` as 8. Base 10 is never the shorter wait PHP keeps (deploy.sh whole_seconds says why).
-mkfix freq_leading_zero; export MEZZ_DAEMON_SETTLE_S=0
+mkfix freq_leading_zero; export MEZZ_DAEMON_SETTLE_S=0; stop_clock
 printf 'php_value[opcache.revalidate_freq] = 08\n' >> "$POOL"
 run
 exits  "freq 08: exit 0"                                         0
@@ -3854,7 +3899,7 @@ has "freq 08: read as 8 s"                                    "revalidates a cha
 eq  "freq 08: ≥ 8 + 1 s passed before up"                     "yes" "$([ "$(waited)" -ge 9 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
 # The floor as a serving release hands it over — one whose phase A passed on the digits it read, as bbba3cd's did.
 hand_over_010() { sed -i 's/ MEZZ_DEPLOY_REVALIDATE_FLOOR_S="\$FPM_REVALIDATE_S"$/ MEZZ_DEPLOY_REVALIDATE_FLOOR_S=010/' "$1/bin/deploy.sh"; }
-mkfix floor_leading_zero "" hand_over_010; export MEZZ_DAEMON_SETTLE_S=0
+mkfix floor_leading_zero "" hand_over_010; export MEZZ_DAEMON_SETTLE_S=0; stop_clock
 eq  "floor 010: the serving release really hands over 010"    1 "$(git -C "$SRC" show "$V1:bin/deploy.sh" | grep -c ' MEZZ_DEPLOY_REVALIDATE_FLOOR_S=010$')"
 run
 exits  "floor 010: exit 0"                                       0
