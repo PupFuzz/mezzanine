@@ -205,7 +205,6 @@ class IdleSinceAndHorizonTest extends FeedTestCase
     /**
      * card#9418 round 2 (review F1): a malformed horizon is UNDECLARED — the key is absent — and is
      * made loud on fleet health's `idle_horizon_malformed` counter and one log line naming the key.
-     *
      */
     #[DataProvider('malformedHorizons')]
     public function test_a_malformed_horizon_is_absent_and_counted_on_fleet_health(string $raw): void
@@ -249,7 +248,6 @@ class IdleSinceAndHorizonTest extends FeedTestCase
      * The defect review F1 named: the value used to throw at configuration load, so with no config
      * cache every process — web, ingest, daemons — refused to boot. Driven through a real process
      * with the variable in its environment, which is the only way the config file's own read runs.
-     *
      */
     #[DataProvider('malformedHorizons')]
     public function test_every_artisan_command_still_boots_with_a_malformed_horizon(string $raw): void
