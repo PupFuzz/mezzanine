@@ -7,10 +7,10 @@
 # PupFuzz/agent-board-framework `bin/promote-cards-by-token.selftest.sh` at commit
 # e2f131f796baa93a5aa9cec620969bcaa21ac7fe, EXCEPT ONE DECLARED SITE, the selftest half of the
 # mover's declared site (3) (card#11527): the `foreign` fixture helper, the `%20id=` stub key,
-# the control card `card 1 13 93` in reset_fixtures, case 6's skip assertions, and cases 9b
-# and 9c — located by the fragment `9c. A 403 card read is judged`. Fix defects upstream and
-# re-vendor. Paths and `card#NNNN` references inside the body resolve in THAT repo, not this
-# one, except card#11527.
+# the control card `card 1 13 93` in reset_fixtures, case 6's skip assertions, and cases 9b,
+# 9c and 9d — located by the fragments `9c. A 403 card read is judged` and `9d. A 200 that does
+# not carry the fields`. Fix defects upstream and re-vendor. Paths and `card#NNNN` references
+# inside the body resolve in THAT repo, not this one, except card#11527.
 # ⚑ AND THAT CLAIM IS CHECKED, not asserted: `bin/vendor-pin-check.sh` pins the sha256 of this
 # file's body and runs on EVERY PR (the `card-token-lint` workflow). Any edit below reds CI
 # until the pin is updated in the same commit. The mover's header says why this exists — its
@@ -448,6 +448,57 @@ printf '503' > "$FIX/search.id102.code"
 run
 eq "failed scoped lookup → rc 2"                   "2"     "$rc"
 eq "  … ZERO writes"                               ""      "$patched"
+
+echo "== 9d. A 200 that does not carry the fields a verdict reads is a degraded read, never a skip =="
+# A 200 proves the server answered, not that it answered with a card. A body stripped on the
+# way (a proxy, a serializer error) leaves every field the mover reads absent, and a jq default
+# turns each absence into a verdict: no board_id read as "another board", no workflow_stage_id
+# as "not Shipped-class", no archived_at/deleted_at as "live", no lookup rows as "foreign".
+# Each of those is exit 0 or a wrong move on a read that measured nothing (card#11527 follow-up).
+#
+# 9d-1/2. The board-scoped lookup answers 200 with no `data` array. RED when: the lookup reads
+# `(.data // [])` → zero rows → card#102 skipped as foreign, rc 0.
+for b in '{}' '{"data":null}'; do
+  reset_fixtures
+  card 101 13 97
+  foreign 102
+  printf '%s' "$b" > "$FIX/search.id102.body"
+  run
+  eq "scoped lookup 200 $b → rc 2"                 "2"     "$rc"
+  eq "  … ZERO writes"                             ""      "$patched"
+  eq "  … card#102 not called foreign"             "false" "$(has 'not on this board' "$err")"
+done
+# 9d-3..6. The card read answers 200 without a field the verdict reads. RED when: the card-read
+# shape check is dropped → no board_id / no data: skipped as foreign, rc 0; no
+# workflow_stage_id: stage-guarded, rc 0; no archived_at/deleted_at: an archived card is MOVED.
+for b in \
+  '{"data":{"id":102,"workflow_stage_id":97,"archived_at":null,"deleted_at":null}}' \
+  '{"data":{"id":102,"board_id":"","workflow_stage_id":97,"archived_at":null,"deleted_at":null}}' \
+  '{}' \
+  '{"data":{"id":102,"board_id":13,"archived_at":null,"deleted_at":null}}' \
+  '{"data":{"id":102,"board_id":13,"workflow_stage_id":97}}' \
+  '{"data":{"id":102,"board_id":13,"workflow_stage_id":97,"archived_at":null}}'; do
+  reset_fixtures
+  card 101 13 97
+  card 102 13 97
+  printf '%s' "$b" > "$FIX/102.body"
+  run
+  eq "card read 200 $b → rc 2"                     "2"     "$rc"
+  eq "  … ZERO writes"                             ""      "$patched"
+  eq "  … card#102 not called foreign"             "false" "$(has 'not on this board' "$err")"
+  eq "  … refusal names the incomplete read"       "true"  "$(has 'card#102 read answered HTTP 200' "$err")"
+done
+# 9d-7. The CONTROL read answers 200 with no board_id: the token's view of board 13 is
+# unmeasured, so the 403 cannot be judged foreign. RED when: the control's board_id check is
+# dropped or defaulted to the configured board → card#102 skipped, rc 0.
+reset_fixtures
+card 101 13 97
+foreign 102
+printf '{"data":{"id":1}}' > "$FIX/1.body"
+run
+eq "control read 200 with no board_id → rc 2"      "2"     "$rc"
+eq "  … ZERO writes"                               ""      "$patched"
+eq "  … card#102 not called foreign"               "false" "$(has 'not on this board' "$err")"
 
 echo "== 10. A range with NO card token: merge tip = nothing to do; squash tip = FAIL =="
 # RED when: the merge_commit_tip discriminator is dropped from the empty-token branch →
