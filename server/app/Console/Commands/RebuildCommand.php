@@ -223,6 +223,7 @@ class RebuildCommand extends Command
             'open_calls' => 0,
             'open_turn' => false,
             'open_attention_ref' => null,
+            'idle_since' => null,
             'last_activity_event_time' => null,
             'last_activity_received_at' => null,
             'last_activity_kind' => null,

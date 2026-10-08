@@ -40,6 +40,11 @@ class SeatObjectMatchesTheDocumentTest extends FeedTestCase
         $this->assertContains('derivation.fold_lag_ms', $declared,
             'the parser missed a field the document certainly declares');
 
+        // § 8.2.1's `idle_nudge_after_s` is ABSENT from the object when the install declares no
+        // horizon (card#9418), so a horizon is configured here or the declared member could never
+        // be found present. Its absence when unconfigured is `IdleSinceAndHorizonTest`'s.
+        config(['mezzanine.idle_nudge_after_s' => 600]);
+
         $this->deliver($this->cleanTurn());
         $this->fold();
 

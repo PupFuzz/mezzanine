@@ -621,6 +621,14 @@ on a human does not lapse while the seat is quiet — a laptop lid closed on a w
 the same prompt — so the request stays open under the transport state and the seat renders `blocked`
 again if it comes back still waiting.
 
+**Every entry into `idle` is dated, and every exit clears the date** — [§ 8.2.1](#821-the-seat-state-object)'s
+`idle_since` (card#9418). The date is taken where `activity_state` is written, by comparing the stored
+state with the fresh one, so it covers every route rule 4 becomes true by — the rows above, and a
+sweeper job that clears the last fact standing in its way, such as [§ 4.6](#46-every-open-fact-has-a-ceiling)'s
+orphan close of a call left open under a clean `turn.end` — with no list of triggers to keep in step
+with this table. The masking row above is why it is keyed on `activity_state`: a masked `idle` keeps
+its date.
+
 #### `blocked` (`D2-MUST` #5)
 
 | Direction | Trigger | Note |
@@ -1725,6 +1733,12 @@ CREATE TABLE seat_state (
   open_calls    SMALLINT UNSIGNED NOT NULL DEFAULT 0,
   open_turn     TINYINT(1) NOT NULL DEFAULT 0,
   open_attention_ref BIGINT UNSIGNED NULL,
+  idle_since    DATETIME(3) NULL,                     -- § 8.2.1: SERVER clock; the instant the
+                                                      -- seat entered `idle` -- the minting event's
+                                                      -- received_at, or the sweep pass's instant.
+                                                      -- Written on the edge by the recompute that
+                                                      -- writes activity_state; NULL on every other
+                                                      -- state, so each entry mints a fresh value
   -- ACTIVITY (written only from the § 3.2 activity set)
   last_activity_event_time  DATETIME(3) NULL,
   last_activity_received_at DATETIME(3) NULL,
@@ -2145,8 +2159,9 @@ members**:
 | `derivation.fold_lag_ms` | is **computed at read time** ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) and therefore changes between any two reads; a version keyed on it would advance with the clock |
 
 **The subtraction is the whole of it, and `activity.*` is on the version-bearing side.** The list above
-is closed: every other member of the [§ 8.2.1](#821-the-seat-state-object) object is version-bearing,
-and the three activity members are named here because they are the ones a reader is most tempted to
+is closed: every other member of the [§ 8.2.1](#821-the-seat-state-object) object is version-bearing
+— save the one member that is install CONFIGURATION rather than seat state, `idle_nudge_after_s`,
+named in the paragraph after this one — and the three activity members are named here because they are the ones a reader is most tempted to
 file as bookkeeping. Any event of [§ 3.2](#32-the-activity-event-set)'s activity set moves
 `activity.last_event_time`, `activity.last_received_at` and `activity.last_kind`, so **every activity
 event emits a delta, whether or not it changes the rendered state** — including the ones whose whole
@@ -2155,6 +2170,15 @@ E6. That is not a concession: it is what [§ 8.3](#83-the-websocket-delta-feed)'
 already counts (all 120 subagent events among them), and the alternative — excluding `activity.*` —
 would freeze the quiet age on every connected client between deltas, which is the false-idle class this
 document exists to prevent.
+
+**`idle_nudge_after_s` is outside both sides of the split, because it is not state (card#9418).** It is
+the install's configured idle horizon, published on every seat object for a consumer that polls the
+snapshot ([§ 8.2.1](#821-the-seat-state-object)). None of the three writers above moves it — a process
+reads it once, and changing it is a redeploy — so a fingerprint carrying it could never see it move. And
+it is ABSENT from the object when the install declares no horizon, which [§ 8.3.1](#831-worked-delta)'s
+shallow merge cannot express: a patch can set a member and cannot remove one. So no delta carries it,
+it mints none, and it rides the snapshot and the detail response, where a consumer reads it. The ten
+above are a different exclusion — state that moves without anything rendered moving — and stay ten.
 
 **Which makes "a heartbeat emits no delta" a statement about the ordinary heartbeat, and the exceptions
 are named here rather than left to collide with the closed list above.** Every heartbeat moves seven
@@ -2791,6 +2815,7 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `feed_outbox_boundary_stalled` | `global_counters` | fleet health | a sweep pass found a committed `feed_outbox` row outside the visible prefix whose `created_at` is [§ 6.7](#67-retention-and-purge)'s outbox retention less one visibility lag in the past (`App\Feed\VisiblePrefix::STALLED_AGE_S`, computed from the two constants). Counted **once per pass that finds one**, not per row | non-zero ⇒ rows are one lag from being purged unread — deltas no open stream will deliver; read beside `feed_prefix_future`, which names the cause |
 | `board_poll_ok` | `global_counters` | fleet health | a board poll completed and wrote its transaction ([§ 2.1](#21-processes)) | **Stuck at `0` is the only signal that the board integration NEVER worked** — a poller that stopped after working is visible per seat as `task.degraded` |
 | `board_poll_failed` | `global_counters` | fleet health | a board poll was degraded — credential, transport, status, shape, pagination or the store — and therefore wrote nothing (`BOARD-TASK.md § 9`) | none on its own: the per-seat consequence arrives at [§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here)'s bound as `task.degraded`, and this counter is what says the cause was the poll rather than the board |
+| `idle_horizon_malformed` | `global_counters` | fleet health | a snapshot or seat response was served while `MEZZANINE_IDLE_NUDGE_AFTER_S` is set to something other than a whole number from 1 to 86,400, so it withheld `idle_nudge_after_s` as undeclared ([§ 8.2.1](#821-the-seat-state-object), card#9418). Counted **once per such response**, with one log line naming the key and never its value | non-zero and rising ⇒ the install's idle horizon is malformed and every consumer reads it as undeclared; fix the value and refresh the config |
 
 **Which table, and why the split is not arbitrary.** A counter goes in `seat_counters` when a seat can
 be named for it and the answer is about that seat; in `global_counters` when it cannot, or when the
@@ -2965,6 +2990,8 @@ snapshot repeats per seat and the delta patches.
 | `unknown_reason` | enum | **yes** | the 7 members of [§ 4.3](#43-the-derivation-function); non-null only when `activity_state == "unknown"` | `null` |
 | `api_error_type` | enum | **yes** | D1 § 6.4's 12 members, stored in `sessions.api_error_type` ([§ 6.4](#64-ddl)); non-null **only** when `activity_state == "stalled"`. `D2-MUST` #1 requires it on the object: *"`stalled` carries `api_error_type` so the drill-down can say which error"* | `null` |
 | `blocked_since` | rfc3339_ms | **yes** | seat clock — the `event_time` of the seat's **open** `attention.request`, stored as `attention_requests.opened_at` ([§ 6.4](#64-ddl)) and reached through `seat_state.open_attention_ref`; non-null **only** when `activity_state == "blocked"`, which [§ 4.4](#44-activity-states-every-entry-and-exit-edge) makes exactly the condition *a request is open*. A **narrative timestamp, never an age**, on the same basis [§ 4.7](#47-which-clock-each-ceiling-is-measured-from) measures the attention ceiling from | `null` |
+| `idle_since` | rfc3339_ms | **yes** | **server clock** — the instant the seat ENTERED `idle`: the `received_at` of the event whose fold made [§ 4.3](#43-the-derivation-function)'s rule 4 true, or the sweep pass's own instant when the sweeper's write did ([§ 4.4](#44-activity-states-every-entry-and-exit-edge)); non-null **only** when `activity_state == "idle"`, minted fresh on every entry and nulled on every exit, never carried over. **Not the clock `blocked_since` is on** — that one is the seat's; this one is this server's, so an age `server_time − idle_since` is exact ([§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)'s receipt-age row) | `null` |
+| `idle_nudge_after_s` | int | no | ⛔ **ABSENT when the install declares no horizon**, or declares one that is not a whole number from 1 to 86,400 (counted as `idle_horizon_malformed`) — the key is omitted, never `null` and never a default: a consumer tells a declared horizon from an undeclared one by the key's presence. Present, 1…86,400 seconds: the idle horizon this seat resolves to, which is the install's `MEZZANINE_IDLE_NUDGE_AFTER_S` (no per-seat override exists). This plane acts on it nowhere | `600` |
 | `action` | object | **yes** | the newest open call; `null` when none is open | see below |
 | `action.call_id` | ULID | no | 26 chars | `"01K3TA4E5F6G7H8J9K0M1N2P3Q"` |
 | `action.tool_name` | string | no | ≤ 64 B | `"Bash"` |
@@ -3132,6 +3159,50 @@ any kind**, so a consumer reading it as *since when* would silently re-date a fo
 last thing that happened near it. A blocked seat is a request for a human, the only ordering such a
 request has is how long it has been open, and this is the one member that carries it.
 
+**`idle_since` and `idle_nudge_after_s` are the idle horizon a machine consumer keys on, and both are
+published, not acted on (card#9418).** ⭐ **The contract was agreed with that consumer — the bridge's idle
+watchdog, a `fleet_read` reader of the snapshot ([§ 9](#9-read-side-authentication)) — on the roundtable
+(rt#478 ask 2, rt#479).** It nudges a seat that has sat `idle` past a horizon with work pending; the
+pending-work signal and the nudge are the bridge's, and this plane mints nothing from either member — the
+non-goal of [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) holds. Four
+properties, each one the consumer depends on:
+
+- **`idle_since` is on THIS SERVER's clock, which is not the clock `blocked_since` is on.** The two
+  `_since` members are siblings and are not one basis: `blocked_since` is the seat's narrative
+  timestamp, while `idle_since` is the `received_at` of the event whose fold made rule 4 of
+  [§ 4.3](#43-the-derivation-function) true — or the sweep pass's own instant when the sweeper's write
+  did, with no event behind it. So `server_time − idle_since` is
+  [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)'s receipt-age arithmetic, exact,
+  and host skew never enters it; the seat clock would give a resumed seat a three-hour idle, which is
+  the outcome § 3.3 exists to forbid.
+- **Minted fresh on every entry, never carried over.** The recompute that writes `activity_state`
+  compares it with the stored value: entering `idle` stamps the instant, staying `idle` keeps it (a
+  heartbeat, a `session.end` or a context sample re-dates nothing), and every other state nulls it.
+  The consumer's re-arm key is `(seat, idle_since)`, so an idle → working → idle blip it polled past is
+  witnessed by the changed value. It keys on `activity_state` and never on `render_state`:
+  [§ 4.2](#42-render-precedence) masks `idle` behind a non-live link rather than clearing it, so a seat
+  that goes `stale` and returns is one idle period. It is version-bearing by
+  [§ 6.5](#65-the-fold)'s subtraction, and it moves only on the `activity_state` edge that already
+  emits a delta, so [§ 8.3](#83-the-websocket-delta-feed)'s volume is unchanged. A seat already `idle`
+  when the column was added was given its `activity.last_received_at`, which is the edge's own value
+  when the event that minted it is still the seat's newest activity event and an approximation
+  otherwise; a rebuild
+  ([§ 6.6](#66-rebuild-from-the-log)) re-derives the fold-minted value exactly.
+- **`idle_nudge_after_s` is ABSENT, not null, when nothing is declared.** It is the horizon this seat
+  resolves to; on this plane that is the install's configured value, with no per-seat override. The
+  consumer tells *idle past its declared horizon* from *no horizon declared* by the key's presence, so
+  a default emitted on the wire would erase the one distinction it reads. ⛔ **A malformed configured
+  value — anything but a whole number from 1 to 86,400 — is UNDECLARED too, never a refusal**: the key
+  is absent, which fails safe for the consumer (it nudges nobody), and every process keeps running. It
+  is made loud instead: each snapshot or seat response that withheld it counts
+  `idle_horizon_malformed` on fleet health ([§ 7.2](#72-this-planes-own-counters-and-badges)) and writes
+  one log line naming `MEZZANINE_IDLE_NUDGE_AFTER_S`, never its value. A refusal at configuration load
+  was the first design, and it took down every process running on uncached config (card#9418 review).
+- **The horizon is configuration, so it rides no delta.** None of § 6.5's three writers moves it — a
+  process reads it once, and changing it is a redeploy — and a delta's shallow merge could not carry its
+  absence; [§ 6.5](#65-the-fold) names it outside the version-bearing set for those two reasons. It
+  reaches a consumer on the snapshot and the detail response, which is what the consumer polls.
+
 **`subagents` is capped at 8 with the true count beside it, and that is a stated reduction rule, not a
 silent truncation.** D1's index cap admits up to 64 open calls; a side table rendering 64 interns is a
 list, not a desk. The 8 kept are the most recently started, `subagents_open` always carries the true
@@ -3144,13 +3215,13 @@ insignificant whitespace). Every row below names the block it is measured from, 
 
 | Object | Bytes | How |
 |---|---|---|
-| seat state, typical | **1,920 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
-| seat state, worst case | **5,757 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
+| seat state, typical | **1,963 B** | the seat object of the [§ 8.2.2](#822-worked-snapshot) snapshot, serialized |
+| seat state, worst case | **5,797 B** | the `patch` of the [§ 8.3.2](#832-worked-worst-case-delta) block, serialized |
 | snapshot envelope | **302 B** | the [§ 8.2.2](#822-worked-snapshot) snapshot **less** its one seat object: fleet health + one install wrapper |
-| snapshot, 4 seats | **~8.0 KB** typical, **~23 KB** worst | 302 + n × the above |
-| snapshot, 50 seats | **~96 KB** typical, **~288 KB** worst | — |
+| snapshot, 4 seats | **~8.2 KB** typical, **~23 KB** worst | 302 + n × the above |
+| snapshot, 50 seats | **~98 KB** typical, **~290 KB** worst | — |
 | delta, typical | **323 B** | the [§ 8.3.1](#831-worked-delta) example, serialized |
-| delta, worst case | **6,428 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
+| delta, worst case | **6,481 B** | the [§ 8.3.2](#832-worked-worst-case-delta) block itself, serialized |
 
 **The worst case is published as an object rather than described as a construction, and that is the
 whole point.** An earlier draft labelled these figures *Measured* while the worst case existed only as a
@@ -3192,11 +3263,11 @@ well as the byte count:
    ceiling is deliberately pessimistic, so the bound cannot be falsified by a fleet that runs longer
    than anyone planned.
 
-The worst-case delta at 6,428 B sits inside the **8 KiB per-message bound** this design holds itself to
-([§ 8.3](#83-the-websocket-delta-feed)) at **1.27×**, with **1,764 B** spare.
+The worst-case delta at 6,481 B sits inside the **8 KiB per-message bound** this design holds itself to
+([§ 8.3](#83-the-websocket-delta-feed)) at **1.26×**, with **1,711 B** spare.
 
-**No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~96 KB, which
-is one response. Past **200 seats** (~384 KB typical) the snapshot should page by install — stated now
+**No pagination, and the threshold at which that stops being true.** A 50-seat snapshot is ~98 KB, which
+is one response. Past **200 seats** (~393 KB typical) the snapshot should page by install — stated now
 as the trigger, and deliberately not built, because building pagination for a four-seat fleet is
 mechanism for a case that does not exist and the trigger is one number away from being noticed.
 
@@ -3224,6 +3295,7 @@ mechanism for a case that does not exist and the trigger is one number away from
           "install_id": "aimla", "seat_id": "aimla-pm", "state_version": 48219,
           "render_state": "working", "link_state": "live", "activity_state": "working",
           "unknown_reason": null, "api_error_type": null, "blocked_since": null,
+          "idle_since": null, "idle_nudge_after_s": 600,
           "action": {
             "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "Bash",
             "descriptor": "Bash: composer test",
@@ -3325,7 +3397,7 @@ a consumer that assumed the three were identical would read a missing `counters`
 | `max_fold_lag_ms` | int | no | ≥ 0, the maximum over **the same population `seats_total` counts** — every seat no operator has retired, not only the live ones. One population, named once, because `fleet.fold`'s thresholds ([§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)) are stated over *any* seat and two fields of one object reading two populations can disagree: a `stale` seat 117 s behind would set `fleet.fold` to `lagging` while `max_fold_lag_ms` read `0`. A silent seat contributes `0` on its own once its cursor catches up, so widening the population costs nothing and closes that gap | `117` |
 | `seats_total` | int | no | ≥ 0, excluding retired seats — which leave this count at `retired_at`, in the same transaction that takes their desk off the floor ([§ 4.10](#410-retirement-is-a-rendered-state)) | `4` |
 | `seats_live` | int | no | ≥ 0, `link_state == "live"` | `4` |
-| `counters` | object | **yes** | **`GET /api/fleet/health` only.** Every fleet-scoped counter whose `Exposed` cell names this surface — `batches_failed.<detail>`'s global rows (one member per [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) `server_error` `detail`), `unattributed_refusals`, `auth_failed_by_ip`, `revoked_token_presented` ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) and `feed_resync_required`, `feed_gap_detected`, `snapshot_served`, `snapshot_denied`, `token_wrong_surface`, `purge_backlog_rows`, `feed_prefix_future`, `feed_outbox_boundary_stalled`, `board_poll_ok`, `board_poll_failed` ([§ 7.2](#72-this-planes-own-counters-and-badges)) — one `BIGINT UNSIGNED` member each, read from `global_counters`, monotonic and never reset. Whenever the object is present **every one of them is**, each at `0` before its first increment: a per-member omission is forbidden, because an omitted counter and a zero counter are the same wire shape to a consumer and only one of them is true. It is `null` — and **only** — when `db` is `down`, because they live in the store and a response that could not reach it cannot report them; reporting `0` there would be `docs/KANBAN.md § G-1`'s clean zero on the very surface [§ 2.2](#22-fail-posture-per-path) built its read posture to keep honest. `null` says *we could not read these*; `0` would say *nothing has happened* | `{"purge_backlog_rows": 0, "token_wrong_surface": 0, …}` |
+| `counters` | object | **yes** | **`GET /api/fleet/health` only.** Every fleet-scoped counter whose `Exposed` cell names this surface — `batches_failed.<detail>`'s global rows (one member per [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) `server_error` `detail`), `unattributed_refusals`, `auth_failed_by_ip`, `revoked_token_presented` ([§ 7.1](#71-d1s-server-side-counters--where-they-live)) and `feed_resync_required`, `feed_gap_detected`, `snapshot_served`, `snapshot_denied`, `token_wrong_surface`, `purge_backlog_rows`, `feed_prefix_future`, `feed_outbox_boundary_stalled`, `board_poll_ok`, `board_poll_failed`, `idle_horizon_malformed` ([§ 7.2](#72-this-planes-own-counters-and-badges)) — one `BIGINT UNSIGNED` member each, read from `global_counters`, monotonic and never reset. Whenever the object is present **every one of them is**, each at `0` before its first increment: a per-member omission is forbidden, because an omitted counter and a zero counter are the same wire shape to a consumer and only one of them is true. It is `null` — and **only** — when `db` is `down`, because they live in the store and a response that could not reach it cannot report them; reporting `0` there would be `docs/KANBAN.md § G-1`'s clean zero on the very surface [§ 2.2](#22-fail-posture-per-path) built its read posture to keep honest. `null` says *we could not read these*; `0` would say *nothing has happened* | `{"purge_backlog_rows": 0, "token_wrong_surface": 0, …}` |
 
 **Why `counters` is on the endpoint and not on the object.** [§ 7.1](#71-d1s-server-side-counters--where-they-live)
 declares that its tables answer *where each counter is stored, which surface exposes it, and which badge
@@ -3503,7 +3575,7 @@ one statement whose plan [§ 6.7](#67-retention-and-purge) states, over a table 
 on the average tick and none at all on a quiet fleet — which is the design's own 250 ms rather than a
 number this amendment mints.
 
-**Message bound: 8 KiB.** The worst-case delta is 6,428 B, measured by serializing
+**Message bound: 8 KiB.** The worst-case delta is 6,481 B, measured by serializing
 [§ 8.3.2](#832-worked-worst-case-delta), so the bound cannot bind on a conforming message; it exists so that a future field addition that would
 breach it fails a test rather than a client. SSE imposes no per-message maximum of its own — a `data:`
 line is unbounded by the protocol (DOCS-CITED, WHATWG HTML § *Parsing an event stream*, which states
@@ -3959,6 +4031,10 @@ seat object's size is its `patch` serialized. It is built by the four rules stat
 [§ 8.2.1](#821-the-seat-state-object), and the filler strings are decimal rulers so a reader can count a
 bound rather than trust it. **It is not a reachable seat state** — a retired seat with an open call and
 all eighteen badges is a size bound, not a scenario — and that is stated rather than left to be noticed.
+**It carries no `idle_nudge_after_s`, because no delta does** ([§ 6.5](#65-the-fold)). A snapshot's seat
+object can, so the worst-case seat object a SNAPSHOT serves is this `patch` plus that member at its
+bound, `"idle_nudge_after_s":86400` — 27 B more — and the worst-case snapshot rows of
+[§ 8.2.1](#821-the-seat-state-object)'s size table, computed from the `patch`, are low by 27 B a seat.
 
 ```json
 {
@@ -3969,7 +4045,7 @@ all eighteen badges is a size bound, not a scenario — and that is stated rathe
   "seat_id": "012345678901234567890123456789012345678901234567",
   "state_version": 9007199254740991,
   "at": "2026-08-23T14:23:09.882Z",
-  "changed": ["action", "activity", "activity_state", "api_error_type", "badges", "badges_since", "blocked_since", "context", "delivery", "derivation", "enabled", "install_id", "link_state", "model_label", "open_calls", "open_turn", "protocol_agent_name", "protocol_agent_name_check", "protocol_agent_role", "render_state", "reporter", "retired", "seat_id", "session", "state_version", "subagents", "subagents_open", "task", "unknown_reason"],
+  "changed": ["action", "activity", "activity_state", "api_error_type", "badges", "badges_since", "blocked_since", "context", "delivery", "derivation", "enabled", "idle_since", "install_id", "link_state", "model_label", "open_calls", "open_turn", "protocol_agent_name", "protocol_agent_name_check", "protocol_agent_role", "render_state", "reporter", "retired", "seat_id", "session", "state_version", "subagents", "subagents_open", "task", "unknown_reason"],
   "patch": {
     "install_id": "01234567890123456789012345678901",
     "seat_id": "012345678901234567890123456789012345678901234567",
@@ -3980,6 +4056,7 @@ all eighteen badges is a size bound, not a scenario — and that is stated rathe
     "unknown_reason": "session_closed_turn_open",
     "api_error_type": "authentication_failed",
     "blocked_since": "2026-08-23T14:23:09.882Z",
+    "idle_since": "2026-08-23T14:23:09.882Z",
     "action": {"call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q", "tool_name": "0123456789012345678901234567890123456789012345678901234567890123", "descriptor": "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", "started_at": "2026-08-23T14:23:09.882Z", "started_received_at": "2026-08-23T14:23:09.882Z", "agent_scope": "subagent", "parent_call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q"},
     "open_calls": 65535,
     "open_turn": true,
@@ -4368,7 +4445,7 @@ A consumer that wants to correlate a rendered state with the wire has both: the 
 newest `(seq_epoch, seq)` the fold has applied.
 
 **Reconnect.** On reconnect the client re-runs [§ 8.4](#84-snapshot-then-deltas) from step 1. A full
-re-snapshot is ~96 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
+re-snapshot is ~98 KB for a 50-seat fleet, so there is no per-seat delta-replay buffer on the server
 and deliberately so: a replay buffer is a second, stateful copy of recent history whose correctness
 would have to be maintained against the store, to save a request that costs less than the buffer's own
 memory. ⛔ **`feed_outbox` is not that buffer, and [§ 8.3](#83-the-websocket-delta-feed) states the two
@@ -5771,13 +5848,13 @@ document.
 | Store per seat-day | **~10.0 MB** | **Derived** — 7.9 MB of `events` (10,420 × 756 B) + 2.1 MB of projections (calls 3,000 × 300 B, transitions 1,400 × 160 B, other 1,740 × 200 B, × 1.4, plus `ix_purge` measured at 24 B a transition and at most 29 B on the 1,740) | [§ 6.8](#68-sizing) |
 | Store per seat, 14 days | **~140 MB** | **Derived** — × 14 | [§ 6.8](#68-sizing) |
 | Store, 4 / 12 / 50 seats | **0.56 / 1.7 / 7.0 GB** | **Derived** — × seat count. Inherits D1's volume *estimate*; re-derived from the first week of live data | [§ 6.8](#68-sizing) |
-| Seat-state object | **1,920 B** typical, **5,757 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
-| Fleet snapshot | **8.0 KB** (4 seats) … **96 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
-| Snapshot pagination trigger | 200 seats (~384 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
-| Delta message | **323 B** typical, **6,428 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
+| Seat-state object | **1,963 B** typical, **5,797 B** worst | **Measured** — the [§ 8.2.2](#822-worked-snapshot) snapshot's seat object and the `patch` of [§ 8.3.2](#832-worked-worst-case-delta), each serialized with no insignificant whitespace. Both artefacts are published in this document precisely so the figures are reproducible, and `tools/design/verify-fleet-state.py` re-derives them | [§ 8.2.1](#821-the-seat-state-object) |
+| Fleet snapshot | **8.2 KB** (4 seats) … **98 KB** (50 seats) | **Measured** — 302 B envelope + n × the above | [§ 8.2.1](#821-the-seat-state-object) |
+| Snapshot pagination trigger | 200 seats (~393 KB) | **Derived** — stated as the trigger, deliberately not built for a four-seat fleet | [§ 8.2.1](#821-the-seat-state-object) |
+| Delta message | **323 B** typical, **6,481 B** worst | **Measured** — [§ 8.3.1](#831-worked-delta) and [§ 8.3.2](#832-worked-worst-case-delta) serialized | [§ 8.3](#83-the-websocket-delta-feed) |
 | Feed traffic per connected client | **~1.6 KiB/s** at 50 seats | **Derived** — 5.20 msg/s × the measured 323 B typical delta = 1,680 B/s | [§ 8.3](#83-the-websocket-delta-feed) |
 | Worst-case integer magnitude | 2⁵³−1 (16 digits) | **Chosen** — the JS-safe ceiling D1 § 6.0 admits, used for every integer whose own bound is open, so the worst-case object cannot be falsified by a fleet that outlives its estimates | [§ 8.2.1](#821-the-seat-state-object) |
-| Feed message bound | 8 KiB | **Chosen** — 1.27× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. SSE imposes no per-message maximum of its own, and `feed_outbox.message` carries the same figure as a `CHECK` (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
+| Feed message bound | 8 KiB | **Chosen** — 1.26× the measured worst case, so a conforming message cannot breach it and a future field addition that would break a test rather than a client. SSE imposes no per-message maximum of its own, and `feed_outbox.message` carries the same figure as a `CHECK` (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
 | `subagents` array cap | 8, with `subagents_open` carrying the truth | **Chosen** — D1's index cap admits 64 open calls and a side table rendering 64 interns is a list. The cap is what holds the worst-case object inside the message bound | [§ 8.2.1](#821-the-seat-state-object) |
 | Stream tick | 250 ms | **Derived** — below the ~300 ms at which a human notices added latency, which is D1's own basis for its hook budget and the same order as the status-line debounce D1 records; bounds a stream's delivery at 4 batches/s, and merges nothing (card#9287) | [§ 8.3](#83-the-websocket-delta-feed) |
 | Delta volume | **8,980/seat/day = 0.104 msg/s/seat**; 5.2 msg/s at 50 seats | **Derived** — from D1 § 6.0's kind-table ranges, every kind but the heartbeat: 6,000 tool + 1,200 turn + 1,440 context + 120 subagent + 80 session + 100 attention + 40 compaction, which is D1's own 10,420 ceiling less its 1,440 heartbeats. Ordinary heartbeats are excluded and that exclusion is a design rule, not an omission; the edge-triggered deltas that are not events at all — [§ 6.5](#65-the-fold)'s heartbeat exceptions and the sweeper's own transitions — are single digits a seat-day and this event count does not carry them | [§ 8.3](#83-the-websocket-delta-feed) |
@@ -5821,7 +5898,7 @@ tool actually re-derives, stated so a reader can tell a checked figure from a re
 | Check | What the tool re-derives | Status |
 |---|---|---|
 | **Byte figures** — the seven rows of [§ 8.2.1](#821-the-seat-state-object)'s size table and their restatements here — **and the stream's stall bound** | `json.loads` + `json.dumps(separators)` + `len` over all three published blocks; the worst case is measured from [§ 8.3.2](#832-worked-worst-case-delta), which exists so it can be. And [§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, held equal to [§ 8.3](#83-the-websocket-delta-feed)'s dead-feed figure, to [§ 6.7](#67-retention-and-purge)'s `feed_outbox` retention less one heartbeat interval, and to its two copies that cannot point at it: the `tick_started > N s` comparison in [§ 8.3](#83-the-websocket-delta-feed)'s handler fence, and this section's `Stream stall bound` row, its figure bolded or not — each copy with a control that reds when it cannot be found or read (card#9326) | **tool-checked** |
-| **Field table ↔ worked examples, both directions** | the **77** field names of [§ 8.2.1](#821-the-seat-state-object) against the flattened paths of every seat object in the document, set-differenced each way — **and this row's own count against that table**, because a population size stated in prose beside a tool that re-derives it is a number free to disagree with the document while the tool reports clean, which is what it did for one member's worth of drift | **tool-checked** |
+| **Field table ↔ worked examples, both directions** | the **79** field names of [§ 8.2.1](#821-the-seat-state-object) against the flattened paths of every seat object in the document, set-differenced each way — **and this row's own count against that table**, because a population size stated in prose beside a tool that re-derives it is a number free to disagree with the document while the tool reports clean, which is what it did for one member's worth of drift | **tool-checked** |
 | **DDL `ENUM` member reachability** | every member of every `ENUM` in [§ 6.4](#64-ddl), counted across the rest of the file; a member occurring only in its own declaration is a member no path can produce | **tool-checked** |
 | **Cross-document enum containment** | D2's `abort_reason` / `close_source` / `resolution` / `resolution_source` extension sets against D1's declared sets, with the counts stated in the DDL comments | **tool-checked** |
 | **Feed message-type closure** | every use of a message type in a namespace [§ 8.3](#83-the-websocket-delta-feed)'s own table declares — the namespaces are the ROOTS of that table's types, re-derived per run rather than listed in the tool, and whether an occurrence is a *use* is decided by what this document DOES with the token (a whole token, so a path or a host name is not one; carrying a payload object rather than a scalar value) instead of by whether it is written in backticks, so § 8.3's and § 8.4's fences are inside the population | **tool-checked**, with **two holes declared rather than closed**, both reported on every run: a namespace with **no row in that table at all** is invisible, because the table it would be held against never names it; and a message name written in the `name: scalar` field form reads as a field and is skipped — that skip is **counted** beside the population, and one occurring **inside a fenced block is a failure**, which bounds the hole to prose |
@@ -6053,9 +6130,9 @@ operator ruling.
    ([§ 8.2.1](#821-the-seat-state-object)). If D3 wants a different number the cap moves and the
    worst-case byte figure moves with it — measurably now, because the worst case is a published block
    ([§ 8.3.2](#832-worked-worst-case-delta)) and each further subagent adds a **measured 263 B** —
-   the block's own element, 262 B serialized, plus its comma separator — against **1,764 B** of
+   the block's own element, 262 B serialized, plus its comma separator — against **1,711 B** of
    spare under the 8 KiB bound. Six more therefore fit and a seventh does not: **the cap could
-   reach 14**, where the worst-case delta is 8,006 B, and at 15 it is 8,269 B, which **breaches**
+   reach 14**, where the worst-case delta is 8,059 B, and at 15 it is 8,322 B, which **breaches**
    the 8,192 B bound the same sentence invokes. An earlier revision of this item offered ~16, which
    is the wrong side of the boundary it exists to locate. **Closes it:** D3's drill-down design.
 

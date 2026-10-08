@@ -27,6 +27,7 @@
             "unknown_reason": null,
             "api_error_type": null,
             "blocked_since": null,
+            "idle_since": null,
             "action": {
               "call_id": "7BC655J8KF8TH9EWZK4EXDAGBQ",
               "tool_name": "Bash",
@@ -134,6 +135,7 @@
                       "unknown_reason": null,
                       "api_error_type": null,
                       "blocked_since": null,
+                      "idle_since": null,
                       "action": {
                         "call_id": "7BC655J8KF8TH9EWZK4EXDAGBQ",
                         "tool_name": "Bash",
@@ -246,6 +248,7 @@
           "unknown_reason": null,
           "api_error_type": null,
           "blocked_since": null,
+          "idle_since": null,
           "action": {
             "call_id": "7BC655J8KF8TH9EWZK4EXDAGBQ",
             "tool_name": "Bash",

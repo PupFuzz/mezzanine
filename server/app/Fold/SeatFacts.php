@@ -203,6 +203,11 @@ final class SeatFacts
             // subtraction is what decides that, not this list. So the hand going up and the hand
             // coming down are both delivered, on the delta `activity_state` already emits.
             'blocked_since' => $blockedSince,
+            // card#9418: § 8.2.1's `idle_since` is version-bearing by the same subtraction, and it
+            // moves on the `activity_state` edge that already emits. Its sibling
+            // `idle_nudge_after_s` is NOT here: § 6.5 names it as configuration rather than state —
+            // no writer moves it, and a delta's shallow merge cannot carry a member's absence.
+            'idle_since' => $s->idle_since,
             'action' => $action === null ? null : (array) $action,
             'open_calls' => (int) $s->open_calls,
             'open_turn' => (bool) $s->open_turn,

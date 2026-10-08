@@ -36,6 +36,7 @@
                       "unknown_reason": null,
                       "api_error_type": null,
                       "blocked_since": null,
+                      "idle_since": null,
                       "action": {
                         "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
                         "tool_name": "Bash",
@@ -125,6 +126,7 @@
                       "unknown_reason": null,
                       "api_error_type": null,
                       "blocked_since": null,
+                      "idle_since": null,
                       "action": {
                         "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
                         "tool_name": "Edit",
@@ -205,6 +207,7 @@
                       "unknown_reason": null,
                       "api_error_type": null,
                       "blocked_since": null,
+                      "idle_since": null,
                       "action": null,
                       "open_calls": 0,
                       "open_turn": false,
@@ -277,6 +280,7 @@
                       "unknown_reason": null,
                       "api_error_type": null,
                       "blocked_since": "2026-08-23T14:19:40.006Z",
+                      "idle_since": null,
                       "action": null,
                       "open_calls": 0,
                       "open_turn": false,
@@ -1125,6 +1129,7 @@
                       "unknown_reason": null,
                       "api_error_type": null,
                       "blocked_since": null,
+                      "idle_since": null,
                       "action": {
                         "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
                         "tool_name": "Bash",
@@ -1214,6 +1219,7 @@
                       "unknown_reason": null,
                       "api_error_type": null,
                       "blocked_since": null,
+                      "idle_since": null,
                       "action": {
                         "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
                         "tool_name": "Edit",
@@ -1294,6 +1300,7 @@
                       "unknown_reason": null,
                       "api_error_type": null,
                       "blocked_since": null,
+                      "idle_since": null,
                       "action": null,
                       "open_calls": 0,
                       "open_turn": false,
@@ -1366,6 +1373,7 @@
                       "unknown_reason": null,
                       "api_error_type": null,
                       "blocked_since": "2026-08-23T14:19:40.006Z",
+                      "idle_since": null,
                       "action": null,
                       "open_calls": 0,
                       "open_turn": false,

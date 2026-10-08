@@ -329,6 +329,17 @@ user. If the board stops answering, each board title keeps showing for 30 minute
 to the telemetry title, marked degraded. `GET /api/fleet/health` counts polls in `board_poll_ok` and
 `board_poll_failed`, and the server log names the failure class of each failed poll.
 
+### The idle horizon
+
+Every seat object on the read API carries `idle_since`, the server-clock instant the seat last went
+idle; it is null whenever the seat is not idle. To publish an idle horizon beside it for a watcher that nudges idle seats (the bridge's idle
+watchdog reads the snapshot with its own `fleet_read` token), set `MEZZANINE_IDLE_NUDGE_AFTER_S` in
+`server/.env` to a number of seconds from 1 to 86400 and refresh the config cache; every seat object
+then carries `idle_nudge_after_s`. Left empty, the member is absent and a watcher reads the horizon as
+undeclared. A value that is not a whole number from 1 to 86400 is treated the same way, and
+`GET /api/fleet/health` counts `idle_horizon_malformed` on every snapshot or seat response that
+withheld it, with a server log line naming the key. Mezzanine itself sends no nudge. `docs/design/FLEET-STATE.md § 8.2.1` owns both members.
+
 ## Licensing and attribution
 
 MIT (see `LICENSE`). Mezzanine's floor derives from prior open-source work and ships

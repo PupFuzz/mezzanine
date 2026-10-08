@@ -156,7 +156,8 @@ class StateRecompute
     public function after(FoldEvent $e, array $before, string $cause = 'wire_event'): bool
     {
         $this->writeSnapshotColumns($e);
-        $this->writeDerivedColumns($e->seatRef);
+        // The event's own receipt is the instant of any `idle` edge this event mints (card#9418).
+        $this->writeDerivedColumns($e->seatRef, $e->receivedAt);
 
         return $this->settle(
             seatRef: $e->seatRef,
@@ -216,7 +217,8 @@ class StateRecompute
      */
     public function forSeat(int $seatRef, array $before, string $cause, array $detail = [], bool $owesRow = false): bool
     {
-        $this->writeDerivedColumns($seatRef);
+        // No event, so an `idle` edge this writer mints is stamped with its own pass instant.
+        $this->writeDerivedColumns($seatRef, null);
 
         return $this->settle($seatRef, $before, $cause, null, $detail, $owesRow);
     }
@@ -378,8 +380,12 @@ class StateRecompute
     /**
      * The derived columns: the two axes, their collapse, the open-fact pointers, the badges and
      * § 4.9's task title (tier 1 over tier 3, `task()`).
+     *
+     * @param  ?string  $edgeAt  the server-clock receipt of the event being applied, or null for a
+     *                           writer with no event (the sweeper, the retirement act) — the
+     *                           instant an `idle` edge minted by THIS recompute is stamped with
      */
-    private function writeDerivedColumns(int $seatRef): void
+    private function writeDerivedColumns(int $seatRef, ?string $edgeAt): void
     {
         $facts = SeatFacts::for($seatRef);
         $state = DB::table('seat_state')->where('seat_ref', $seatRef)->first();
@@ -445,6 +451,7 @@ class StateRecompute
             'open_calls' => $facts->openCalls,
             'open_turn' => $facts->openTurn,
             'open_attention_ref' => $openAttention,
+            'idle_since' => $this->idleSince($state, $activity, $edgeAt ?? $nowSql),
             'server_badges' => json_encode($badges),
             'badge_first_seen' => json_encode(
                 Badges::firstSeen($state->badge_first_seen, Badges::render((object) (
@@ -454,6 +461,44 @@ class StateRecompute
             'state_computed_at' => $nowSql,
             'updated_at' => $nowSql,
         ] + $this->task($seatRef, $currentCall, $nowMs));
+    }
+
+    /**
+     * § 8.2.1's `idle_since` — the SERVER-clock instant the seat entered `idle` (card#9418, the
+     * contract agreed with the bridge's idle watchdog on rt#478 / rt#479).
+     *
+     * ⛔ AN EDGE, SO IT READS THE STORED PREVIOUS STATE, as `badge_first_seen` does for a badge's
+     * onset. § 4.3's `activity_state` is a pure function of five facts and holds no memory; WHEN it
+     * became `idle` is not a function of the facts at all, only of the moment they last made rule 4
+     * true. That moment is observed here, in the one place `activity_state` is DERIVED (the
+     * rebuild's reset and a seat's provisioning write `unknown`, with `idle_since` null), by
+     * comparing the stored value against the fresh one — so every route into `idle` is caught, the
+     * fold's and the sweeper's alike, with no list of triggers to keep in step with § 4.4.
+     *
+     *   entering `idle`  → `$edgeAt`: the applied event's `received_at`, or the sweep pass's own
+     *                      instant when the writer has no event. Both are this server's clock, so a
+     *                      consumer's `server_time − idle_since` never carries host skew — and never
+     *                      the seat clock, which § 3.3 forbids computing an age from.
+     *   staying `idle`   → unchanged. A heartbeat, a `session.end`, a context sample: none is an
+     *                      edge, so none re-dates the idle period.
+     *   any other state  → null. Leaving `idle` clears it, so the NEXT entry mints a fresh value —
+     *                      the consumer's re-arm key is `(seat, idle_since)`, and an
+     *                      idle → working → idle blip it polled past is witnessed by the change.
+     *
+     * Keyed on `activity_state`, never `render_state`: § 4.2 MASKS `idle` behind a non-live link
+     * rather than clearing it, so a seat that goes `stale` and comes back is the same idle period.
+     *
+     * Reproducible by § 6.6's rebuild for every fold-minted edge, because `received_at` is in the
+     * log and the rebuild resets `activity_state` before replaying; a sweeper-minted edge is no more
+     * replayable than the sweeper's own writes it follows.
+     */
+    private function idleSince(object $state, string $activity, string $edgeAt): ?string
+    {
+        if ($activity !== 'idle') {
+            return null;
+        }
+
+        return $state->activity_state === 'idle' ? $state->idle_since : $edgeAt;
     }
 
     /**

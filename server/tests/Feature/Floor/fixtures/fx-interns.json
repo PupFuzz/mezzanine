@@ -27,6 +27,7 @@
             "unknown_reason": null,
             "api_error_type": null,
             "blocked_since": null,
+            "idle_since": null,
             "action": {
               "call_id": "TQR10T4VZ13040000000000000",
               "tool_name": "Bash",
@@ -134,6 +135,7 @@
                       "unknown_reason": null,
                       "api_error_type": null,
                       "blocked_since": null,
+                      "idle_since": null,
                       "action": {
                         "call_id": "TQR10T4VZ13040000000000000",
                         "tool_name": "Bash",
@@ -316,6 +318,7 @@
           "unknown_reason": null,
           "api_error_type": null,
           "blocked_since": null,
+          "idle_since": null,
           "action": {
             "call_id": "TQR10T4VZ13040000000000000",
             "tool_name": "Bash",

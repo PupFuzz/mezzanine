@@ -7,6 +7,7 @@ use App\Fold\StateRecompute;
 use App\Http\Controllers\Concerns\ServesAClosedRead;
 use App\Ingest\Counters;
 use App\Read\FleetHealth;
+use App\Read\IdleHorizon;
 use App\Read\ReadRefusal;
 use App\Read\RetirementFilter;
 use App\Read\SeatObject;
@@ -50,7 +51,14 @@ class FleetController extends Controller
     /** § 8.2: "the whole fleet: every install, every seat, current state." */
     public function snapshot(): JsonResponse
     {
-        return $this->serve(fn () => Snapshot::build($this->nowMs()));
+        return $this->serve(function () {
+            $snapshot = Snapshot::build($this->nowMs());
+
+            // card#9418: a malformed horizon was withheld from every seat above; say so on health.
+            IdleHorizon::reportIfMalformed();
+
+            return $snapshot;
+        });
     }
 
     /**
@@ -75,6 +83,7 @@ class FleetController extends Controller
             }
 
             $object = SeatObject::build($row, $row, $this->nowMs());
+            IdleHorizon::reportIfMalformed();
 
             $this->countGapIfReported($request, (int) $row->state_version);
 
