@@ -183,7 +183,7 @@ return new class extends Migration
 
             $table->dateTime('opened_at', 3);                                // event_time
             $table->dateTime('opened_received_at', 3);
-            // Dropped with ix_ceiling by 2026_10_08_000000_retire_the_attention_ceiling.php
+            // Dropped with ix_ceiling by 2026_10_08_000001_retire_the_attention_ceiling.php
             // (card#9527); left here exactly as it shipped.
             $table->dateTime('ceiling_at', 3);                               // opened_at + 60 min
 
@@ -191,7 +191,7 @@ return new class extends Migration
             $table->enum('resolution', [
                 'granted', 'denied', 'human_input', 'session_ended', 'timeout',
                 // SERVER-side; never on the wire. History since card#9527, which appends
-                // `seat_activity` (2026_10_08_000000_retire_the_attention_ceiling.php).
+                // `seat_activity` (2026_10_08_000001_retire_the_attention_ceiling.php).
                 'server_ceiling', 'seat_left_live',
             ])->nullable();
             $table->enum('resolution_source', [

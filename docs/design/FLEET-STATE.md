@@ -1843,6 +1843,12 @@ CREATE TABLE seat_counters (
   name      VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   value     BIGINT UNSIGNED NOT NULL DEFAULT 0,
   updated_at DATETIME(3) NOT NULL,
+  -- § 7.2's badge window (card#9491): when the counter last rose, on the server clock, and never
+  -- moved backwards. For a counter a badge is windowed on it is the RECEIPT of the evidence: the
+  -- ingest's write time for the ingest's counters, the event's `received_at` for the fold's, so a
+  -- rebuild that replays the event re-stamps the same instant. NULL only on a row an older build
+  -- inserted after a rollback (§ 6.9 rule 3), which the window reads as no recent rise.
+  last_increased_at DATETIME(3) NULL,
   PRIMARY KEY (seat_ref, name)
 ) ENGINE=InnoDB;
 
@@ -2795,8 +2801,8 @@ no seat caused them and degrading a desk for them would be the attribution error
 fleet-wide is ever written to it.
 
 **Reset and overflow, for both tables.** Neither is ever reset — not on a rebuild, not on a deploy, not
-on a flusher restart (that is the *reporter's* counters, [§ 7.3](#73-how-the-reporters-own-counters-are-handled),
-which are a different population) — and [§ 6.7](#67-retention-and-purge) retains both forever, because
+on a flusher restart (the *reporter's* counters, [§ 7.3](#73-how-the-reporters-own-counters-are-handled),
+are a different population) — and [§ 6.7](#67-retention-and-purge) retains both forever, because
 a monotonic counter whose baseline moves is a counter no rate can be computed from. Neither can
 overflow in practice: `BIGINT UNSIGNED` tops out at 1.8 × 10¹⁹, and the fastest-moving counter here is
 bounded by D1's whole-event ceiling of 10,420/seat/day, which needs ~4.7 × 10¹² years to reach it —
@@ -2815,19 +2821,36 @@ Every badge [§ 7.1](#71-d1s-server-side-counters--where-they-live)'s "Badge rai
 member of this list; that is what makes [§ 8.2.1](#821-the-seat-state-object)'s `badges` bound of
 **18** a bound over the right population rather than over a list plus some prose.
 
+**A counter-derived badge is windowed at 24 h** (operator ruling 2026-09-14, card#9491). `seq_gap`,
+`seq_collision`, `epoch_reset` and `reporter_ahead` are raised while a counter that raises them
+([§ 7.1](#71-d1s-server-side-counters--where-they-live)'s "Badge raised" column) **rose within the last
+24 h**, judged on `seat_counters.last_increased_at` ([§ 6.4](#64-ddl)), and each clears on its own one
+window after the last rise. The counters are never reset, so a badge read off "non-zero" was all-time:
+one reinstall badged a seat `epoch_reset` for the rest of its life, and the floor could no longer tell a
+seat degraded now from one that had a one-time event weeks ago. The count stays in `seat_counters` and
+on the seat detail, so a cleared badge still reads back to what raised it. The sweeper recomputes every
+seat every pass ([§ 2.1](#21-processes)), so a badge clears within one sweep cadence of its window's
+end, on a seat that sends nothing as well. A rise is dated at the receipt of its evidence, never at the
+fold's own clock, so [§ 6.6](#66-rebuild-from-the-log)'s rebuild re-stamps the instant the live fold stamped and the
+two agree on the badge (AT-D2-10). The other three are not counter-derived and are not windowed:
+`clock_skew` and `fold_lag` are current gauges, and `derivation_error` reads `seat_state.fold_errors`,
+which states that the derived state is missing an event until a rebuild clears it, a condition that
+holds until then rather than an event that happened once. [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters)
+windows the reporter's own members at the same 24 h.
+
 `catching_up` is deliberately **not** a badge: it is a `link_state`
 ([§ 4.5](#45-link-states)), and a fact with two homes is a fact free to disagree with itself.
 
-`epoch_reset` appears in both sets, and deliberately: D1's reporter raises it from its own `state_reset` counter, and the server raises it independently from `seq_epoch_change`. The two are independent observers of different causes (D1 § 10.2), so which side raised the badge names the cause. The reporter counts only a `state.json` that exists and cannot be used; the server counts any new epoch on a seat that has already sent under one. So the server's badge alone means state lost with the file after the seat reported, the reporter's alone means an unusable `state.json` on a seat that had not yet reported, and both together mean an unusable `state.json` on a seat that had. A first start raises neither. ⚠ A seat installed from a reporter build before card#9374 carries the reporter's badge from its first start: that build counted a missing `state.json` as a reset, and the counter persists across flusher restarts (card#9491).
+`epoch_reset` appears in both sets, and deliberately: D1's reporter raises it from its own `state_reset` counter, and the server raises it independently from `seq_epoch_change`. The two are independent observers of different causes (D1 § 10.2), so which side raised the badge names the cause. The reporter counts only a `state.json` that exists and cannot be used; the server counts any new epoch on a seat that has already sent under one. So the server's badge alone means state lost with the file after the seat reported, the reporter's alone means an unusable `state.json` on a seat that had not yet reported, and both together mean an unusable `state.json` on a seat that had. A first start raises neither. ⚠ A seat installed from a reporter build before card#9374 raised the reporter's badge at its first start, because that build counted a missing `state.json` as a reset, and that count persists across flusher restarts. From a reporter build that includes card#9491 the reporter's badge clears one window after the count last rose.
 
 ### 7.3 How the reporter's own counters are handled
 
 `reporter.heartbeat.counters` and `.predicates` are **stored verbatim as a snapshot**
 (`seat_state.heartbeat_counters` / `heartbeat_predicates`), never summed and never merged into
-`seat_counters`. They are monotonic *since flusher start*
-([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)), so last-write-wins is the only correct handling —
-adding two heartbeats' values would double-count, and a value that decreases means the flusher restarted
-rather than that a counter went backwards.
+`seat_counters`. They are cumulative totals that persist across flusher restarts
+([D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters)), so last-write-wins is the only correct handling —
+adding two heartbeats' values would double-count, and a value that decreases means the seat lost its
+`state.json` and began a new `seq_epoch` rather than that a counter went backwards.
 
 Two consequences a consumer must be told about, because both are surprising:
 
@@ -2835,28 +2858,31 @@ Two consequences a consumer must be told about, because both are surprising:
    `seat_state.badge_first_seen`, a map of every currently-present badge to the time this server first
    saw it present ([§ 6.4](#64-ddl)); a badge that clears is dropped from the map, so
    `badges_since` = the minimum of the values, and it is `null` when `badges` is empty. That is a
-   different statement from the sticky-rendering rule below and the two must not be conflated: for a
-   D1 `degraded` member the *first-seen* is when the condition first reached the server within that
-   flusher's life, while the *counter beside it* is cumulative since flusher start. One timestamp for
+   different statement from the window rule below and the two must not be conflated: for a D1
+   `degraded` member the *first-seen* is when this server first saw the member present in its current
+   run of heartbeats, while the *counter beside it* is the seat's cumulative total. One timestamp for
    D1's whole twelve-member array — which is what an earlier draft's single
    `reporter_degraded_since` column was — cannot answer "when did **this** badge appear", which is the
    only question `badges_since` is asked.
-1. **The reporter's `degraded` array is sticky until the flusher restarts.** A single dropped event at
-   09:00 leaves `spool_dropped_events` non-zero, so `lossy` rides *every* heartbeat for the rest of that
-   flusher's life. It is therefore rendered as **"since reporter start"** with
-   `reporter.uptime_s` and the counter's value beside it — never as "now". Rendering a sticky badge as a
-   current condition would make a seat that had one bad minute look permanently broken.
-   [§ 14](#14-open-questions-for-the-review-loop) item 5 asks D1 whether a windowed variant is wanted;
-   until then this is a rendering rule, not a data problem.
-2. **A flusher restart resets the counters to zero.** `reporter_uptime_s` decreasing is the
-   discriminator, and it is also how the predicate-window arithmetic below detects a restart.
+1. **The reporter's `degraded` array is windowed at 24 h.** A member is present while a counter that
+   raises it rose within the last 24 h ([D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters)), so a
+   single dropped event at 09:00 badges `lossy` until 09:00 the next day and then clears, while
+   `spool_dropped_events` keeps its total on every heartbeat. A member is therefore a recent condition,
+   rendered with the counter's value beside it, which is the seat's total and not the size of the
+   recent rise.
+2. **A flusher restart does not reset the counters.** They persist in the reporter's `state.json`; only
+   a lost `state.json` starts them again, and it starts a new `seq_epoch` with them
+   ([D1 § 11.4](EVENT-SCHEMA.md#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)).
+   `reporter_uptime_s` decreasing is the restart discriminator, and a restart alone moves no total.
 
 **The predicate-constant alarm over reporter predicates needs no new table.** D1's heartbeat carries
 cumulative branch counts; the rolling-window delta is computed from the **retained heartbeat events**
 themselves — the newest heartbeat's counts minus those of the newest heartbeat at or before
 `now − W`. Both are rows in `events`, which retains 14 days, comfortably more than the longest window
-(7 days). If `reporter_uptime_s` decreased between the two samples, the flusher restarted and the window
-is truncated at the restart, with the current values used as the window's totals. That is one query and
+(7 days). The branch counts persist across a flusher restart like the counters, so a restart between
+the two samples needs no special case. If a count decreased between them, the seat lost its
+`state.json` and began a new `seq_epoch` in between, and the window is truncated there, with the
+current values used as the window's totals. That is one query and
 no second copy of a number the wire already carries.
 
 ---
@@ -5727,6 +5753,7 @@ document.
 | `attention_long_wait` threshold | 60 min | **Chosen** — the figure of the attention ceiling card#9527 removed, so the counter reads as how often that ceiling would have cleared a wait that was real. Visibility only: nothing resolves at it, and there is no attention ceiling | [§ 4.4](#44-activity-states-every-entry-and-exit-edge), [§ 7.2](#72-this-planes-own-counters-and-badges) |
 | Session `inferred_silence` | 90 min | **Cited** — D1 § 6.2; consumed, never re-implemented (the flusher emits it) | [§ 4.6.1](#461-the-turn-has-no-timer-of-its-own) |
 | Clock-skew badge | ±120 s | **Cited** — D1 § 10.1 | [§ 7.1](#71-d1s-server-side-counters--where-they-live) |
+| Counter-derived badge window | 24 h | **Cited** — D1 § 9.3's window, from the operator's ruling of 2026-09-14 on card#9491 (`Badges::COUNTER_WINDOW_MS`) | [§ 7.2](#72-this-planes-own-counters-and-badges) |
 | Dedup window | 10 days | **Cited** — `D2-MUST` #3; the floor under event retention | [§ 6.7](#67-retention-and-purge) |
 | Spool residency (the chain's lower bound) | 8 days | **Cited** — D1 § 11.3 | [§ 6.7](#67-retention-and-purge) |
 | **Event retention** | **14 days** | **Derived** — the 10-day dedup floor plus a 4-day margin, the margin being the hourly purge job's failure budget: it can be dead four days before the guarantee is at risk, and a four-day outage of an hourly job is ~96 missed runs | [§ 6.7](#67-retention-and-purge) |
@@ -5849,7 +5876,7 @@ review can reverse it deliberately rather than discover it later.
 | 21 | **The ceiling is materialized on the row at open time** (a call's `orphan_due_at`; the attention request's `ceiling_at` went with its ceiling, card#9527) | compute it in the sweeper's `WHERE` clause from a constant | An indexed range scan instead of a full scan, and — the real reason — **changing a constant later does not retroactively re-date history**, so `late_completion` stays interpretable across the change | one column per bounded fact |
 | 22 | **The quiet age is computed from `activity.last_received_at`, not from `event_time`** | the seat's own clock, which is what the seat actually experienced | A skewed seat renders "last active in 3 hours" ([D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what) names that outcome) | the age **understates** true quiet time by the transit lag — ≤ 70 s on a healthy seat, unbounded while `catching_up`, which is why `catching_up` outranks the activity state. Both timestamps ride the wire so a consumer can compute the other reading |
 | 23 | **An ordinary heartbeat emits no delta** — one that moves nothing but the six `delivery` bookkeeping members and `reporter.uptime_s` — which is enforced by naming the version-bearing field set as a subtraction ([§ 6.5](#65-the-fold)) rather than as "any field of the object" | a delta per heartbeat so clients always hold fresh ages | 1,440/seat/day of messages carrying no rendered change — a 16 % traffic increase for nothing. Clients compute ages from `server_time` plus stored timestamps instead, and every quantity rendered from an excluded member is one that cannot be moving when it is read ([§ 6.5](#65-the-fold)). Stated for the *ordinary* heartbeat because the subtraction is closed both ways: a heartbeat that carries **news** does move a version-bearing member and does emit — edge-triggered, single digits a seat-day, and [§ 6.5](#65-the-fold) is where that set is named, once, rather than enumerated again here | a client that ignores `feed.heartbeat`'s `server_time` renders ages against its own clock; the protocol requires it not to, and [§ 3.3](#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by) says why |
-| 24 | **The reporter's `degraded` array is rendered as "since reporter start"** | render it as a current condition | It is sticky until the flusher restarts, because its counters are monotonic since flusher start ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)). Rendering a sticky badge as current makes a seat that had one bad minute look permanently broken | a genuinely-recovered condition still shows until the flusher restarts. [§ 14](#14-open-questions-for-the-review-loop) item 5 asks D1 whether a windowed variant is wanted |
+| 24 | **Every counter-derived badge is windowed at 24 h — the reporter's `degraded` members and this plane's counter-derived badges** (operator ruling 2026-09-14, card#9491) | render the members as "since reporter start" with `reporter.uptime_s` beside them, which is what this row said until card#9491 | The counters persist across flusher restarts and are never reset server-side, so "since reporter start" was false and an all-time badge made a seat that had one bad minute look permanently broken. The window lets a badge clear while its total stays readable ([§ 7.2](#72-this-planes-own-counters-and-badges), [§ 7.3](#73-how-the-reporters-own-counters-are-handled)) | a condition that recurs less often than once a day shows as clear between occurrences; its total still records each one. The window is the ruling's starting figure and moves in one row of [§ 12](#12-every-number-and-where-it-comes-from) and one of D1 § 14 |
 | 25 | **The task-title merge is specified here; its producers are not** — ⚠ **narrowed since, three times**: tier 2's producer was designed at [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer); then ⭐ **tier 2 itself was RETIRED by operator ruling, card#9234 (2026-09-10)**; and then tier 1's board poller was designed too, in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (`card#7582`, ratified 2026-09-12). ⇒ **this row's decision stands and its waiting is over**: every producer is designed OUTSIDE this document, which is the decision, and what this document gained is the store column and the merge ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), [§ 6.4](#64-ddl)) | specify the GitHub/board ingest here too, or specify nothing | The merge is a state-model question and is D2's; the producers are a separate plane with their own auth, cadence and failure modes. And **the proposal's three-tier status fallback is not in this repo** — writing tiers from the phrase alone would put a guessed rule in a contract | an implementer building today gets tier 3 only, which needs nothing new and renders correctly — tier 1 is designed and built (`card#11289`) rather than unspecified, and `BOARD-TASK.md § 10` names the three conditions that keep it dark. ⛔ Retiring tier 2 did **not** retire the coordination producer: it removed the second consumer of one producer, and [§ 8.3.3](#833-the-coordination-objects) is the first one, unchanged |
 | 26 | **Database names and Redis databases are pinned, paired and published in this document** | pin them in `phpunit.xml` at build time, as every seat believed it had already done | Roundtable #349 measured three separate mechanisms that leave a pin looking correct while it resolves wrong: an exported variable, `force="true"` without `<server>`, and a `_URL` key replacing the parts. Publishing the values is what let two seats discover a mutual collision in four minutes | the claimed values (`mezzanine`, `mezzanine_sandbox`, `mezzanine_test`, Redis 11/10) constrain other seats not to take them, which is the point of publishing |
 | 27 | **The guard asserts the resolved value (`config()`), not the declaration** | assert the `phpunit.xml` contents | All three mechanisms above leave the declaration correct. Reading `getenv()` would have shown `force="true"` "working" in the measurement that disproved it | one extra bootstrap assertion, and a hostile-export run in CI |
@@ -5951,16 +5978,16 @@ operator ruling.
    spelling in D1 rather than two. This document's comparator ([§ 6.5](#65-the-fold)) is now the
    literal reading of the constraint rather than a refinement of it.
 
-5. **✅ CLOSED — sticky-until-restart is intended, and the consumer clause is now D1's.**
-   Its members are raised by counters monotonic since flusher start, so one dropped event badges
-   `lossy` for the life of that flusher. **Closed at**
-   [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters), the paragraph beginning *"Membership is
-   sticky until the flusher restarts"*: the windowed variant (a `degraded_since` per member, or
-   counters as deltas) was weighed and rejected as a wire change that would cost the property the
-   stickiness buys — a badge that clears itself cannot be told from one that never fired. D1 now
-   carries the rendering clause this document had been applying alone: a consumer renders every
-   member with `uptime_s` beside it. **No wire change**, and
-   [§ 7.3](#73-how-the-reporters-own-counters-are-handled) is unchanged.
+5. **✅ CLOSED, RE-DERIVED on card#9491 — the badges are windowed at 24 h.** This item first closed as
+   *sticky-until-restart is intended*, on D1's statement that the counters are monotonic since flusher
+   start, so a restart would clear a member. The reporter's code persisted them across restarts in
+   `state.json`, so that premise was false and a member raised once stayed raised for the life of the
+   seat. The operator ruled on 2026-09-14 (card#9491): the counters keep persisting, because a
+   monotonic total makes "it rose" unambiguous and a reset would read as a drop to zero, and every
+   counter-derived badge is raised while its counter **rose within the last 24 h**. **Closed at**
+   [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters) for the reporter's members and
+   [§ 7.2](#72-this-planes-own-counters-and-badges) for this plane's. **No wire change**: the array
+   keeps its type and members, and the totals ride `counters` as before.
 
 6. **⇢ Operator — backups for the store, and where the sandbox's MariaDB lives.**
    [§ 6.10](#610-durability-posture) argues that backups are an operational choice rather than a

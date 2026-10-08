@@ -952,15 +952,21 @@ processes, as Step 5 reports.
   older build sends none, and an operator's drill-down offers no **Open console** link for it, until
   Step 1's artifact is replaced. Every hook loads the reporter when it fires, so the next prompt
   after the replacement carries the link; no flusher restart is needed for it.
-- **A seat installed from a build before card#9374 stays badged `epoch_reset`.** That build counted
-  the first start's missing `state.json` as D1 § 11.4's state reset, so the first heartbeat carried
-  `state_reset: 1`. On the sandbox the badge was still on heartbeat seq 10, eleven minutes later and
-  after a flusher restart, because the counter is a running total kept in `state.json`. A build that
-  includes card#9374 counts no reset on a first start, so a seat installed from it starts with an
-  empty `degraded`. Replacing Step 1's artifact on an older seat does not clear the badge, because the
-  new build loads the same total. Deleting `state.json` does not clear it either: the next batch
-  arrives under a new `seq_epoch`, and the server badges the seat `epoch_reset` from its own
-  `seq_epoch_change`. Whether and how a badge clears is card#9491.
+- **A seat installed from a build before card#9374 was badged `epoch_reset` at its first start.** That
+  build counted the first start's missing `state.json` as D1 § 11.4's state reset, so the first
+  heartbeat carried `state_reset: 1`. A build that includes card#9374 counts no reset on a first
+  start, so a seat installed from it starts with an empty `degraded`. Deleting `state.json` to clear
+  the badge starts a new `seq_epoch`, and the server badges the seat `epoch_reset` from its own
+  `seq_epoch_change`, so leave it in place.
+- **A degraded badge clears one day after its counter last rose, on a build that includes
+  card#9491.** The counters are running totals kept in `state.json` across flusher restarts, and a
+  member of `degraded` now means *a counter that raises it rose within the last 24 h* (D1 § 9.3). A
+  seat running an older build keeps every member it ever raised, through any number of restarts,
+  until Step 1's artifact is replaced and Step 5's flusher restarted; the first heartbeat after that
+  dates every non-zero total as rising then, so the badges clear 24 h later unless a counter rises
+  again. The server's own counter-derived badges (`epoch_reset`, `seq_gap`, `seq_collision`,
+  `reporter_ahead`) follow the same window once the server includes card#9491, with no reporter
+  change.
 - **A seat installed from a build before card#11330 is badged `harness_contract_moved`.** That build
   counted the unset `harness_label` from Step 3 as `payload_key_missing.harness_label`, which raises the
   badge whose line is *the harness payload moved under this reporter*, so every seat installed by this

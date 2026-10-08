@@ -198,7 +198,7 @@ export function renderDrillDown(root, model) {
             badge.badge,
             badge.line,
             Array.isArray(badge.counters) ? badge.counters.map((c) => `${c.name}: ${c.value}`).join(', ') : badge.counters,
-            badge.since_reporter_start,
+            badge.window,
         ]),
     })));
 

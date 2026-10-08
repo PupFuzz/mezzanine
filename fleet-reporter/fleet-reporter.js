@@ -101,6 +101,8 @@ const K = {
   PREDICATES_CAP: 512,           // § 6.14
   SELFTEST_CAP: 256,             // § 6.14
   DEGRADED_MAX: 12,              // § 9.3 — the member table's size, not a chosen number
+  BADGE_WINDOW_MS: 86400000,     // § 9.3 24 h — a member is raised while a counter that raises it
+                                 // rose within this window (operator ruling 2026-09-14, card#9491)
   BUCKET_GRACE_MS: 5000,         // § 11.1 20x the P-5 hook budget
   WRAPPED_STATUSLINE_MS: 1000,   // § 6.11
   STATUSLINE_CADENCE_MS: 60000,  // § 6.11
@@ -159,7 +161,8 @@ const NOTIFICATION_NOT_ATTENTION = ['idle_prompt', 'auth_success', 'agent_comple
 
 /* § 9.3's degradation members, in that section's order — the array's bound IS this list's
  * length (§ 9.3: "Twelve members, and the array's bound is twelve"). Each maps to the counters
- * that raise it; a member is present when ANY of them is non-zero at that flush. */
+ * that raise it; a member is present when ANY of them ROSE within K.BADGE_WINDOW_MS of that
+ * heartbeat (`windowedCounters` selects them, `buildDegraded` maps them). */
 const DEGRADED = [
   // `spool_append_failed.<tree>` is a LOSSY raiser and not an informational one: an append that
   // fails discards the record it carried — an event, a counter delta, an index entry — which is
@@ -2022,13 +2025,26 @@ function enforceSpoolBoundFromHook(spool, atMs) {
   const oldest = buckets[0];
   if (!oldest || oldest.slice(0, 10) === cur) { count('spool_overflow_deferred'); return; }
   if (atMs < bucketEndMs(oldest.slice(0, 10)) + K.BUCKET_GRACE_MS) { count('spool_overflow_deferred'); return; }
-  dropSpoolBucket(spool, oldest);
+  /* A hook holds no state, so it reads the cursor from the flusher's state.json, read-only: the
+   * flusher writes it by atomic rename, so the read is never torn, and a missing or unusable
+   * file gives no cursor, which counts the whole bucket. The saved cursor can only lag what the
+   * flusher has disposed of, never lead it, so a stale read over-counts and never hides a loss. */
+  dropSpoolBucket(spool, oldest, loadState(spool, atMs).state.cursors[oldest.slice(0, 10)]);
 }
 
-function dropSpoolBucket(spool, file) {
+/* § 11.3 — `spool_dropped_events` counts the lines of the dropped bucket PAST ITS DELIVERY
+ * CURSOR, the byte offset up to which every line has been delivered or already counted under its
+ * own loss counter (corrupt, rejected, oversize, unreadable). With no cursor, nothing of the
+ * bucket was disposed of and every line counts. Counting the whole file made a seat whose spool
+ * sits at its bound with delivered history render `lossy` on every drop with nothing lost
+ * (card#11548). */
+function dropSpoolBucket(spool, file, cursor) {
   const p = path.join(spool, file);
   let lines = 0;
-  try { lines = (fs.readFileSync(p, 'utf8').match(/\n/g) || []).length; } catch (e) { lines = 0; }
+  try {
+    const buf = fs.readFileSync(p);
+    for (let i = cursor || 0; i < buf.length; i++) if (buf[i] === 0x0A) lines += 1;
+  } catch (e) { lines = 0; }
   try { fs.unlinkSync(p); count('spool_dropped_events', lines); }
   catch (e) { /* ENOENT or EBUSY: leave it for the next pass rather than throwing */ }
 }
@@ -2216,7 +2232,7 @@ function newState(spool, atMs) {
      * events would never be delivered and never be counted as dropped, which is the one loss
      * shape § 0 item 9 forbids. One offset per bucket has no such case. */
     cursors: {},
-    counter_offsets: {}, counters: {}, predicates: {},
+    counter_offsets: {}, counters: {}, counter_rises: {}, predicates: {},
     last_hook_at: null, last_session_activity: {},
   };
 }
@@ -2226,6 +2242,10 @@ function loadState(spool, atMs) {
     const s = JSON.parse(fs.readFileSync(statePath(spool), 'utf8'));
     if (!s || typeof s !== 'object' || !s.seq_epoch || typeof s.next_seq !== 'number') throw new Error('shape');
     s.counters = s.counters || {}; s.predicates = s.predicates || {};
+    // A state.json an earlier build saved has no `counter_rises`. Its first heartbeat records every
+    // non-zero total as rising then (`windowedCounters`), so an upgrade keeps each badge it showed
+    // for one window and the next save writes the map.
+    s.counter_rises = s.counter_rises || {};
     s.counter_offsets = s.counter_offsets || {}; s.cursors = s.cursors || {};
     s.last_session_activity = s.last_session_activity || {};
     return { state: s, reset: false, minted: false };
@@ -2449,7 +2469,7 @@ function enforceSpoolBounds(spool, state, atMs) {
   for (const f of spoolBuckets(spool)) {
     const b = f.slice(0, 10);
     if (atMs - bucketEndMs(b) > K.RESIDENCY_MS && deletableBucket(b, atMs)) {
-      dropSpoolBucket(spool, f);
+      dropSpoolBucket(spool, f, state.cursors[b]);
       delete state.cursors[b];
     }
   }
@@ -2458,7 +2478,7 @@ function enforceSpoolBounds(spool, state, atMs) {
     const buckets = spoolBuckets(spool);
     const oldest = buckets[0];
     if (!oldest || !deletableBucket(oldest.slice(0, 10), atMs)) { count('spool_overflow_deferred'); break; }
-    dropSpoolBucket(spool, oldest);
+    dropSpoolBucket(spool, oldest, state.cursors[oldest.slice(0, 10)]);
     delete state.cursors[oldest.slice(0, 10)];
   }
 }
@@ -2792,6 +2812,29 @@ function buildCounters(all) {
   return { counters: out, counters_omitted: ordered.length - i };
 }
 
+/* THE BADGE WINDOW (§ 9.3, card#9491). The totals in `state.counters` persist across flusher
+ * restarts in state.json, so a member derived from "non-zero" stayed raised for the life of the
+ * seat: one dropped event badged `lossy` for good, and a restart did not clear it. A member now
+ * says "a counter that raises it rose within K.BADGE_WINDOW_MS"; the total itself rides the
+ * heartbeat unchanged, so the badge clearing never hides that the event happened.
+ *
+ * `state.counter_rises` holds, per counter, the total last seen and when it was last seen to rise.
+ * It is read and written HERE, at the heartbeat, rather than at each site that increments a
+ * counter, because a rise is the same fact whichever site produced it. Observing it once per heartbeat dates a rise to within one heartbeat interval, which
+ * is far inside a 24 h window. An entry for a counter no longer in the totals (a rename moved it)
+ * is dropped. Returns the totals that rose within the window, which is what `buildDegraded` maps. */
+function windowedCounters(state, atMs) {
+  const rises = state.counter_rises;
+  const recent = {};
+  for (const [k, v] of Object.entries(state.counters)) {
+    if (!v) continue;
+    if (!rises[k] || v > rises[k].value) rises[k] = { value: v, at: rfc3339(atMs) };
+    if (atMs - Date.parse(rises[k].at) < K.BADGE_WINDOW_MS) recent[k] = v;
+  }
+  for (const k of Object.keys(rises)) if (!state.counters[k]) delete rises[k];
+  return recent;
+}
+
 function buildDegraded(all) {
   const on = [];
   for (const [member, raisers] of DEGRADED) {
@@ -2870,7 +2913,7 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, declaration, atMs) {
     // the check is not `checked`, the name selects more than one entry, or the entry carries no
     // slug-shaped role. Resolved with the name, at flusher start.
     protocol_agent_role: declaration.role,
-    degraded: buildDegraded(all).slice(0, K.DEGRADED_MAX),
+    degraded: buildDegraded(windowedCounters(state, atMs)).slice(0, K.DEGRADED_MAX),
     counters, counters_omitted, predicates, selftest: st,
     config_fingerprint: configFingerprint(cfg),
   }, atMs);
@@ -3559,4 +3602,5 @@ if (require.main === module) main();
  * reproduces only by luck. A RED that reproduces by luck is not evidence. The stress harness
  * calls the primitive directly, in a tight loop, from concurrent processes. */
 module.exports = { sanitize, buildDescriptor, truncateBytes, ulid, buildCounters, buildDegraded,
+  windowedCounters,
   appendLine, K, ENUM, SANITIZER_FIXTURES, SELFTEST_CHECKS, CRED_PREFIX_RE };

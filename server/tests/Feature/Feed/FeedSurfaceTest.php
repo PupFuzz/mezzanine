@@ -10,6 +10,7 @@ use App\Feed\FleetReload;
 use App\Feed\Outbox;
 use App\Feed\SeatDelta;
 use App\Fold\Clock;
+use App\Ingest\Counters;
 use App\Read\FleetHealth;
 use App\Read\Snapshot;
 use Illuminate\Support\Facades\DB;
@@ -886,9 +887,8 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertSame([], get_object_vars($counters));
 
         // The populated case keeps its members and their integer values through the same emit.
-        DB::table('seat_counters')->insert([
-            'seat_ref' => $seatRef, 'name' => 'fold_error', 'value' => 3, 'updated_at' => Clock::sql(now()),
-        ]);
+        // Written by the table's one writer, so the row carries every column that writer stamps.
+        Counters::seat($seatRef, 'fold_error', 3);
 
         $counters = $served()->counters;
         $this->assertInstanceOf(\stdClass::class, $counters);

@@ -1774,6 +1774,69 @@ redgreen("survives the bridge being down (AT-4)",
          f"spool_dropped_events=0, {len(delivered_ids)} events delivered, missing={sorted(missing)}, "
          f"seq strictly increasing")
 
+# A DROPPED BUCKET COUNTS ONLY WHAT WAS NEVER DELIVERED (card#11548, D1 § 11.3 "Loss visibility").
+# `spool_dropped_events` is a LOSS counter, and a line behind the bucket's delivery cursor already
+# reached the ingest (or was counted under its own loss counter when it was disposed of). The
+# defect counted every line of a dropped bucket, so a busy seat whose spool sat at its bound with
+# delivered history rendered `lossy` on every drop, with nothing lost. Each case writes a bucket
+# of DROP_N lines and a state.json naming that bucket's cursor, then drives the real drop path.
+DROP_N = 5
+DROP_LINE = json.dumps({"v": 1, "t": "2000-01-01T00:00:00.000Z",
+                        "e": {"kind": "tool.start", "event_id": "01K11548" + "0" * 18, "pad": "x" * 400}}) + "\n"
+
+
+def drop_case(name: str, *, cursor_lines, path: str, reporter: Path = REPORTER) -> int:
+    """Drop one bucket of DROP_N lines whose cursor sits after `cursor_lines` lines (None = no
+    cursor) through the flusher's residency bound or a hook's size bound; return the count."""
+    s = seat(name, ingest=DEAD, enabled=(path == "hook"))
+    age_s = 9 * 86400 if path == "flusher" else 7200
+    b = time.strftime("%Y%m%d%H", time.gmtime(time.time() - age_s))
+    (s.spool / f"{b}.jsonl").write_text(DROP_LINE * DROP_N, encoding="utf-8")
+    st = {"seq_epoch": "01K11548STATE0000000000000", "next_seq": 1, "cursors": {}}
+    if cursor_lines is not None:
+        st["cursors"][b] = len(DROP_LINE.encode("utf-8")) * cursor_lines
+    (s.spool / "state.json").write_text(json.dumps(st), encoding="utf-8")
+    if path == "flusher":
+        flush(s, reporter=reporter)
+        dropped = s.state().get("counters", {}).get("spool_dropped_events", 0)
+    else:
+        # The hook's own event lands in the current hour, so the 2 h-old bucket is the oldest,
+        # its hour has ended, and the 2 KiB bound (the bucket alone is over it) makes it drop.
+        hook(s, "PreToolUse", pre(tuid=f"{name}_0"), reporter=reporter)
+        dropped = s.counters().get("spool_dropped_events", 0)
+    eq(f"  ({name}: the bucket was actually dropped)", False, (s.spool / f"{b}.jsonl").exists())
+    return dropped
+
+
+dr = {
+    ("flusher", "all"): drop_case("drop-fl-delivered", cursor_lines=DROP_N, path="flusher"),
+    ("flusher", "part"): drop_case("drop-fl-part", cursor_lines=2, path="flusher"),
+    ("flusher", "none"): drop_case("drop-fl-nocursor", cursor_lines=None, path="flusher"),
+    ("hook", "all"): drop_case("drop-hk-delivered", cursor_lines=DROP_N, path="hook", reporter=p_small),
+    ("hook", "part"): drop_case("drop-hk-part", cursor_lines=2, path="hook", reporter=p_small),
+    ("hook", "none"): drop_case("drop-hk-nocursor", cursor_lines=None, path="hook", reporter=p_small),
+}
+eq("the flusher drops a FULLY-DELIVERED aged-out bucket and counts 0 dropped events", 0, dr[("flusher", "all")])
+eq("  … a PART-delivered bucket counts exactly its undelivered lines", DROP_N - 2, dr[("flusher", "part")])
+eq("  … a bucket with NO cursor counts every line (nothing of it was delivered)", DROP_N, dr[("flusher", "none")])
+eq("a hook over the size bound drops a fully-delivered bucket, reading the cursor from state.json, "
+   "and counts 0", 0, dr[("hook", "all")])
+eq("  … a part-delivered bucket counts exactly its undelivered lines", DROP_N - 2, dr[("hook", "part")])
+eq("  … a bucket with no cursor counts every line", DROP_N, dr[("hook", "none")])
+# RED — the primitive ignoring the cursor (the defect): the fully-delivered bucket counts every line.
+IGNORE_CURSOR = (re.escape("for (let i = cursor || 0; i < buf.length; i++)"), "for (let i = 0; i < buf.length; i++)")
+red_fl = drop_case("drop-fl-red", cursor_lines=DROP_N, path="flusher", reporter=plant_src(IGNORE_CURSOR))
+red_hk = drop_case("drop-hk-red", cursor_lines=DROP_N, path="hook",
+                   reporter=plant_src((r"SPOOL_BYTES: 33554432,", "SPOOL_BYTES: 2048,"), IGNORE_CURSOR))
+eq("RED: a drop that ignores the cursor counts the fully-delivered bucket's every line, on both paths",
+   (DROP_N, DROP_N), (red_fl, red_hk))
+redgreen("a dropped spool bucket counts only its undelivered lines (§ 11.3, card#11548)",
+         f"cursor ignored -> a fully-delivered bucket of {DROP_N} lines counts {red_fl} (flusher) / "
+         f"{red_hk} (hook) spool_dropped_events, and the seat renders `lossy` with nothing lost",
+         f"lines past the cursor -> fully delivered {dr[('flusher', 'all')]}/{dr[('hook', 'all')]}, "
+         f"2 of {DROP_N} delivered {dr[('flusher', 'part')]}/{dr[('hook', 'part')]}, no cursor "
+         f"{dr[('flusher', 'none')]}/{dr[('hook', 'none')]} (flusher/hook)")
+
 
 print("\n== 5. NO CREDENTIAL REACHES ANY OUTPUT (P-6) — with its negative control FIRST ==")
 # THE CONTROL RUNS BEFORE THE CHECK IS TRUSTED. This check passes by finding NOTHING, and a
@@ -4304,6 +4367,98 @@ redgreen("an unset harness_label raises no harness_contract_moved, on a new seat
          "counted as harness_label_unset, which raises no member; an upgraded seat's saved total and "
          "unfolded old-name delta arrive as harness_label_unset (2) and the badge clears; control: a "
          "missing harness payload key still raises harness_contract_moved")
+
+
+print("\n== 19e. A DEGRADED MEMBER IS RAISED WHILE ITS COUNTER ROSE WITHIN 24 h, AND THE TOTAL OUTLIVES IT (D1 § 9.3, card#9491) ==")
+# The totals persist across flusher restarts in state.json (D1 § 9.3), so a member derived from
+# "non-zero" never cleared: one bad session id badged the seat `bad_session_id` for the rest of its
+# life, and restarting the flusher, which the docs named as the way out, changed nothing. The
+# operator's ruling of 2026-09-14 windows every counter-derived badge at 24 h. Each `flush` below is
+# a FRESH flusher process on a pinned clock, so every step is also a restart. Driven end to end,
+# hook -> sink -> flusher -> heartbeat, because the badge is what the operator reads.
+H_MS = 3600 * 1000
+W0 = int(time.time() * 1000)
+BAD_SID = "not a session id"
+
+
+def bw_hook(s: Seat, at_ms: int, reporter: Path = REPORTER) -> None:
+    hook(s, "SessionStart", {"session_id": BAD_SID, "hook_event_name": "SessionStart",
+                             "source": "startup", "cwd": "/home/agent/mezzanine"},
+         reporter=reporter, FLEET_REPORTER_NOW_MS=at_ms)
+
+
+def bw_flush(s: Seat, at_ms: int, reporter: Path = REPORTER) -> dict:
+    flush(s, reporter=reporter, FLEET_REPORTER_NOW_MS=at_ms)
+    return hl_heartbeat(s)
+
+
+s19e = seat("badge-window")
+bw_hook(s19e, W0)
+hb_now = bw_flush(s19e, W0)
+eq("a bad session id raises bad_session_id on the next heartbeat",
+   (1, True), (hb_now["counters"].get("bad_session_id"), "bad_session_id" in hb_now["degraded"]))
+hb_23 = bw_flush(s19e, W0 + 23 * H_MS)
+eq("  … and a restarted flusher 23 h later still raises it: the rise is inside the window",
+   (1, True), (hb_23["counters"].get("bad_session_id"), "bad_session_id" in hb_23["degraded"]))
+hb_25 = bw_flush(s19e, W0 + 25 * H_MS)
+eq("  … 25 h later, with no further rise, the member has cleared and the total of 1 still rides "
+   "the heartbeat", (1, False), (hb_25["counters"].get("bad_session_id"), "bad_session_id" in hb_25["degraded"]))
+bw_hook(s19e, W0 + 26 * H_MS)
+hb_26 = bw_flush(s19e, W0 + 26 * H_MS)
+eq("  … and a second bad session id raises it again, with the total at 2",
+   (2, True), (hb_26["counters"].get("bad_session_id"), "bad_session_id" in hb_26["degraded"]))
+# The pinned clock is an OFFSET (FLEET_REPORTER_NOW_MS), so the pass reads it a little after the pin;
+# the rise is dated at that pass, inside one heartbeat interval of the pin.
+rise_26 = s19e.state()["counter_rises"].get("bad_session_id") or {}
+rise_26_ms = calendar.timegm(time.strptime(rise_26.get("at", "1970-01-01T00:00:00.000Z")[:19],
+                                           "%Y-%m-%dT%H:%M:%S")) * 1000 + int(rise_26.get("at", "x.000Z")[-4:-1])
+eq("  … and state.json dates that rise at the heartbeat that saw it, within one interval of the pinned clock",
+   (2, True), (rise_26.get("value"), 0 <= rise_26_ms - (W0 + 26 * H_MS) < 60_000))
+
+# AN UPGRADED SEAT. A state.json an earlier build saved carries the total and no `counter_rises`.
+# Its first heartbeat dates every non-zero total as rising then, so the badge it showed holds for
+# one window after the upgrade, and clears after it.
+s19u = seat("badge-window-upgraded")
+bw_hook(s19u, W0)
+bw_flush(s19u, W0)
+old_state = s19u.state()
+old_state.pop("counter_rises")
+(s19u.spool / "state.json").write_text(json.dumps(old_state), encoding="utf-8")
+hb_up = bw_flush(s19u, W0 + 40 * H_MS)
+eq("an upgraded state.json with an old total keeps the member on its first heartbeat",
+   (1, True), (hb_up["counters"].get("bad_session_id"), "bad_session_id" in hb_up["degraded"]))
+hb_up2 = bw_flush(s19u, W0 + 65 * H_MS)
+eq("  … and clears it one window later", False, "bad_session_id" in hb_up2["degraded"])
+
+# CONTROL: the window is per counter. A member raised by a family counter that rose recently stays,
+# while one whose counter last rose a window ago clears, in the same heartbeat.
+mod19e = subprocess.run(
+    ["node", "-e",
+     "const m=require(process.argv[1]);const W=m.K.BADGE_WINDOW_MS;const t=Date.parse('2026-10-01T00:00:00.000Z');"
+     "const st={counters:{'spool_dropped_events':3,'payload_key_missing.tool_name':1},counter_rises:{"
+     "'spool_dropped_events':{value:3,at:new Date(t-W).toISOString()},"
+     "'payload_key_missing.tool_name':{value:1,at:new Date(t-W+1).toISOString()}}};"
+     "console.log(JSON.stringify({w:W,deg:m.buildDegraded(m.windowedCounters(st,t))}));",
+     str(REPORTER)], capture_output=True, text=True, cwd=str(HERE))
+r19e = json.loads(mod19e.stdout)
+eq("CONTROL: the window is D1 § 9.3's 24 h", 24 * H_MS, r19e["w"])
+eq("  … a counter that last rose exactly one window ago raises nothing, and one that rose 1 ms "
+   "later still raises its member", ["harness_contract_moved"], r19e["deg"])
+
+# RED: derive the members from the totals, which is the build before card#9491.
+p19e = plant(("degraded: buildDegraded(windowedCounters(state, atMs))", "degraded: buildDegraded(all)"))
+s19e_r = seat("badge-window-red")
+bw_hook(s19e_r, W0, reporter=p19e)
+bw_flush(s19e_r, W0, reporter=p19e)
+hb_r = bw_flush(s19e_r, W0 + 25 * H_MS, reporter=p19e)
+eq("RED: derived from the totals, the member is still raised 25 h and a flusher restart later",
+   True, "bad_session_id" in hb_r["degraded"])
+redgreen("a degraded member is raised while its counter rose within 24 h; the total outlives it (card#9491)",
+         "members derived from the persisted totals: one bad session id keeps bad_session_id raised "
+         "25 h and a flusher restart later, so the badge never clears",
+         "raised at 0 h and at 23 h, cleared at 25 h with the total of 1 still on the heartbeat, raised "
+         "again by a second rise; an upgraded state.json keeps the badge one window, then clears; "
+         "control: the window is per counter, exclusive at 24 h")
 
 
 print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
