@@ -1737,14 +1737,16 @@ daemon_timings() {
 # php_require_constraint — read `require.php` from composer.json on stdin; print nothing if it
 # is not there. Scoped to the TOP-LEVEL `require` object on purpose: `require-dev` and a
 # `config.platform.php` both carry a `"php"` key and neither of them is the floor.
+# It reads to the END rather than exiting at the first hit, as npm_lockfile_version does and for
+# the reason text_matches states (card#11562): A6 feeds it composer.json through a pipe.
 php_require_constraint() {
   awk '
     /^[ \t]*"require"[ \t]*:/ && !seen { inreq = 1; seen = 1; next }
     inreq && /^[ \t]*}/ { inreq = 0 }
-    inreq && match($0, /"php"[ \t]*:[ \t]*"[^"]*"/) {
+    inreq && !found && match($0, /"php"[ \t]*:[ \t]*"[^"]*"/) {
       s = substr($0, RSTART, RLENGTH)
       sub(/^"php"[ \t]*:[ \t]*"/, "", s); sub(/"$/, "", s)
-      print s; exit
+      print s; found = 1
     }
   '
 }
@@ -1948,6 +1950,30 @@ ver_is_comparable() {
     case "$v" in *.*) v="${v#*.}" ;; *) return 0 ;; esac
   done
 }
+
+# text_matches <grep options> <pattern> <text> — true when a LINE of <text> matches <pattern>, matched
+# by grep, line by line, under <grep options> (`-E`, `-Ei`, `-F`). The gates that judge a file's TEXT ask
+# through this (A10, A11).
+# ⛔ NEVER `printf '%s' "$text" | grep -q <pattern>` (card#11562). `grep -q` exits at its FIRST match and
+# closes the pipe, and bash's printf writes a multi-line value in several write()s, so a writer that is
+# still writing when grep has gone takes SIGPIPE: under `pipefail` the test is then 141 — FALSE — for
+# text that MATCHES. Whether it happens is scheduling, so it comes and goes with host load. MEASURED
+# with A10's ALGORITHM= test over the migration that alters `events`
+# (2026_09_14_000100_add_purge_retention_indexes.php, which declares it in its first half): the match
+# was missed in 2 of 22000 trials, over three runs on a 4-core host under CPU load (1 in 2000, 1 in
+# 10000, 0 in 10000; 2026-10-08), and in 0 of 10000 through this function. With the writer held 0.2 s
+# after its first half, A10 REFUSED that release — a migration that declares its algorithm — and
+# bin/deploy-gate-inputs.sh exited 1 over a clean tree; and A11's test read a `trustProxies('*')` spliced
+# into server/bootstrap/app.php as ABSENT, the one answer on which A11 does not refuse it. Inside an
+# `if` the race fails OPEN: A10's own `if` would let an ALTER on `events` pass unexamined the same way.
+# bin/deploy-gate-inputs.selftest.sh § A WRITER THAT OUTLIVES grep holds the writer so, every run.
+# `grep -c` reads to the end to count, so the writer always finishes, and the count is printed only once
+# all of <text> has been read. The pipeline's status is not read at all: no match is a count of 0, and a
+# grep that could not run prints no count, which `[` cannot compare, so both answer FALSE — as `grep -q`
+# answered them.
+# ⚠ NOT A HERE-STRING (`grep -q … <<< "$text"`): below bash 5.1 that is a temporary file, which ver_ge's
+# comment says why this file avoids where it can.
+text_matches() { [ "$(printf '%s' "$3" | grep -c "$1" -- "$2")" -gt 0 ] 2>/dev/null; }
 
 # npm_lockfile_version — the TOP-LEVEL `lockfileVersion` of a package-lock.json on stdin, or nothing
 # if it has none. npm writes that key once, at the top level, and in no package entry, so the first
@@ -3431,8 +3457,8 @@ gate_a10_migration_algorithm() {
     [ -n "$mig" ] || continue
     git_read_at body "$SHA" "$mig" \
       || refuse "$mig is in $SHA's tree and then was not there to read"
-    if printf '%s' "$body" | grep -Eqi "Schema::table\([[:space:]]*['\"]events['\"]|ALTER[[:space:]]+TABLE[[:space:]]+\`?events\`?"; then
-      printf '%s' "$body" | grep -Eqi "ALGORITHM[[:space:]]*=[[:space:]]*(INSTANT|INPLACE)" \
+    if text_matches -Ei "Schema::table\([[:space:]]*['\"]events['\"]|ALTER[[:space:]]+TABLE[[:space:]]+\`?events\`?" "$body"; then
+      text_matches -Ei "ALGORITHM[[:space:]]*=[[:space:]]*(INSTANT|INPLACE)" "$body" \
         || offenders+=("$mig")
     fi
   done <<< "$mig_list"
@@ -3528,11 +3554,11 @@ gate_a11_trusted_proxies() {
   # X-Forwarded-For shipping reported the coarse-but-safe state instead, about a file it never opened.
   local bootstrap
   if git_read_at bootstrap "$SHA" server/bootstrap/app.php; then
-    if printf '%s' "$bootstrap" | grep -Eq "trustProxies\(.*['\"]\*['\"]"; then
+    if text_matches -E "trustProxies\(.*['\"]\*['\"]" "$bootstrap"; then
       refuse "server/bootstrap/app.php trusts ALL proxies (\`*\`)" \
         "docs/PLAN.md § 5: never \`*\`. Name the actual reverse proxy."
     fi
-    printf '%s' "$bootstrap" | grep -q "trustProxies" \
+    text_matches -F "trustProxies" "$bootstrap" \
       || warn "no trustProxies() configured — the failed-auth limit will key on the reverse proxy's IP for every request (docs/PLAN.md § 5; coarse, not forgeable)"
   else
     # NOT a warning, and not because the unchecked proxies are worth a refusal on their own: a release
