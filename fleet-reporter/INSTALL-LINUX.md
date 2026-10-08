@@ -975,6 +975,16 @@ processes, as Step 5 reports.
   name. The badge then clears at the first heartbeat after Step 1's artifact is replaced and Step 5's
   flusher restarted, unless a missing harness payload key also raises it. The restart is needed
   because a running flusher keeps the code it started with.
+- **A seat that applied Step 4(b) with a build before card#11544 is badged `harness_contract_moved`
+  at every session start.** The statusLine payload carries no usable `context_window` in the first
+  seconds of a session (D1 § 6.11), and that build counted the gap as
+  `payload_key_missing.context_window`, which raises the same badge as a moved harness payload. Each
+  new session counted it again, so the badge's 24 h window never ran out on an active seat. A build
+  that includes card#11544 counts the gap as `context_window_unavailable`, which raises nothing, and
+  its flusher moves the total an older build saved in `state.json` to the new name. The badge then
+  clears at the first heartbeat after Step 1's artifact is replaced and Step 5's flusher restarted,
+  unless a missing harness payload key also raises it. A seat that applied only Step 4(a) never
+  counted the gap.
 - **No context gauge** while Step 4(b) is not applied, which is the sandbox's state.
 - **No Windows procedure exists yet.** One is owed when the Windows agent seat onboards, a real
   Windows machine. By operator ruling on 2026-09-13, D1 § 13's Windows validation is not required

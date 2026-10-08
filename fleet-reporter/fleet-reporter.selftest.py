@@ -4461,6 +4461,95 @@ redgreen("a degraded member is raised while its counter rose within 24 h; the to
          "control: the window is per counter, exclusive at 24 h")
 
 
+print("\n== 19f. A STATUSLINE WITH NO USABLE context_window IS EXPECTED, NOT A MOVED HARNESS PAYLOAD (D1 § 6.11, § 9.3, card#11544) ==")
+# D1 § 6.11: the statusLine payload has no usable `context_window` in the first seconds of EVERY
+# session, so the counter for it is non-zero on every seat that applies INSTALL-LINUX.md Step 4(b).
+# Builds before card#11544 counted it `payload_key_missing.context_window`, which § 9.3 maps to
+# `harness_contract_moved`: every session start re-raised "the harness payload moved under this
+# reporter", so card#9491's 24 h window never cleared it on an active seat. Driven end to end,
+# statusLine -> sink -> flusher -> heartbeat, because the badge is what the operator reads.
+OLD_CW_COUNT = (r"count\('context_window_unavailable'\)", "count('payload_key_missing.context_window')")
+NO_CW_RENAME = (r"\n  \['payload_key_missing\.context_window', 'context_window_unavailable'\],", "")
+# The two shapes § 6.11 names: no `context_window` at all, and one whose `used_percentage` is null
+# with no token counts to compute it from (`current_usage` null early in a session).
+CW_NONE = {"session_id": SID, "model": {"display_name": "claude-opus-5"}}
+CW_NULL = {"session_id": SID, "context_window": {"used_percentage": None, "current_usage": None}}
+
+
+def cw_session_start(s: Seat, reporter: Path = REPORTER) -> None:
+    statusline(s, CW_NONE, reporter=reporter)
+    statusline(s, CW_NULL, reporter=reporter)
+
+
+s19f = seat("context-window-unavailable")
+cw_session_start(s19f)
+eq("a statusLine with no usable context_window emits no context.sample", [],
+   [e for e in s19f.events() if e["kind"] == "context.sample"])
+eq("  … counts both renders as context_window_unavailable", 2, s19f.counters().get("context_window_unavailable"))
+eq("  … and nothing under payload_key_missing.*, whose family raises harness_contract_moved", [],
+   [k for k in s19f.counters() if k.startswith("payload_key_missing.")])
+flush(s19f)
+hb19f = hl_heartbeat(s19f)
+eq("  … so the heartbeat carries the count and raises no harness_contract_moved",
+   (2, False), (hb19f["counters"].get("context_window_unavailable"), "harness_contract_moved" in hb19f["degraded"]))
+eq("  … nor any other member", [], hb19f["degraded"])
+
+# CONTROL: the badge is still reachable from the heartbeat, so its absence above is a measurement,
+# and the prefix match still fails loud for a payload key nobody has seen go missing before.
+mod19f = subprocess.run(
+    ["node", "-e",
+     "const m=require(process.argv[1]);"
+     "console.log(JSON.stringify([m.buildDegraded({'payload_key_missing.a_key_added_later':1}),"
+     "m.buildDegraded({'context_window_unavailable':5})]));",
+     str(REPORTER)], capture_output=True, text=True, cwd=str(HERE))
+deg_new_key, deg_cw = json.loads(mod19f.stdout)
+eq("CONTROL: a payload_key_missing.* key no table names still raises harness_contract_moved", True,
+   "harness_contract_moved" in deg_new_key)
+eq("  … and context_window_unavailable alone raises no member at all", [], deg_cw)
+
+p19f_old = plant_src(OLD_CW_COUNT, NO_CW_RENAME)     # the build before card#11544: old name, no rename
+s19f_r = seat("context-window-unavailable-red")
+cw_session_start(s19f_r, reporter=p19f_old)
+flush(s19f_r, reporter=p19f_old)
+eq("RED: the build before card#11544 badges a session start harness_contract_moved", True,
+   "harness_contract_moved" in hl_heartbeat(s19f_r)["degraded"])
+
+# A SEAT UPGRADED FROM THAT BUILD. Its flusher saved the old name in state.json, and an old
+# statusLine process may have left a delta in a sink bucket the new flusher has not folded yet.
+# Both must arrive renamed, or replacing the artifact leaves the false badge on every 4(b) seat.
+s19fm = seat("context-window-upgraded")
+cw_session_start(s19fm, reporter=p19f_old)
+flush(s19fm, reporter=p19f_old)
+eq("the old build saved payload_key_missing.context_window in state.json", 2,
+   s19fm.state().get("counters", {}).get("payload_key_missing.context_window"))
+statusline(s19fm, CW_NONE, reporter=p19f_old)       # a sink delta under the old name, not folded yet
+flush(s19fm)
+hb19fm = hl_heartbeat(s19fm)
+eq("after the upgrade both the saved total and the unfolded delta arrive as context_window_unavailable",
+   (3, None), (hb19fm["counters"].get("context_window_unavailable"),
+               hb19fm["counters"].get("payload_key_missing.context_window")))
+eq("  … the heartbeat raises no harness_contract_moved", False, "harness_contract_moved" in hb19fm["degraded"])
+eq("  … and state.json keeps only the new name", (3, None, None),
+   (s19fm.state()["counters"].get("context_window_unavailable"),
+    s19fm.state()["counters"].get("payload_key_missing.context_window"),
+    s19fm.state()["counter_rises"].get("payload_key_missing.context_window")))
+
+p19fm_norename = plant_src(NO_CW_RENAME)
+s19fm_r = seat("context-window-upgraded-red")
+cw_session_start(s19fm_r, reporter=p19f_old)
+flush(s19fm_r, reporter=p19f_old)
+flush(s19fm_r, reporter=p19fm_norename)
+eq("RED: without the rename entry an upgraded seat keeps the false harness_contract_moved", True,
+   "harness_contract_moved" in hl_heartbeat(s19fm_r)["degraded"])
+redgreen("a statusLine with no usable context_window raises no harness_contract_moved, on a new seat or an "
+         "upgraded one (card#11544)",
+         "counted as payload_key_missing.context_window -> harness_contract_moved at every session start "
+         "on a Step 4(b) seat; without the rename entry an upgraded seat keeps the badge from its saved total",
+         "counted as context_window_unavailable, which raises no member; an upgraded seat's saved total and "
+         "unfolded old-name delta arrive as context_window_unavailable (3) and the badge clears; control: "
+         "a payload_key_missing.* key no table names still raises harness_contract_moved")
+
+
 print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
 # detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —
