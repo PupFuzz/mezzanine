@@ -19,8 +19,8 @@ use Illuminate\Support\Facades\Schema;
  * receipt of its newest activity event. On the ordinary seat that IS the edge's own value, because
  * the `turn.end` (or `attention.resolved`) that minted it is an activity event. It is LATER than the
  * edge when a non-exiting activity event (a `session.end`) arrived since, so an age understates; and
- * it is EARLIER when the sweeper minted the edge with no event behind it (an orphan close or a
- * server-side attention resolution after the seat's last activity), so an age overstates by that
+ * it is EARLIER when the sweeper minted the edge with no event behind it (an orphan close, or —
+ * before card#9527 retired it — a server-side attention resolution after the seat's last activity), so an age overstates by that
  * gap. Null instead would leave every seat already idle at upgrade unmeasurable until its next idle
  * edge — the seat idling longest is the one the consumer exists for. `mezzanine:rebuild
  * --seat=<install>/<seat>` re-derives the fold-minted value exactly from the log for a seat whose
