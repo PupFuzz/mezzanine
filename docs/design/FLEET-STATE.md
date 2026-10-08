@@ -861,8 +861,15 @@ Why quiesce at all, when the render already shows `offline`? Because a seat that
 inherit an hour-old open call as *current work*, and because the facts feed counters and the drill-down.
 When the seat returns, its events re-open exactly what is still real: `tool.end` for a call the server
 already closed is a late close and takes D1's override path
-([D1 § 12.5](EVENT-SCHEMA.md#125-late-completions-and-orphan-timeouts)), and an event for a closed
-session re-opens it and counts `session_reopened` ([D1 § 12.7](EVENT-SCHEMA.md#127-server-side-counters)).
+([D1 § 12.5](EVENT-SCHEMA.md#125-late-completions-and-orphan-timeouts)), and an event for a session
+quiescence closed re-opens it, through the same path that re-opens a session the flusher closed on
+`inferred_silence` (card#11547). Both closes are inferences that the session's next event disproves; a
+`clear`, a `logout` or any other `end_reason` the seat sent is its own observation and stays closed. Only
+the `inferred_silence` reopen counts `session_reopened` and `sessions.reopened`, because that counter's
+consequence is to re-derive the 90-minute rule
+([D1 § 12.7](EVENT-SCHEMA.md#127-server-side-counters)): an offline reopen follows every seat that goes
+offline mid-session and comes back in it, says nothing about that number, and was counted once already,
+at the close, by `offline_quiesced_sessions`.
 The projections are idempotent upserts precisely so this path is ordinary rather than special.
 
 #### 4.6.1 The turn has no timer of its own

@@ -219,7 +219,7 @@ class Projector
                 'clear', 'resume', 'logout', 'prompt_input_exit', 'other', 'inferred_silence',
             ]),
             // The wire said so. § 6.4's other member, `server_offline`, belongs to § 4.6's offline
-            // quiescence — the sweeper's, which neither half of this card builds.
+            // quiescence — the sweeper's (`Sweep::quiesce`).
             'closed_by' => 'wire',
             // § 4.6: an open compaction is bounded by its session closing, among other things.
             // The ceiling's basis is cleared with the fact — see `compactionEnd()`.
@@ -1121,24 +1121,37 @@ class Projector
     {
         $existing = DB::table('sessions')
             ->where('seat_ref', $e->seatRef)->where('session_id', $e->sessionId)
-            ->first(['id', 'ended_at', 'end_reason']);
+            ->first(['id', 'ended_at', 'end_reason', 'closed_by']);
 
         if ($existing !== null) {
-            // D1 § 12.7's `session_reopened`, which "re-derives the 90-minute rule": an event
-            // arrived for a session the FLUSHER closed on inferred silence, so the seat was alive
-            // and the inference was early. Only that member reopens — a `clear` or a `logout` is an
-            // observation of a session that genuinely ended, and reopening it would be the server
-            // overruling the seat.
-            if ($existing->ended_at !== null && $existing->end_reason === 'inferred_silence') {
+            // An event for a session the SERVER closed on an inference re-opens it: the seat is
+            // alive and still in that session, so the inference was wrong. Two closes are inferences
+            // — the flusher's `inferred_silence` and the sweeper's offline quiescence
+            // (`closed_by = server_offline`, FLEET-STATE.md § 4.6), which closes every open session
+            // of a seat that crossed `offline` and writes no `end_reason`. Every other close — a
+            // `clear`, a `logout`, any wire `end_reason` but `inferred_silence` — is the seat's own
+            // observation that the session ended, and reopening it would be the server overruling
+            // the seat.
+            $inferredSilence = $existing->end_reason === 'inferred_silence';
+
+            if ($existing->ended_at !== null && ($inferredSilence || $existing->closed_by === 'server_offline')) {
                 DB::table('sessions')->where('id', $existing->id)->update([
                     'ended_at' => null,
                     'end_reason' => null,
                     'closed_by' => null,
-                    'reopened' => DB::raw('reopened + 1'),
                     'updated_at' => $e->receivedAt,
-                ]);
+                ] + ($inferredSilence ? ['reopened' => DB::raw('reopened + 1')] : []));
 
-                Counters::seat($e->seatRef, 'session_reopened');
+                // D1 § 12.7's `session_reopened` counts the `inferred_silence` reopen ONLY, because
+                // its consequence is to "re-derive the 90-minute rule": a non-zero count means
+                // 90 min is too tight. An offline reopen says nothing about that number — it
+                // follows every seat that goes offline mid-session and comes back in that session —
+                // so counting it there would hold the signal above zero on any seat that does. `sessions.reopened` is the
+                // same counter's per-session home and moves with it. The offline round trip is
+                // already counted once, at the close, by `offline_quiesced_sessions`.
+                if ($inferredSilence) {
+                    Counters::seat($e->seatRef, 'session_reopened');
+                }
             }
 
             return (int) $existing->id;

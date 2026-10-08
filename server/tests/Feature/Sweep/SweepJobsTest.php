@@ -281,12 +281,16 @@ class SweepJobsTest extends SweepTestCase
         $this->fold();
         $this->assertSame('blocked', $this->state()->render_state);
 
+        // Both clocks move while the lid is shut, so the agent's next event is stamped after the
+        // quiescence that closed its session.
         $this->advanceServerClock(400);
+        $this->clockMs += 400_000;
         $this->sweep();
         $this->assertSame('stale', $this->state()->render_state);
         $this->assertSame('blocked', $this->state()->activity_state, 'masked by the link state, not cleared');
 
         $this->advanceServerClock(600);
+        $this->clockMs += 600_000;
         $this->sweep();
         $this->assertSame('offline', $this->state()->render_state);
         $this->assertNull($this->requestRow()->resolved_at, 'neither leaving live nor quiescence resolves it');
@@ -296,11 +300,13 @@ class SweepJobsTest extends SweepTestCase
         $this->sweep();
         $this->assertSame('blocked', $this->state()->render_state);
 
-        // The third acceptance line, on this path: the agent's next status update resolves it.
+        // The third acceptance line, on this path: the agent's next status update resolves it, and
+        // re-opens the session quiescence closed (card#11547) — so the seat is working on its
+        // turn rather than `unknown` / `session_closed_turn_open` on a session the server ended.
         $this->deliver([$this->event('turn.start', ['prompt_chars' => 4])]);
         $this->fold();
         $this->assertSame('seat_activity', $this->requestRow()->resolution);
-        $this->assertNotSame('blocked', $this->state()->render_state);
+        $this->assertSame('working', $this->state()->render_state);
     }
 
     public function test_job_5_idle_is_deliberately_not_in_this_rule(): void
