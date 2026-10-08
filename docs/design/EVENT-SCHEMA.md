@@ -1594,7 +1594,7 @@ session with an attention request open in it**; the session closes on its own `S
 next request edge (the request resolves and the silence clock applies again from the session's last
 activity), or on [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)'s
 16-session cap if its harness died while waiting. **D2:** a request whose harness died while waiting
-is resolved by the seat's next activity event — in practice the next session starting
+is resolved when any session on the seat starts — the next session, in practice
 ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)).
 
 **What is deliberately gone: the `superseded` inference.** An earlier draft minted `session.end`
@@ -1603,7 +1603,11 @@ open on one seat is an ordinary state — `open_sessions` is bounded at 16 for e
 and under that rule each session's hooks would have declared the other one ended, aborting healthy
 calls in both, making [`D2-MUST` #1](#64-turnend)'s *idle* unreachable on both, and minting a
 `session.end` storm. Sessions are now tracked independently, keyed by `session_id`, and nothing about
-session B is ever inferred from a hook belonging to session A.
+session B is ever inferred from a hook belonging to session A. **D2: one exception, stated once.** A
+`session.start` resolves an attention request still open in **any** session of the seat — a harness
+killed while waiting sends no `SessionEnd`, and the restart is the next thing its seat says
+([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge), card#9527). Every other
+activity event resolves only its own session's request.
 
 ```json
 { "event_id":"01K3TA1B1A2B3C4D5E6F7G8H9J","schema_version":1,"kind":"session.end",
@@ -2522,8 +2526,8 @@ while one that un-blocks itself while the agent still waits is
 check the stats for 60 mins and it is common for an agent to be stuck waiting for operator input for
 hours at a time."* So the reporter keeps the request open until an edge above arrives, the flusher's
 90-minute silence close skips a session holding one ([§ 6.2](#62-sessionend)), and the broken-signal
-case the timer used to cover is closed on the server instead: **D2:** the seat's next activity event —
-from any of its sessions — resolves a request still open
+case the timer used to cover is closed on the server instead: **D2:** the waiting session's next
+activity event, or any session on the seat starting, resolves a request still open
 ([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)). A harness killed while
 waiting sends no `SessionEnd`, and its request resolves when the seat's next session starts, which is
 when the operator restarted it. In the reporter, that dead session's index entry — and the request in
@@ -2541,7 +2545,8 @@ it always was.
 
 > **`D2-MUST` #5 — the blocked rule.** A consumer may mint *blocked* only from an
 > `attention.request`, and must clear it on the matching `attention.resolved` (joined by
-> `request_id`), on that session ending, or on the seat's next activity event — whichever comes
+> `request_id`), on that session ending, or on that session's next activity event or any session on
+> the seat starting — whichever comes
 > first. It must **not** clear it on a clock or on the seat leaving live state: a wait on a human
 > lasts until the agent's next status update (the operator's ruling of 2026-09-14, card#9527), and a
 > seat that goes quiet while waiting and comes back still waiting is still *blocked*.
@@ -4564,7 +4569,7 @@ about the store is D2's to decide.
 | 2 | **`stale` (300 s) and `offline` (900 s) are visibly degraded rendered states, never `idle`,** and a seat with `degraded` non-empty renders its badge. |
 | 3 | **Per-event dedup on `(install_id, seat_id, event_id)` with a 10-day window,** and the window must exceed the spool's 8-day residency cap ([§ 10.3](#103-idempotency-and-the-dedup-window)). |
 | 4 | **State transitions are ordered by `(event_time, seq_epoch, seq)`, never by arrival order,** `received_at` is the only clock used for liveness, retention and cross-seat comparison, and a repeated `(seq_epoch, seq)` with differing `event_id`s is counted as `seq_collision` rather than silently applied. **`seq_epoch` is part of the key because `seq` restarts at an epoch reset** ([§ 10.2](#102-ordering-seq-and-gap-detection)), so a two-part key is not total across one — two events either side of a reset can carry the same `seq` and the comparator has nothing left to separate them. The three-part key reduces to `(event_time, seq)` whenever the epoch is constant, which is every seat that has never lost its `state.json`, so this is a refinement of the old key and not a different one. |
-| 5 | **Blocked is minted only from `attention.request` and cleared only by its matching `attention.resolved`** (joined on `request_id`), by the session ending, or by the seat's next activity event — never by a clock and never by the seat leaving live state, because a wait on a human lasts until the agent's next status update (the operator's ruling of 2026-09-14, card#9527; [§ 6.13](#613-attentionresolved)). This holds because D1 undertakes that `attention.request` is emitted **only** for a genuine wait on a human: [§ 6.12](#612-attentionrequest) gates the `Notification` hook on `notification_type` so that `auth_success`, `agent_completed`, `idle_prompt` and the rest never open one. **D2 needs no second predicate over `notification_kind`** — and the reason is the gate, not the enum: no member of that field (`permission_required`, `input_awaited`, `elicitation`) can arrive from a type the gate suppresses, so D2 has nothing left to exclude at the field. **The undertaking is a per-row JUDGEMENT in D1's table, not a property any check can establish** ([§ 6.12](#612-attentionrequest) says so at the table), and it has been wrong once: `idle_prompt` — the harness's ~60-second *nobody has typed* timer, which is a wait on nothing — sat on the emitting side and rendered every cleanly-finished seat *blocked* a minute after it went quiet (card#9419). It was moved to the no-emit row rather than patched on D2's side, because a second predicate here would have made *blocked* depend on two documents' agreement about the same thing. **What D2 is owed, and what it is not:** D1 owns the gate and the counters that instrument it (`notification_not_attention.<type>`, and the `input_awaited`-to-`permission_required` ratio those make readable); D1 does **not** offer a mechanized proof that each emitting row is a real wait, and D2 must not build a render branch on the assumption that one exists. An earlier draft's fourth member, `other`, was unreachable and is deleted ([§ 6.12](#612-attentionrequest)), so there is no member left for D2 to have to exclude. |
+| 5 | **Blocked is minted only from `attention.request` and cleared only by its matching `attention.resolved`** (joined on `request_id`), by the session ending, or by that session's next activity event or any session on the seat starting — never by a clock and never by the seat leaving live state, because a wait on a human lasts until the agent's next status update (the operator's ruling of 2026-09-14, card#9527; [§ 6.13](#613-attentionresolved)). This holds because D1 undertakes that `attention.request` is emitted **only** for a genuine wait on a human: [§ 6.12](#612-attentionrequest) gates the `Notification` hook on `notification_type` so that `auth_success`, `agent_completed`, `idle_prompt` and the rest never open one. **D2 needs no second predicate over `notification_kind`** — and the reason is the gate, not the enum: no member of that field (`permission_required`, `input_awaited`, `elicitation`) can arrive from a type the gate suppresses, so D2 has nothing left to exclude at the field. **The undertaking is a per-row JUDGEMENT in D1's table, not a property any check can establish** ([§ 6.12](#612-attentionrequest) says so at the table), and it has been wrong once: `idle_prompt` — the harness's ~60-second *nobody has typed* timer, which is a wait on nothing — sat on the emitting side and rendered every cleanly-finished seat *blocked* a minute after it went quiet (card#9419). It was moved to the no-emit row rather than patched on D2's side, because a second predicate here would have made *blocked* depend on two documents' agreement about the same thing. **What D2 is owed, and what it is not:** D1 owns the gate and the counters that instrument it (`notification_not_attention.<type>`, and the `input_awaited`-to-`permission_required` ratio those make readable); D1 does **not** offer a mechanized proof that each emitting row is a real wait, and D2 must not build a render branch on the assumption that one exists. An earlier draft's fourth member, `other`, was unreachable and is deleted ([§ 6.12](#612-attentionrequest)), so there is no member left for D2 to have to exclude. |
 
 ### 12.7 Server-side counters
 

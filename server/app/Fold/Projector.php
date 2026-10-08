@@ -53,11 +53,11 @@ class Projector
     private const ORPHAN_DISPATCH_MS = 60 * 60 * 1000;
 
     /**
-     * `docs/design/FLEET-STATE.md § 4.4`'s seat-activity exit of `blocked` — the kinds that are
+     * `docs/design/FLEET-STATE.md § 4.4`'s activity exit of `blocked` — the kinds that are
      * "another status update from that agent" (the operator's ruling of 2026-09-14, card#9527).
      *
-     * A REQUEST HAS NO TIMER. It stays open until the seat it was raised on reports activity, and
-     * this is that set: a prompt, a turn ending, a tool finishing, a session starting or ending. It
+     * A REQUEST HAS NO TIMER. It stays open until the session it was raised in reports activity
+     * (or any session on the seat starts — `resolveOnSeatActivity()`), and this is that set: a prompt, a turn ending, a tool finishing, a session starting or ending. It
      * is a SUBSET of `StateRecompute::ACTIVITY_KINDS`, and each member that set has and this one
      * does not is left out for a stated reason:
      *
@@ -312,15 +312,15 @@ class Projector
     }
 
     /**
-     * § 4.4's seat-activity exit: an activity event from the seat resolves every request still
-     * open on that seat that was raised BEFORE it — in any of the seat's sessions.
+     * § 4.4's activity exit: the waiting session's next activity event resolves its request — and
+     * a `session.start` of ANY session on the seat resolves every request still open on it.
      *
-     * ⛔ SEAT-WIDE, NOT SESSION-SCOPED, AND THAT IS card#9527's ACCEPTANCE RATHER THAN A SHORTCUT:
-     * "a new session on the seat resolves the old session's request". A harness killed while
-     * waiting sends no `SessionEnd`, and the next thing the seat ever says
-     * about it is a NEW session starting — which is when the operator restarted it. Scoped to the
-     * request's session, that wait would have no exit at all. The cost is stated in § 4.4: on a
-     * seat running two terminals, activity in one resolves a wait in the other.
+     * ⛔ SESSION-SCOPED, WITH ONE STATED EXCEPTION (card#9527, seat ruling in comment 10579). A seat
+     * running two terminals is two agents, so work in session B is not session A's status update,
+     * and D1 § 6.2's rule that nothing about one session is inferred from another's events holds.
+     * The exception is a session STARTING: a harness killed while waiting sends no `SessionEnd`,
+     * and the next thing the seat ever says about it is a new session — which is when the operator
+     * restarted it. Without the exception that wait would have no exit at all.
      *
      * "BEFORE" IS ON THE SEAT CLOCK, the request's own `opened_at` against the event's
      * `event_time` — one seat, one clock, so no skew enters the comparison. Strictly before: an
@@ -333,15 +333,18 @@ class Projector
      */
     private function resolveOnSeatActivity(FoldEvent $e): void
     {
-        $this->resolveRequests(
-            $e->seatRef,
-            DB::table('attention_requests')
-                ->where('seat_ref', $e->seatRef)->whereNull('resolved_at')
-                ->where('opened_at', '<', $e->eventTime),
-            $e->eventTime,
-            'seat_activity',
-            'server_seat_activity',
-        );
+        $open = DB::table('attention_requests')
+            ->where('seat_ref', $e->seatRef)->whereNull('resolved_at')
+            ->where('opened_at', '<', $e->eventTime);
+
+        if ($e->kind !== 'session.start') {
+            // The projection above has already created or reopened this session's row, so this
+            // is a read; an event with no session names no session's request.
+            $open->where('session_ref', DB::table('sessions')
+                ->where('seat_ref', $e->seatRef)->where('session_id', $e->sessionId)->value('id'));
+        }
+
+        $this->resolveRequests($e->seatRef, $open, $e->eventTime, 'seat_activity', 'server_seat_activity');
     }
 
     /**

@@ -172,6 +172,50 @@ class At5BlockedTest extends FoldTestCase
     }
 
     /**
+     * The seat ruling on card#9527 (comment 10579): a seat with two terminals is two agents, so
+     * work in session B is not session A's status update. B's `tool.end` and `turn.end` leave A's
+     * request open and the seat `blocked`; A's own next event still resolves it.
+     *
+     * SEEN RED on 63524bd6, the seat-wide rule this narrowed: B's `tool.end` resolved A's request
+     * `seat_activity` while A was still waiting.
+     */
+    public function test_another_sessions_activity_leaves_the_request_blocked(): void
+    {
+        $this->deliver($this->blockedPair(requestOnly: true));
+        $this->fold();
+
+        $other = 'd5e6f7a8-1b2c-4d3e-8f90-a1b2c3d4e5f6';
+        $call = $this->ulid();
+        $this->deliver([
+            $this->event('turn.start', ['prompt_chars' => 7], $other),
+            $this->event('tool.start', [
+                'call_id' => $call, 'tool_name' => 'Read', 'descriptor' => 'Read: b.md',
+                'descriptor_truncated' => false, 'agent_scope' => 'main', 'parent_call_id' => null,
+                'harness_call_ref' => null, 'open_calls_before' => 0,
+            ], $other),
+            $this->event('tool.end', [
+                'call_id' => $call, 'tool_name' => 'Read', 'outcome' => 'completed',
+                'abort_reason' => null, 'duration_ms' => 40, 'duration_source' => 'harness',
+                'close_source' => 'post_tool_use', 'match' => 'sole_open',
+            ], $other),
+            $this->event('turn.end', [
+                'end_reason' => 'stop_hook', 'api_error_type' => null, 'duration_ms' => 900,
+                'open_calls_at_end' => 0, 'aborted_call_ids' => [], 'stop_hook_active' => false,
+                'background_tasks_open' => 0, 'tool_calls' => 1, 'failed_calls' => 0,
+            ], $other),
+        ]);
+        $this->fold();
+
+        $this->assertNull($this->requestRow()->resolved_at, "session B's activity is not session A's status update");
+        $this->assertSame('blocked', $this->state()->activity_state);
+
+        // The control: the waiting session's own next prompt still resolves it.
+        $this->deliver([$this->event('turn.start', ['prompt_chars' => 3])]);
+        $this->fold();
+        $this->assertSame('seat_activity', $this->requestRow()->resolution);
+    }
+
+    /**
      * THE CONTROLS — each a seat event that is NOT the agent's next status update, and each SEEN to
      * fail by adding its kind to `Projector::SEAT_ACTIVITY_KINDS` (or, for the last, by dropping the
      * `opened_at` bound): the request resolves and the first `assertNull` reds.
