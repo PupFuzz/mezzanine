@@ -22,17 +22,17 @@
 # up to the first non-`#` line, blanks INCLUDED, so a blank truncates the help text while this
 # check stays green. That is the mover's contract, not this one's; this check does not see it.
 #
-# WHAT IT ALSO CHECKS, AND WHAT IT CANNOT. Each DECLARED local edit — the mover's two sites
-# from #51 — is named in the FRAGMENTS table below by an unbroken fragment of its own text, the
+# WHAT IT ALSO CHECKS, AND WHAT IT CANNOT. Each DECLARED local edit — the mover's sites listed
+# in its header, and the selftest's one — is named in the FRAGMENTS table below by an unbroken fragment of its own text, the
 # same fragment that file's header quotes, and the check requires every one of them to still be
 # present IN THE BODY. That is the leg that stops the pin being bumped past a list that has
 # gone stale, which is how the old declaration went false in the first place. It CANNOT detect
-# a THIRD, UNDECLARED divergence from upstream: that comparison needs upstream, upstream is
+# a further, UNDECLARED divergence from upstream: that comparison needs upstream, upstream is
 # private, and a public runner cannot clone it. What stands in for it is the sha — any body
 # edit reds and a human reads the diff. So a green here means "the body is what this repo last
 # DECLARED", never "the body matches upstream". Said plainly rather than left to be inferred.
 #
-# WHAT A RED MEANS. Not "revert it" — the two local edits in the mover are deliberate and
+# WHAT A RED MEANS. Not "revert it" — the declared local edits are deliberate and
 # correct. It means the body changed, and everything that describes the body must be brought
 # true in the SAME commit: the file header's DECLARED LOCAL EDITS list, the FRAGMENTS table
 # here, and the sha in the manifest. The failure message spells out that list and prints the
@@ -78,8 +78,8 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # no behaviour; it is spelled out because a column that silently holds two kinds of thing is how a
 # reader gets a wrong answer confidently.
 MANIFEST=(
-  "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|8ce23f47b6761e6f2f712e0fce52a66ab2fd4ed1bf97c86671ff26598ad63657"
-  "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|e9f6f87704f14541c2e194c926d0b0a44399f858b31cbdf607605648fcc53cf5"
+  "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|153a29a2087774324de94441a1764a30ffc49e9f34ccedc12f817256649f1282"
+  "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|d28e86b9455e72d101a8005dcc94a5b8de4f9a7d2249a62ef19eba5feb8b52f6"
   "bin/pr-body-lint.py|coord 0.63.0 @ 239712e97fb685ac8ea7fdb18d69dc338d5ac8e8|ec258eea827108fced25178d6918cf023699d0a4802c79450125d8a851d3bc93"
   "bin/pr-body-lint.selftest.py|coord 0.63.0 @ 239712e97fb685ac8ea7fdb18d69dc338d5ac8e8|949de7e303165e569958508e06f6381aba8a61114d18d7670ba8f52164f588f4"
 )
@@ -89,12 +89,14 @@ MANIFEST=(
 # as well as in the file's own header is what turns that header's list from a courtesy into
 # something enforced: each fragment must still appear in the body or the check reds, so an edit
 # cannot be dropped (or re-vendored away) while the header goes on claiming it. A file with NO
-# row is declared identical to its pin — the selftest is, and that is why it has none.
+# row is declared identical to its pin.
 # Fragments are matched with `grep -F` against the BODY ONLY: every header quotes its own
 # fragments, so a whole-file match would pass on the declaration alone and check nothing.
 FRAGMENTS=(
   "bin/promote-cards-by-token|#51 site (1), the false-all-clear comment on the ..HEAD refusal|nothing to do\" and exit 0 on a release whose cards"
   "bin/promote-cards-by-token|#51 site (2), the 'no range base' die string|Likeliest live causes: a shallow or tagless clone"
+  "bin/promote-cards-by-token|card#11527 site (3), the foreign-card skip and read-before-write|confirm_foreign_403() {"
+  "bin/promote-cards-by-token.selftest.sh|card#11527, the foreign-card / 403 / read-before-write cases|9c. A 403 card read is judged"
 )
 
 # The ONE spelling of the body rule. Both files use it; the failure message quotes it verbatim

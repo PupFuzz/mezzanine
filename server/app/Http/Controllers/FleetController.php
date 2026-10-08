@@ -263,7 +263,8 @@ class FleetController extends Controller
      *
      * ⛔ EVERY TIMESTAMP THIS MEMBER CARRIES IS THE WIRE'S SPELLING, AND UNTIL card#7342 SIX OF
      * THEM WERE THE STORE'S. `open_calls`, `attention` and `session` were selected and handed
-     * out as raw rows, so `opened_at`, `orphan_due_at`, `ceiling_at`, `turn_started_at` and
+     * out as raw rows, so `opened_at`, `orphan_due_at`, `ceiling_at` (a column card#9527 later
+     * dropped), `turn_started_at` and
      * `last_turn_ended_at` reached a consumer as `2026-08-23 14:23:31.004` — `DATETIME(3)`,
      * § 6.3's stored form — while every other timestamp on this read plane is § 8.2.1's
      * `rfc3339_ms`. One response carried BOTH spellings of one fact: `blocked_since` is the
@@ -324,8 +325,8 @@ class FleetController extends Controller
             'attention' => self::onTheWire(
                 DB::table('attention_requests')->where('seat_ref', $seatRef)
                     ->whereNull('resolved_at')->orderBy('opened_at')
-                    ->first(['request_id', 'source', 'notification_kind', 'call_id', 'opened_at', 'ceiling_at']),
-                ['opened_at', 'ceiling_at'],
+                    ->first(['request_id', 'source', 'notification_kind', 'call_id', 'opened_at']),
+                ['opened_at'],
             ),
             'session' => $state->current_session_ref === null ? null : self::onTheWire(
                 DB::table('sessions')

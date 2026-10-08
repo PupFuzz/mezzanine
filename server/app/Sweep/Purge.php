@@ -252,7 +252,7 @@ final class Purge
             'events', 'batches' => ['received_at', 'id'],                 // ix_purge
             'sessions' => ['ended_at', 'id'],                             // ix_purge
             'calls' => ['closed_at', 'orphan_due_at', 'id'],              // ix_orphan
-            'attention_requests' => ['resolved_at', 'ceiling_at', 'id'],  // ix_ceiling
+            'attention_requests' => ['resolved_at', 'id'],                // ix_purge
             'seat_state_transitions' => ['at', 'id'],                     // ix_purge
             'feed_outbox' => ['created_at', 'id'],                        // ix_created
             default => throw new \LogicException('no purge order declared for '.$table),
