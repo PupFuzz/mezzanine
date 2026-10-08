@@ -82,8 +82,9 @@ final class Counters
      * and `last_increased_at` exactly as the live pipeline left them, which also keeps card#9491's
      * windowed badges where they were.
      *
-     * Suppressed HERE, in the one primitive every writer goes through, rather than at each fold
-     * call site, so a counter the fold gains later is covered without anyone remembering this.
+     * Suppressed HERE, in the one primitive every per-seat writer goes through, rather than at each
+     * fold call site, so a per-seat counter the fold gains later is dropped on the replay without
+     * anyone remembering this. `global()` is not scoped: no fold rule writes a fleet counter today.
      * Scoped to the one seat being replayed and restored on the way out, even when the replay
      * throws and the transaction retries it.
      *
