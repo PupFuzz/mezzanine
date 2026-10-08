@@ -216,40 +216,59 @@ class At5BlockedTest extends FoldTestCase
     }
 
     /**
-     * THE CONTROLS — each a seat event that is NOT the agent's next status update, and each SEEN to
-     * fail by adding its kind to `Projector::SEAT_ACTIVITY_KINDS` (or, for the last, by dropping the
-     * `opened_at` bound): the request resolves and the first `assertNull` reds.
+     * THE CONTROLS — each a seat event that is NOT the waiting agent's next status update, each
+     * delivered and asserted on its own so a red names the control that tripped. Each was SEEN to
+     * fail under its own plant: adding its kind to `Projector::SEAT_ACTIVITY_KINDS`, dropping the
+     * `opened_at` bound, dropping the session scope, dropping the `reap_reporter_restart` exclusion,
+     * or dropping the `inferred_silence` skip on the session close.
      *
      *  - a heartbeat: the REPORTER saying it is alive, which a waiting agent's reporter keeps doing;
      *  - another call's `tool.start`: the call awaiting permission can itself open after the request;
      *  - another session's `inferred_silence` close: the flusher's inference, not the agent's act;
-     *  - a `tool.end` stamped BEFORE the request on the seat clock: delivered late, it is not news.
+     *  - a `tool.end` stamped BEFORE the request on the seat clock: delivered late, it is not news;
+     *  - the waiting call's `tool.end` from the flusher's START-UP reap (`reap_reporter_restart`):
+     *    the reporter restarting or upgrading, not the agent doing anything (card#9527 review F1);
+     *  - the waiting session's OWN `inferred_silence` close, which an un-upgraded reporter still
+     *    emits at 90 minutes: an inference about silence, and the wait is why it is silent (F2).
      */
     public function test_events_that_are_not_the_agents_next_status_update_leave_it_blocked(): void
     {
         $events = $this->blockedPair(requestOnly: true);
+        $waitingCall = $events[1]['data']['call_id'];
         $openedMs = $this->clockMs;
 
         $this->deliver($events);
         $this->fold();
 
         $other = 'c4d2e8a1-7b3f-4e5d-9c0a-1f2e3d4c5b6a';
-        $this->deliver([
-            ...$this->heartbeats(2),
-            $this->event('tool.start', [
+        $controls = [
+            'a reporter heartbeat' => $this->heartbeats(2),
+            "another call's tool.start" => [$this->event('tool.start', [
                 'call_id' => $this->ulid(), 'tool_name' => 'Read', 'descriptor' => 'Read: a.md',
                 'descriptor_truncated' => false, 'agent_scope' => 'main', 'parent_call_id' => null,
                 'harness_call_ref' => null, 'open_calls_before' => 1,
-            ]),
-            $this->event('session.end', [
+            ])],
+            "another session's inferred_silence close" => [$this->event('session.end', [
                 'end_reason' => 'inferred_silence', 'duration_ms' => null, 'turns' => 0, 'aborted_calls' => 0,
-            ], $other),
-            $this->toolEnd($this->ulid(), $openedMs - 5000),
-        ]);
-        $this->fold();
+            ], $other)],
+            'a tool.end stamped before the request' => [$this->toolEnd($this->ulid(), $openedMs - 5000)],
+            "the flusher start-up reap's tool.end (reap_reporter_restart)" => [$this->event('tool.end', [
+                'call_id' => $waitingCall, 'tool_name' => 'Write', 'outcome' => 'aborted',
+                'abort_reason' => 'reporter_restart', 'duration_ms' => null, 'duration_source' => 'none',
+                'close_source' => 'reap_reporter_restart', 'match' => 'reap',
+            ])],
+            "the waiting session's own inferred_silence close" => [$this->event('session.end', [
+                'end_reason' => 'inferred_silence', 'duration_ms' => null, 'turns' => 1, 'aborted_calls' => 0,
+            ])],
+        ];
 
-        $this->assertNull($this->requestRow()->resolved_at);
-        $this->assertSame('blocked', $this->state()->activity_state);
+        foreach ($controls as $label => $batch) {
+            $this->deliver($batch);
+            $this->fold();
+
+            $this->assertNull($this->requestRow()->resolved_at, "{$label} resolved the request");
+            $this->assertSame('blocked', $this->state()->activity_state, "{$label} un-blocked the seat");
+        }
     }
 
     /**

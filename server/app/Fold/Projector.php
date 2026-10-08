@@ -7,6 +7,7 @@ use App\Ingest\KindRegistry;
 use App\Ingest\Wire;
 use App\Support\Anchored;
 use App\Sweep\Predicates;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -73,8 +74,8 @@ class Projector
      * `context.sample` and `reporter.heartbeat` are not activity at all (§ 3.2): a heartbeat is the
      * REPORTER saying it is alive, and a waiting agent's reporter keeps sending one.
      *
-     * `session.end` with `end_reason: inferred_silence` is excluded at the call site: it is the
-     * flusher's inference that a session went quiet, not something the agent did (D1 § 6.2).
+     * Two events of these kinds are the REPORTER's, not the agent's, and `isReporterInference()`
+     * excludes them at the call site.
      */
     private const SEAT_ACTIVITY_KINDS = [
         'turn.start', 'turn.end', 'tool.end', 'session.start', 'session.end',
@@ -143,10 +144,34 @@ class Projector
 
         // AFTER the projection, so a `session.end` has already resolved its OWN session's request
         // as `session_ended` — the more specific label — and this resolves whatever is left.
-        if (in_array($e->kind, self::SEAT_ACTIVITY_KINDS, true)
-            && ! ($e->kind === 'session.end' && $e->str('end_reason', 32) === 'inferred_silence')) {
+        if (in_array($e->kind, self::SEAT_ACTIVITY_KINDS, true) && ! $this->isReporterInference($e)) {
             $this->resolveOnSeatActivity($e);
         }
+    }
+
+    /**
+     * An event of an activity kind that no agent act produced — the reporter's own inference — and
+     * so not "another status update from that agent" (card#9527).
+     *
+     * Every `tool.end.close_source` D1 § 6.6 declares, classified against D1 § 8.3's reap table:
+     * `post_tool_use` / `post_tool_use_failure` (the tool ran), `subagent_stop_hook` and
+     * `reap_turn_boundary` (a `Stop` / `StopFailure` / `SubagentStop` hook) and
+     * `reap_session_boundary` (a `SessionEnd` or `SessionStart(clear)` hook) all follow a harness
+     * hook fired by the agent's own session. `reap_reporter_restart` does not: it is the flusher
+     * closing calls older than its own start, so a reporter restart or upgrade under a waiting
+     * prompt would otherwise clear the wait. (`reap_session_boundary` also carries the 16-session
+     * cap's eviction, which no field distinguishes on the `tool.end`; D1 § 8.2 names that case.)
+     *
+     * `session.end(inferred_silence)` is the flusher's inference that a session went quiet
+     * (D1 § 6.2); a waiting session is quiet because it waits.
+     */
+    private function isReporterInference(FoldEvent $e): bool
+    {
+        return match ($e->kind) {
+            'tool.end' => $e->str('close_source', 32) === 'reap_reporter_restart',
+            'session.end' => $e->str('end_reason', 32) === 'inferred_silence',
+            default => false,
+        };
     }
 
     // ── sessions ─────────────────────────────────────────────────────────────────────────────
@@ -279,14 +304,21 @@ class Projector
         // closes, so a lost resolution cannot strand the state". D1 emits
         // `attention.resolved(session_ended)` after the boundary event; if it arrives, it is an
         // ordinary re-resolution of an already-resolved row and the LWW guard makes it a no-op.
-        $this->resolveRequests(
-            $e->seatRef,
-            DB::table('attention_requests')
-                ->where('seat_ref', $e->seatRef)->where('session_ref', $ref)->whereNull('resolved_at'),
-            $e->eventTime,
-            'session_ended',
-            'session_end',
-        );
+        //
+        // NOT on `inferred_silence` (card#9527): the flusher's guess that the session went quiet is
+        // the same inference `isReporterInference()` keeps out of the activity exit, and a waiting
+        // session is quiet because it waits. A current reporter never emits it for a waiting
+        // session (D1 § 6.2); an older one does, at 90 minutes.
+        if (! $this->isReporterInference($e)) {
+            $this->resolveRequests(
+                $e->seatRef,
+                DB::table('attention_requests')
+                    ->where('seat_ref', $e->seatRef)->where('session_ref', $ref)->whereNull('resolved_at'),
+                $e->eventTime,
+                'session_ended',
+                'session_end',
+            );
+        }
 
         $this->touchApplied($ref, $e);
     }
@@ -355,7 +387,7 @@ class Projector
      */
     private function resolveRequests(
         int $seatRef,
-        \Illuminate\Database\Query\Builder $open,
+        Builder $open,
         string $at,
         string $resolution,
         string $source,

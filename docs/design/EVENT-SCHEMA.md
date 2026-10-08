@@ -2532,7 +2532,10 @@ activity event, or any session on the seat starting, resolves a request still op
 waiting sends no `SessionEnd`, and its request resolves when the seat's next session starts, which is
 when the operator restarted it. In the reporter, that dead session's index entry — and the request in
 it — stays until [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)'s
-16-session cap evicts it, which reaps it as any eviction does.
+16-session cap evicts it, which reaps it as any eviction does. ⚠ That eviction picks the least recently
+active session, so on a seat that opens more than 16 sessions while one waits it can evict a session
+whose agent is still waiting, and its reap emits `attention.resolved(session_ended)` for that wait;
+rare, and not guarded (card#9527).
 
 **No predicate watches the exits any more, and that is the instrument following its subject.**
 `attention_resolved_by_hook` counted observed resolutions (`true`) against timeouts (`false`); with no
