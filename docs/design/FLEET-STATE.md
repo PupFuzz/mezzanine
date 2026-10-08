@@ -820,6 +820,24 @@ marked `ended_at` with `closed_by: server_offline`, counting `offline_quiesced_s
 synthesized onto the wire
 ([§ 4.8](#48-what-may-never-mint-a-state)); these are ledger writes only.
 
+**The turn's `last_turn_ended_at` and the session's `ended_at` are stamped on the SEAT's clock**
+(card#11559): one millisecond after the newest `event_time` the fold had applied to any of the seat's
+sessions, which is the earliest instant the close can have happened at, because every one of those
+events was observed while the turn being closed was still open. Both columns are seat-clock columns —
+every wire close writes its event's `event_time` — and two rules order seat events against them: the
+fold's per-group guard ([§ 6.5](#65-the-fold)) and [§ 4.3](#43-the-derivation-function)'s `L`, the
+session whose `last_turn_ended_at` is greatest. The stamp therefore sorts after everything the seat
+said before it went quiet and before anything it says once it is back, so a `turn.end` the reporter
+spooled through a network outage, or an event from a seat whose clock runs behind this server's,
+overrides the close as the observation it is, and a seat that comes back with nothing new keeps the
+closed turn as its `L`. The server's own instant of the close is the transition row this job owes
+and the row's `updated_at`; the calls' `closed_at` keeps the server instant
+([§ 6.4](#64-ddl) declares that column on either clock), because no rule orders a seat event against
+it — a call's guard is its `applied_*` triple, which no server close writes. Until card#11559 both
+columns carried the server's `now`, and the seat's earlier-stamped events were refused as older than
+a close it never made: a spooled clean `turn.end` rendered `unknown` / `session_closed_turn_open`
+instead of `idle`.
+
 **These values outrank [§ 4.6.1](#461-the-turn-has-no-timer-of-its-own)'s session-close rule on this
 path, and the order stated above is the reason rather than a preference.** That rule closes whatever
 calls a session close finds still open — but quiescence closes the calls *before* it marks the session
