@@ -78,8 +78,8 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # no behaviour; it is spelled out because a column that silently holds two kinds of thing is how a
 # reader gets a wrong answer confidently.
 MANIFEST=(
-  "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|153a29a2087774324de94441a1764a30ffc49e9f34ccedc12f817256649f1282"
-  "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|d28e86b9455e72d101a8005dcc94a5b8de4f9a7d2249a62ef19eba5feb8b52f6"
+  "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|0932e9fe67c8f471c71f6252235be8683605b174863acddfe0449b972f604f10"
+  "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|463663423c3a5152bc8dc4833f331e069910e74424c54e69b024ba1598703984"
   "bin/pr-body-lint.py|coord 0.63.0 @ 239712e97fb685ac8ea7fdb18d69dc338d5ac8e8|ec258eea827108fced25178d6918cf023699d0a4802c79450125d8a851d3bc93"
   "bin/pr-body-lint.selftest.py|coord 0.63.0 @ 239712e97fb685ac8ea7fdb18d69dc338d5ac8e8|949de7e303165e569958508e06f6381aba8a61114d18d7670ba8f52164f588f4"
 )
@@ -96,7 +96,10 @@ FRAGMENTS=(
   "bin/promote-cards-by-token|#51 site (1), the false-all-clear comment on the ..HEAD refusal|nothing to do\" and exit 0 on a release whose cards"
   "bin/promote-cards-by-token|#51 site (2), the 'no range base' die string|Likeliest live causes: a shallow or tagless clone"
   "bin/promote-cards-by-token|card#11527 site (3), the foreign-card skip and read-before-write|confirm_foreign_403() {"
+  "bin/promote-cards-by-token|card#11527 site (3), the card read's 200-shape refusal|A 200 is a card only if it carries"
+  "bin/promote-cards-by-token|card#11527 site (3), the scoped lookup's data-array refusal|error(\"no data array\")"
   "bin/promote-cards-by-token.selftest.sh|card#11527, the foreign-card / 403 / read-before-write cases|9c. A 403 card read is judged"
+  "bin/promote-cards-by-token.selftest.sh|card#11527, the 200-shape degraded-read cases|9d. A 200 that does not carry the fields"
 )
 
 # The ONE spelling of the body rule. Both files use it; the failure message quotes it verbatim

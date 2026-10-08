@@ -252,7 +252,12 @@ with **HTTP 403**, and so does a board-14 card read by a token that has lost boa
 permission; the 403 body is the same for both. So before the mover calls a 403 card another
 board's, it reads the board-14 card its preflight found back through the same route and looks
 the id up on board 14 (`tasks/search.json?q=board_id=14 id=<id>`). If that read fails or the
-lookup finds the card, the run exits **2** with nothing written. The mover reads every card before
+lookup finds the card, the run exits **2** with nothing written. An HTTP 200 that lacks a field a
+verdict reads counts as a failed read and exits **2** with nothing written too: a card read with no
+`board_id`, `workflow_stage_id`, `archived_at` or `deleted_at` member, a control read with no
+`board_id`, and a lookup whose `data` is absent or not a list. Defaulting such an absence would
+skip the card as another board's, skip it as stage-guarded, or move it as live, on a read that
+described no card. The mover reads every card before
 it writes any, so exit 2 at any card read leaves the board untouched. The exit table is in
 `bin/promote-cards-by-token --help`.
 

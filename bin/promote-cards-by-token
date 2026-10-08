@@ -29,6 +29,10 @@
 #         card read, so one card token naming another board's card stopped a whole release
 #         (v0.8.0, Actions run 37707232205). Upstream carries the same defect; a re-vendor
 #         keeps (3) until upstream's own body tells a foreign 403 from a lost credential.
+#         (3) also carries the 200-SHAPE REFUSALS (card#11527 follow-up, rt#606): the card read's
+#         field check, located by `A 200 is a card only if it carries`, and the board-scoped
+#         lookup's `no data array` check. A 200 missing a field a verdict reads exits 2 instead of
+#         being skipped as foreign, stage-guarded, or moved as live.
 # ⛔ THIS HEADER USED TO CLAIM THE WHOLE BODY WAS BYTE-FOR-BYTE and called that "a one-diff
 # check". Nobody ran the diff. #51's two edits had been sitting in the body for eleven days and
 # the claim went on reading as true — a declaration with NO CHECK, which is worse than silence:
@@ -195,7 +199,8 @@
 #      with one un-promoted shipped card. Here ANY failed write is non-zero.
 #   2  refusal / fatal precondition, and NOTHING was written: bad config, missing
 #      credentials, host-guard refusal, unreadable board, a degraded card read (5xx,
-#      timeout, 401, or a 403 not proven to be another board's card), a missing option
+#      timeout, 401, a 200 missing a field a verdict reads, or a 403 not proven to be
+#      another board's card), a missing option
 #      argument, or an un-derivable range (no push-`before` and no release tag; or a
 #      `before` sha that is absent from this checkout or not an ancestor of the head).
 #      Every card is read before any is written, so a refusal at a card read is still
@@ -652,8 +657,10 @@ confirm_foreign_403() {
   code="$(api GET "$API/tasks/search.json?q=board_id=$BOARD%20id=$id&limit=1")"
   [ "$code" = "200" ] \
     || die "card#$id read was refused (HTTP 403) and the board-scoped lookup of card#$id on board $BOARD failed (HTTP $code), so where card#$id lives is unmeasured. Refusing — nothing was written."
-  rows="$(jq -r '(.data // []) | map("\(.id)") | join(",")' < "$BODY" 2>/dev/null)" \
-    || die "card#$id read was refused (HTTP 403) and the board-scoped lookup of it returned an unparseable body. Refusing — nothing was written."
+  # `data` must BE an array: a 200 whose body is `{}` or `{"data":null}` measured nothing, and
+  # defaulting it to [] would read that absence as the zero-row verdict "not on this board".
+  rows="$(jq -r 'if (.data | type) == "array" then .data | map("\(.id)") | join(",") else error("no data array") end' < "$BODY" 2>/dev/null)" \
+    || die "card#$id read was refused (HTTP 403) and the board-scoped lookup of it answered without a data array (unparseable, or 200 with data absent or not a list), so where card#$id lives is unmeasured. Refusing — nothing was written."
   case "$rows" in
     '') return 0 ;;
     "$id"|"$id",*|*,"$id"|*,"$id",*)
@@ -685,6 +692,16 @@ for id in $IDS; do
          continue ;;
     *)   die "card#$id read failed (HTTP $code) — refusing to continue on a degraded board read (a partial run would leave shipped cards silently un-promoted). Nothing was written." ;;
   esac
+  # A 200 is a card only if it carries every field a verdict below reads. Each `// empty` that
+  # follows turns an ABSENT field into a verdict — no board_id reads as "another board" (skip,
+  # exit 0), no workflow_stage_id as "not Shipped-class" (skip, exit 0), no archived_at /
+  # deleted_at key as "live" (moved) — so a body stripped on the way would skip or move a card
+  # on a read that measured nothing. The keys must be PRESENT; archived_at/deleted_at null is live.
+  jq -e '(.data | type) == "object"
+         and ((.data.board_id // "") | tostring | length > 0)
+         and ((.data.workflow_stage_id // "") | tostring | length > 0)
+         and (.data | has("archived_at") and has("deleted_at"))' < "$BODY" >/dev/null 2>&1 \
+    || die "card#$id read answered HTTP 200 without a card: board_id, workflow_stage_id, archived_at or deleted_at is missing (or the body is unparseable) — refusing to judge it on a degraded board read. Nothing was written."
   cbd="$(jq -r '.data.board_id // empty' < "$BODY")"
   cur="$(jq -r '.data.workflow_stage_id // empty' < "$BODY")"
   gone="$(jq -r '(.data.archived_at // .data.deleted_at) // empty' < "$BODY")"
