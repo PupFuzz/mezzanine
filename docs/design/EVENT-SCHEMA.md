@@ -3714,7 +3714,7 @@ statusLine processes reach the flusher through the counter sink
 
 | Counter | Meaning | Consequence when non-zero |
 |---|---|---|
-| `spool_dropped_events` | overflow or residency-cap discarded events | **D2:** seat badge `lossy`, **and the number is rendered** — a loss is never a badge alone |
+| `spool_dropped_events` | undelivered events discarded by the overflow or residency cap ([§ 11.3](#113-rotation-and-the-overflow-policy)) | **D2:** seat badge `lossy`, **and the number is rendered** — a loss is never a badge alone |
 | `spool_overflow_deferred` | a hook found `spool_bytes` over the bound but the only over-bound bucket was the **current** one, which it may never drop ([§ 11.3](#113-rotation-and-the-overflow-policy)) | informational; the flusher drops it after the hour rolls. Sustained non-zero means a seat is producing > 32 MiB/hour and the bound needs re-deriving |
 | `spool_corrupt_lines` | unparseable spool lines quarantined | seat badge `lossy` |
 | `spool_append_failed.<tree>` | an append failed outright, discarding the record it carried. `<tree>` is one of `events`, `counters`, `index`, `log`, `quarantine` — the counter keys name the write sites individually, which is finer than the grouping [§ 11.1](#111-layout)'s ownership table uses. Raised by the append primitive itself, keyed by subtree, **not** by its callers — a caller that forgets to check is a silent loss, which is the one shape [§ 0](#0-overview) item 9 forbids | seat badge `lossy`; the subtree names what was lost, and `events` means telemetry the seat produced never reached the spool at all. **`counters` is the self-referential case:** that increment cannot itself be flushed, so the seat log is its only trace |
@@ -4178,11 +4178,14 @@ correctness depends on it identically. Line size is capped at 4 KiB
 | **Residency cap** | **8 days** | a bucket older than 8 days is dropped whatever the spool's size. This is what bounds residency on a *quiet* seat, where filling 32 MiB takes longer than the 10-day dedup window is long — [§ 10.3](#103-idempotency-and-the-dedup-window) owns that measurement and this row does not restate it — and it is the bound that window is coupled to. It is also independently right: a nine-day-old event has no consumer left |
 | Overflow unit | one whole hour bucket | O(1) `unlink`, no rewriting of a file another process is appending to |
 | Overflow policy | **drop oldest** | the dashboard's value is *current* state; a week-old queued event has no consumer left. Dropping newest would discard exactly the events that still matter |
-| Loss visibility | `spool_dropped_events` += the dropped file's line count; badge `lossy` | never a silent drop, per [`docs/VERSIONING.md § The failure direction must be safe`](../VERSIONING.md#the-failure-direction-must-be-safe--reject-loudly-never-drop-quietly) |
+| Loss visibility | `spool_dropped_events` += the dropped file's lines past its delivery cursor (`state.json` `cursors`, [§ 11.1](#111-layout)), and every line of a bucket that has no cursor; badge `lossy`. A line behind the cursor was delivered, or was counted under its own loss counter when it was disposed of ([§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)), so dropping it is no loss | never a silent drop, per [`docs/VERSIONING.md § The failure direction must be safe`](../VERSIONING.md#the-failure-direction-must-be-safe--reject-loudly-never-drop-quietly) |
 
 Both bounds are evaluated by the flusher on every pass, and the size bound also by any hook that finds
 `spool_bytes` over it (so a seat whose flusher is dead cannot fill a disk). Granularity is coarse and
-stated: one drop removes up to one hour of the oldest telemetry.
+stated: one drop removes up to one hour of the oldest telemetry. A hook that drops a bucket reads its
+cursor from `state.json` without writing it; a missing or unusable `state.json` gives no cursor, so the
+whole bucket is counted. The saved cursor can only lag what the flusher has disposed of, so a stale read
+over-counts a loss and never hides one.
 
 **A hook may never drop the current-hour bucket, and every drop obeys the deletion precondition in
 [§ 11.1](#111-layout).** Without that restriction a single-hour burst over 32 MiB makes the oldest
