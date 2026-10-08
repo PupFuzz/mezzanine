@@ -1584,7 +1584,9 @@ Now the desk's liveness is the heartbeat's job
 rather than a seat, and an early close is **reversible**. **D2:** an event arriving for a session
 already closed by `inferred_silence` **re-opens it** server-side and counts `session_reopened`. An event
 also re-opens a session the sweeper closed when its seat went offline (`closed_by = server_offline`), and
-that reopen is not counted, because it says nothing about this number ([D2 § 4.6](FLEET-STATE.md#46-every-open-fact-has-a-ceiling)). So the number is
+that reopen is not counted, because it says nothing about this number ([D2 § 4.6](FLEET-STATE.md#46-every-open-fact-has-a-ceiling)). Either
+reopen needs an event stamped after the close: an older one, arriving late, is history from the live
+session ([D2 § 6.5](FLEET-STATE.md#65-the-fold)). So the number is
 derived from the longest legitimate silence *inside a live session* — a session with an open `Task`
 call can legitimately emit nothing until that call's 60-minute orphan ceiling
 ([§ 12.5](#125-late-completions-and-orphan-timeouts)) — and 90 min is 1.5× that. `session_reopened`
@@ -3995,8 +3997,11 @@ where cross-process locking would sit inside the 250 ms budget P-5 protects.
   different losses and must not be conflated: a gap means the network or the server lost something a
   seat successfully queued.
 
-**Batches can arrive out of order** (a retried batch lands after a later one). The server must not
-assume ordering anywhere:
+**Events can arrive out of `event_time` order.** The flusher sends the spool in append order and
+re-sends a retried batch before anything after it, but a hook reads its clock when it starts and
+appends when it finishes, so two writers that overlap can put a newer event in the spool ahead of an
+older one. The flusher's own `session.end(inferred_silence)` racing a hook of the same session is a
+measured case (card#11561). The server must not assume ordering anywhere:
 
 | Out-of-order case | Required behaviour |
 |---|---|

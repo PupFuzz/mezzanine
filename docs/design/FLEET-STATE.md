@@ -881,9 +881,9 @@ When the seat returns, its events re-open exactly what is still real: `tool.end`
 already closed is a late close and takes D1's override path
 ([D1 § 12.5](EVENT-SCHEMA.md#125-late-completions-and-orphan-timeouts)), and an event for a session
 quiescence closed re-opens it, through the same path that re-opens a session the flusher closed on
-`inferred_silence` (card#11547). Both closes are inferences that the session's next event disproves; a
-`clear`, a `logout` or any other `end_reason` the seat sent is its own observation and stays closed. Only
-the `inferred_silence` reopen counts `session_reopened` and `sessions.reopened`, because that counter's
+`inferred_silence` (card#11547), when it is stamped after the close (card#11561). Both closes are
+inferences that the session's next event disproves; a `clear`, a `logout` or any other `end_reason`
+the seat sent is its own observation and stays closed. Only the `inferred_silence` reopen counts `session_reopened` and `sessions.reopened`, because that counter's
 consequence is to re-derive the 90-minute rule
 ([D1 § 12.7](EVENT-SCHEMA.md#127-server-side-counters)): an offline reopen follows every seat that goes
 offline mid-session and comes back in it, says nothing about that number, and was counted once already,
@@ -913,7 +913,11 @@ gap it exposes:
   stay null, rule 5 would fire and `session_closed_turn_open` would be a member no path can
   select. It therefore derives
   `unknown` / `session_closed_turn_open` — never `idle`, because no `turn.end(stop_hook, [])` was ever
-  observed. **One means is excepted: offline quiescence**, which closes those calls before it ends the
+  observed. **That record is an inference, and the seat's real `turn.end` for the same turn overrides
+  it** even when stamped before the close (card#11561): the flusher emits `session.end(inferred_silence)`
+  from its own process, so a `Stop` hook that read the clock first can reach the spool after it. In
+  order that `turn.end` closes the turn and this rule finds it closed; [§ 6.5](#65-the-fold) states the
+  guard. **One means is excepted: offline quiescence**, which closes those calls before it ends the
   session, so this rule finds none open and [§ 4.6](#46-every-open-fact-has-a-ceiling)'s values and
   counter are the ones that apply — stated there, where the ordering that decides it lives.
   Filed as a D1 amendment need in [§ 14](#14-open-questions-for-the-review-loop), item 1.
@@ -2301,6 +2305,38 @@ forever for an event that will never arrive. But **it applies with last-write-wi
 ordering key**, which is `D2-MUST` #4: every projection row carries `applied_event_time`,
 `applied_seq_epoch`, `applied_seq`, and a field group is overwritten only when the incoming triple is
 greater. Arrival order therefore decides *when* work happens and never *which value wins*.
+
+**Each group is guarded on its own time, and a close the server inferred is not an observation**
+(card#11561). One seat's events DO reach the ingest out of `event_time` order: the reporter delivers
+its spool in append order (a retried batch is re-sent before anything after it), but `event_time` is
+read when a hook starts and the line is appended when it finishes, so two writers that overlap can land
+newer-first. The flusher's `session.end(inferred_silence)` racing a `Stop` hook of the same session is
+the measured case. These guards follow from that:
+
+- **The turn narrative** (`turn_started_at`, `turn_prompt_chars`, `console_url`) is guarded on
+  `turn_started_at`, so an older `turn.start` arriving late leaves the newer turn's narrative alone.
+  The open flag stays guarded on the turn record, as before.
+- **A `turn.end` against a server-inferred turn close** (`turn_close_source` `session_close` or
+  `server_offline`) is ordered against the start of the turn the server closed, not against the
+  inference's own stamp. A `turn.end` newer than that start ended this turn and supersedes the
+  inference, as in-order delivery decides. One older than that start ended an earlier turn and is
+  refused.
+- **A `turn.end` older than the session's wire close** takes the close's effects on the turn
+  record ([§ 4.6.1](#461-the-turn-has-no-timer-of-its-own)): `last_turn_background_tasks_open` is 0,
+  and an `api_error` stall it opens records `stalled_cleared_by: session_end`.
+- **The reopen of an inferred close** ([§ 4.6](#46-every-open-fact-has-a-ceiling)) happens only for an
+  event newer than the close. An event stamped before it is history from the live session.
+
+⚠ **The guards cover pairs; they do not make every composition converge.** A per-group guard
+compares an event with what its own group holds. It cannot apply the effects a NEWER event of another
+kind would have had on it in order. Known compositions that still diverge from in-order delivery: a
+`session.end` older than activity already applied (its orphan-call and turn closes act on calls and
+turns opened after it); a `turn.start` or `tool.start` older than a session close, arriving after it
+(the turn or call opens in an ended session); a `turn.end` older than the open turn's start (it closes
+the newer turn); `compaction.start` / `compaction.end`, neither guarded (the group keeps no close
+time); and an `attention.request` older than activity already applied (it stays open). Card#11561 names
+them and the upstream fix they share: re-folding a session in key order when an event lands behind its
+`applied_*` high-water mark.
 
 > **The comparator includes `seq_epoch`, and that is a refinement of `D2-MUST` #4 rather than a
 > deviation from it.** `seq` restarts at a new epoch ([D1 § 10.2](EVENT-SCHEMA.md#102-ordering-seq-and-gap-detection)),
@@ -5315,7 +5351,9 @@ status update — so every exit below is an event and none is a clock.*
 - **GREEN:** the final state equals in-order delivery exactly, including a `tool.end` that arrives before
   its `tool.start` (the call is created already closed and the late `tool.start` **does not reopen it**,
   counting `late_open` — [D1 § 8.6](EVENT-SCHEMA.md#86-server-side-interpretation-of-open-call-state)),
-  and a superseded `turn.end` that must not overwrite a newer one.
+  and a superseded `turn.end` that must not overwrite a newer one. **Pairs** (card#11561): a `turn.end`
+  stamped before its session's `session.end` and an older `turn.start` arriving after a newer one each
+  end in the same session row and seat state whichever arrives first.
 - **RED:** apply state by arrival order (drop the `applied_*` comparator) → the older `turn.end` wins,
   the seat's last-turn record regresses, and a completed call reopens and renders `working` forever.
 - **Second RED — the epoch:** deliver an event from a **new** `seq_epoch` with a lower `seq` than the
@@ -6359,7 +6397,7 @@ prints by name on every run rather than reporting a clean over it.
 | S16 | § 12.7 | The nineteen server-side counters (and the `clock_skew_ms` gauge), each with its consequence | [§ 7.1](#71-d1s-server-side-counters--where-they-live) (one row each: storage, surface, badge) |
 | S17 | § 6.14 | `enabled: false` renders **disabled** — a seat that is off and a seat that is gone must not look alike | [§ 4.2](#42-render-precedence), [§ 4.5](#45-link-states) |
 | S18 | § 6.14, § 9.3 | The `degraded` array is the badge source so a consumer never re-derives badges from raw counters; twelve members, closed | [§ 7.2](#72-this-planes-own-counters-and-badges) (server badges kept **separate**, never merged into D1's array), [§ 7.3](#73-how-the-reporters-own-counters-are-handled) |
-| S19 | § 6.2, § 12.7 | An event for a session closed by `inferred_silence` **re-opens it** server-side and counts `session_reopened`. An event also re-opens a session the sweeper closed when its seat went offline (`closed_by = server_offline`), and that reopen is not counted ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | [§ 4.6](#46-every-open-fact-has-a-ceiling), [§ 6.4](#64-ddl) (`sessions.reopened`) |
+| S19 | § 6.2, § 12.7 | An event for a session closed by `inferred_silence` **re-opens it** server-side and counts `session_reopened`. An event also re-opens a session the sweeper closed when its seat went offline (`closed_by = server_offline`), and that reopen is not counted ([§ 4.6](#46-every-open-fact-has-a-ceiling)). Either reopen needs an event stamped after the close: an older one is history from the live session (card#11561) | [§ 4.6](#46-every-open-fact-has-a-ceiling), [§ 6.4](#64-ddl) (`sessions.reopened`) |
 | S20 | § 6.6 | A close with no open is **synthesized at the reporter**, so the ledger is total and the anomaly is a visible flag rather than a negative count | [§ 6.4](#64-ddl) (`calls.synthesized`), [§ 4.8](#48-what-may-never-mint-a-state) (the `match: synthesized` row: created already closed, flag stored and rendered) |
 | S21 | § 6.8 | The subagent title lives on `subagent.spawn` only; the consumer joins on `call_id`; a lost spawn yields a **title-less stop**, an honest orphan never papered over | [§ 8.2.1](#821-the-seat-state-object) (`subagents[].title` is nullable and **never invented** — a later `subagent.spawn` for the same `call_id` does fill it, and what is forbidden is deriving a title from anything else) |
 | S22 | § 6.11 | `used_pct_source` keeps the two branches distinguishable rather than silently averaged | [§ 8.2.1](#821-the-seat-state-object) (`context.source` rides every object; no aggregate mixes them) |

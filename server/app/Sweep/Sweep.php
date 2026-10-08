@@ -472,9 +472,10 @@ final class Sweep
      * must not inherit an hour-old open call as CURRENT WORK, and because the facts feed counters
      * and the drill-down." The projections are idempotent upserts precisely so the return path is
      * ordinary: a `tool.end` for a call the server already closed is D1 § 12.5's late close, and an
-     * event for a session this job closed re-opens it (`Projector::sessionRef`, card#11547). That
-     * reopen does NOT count `session_reopened`, whose consequence is the 90-minute
-     * `inferred_silence` rule; this job's close was counted here, by `offline_quiesced_sessions`.
+     * event stamped after the close re-opens a session this job closed (`Projector::sessionRef`,
+     * card#11547, card#11561). That reopen does NOT count `session_reopened`, whose consequence is
+     * the 90-minute `inferred_silence` rule; this job's close was counted here, by
+     * `offline_quiesced_sessions`.
      */
     private function quiesce(int $seatRef, string $nowSql): void
     {

@@ -150,4 +150,37 @@ class QuiescenceClockTest extends SweepTestCase
         $this->assertSame('unknown', $state->render_state);
         $this->assertSame('session_closed_turn_open', $state->unknown_reason);
     }
+
+    /**
+     * card#11561 — the quiesced close is an INFERENCE, so the seat's real `turn.end` for that turn
+     * supersedes it even when it is stamped before the seal. Here it is older than the seal because
+     * it arrives OUT OF ORDER: another session's later turn was delivered first, so the seal sits
+     * after it. In order this `turn.end` would have closed the turn before the seat went quiet and
+     * quiescence would have found nothing to close; refusing it as older than a close the seat never
+     * made renders `unknown` where in-order delivery renders `idle`.
+     */
+    public function test_a_late_turn_end_older_than_the_seal_supersedes_the_quiesced_turn_close(): void
+    {
+        $other = 'b3c4d5e6-0000-4000-8000-000000000002';
+
+        $this->deliver([$this->event('turn.start', ['prompt_chars' => 40])]);
+        $late = $this->cleanTurnEnd();                // stamped now, sent later
+        $this->deliver($this->cleanTurn($other));      // stamped after it, delivered first
+        $this->fold();
+
+        $this->outagePastOffline();
+
+        $this->deliver([$late]);
+        $this->fold();
+        $this->sweep();
+
+        $session = $this->sessionRow();
+        $this->assertSame('wire', $session->turn_close_source, 'the inferred close outranked the observed turn.end');
+        $this->assertSame('stop_hook', $session->last_turn_end_reason);
+        $this->assertSame('server_offline', $session->closed_by, 'an event older than the close re-opened the session');
+
+        $state = $this->state();
+        $this->assertSame('idle', $state->activity_state);
+        $this->assertNull($state->unknown_reason);
+    }
 }
