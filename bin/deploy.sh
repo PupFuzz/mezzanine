@@ -2396,9 +2396,9 @@ phase_a() {
     "PHP-FPM pool serves the app. Nothing this script does needs root (docs/PLAN.md § 5)."
 
   # A1 — the tools this script shells out to. A missing binary discovered mid-window is an
-  # outage; discovered here it is a refusal. crontab, flock, fuser, setsid and ps are the supervision's:
-  # A13 reads the crontab, and restart_daemons finds, stops, relaunches and ages the daemons with them —
-  # without ps no holder of a lock can be proven to have started after the restart. cgi-fcgi and timeout
+  # outage; discovered here it is a refusal. crontab, flock, fuser and setsid are the supervision's:
+  # A13 reads the crontab, and restart_daemons finds, stops and relaunches the daemons with them (it reads
+  # when each holder started from /proc, not with a command — proc_started). cgi-fcgi and timeout
   # are the stream pool's: A14 reads the pool's status over FastCGI, and phase B's drain lists the
   # streams still open with it (fpm_status).
   #
@@ -2467,7 +2467,7 @@ phase_a() {
     "release's bin/supervision.sh under — every bash this deploy starts. So there is one bash to fix," \
     "and the \`bash\` that happens to be first on PATH is not consulted by any of the three."
   local missing=()
-  for c in git php composer npm curl crontab flock fuser setsid ps cgi-fcgi timeout; do
+  for c in git php composer npm curl crontab flock fuser setsid cgi-fcgi timeout; do
     command -v "$c" >/dev/null 2>&1 || missing+=("$c")
   done
   [ ${#missing[@]} -eq 0 ] || refuse "missing required command(s): ${missing[*]}"
@@ -3921,9 +3921,9 @@ MARKER_END
 # file open for a moment, and a pid that was only ever that would read as a daemon that died. A daemon
 # that dies two seconds in (a bad config, a class a package removal took away) leaves its lock free at
 # the settle; unproven, it would leave a fold frozen behind a green deploy. What the settle cannot see is
-# a daemon that dies and is started again by cron inside it. A holder's start is read with `ps -o etimes=`,
-# and one still running whose start cannot be read fails the proof: it is never taken for a fresh process.
-# And every OTHER lock file of the checkout must then be held by nothing at all.
+# a daemon that dies and is started again by cron inside it. A holder's start is read where the kernel keeps it
+# (proc_started), and one still running whose start cannot be read fails the proof: it is never taken for a fresh
+# process. And every OTHER lock file of the checkout must then be held by nothing at all.
 lock_holders() { # <file…> — the pids that have any of these files open; nothing for a file not there
   local f
   local -a present=()
@@ -3941,20 +3941,38 @@ checkout_lock_holders() { # the pids holding any of them
   lock_holders "${files[@]}"
 }
 
-holders_started_after() { # <cmd> <lock> <since> <pid…> — every pid still running started at or after <since>
-  local cmd="$1" lock="$2" since="$3" pid age now
+# proc_started <pid|self> — when <pid> started: field 22 of /proc/<pid>/stat, the kernel's own record, in clock
+# ticks since boot. Returns 1, printing nothing, when that cannot be read (the pid has gone, among others).
+# ⛔ ONE CLOCK AND NO ROUNDING, BECAUSE WHOLE SECONDS CANNOT ORDER TWO EVENTS INSIDE ONE SECOND (card#11557). The
+# proof used to compare `date +%s` at the step's start with `now - ps -o etimes=` for each holder: three whole-second
+# readings, taken at different moments, of two different clocks. A holder that started AFTER the step began, read
+# across a second boundary, could come out a second BEFORE it, and the window would then fail, with the app down, on a
+# daemon this deploy had just started — measured on the old function, a process started after `since` and judged just
+# before a second boundary on a loaded host was reported "started 1 s BEFORE this restart". A holder's tick and the
+# step's own (restart_daemons) are the same quantity on the same clock, so a later start is never a smaller number;
+# one in the same tick as the step's start counts as after it.
+# Field 2, the command name, is in parentheses and may itself hold spaces and `)`, so the fields are read after the
+# LAST `) `.
+proc_started() {
+  local stat
+  local -a f
+  { read -r stat < "/proc/$1/stat"; } 2>/dev/null || return 1
+  read -r -a f <<< "${stat##*) }"
+  case "${f[19]:-}" in '' | *[!0-9]*) return 1 ;; esac
+  printf '%s' "${f[19]}"
+}
+
+holders_started_after() { # <cmd> <lock> <since> <pid…> — every pid still running started at or after <since>, a proc_started tick
+  local cmd="$1" lock="$2" since="$3" pid started
   shift 3
-  now="$(date +%s)"
   for pid in "$@"; do
-    age="$(ps -o etimes= -p "$pid" 2>/dev/null || true)"; age="${age//[[:space:]]/}"
-    case "$age" in
-      '' | *[!0-9]*)
-        # Gone since fuser listed it — cron's losing `flock -n` — it holds nothing now and is not judged.
-        if ! kill -0 "$pid" 2>/dev/null; then continue; fi
-        echo "$cmd: cannot read when pid $pid, which holds $lock, started (\`ps -o etimes=\` printed '$age') — it cannot be proven to run the deployed release's code" >&2
-        false ;;
-    esac
-    [ $((now - age)) -ge "$since" ] || { echo "$cmd: $lock is held by pid $pid, which started $((since - now + age)) s BEFORE this restart — it is running the previous release's code" >&2; false; }
+    if ! started="$(proc_started "$pid")"; then
+      # Gone since fuser listed it — cron's losing `flock -n` — it holds nothing now and is not judged.
+      if ! kill -0 "$pid" 2>/dev/null; then continue; fi
+      echo "$cmd: cannot read when pid $pid, which holds $lock, started (/proc/$pid/stat could not be read) — it cannot be proven to run the deployed release's code" >&2
+      false
+    fi
+    [ "$started" -ge "$since" ] || { echo "$cmd: $lock is held by pid $pid, which started BEFORE this restart — it is running the previous release's code (it started at clock tick $started since boot, the restart at $since)" >&2; false; }
   done
 }
 
@@ -3963,7 +3981,9 @@ restart_daemons() {
   local stop_timeout="$DAEMON_STOP_TIMEOUT_S" settle="$DAEMON_SETTLE_S"
   local -a target_locks=() files=() hs=()
   php_bin="$(supervision_default_php)"
-  step_started="$(date +%s)"
+  # The start of this command substitution's own process, which is forked now: the step's start on the clock
+  # proc_started reads every holder's start from.
+  step_started="$(proc_started self)"
   for cmd in "${SUPERVISED_DAEMONS[@]}"; do target_locks+=("$(supervision_lock "$DEPLOY_ROOT" "$cmd")"); done
 
   # A subshell, because install ends with `exit` on a refusal; the ERR trap is dropped inside it so the
