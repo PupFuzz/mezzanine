@@ -63,9 +63,10 @@ final class SeatObject
         // § 8.2.1's `idle_nudge_after_s` (card#9418): the horizon this seat resolves to. The record
         // contract (rt#478 ask 2) makes it the RESOLVED per-seat value, "seat override else install
         // default; where it comes from is ours" — this install has no per-seat override, so every
-        // seat resolves to the configured install value. CONFIGURATION, not state, so it is read
+        // seat resolves to the configured install value (null when unset or malformed —
+        // `IdleHorizon`). CONFIGURATION, not state, so it is read
         // here and never fingerprinted: § 6.5 names why it rides no delta.
-        $idleNudgeAfterS = config('mezzanine.idle_nudge_after_s');
+        $idleNudgeAfterS = IdleHorizon::seconds();
 
         return [
             'install_id' => (string) $seat->install_id,

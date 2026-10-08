@@ -4,6 +4,9 @@ namespace Tests\Feature\Fold;
 
 use App\Fold\Clock;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Symfony\Component\Process\Process;
 use Tests\Feature\Feed\FeedTestCase;
 
 /**
@@ -191,5 +194,71 @@ class IdleSinceAndHorizonTest extends FeedTestCase
             $this->assertSame(['idle_since', 'idle_nudge_after_s'], array_slice($keys, $at + 1, 2),
                 "{$surface}: the two members are not beside blocked_since");
         }
+    }
+
+    /** @return list<array{string}> every malformed horizon the review named, and one more shape */
+    public static function malformedHorizons(): array
+    {
+        return [['abc'], ['0'], ['90000'], ['600.0']];
+    }
+
+    /**
+     * card#9418 round 2 (review F1): a malformed horizon is UNDECLARED — the key is absent — and is
+     * made loud on fleet health's `idle_horizon_malformed` counter and one log line naming the key.
+     *
+     */
+    #[DataProvider('malformedHorizons')]
+    public function test_a_malformed_horizon_is_absent_and_counted_on_fleet_health(string $raw): void
+    {
+        config(['mezzanine.idle_nudge_after_s' => $raw]);
+        Log::spy();
+
+        $this->deliver($this->cleanTurn());
+        $this->fold();
+
+        $this->assertArrayNotHasKey('idle_nudge_after_s', $this->served(),
+            "seat REST: a malformed horizon ({$raw}) must be absent, as undeclared");
+        $this->assertArrayNotHasKey('idle_nudge_after_s', $this->snapshotted(),
+            "snapshot: a malformed horizon ({$raw}) must be absent, as undeclared");
+
+        $health = $this->asMachine($this->readToken('health'), '/api/fleet/health')->assertOk()->json('fleet');
+        $this->assertSame(2, $health['counters']['idle_horizon_malformed'] ?? null,
+            'fleet health must count each response that withheld a malformed horizon');
+
+        // One line naming the key and NEVER the value: the message is the same constant text for
+        // every malformed value, so no value can be inside it.
+        Log::shouldHaveReceived('warning')->with(
+            'mezzanine.idle_horizon: MEZZANINE_IDLE_NUDGE_AFTER_S is not a whole number of seconds from 1 to 86400; '
+            .'idle_nudge_after_s is withheld as undeclared'
+        )->twice();
+    }
+
+    public function test_a_valid_horizon_is_not_counted(): void
+    {
+        config(['mezzanine.idle_nudge_after_s' => '600']);
+
+        $this->deliver($this->cleanTurn());
+        $this->fold();
+
+        $this->assertSame(600, $this->served()['idle_nudge_after_s']);
+        $health = $this->asMachine($this->readToken('health'), '/api/fleet/health')->assertOk()->json('fleet');
+        $this->assertSame(0, $health['counters']['idle_horizon_malformed']);
+    }
+
+    /**
+     * The defect review F1 named: the value used to throw at configuration load, so with no config
+     * cache every process — web, ingest, daemons — refused to boot. Driven through a real process
+     * with the variable in its environment, which is the only way the config file's own read runs.
+     *
+     */
+    #[DataProvider('malformedHorizons')]
+    public function test_every_artisan_command_still_boots_with_a_malformed_horizon(string $raw): void
+    {
+        $process = new Process(['php', 'artisan', 'config:show', 'mezzanine'], base_path(),
+            ['MEZZANINE_IDLE_NUDGE_AFTER_S' => $raw, 'APP_ENV' => 'testing']);
+        $process->run();
+
+        $this->assertSame(0, $process->getExitCode(),
+            "artisan refused to boot with MEZZANINE_IDLE_NUDGE_AFTER_S={$raw}: ".$process->getErrorOutput().$process->getOutput());
     }
 }

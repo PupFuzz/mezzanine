@@ -29,30 +29,11 @@ return [
      * watchdog) reads it off every seat object as the horizon this install declares; this plane
      * acts on it nowhere.
      *
-     * UNSET OR EMPTY IS "UNDECLARED", AND THE WIRE KEEPS IT SO: the member is then ABSENT from the
-     * seat object, never a default — the consumer tells a declared horizon from an undeclared one
-     * by the key's presence (rt#479). So there is deliberately no default here.
-     *
-     * ⛔ A MALFORMED VALUE REFUSES AT CONFIGURATION LOAD rather than at the read. The seat object is
-     * built inside the fold's own transaction (the delta it publishes), so a value checked there
-     * would fail the fold on every event; checked here, every process refuses to boot, so the deploy
-     * that set it stops at its first `php artisan` command, which is the moment someone is watching.
-     * An integer of seconds, 1…86400.
+     * RAW, AND NEVER VALIDATED HERE: `App\Read\IdleHorizon` resolves it. Unset or empty is
+     * undeclared and the member is absent, never a default (rt#479). A value that is not a whole
+     * number from 1 to 86400 is undeclared too, counted as `idle_horizon_malformed` on fleet health
+     * and logged — a throw here would stop every process that loads uncached config.
      */
-    'idle_nudge_after_s' => (static function (mixed $raw): ?int {
-        if ($raw === null || $raw === '') {
-            return null;
-        }
-
-        $value = filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 86400]]);
-
-        if ($value === false) {
-            throw new InvalidArgumentException(
-                'MEZZANINE_IDLE_NUDGE_AFTER_S must be an integer number of seconds from 1 to 86400, or unset'
-            );
-        }
-
-        return $value;
-    })(env('MEZZANINE_IDLE_NUDGE_AFTER_S')),
+    'idle_nudge_after_s' => env('MEZZANINE_IDLE_NUDGE_AFTER_S'),
 
 ];

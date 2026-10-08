@@ -92,6 +92,7 @@ final class FleetHealth
         'feed_outbox_boundary_stalled',
         BoardPoll::OK,
         BoardPoll::FAILED,
+        IdleHorizon::MALFORMED,
     ];
 
     /**
