@@ -204,7 +204,7 @@ These are absolute. A violation of any of them is a defect even if telemetry is 
 | P-1 | **Always exit 0**, on every path including a crash | top-level `try/catch` around everything; `process.exit(0)` in a `finally` | exit **2** is the harness's *block* signal: a `PreToolUse` exiting 2 blocks the tool call outright and feeds the reporter's stderr to the model. Any other non-zero is a non-blocking error whose stderr still reaches the transcript. Only exit 0 leaves the seat untouched |
 | P-2 | **Emit no JSON on stdout from a `hook` invocation** | the `hook` subcommand writes nothing to stdout, ever | hook stdout is harness control input — and on `SessionStart` and `UserPromptSubmit` it is **added to the model's context**, so stray output is not merely a behaviour change: it is text the model reads as if it were part of the session |
 | P-3 | **No network in the hook path** | the `hook` subcommand contains no HTTP client call | a WAN round-trip inside a hook adds ≥ 100 ms to every tool call on the seat |
-| P-4 | **Synchronous appends only, then exit** | every write is `fs.writeSync` on a descriptor opened `'a'`; no `await` between the first write and the exit | an event-loop hang holds the seat. A hook writes at most: one spool line per event it emits (its own, plus any reap closes), one index-journal record per ledger mutation ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)), and one counter line ([§ 11.1](#111-layout)) — each an independent `O_APPEND` write, never a read-modify-write of a shared file |
+| P-4 | **Synchronous appends only, then exit** | every write is `fs.writeSync` on a descriptor opened `'a'`; no `await` between the first write and the exit | an event-loop hang holds the seat. A hook writes at most: one spool line per event it emits (its own, plus any reap closes), one index-journal record per ledger mutation ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)), and one counter line ([§ 11.1](#111-layout)) — each an independent `O_APPEND` write, never a read-modify-write of a shared file. A hook that emits also creates and removes the seat write lock around its appends ([§ 11.2](#112-spool-line-format)), an exclusive create with a bounded wait |
 | P-5 | **p99 hook wall time < 250 ms** | measured by AT-3 | see AT-3 |
 | P-6 | **Never print a token or a raw payload** | the config's `token` is redacted in every diagnostic path; raw hook stdin is never logged | a transcript, a log or an `argv` is a secret-exfiltration surface |
 | P-7 | **The flusher is spawned detached and windowless** | `spawn(…, { detached: true, stdio: 'ignore', windowsHide: true }).unref()` | the hook would wait on the flusher's lifetime — and without `windowsHide` every respawn flashes a console window on a Windows seat, which is a visible disturbance of the seat the reporter exists to stay invisible to |
@@ -212,7 +212,9 @@ These are absolute. A violation of any of them is a defect even if telemetry is 
 **Budget derivation for P-5 (250 ms).** Node 18 cold start on a modern machine is 30–60 ms and
 dominates; the reporter's own work is one `JSON.parse` of a payload under 1 MiB, a few regexes over
 ≤ 2 KiB of text, a fold of the call index ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open))
-— a snapshot of ≤ 128 records plus at most one flush interval of journal tail — and its appends. A
+— a snapshot of ≤ 128 records plus at most one flush interval of journal tail — and its appends.
+A hook that emits while another writer of the seat holds the seat write lock also waits for it, at
+most 100 ms ([§ 11.2](#112-spool-line-format)), and only under concurrency. A
 `UserPromptSubmit` also reads its transcript's tail for [§ 6.3](#63-turnstart)'s `console_url`: one
 64 KiB read in the common case, where a deciding record sits within the last few KiB, and at most
 1 MiB in 64 KiB reads with a substring test per line before any `JSON.parse`.
@@ -791,7 +793,10 @@ as the runner-up.
 
 `seq` is assigned by the **flusher**, not by the hook, because the flusher is the single writer of the
 spool cursor and needs no lock to count ([§ 10.2](#102-ordering-seq-and-gap-detection)). A hook-side
-counter would need cross-process locking inside the latency budget P-5 buys.
+counter would need a cross-process lock that never gives up. The seat write lock
+([§ 11.2](#112-spool-line-format)) gives up after a bounded wait to stay inside P-5. Ordering can
+afford that, because the lapse is counted. A counter cannot: a writer that went ahead unlocked
+would mint a duplicate `seq`.
 
 ### 4.4 Size caps and their derivations
 
@@ -1557,7 +1562,9 @@ ending for it to report. **D2:** the server closes any turn still open at that b
 derives `unknown` from a session closed with a turn open
 ([D2 § 4.6.1](FLEET-STATE.md#461-the-turn-has-no-timer-of-its-own)). A hook-path exception on the
 flusher would buy nothing the server's idempotent close does not already provide, and would put a
-second writer on a fact one writer already owns.
+second writer on a fact one writer already owns. The flusher decides this close and appends it under
+the seat write lock ([§ 11.2](#112-spool-line-format)), so a hook that emitted before it is in the
+index it decides against, and one that emits after it carries a later `event_time`.
 
 | `end_reason` | Where it comes from |
 |---|---|
@@ -3756,6 +3763,8 @@ statusLine processes reach the flusher through the counter sink
 | `spool_corrupt_lines` | unparseable spool lines quarantined | seat badge `lossy` |
 | `spool_append_failed.<tree>` | an append failed outright, discarding the record it carried. `<tree>` is one of `events`, `counters`, `index`, `log`, `quarantine` — the counter keys name the write sites individually, which is finer than the grouping [§ 11.1](#111-layout)'s ownership table uses. Raised by the append primitive itself, keyed by subtree, **not** by its callers — a caller that forgets to check is a silent loss, which is the one shape [§ 0](#0-overview) item 9 forbids | seat badge `lossy`; the subtree names what was lost, and `events` means telemetry the seat produced never reached the spool at all. **`counters` is the self-referential case:** that increment cannot itself be flushed, so the seat log is its only trace |
 | `spool_append_retried.<tree>` | a write on a cached descriptor failed and the retry through a fresh open succeeded; **no loss** ([§ 11.1](#111-layout)) | informational, and the measurement that the retry path is alive. A permanent zero on a busy fleet means the fallback is unexercised rather than unneeded |
+| `write_lock_timeout` | a writer waited the full 100 ms for the seat write lock held by a live writer, then appended without it ([§ 11.2](#112-spool-line-format)) | informational: that writer's events may sit out of `event_time` order in the spool, and the server handles them as it handles out-of-order arrival ([§ 10.2](#102-ordering-seq-and-gap-detection)). **No loss.** Sustained non-zero means writer sections are outlasting the wait, and the bound needs re-deriving |
+| `write_lock_broken` | a seat write lock was removed because its holder's pid was gone, or it was 1 s old ([§ 11.2](#112-spool-line-format)) | informational, and **expected** after a hook the harness killed mid-append. A rising rate with no killed hooks means a live writer is holding the lock past 1 s |
 | `events_rejected_dropped` | events lost with a permanently-rejected batch — incremented by that batch's event count at quarantine time | seat badge `lossy`; this is the counter that makes `§ 0` item 9's promise true for the rejection path |
 | `oversize_event_dropped` | a single event over the 4 KiB cap, undeliverable, quarantined | seat badge `lossy` |
 | `batches_rejected` | permanent-status rejections | seat badge `degraded`; the last status and error code are shown |
@@ -3940,7 +3949,7 @@ healthy on every agent machine in every install.
 
 | Value | Source | Authoritative for |
 |---|---|---|
-| `event.event_time` | seat clock | ordering **within** a seat (with `seq`), durations within a seat, the seat's own narrative sequence |
+| `event.event_time` | seat clock, read by the writer under the seat write lock ([§ 11.2](#112-spool-line-format)), so one seat's spool order is its `event_time` order | ordering **within** a seat (with `seq`), durations within a seat, the seat's own narrative sequence |
 | `batch.sent_at` | seat clock | skew measurement only |
 | `received_at` | **server clock**, recorded at ingest | liveness and staleness, retention and expiry, **all cross-seat comparison**, and every relative age the UI renders |
 
@@ -3956,15 +3965,19 @@ Rules:
    the wait into its skew.) `|skew| > 120 s` → the seat renders a `clock_skew` badge and the number.
    **120 s derivation:** 2× the heartbeat interval, well above any NTP-managed drift (sub-second) and
    below the 300 s stale threshold, so the two alarms cannot alias into one another.
-4. `event_time` values within a seat may be non-monotonic if the clock steps; ordering falls back to
-   `seq`, which is monotonic by construction.
+4. `event_time` values within a seat may be non-monotonic if the clock steps, when a writer went
+   ahead without the seat write lock (`write_lock_timeout`, [§ 9.3](#93-degradation-counters)), and
+   on a reporter older than card#11563 ([§ 10.2](#102-ordering-seq-and-gap-detection)); ordering
+   falls back to `seq`, which is monotonic by construction.
 
 ### 10.2 Ordering: `seq` and gap detection
 
 `seq` is a per-seat integer assigned **by the flusher** at batch time, monotonically increasing within
 a `seq_epoch`. Exactly one flusher runs per seat ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)),
-which is what makes a lock-free counter correct — and this is why `seq` is not assigned in the hook,
-where cross-process locking would sit inside the 250 ms budget P-5 protects.
+which is what makes a lock-free counter correct — and this is why `seq` is not assigned in the hook.
+The hook's one cross-process lock, the seat write lock ([§ 11.2](#112-spool-line-format)), gives up
+after a bounded wait to protect the 250 ms budget P-5 sets, and a counter cannot survive a writer
+that went ahead without it.
 
 - `seq_epoch` is a ULID minted when `state.json` is created: on a seat's first start, and again
   whenever state is lost (reinstall, wiped state dir, a deleted or unreadable `state.json`). A **new
@@ -3998,10 +4011,14 @@ where cross-process locking would sit inside the 250 ms budget P-5 protects.
   seat successfully queued.
 
 **Events can arrive out of `event_time` order.** The flusher sends the spool in append order and
-re-sends a retried batch before anything after it, but a hook reads its clock when it starts and
-appends when it finishes, so two writers that overlap can put a newer event in the spool ahead of an
-older one. The flusher's own `session.end(inferred_silence)` racing a hook of the same session is a
-measured case (card#11561). The server must not assume ordering anywhere:
+re-sends a retried batch before anything after it. A reporter older than card#11563 read a hook's
+clock when the hook started and appended when it finished, so two writers that overlapped could put a
+newer event in the spool ahead of an older one. The flusher's own `session.end(inferred_silence)`
+racing a hook of the same session is the measured case (card#11561). From card#11563 every writer
+stamps its events under the seat write lock ([§ 11.2](#112-spool-line-format)), so one seat's spool is
+in `event_time` order, apart from a clock step or a writer that went ahead without the lock and
+counted `write_lock_timeout`. The server must not assume ordering anywhere, because older reporters
+stay in the fleet:
 
 | Out-of-order case | Required behaviour |
 |---|---|
@@ -4108,7 +4125,8 @@ would need splitting.
 
 | File | Writers | Mechanism |
 |---|---|---|
-| `<hour>.jsonl` (spool) | every hook and statusline process | append-only |
+| `<hour>.jsonl` (spool) | every hook and statusline process, and the flusher | append-only, under the seat write lock ([§ 11.2](#112-spool-line-format)) |
+| `write.lock` | every hook and statusline process that emits, and the flusher | exclusive create holding the creator's pid, removed by its holder; broken when that pid is gone or the lock is 1 s old ([§ 11.2](#112-spool-line-format)) |
 | `index/<hour>.jsonl` | every hook process | append-only |
 | `counters/<hour>.jsonl` | every hook and statusline process | append-only |
 | `index/snapshot.json`, `state.json` | **the flusher only** | `.tmp` + rename, **unique temp name**, ownership-checked ([§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)) |
@@ -4210,6 +4228,34 @@ Linux and `FILE_APPEND_DATA` on Windows. **This is an assumption with a test, no
 asserts 4,000 well-formed lines, and asserts the same property for the index journal, whose
 correctness depends on it identically. Line size is capped at 4 KiB
 ([§ 4.4](#44-size-caps-and-their-derivations)) to stay under the conventional atomic-small-write floor.
+
+**Ordering across writers: the seat write lock (card#11563).** `O_APPEND` makes each line atomic, and
+it orders nothing across a clock read. A writer that reads its clock and appends later can be
+overtaken by a second writer that reads a later clock and appends first. One seat's spool then holds
+a newer event ahead of an older one, and the flusher delivers it in that order. Before card#11563 a
+hook read its clock when it started and appended after config load, stdin and the index fold. The
+flusher stamped its heartbeat at the start of a pass that had since awaited the network. A probe
+racing the flusher's `inferred_silence` close against a `Stop` hook measured the inversion in 5 of
+80 trials. So every writer of the events tree takes `write.lock` in the spool directory, reads the
+clock its events carry, appends them, and then removes the lock:
+
+- **A hook or a statusLine render takes it at its first emit** and holds it to the end of its
+  invocation. Every event of the invocation carries the clock read when it took the lock. Its
+  decision clock — the one its durations, ids and ceilings are computed with — is read after stdin,
+  before the lock, and is earlier by the work in between. The lock is not taken before the index
+  fold because the fold and the payload work are most of an invocation's time. A render that emits
+  nothing never takes the lock.
+- **The flusher takes it before its index fold** and holds it through its reaps, its § 6.2
+  `inferred_silence` close and their appends. That close therefore decides against every hook that
+  emitted before it, and a hook still in flight stamps after it. The heartbeat takes it for its own
+  append.
+- **The wait is bounded and the lapse is counted.** The lock is an exclusive create holding the
+  holder's pid. A writer polls it for at most 100 ms, then goes ahead unlocked and counts
+  `write_lock_timeout`. A lock whose pid is gone, or which is 1 s old, is removed and counted
+  `write_lock_broken`; a hook the harness kills while holding it never releases it. A holder removes
+  the lock only while it still holds its own pid. The ages are wall time on the filesystem's clock.
+
+[§ 14](#14-every-number-and-where-it-comes-from) derives both figures.
 
 ### 11.3 Rotation and the overflow policy
 
@@ -5585,6 +5631,8 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Wrapped statusLine timeout | 1 s | Chosen — a status line re-renders on every trigger; slower is already broken. Also sits below the harness's own cancellation, which is what allows the failure to be counted | [§ 6.11](#611-contextsample) |
 | Context-sample staleness bound | 300 s | **Chosen** — a tolerance, not a freshness guarantee: statusLine is event-driven with no timer, so nothing guarantees a fresh sample and the earlier "5× the 60 s cadence" derivation was arithmetic over a rate that does not exist. Past 300 s `compaction.start` reports `null` rather than a stale percentage | [§ 6.9](#69-compactionstart) |
 | Bucket-deletion grace | 5 s | Derived — 20× P-5's 250 ms hook budget; covers a writer descheduled between deriving its bucket name and its `writeSync`, which is what the hour-roll straddle actually is | [§ 11.1](#111-layout) |
+| Seat write lock wait | 100 ms | Derived — 40 % of P-5's 250 ms hook budget, so a hook that waits it out still has most of the budget for everything else. A hook holds the lock only from its first emit to its exit: measured on the card#11563 build at a host load average of ~21, the hook appends ran 2.0 ms (median) of a 20.9 ms invocation section | [§ 11.2](#112-spool-line-format) |
+| Seat write lock staleness | 1 s | Derived — 4× P-5's 250 ms, so a lock that old is not a live hook's. A killed holder is detected sooner, by its pid | [§ 11.2](#112-spool-line-format) |
 | Open-session index | 16 open sessions | Chosen — far above the two or three terminals a real seat runs, so reaching it is itself the signal; **enforced** by eviction-and-reap, which is what makes `open_sessions`' 0…16 bound real rather than asserted | [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open) |
 | Harness build the MEASURED facts are pinned to | Claude Code **2.1.247** | **Measured** — 63 payloads across 11 hook events captured 2026-08-27, of which [§ 17](#17-appendix--the-captured-harness-payloads) reproduces the **18** distinct shapes every MEASURED row is read from. The 18 is re-derived from the appendix by the verifier; the 63 is capture-run provenance and is not checkable from this repo ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). Every MEASURED row is versioned to the build; [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) obligation 2 owns **when a re-capture is owed and on which axes** (amended by card #7337, gained its MODE axis and its measured cost at the 2.1.247 discharge, card #7930) and is not restated here | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | `reporter.heartbeat.degraded` length | 12 elements | **Derived** — not chosen: the array carries at most one of each declared member, so its bound *is* the size of [§ 9.3](#93-degradation-counters)'s member table and moves only when that table moves | [§ 9.3](#93-degradation-counters) |
@@ -5752,6 +5800,7 @@ values no published rule derived.
 | 49 | **`targets`' whole derivation is stated on the field — `to`, with the literal `all` replaced by [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s `roster[]` and the author removed — and a named addressee is never filtered against that roster** | **(a)** keep the author, so `targets` is `to` with `all` expanded and nothing removed; **(b)** intersect `to` with the roster, dropping a name the copy does not know; **(c)** leave the field stating the `all` expansion and the `null` case only, with sender exclusion shown by [§ 18.7](#187-coordround)'s worked example and stated nowhere — which is what this document did | Option (c) is the one that was in force and it is the defect: the example expanded a broadcast to fewer names than the roster it read, so the document carried two answers — one in the field spec and one in the example — and the example was the only place the difference was visible. That is the failure this document already names about itself one field over, *"a worked example becomes a second, disagreeing specification"*. Option (a) contradicts that example rather than the spec, and it makes `targets` mean something else: the field is **who the post reaches**, and an author is not reached by their own post. Option (b) drops a name with nothing counting it: [§ 18.12](#1812-the-anti-requirements-checked-against-the-derivation)'s no-silent-cap anti-requirement enumerates the two paths that may drop a fan-out — the counted truncation at 32 members, and `targets: null` — and both are reported, while a roster-filtered name would be a third reported by nothing. On a body-derived name it also deletes the evidence `coord_roster_unknown_name` exists to raise, and on a label-derived one that counter is not even in scope — so a roster copy gone stale would under-report every fan-out with no counter moving | The field now carries a five-clause rule (order, expansion, author removal, first-occurrence-only, and the `null` case) where it carried two sentences, and **the first-occurrence clause is asserted by no test in this document** — it is reachable only by a `TO:` line naming `all` and a roster member together, which no fixture writes. And `[]` is now an ordinary derived value rather than an oddity, so the two empty answers have to be read apart by every consumer: `null` is the alarmed one (`coord_targets_unresolved`) and `[]` is not alarmed at all |
 | 50 | **card#11292: rule 4 matches a keyword inside a name and reads credential headers whole, rule 3 takes JWTs and more prefixes, rule 7 takes mixed-class base64url runs, rule 9 replaces host names, and a `descriptors` config key lets a seat send less** | a per-seat local narrowing of the allowlist, the option the auditing seat's operator was weighing; or an entropy scorer beside the regexes; or host scrubbing by an allowlist of public hosts | Every shape was measured passing whole by an outside audit, and the descriptor is stored on the server and shown on the floor to every signed-in user. A local narrowing fixes one seat and leaves the sanitizer that every seat runs as it was. An entropy scorer is a second mechanism with its own false-positive profile; rule 7's mixed-class condition is the entropy test the existing rule could carry. A public-host allowlist is a list of the world, and § 1 excludes host names without exception | `--author=` and `max_tokens =` lose their values; `socket.io` reads as a host; `WebFetch` descriptors no longer say where. Single-label hosts outside a URL still pass (fixture 18 pins one). The `coord.subject` profile shares rule 4, so row 48's measured title rates describe the rule before this change and were **not** re-measured |
 | 51 | **card#9416: the seat's console URL rides `turn.start` as `console_url`, read from the transcript's newest deciding record within a 1 MiB tail, pattern-checked at the reporter and again at the fold, and sent only under `descriptors: "full"`** | carry it on `session.start`; or on the heartbeat; or read the whole transcript; or send it under every `descriptors` value | `session.start` fires once and before the transcript holds a bridge record, while the bridge id changes within a session and ends with it; the heartbeat carries no session and its flusher never sees a `transcript_path`; a whole-file read of a many-MiB transcript breaks P-5's budget; and `descriptors` is the seat's one statement of how much it sends, so a seat that asked for less is not sent a link to its live console | a link lags a changed bridge by one prompt; a bridge record more than 1 MiB back is a `null` for that turn, counted; a harness that moves the record makes every value `null`, counted as `console_url_malformed` rather than silent |
+| 52 | **card#11563: every writer reads the clock its events carry under one per-seat write lock, taken at a hook's first emit and before the flusher's index fold, with a bounded wait** | take the lock for a hook's whole section, including its index fold; or stamp each line just before its write with no lock; or leave the order to the server's guards | The whole-section lock held the payload work and the fold as well, measured at ~10× the hold of the appends alone, and every concurrent hook waits on that hold. A late stamp with no lock narrows the window and does not close it. The server's per-group guards converge pairs and cannot converge every composition (card#11561, [D2 § 6.5](FLEET-STATE.md#65-the-fold)) | a writer that waits out 100 ms appends unordered, counted `write_lock_timeout`; a hook's `event_time` is later than its decision clock by its own payload work, so a duration and the difference of two `event_time`s differ by a few ms |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health
