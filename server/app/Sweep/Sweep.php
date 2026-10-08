@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * `docs/design/FLEET-STATE.md § 2.1`'s **sweep** process: the SEVEN time-derived jobs, every 15 s.
+ * `docs/design/FLEET-STATE.md § 2.1`'s **sweep** process: the time-derived jobs, every 15 s.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * WHAT A DEAD SWEEPER COSTS, WHICH IS WHY THIS IS A SUPERVISED DAEMON AND NOT A CRON ENTRY. § 2.2:
@@ -27,13 +27,13 @@ use Illuminate\Support\Facades\Log;
  * this loop's `live → stale`.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * THE SEVEN JOBS, AND THE ORDER, WHICH § 4.6 MAKES LOAD-BEARING RATHER THAN TIDY.
+ * THE JOBS, AND THE ORDER, WHICH § 4.6 MAKES LOAD-BEARING RATHER THAN TIDY.
  *
- * § 2.1 lists them as "staleness, orphan-timeout closes, attention ceilings, compaction ceilings,
- * the leaving-live clears, offline quiescence and the predicate-constant alarms", and § 4.6 says
- * outright that the list IS an execution order: quiescence "neither re-clears `stalled_since` nor
- * re-resolves an attention request", and the reason it cannot is that "§ 2.1's job list is an
- * execution order and states the leaving-live clears BEFORE offline quiescence". That precedence is
+ * § 2.1 lists them as "staleness, orphan-timeout closes, compaction ceilings, the leaving-live
+ * clears, offline quiescence and the predicate-constant alarms", and § 4.6 says outright that the
+ * list IS an execution order: quiescence "neither re-clears `stalled_since` nor resolves an
+ * attention request", and the reason for the first is that "§ 2.1's job list is an execution
+ * order and states the leaving-live clears BEFORE offline quiescence". That precedence is
  * what deletes four ENUM members from § 6.4 (`stalled_cleared_by: server_offline`,
  * `resolution: seat_offline`, `resolution_source: server_offline`) as values no path can select.
  *
@@ -165,7 +165,7 @@ final class Sweep
         // process does not evaluate, whose branches the fold records at their own evaluation sites.
         Predicates::alarm($nowMs, $nowSql);
 
-        // NOT ONE OF THE SEVEN JOBS — AN OBSERVATION, riding this loop for its cadence (card#9467). A
+        // NOT ONE OF THE JOBS — AN OBSERVATION, riding this loop for its cadence (card#9467). A
         // committed `feed_outbox` row above the streams' visible prefix and `retention − lag` old is one
         // lag from § 6.7's purge taking it unread; this is the only process that looks every 15 s
         // whether or not a browser is open. `VisiblePrefix::countStalled()` owns the predicate.
@@ -196,7 +196,8 @@ final class Sweep
     }
 
     /**
-     * One seat, one transaction: jobs 2–6, then the recompute that is job 1's whole effect.
+     * One seat, one transaction: jobs 2 and 4–6 (3 is retired), then the recompute that is job 1's
+     * whole effect.
      *
      * Returns `false`, having written nothing, when another writer holds the seat's `seat_state` row.
      */
@@ -230,11 +231,10 @@ final class Sweep
         );
 
         $this->orphanCloses($seatRef, $nowSql);                  // JOB 2
-        $this->attentionCeilings($seatRef, $nowSql);             // JOB 3
-        $this->compactionCeilings($seatRef, $nowMs);             // JOB 4
+        $this->compactionCeilings($seatRef, $nowMs);             // JOB 4 (JOB 3 is retired)
 
         if (in_array($link, ['stale', 'offline'], true)) {
-            $this->leavingLive($seatRef, $nowMs, $nowSql);       // JOB 5
+            $this->leavingLive($seatRef, $nowSql);               // JOB 5
         }
 
         if ($link === 'offline') {
@@ -247,7 +247,7 @@ final class Sweep
         // render itself and the leaving-live writes: "one rule, one cause value".
         //
         // ⚠ SAMPLED HERE, WHICH IS EXACTLY WHERE `forSeat()` USED TO SAMPLE FOR ITSELF, AND THAT
-        // LEAVES ONE INSTANCE OF CARD #7837's CLASS OPEN ON PURPOSE. Jobs 2, 3 and 6 each settle
+        // LEAVES ONE INSTANCE OF CARD #7837's CLASS OPEN ON PURPOSE. Jobs 2 and 6 each settle
         // their own writes and each now samples before them, so the fingerprint here is the one
         // the last published delta left the client holding — for everything except JOB 5. JOB 5
         // (`leavingLive`) deliberately has NO settle of its own and defers to this one, so its
@@ -351,74 +351,13 @@ final class Sweep
         );
     }
 
-    // ── JOB 3: attention ceilings (§ 4.4) ────────────────────────────────────────────────────
-
-    /**
-     * Resolve every open attention request past its materialized 60-minute `ceiling_at`.
-     *
-     * `D2-MUST` #5 says a seat "may never render *blocked* for longer than the 60-minute ceiling
-     * without a matching `attention.resolved`", so the server clears even when the reporter's own
-     * resolution is LOST. The basis is the request's own `event_time` — the SEAT clock, and the one
-     * ceiling in this design measured on it — because "the reporter owns the competing timer and
-     * fires at 60 min on its own clock. Using the same basis makes the two fire together; using
-     * receipt would make the server clear first on every skewed seat and mint a `server_ceiling`
-     * resolution for a request the reporter was about to resolve properly" (§ 4.7).
-     *
-     * The `attention_ceiling` cause value exists "so the drill-down can say THE SERVER CLEARED
-     * THIS, which is exactly the distinction a `staleness_sweep` or a `wire_event` cause would
-     * lose" — which is why this job settles under its own cause rather than riding the pass's.
-     */
-    private function attentionCeilings(int $seatRef, string $nowSql): void
-    {
-        $due = DB::table('attention_requests')
-            ->where('seat_ref', $seatRef)
-            ->whereNull('resolved_at')
-            ->where('ceiling_at', '<=', $nowSql)
-            ->get(['id', 'opened_at', 'ceiling_at']);
-
-        if ($due->isEmpty()) {
-            return;
-        }
-
-        // Card #7837's rule, applied here for UNIFORMITY and not because this job hid anything:
-        // its only writes are to `attention_requests`, and NO member of
-        // `SeatFacts::versionBearing()` reads that table — the resolution reaches the fingerprint
-        // through `activity_state`, which `writeDerivedColumns()` writes after this sample either
-        // way. Value-identical to the self-sample it replaces; what it buys is that a reader
-        // checking this file against the rule does not have to re-derive that for themselves.
-        // Below the early return for the same cost reason `orphanCloses()` above states.
-        $before = SeatFacts::versionBearing($seatRef);
-
-        foreach ($due as $request) {
-            DB::table('attention_requests')->where('id', $request->id)->update([
-                // RESOLVED AT THE CEILING, NOT AT `now`. The ceiling is the instant `D2-MUST` #5
-                // says the wait ended; stamping the pass time would make `waited_ms` include up to
-                // one sweep cadence of the server's own scheduling and would put two different
-                // answers on one physical event depending on how busy the sweeper was.
-                'resolved_at' => $request->ceiling_at,
-                'resolution' => 'server_ceiling',
-                'resolution_source' => 'server_ceiling',
-                'waited_ms' => max(0, Clock::toMs($request->ceiling_at) - Clock::toMs($request->opened_at)),
-            ]);
-
-            // § 5's `attention_resolved_by_wire`, SERVER branch. § 5's alarm criterion is "ANY
-            // server-ceiling resolution in 24 h is surfaced", so this write is the alarm's input.
-        }
-
-        Predicates::record($seatRef, 'attention_resolved_by_wire', false, $nowSql, $due->count());
-
-        // "A rising `attention_ceiling_expired` means resolutions are being lost, and that is the
-        // instrument that says so" (§ 4.4).
-        Counters::seat($seatRef, 'attention_ceiling_expired', $due->count());
-
-        $this->recompute->forSeat(
-            $seatRef,
-            $before,
-            'attention_ceiling',
-            ['job' => 'attention_ceiling', 'requests' => $due->count()],
-            owesRow: true,
-        );
-    }
+    // ── JOB 3: retired (card#9527) ───────────────────────────────────────────────────────────
+    //
+    // This was the 60-minute attention ceiling. The operator's ruling of 2026-09-14 removed it: a
+    // seat waiting on a human stays `blocked` until that agent's next status update, so an attention
+    // request has no time-derived exit and this process has nothing to do for one (§ 4.4). The
+    // numbering of the jobs below is kept, so every "JOB n" reference in this file, its tests and
+    // their history still names the same job.
 
     // ── JOB 4: compaction ceilings (§ 4.6) ───────────────────────────────────────────────────
 
@@ -451,20 +390,26 @@ final class Sweep
     // ── JOB 5: the leaving-live clears (§ 4.5) ───────────────────────────────────────────────
 
     /**
-     * The two CURRENT-CLAIM facts a seat loses when it goes quiet.
+     * The CURRENT-CLAIM fact a seat loses when it goes quiet: the `stalled` flag.
      *
      * § 4.5, stated once there and executed once here: when a seat's `link_state` becomes `stale`
      * **or `offline`** — both, "because a seat silent for more than 900 s between two sweep passes
      * takes `offline` directly and never has a pass in which rule 3 matched" — the sweeper clears
      * `sessions.stalled_since` for every session of that seat whose `stalled_since IS NOT NULL` and
-     * whose `stalled_cleared_by IS NULL`, and resolves every open attention request with
-     * `seat_left_live` / `server_left_live`.
+     * whose `stalled_cleared_by IS NULL`.
      *
-     * `idle` IS DELIBERATELY NOT IN THIS RULE (§ 4.4, § 4.5). `blocked` and `stalled` are claims
-     * that the seat is CURRENTLY waiting or currently refused, and "a seat returning at 400 s must
-     * not re-render a wait whose evidence is five minutes stale". `idle` is a claim about something
-     * that ALREADY HAPPENED — the agent said it finished — "which staleness does not falsify", so
-     * leaving `live` MASKS it through § 4.2's precedence instead of clearing it.
+     * ⛔ AN OPEN ATTENTION REQUEST IS NOT CLEARED HERE ANY MORE (card#9527). Until then this job
+     * also resolved it `seat_left_live`, and a laptop lid closed on a waiting prompt cleared a wait
+     * that was still waiting when the lid opened. The operator's ruling of 2026-09-14 is that a
+     * wait lasts until the agent's next status update, and going quiet is not one: the request
+     * stays open underneath, § 4.2 renders the transport state over it, and the seat renders
+     * `blocked` again if it comes back still waiting (§ 4.4).
+     *
+     * `idle` IS DELIBERATELY NOT IN THIS RULE (§ 4.4, § 4.5), and neither is `blocked` now: both are
+     * MASKED by leaving `live` through § 4.2's precedence rather than cleared. `stalled` is the one
+     * claim this still clears: a rate limit is the API's, not a human's — it lapses on its own and
+     * nobody is answering it — so a seat returning at 400 s must not re-render one whose evidence is
+     * five minutes stale (§ 4.4's `stalled` rows).
      *
      * `stalled_since` IS NULLED and not merely stamped, which is the opposite of what the
      * projector's `session.end` path does, and the asymmetry is § 4.3's `S` fact:
@@ -472,7 +417,7 @@ final class Sweep
      * SECOND term, so nulling the first would destroy the narrative for nothing. A seat going quiet
      * ends no session, so only the first term is available.
      */
-    private function leavingLive(int $seatRef, int $nowMs, string $nowSql): void
+    private function leavingLive(int $seatRef, string $nowSql): void
     {
         $cleared = DB::table('sessions')
             ->where('seat_ref', $seatRef)
@@ -482,22 +427,7 @@ final class Sweep
 
         Counters::seat($seatRef, 'left_live_cleared_stalls', $cleared);
 
-        $open = DB::table('attention_requests')
-            ->where('seat_ref', $seatRef)->whereNull('resolved_at')
-            ->get(['id', 'opened_at']);
-
-        foreach ($open as $request) {
-            DB::table('attention_requests')->where('id', $request->id)->update([
-                'resolved_at' => $nowSql,
-                'resolution' => 'seat_left_live',
-                'resolution_source' => 'server_left_live',
-                'waited_ms' => max(0, $nowMs - Clock::toMs($request->opened_at)),
-            ]);
-        }
-
-        Counters::seat($seatRef, 'left_live_resolved_attention', $open->count());
-
-        // NO SETTLE OF ITS OWN. § 4.5: "Both writes record a transition `cause` of
+        // NO SETTLE OF ITS OWN. § 4.5: "The write records a transition `cause` of
         // `staleness_sweep`, which is the same cause the `stale` and `offline` renders themselves
         // carry: one rule, one cause value." The pass's own recompute is that row, and it runs
         // after this job — so the row records the render this clear helped produce, rather than a
@@ -519,8 +449,11 @@ final class Sweep
      * left to guess which of the two closes was the real one."
      *
      * ⛔ AND WHAT IT DELIBERATELY DOES NOT TOUCH — WHICH IS THE PROPERTY, NOT THE ORDER. The
-     * `stalled` flag and any open attention request are absent from every statement below, and that
-     * absence is load-bearing: "a `server_offline` clearer and a `seat_offline` resolution are
+     * `stalled` flag and any open attention request are absent from every statement below. The
+     * request is left open for the operator's ruling (card#9527): a seat that comes back from
+     * `offline` still waiting renders `blocked` again, and one that comes back with activity has
+     * that activity resolve it (§ 4.4). The flag's absence is load-bearing for § 4.6's rule: "a
+     * `server_offline` clearer and a `seat_offline` resolution are
      * values no path can select; they were declared once and are DELETED rather than kept as
      * unreachable § 6.4 members" (§ 4.6). § 4.6 reaches that conclusion by ORDERING — the
      * leaving-live clear "ran ~40 sweep passes earlier, at 300 s; on the one-pass jump it runs in

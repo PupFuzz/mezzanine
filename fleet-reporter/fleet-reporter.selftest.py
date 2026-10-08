@@ -2631,14 +2631,14 @@ worst = subprocess.run(
     ["node", "-e",
      "const m=require(process.argv[1]);const MAX=Number.MAX_SAFE_INTEGER;"
      "const preds={};for(const p of ['attention_source_permission_hook','descriptor_allowlisted',"
-     "'clear_reap_by_session_end','agent_scope_subagent','attention_resolved_by_hook'])"
+     "'clear_reap_by_session_end','agent_scope_subagent'])"
      "preds[p]={true:MAX,false:MAX};"
      "const st={};for(const c of m.SELFTEST_CHECKS) st[c]='fail';"
      "console.log(JSON.stringify({p:JSON.stringify(preds).length,s:JSON.stringify(st).length}));",
      str(REPORTER)], capture_output=True, text=True, cwd=str(HERE))
 w = json.loads(worst.stdout)
-eq(f"`predicates` at its worst case is D1's derived 396 B, under the 512 B cap ({w['p']} B)",
-   (396, True), (w["p"], w["p"] <= 512))
+eq(f"`predicates` at its worst case is D1's derived 316 B, under the 512 B cap ({w['p']} B)",
+   (316, True), (w["p"], w["p"] <= 512))
 # D1 § 6.14 derives the `selftest` worst case over its member table; the figure is READ from there,
 # so a check added to the reporter and not to the table (or the reverse) reds here.
 _d1 = (HERE.parent / "docs/design/EVENT-SCHEMA.md").read_text(encoding="utf-8")
@@ -3075,6 +3075,51 @@ redgreen("unknown enum values (AT-18) and the blocked pair (AT-20)",
          "counted; elicitation_url_dialog opens a request that a UserPromptSubmit then resolves; "
          "idle_prompt emits nothing, is counted notification_not_attention.idle_prompt and is NOT "
          "counted as an undeclared type, while the permission_prompt control still opens one")
+
+
+# AN ATTENTION REQUEST HAS NO TIMER (§ 6.13, card#9527). The operator's ruling: "Mezzanine should
+# assume agent is stuck until it gets another status update from that agent." So two hours on —
+# past the 60-minute `timeout` the reporter used to emit, and past § 6.2's 90-minute silence close —
+# the flusher resolves nothing and closes only the session that is NOT waiting. The second session
+# is the CONTROL that the silence close still fires at all, so a pass that closed nothing would red.
+# SEEN RED against the reporter before card#9527: that pass emitted
+# `attention.resolved(timeout)` for the waiting session and then its `inferred_silence` close.
+s12w = seat("attention-no-timer", ingest=DEAD)
+SID_IDLE = "11111111-2222-4333-8444-0000000000a1"
+w0 = 1_790_000_000_000
+for sid in (SID, SID_IDLE):
+    hook(s12w, "SessionStart", {"session_id": sid, "hook_event_name": "SessionStart",
+                                "source": "startup", "cwd": "/home/agent/mezzanine"},
+         FLEET_REPORTER_NOW_MS=w0)
+hook(s12w, "PermissionRequest", {"session_id": SID, "hook_event_name": "PermissionRequest",
+                                 "tool_name": "Bash", "tool_input": {"command": "x"},
+                                 "permission_suggestions": None}, FLEET_REPORTER_NOW_MS=w0)
+eq("a PermissionRequest opens the request the rest of this block watches", 1,
+   len([e for e in s12w.events() if e["kind"] == "attention.request"]))
+flush(s12w, FLEET_REPORTER_NOW_MS=w0 + 2 * 3600 * 1000)
+eq("two hours on, the flusher resolves NOTHING — the 60-minute `timeout` is gone (§ 6.13)", [],
+   [e["data"]["resolution"] for e in s12w.events() if e["kind"] == "attention.resolved"])
+silent = sorted(e["session_id"] for e in s12w.events()
+                if e["kind"] == "session.end" and e["data"]["end_reason"] == "inferred_silence")
+eq("  … and § 6.2's silence close ends only the session that is NOT waiting on a human",
+   [SID_IDLE], silent)
+hook(s12w, "UserPromptSubmit", {"session_id": SID, "hook_event_name": "UserPromptSubmit",
+                                "prompt_id": "p1", "prompt": "go", "cwd": "/home/agent/mezzanine"},
+     FLEET_REPORTER_NOW_MS=w0 + 2 * 3600 * 1000 + 1000)
+res12w = [e for e in s12w.events() if e["kind"] == "attention.resolved"]
+# `waited_ms` is held to "at least two hours" and not to an exact figure: a pinned clock is an OFFSET
+# taken when the process starts (`CLOCK_OFFSET`), so each hook's instants carry its own start-up
+# milliseconds and the difference of two of them is not exact.
+eq("  … and the wait still has its observed exit: the human's prompt resolves it, two hours late",
+   [("human_input", True)],
+   [(e["data"]["resolution"], e["data"]["waited_ms"] >= 2 * 3600 * 1000) for e in res12w])
+redgreen("an attention request has no timer (§ 6.13, card#9527)",
+         "the reporter before card#9527: at 60 min the flusher emitted attention.resolved(timeout) "
+         "and at 90 min closed the waiting session as inferred_silence, so the desk stopped "
+         "rendering blocked while the agent was still waiting on a human",
+         "two hours on: no resolution, the waiting session still open, the idle control session "
+         "closed as inferred_silence, and the human's prompt resolves the request with "
+         "waited_ms = 2 h")
 
 
 print("\n== 15. A FAILED APPEND IS COUNTED, AND A BAD CACHED DESCRIPTOR COSTS NO EVENT (§ 0 item 9) ==")
