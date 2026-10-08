@@ -4261,6 +4261,98 @@ redgreen("an unset harness_label raises no harness_contract_moved, on a new seat
          "missing harness payload key still raises harness_contract_moved")
 
 
+print("\n== 19e. A DEGRADED MEMBER IS RAISED WHILE ITS COUNTER ROSE WITHIN 24 h, AND THE TOTAL OUTLIVES IT (D1 § 9.3, card#9491) ==")
+# The totals persist across flusher restarts in state.json (D1 § 9.3), so a member derived from
+# "non-zero" never cleared: one bad session id badged the seat `bad_session_id` for the rest of its
+# life, and restarting the flusher, which the docs named as the way out, changed nothing. The
+# operator's ruling of 2026-09-14 windows every counter-derived badge at 24 h. Each `flush` below is
+# a FRESH flusher process on a pinned clock, so every step is also a restart. Driven end to end,
+# hook -> sink -> flusher -> heartbeat, because the badge is what the operator reads.
+H_MS = 3600 * 1000
+W0 = int(time.time() * 1000)
+BAD_SID = "not a session id"
+
+
+def bw_hook(s: Seat, at_ms: int, reporter: Path = REPORTER) -> None:
+    hook(s, "SessionStart", {"session_id": BAD_SID, "hook_event_name": "SessionStart",
+                             "source": "startup", "cwd": "/home/agent/mezzanine"},
+         reporter=reporter, FLEET_REPORTER_NOW_MS=at_ms)
+
+
+def bw_flush(s: Seat, at_ms: int, reporter: Path = REPORTER) -> dict:
+    flush(s, reporter=reporter, FLEET_REPORTER_NOW_MS=at_ms)
+    return hl_heartbeat(s)
+
+
+s19e = seat("badge-window")
+bw_hook(s19e, W0)
+hb_now = bw_flush(s19e, W0)
+eq("a bad session id raises bad_session_id on the next heartbeat",
+   (1, True), (hb_now["counters"].get("bad_session_id"), "bad_session_id" in hb_now["degraded"]))
+hb_23 = bw_flush(s19e, W0 + 23 * H_MS)
+eq("  … and a restarted flusher 23 h later still raises it: the rise is inside the window",
+   (1, True), (hb_23["counters"].get("bad_session_id"), "bad_session_id" in hb_23["degraded"]))
+hb_25 = bw_flush(s19e, W0 + 25 * H_MS)
+eq("  … 25 h later, with no further rise, the member has cleared and the total of 1 still rides "
+   "the heartbeat", (1, False), (hb_25["counters"].get("bad_session_id"), "bad_session_id" in hb_25["degraded"]))
+bw_hook(s19e, W0 + 26 * H_MS)
+hb_26 = bw_flush(s19e, W0 + 26 * H_MS)
+eq("  … and a second bad session id raises it again, with the total at 2",
+   (2, True), (hb_26["counters"].get("bad_session_id"), "bad_session_id" in hb_26["degraded"]))
+# The pinned clock is an OFFSET (FLEET_REPORTER_NOW_MS), so the pass reads it a little after the pin;
+# the rise is dated at that pass, inside one heartbeat interval of the pin.
+rise_26 = s19e.state()["counter_rises"].get("bad_session_id") or {}
+rise_26_ms = calendar.timegm(time.strptime(rise_26.get("at", "1970-01-01T00:00:00.000Z")[:19],
+                                           "%Y-%m-%dT%H:%M:%S")) * 1000 + int(rise_26.get("at", "x.000Z")[-4:-1])
+eq("  … and state.json dates that rise at the heartbeat that saw it, within one interval of the pinned clock",
+   (2, True), (rise_26.get("value"), 0 <= rise_26_ms - (W0 + 26 * H_MS) < 60_000))
+
+# AN UPGRADED SEAT. A state.json an earlier build saved carries the total and no `counter_rises`.
+# Its first heartbeat dates every non-zero total as rising then, so the badge it showed holds for
+# one window after the upgrade, and clears after it.
+s19u = seat("badge-window-upgraded")
+bw_hook(s19u, W0)
+bw_flush(s19u, W0)
+old_state = s19u.state()
+old_state.pop("counter_rises")
+(s19u.spool / "state.json").write_text(json.dumps(old_state), encoding="utf-8")
+hb_up = bw_flush(s19u, W0 + 40 * H_MS)
+eq("an upgraded state.json with an old total keeps the member on its first heartbeat",
+   (1, True), (hb_up["counters"].get("bad_session_id"), "bad_session_id" in hb_up["degraded"]))
+hb_up2 = bw_flush(s19u, W0 + 65 * H_MS)
+eq("  … and clears it one window later", False, "bad_session_id" in hb_up2["degraded"])
+
+# CONTROL: the window is per counter. A member raised by a family counter that rose recently stays,
+# while one whose counter last rose a window ago clears, in the same heartbeat.
+mod19e = subprocess.run(
+    ["node", "-e",
+     "const m=require(process.argv[1]);const W=m.K.BADGE_WINDOW_MS;const t=Date.parse('2026-10-01T00:00:00.000Z');"
+     "const st={counters:{'spool_dropped_events':3,'payload_key_missing.tool_name':1},counter_rises:{"
+     "'spool_dropped_events':{value:3,at:new Date(t-W).toISOString()},"
+     "'payload_key_missing.tool_name':{value:1,at:new Date(t-W+1).toISOString()}}};"
+     "console.log(JSON.stringify({w:W,deg:m.buildDegraded(m.windowedCounters(st,t))}));",
+     str(REPORTER)], capture_output=True, text=True, cwd=str(HERE))
+r19e = json.loads(mod19e.stdout)
+eq("CONTROL: the window is D1 § 9.3's 24 h", 24 * H_MS, r19e["w"])
+eq("  … a counter that last rose exactly one window ago raises nothing, and one that rose 1 ms "
+   "later still raises its member", ["harness_contract_moved"], r19e["deg"])
+
+# RED: derive the members from the totals, which is the build before card#9491.
+p19e = plant(("degraded: buildDegraded(windowedCounters(state, atMs))", "degraded: buildDegraded(all)"))
+s19e_r = seat("badge-window-red")
+bw_hook(s19e_r, W0, reporter=p19e)
+bw_flush(s19e_r, W0, reporter=p19e)
+hb_r = bw_flush(s19e_r, W0 + 25 * H_MS, reporter=p19e)
+eq("RED: derived from the totals, the member is still raised 25 h and a flusher restart later",
+   True, "bad_session_id" in hb_r["degraded"])
+redgreen("a degraded member is raised while its counter rose within 24 h; the total outlives it (card#9491)",
+         "members derived from the persisted totals: one bad session id keeps bad_session_id raised "
+         "25 h and a flusher restart later, so the badge never clears",
+         "raised at 0 h and at 23 h, cleared at 25 h with the total of 1 still on the heartbeat, raised "
+         "again by a second rise; an upgraded state.json keeps the badge one window, then clears; "
+         "control: the window is per counter, exclusive at 24 h")
+
+
 print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
 # detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —

@@ -2556,7 +2556,7 @@ predicate rather than folding it in here.
 | `protocol_agent_name_check` | enum | — | **yes** | `checked` \| `unchecked` \| `disagreed` \| `undeclared` — [§ 3.1](#31-the-seat-config-file)'s state table owns the set and the rule that produces each member; null or absent means a reporter that predates this field — the paragraph below this table separates what the ingest accepts from what a current reporter owes | `"checked"` |
 | `protocol_agent_role` | slug | — | **yes** | the coordination roster entry's `role`, relayed verbatim beside the name ([§ 3.1](#31-the-seat-config-file)'s *`protocol_agent_role`*); ≤ 48 B — the name's own pattern and bound, a **figure** here for the same reason as the row above, and held equal to it, with D2's column, D2 § 8.2.1's row, the store's migration and the ingest's registry, by `tools/design/verify-event-schema.py`; `null` unless `protocol_agent_name_check` is `checked` and the declared name selects exactly one entry carrying a slug-shaped `role`, and absent from a reporter that predates this field (card#11144) | `"pm"` |
 | `degraded` | array\<enum\> | — | no | 0…12 elements, one per member of the set [§ 9.3](#93-degradation-counters) declares; no duplicates, ordered as [§ 9.3](#93-degradation-counters) lists them | `["batches_rejected"]` |
-| `counters` | object | — | no | ≤ 1.5 KiB serialized, all monotonic since flusher start; reduction rule below | see below |
+| `counters` | object | — | no | ≤ 1.5 KiB serialized, all cumulative totals that persist across flusher restarts ([§ 9.3](#93-degradation-counters)); reduction rule below | see below |
 | `counters_omitted` | int | — | no | ≥ 0, counters dropped to fit the cap | `0` |
 | `predicates` | object | — | no | ≤ 512 B, `{name:{true:int,false:int}}`; one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate, worst case **396 B** — **no reduction rule, and none owed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5's named exemption; the arithmetic is below) | see below |
 | `selftest` | object | — | no | ≤ 256 B, `{name:"pass"\|"fail"}`, every key matching `^[a-z][a-z0-9_]*$` and ≤ 32 B; one member per check the member table below declares, worst case **210 B** — **no reduction rule, and none owed** (same exemption) | see below |
@@ -3706,8 +3706,9 @@ watching for it; a heartbeat nobody alarms on restores exactly the 30-day blindn
 
 ### 9.3 Degradation counters
 
-Every counter below is monotonic since flusher start, rides in `reporter.heartbeat.counters`, and has
-a *named* consequence. A counter without a consequence is decoration. Counters incremented in hook and
+Every counter below is a monotonic total that persists across flusher restarts in `state.json`, rides in
+`reporter.heartbeat.counters`, and has a *named* consequence. A total starts again from zero only with
+`state.json` itself, which is a new `seq_epoch` ([§ 11.4](#114-corruption-the-torn-last-line-and-a-missing-or-unreadable-statejson)). A counter without a consequence is decoration. Counters incremented in hook and
 statusLine processes reach the flusher through the counter sink
 ([§ 11.1](#111-layout)); the flusher folds them, and folds `predicates` the same way.
 
@@ -3777,23 +3778,29 @@ quarantine ([§ 11.5](#115-retry-and-backoff)). That is the liveness backstop dy
 seat becomes interesting, which is the one thing [§ 9.2](#92-why-this-is-the-structural-backstop) says
 it may never do and [AT-22](#at-22-a-maximally-degraded-seat-still-heartbeats) exists to forbid.
 
-A member is present on a heartbeat when **any** counter in its "Raised by" cell is non-zero at that
-flush. The reporter mints them from the counter sink; nothing here is read from a payload, so this is
+A member is present on a heartbeat when **any** counter in its "Raised by" cell **rose within the last
+24 h** before that heartbeat. The reporter mints them from the counter sink; nothing here is read from a payload, so this is
 a **reporter-minted** enum with no unknown member and adding a member is a rule-4 change
 ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)).
 
-**Membership is sticky until the flusher restarts, and that is intended rather than an oversight.**
-Every counter above is monotonic since flusher start, so a member raised once stays raised for the
-life of that flusher: one dropped event badges `lossy` until the process restarts. The alternative —
-a per-member `degraded_since`, or counters reported as deltas — is a **wire change** and was weighed
-and rejected here, because the monotonic counter is what makes the badge auditable. A badge that
-clears itself is indistinguishable from one that never fired, which is the silent-signal shape
-[§ 3.4](#34-why-identity-never-comes-from-the-environment) exists to forbid; a badge that persists
-with its counter beside it can always be read back to the event that raised it. **D2:** a consumer
-therefore renders every member of this array with the reporter's `uptime_s` beside it, so *"lossy,
-1 event, 41 days of uptime"* is never read as *"lossy now"*. The counter's value and the uptime
-together are the badge's age; the member alone is not, and rendering it alone is what would make
-sticky membership a defect rather than a property.
+**Membership is windowed at 24 h** (operator ruling 2026-09-14, card#9491). The totals persist across
+flusher restarts, so a member read off "non-zero" was raised for the life of the seat: one dropped event
+badged `lossy` for good, a flusher restart did not clear it, and the floor could no longer tell a seat
+degraded now from one that had a one-time event weeks ago. A member therefore says *a counter that
+raises it rose within the last 24 h*, and it clears on its own one window after the last rise. The
+window is not a wire change: the array keeps its type and its members, and the totals ride
+`counters` exactly as before. That is also what keeps the badge auditable: the total beside a cleared
+member still reads back to the event that raised it, so a badge that cleared is never indistinguishable
+from one that never fired. The reporter dates a rise at the heartbeat that first sees the larger total,
+in `state.json`'s `counter_rises`, so a rise is dated to within one heartbeat interval. A `state.json`
+written before that map existed dates every non-zero total as rising at its first heartbeat after the
+upgrade, so an upgraded seat keeps the members it showed for one window and then clears them. A
+condition that is still happening keeps its member only while it keeps raising its counter:
+`counters_omitted` counts on every heartbeat that omits, and `statusline_degraded` on every failure of
+the wrapped command. `config_invalid` needs no such property, because a seat whose config is invalid
+sends nothing, heartbeats included, so a consumer reads that member only on heartbeats delivered after
+the fix. **D2** windows its own counter-derived
+badges at the same 24 h ([FLEET-STATE.md § 7.2](FLEET-STATE.md#72-this-planes-own-counters-and-badges)).
 
 **Read the counter table's "Consequence when non-zero" column as severity prose, not as a second
 declaration of this set.** Where it says `degraded`, the table below says *which* member; where it
@@ -4564,7 +4571,9 @@ because the reporter never observed the fact that raised it. So where a conseque
 beside the reporter's array and never written into it. The separation is load-bearing rather than
 tidy: a `lossy` written by the server would sit next to a `spool_dropped_events` of **0** and
 contradict [§ 9.3](#93-degradation-counters)'s rule that this badge is always rendered with the
-number that raised it.
+number that raised it. A badge a counter below raises is windowed like [§ 9.3](#93-degradation-counters)'s
+members: raised while the counter rose within the last 24 h
+([FLEET-STATE.md § 7.2](FLEET-STATE.md#72-this-planes-own-counters-and-badges), card#9491).
 
 | Counter | Incremented when | Consequence |
 |---|---|---|
@@ -5548,6 +5557,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Seat `stale` | 300 s | Derived — ~4× the 70 s worst-case freshness of a healthy seat. It **does** fire on an outage longer than ~110 s, correctly; what the 120 s backoff cap bounds is how long a seat stays stale *after* recovery | [§ 9.1](#91-the-cadence-and-the-alarm) |
 | Seat `offline` | 900 s | Derived — 3× `stale`, so `stale` is a distinct investigable state | [§ 9.1](#91-the-cadence-and-the-alarm) |
 | Predicate-constant criteria | 500 evaluations / 24 h (high-volume predicates); 50 / 7 days, or 20 / 7 days for `clear_reap_by_session_end` | **Chosen provisionally** — ~a working day of evidence for a predicate evaluated thousands of times a day, scaled down for the three evaluated tens of times a day, because a threshold above a predicate's own rate is an alarm that can never fire. Re-picked from the first week's per-predicate counts | [§ 9.4](#94-the-predicate-constant-alarm) |
+| Degradation badge window | 24 h | **Ruled** — the operator's ruling of 2026-09-14 on card#9491, which names 24 h as the starting window: a counter-derived badge is raised while its counter rose within the window and clears on its own after it | [§ 9.3](#93-degradation-counters) |
 | Clock-skew badge | 120 s | Derived — 2× heartbeat, above NTP drift, below the 300 s stale threshold so the alarms cannot alias | [§ 10.1](#101-two-clocks-and-which-is-authoritative-for-what) |
 | Dedup window | 10 days | Derived — 25 % above the **8-day residency cap**, which is what bounds how old a delivered event can be. **Moves whenever the residency cap moves** | [§ 10.3](#103-idempotency-and-the-dedup-window) |
 | Spool residency cap | 8 days | Chosen — bounds residency by *age* rather than leaving it to fall out of a volume estimate, which on a quiet seat stretches past the 10-day dedup window. The fill time itself is measured in [§ 10.3](#103-idempotency-and-the-dedup-window) from the worked heartbeat and re-measured by the gate; it is deliberately not restated here | [§ 11.3](#113-rotation-and-the-overflow-policy) |

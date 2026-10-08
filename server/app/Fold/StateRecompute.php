@@ -318,7 +318,7 @@ class StateRecompute
             // A re-numbering, not a loss (D1 § 10.2): logged, counted, rendered `epoch_reset`, and
             // deliberately not alarmed. Without a new epoch a reset counter would look like a
             // 48,000-event gap.
-            Counters::seat($e->seatRef, 'seq_epoch_change');
+            Counters::seat($e->seatRef, 'seq_epoch_change', at: $e->receivedAt);
         }
 
         if ($state->last_event_seq_epoch === $e->seqEpoch && $e->seq > (int) $state->last_event_seq + 1) {
@@ -326,7 +326,7 @@ class StateRecompute
             // `seq_gap` badge and NEVER D1's `lossy` — `lossy` means the reporter discarded events
             // and counted them, a server-side gap means we did not receive what the reporter says
             // it sent, and writing both onto one member makes them indistinguishable.
-            Counters::seat($e->seatRef, 'seq_gap', $e->seq - (int) $state->last_event_seq - 1);
+            Counters::seat($e->seatRef, 'seq_gap', $e->seq - (int) $state->last_event_seq - 1, $e->receivedAt);
         }
 
         // An ordering-key COLLISION, which `D2-MUST` #4 forbids and this checks rather than
@@ -342,7 +342,7 @@ class StateRecompute
             ->exists();
 
         if ($collided) {
-            Counters::seat($e->seatRef, 'seq_collision');
+            Counters::seat($e->seatRef, 'seq_collision', at: $e->receivedAt);
         }
 
         if ($epochChanged

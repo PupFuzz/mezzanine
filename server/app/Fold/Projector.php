@@ -970,9 +970,10 @@ class Projector
             ),
             'reporter_uptime_s' => $e->int('uptime_s'),
             // § 7.3: stored VERBATIM as a snapshot, never summed and never merged into
-            // `seat_counters`. They are monotonic since flusher start, so last-write-wins is the
-            // only correct handling: adding two heartbeats' values would double-count, and a value
-            // that decreases means the flusher restarted rather than that a counter went backwards.
+            // `seat_counters`. They are cumulative totals that persist across flusher restarts, so
+            // last-write-wins is the only correct handling: adding two heartbeats' values would
+            // double-count, and a value that decreases means the seat lost its `state.json` and
+            // began a new `seq_epoch` rather than that a counter went backwards.
             //
             // ⭐ VERBATIM NOW INCLUDES THE OBJECT/ARRAY DISTINCTION (card#9297). These two values
             // are `stdClass` when the seat sent an object, so a heartbeat's `counters: {}` is
