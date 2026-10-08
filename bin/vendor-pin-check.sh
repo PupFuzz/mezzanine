@@ -78,7 +78,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # no behaviour; it is spelled out because a column that silently holds two kinds of thing is how a
 # reader gets a wrong answer confidently.
 MANIFEST=(
-  "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|9fa84a69afc8e222e3021a5b9fc2dde506a733b6b24eec4ecdd3e1163b21d9c6"
+  "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|153a29a2087774324de94441a1764a30ffc49e9f34ccedc12f817256649f1282"
   "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|d28e86b9455e72d101a8005dcc94a5b8de4f9a7d2249a62ef19eba5feb8b52f6"
   "bin/pr-body-lint.py|coord 0.63.0 @ 239712e97fb685ac8ea7fdb18d69dc338d5ac8e8|ec258eea827108fced25178d6918cf023699d0a4802c79450125d8a851d3bc93"
   "bin/pr-body-lint.selftest.py|coord 0.63.0 @ 239712e97fb685ac8ea7fdb18d69dc338d5ac8e8|949de7e303165e569958508e06f6381aba8a61114d18d7670ba8f52164f588f4"

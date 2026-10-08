@@ -646,8 +646,9 @@ confirm_foreign_403() {
   esac
   code="$(api GET "$API/tasks/$CONTROL_ID.json")"
   cbd="$(jq -r '.data.board_id // empty' < "$BODY" 2>/dev/null || true)"
-  [ "$code" = "200" ] && [ "$cbd" = "$BOARD" ] \
-    || die "card#$id read was refused (HTTP 403), and a read of card#$CONTROL_ID, which the preflight found on board $BOARD, answered HTTP $code${cbd:+ (board $cbd)}: this token cannot read board $BOARD's cards. Check KANBAN_WRITEBACK_TOKEN (revoked, rotated, or its user lost board $BOARD's view permission). Refusing — nothing was written."
+  if [ "$code" != "200" ] || [ "$cbd" != "$BOARD" ]; then
+    die "card#$id read was refused (HTTP 403), and a read of card#$CONTROL_ID, which the preflight found on board $BOARD, answered HTTP $code${cbd:+ (board $cbd)}: this token cannot read board $BOARD's cards. Check KANBAN_WRITEBACK_TOKEN (revoked, rotated, or its user lost board $BOARD's view permission). Refusing — nothing was written."
+  fi
   code="$(api GET "$API/tasks/search.json?q=board_id=$BOARD%20id=$id&limit=1")"
   [ "$code" = "200" ] \
     || die "card#$id read was refused (HTTP 403) and the board-scoped lookup of card#$id on board $BOARD failed (HTTP $code), so where card#$id lives is unmeasured. Refusing — nothing was written."
