@@ -45,19 +45,63 @@ final class Counters
      * `$at` is when the evidence for the increment was RECEIVED, on the server clock, and it moves
      * the row's `last_increased_at` — the time `Badges::serverFor()` windows a counter-derived badge
      * against (D2 § 7.2, card#9491). It defaults to now, which is the receipt for a counter the
-     * ingest or the sweeper writes. The fold passes the event's own `received_at`, because the fold
-     * runs after the receipt and a rebuild replays it days later: stamped with `now()`, a rebuild
-     * would re-date every historical `seq_gap` to the rebuild and re-raise a badge the live fold
-     * had already cleared, which is the rebuild disagreeing with the fold (AT-D2-10). The column
-     * only ever moves forward, so a replayed receipt older than the stored one changes nothing.
+     * ingest or the sweeper writes. The fold passes the event's own `received_at` for the counters
+     * that raise a badge, because the fold can run well after the receipt: a fold catching up
+     * after an outage that stamped `now()` would date an old `seq_gap` to the catch-up and hold its
+     * badge for a window the gap was never in. The column only ever moves forward. A rebuild's
+     * replay writes nothing here at all (`replaying()`).
+     *
+     * A call for the seat `replaying()` is replaying is dropped.
      */
     public static function seat(int $seatRef, string $name, int $by = 1, ?string $at = null): void
     {
-        if ($by === 0) {
+        if ($by === 0 || $seatRef === self::$replaying) {
             return;
         }
 
         self::upsert('seat_counters', ['seat_ref' => $seatRef, 'name' => $name], $by, $at ?? now()->format('Y-m-d H:i:s.v'));
+    }
+
+    /**
+     * The seat whose events `replaying()` is re-applying, or null. See `replaying()`.
+     */
+    private static ?int $replaying = null;
+
+    /**
+     * Run `$replay` with every per-seat count for `$seatRef` dropped — `mezzanine:rebuild`'s
+     * replay, and nothing else (D2 § 6.6, § 7.2, card#11549).
+     *
+     * THE COUNTERS ARE THE RECORD OF WHAT THE LIVE PIPELINE OBSERVED, AND A REPLAY OBSERVES
+     * NOTHING NEW. The rebuild runs the fold's own code over events the live fold already applied,
+     * so every fold rule that counts (`seq_gap`, `seq_collision`, `seq_epoch_change`, every
+     * `Projector` counter, and `fold_lag_alarm_entered`, which the replay's rewound cursor would
+     * raise as a lag episode that never happened) would count each of them a second time. § 7.2
+     * says the counters are never reset, so clearing the fold's rows first is no answer: a row
+     * counts events the retention window has since purged, which no replay can count back, and
+     * `--since` replays a part on purpose. Dropping the replay's writes leaves each row's `value`
+     * and `last_increased_at` exactly as the live pipeline left them, which also keeps card#9491's
+     * windowed badges where they were.
+     *
+     * Suppressed HERE, in the one primitive every per-seat writer goes through, rather than at each
+     * fold call site, so a per-seat counter the fold gains later is dropped on the replay without
+     * anyone remembering this. `global()` is not scoped: no fold rule writes a fleet counter today.
+     * Scoped to the one seat being replayed and restored on the way out, even when the replay
+     * throws and the transaction retries it.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $replay
+     * @return T
+     */
+    public static function replaying(int $seatRef, callable $replay): mixed
+    {
+        self::$replaying = $seatRef;
+
+        try {
+            return $replay();
+        } finally {
+            self::$replaying = null;
+        }
     }
 
     /**

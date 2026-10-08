@@ -102,29 +102,38 @@ class RebuildCommand extends Command
         DB::transaction(function () use ($seatRef, $events, $oldest, $projector, $recompute, $since) {
             $this->reset($seatRef, $oldest);
 
-            $count = 0;
+            // ⛔ THE REPLAY COUNTS NOTHING (card#11549). `seat_counters` is the record of what the
+            // live pipeline observed and § 7.2 never resets it, so the fold's counters, run again
+            // over events they already counted, would add one whole replay to every row.
+            // `state_rebuilds` and `rebuild_truncated` below are this command's own observations
+            // and are counted outside the scope. See `Counters::replaying()`.
+            $count = Counters::replaying($seatRef, function () use ($seatRef, $events, $projector, $recompute): int {
+                $count = 0;
 
-            foreach ($events->cursor() as $row) {
-                $event = FoldEvent::fromRow($row);
+                foreach ($events->cursor() as $row) {
+                    $event = FoldEvent::fromRow($row);
 
-                // ⛔ THE FOURTH FOLD CALL SITE, AND IT TAKES CARD #7837's FIX BECAUSE § 6.6's
-                // WHOLE CLAIM IS THAT THIS COMMAND SHARES THE FOLD'S CODE RATHER THAN COPYING IT.
-                // A replay that sampled its fingerprint on the other side of `apply()` would be a
-                // rebuild deriving under a rule the live fold no longer uses — and AT-D2-10, whose
-                // entire job is asserting a rebuilt seat equals a folded one, compares the two
-                // through this loop. `publish: false` suppresses the DELTAS, never the comparison
-                // that decides `state_version`.
-                $before = SeatFacts::versionBearing($seatRef);
+                    // ⛔ THE FOURTH FOLD CALL SITE, AND IT TAKES CARD #7837's FIX BECAUSE § 6.6's
+                    // WHOLE CLAIM IS THAT THIS COMMAND SHARES THE FOLD'S CODE RATHER THAN COPYING
+                    // IT. A replay that sampled its fingerprint on the other side of `apply()` would
+                    // be a rebuild deriving under a rule the live fold no longer uses — and
+                    // AT-D2-10, whose entire job is asserting a rebuilt seat equals a folded one,
+                    // compares the two through this loop. `publish: false` suppresses the DELTAS,
+                    // never the comparison that decides `state_version`.
+                    $before = SeatFacts::versionBearing($seatRef);
 
-                $projector->apply($event);
-                $recompute->after($event, $before);
-                $count++;
+                    $projector->apply($event);
+                    $recompute->after($event, $before);
+                    $count++;
 
-                DB::table('seat_state')->where('seat_ref', $seatRef)->update([
-                    'fold_cursor_event_id' => (int) $row->id,
-                    'fold_cursor_received_at' => $row->received_at,
-                ]);
-            }
+                    DB::table('seat_state')->where('seat_ref', $seatRef)->update([
+                        'fold_cursor_event_id' => (int) $row->id,
+                        'fold_cursor_received_at' => $row->received_at,
+                    ]);
+                }
+
+                return $count;
+            });
 
             Counters::seat($seatRef, 'state_rebuilds');
 
