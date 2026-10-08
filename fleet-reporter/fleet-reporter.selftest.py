@@ -1774,6 +1774,69 @@ redgreen("survives the bridge being down (AT-4)",
          f"spool_dropped_events=0, {len(delivered_ids)} events delivered, missing={sorted(missing)}, "
          f"seq strictly increasing")
 
+# A DROPPED BUCKET COUNTS ONLY WHAT WAS NEVER DELIVERED (card#11548, D1 § 11.3 "Loss visibility").
+# `spool_dropped_events` is a LOSS counter, and a line behind the bucket's delivery cursor already
+# reached the ingest (or was counted under its own loss counter when it was disposed of). The
+# defect counted every line of a dropped bucket, so a busy seat whose spool sat at its bound with
+# delivered history rendered `lossy` on every drop, with nothing lost. Each case writes a bucket
+# of DROP_N lines and a state.json naming that bucket's cursor, then drives the real drop path.
+DROP_N = 5
+DROP_LINE = json.dumps({"v": 1, "t": "2000-01-01T00:00:00.000Z",
+                        "e": {"kind": "tool.start", "event_id": "01K11548" + "0" * 18, "pad": "x" * 400}}) + "\n"
+
+
+def drop_case(name: str, *, cursor_lines, path: str, reporter: Path = REPORTER) -> int:
+    """Drop one bucket of DROP_N lines whose cursor sits after `cursor_lines` lines (None = no
+    cursor) through the flusher's residency bound or a hook's size bound; return the count."""
+    s = seat(name, ingest=DEAD, enabled=(path == "hook"))
+    age_s = 9 * 86400 if path == "flusher" else 7200
+    b = time.strftime("%Y%m%d%H", time.gmtime(time.time() - age_s))
+    (s.spool / f"{b}.jsonl").write_text(DROP_LINE * DROP_N, encoding="utf-8")
+    st = {"seq_epoch": "01K11548STATE0000000000000", "next_seq": 1, "cursors": {}}
+    if cursor_lines is not None:
+        st["cursors"][b] = len(DROP_LINE.encode("utf-8")) * cursor_lines
+    (s.spool / "state.json").write_text(json.dumps(st), encoding="utf-8")
+    if path == "flusher":
+        flush(s, reporter=reporter)
+        dropped = s.state().get("counters", {}).get("spool_dropped_events", 0)
+    else:
+        # The hook's own event lands in the current hour, so the 2 h-old bucket is the oldest,
+        # its hour has ended, and the 2 KiB bound (the bucket alone is over it) makes it drop.
+        hook(s, "PreToolUse", pre(tuid=f"{name}_0"), reporter=reporter)
+        dropped = s.counters().get("spool_dropped_events", 0)
+    eq(f"  ({name}: the bucket was actually dropped)", False, (s.spool / f"{b}.jsonl").exists())
+    return dropped
+
+
+dr = {
+    ("flusher", "all"): drop_case("drop-fl-delivered", cursor_lines=DROP_N, path="flusher"),
+    ("flusher", "part"): drop_case("drop-fl-part", cursor_lines=2, path="flusher"),
+    ("flusher", "none"): drop_case("drop-fl-nocursor", cursor_lines=None, path="flusher"),
+    ("hook", "all"): drop_case("drop-hk-delivered", cursor_lines=DROP_N, path="hook", reporter=p_small),
+    ("hook", "part"): drop_case("drop-hk-part", cursor_lines=2, path="hook", reporter=p_small),
+    ("hook", "none"): drop_case("drop-hk-nocursor", cursor_lines=None, path="hook", reporter=p_small),
+}
+eq("the flusher drops a FULLY-DELIVERED aged-out bucket and counts 0 dropped events", 0, dr[("flusher", "all")])
+eq("  … a PART-delivered bucket counts exactly its undelivered lines", DROP_N - 2, dr[("flusher", "part")])
+eq("  … a bucket with NO cursor counts every line (nothing of it was delivered)", DROP_N, dr[("flusher", "none")])
+eq("a hook over the size bound drops a fully-delivered bucket, reading the cursor from state.json, "
+   "and counts 0", 0, dr[("hook", "all")])
+eq("  … a part-delivered bucket counts exactly its undelivered lines", DROP_N - 2, dr[("hook", "part")])
+eq("  … a bucket with no cursor counts every line", DROP_N, dr[("hook", "none")])
+# RED — the primitive ignoring the cursor (the defect): the fully-delivered bucket counts every line.
+IGNORE_CURSOR = (re.escape("for (let i = cursor || 0; i < buf.length; i++)"), "for (let i = 0; i < buf.length; i++)")
+red_fl = drop_case("drop-fl-red", cursor_lines=DROP_N, path="flusher", reporter=plant_src(IGNORE_CURSOR))
+red_hk = drop_case("drop-hk-red", cursor_lines=DROP_N, path="hook",
+                   reporter=plant_src((r"SPOOL_BYTES: 33554432,", "SPOOL_BYTES: 2048,"), IGNORE_CURSOR))
+eq("RED: a drop that ignores the cursor counts the fully-delivered bucket's every line, on both paths",
+   (DROP_N, DROP_N), (red_fl, red_hk))
+redgreen("a dropped spool bucket counts only its undelivered lines (§ 11.3, card#11548)",
+         f"cursor ignored -> a fully-delivered bucket of {DROP_N} lines counts {red_fl} (flusher) / "
+         f"{red_hk} (hook) spool_dropped_events, and the seat renders `lossy` with nothing lost",
+         f"lines past the cursor -> fully delivered {dr[('flusher', 'all')]}/{dr[('hook', 'all')]}, "
+         f"2 of {DROP_N} delivered {dr[('flusher', 'part')]}/{dr[('hook', 'part')]}, no cursor "
+         f"{dr[('flusher', 'none')]}/{dr[('hook', 'none')]} (flusher/hook)")
+
 
 print("\n== 5. NO CREDENTIAL REACHES ANY OUTPUT (P-6) — with its negative control FIRST ==")
 # THE CONTROL RUNS BEFORE THE CHECK IS TRUSTED. This check passes by finding NOTHING, and a

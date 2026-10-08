@@ -2026,13 +2026,26 @@ function enforceSpoolBoundFromHook(spool, atMs) {
   const oldest = buckets[0];
   if (!oldest || oldest.slice(0, 10) === cur) { count('spool_overflow_deferred'); return; }
   if (atMs < bucketEndMs(oldest.slice(0, 10)) + K.BUCKET_GRACE_MS) { count('spool_overflow_deferred'); return; }
-  dropSpoolBucket(spool, oldest);
+  /* A hook holds no state, so it reads the cursor from the flusher's state.json, read-only: the
+   * flusher writes it by atomic rename, so the read is never torn, and a missing or unusable
+   * file gives no cursor, which counts the whole bucket. The saved cursor can only lag what the
+   * flusher has disposed of, never lead it, so a stale read over-counts and never hides a loss. */
+  dropSpoolBucket(spool, oldest, loadState(spool, atMs).state.cursors[oldest.slice(0, 10)]);
 }
 
-function dropSpoolBucket(spool, file) {
+/* § 11.3 — `spool_dropped_events` counts the lines of the dropped bucket PAST ITS DELIVERY
+ * CURSOR, the byte offset up to which every line has been delivered or already counted under its
+ * own loss counter (corrupt, rejected, oversize, unreadable). With no cursor, nothing of the
+ * bucket was disposed of and every line counts. Counting the whole file made a seat whose spool
+ * sits at its bound with delivered history render `lossy` on every drop with nothing lost
+ * (card#11548). */
+function dropSpoolBucket(spool, file, cursor) {
   const p = path.join(spool, file);
   let lines = 0;
-  try { lines = (fs.readFileSync(p, 'utf8').match(/\n/g) || []).length; } catch (e) { lines = 0; }
+  try {
+    const buf = fs.readFileSync(p);
+    for (let i = cursor || 0; i < buf.length; i++) if (buf[i] === 0x0A) lines += 1;
+  } catch (e) { lines = 0; }
   try { fs.unlinkSync(p); count('spool_dropped_events', lines); }
   catch (e) { /* ENOENT or EBUSY: leave it for the next pass rather than throwing */ }
 }
@@ -2457,7 +2470,7 @@ function enforceSpoolBounds(spool, state, atMs) {
   for (const f of spoolBuckets(spool)) {
     const b = f.slice(0, 10);
     if (atMs - bucketEndMs(b) > K.RESIDENCY_MS && deletableBucket(b, atMs)) {
-      dropSpoolBucket(spool, f);
+      dropSpoolBucket(spool, f, state.cursors[b]);
       delete state.cursors[b];
     }
   }
@@ -2466,7 +2479,7 @@ function enforceSpoolBounds(spool, state, atMs) {
     const buckets = spoolBuckets(spool);
     const oldest = buckets[0];
     if (!oldest || !deletableBucket(oldest.slice(0, 10), atMs)) { count('spool_overflow_deferred'); break; }
-    dropSpoolBucket(spool, oldest);
+    dropSpoolBucket(spool, oldest, state.cursors[oldest.slice(0, 10)]);
     delete state.cursors[oldest.slice(0, 10)];
   }
 }
