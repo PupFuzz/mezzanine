@@ -2161,7 +2161,14 @@ function sampleContext(config, spool, payload, atMs) {
     // The ONE suppression in the design driven by payload shape, expected to be non-zero on
     // every seat during the first seconds of a session, and counted precisely because a silent
     // one is how a signal dies unnoticed (§ 3.4).
-    count('payload_key_missing.context_window');
+    //
+    // COUNTED `context_window_unavailable`, NEVER `payload_key_missing.*` (card#11544). That family
+    // raises `harness_contract_moved` (§ 9.3), and this gap is expected at the start of every
+    // session, so the old name re-raised "the harness payload moved under this reporter" at every
+    // session start on every Step 4(b) seat, and the 24 h window never cleared it on an active
+    // seat. A seat that counted it under the old name keeps that total in state.json;
+    // `RENAMED_COUNTERS` moves it.
+    count('context_window_unavailable');
     return;
   }
   usedPct = Math.round(Math.min(100, Math.max(0, usedPct)) * 10) / 10;
@@ -2400,15 +2407,20 @@ function foldCounterSink(spool, state) {
   renameCounters(state.counters);
 }
 
-/* A COUNTER AN EARLIER BUILD WROTE UNDER THE WRONG NAME, MOVED TO ITS RIGHT ONE (card#11330).
- * The totals live in state.json across flusher restarts, so renaming a counter in the code does not
- * rename it on a seat that already counted it: the old name stays in the total, and every heartbeat
- * keeps raising the member that name maps to. Builds before card#11330 counted an unset
- * `harness_label` config key as `payload_key_missing.harness_label`, which `DEGRADED` maps to
- * `harness_contract_moved`. This runs at the end of every sink fold, and a fold opens every flusher
- * pass, so it moves the total an earlier flusher saved AND a delta an older hook wrote into a sink
- * bucket not folded yet. Applied again to a total that holds no old name, it changes nothing. */
-const RENAMED_COUNTERS = [['payload_key_missing.harness_label', 'harness_label_unset']];
+/* A COUNTER AN EARLIER BUILD WROTE UNDER THE WRONG NAME, MOVED TO ITS RIGHT ONE (card#11330,
+ * card#11544). The totals live in state.json across flusher restarts, so renaming a counter in the
+ * code does not rename it on a seat that already counted it: the old name stays in the total, and
+ * every heartbeat keeps raising the member that name maps to. Each entry below is a gap an earlier
+ * build counted under `payload_key_missing.*`, which `DEGRADED` maps to `harness_contract_moved`,
+ * although the gap is expected on a correct install: an unset `harness_label` config key
+ * (card#11330), and a statusLine render with no usable `context_window` (card#11544). This runs at
+ * the end of every sink fold, and a fold opens every flusher pass, so it moves the total an earlier
+ * flusher saved AND a delta an older hook or statusLine process wrote into a sink bucket not folded
+ * yet. Applied again to a total that holds no old name, it changes nothing. */
+const RENAMED_COUNTERS = [
+  ['payload_key_missing.harness_label', 'harness_label_unset'],
+  ['payload_key_missing.context_window', 'context_window_unavailable'],
+];
 function renameCounters(counters) {
   for (const [from, to] of RENAMED_COUNTERS) {
     if (!(from in counters)) continue;

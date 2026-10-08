@@ -1353,6 +1353,9 @@ wired: an unsubscribed hook costs nothing, a subscribed one costs latency on the
 
 1. A missing or unexpected key yields `null` in the event and increments
    `payload_key_missing.<key>` ([§ 9.3](#93-degradation-counters)). **It never suppresses the event.**
+   Every key in that family raises `harness_contract_moved`, so a gap that is expected on a correct
+   install is counted under its own name instead: the statusLine's `context_window` is
+   `context_window_unavailable` ([§ 6.11](#611-contextsample)).
 2. **No branch of any payload read decides *whether* to emit — only *what to label*.** One hook is
    carved out of this rule, explicitly, and it is the only one: `Notification` fires for events that
    are not requests for human attention at all (`idle_prompt` — a timer on human ABSENCE —
@@ -2317,11 +2320,15 @@ in an aggregate rather than silently averaged — and a fleet-wide drift between
 instead of inferred.
 
 If `used_percentage` is null **and** `total_input_tokens`/`context_window_size` are absent too, **no
-event is emitted** and `payload_key_missing.context_window` is incremented. That is the only
+event is emitted** and `context_window_unavailable` is incremented. That is the only
 suppression in the design driven by payload shape, it is expected to be non-zero on every seat during
 the first seconds of a session, and it is counted precisely because
 [§ 3.4](#34-why-identity-never-comes-from-the-environment) says a silent one is how a signal dies
-unnoticed.
+unnoticed. **It is not a `payload_key_missing.<key>` counter**, because that family raises
+`harness_contract_moved` ([§ 9.3](#93-degradation-counters)), and a gap every session starts with
+would re-raise that badge at every session start on every seat that wraps the statusLine. Builds
+before card#11544 counted it as `payload_key_missing.context_window`; a later build's flusher moves a
+total saved under that name to `context_window_unavailable` at its next sink fold.
 
 **The fixture that keeps the two branches honest.** A unit test feeds the documented shape
 `{"total_input_tokens": 15500, "context_window_size": 200000, "used_percentage": 8}` down both
@@ -3751,7 +3758,7 @@ statusLine processes reach the flusher through the counter sink
 | `batches_ok` | a batch the server accepted (`202` or `200`) | informational; the denominator the other batch counters are read against |
 | `batches_retried` | a batch that will be sent again: a retryable status (`408`, `429`, any `5xx`) or a transport failure or timeout ([§ 11.5](#115-retry-and-backoff)) | informational — **no loss**, because the batch stays spooled and a retry commits once ([§ 10.4](#104-batch-level-idempotency)). For a `5xx` it is the reporter's side of the server's `batches_failed.<detail>` ([§ 12.7](#127-server-side-counters)) |
 | `hook_name_mismatch` | `argv[2]` ≠ `hook_event_name` | `degraded`; the harness contract moved |
-| `payload_key_missing.<key>` | an expected harness key was absent | `degraded` when > 0 for a key marked required in [§ 6](#6-event-kinds) |
+| `payload_key_missing.<key>` | a harness payload key the reporter reads was absent: `session_id`, a key a hook handler reads, or `agent_id` on `SubagentStart` ([§ 8.5](#85-subagent-identity--binding-agent_id-to-a-call)). The family also carries `payload_key_missing.unsubscribed_hook.<name>`, counted when the reporter is run for a hook outside [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s subscribed set, which a seat wired by `fleet-reporter/INSTALL-LINUX.md` Step 4 never is | `degraded`, member `harness_contract_moved`, for **every** key in the family: the reporter matches the `payload_key_missing.` prefix, so a key a later build starts reading raises the member with no edit here. A gap that is expected on a correct install is therefore counted under its own name and never in this family: `harness_label_unset` and `context_window_unavailable` |
 | `enum_value_unknown.<wire field>` | a closed-enum field carried a value this reporter does not know, coerced per [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4 | informational, rendered `reporter_behind` — the harness has added a member and this document owes an edit |
 | `enum_value_unknown.notification_type` | a `Notification` carried a `notification_type` [§ 6.12](#612-attentionrequest)'s lookup table does not know, so **no** `attention.request` was emitted — the one counter in this document that names a harness **payload key** rather than a wire field, and the single exception [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 4 names | informational, rendered `reporter_behind` — this is where `notification_kind`'s unknown case lives, since the field has no `other` member and no event survives to carry one ([§ 6.12](#612-attentionrequest)). A rising value on real seats is the edit's trigger |
 | `invalid_tool_name` | `tool_name` failed its pattern and was sent as `INVALID_TOOL_NAME` | `degraded` |
@@ -3783,6 +3790,7 @@ statusLine processes reach the flusher through the counter sink
 | `harness_label_unset` | a `session.start` was emitted with `harness_label` `null` because the seat's config carries no `harness_label` string (absent, empty or not a string), and absent is the state `fleet-reporter/INSTALL-LINUX.md` Step 3 leaves on purpose ([§ 6.1](#61-sessionstart)) | informational, and the measurement of how many sessions the fleet's version pin is missing for. **It raises no `degraded` member**: the key is the reporter's config, not a harness payload key, so it is not a `payload_key_missing.<key>` counter. Builds before card#11330 counted it as `payload_key_missing.harness_label`; a later build's flusher moves a total saved under that name to this one at its next sink fold, so an upgraded seat's `harness_contract_moved` clears |
 | `console_url_malformed` | a transcript record that decides [§ 6.3](#63-turnstart)'s `console_url` carried an id or url that fails the field's pattern, so `null` was sent | informational, and the observable for that row's UNVERIFIED basis: a non-zero here on real seats means the harness moved the record's shape and § 6.3 owes an edit |
 | `console_url_tail_exhausted` | [§ 6.3](#63-turnstart)'s read walked its whole 1 MiB tail of a larger transcript without finding a deciding record, so `null` was sent | informational; a rising share of turns means the bridge records have drifted further apart than the bound, which § 6.3 re-derives |
+| `context_window_unavailable` | a statusLine render whose `context_window` gave no usable percentage, so no `context.sample` was emitted ([§ 6.11](#611-contextsample)) | informational, and **expected on every seat that wraps the statusLine**, in the first seconds of every session. **It raises no `degraded` member**: the gap is the harness's normal early-session state, so counting it as `payload_key_missing.context_window` re-raised `harness_contract_moved` at every session start. Builds before card#11544 counted it under that name; a later build's flusher moves a total saved under it to this one at its next sink fold, so an upgraded seat's `harness_contract_moved` clears |
 | `statusline_suppressed` | sampling suppressions | informational; a *zero* here on an active seat means sampling is broken |
 | `negative_duration` | clock stepped mid-call | informational |
 | `wrapped_statusline_failures` | the wrapped status-line command failed | `degraded`; the seat's own UI is affected |
@@ -3839,7 +3847,7 @@ members stated nowhere and its two examples spelling one member two different wa
 |---|---|---|
 | `lossy` | `spool_dropped_events`, `spool_corrupt_lines`, `events_rejected_dropped`, `oversize_event_dropped`, `spool_append_failed.<tree>` | events were discarded and counted; the number is rendered |
 | `batches_rejected` | `batches_rejected` | a batch took a permanent status and was quarantined; the last status and error code are shown |
-| `harness_contract_moved` | `hook_name_mismatch`, `payload_key_missing.<key>` for a key [§ 6](#6-event-kinds) marks required, `payload_key_missing.is_interrupt` | the harness payload has moved under this reporter; this document owes a re-capture |
+| `harness_contract_moved` | `hook_name_mismatch`, any `payload_key_missing.<key>`, `payload_key_missing.is_interrupt` | the harness payload has moved under this reporter; this document owes a re-capture |
 | `reporter_behind` | `enum_value_unknown.<wire field>`, `enum_value_unknown.notification_type` | the harness has added an enum member this reporter coerces — or, for `notification_type`, a type whose event it suppresses; informational, and the trigger for an edit |
 | `value_clamped` | `value_clamped.<wire field>` | the reporter's own arithmetic left a declared range and was clamped |
 | `counters_omitted` | `data_truncated.reporter.heartbeat.counters`, i.e. any flush where `counters_omitted > 0` | too many kinds of trouble to fit 1.5 KiB; the count rides the event as `counters_omitted` |
