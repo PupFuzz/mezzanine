@@ -2063,7 +2063,7 @@ nameplate, the **state chip**, the task bubble, and the warning treatments —
 [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s dimming and currency label, and the two
 treatment badges `config_invalid` and `fold_lag`; beside them, the monitor's task text, the context bar
 and its percentage, a **badge row of 2** — the treatment badges first, then recognised badges in the
-wire's order, each chip 108 px wide — the interns ([§ 8](#8-interns--subagent-rendering-and-the-cap)),
+wire's order, each chip 104 px wide — the interns ([§ 8](#8-interns--subagent-rendering-and-the-cap)),
 the label line and the quiet age. **Anything else unusual is ONE flag, ⚠ +N**, and **N is the number of
 unusual items whose raw form is not drawn on the desk: every line of the drill-down's *unrecognised
 values* (`field: value` — `render_state`, `link_state`, `activity_state`, `unknown_reason`,
@@ -2076,11 +2076,20 @@ unrecognised reason* or *API error — unrecognised*, and the currency label *wa
 **Every fact the desk does not draw — every raw string among them — is guaranteed in the drill-down
 ([§ 4.3](#43-the-desk-drill-down-panel)) and the desk list ([§ 4.5](#45-the-viewport-rule-and-the-camera))**,
 and `Tests\Feature\Floor\TheNewDeskKeepsEveryLeafTest` holds that of every leaf the desk drew before
-the ruling, and holds the desk to exactly this set. **The desk never reflows:** its rows are fixed, an
-absent line leaves its row empty, and the bubble's band is reserved. The rects are a table
+the ruling, and holds the desk to exactly this set. **The facts column is one stack on one plate** (the
+operator's ruling of 2026-10-07, card#11468: *"A is fine"* — the facts column on one soft rounded plate beside
+the side table, sized to its contents): its rows keep one fixed order — the label line, the currency label,
+the lag line, the gauge, the badge row, the flag, the quiet age — and a desk draws only the rows it carries,
+stacked up from just above the side table with no empty row left for an absent one, on a plate as tall as
+the rows and as wide as the widest. So a row arriving or leaving moves the rows above it by one line; the
+order never changes, and the art, the chip, the nameplate and the bubble's band never move. ⚠ That
+replaces this paragraph's earlier *the desk never reflows: its rows are fixed, an absent line leaves its row
+empty* — a property of the floating column the ruling retired, not of the glance set
+([decision 64](#13-decisions-taken-revisable-at-review)). The rects are a table
 `server/public/js/floor/desk-layout.js` derives from the furniture box (`deskRects()`): the character
 54 × 96, the monitor beside it, the chip and the plate under them, the facts in one column to their
-right. ⚠ Three of the set's places are the ruling read rather than the ruling's words, and await the
+right, stacked on their plate ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk,
+re-laid*). ⚠ Three of the set's places are the ruling read rather than the ruling's words, and await the
 operator's confirmation: the **label line** (the desk's state text, Q1 (B)'s carrier of the state), the
 **currency label** and the **lag line** (both read as Q0's *warning treatments*). ⚠ Not ratified, as
 display forms: the chip's vocabulary (the glyph strings `desk/desk-poses.js` and `desk/desk-render.js` publish, and
@@ -2095,6 +2104,23 @@ property is the one the chip already carried, and **no
 moves. **This paragraph is the document's one statement of the element**; the render rows, the null
 table, [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) and
 [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) name it and point here rather than restating it.
+
+⭐ **Its form is a cloud on a trail of growing circles** (the operator's ruling of 2026-10-07, card#11468,
+verbatim: *"I would like to see the card info above the agent to appear like a thought bubble, starting
+with a small bubble and increasing in size until reaching the top card status bubble, which should be drawn
+like a cloud"*). It is a **form** change inside [§ 10.4](#104-the-art-direction-as-a-specification)'s
+⭐ bullet — the bubble's shape and its tail are what may be drawn freely, and the trail is the tail — and it moves none of the six rules
+below. **The cloud** is the bubble's outline: one closed path of half-circle puffs, each at most 4 px in
+radius, laid round the text's measured rect inset by that radius, so every puff's crown lies on or inside
+the rect and the cloud is never larger than the box rule 4 sizes and rule 5 separates — the padding that
+holds the text is wide enough that no puff's valley reaches it. **The trail** is three circles on the
+anchor's line, 2, 3 and 4 px in radius, the smallest 1 px above the character's rect and each next one
+1 px above the last, so the trail rises from the creature's head to the cloud and no circle covers the
+creature. Both are the bubble's: drawn exactly when the bubble is, painted with it, after every element of
+the desk, and as still as it is (rule 6). Their sizes are constants, so neither says anything about the
+seat (rule 2). `desk-layout.js`'s `cloudOutline()` and `thoughtTrail()` are the shapes, and
+[AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s
+re-laid half reads them as painted.
 
 1. **One rendered form on the desk, which is the rule the amendment can break quietly.** The desk
    draws the bubble and draws nothing else for `task`. A chip surviving beside a bubble would be one
@@ -2789,7 +2815,7 @@ logged.
 3. **The path is A16's rule, and this is what that rule IS today.** `server/public/js/floor/scene.js`'s
    `buildEffects()` computes a walk as one **straight segment** between two points — for A16 the
    previous render's anchor and this render's, each `anchorOf()`'s *character's column at the desk's
-   mid-height* — in `⌈length ÷ 48⌉` frames, at least one, at [§ 12](#12-every-number-and-where-it-comes-from)'s
+   own mid-height* (`deskAnchor()`, box y 158 since card#11468) — in `⌈length ÷ 48⌉` frames, at least one, at [§ 12](#12-every-number-and-where-it-comes-from)'s
    loop rate (`WALK_PX_PER_FRAME`, § 12's *Walk speed* row). It reads no tile, wall or furniture, so a
    walk crosses whatever lies on the segment. A1 and A2 take the same rule between the desk's anchor
    and **the elevator's threshold**: the seam's `x` at the foot of the leaves (`backWall()`'s
@@ -4637,7 +4663,7 @@ creature generator's sheet is their worked example.
   5. **Light** comes from the top-left, one corner for the whole scene (slynyrd); contact shadows are soft
      and sit at the foot. *Eye-judged.*
   6. **Not scene objects:** the nameplate and its plate, the state chip, the badges and the flag, the
-     facts column, the bubble and its tail, the thread line and its label, the
+     facts column and its plate, the bubble and its trail, the thread line and its label, the
      [§ 6.2](#62-the-animation-table--the-closed-set) effects, the F14 placeholder and the overflow strip's
      header are **labels over the scene** and obey no projection; they are [§ 5.1](#51-the-desk)'s and
      [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s.
@@ -4820,7 +4846,8 @@ creature generator's sheet is their worked example.
   admitted by card#7897 as a form amendment. An implementer holding the reference artifact alone could
   read the bubble as decoration an ordinary text chip would satisfy, which is the misreading this
   subsection exists to prevent. **What may be drawn freely** is the bubble's shape, its tail, its
-  palette and its type. **What may not**: it carries no motion of any kind, it replaces the chip
+  palette and its type — since the operator's ruling of 2026-10-07 (card#11468) a cloud on a trail of
+  growing circles, whose form [§ 5.1](#51-the-desk) states. **What may not**: it carries no motion of any kind, it replaces the chip
   rather than joining it, a null task draws nothing, and it is not drawn on a desk with no character
   to anchor to. Those four are [§ 5.1](#51-the-desk)'s, stated there in full with the upstream
   behaviour that was refused and why, and this bullet states none of them a second time.
@@ -5055,7 +5082,7 @@ theme draws INTO and never moves.
      cell of the contrast table below falls to 4.44:1 over the glow and 4.47:1 over the landing, under the bar
      by hundredths. On the shipped default the landing (about 72 px either side of the threshold and 26 px deep)
      and its glow (about 52 px deep) reach only into the top-left desk object's bubble band, its top 30 px, where
-     no chip and no bare text stands — every bare text begins at box y 36 and the chip's rect at box y 212 (`deskRects()`'s `chip.y`, the box's height less 16); that is measured by
+     no chip, no facts plate and no fact stands — the facts plate begins at box y 48 at the cap (card#11468; every fact on it lower), the one bare text, the *+N more* tag, at box y 190, and the chip's rect at box y 212 (`deskRects()`'s `chip.y`, the box's height less 16); that is measured by
      hand on the default's grid and held by no check. The chip tool reads `surfaces()` through
      one node step, `tools/floor-themes/surfaces.mjs`, which imports every theme the registry names and prints
      `{theme: {name: colour}}` as JSON on its standard output — the Python tool never parses a module. The house theme is **`studio`** — A2+C, below. Like the creature tree it is **pure, total and
@@ -5298,13 +5325,28 @@ box does **not** move: every new rect lies inside it at the cap, so the box-base
 | the screen | 106, 86, 88 × 31 [the monitor's rect] | the monitor element the lit state is drawn on — `--scene-monitor-on`, `--scene-monitor-dim`, `--scene-monitor` as today — inside the frame |
 | the screen's text | 109, 95, 82 wide [140, 100, 56 wide] | inside the screen, in the **screen** type role below |
 | the desk props | 6, 94, 68 × 50 [new] | the desk's left third: the lamp and its light, the mug or the plant |
-| the side table | 212, 124, 228 × 42 [220, 168, 220 × 8, drawn only with interns] | between the flag row and the *+N more* row; drawn at every desk with art; **its foot line is its rect's bottom edge, box y 166, which is the interns' foot line** — the interns' rects (unchanged, 20 × 32 on a 24 px pitch from 220, 134) stand in front of it |
+| the side table | 212, 146, 228 × 42 [212, 124 from row 20 until card#11468; 220, 168, 220 × 8 before row 20, drawn only with interns] | under the facts plate and over the *+N more* row (box y 190); drawn at every desk with art; **its foot line is its rect's bottom edge, box y 188 — the desk's own foot line (card#11468) and the interns'** — the interns' rects (20 × 32 on a 24 px pitch from 220, 156) stand in front of it |
+
+**The facts column, stacked on its plate** (card#11468, the operator's ruling of 2026-10-07 — [§ 5.1](#51-the-desk)'s
+*the glance set* states the rule and this states its geometry). The facts column's rows — the label line, the
+currency label, the lag line, the gauge (the bar at x 220, the % at x 284), the badge row (two 104 px chips on a
+108 px pitch), the flag, the quiet age — are each a 12 px line at x 220, cut to 216 px; a desk lays the rows it
+carries in that order **up from the side table**, the last ending at box y 138, so a full stack of seven starts at
+y 54 and no row ever meets the table (`stackRows()`). `deskRects()` states the stack at the cap, every row present;
+`deskLayout()` lays each desk's own. Behind them, the **facts plate** — kind `facts-plate`, a fact element with no
+member of its own, like F14's placeholder — is one rect padded 4 px across and 6 px down round the rows it holds,
+as wide as the widest of them and corners at radius 8: its left edge is box x 216, the art column's edge, so
+[§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s hatch over the art column never reaches it; its
+bottom is box y 144 whatever the desk carries, 2 px above the side table; at the cap its top is y 48, below the
+bubble's band. It is drawn in the nameplate's paper, `--scene-plate`, opaque, with a soft `--scene-plate-edge` rim,
+and a desk with no row draws none. The *+N more* tag is the one text left on the floor, under the side table.
 
 **The element kinds and their members** (`deskLayout()`'s, partitioned by `DRAWN_MEMBERS`): the chair keeps
 `chair` and the member `character`; the desk keeps `desk-sprite` and `lighting`; the side table keeps `side-table`
-and `side_table`; and two kinds are new at row 20 — `monitor-frame` under `monitor`, and `desk-props` under
+and `side_table`; two kinds are new at row 20 — `monitor-frame` under `monitor`, and `desk-props` under
 `lighting` — at row 20 the frame a flat shape and the props' rect laid with nothing painted in it, and since
-row 22 both the floor's theme's documents.
+row 22 both the floor's theme's documents; and one kind is new at card#11468, `facts-plate`, which draws no
+member: it is the backdrop of the facts that do.
 
 **How a desk's elements may lie on one another — the rules below, each held by one mechanical check.** The product
 need is that **no fact is ever hidden or unreadable**; whether two rects overlap was only ever a proxy for that,
@@ -5319,8 +5361,12 @@ is the creature tree's drawing of the seat's identity, painted among the art.
    intern meets no sibling and no other fact element of its desk ([AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor),
    on half-open rects as [§ 9](#9-failure-paths-and-their-observables) F21 states them). Outside that scope fact
    elements overlap by design, as they do today: the screen is drawn on F14's placeholder, and § 7.4's hatch lies
-   over the chip and the plate in the art column. This amendment adds no fact × fact pair, so no exception table
-   is kept.
+   over the chip and the plate in the art column. Row 20's amendment added no fact × fact pair; **card#11468 adds
+   exactly one, by design: the facts plate under the facts it holds** — the label, currency and lag lines, the
+   gauge, the badges, the flag and the quiet age, each lying wholly on it, as the nameplate lies on its plate.
+   The plate is painted before every one of them (`painter-probe.mjs`'s plate-order leg reds a fact painted
+   before it, or a fact off it), and it meets no intern, which AT-D3-20 *(e)* holds of every fact element. That
+   pair is the whole exception, so no table is kept.
 2. **Art × fact is paint order, not geometry:** every fact element of a desk is painted AFTER every art element
    and the character of that desk, wherever their rects lie, so no art can cover a fact. The painter paints a
    desk's elements in the order `deskLayout()` emits them (`painter.js`'s `paintDesk()`), so the rule is held on
@@ -5328,12 +5374,15 @@ is the creature tree's drawing of the seat's identity, painted among the art.
    side table), then the facts — and AT-D3-25 reads it through `painter-probe.mjs`. Until row 20 the order broke it at
    the side table, emitted after the badges and the flag; row 20 reordered it.
 3. **Legibility is contrast, not position:** a text fact drawn on its own backdrop — the screen's text, the
-   chip's word, a badge's and the flag's text, the nameplate on its plate, the bubble's text — meets its stated
-   contrast against that backdrop; a **bare** text fact (the label, currency and lag lines, the gauge's
-   percentage, the *+N more* tag, the quiet age) stands on the floor, so its rect meets no art rect and its ink
-   meets 4.5:1 over every colour the floor's theme's `surfaces()` returns. That one geometric check is
-   contrast's precondition — the colour under a bare text is then the floor's — and on the table above no bare
-   text meets art: they all lie in the facts column outside the side table's rows.
+   chip's word, a badge's and the flag's text, the nameplate on its plate, the bubble's text, and since
+   card#11468 **the label, currency and lag lines, the gauge's percentage and the quiet age on the facts
+   plate** — meets its stated contrast against that backdrop: the facts' ink, `--scene-ink`, on the plate's
+   opaque `--scene-plate` is 12.4:1, held at 4.5:1 or more at full and at desaturated light by AT-D3-25's
+   re-laid half. A **bare** text fact — since card#11468 only the *+N more* tag — stands on the floor, so its
+   rect meets no art rect and its ink meets 4.5:1 over every colour the floor's theme's `surfaces()` returns.
+   That one geometric check is contrast's precondition — the colour under a bare text is then the floor's — and
+   it is held of the plate and of every fact on it as well, so the plate's backdrop is never art's: no element of
+   the facts column meets the side table or any other art rect (the stack ends 2 px above the table).
 4. **Art × art is free**, under [§ 10.4](#104-the-art-direction-as-a-specification)'s y-sort and foot rules.
    The character lies among the art — over the chair, under the desk (y 128 to 154), the desk props (x 51 to 74,
    y 94 to 144) and the monitor's frame (x 102 to 105) — and needs no exception list, because it is not a fact;
@@ -5345,8 +5394,18 @@ is the creature tree's drawing of the seat's identity, painted among the art.
 **Beyond one desk, as today:** the floor paints the band, the slab, the tiles (planes, scenery and their glows),
 the thread lines, then every desk group, the overflow strip's header and the § 6.2 effects (`painter.js`'s
 `paint()`), so no plane or scenery art can cover a desk's fact. **Thread lines run under desk groups**, so a desk's
-art hides a thread only where the thread enters that desk — the line's anchor sits at the box's mid-height, clear of
-the side table, and the new furniture enlarges only the stretch inside the box that is covered. A bubble stays off
+art hides a thread only where the thread enters that desk — the line's anchor sits on the character's centre line at
+**the desk's own mid-height, box y 158** (`deskAnchor()`; card#11468 moved it from the box's mid-height, y 114,
+which lies inside the facts stack's rows), below every facts plate (whose bottom is y 144), so a line between two
+desks whose boxes stand at one height runs under no plate of either and meets each desk under its own art. ⚠ **A
+plate can still lie over a thread, and that is stated rather than closed:** a line between two desks in
+different rows crosses whatever lies between them, and on the shipped default such a line can cross a third
+desk's plate at the cap — the line from desk object 1 to desk object 5 crosses object 4's, measured on
+card#11468 by intersecting each pair's segment with every slot's plate at the cap. No anchor in the art column removes those — a plate is opaque
+like the art it sits beside, and a desk drawn over a line hides it there. Painting threads over plates would mean
+splitting the desk group across the line layer — the plates of every desk drawn under the lines, out of the desk's
+own group, its dimming and its click target — and would draw a line across the facts the plate holds, which reads
+worse than a line passing under it, so this change does not take it on. A bubble stays off
 every other desk's box by AT-D3-20 *(b)*, and that box includes the new art.
 
 - ⭐ **The 3 px where the creature and the monitor's frame overlap is ALLOWED, at x 51** (the brief's
@@ -5362,7 +5421,9 @@ every other desk's box by AT-D3-20 *(b)*, and that box includes the new art.
   anchor is the character rect's centre line, and so is the desk's anchor for the thread line and the walks:
   today every site that reads it is found by `grep -n 'ART_W / 2' server/public/js/floor/scene.js` (in
   `placeBubbles()` and `anchorOf()`), and row 20 makes them ONE primitive over `deskRects()`, so the walker arrives where it sits. The prototype kept the tail at the
-  column's centre; that is one of the disagreements the amendment resolves toward the document.
+  column's centre; that is one of the disagreements the amendment resolves toward the document. Since
+  card#11468 the tail is § 5.1's trail of circles, laid by `thoughtTrail()` on the same centre line, and the
+  anchor's height is the desk's own mid-height (`deskAnchor()`).
 - ⭐ **THE SCREEN TYPE ROLE — 8 px on the facts' 12 px line, baseline 9 px below the line's top; a third
   measured role beside the facts' 10 px and the nameplate's 13 px bold** (the operator's *"The monitor screen
   text can be smaller so that more letters can fit"*). The size is the smallest that stays legible **at the
@@ -7096,7 +7157,10 @@ the same reason: no browser on the build host.*
   bubble intersects another desk's furniture box, another bubble, the wall clock's face, or the overflow
   strip's own header, and the second reading places every bubble exactly where the first did — rule 5's pass
   over the base rects in a fixed order, so two browsers rendering one fleet agree with nothing stored
-  ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)); **the clock clause, beside *(b)* and scoped to elements AT REST** (card#11045):
+  ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)) — the rect read is the bubble's whole drawing: since card#11468 its cloud
+  lies inside that rect and its trail inside its own desk's box, between the bubble's band and the character
+  ([§ 5.1](#51-the-desk)'s form, held as painted by [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s
+  re-laid half); **the clock clause, beside *(b)* and scoped to elements AT REST** (card#11045):
   no primitive of the back-wall band — the elevator, a window, a sill, the skirting — and no scene element at
   rest — a plane, the slab, a tile, a desk's furniture box, a bubble, the overflow strip or its header —
   intersects the wall clock's face, on every run above but the undersized map (whose desk *(f)* draws past its
@@ -7503,13 +7567,24 @@ and AT-D3-19's test and `TheFloorDrawsItsFrameTest` holding the failure leg's sc
   **the harness**, the **desk re-layout**, the **scene**, the **painter**.
 - **GREEN — the re-laid half, the table leg:** `deskRects()` at the box gives § 10.6's table, rect for rect;
   every desk with art draws its chair and its side table, the table with
-  [§ 12](#12-every-number-and-where-it-comes-from)'s seat count, its foot line at box y 166 and every intern's
-  rect ending on it.
+  [§ 12](#12-every-number-and-where-it-comes-from)'s seat count, its foot line at box y 188 — the desk's own,
+  since card#11468 — and every intern's rect ending on it.
 - **GREEN — the re-laid half, the paint-order leg (§ 10.6's rule 2):** on every desk the probe reads, every fact
   element is painted after every art element and after the character.
-- **GREEN — the re-laid half, the bare-text leg (rule 3's geometric half):** no bare text fact's rect meets an
-  art rect of its desk. Rule 3's contrast half reads the theme's surfaces and the fallback fill, which row 22
-  builds, so it is the theme half's surfaces leg.
+- **GREEN — the re-laid half, the bare-text leg (rule 3's geometric half):** no element of the facts column —
+  the facts plate, every fact on it, and the one bare text, the *+N more* tag — meets an art rect of its desk.
+  Rule 3's contrast half reads the theme's surfaces and the fallback fill, which row 22 builds, so it is the theme
+  half's surfaces leg for the bare text; for the facts on the plate it is the plate leg below.
+- **GREEN — the re-laid half, the plate leg (card#11468, rule 1's one pair and rule 3's backdrop):** on every desk
+  the probe reads, the facts plate is painted before every fact it holds, and every one of them lies on it; a
+  desk with a fact on it draws one; and the facts' ink, `--scene-ink`, holds 4.5:1 or more on the plate's fill at
+  full and at desaturated light.
+- **GREEN — the re-laid half, the anchor height (card#11468):** every desk's thread anchor lies below every facts
+  plate of that desk, so a line between two desks of one row runs under no plate of either.
+- **GREEN — the re-laid half, the thought bubble (§ 5.1's form, card#11468), read on what the painter PAINTED:**
+  every bubble paints at least three trail circles, smallest first and each above the last, on the anchor's line,
+  none meeting the character's rect; and the cloud's path, its arcs sampled as SVG draws them, lies inside the
+  bubble's own rect and inside the desk's box.
 - **GREEN — the re-laid half, the screen:** the screen text is measured, cut by `fit()` and drawn in the screen
   role; its ink holds 4.5:1 or more on both screens at full and desaturated light — § 10.6's contrast table's
   floor-independent columns; and the bubble's anchor and the desk's anchor are the character rect's centre line,
@@ -7583,8 +7658,20 @@ and AT-D3-19's test and `TheFloorDrawsItsFrameTest` holding the failure leg's sc
   names that pair.
 - **RED — a rect that is not the table's:** set the monitor's frame at x 98, 4 px further left, or centre the
   creature again (x 81) → the table leg names the element and both values.
-- **RED — bare text over art:** lift the side table's rect into the gauge's row → the bare-text leg names the
-  gauge's percentage and the table.
+- **RED — a facts row over the table:** lay the stack from 12 px below the side table's top rather than above it
+  → the bare-text leg names the facts plate and the quiet age meeting the table.
+- **RED — the plate painted after a fact:** emit the facts plate after the facts rather than before them → the
+  plate leg names every fact it hides.
+- **RED — the plate's ink:** fill the plate in the facts' own ink → the plate leg fails on the contrast.
+- **RED — the anchor back at the box's mid-height:** restore `anchorOf()`'s y to the box's mid-height, inside
+  the stack's rows → the anchor-height leg names the desk and its plate.
+- **RED — the trail missing or not growing:** paint no trail, or lay it as two circles, or largest first, or of
+  one size → the bubble leg names which.
+- **RED — a trail circle on the creature:** start the trail 8 px inside the character's rect → the bubble leg
+  names the circle that meets it.
+- **RED — the cloud past its box:** centre the puffs on the rect's own edge rather than the inset one → the
+  bubble leg names the cloud leaving the bubble's rect, and the probe's containment names it leaving the desk's
+  box.
 - **RED — the table's seats and feet:** draw the empty table with no seats, or end its foot line 4 px above the
   interns' → the table leg names the desk and which.
 - **RED — the dimmed screen, today's defect:** draw the screen's text in `--scene-ink` on `--scene-monitor-dim`
@@ -7592,9 +7679,9 @@ and AT-D3-19's test and `TheFloorDrawsItsFrameTest` holding the failure leg's sc
   written after.
 - **RED — the screen text in the facts' role:** draw it in the fact role while `fit()` cuts it in the screen
   role, or the reverse → the screen leg names the desk and the role.
-- **RED — the anchor left behind:** restore `ART_W / 2` at one of the sites `grep -n 'ART_W / 2'
-  server/public/js/floor/scene.js` finds today → the screen leg names the bubble or the walk anchor that no
-  longer meets the character's centre line.
+- **RED — the anchor left behind:** stand the bubble's trail on `ART_W / 2`, the art column's centre where the
+  tail stood before row 20 → the screen leg names the trail circle that no longer meets the character's centre
+  line.
 - **RED — the layout readers:** accept a non-string `theme` at load, an unheld name at the save, or one at the
   restore → the selection half names the case; and drop the delivered name in the browser's composition → the
   cross-runtime pin names the fixture case.
@@ -7633,8 +7720,8 @@ and AT-D3-19's test and `TheFloorDrawsItsFrameTest` holding the failure leg's sc
 - **RED — a draw that is not the key's:** take one seeded choice from `Math.random()` → the identity leg names
   the document.
 - **Discriminating controls:** *(a)* the desk as § 10.6 lays it and the house theme as built pass every leg —
-  possible because no leg asks art and facts not to overlap, only that facts paint last and bare text stands on
-  the floor; *(b)* a genuinely complex document — the house floor, thousands of path commands — passes the
+  possible because no leg asks art and the art column's facts not to overlap, only that facts paint last and that
+  the facts column — since card#11468 its plate, the facts on it and the one bare text — meets no art; *(b)* a genuinely complex document — the house floor, thousands of path commands — passes the
   self-contained leg, so it is not satisfied by refusing every path; *(c)* a floor naming the house theme by
   name draws exactly what a floor naming none draws, so the selection half is not satisfied by a notice on every
   floor.
@@ -7714,9 +7801,13 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | **Screen type size** | **8 px**, a third measured type role | **Chosen** (card#11046) — the operator's *"The monitor screen text can be smaller so that more letters can fit"* (2026-10-07): the smallest size at which every fixture monitor read at 1:1 at the default fit on a device-scale-1 screen, measured in headless Chromium at the reference viewport; 7 px did not ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) gives the method and the glyph counts). Built at row 20 (`desk-layout.js`'s `FONT_SCREEN`, the screen role of `TYPE_ROLES`). **What re-derives it:** the same reading on a real laptop, which is row 22's screenshot step | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
 | **The creature's centre** | **a third** of the desk's width from its left edge | **Chosen** — the operator's ruling of 2026-10-06 (*"the character can be moved to 1/3 of the desk width"*); the chair follows it; the 3 px it shares with the monitor's frame is allowed by [§ 10.6](#106-themes--a-floors-design-and-the-house-theme). **What re-derives it:** the operator | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
 | **Side-table seats** | at least **4**, one more per intern past them | **Chosen** — the approved picture's table: an empty table shows its seats, and the table grows only to seat the interns drawn at it, so its width says nothing the row of interns does not. Built at row 20. **What re-derives it:** the operator's reading of the first drawn empty table | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
+| **Facts plate** — padding across / down, corner radius | **4** / **6** px, radius **8** | **Chosen** (card#11468, the operator's *"A is fine"*, 2026-10-07) — 4 across puts the plate's left edge on the art column's (x 216), where § 7.4's hatch ends, and lets the badge row of two (212 px) and the facts cut to 216 px sit inside it; 6 down is the softness the approved shot reads at; the corners make it a sign rather than a box. `desk-layout.js`'s `FACTS_PLATE_PAD`, `FACTS_PLATE_PAD_Y`, `FACTS_PLATE_RX`. **What re-derives it:** the operator's reading of the drawn plate | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
+| **Bubble padding** / **cloud puff radius** | **6** / at most **4** px | **Chosen** (card#11468) — the cloud's puffs are laid round the bubble's rect inset by the puff radius, so they stay inside it; the padding exceeds the radius so no valley reaches the text. The padding was 3 before the cloud. `BUBBLE_PAD`, `CLOUD_PUFF`; the bubble's band is two lines and two paddings, 36 px | [§ 5.1](#51-the-desk) |
+| **Thought trail** — radii, gap | **2, 3, 4** px, **1** px apart | **Chosen** (card#11468, the operator's *"starting with a small bubble and increasing in size"*) — three circles, growing, between the bubble's band (box y 36) and the character's rect (y 58): they need 2·(2+3+4) + 4·1 = 22 px, which is that gap exactly. `TRAIL_RADII`, `TRAIL_GAP` | [§ 5.1](#51-the-desk) |
+| **Thread and walk anchor height** | the desk's mid-height, box **y 158** | **Derived** (card#11468) — the desk's rect, y 128, 60 tall (`deskAnchor()`); below the facts plate's bottom, y 144, which is the side table's top less 2 | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
 | **Window surround margin** | **32** px each side, **16** above, **18** below | **Chosen** (card#11046) — the rect a theme draws a window's frame, curtains, rod and sill in, grown from the glazing; set so the approved picture's curtains and rod fit, and so a surround at the narrowest window still clears the clock face (measured on `scene.js`'s geometry: it starts inside the reserved zone and 24 px short of the face), which [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s band leg holds over every swept width. **What re-derives it:** a theme whose surround does not fit | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
 | **State chip bound** | **5.0** | **Chosen** (card#11218) — `tools/design/state-chip-colours.py`'s `BOUND`, the least CIEDE2000 difference a reviewed pair of chip fills may keep, as the tokens and as drawn; stated here so that a re-derivation over a theme's floor cannot meet it by moving it — nor by shrinking what it is measured over, so the tool's reviewed set (`stale`, `offline`, `disabled`) and its opacity model (dimmed 0.72, dark 0.45, saturate 0.3, the hollow chip at the dimmed opacity) are held with it: [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s theme half holds this cell and the tool's constant equal (row 22). **What re-derives it:** a viewing test on the real floor, which is the tool's own stated re-derivation | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
-| **Badges drawn on the desk** / **badge chip** | **2** / **108** px | **Chosen** — the operator's ruling of 2026-10-02 (Q1 B: "up to two badges, treatment first"); an id fits a chip when its measured width is at most the chip's less its padding, and `SeatFurnitureNeverOverlapsTest` *(e)* holds every chip's text cut with the mark at the suite's measurer when it does not | [§ 5.1](#51-the-desk) |
+| **Badges drawn on the desk** / **badge chip** | **2** / **104** px | **Chosen** — the operator's ruling of 2026-10-02 (Q1 B: "up to two badges, treatment first"); laid on a 108 px pitch. The chip was 108 on a 112 pitch until card#11468, and narrowed by 4 so the row of two and its gap (212 px) lie inside the facts plate's 4 px padding, in the 216 px the facts are cut to (`desk-layout.js`'s `BADGE_W` / `BADGE_PITCH`); an id fits a chip when its measured width is at most the chip's less its padding, and `SeatFurnitureNeverOverlapsTest` *(e)* holds every chip's text cut with the mark at the suite's measurer when it does not | [§ 5.1](#51-the-desk) |
 | **The flag** | **⚠ +N** | **Chosen** — the operator's ruling of 2026-10-02 (Q0 a); N is defined once, in [§ 5.1](#51-the-desk)'s *the glance set*, and re-derived by `TheNewDeskKeepsEveryLeafTest` | [§ 5.1](#51-the-desk) |
 | **Nameplate type size** | **13 px** bold, on a **16 px** line | **Chosen** — the operator's ruling of 2026-10-02 on card#11058 Q2, which accepted the nameplate at 13 px bold as a second measured type role: `server/public/js/floor/desk-layout.js`'s `FONT_NAME` / `LINE_NAME`, the name role of its `TYPE_ROLES`. The nameplate is the one string in it — measured, cut with the mark and centred on its plate in it by `fit()`, and drawn in it by the painter — and every other desk string is the fact role (`FONT`, 10 px). The page's measurer answers per role (`server/public/js/floor/painter.js`'s `measurer()`), and the suite's measurer measures each role at the glyph width its fixture states (`server/tests/Feature/Support/harness-measurer.mjs`). `TheCameraMovesTheViewerAndNeverTheFleetTest` re-derives the CSS size the viewport row below states from `FONT_NAME` ⚠ **Since row 20 a third role joins them**, the screen role at 8 px for the screen's text alone (§ 12's *Screen type size* row, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)), so *every other desk string is the fact role* becomes every string but the nameplate and the screen's text | [§ 5.1](#51-the-desk) |
 | Floor reference viewport | **1,280 × 800 CSS px** | **Chosen** — the window size the camera's fit is measured at, and **no minimum**: the floor is drawn at every viewport size and the viewer pans and zooms it ([§ 4.5](#45-the-viewport-rule-and-the-camera), the operator's ruling of 2026-10-01 on card#7341, which removed the capability floor this row stated until then — below this size the route served the list view instead of the map). The measurement below is what this row is for now: how small the room's text is at fit in a common laptop window, and so how far a viewer zooms in to read it. ⭐ **The input this row was waiting on:** since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice B a desk's slot is the measured furniture box and the room it stands in a measured grid (the two rows above); the desk sprite measured on 2026-09-12 retired with the bridge tileset at row 22. **Since card#11045 (the operator's ruling of 2026-10-01) the shipped default is sized so that this window shows its room legibly at fit:** it lays its slots in **2 rows of 3 furniture boxes: 3 × 440 px = 1,320 px** of desk across, on a grid **1,576 px wide** whose two 96 px side strips hold the scenery — still wider than this viewport, by less than a quarter — so at this viewport the camera's fit zoom is **1,280 ÷ 1,576 ≈ 0.81** over the bare grid, width-bound. ⚠ The bold figures are prose, and every one of them is RE-DERIVED: `tools/design/verify-floor.py` (G8) recomputes the rows, the boxes per row, the product, the grid width and the zoom from `resources/floor/default.tmj`, `resources/floor/furniture-box.js` and this row's own viewport on every run, so this cell can drift from the map only by that gate going red — a claim this cell made before it was true (PR #232 round 1, MAJOR-2), and `tools/design/verify-design-docs.selftest.py` plants each figure that leg re-derives. Until card#11045 the default laid two rows of six on a 3,024 px grid, fitted at 0.42 and drew its text at 4.2 CSS px, which no viewer reads without zooming in; before slice B this cell said 1,608 px, on the sprite pitch and re-derived by no run — card#7341's review N-7. ⭐ **Measured by [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15's camera, on the page's own surface (card#11045 PR-E).** The floor page gives the camera `#floor-drawing`'s own box (card#11045 PR-A; `server/public/js/floor/main.js`'s `surface()`): the window's width by the height the page chrome above and below the drawing leaves — the header, the status strip, the camera row, the hint's row and the reveal of the sections below, with no notice shown. So on the page at this viewport the drawing is **1,280 × 579 CSS px**, which `tools/design/floor-chrome.browser.mjs` measures on the rendered page and reds when it is not this figure. Entered at that surface over the shipped default with `fx-snapshot-4`'s seats, the camera's fit at this viewport is **0.8122** — it frames the scene's whole extent, the band over the grid, width-bound — and at that fit it draws the scene's 10 px text — the facts' text at **8.1 CSS px**: the chip, the facts column and the badges — and the nameplate's 13 px name role at **10.6 CSS px** (the operator's ruling of 2026-10-02 on card#11058 Q2: the nameplate is the one string in a second measured type role, the *Nameplate type size* row above). **Method, re-run on every build:** `Tests\Feature\Floor\TheCameraMovesTheViewerAndNeverTheFleetTest` enters the route with the camera's surface at the page surface this row states (its `camera_page` run, held to the figure above), reads the camera's zoom on the first frame that draws the floor, multiplies it by the font size of each type role `server/public/js/floor/desk-layout.js` declares — `FONT` for the facts, `FONT_NAME` for the nameplate — and reds when any bold figure here is not what the camera measures. ⚠ **The page surface is a browser's to measure, and no browser runs on the build host:** `floor-chrome.browser.mjs` is run by hand, so a change to the page chrome that moves the drawing's height reds there and not in CI, and this row is re-measured when it does. **What it settles:** at fit on a laptop window the room's text is drawn at four-fifths of the 10 px the scene draws it at — legible without zooming in, which is what the six-desk default is for. A wider room, or a smaller window, is read by ZOOMING IN, which [§ 4.5](#45-the-viewport-rule-and-the-camera)'s camera gives at any window size: at zoom 1 the text is at its own 10 px and the view spans the window's own size in scene px. That is why the ruling of 2026-10-01 on card#7341 left no minimum to set: a smaller window shows less of the room at a legible zoom, and the viewer pans to the rest. Row 22's theme draws into the box's own rects (card#11046), so it moved neither the box, the scene's text size nor the fit. **What re-derives it:** the method above, re-run on every build; moving the reference size itself carries no rule and only moves where the measurement is taken | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
@@ -7848,6 +7939,7 @@ review can reverse it deliberately rather than discover it later.
 | 61 | **Decided 2026-10-07 — card#11046, a SEAT RULING recorded on the card (item 36(2)): the windows' glazing follows the approved picture, 208 by 80 px, rather than card#11045's 200 by 124** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), [§ 12](#12-every-number-and-where-it-comes-from)) — the picture the operator approved (*"1. A2+C"*), the operator having been asked and not yet answered; reversing it is one § 12 row and the band's geometry. Built at row 22 | keep the 124 px glazing and draw the sage lower wall under it | the operator chose the A2+C picture, whose short windows sit above a rail and a sage lower wall; 124 px of glass leaves the lower wall a strip and is not the picture approved. The curtains and the sills are what keep it from the jail card#11045's ruling refused | the operator meant card#11045's tall glazing to stand under any design: one constant and one § 12 row |
 | 62 | **Decided 2026-10-07 — card#11046, by this seat: the state chip's quiet colours are measured over every shipped theme's floor surfaces, read from the theme, at [§ 12](#12-every-number-and-where-it-comes-from)'s bound, and are re-derived IN row 22 — the first row that paints the oat floor, so no row lands red** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), [§ 14](#14-open-questions-for-the-review-loop) item 35's closure) | measure the chip over a fixed plank colour as today; or take the chip off the floor's composite by changing how § 7.3 dims a desk | over the house theme's oat floor the sheet's quiet colours fail the tool's own bound in several reviewed pairs (measured 2026-10-07 by re-running `state-chip-colours.py --check` with its plank surfaces swapped for the oat floor's composites, and re-measured by card#11046's review), so the colours must move with the floor; binding the gate to every theme makes a theme that breaks the chip red, which is the right failure for a theme to meet; changing § 7.3's dimming is a § 7 change outside this card and would need the same re-check | a later theme (B) reopens the chip's colours if its floor differs enough; and the colour round may find no colours for the quiet states that clear every surface — surfaced to the operator with the measurement (item 36(4)), never by moving the bound. A scratch spike on 2026-10-07 found a set clearing the bound over the oat floor's computed surfaces (item 36(4)) |
 | 63 | **Decided 2026-10-07 — card#11046, by this seat: the unconfirmed seat has NO chair treatment; it is drawn on the hollow chip and its dimmed desk, as the product does today** ([§ 10.4](#104-the-art-direction-as-a-specification)'s art-contract bullet, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). It reverses the design review's round-1 direction that the painter draw a dashed outline over the chair, which rested on § 10.4's sentence *dashed when unconfirmed* — false of the code, which never drew it | the painter's dashed outline over the theme's chair; a dashed mark of its own beside the plate | from row 20 the chair stands behind the creature, the desk and the desk props, so an outline painted last crosses all three and one painted under them is mostly hidden — a fact whose form needs it to sit under art, which § 10.6's paint-order rule exists to forbid; and the fact is already carried twice, by the chip and the dimming. `desk-layout.js`'s `DRAWN_MEMBERS` is corrected in the same change to map `unconfirmed` to the chip | a viewer who reads an unconfirmed seat by its chair has nothing there; the chip, the dimmed desk and the drill-down say it |
+| 64 | **Decided 2026-10-07 — card#11468, the operator's ruling: the facts column is one stack on one plate beside the side table, sized to its contents ("A is fine"), and the thought bubble is a cloud on a trail of growing circles** ([§ 5.1](#51-the-desk), [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). The seat derived what the ruling leaves open: the stack is bottom-anchored on the side table, which moves down to the desk's own foot line; the plate is opaque and as tall as the rows a desk carries; the badge chip narrows 108 → 104; and the thread and walk anchor moves from the box's mid-height to the desk's, below every plate | **(B)** the operator's other prototype: the same stack with no plate, the facts bare on the floor; **(C)** the plate at a fixed height for the full stack, so the rows never move | (B) was tidier than the floating column but still text over floor, which is the defect the card opened on; (C) keeps § 5.1's earlier *the desk never reflows* but draws a mostly empty plate on the commonest desk — three rows of seven — which the operator chose against by choosing *sized to its contents*. The anchor moved because at the box's mid-height a line between two desks of one row ran under both desks' plates | **A row arriving moves the rows above it by one line**, which is the property *never reflows* bought: a badge appearing nudges the label up. The order never changes and nothing else on the desk moves, so the reading is not lost, only the stillness. **And a line between rows can still pass under a third desk's plate** (§ 10.6, stated there): painting threads over plates is the follow-up if that is read as a loss |
 
 ---
 

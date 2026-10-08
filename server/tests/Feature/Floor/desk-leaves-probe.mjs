@@ -260,6 +260,13 @@ export const EXPECTED = [
     { kind: 'stool', when: (m) => m.side_table.stools.length > 0, value: (m) => m.side_table.stools.slice(0, INTERN_CAP).map((s) => (s.untitled ? 'untitled' : 'titled')), ruling: 'Q1 (B) — the intern sprites; Q3; § 8 — none hidden' },
     { kind: 'stool-more', when: (m) => internsMore(m) > 0, value: (m) => MORE(internsMore(m)), ruling: '§ 8 — the +N more tag past the cap (criterion 4)' },
     { kind: 'quiet-age', when: (m) => m.quiet_age !== null, value: (m) => m.quiet_age, ruling: 'Q5 (b) — the quiet age stays on the desk' },
+    {
+        kind: 'facts-plate',
+        when: (m) => nonRawLabel(m) !== null || nonRawCurrency(m) !== null || (m.lag?.line ?? null) !== null || m.gauge.reported
+            || badgeOrder(m).length > 0 || flagN(m) > 0 || m.quiet_age !== null,
+        value: () => 'present',
+        ruling: 'card#11468 — the operator\'s "A is fine" (2026-10-07): the facts column on one plate, drawn when the desk carries a row of it',
+    },
     { kind: 'bubble', when: (m) => m.character && m.bubble !== null, value: (m) => m.bubble.text, ruling: 'Q0 (a) — the task bubble; § 5.1 rules 1–6' },
     {
         kind: 'bubble.second',
@@ -297,6 +304,7 @@ function adapt(desk) {
                 break;
             case 'desk-sprite':
             case 'plate':
+            case 'facts-plate':
             case 'lag-overlay':
             case 'placeholder':
                 add(e.kind, 'present');
