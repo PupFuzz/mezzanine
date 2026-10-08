@@ -4239,8 +4239,9 @@ racing the flusher's `inferred_silence` close against a `Stop` hook measured the
 80 trials. So every writer of the events tree takes `write.lock` in the spool directory, reads the
 clock its events carry, appends them, and then removes the lock:
 
-- **A hook or a statusLine render takes it at its first emit** and holds it to the end of its
-  invocation. Every event of the invocation carries the clock read when it took the lock. Its
+- **A hook or a statusLine render takes it at its first emit** and holds it until its events and
+  index records are written, before the exit work: the spool-bound check, the flusher respawn and the
+  counter line. Every event of the invocation carries the clock read when it took the lock. Its
   decision clock — the one its durations, ids and ceilings are computed with — is read after stdin,
   before the lock, and is earlier by the work in between. The lock is not taken before the index
   fold because the fold and the payload work are most of an invocation's time. A render that emits
@@ -5631,7 +5632,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Wrapped statusLine timeout | 1 s | Chosen — a status line re-renders on every trigger; slower is already broken. Also sits below the harness's own cancellation, which is what allows the failure to be counted | [§ 6.11](#611-contextsample) |
 | Context-sample staleness bound | 300 s | **Chosen** — a tolerance, not a freshness guarantee: statusLine is event-driven with no timer, so nothing guarantees a fresh sample and the earlier "5× the 60 s cadence" derivation was arithmetic over a rate that does not exist. Past 300 s `compaction.start` reports `null` rather than a stale percentage | [§ 6.9](#69-compactionstart) |
 | Bucket-deletion grace | 5 s | Derived — 20× P-5's 250 ms hook budget; covers a writer descheduled between deriving its bucket name and its `writeSync`, which is what the hour-roll straddle actually is | [§ 11.1](#111-layout) |
-| Seat write lock wait | 100 ms | Derived — 40 % of P-5's 250 ms hook budget, so a hook that waits it out still has most of the budget for everything else. A hook holds the lock only from its first emit to its exit: measured on the card#11563 build at a host load average of ~21, the hook appends ran 2.0 ms (median) of a 20.9 ms invocation section | [§ 11.2](#112-spool-line-format) |
+| Seat write lock wait | 100 ms | Derived — 40 % of P-5's 250 ms hook budget, so a hook that waits it out still has most of the budget for everything else. A hook holds the lock only from its first emit to its last event and index record: measured on the card#11563 build at a host load average of ~21, the hook appends ran 2.0 ms (median) of a 20.9 ms invocation section | [§ 11.2](#112-spool-line-format) |
 | Seat write lock staleness | 1 s | Derived — 4× P-5's 250 ms, so a lock that old is not a live hook's. A killed holder is detected sooner, by its pid | [§ 11.2](#112-spool-line-format) |
 | Open-session index | 16 open sessions | Chosen — far above the two or three terminals a real seat runs, so reaching it is itself the signal; **enforced** by eviction-and-reap, which is what makes `open_sessions`' 0…16 bound real rather than asserted | [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open) |
 | Harness build the MEASURED facts are pinned to | Claude Code **2.1.247** | **Measured** — 63 payloads across 11 hook events captured 2026-08-27, of which [§ 17](#17-appendix--the-captured-harness-payloads) reproduces the **18** distinct shapes every MEASURED row is read from. The 18 is re-derived from the appendix by the verifier; the 63 is capture-run provenance and is not checkable from this repo ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). Every MEASURED row is versioned to the build; [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) obligation 2 owns **when a re-capture is owed and on which axes** (amended by card #7337, gained its MODE axis and its measured cost at the 2.1.247 discharge, card #7930) and is not restated here | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |

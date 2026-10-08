@@ -1644,8 +1644,8 @@ p_exit = plant(("  } finally {\n    process.exit(0);\n  }", "  } finally {\n    
 r_red = subprocess.run(["node", str(p_exit), "hook", "PreToolUse"], input="}{not json",
                        capture_output=True, text=True, env=s_es.env(), cwd=str(HERE))
 eq("RED: a reporter that propagates its failure exits non-zero", True, r_red.returncode != 0)
-p_net = plant(("function hookMain(hookName) {\n  const atMs = now();",
-               "function hookMain(hookName) {\n  const atMs = now();\n  try { require('child_process').execSync('sleep 2'); } catch (e) {}"))
+p_net = plant(("function hookMain(hookName) {\n",
+               "function hookMain(hookName) {\n  try { require('child_process').execSync('sleep 2'); } catch (e) {}\n"))
 t0 = time.perf_counter()
 subprocess.run(["node", str(p_net), "hook", "PreToolUse"], input=json.dumps(pre()),
                capture_output=True, text=True, env=s3.env(), cwd=str(HERE))
@@ -1867,9 +1867,9 @@ def sweep(seat_obj: Seat, extra_streams: list[str]) -> list[str]:
 control_seat = seat("secrets-control")
 p_leak = plant(("      if (config && config.spool_dir) logLine(config.spool_dir, cmd || 'unknown', `crashed: ${e && e.stack}`);",
                 "      if (config && config.spool_dir) logLine(config.spool_dir, cmd || 'unknown', `crashed: ${e && e.stack}`);"),
-               ("function hookMain(hookName) {\n  const atMs = now();",
-                "function hookMain(hookName) {\n  const atMs = now();\n  { const c = loadConfig(configPath()).config; "
-                "if (c) { try { fs.appendFileSync(path.join(c.spool_dir, 'log', 'leak.log'), 'token=' + c.token + '\\n'); } catch (e) {} } }"))
+               ("function hookMain(hookName) {\n",
+                "function hookMain(hookName) {\n  { const c = loadConfig(configPath()).config; "
+                "if (c) { try { fs.appendFileSync(path.join(c.spool_dir, 'log', 'leak.log'), 'token=' + c.token + '\\n'); } catch (e) {} } }\n"))
 (control_seat.spool / "log").mkdir(parents=True, exist_ok=True)
 r_leak = hook(control_seat, "PreToolUse", pre(), reporter=p_leak)
 control_hits = sweep(control_seat, [r_leak.stdout, r_leak.stderr])
@@ -3268,12 +3268,13 @@ redgreen("the OS username never reaches the wire via project_label (§ 1 non-goa
 
 
 print("\n== 17. THE BUCKET IS DERIVED AT THE WRITE, AND § 6.1's PATTERN ADMITS ITS OWN EXAMPLE ==")
-# § 11.1: a hook entering at 13:59:59.900 must not write into bucket 13 after the hour rolled —
-# the flusher's next pass is <= 10 s away and would read to EOF and unlink. The entry timestamp
-# is moved back an hour, which is that boundary made deterministic; the event's `event_time`
-# must follow the entry clock while the FILE it lands in must follow the write clock.
-ENTRY_BACK_AN_HOUR = (r"function hookMain\(hookName\) \{\n  const atMs = now\(\);",
-                      "function hookMain(hookName) {\n  const atMs = now() - 3600000;")
+# § 11.1: a hook stamping its events at 13:59:59.900 must not write into bucket 13 after the hour
+# rolled — the flusher's next pass is <= 10 s away and would read to EOF and unlink. The events'
+# stamp (§ 11.2: read when the section takes the seat write lock) is moved back an hour, which is
+# that boundary made deterministic; the event's `event_time` must follow the stamp while the FILE
+# it lands in must follow the write clock.
+ENTRY_BACK_AN_HOUR = (r"held = acquireWriteLock\(spool\); stamp = now\(\);",
+                      "held = acquireWriteLock(spool); stamp = now() - 3600000;")
 
 
 def bucket_of(rfc: str) -> str:
@@ -3301,15 +3302,15 @@ s16 = seat("bucket-at-write")
 hook(s16, "PreToolUse", pre(), reporter=plant_src(ENTRY_BACK_AN_HOUR))
 entry_b, written_b = emitted_bucket(s16)
 eq("an event emitted after the hour rolled lands in the bucket the WRITE clock names, one hour "
-   "on from the timestamp captured at process entry", [bucket_shift(entry_b, 1)], written_b)
-eq("  … while event_time still carries the entry clock, so placement and semantics are not "
+   "on from the event's stamp", [bucket_shift(entry_b, 1)], written_b)
+eq("  … while event_time still carries the stamp, so placement and semantics are not "
    "conflated", True, entry_b == bucket_shift(written_b[0], -1))
-# RED: the pre-fix derivation — the bucket taken from the entry timestamp at both writers.
+# RED: the pre-fix derivation — the bucket taken from the event's stamp at both writers.
 s16r = seat("bucket-at-entry")
 hook(s16r, "PreToolUse", pre(),
      reporter=plant_src(ENTRY_BACK_AN_HOUR, (r"utcBucket\(now\(\)\)", "utcBucket(t)")))
 entry_r, written_r = emitted_bucket(s16r)
-eq("RED: derived at process entry it lands in the PREVIOUS hour's bucket — behind a cursor the "
+eq("RED: derived from the stamp it lands in the PREVIOUS hour's bucket — behind a cursor the "
    "flusher may already have read to EOF and unlinked", [entry_r], written_r)
 
 # § 6.1's `harness_label` pattern has to accept § 6.1's own mandated value. The doc and the
