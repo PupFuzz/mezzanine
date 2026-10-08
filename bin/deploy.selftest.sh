@@ -3051,6 +3051,89 @@ exits "post-checkout entry point by hand: exit 1" 1
 has "post-checkout entry point: says why" "not an operator entry point" "$OUT"
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
+section "card#9629 — refuse's promise is never printed once the window may be open"
+# `refuse` ends with "Nothing was changed. The previous release is still serving." The window is open
+# from `artisan down` on, and the re-exec that carries it into the deployed release resolves
+# MEZZ_DEPLOY_ROOT in the PROLOGUE — before the arguments are parsed, so before the script knew its
+# phase — and refused, promise and exit 1, with the app down. The phase is now read before any `refuse`
+# the re-exec can reach, and `refuse` itself takes the in-window path once it says the window may be
+# open, so the property belongs to the primitive rather than to each call site.
+# ⚠ HOW "STOPPED RESOLVING" IS PRODUCED: the SERVING release (v1) hands the re-exec a root under a
+# directory that does not exist. A root really vanishing between `artisan down` and the re-exec cannot be
+# timed from outside; what the deployed release's prologue receives is the same either way — a canonical
+# MEZZ_DEPLOY_ROOT that `readlink -f` cannot resolve — and v2 is this tree's deploy.sh, unmutated.
+GONE_ROOT_SUFFIX=/gone/root
+hand_over_a_gone_root() {
+  # shellcheck disable=SC2016,SC2317  # injected source; invoked by mkfix, by name
+  sed -i 's|export MEZZ_DEPLOY_IN_WINDOW=1 MEZZ_DEPLOY_ROOT="\$DEPLOY_ROOT"|export MEZZ_DEPLOY_IN_WINDOW=1 MEZZ_DEPLOY_ROOT="$DEPLOY_ROOT'"$GONE_ROOT_SUFFIX"'"|' "$1/bin/deploy.sh"
+}
+mkfix root_gone_in_window release_with_the_check hand_over_a_gone_root
+eq "gone-root mutant: the serving release really hands the re-exec a root that does not resolve" 1 \
+   "$(gitc "$SRC" show "$V1:bin/deploy.sh" | grep -c "MEZZ_DEPLOY_ROOT=\"\$DEPLOY_ROOT$GONE_ROOT_SUFFIX\"")"
+eq "gone-root mutant: the deployed release is this tree's deploy.sh" "$(git hash-object "$DEPLOY")" \
+   "$(gitc "$SRC" rev-parse "$V2:bin/deploy.sh")"
+run
+exits    "a root that stops resolving INSIDE the window: exit 2 (not 1)" 2
+has   "a root that stops resolving in the window: the banner"   "THE APP IS DOWN AND STAYS DOWN" "$OUT"
+has   "a root that stops resolving in the window: says why"     "does not resolve to a path" "$OUT"
+has   "a root that stops resolving in the window: names the hand-off as the step" \
+      "step   : the re-exec into the deployed release's bin/deploy.sh" "$OUT"
+hasnt "a root that stops resolving in the window: never promises nothing was changed" \
+      "Nothing was changed. The previous release is still serving." "$OUT"
+hasnt "a root that stops resolving in the window: never the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
+eq    "a root that stops resolving in the window: the marker the window opened with is on disk" "present" \
+      "$([ -e "$ROOT/.deploy-failed" ] && echo present || echo absent)"
+# The append to that marker cannot land — its path is the root that no longer resolves — and that append
+# failing under `set -e` is what used to end the run with bash's 1 and no banner. The banner says so instead.
+has   "a root that stops resolving in the window: says the marker could not be written, rather than dying on it" \
+      "$ROOT$GONE_ROOT_SUFFIX/.deploy-failed — ⚠ NOT WRITTEN" "$OUT"
+logged   "a root that stops resolving in the window: the window really was open" "artisan down"
+unlogged "a root that stops resolving in the window: the app is NEVER brought up" "artisan up"
+no_shell_death "a root that stops resolving in the window" "$OUT"
+
+# THE CONTROLS, one variable each: the in-window path is taken because BOTH halves of the re-exec are
+# there — the window flag phase B exports and the `--internal-post-checkout` argument — and on neither
+# alone. Each of these is a run the window never opened for, so each is a refusal with its promise.
+# run_root <root> <args…> — `run`, with MEZZ_DEPLOY_ROOT set to <root> rather than the fixture's.
+run_root() { local r="$1"; shift; : > "$CALL_LOG"; OUT="$(MEZZ_DEPLOY_ROOT="$r" "$ROOT/bin/deploy.sh" "$@" 2>&1)"; RC=$?; }
+mkfix root_gone_phase_a
+run_root "$ROOT$GONE_ROOT_SUFFIX" --dry-run
+exits  "phase A, a root that does not resolve: exit 1 (refused, nothing touched)" 1
+has "phase A, a root that does not resolve: the ⛔ REFUSED banner" \
+    "⛔ REFUSED — MEZZ_DEPLOY_ROOT '$ROOT$GONE_ROOT_SUFFIX' does not resolve to a path" "$OUT"
+has "phase A, a root that does not resolve: the phase-A promise" \
+    "Nothing was changed. The previous release is still serving." "$OUT"
+hasnt "phase A, a root that does not resolve: no in-window banner" "THE APP IS DOWN" "$OUT"
+export MEZZ_DEPLOY_IN_WINDOW=1
+run_root "$ROOT$GONE_ROOT_SUFFIX" --dry-run
+exits  "the window flag alone (a shell that exported it), no re-exec argument: exit 1" 1
+has "the window flag alone: the phase-A promise" \
+    "Nothing was changed. The previous release is still serving." "$OUT"
+unset MEZZ_DEPLOY_IN_WINDOW
+run_root "$ROOT$GONE_ROOT_SUFFIX" --internal-post-checkout "$V2"
+exits  "the re-exec argument alone (by hand, no window flag): exit 1" 1
+has "the re-exec argument alone: the phase-A promise" \
+    "Nothing was changed. The previous release is still serving." "$OUT"
+eq  "none of the three controls wrote a marker" "absent" \
+    "$([ -e "$ROOT/.deploy-failed" ] && echo present || echo absent)"
+
+# ⛔ THE SECOND `refuse` THE RE-EXEC CAN REACH, which card#9629's own audit did not list:
+# phase_b_post_checkout's "no failure marker present". With the window flag AND the argument both there,
+# that is phase B as the window hands over to it, and whether the window is open is exactly what a
+# missing marker cannot establish — so the promise is not made there either.
+mkfix no_marker_in_window
+export MEZZ_DEPLOY_IN_WINDOW=1; run --internal-post-checkout "$V2"
+exits    "the re-exec with no marker: exit 2 (not 1)" 2
+has   "the re-exec with no marker: the banner"   "THE APP IS DOWN AND STAYS DOWN" "$OUT"
+has   "the re-exec with no marker: says why"     "no failure marker present" "$OUT"
+hasnt "the re-exec with no marker: never promises nothing was changed" \
+      "Nothing was changed. The previous release is still serving." "$OUT"
+eq    "the re-exec with no marker: a marker is on disk now, so the next run refuses until it is read" "present" \
+      "$([ -e "$ROOT/.deploy-failed" ] && echo present || echo absent)"
+unlogged "the re-exec with no marker: the app is NEVER brought up" "artisan up"
+unset MEZZ_DEPLOY_IN_WINDOW
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
 section "card#9616 — the host's bash, git and npm, each refused BY NAME before anything is touched"
 # Until this card A1 asked only whether each tool was PRESENT (`command -v`), for all twelve. PHP was
 # the exception and still is: A6 has read the floor out of the release since card#9203. So a host whose
