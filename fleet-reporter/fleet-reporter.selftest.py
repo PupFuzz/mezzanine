@@ -4168,6 +4168,99 @@ redgreen("the console URL is read from the transcript's tail, pattern-checked, a
          f"{cu_huge_r['url']!r} in {cu_huge_r['ms']:.0f} ms; none/paths -> None")
 
 
+print("\n== 19d. AN UNSET harness_label IS A CONFIG GAP, NOT A MOVED HARNESS PAYLOAD (D1 § 6.1, § 9.3, card#11330) ==")
+# INSTALL-LINUX.md Step 3 leaves `harness_label` unset on purpose, so this is the state of every seat
+# installed by the runbook. Builds before card#11330 counted it `payload_key_missing.harness_label`,
+# and § 9.3 maps that family to `harness_contract_moved`: every correct install was badged "the
+# harness payload moved under this reporter". The case is driven end to end, hook -> sink -> flusher
+# -> heartbeat, because the badge is what the operator reads and the counter name alone is not.
+OLD_HL_COUNT = (r"count\('harness_label_unset'\)", "count('payload_key_missing.harness_label')")
+NO_RENAME = (r"\n  renameCounters\(state\.counters\);\n\}", "\n}")
+
+
+def hl_heartbeat(s: Seat) -> dict:
+    return [e for e in s.events() if e["kind"] == "reporter.heartbeat"][-1]["data"]
+
+
+def hl_start(s: Seat, reporter: Path = REPORTER) -> None:
+    hook(s, "SessionStart", {"session_id": SID, "hook_event_name": "SessionStart",
+                             "source": "startup", "cwd": "/home/agent/mezzanine"}, reporter=reporter)
+
+
+s19d = seat("harness-label-unset")
+s19d.cfg.pop("harness_label")
+s19d.write_cfg()
+hl_start(s19d)
+eq("an unset harness_label sends the field null", None,
+   [e for e in s19d.events() if e["kind"] == "session.start"][0]["data"]["harness_label"])
+eq("  … counts the gap as harness_label_unset", 1, s19d.counters().get("harness_label_unset"))
+eq("  … and nothing under payload_key_missing.*, whose subject is a harness payload key", [],
+   [k for k in s19d.counters() if k.startswith("payload_key_missing.")])
+flush(s19d)
+hb19d = hl_heartbeat(s19d)
+eq("  … so the heartbeat carries the count and raises no harness_contract_moved",
+   (1, False), (hb19d["counters"].get("harness_label_unset"), "harness_contract_moved" in hb19d["degraded"]))
+
+# CONTROL: the badge is still reachable from the heartbeat, so its absence above is a measurement.
+# A real harness payload key missing raises it, and the new counter alone does not.
+mod19d = subprocess.run(
+    ["node", "-e",
+     "const m=require(process.argv[1]);"
+     "console.log(JSON.stringify([m.buildDegraded({'payload_key_missing.tool_name':1}),"
+     "m.buildDegraded({'harness_label_unset':5})]));",
+     str(REPORTER)], capture_output=True, text=True, cwd=str(HERE))
+deg_payload, deg_unset = json.loads(mod19d.stdout)
+eq("CONTROL: a missing harness payload key still raises harness_contract_moved", True,
+   "harness_contract_moved" in deg_payload)
+eq("  … and harness_label_unset alone raises no member at all", [], deg_unset)
+
+p19d_old = plant_src(OLD_HL_COUNT, NO_RENAME)       # the build before card#11330: old name, no rename
+s19d_r = seat("harness-label-unset-red")
+s19d_r.cfg.pop("harness_label")
+s19d_r.write_cfg()
+hl_start(s19d_r, reporter=p19d_old)
+flush(s19d_r, reporter=p19d_old)
+eq("RED: the build before card#11330 badges this correct install harness_contract_moved", True,
+   "harness_contract_moved" in hl_heartbeat(s19d_r)["degraded"])
+
+# A SEAT UPGRADED FROM THAT BUILD. Its flusher kept the old name in state.json, and an old hook may
+# have left a delta in a sink bucket the new flusher has not folded yet. Both must arrive renamed,
+# or replacing the artifact leaves the false badge on exactly the seats that reported it.
+s19m = seat("harness-label-upgraded")
+s19m.cfg.pop("harness_label")
+s19m.write_cfg()
+hl_start(s19m, reporter=p19d_old)
+flush(s19m, reporter=p19d_old)
+eq("the old build saved payload_key_missing.harness_label in state.json", 1,
+   s19m.state().get("counters", {}).get("payload_key_missing.harness_label"))
+hl_start(s19m, reporter=p19d_old)          # a sink delta under the old name, not folded yet
+flush(s19m)
+hb19m = hl_heartbeat(s19m)
+eq("after the upgrade both the saved total and the unfolded delta arrive as harness_label_unset",
+   (2, None), (hb19m["counters"].get("harness_label_unset"),
+               hb19m["counters"].get("payload_key_missing.harness_label")))
+eq("  … the heartbeat raises no harness_contract_moved", False, "harness_contract_moved" in hb19m["degraded"])
+eq("  … and state.json keeps only the new name", (2, None),
+   (s19m.state()["counters"].get("harness_label_unset"),
+    s19m.state()["counters"].get("payload_key_missing.harness_label")))
+
+p19m_norename = plant_src(NO_RENAME)
+s19m_r = seat("harness-label-upgraded-red")
+s19m_r.cfg.pop("harness_label")
+s19m_r.write_cfg()
+hl_start(s19m_r, reporter=p19d_old)
+flush(s19m_r, reporter=p19d_old)
+flush(s19m_r, reporter=p19m_norename)
+eq("RED: without the rename an upgraded seat keeps the false harness_contract_moved", True,
+   "harness_contract_moved" in hl_heartbeat(s19m_r)["degraded"])
+redgreen("an unset harness_label raises no harness_contract_moved, on a new seat or an upgraded one (card#11330)",
+         "counted as payload_key_missing.harness_label -> harness_contract_moved on every seat installed "
+         "by the runbook; without the rename an upgraded seat keeps the badge from its saved total",
+         "counted as harness_label_unset, which raises no member; an upgraded seat's saved total and "
+         "unfolded old-name delta arrive as harness_label_unset (2) and the badge clears; control: a "
+         "missing harness payload key still raises harness_contract_moved")
+
+
 print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")
 # WHY THIS IS A CHECK AND NOT JUST A TEARDOWN. Every hook that finds a stale lock forks a real
 # detached flusher (§ 2.3, P-7) — correct reporter behaviour, and nobody's bug in the product —
