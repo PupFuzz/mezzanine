@@ -41,14 +41,23 @@ final class Counters
 
     /**
      * Increment a per-seat counter. `$seatRef` MUST come from a token binding.
+     *
+     * `$at` is when the evidence for the increment was RECEIVED, on the server clock, and it moves
+     * the row's `last_increased_at` — the time `Badges::serverFor()` windows a counter-derived badge
+     * against (D2 § 7.2, card#9491). It defaults to now, which is the receipt for a counter the
+     * ingest or the sweeper writes. The fold passes the event's own `received_at`, because the fold
+     * runs after the receipt and a rebuild replays it days later: stamped with `now()`, a rebuild
+     * would re-date every historical `seq_gap` to the rebuild and re-raise a badge the live fold
+     * had already cleared, which is the rebuild disagreeing with the fold (AT-D2-10). The column
+     * only ever moves forward, so a replayed receipt older than the stored one changes nothing.
      */
-    public static function seat(int $seatRef, string $name, int $by = 1): void
+    public static function seat(int $seatRef, string $name, int $by = 1, ?string $at = null): void
     {
         if ($by === 0) {
             return;
         }
 
-        self::upsert('seat_counters', ['seat_ref' => $seatRef, 'name' => $name], $by);
+        self::upsert('seat_counters', ['seat_ref' => $seatRef, 'name' => $name], $by, $at ?? now()->format('Y-m-d H:i:s.v'));
     }
 
     /**
@@ -67,7 +76,7 @@ final class Counters
             return;
         }
 
-        self::upsert('global_counters', ['name' => $name], $by);
+        self::upsert('global_counters', ['name' => $name], $by, null);
     }
 
     /** D1 § 12.7's `batches_failed.<detail>`, completed by a `ServerFault`'s value. */
@@ -126,35 +135,56 @@ final class Counters
      * rather than expressed through `VALUES(value)` (MySQL) or `excluded.value` (SQLite) so that
      * one statement shape serves the § 6.1 version floor and everything above it.
      *
+     * `$increasedAt` is `seat_counters.last_increased_at`, and `null` for `global_counters`, which
+     * has no such column because no badge is windowed on a fleet counter. It is the LATER of the
+     * stored value and the one bound, in the same statement, so two writers racing on one row
+     * cannot move it backwards. A stored NULL (a row an older build inserted after a rollback, see
+     * the column's migration) takes the bound value.
+     *
      * @param  array<string, mixed>  $key
      */
-    private static function upsert(string $table, array $key, int $by): void
+    private static function upsert(string $table, array $key, int $by, ?string $increasedAt): void
     {
         $now = now()->format('Y-m-d H:i:s.v');
         $columns = array_keys($key) + [];
         $conflict = implode(', ', $columns);
+        $stamped = $increasedAt !== null;
 
         $sql = sprintf(
-            'INSERT INTO %s (%s, value, updated_at) VALUES (%s, ?, ?)',
+            'INSERT INTO %s (%s, value, updated_at%s) VALUES (%s, ?, ?%s)',
             $table,
             $conflict,
+            $stamped ? ', last_increased_at' : '',
             implode(', ', array_fill(0, count($columns), '?')),
+            $stamped ? ', ?' : '',
         );
 
         $bindings = array_values($key);
         $bindings[] = $by;
         $bindings[] = $now;
 
+        if ($stamped) {
+            $bindings[] = $increasedAt;
+        }
+
         $driver = DB::connection()->getDriverName();
+        $set = 'value = value + ?, updated_at = ?'.($stamped
+            ? ', last_increased_at = CASE WHEN last_increased_at IS NULL OR last_increased_at < ? THEN ? ELSE last_increased_at END'
+            : '');
 
         if ($driver === 'mysql' || $driver === 'mariadb') {
-            $sql .= ' ON DUPLICATE KEY UPDATE value = value + ?, updated_at = ?';
+            $sql .= ' ON DUPLICATE KEY UPDATE '.$set;
         } else {
-            $sql .= sprintf(' ON CONFLICT (%s) DO UPDATE SET value = value + ?, updated_at = ?', $conflict);
+            $sql .= sprintf(' ON CONFLICT (%s) DO UPDATE SET %s', $conflict, $set);
         }
 
         $bindings[] = $by;
         $bindings[] = $now;
+
+        if ($stamped) {
+            $bindings[] = $increasedAt;
+            $bindings[] = $increasedAt;
+        }
 
         DB::statement($sql, $bindings);
     }

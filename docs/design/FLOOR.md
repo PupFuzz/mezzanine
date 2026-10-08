@@ -1410,7 +1410,7 @@ stamp instead, so a reader can always see which moment those numbers describe.
 | **transport** — **`fetch-fresh`**, one *as of* stamp | both ages, `no_data_since`, `clock_skew_ms`, `spool_lag_events`, `oldest_unsent_age_s`, `seq_epoch`, `last_seq` | `delivery.*` |
 | **derivation** — **`fetch-fresh`**, one *as of* stamp | `computed_at`, `fold_lag_ms`, `cursor_event_id`, and the *this state is N behind* line on the terms [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) states — this cell names the block's contents and leaves the render rule where it is owned | `derivation.*` |
 | **reporter** — **`fetch-fresh`**, one *as of* stamp | `version`, `platform`, `selftest_failed`, `enabled` patch live; `uptime_s` is **`fetch-fresh`** and is **re-sent under the shallow merge** whenever one of the first three moves, so the block's stamp advances with it ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule) rather than dating a fetch the value has already outlived | `reporter.*`, `enabled` |
-| **badges** | every member of `badges[]`, each row opening with the badge's id as text, then its meaning and its counter value from `detail`, *since reporter start* framing for D1's array, and **one cluster-scoped** *oldest badge since HH:MM* line — `badges_since` is the minimum over the present members and is never stamped on an individual badge ([§ 7.2](#72-badges-every-member-has-a-render)) | `badges[]`, `badges_since`, `detail` |
+| **badges** | every member of `badges[]`, each row opening with the badge's id as text, then its meaning and its counter value from `detail`, the 24 h window for a counter-derived badge (*its counter rose within the last 24 h*), and **one cluster-scoped** *oldest badge since HH:MM* line — `badges_since` is the minimum over the present members and is never stamped on an individual badge ([§ 7.2](#72-badges-every-member-has-a-render)) | `badges[]`, `badges_since`, `detail` |
 | **session** | `session_id`, start (seat clock), `source`, `project_label`, `harness_label`, `model_label` | `session.*`, `model_label` |
 | **console** — an operator's only | ***Open console on claude.ai***, a link to the seat's current session console that opens in a new tab (`target="_blank" rel="noopener noreferrer"`); **no line at all** when the response carries no `console_url` or carries it `null` ([§ 5.2](#52-the-drill-down)) | `detail`'s `console_url` |
 | **raw** | `state_version` and the applied `seq_epoch` / `last_seq`, so a rendered state can be correlated with the wire. `state_version` and `seq_epoch` are version-bearing; `last_seq` is one of the ten and is **`fetch-fresh`** under the transport block's stamp | `state_version`, `delivery.*` |
@@ -2223,7 +2223,7 @@ Everything in [§ 5.1](#51-the-desk), at full fidelity, plus:
 | wire provenance | `delivery.seq_epoch`, `delivery.last_seq`, `state_version`, `derivation.cursor_event_id`, `derivation.computed_at` | `"01K3T0000A5N7M2X9V4B6D0FGH"`, `48211`, `48219`, `9912837` | the correlation D2 provides for exactly this panel ([D2 § 8.5](FLEET-STATE.md#85-gaps-reconnect-and-why-state_version-is-not-seq)). `state_version` and `seq_epoch` are version-bearing and patch live; `last_seq`, `cursor_event_id` and `computed_at` are of the ten and are **`fetch-fresh`**, which is why the panel stamps the block rather than the line |
 | session block | `session.session_id`, `session.started_at`, `session.source`, `session.project_label`, `session.harness_label` | `"a7f2c918-…"`, `"clear"`, `"mezzanine"`, `"claude-code/2.1.240"` | `session` null ⇒ *no session open*, which is a fact, not a blank |
 | reporter block | `reporter.version`, `reporter.platform`, `reporter.uptime_s`, `reporter.selftest_failed` | `"0.1.0"`, `"linux"`, `401150`, `[]` | a non-empty `selftest_failed` is rendered as a list of named checks, up to its bound of 8 ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)). `uptime_s` is of the ten and is **`fetch-fresh`** — it is the flusher-restart discriminator, so a stale copy would mis-date a restart; `version`, `platform` and `selftest_failed` are version-bearing and patch live. **They share a nested object, so the shallow merge re-sends `uptime_s` with any of the three** ([D2 § 8.3.1](FLEET-STATE.md#831-worked-delta)): the value moves, and the block's stamp advances to that delta's `server_time` under [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule. It is still never *ticked* — a `fetch-fresh` value moves when an object carrying it arrives, and at no other moment |
-| counters | `detail`'s `seat_counters` rows and the reporter's `heartbeat_counters` / `heartbeat_predicates` snapshots | — | **`fetch-fresh`** by construction — `detail` exists only on the fetch ([D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)) and no delta carries it. The reporter's are labelled **since reporter start** with `reporter.uptime_s` beside them, per [D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled) — never as *now* |
+| counters | `detail`'s `seat_counters` rows and the reporter's `heartbeat_counters` / `heartbeat_predicates` snapshots | — | **`fetch-fresh`** by construction — `detail` exists only on the fetch ([D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)) and no delta carries it. The reporter's are labelled as the seat's **running totals**, which persist across flusher restarts ([D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled)) — never as *now* |
 | the intern list, uncapped | `detail`'s full open-call list | — | [§ 8](#8-interns--subagent-rendering-and-the-cap). **The selection is stated rather than left to the reader:** the intern list is the subset of that list whose calls are **dispatches** — [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `calls.is_dispatch`, which [D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end)'s worked trace sets on the `Agent` call at E1 and reads there as *`subagents` gains a title-less entry*. That is the same population as the seat object's `subagents[]` without the cap, which is what [§ 8](#8-interns--subagent-rendering-and-the-cap) means by *two artifacts, two sources*, and it is the only selection under which § 8's own label rows have a `title` and a `subagent_type` to draw. `agent_scope` and `parent_call_id` attribute an intern's OWN calls back to it — the intern join [D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) stores them for — so selecting on them lists the calls the interns are making rather than the interns. ⭐ Operator ruling, 2026-09-25 (card#7342): this selection replaces an earlier one on `agent_scope == "subagent"` / a non-null `parent_call_id`, which selects the disjoint set — a dispatch is the MAIN agent's call, so it carries `agent_scope: "main"` and no parent. [§ 14](#14-open-questions-for-the-review-loop) item 1 names this as the reading it took, because *"the open call list in full"* could equally have meant every open call, and the panel that listed every one would call a seat's own `Bash` call an intern |
 | the recent-activity timeline | the timeline endpoint | — | see the rule below |
 | the console link | `detail`'s `console_url` | `"https://claude.ai/code/session_01AbCdEfGhIjKlMnOpQrStUv"` | card#9416. ***Open console on claude.ai***, opening in a new tab with `rel="noopener noreferrer"`. **Rendered for an operator only, and the gate is the server's, not this client's:** [D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response) puts the member on an operator's response alone, so an observer's panel has nothing to draw and draws nothing. Absent or `null` ⇒ no line — not *no console*: a `null` says the session reported no link, and an observer must not learn even that much. **`fetch-fresh`**: `detail` exists only on the fetch, so the link is as of the panel's open and a delta never moves it. ⚠ Whether the link opens a LIVE console depends on the session's Remote Control state, which nothing on the wire reports; a link to an ended session opens claude.ai's own page for it |
@@ -2430,7 +2430,7 @@ it.
 | `protocol_agent_role` | **nothing is drawn** — no role label, no marker, and never `protocol_agent_name` or `seat_id` standing in for it: the role is a label the reporter relays from the coordination roster ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), and `null` equals no role at all. Null is *no heartbeat yet*, *the last heartbeat omitted it* — a reporter that predates card#11144 — or *the reporter relayed none*: a check other than `checked`, a roster entry with no slug-shaped `role`, or a declared name two roster entries share. None of those is read as a role |
 | `reporter.version` | *not reported*. Never the last version the client held — the flusher may have restarted into a different one, which is the fact `uptime_s` exists to discriminate |
 | `reporter.platform` | *not reported*. Never inferred from anything else on the object |
-| `reporter.uptime_s` | *not reported*, never 0 — **`fetch-fresh`**, under the reporter block's own stamp. The ***since reporter start*** framing beside D1's twelve badges ([§ 7.2](#72-badges-every-member-has-a-render), [D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled)) then reads *since reporter start — uptime not reported*, because the counters are still monotonic-since-start and only the **length** of that window is unknown |
+| `reporter.uptime_s` | *not reported*, never 0 — **`fetch-fresh`**, under the reporter block's own stamp. No badge reads it: a badge's window is 24 h from its counter's last rise, not the reporter's uptime ([§ 7.2](#72-badges-every-member-has-a-render), card#9491) |
 | `retired` | nothing — and since card#9078 this is the **only** value a rendered seat's object carries, because a retired seat has no desk ([§ 3.5](#35-retirement-and-the-only-removal)). There is no retirement plate and no retirement block to suppress; a non-null `retired` reaching a held object at all means the announcement's delta is in hand, whose render is the removal |
 
 **Two of these are the same fact wearing two markers, and that is not a contradiction.**
@@ -3490,12 +3490,14 @@ and the desk list prints every id.
 | `fold_lag` | D2 | the badge row, **and the desk is treated as not-current** | *this state is N behind the events that produced it* ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) |
 | `derivation_error` | D2 | the badge row or the flag | *an event could not be projected; this seat's state is missing it* |
 
-**D1's twelve are rendered *since reporter start*, never as *now*.**
-[D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled) states why: they are raised by
-counters monotonic since flusher start, so one dropped event at 09:00 badges `lossy` for the rest of
-that flusher's life. The panel renders each with **the counter's value and `reporter.uptime_s`** — a
-sticky badge drawn as a current condition would make a seat that had one bad minute look permanently
-broken. D2's own seven are current conditions and are drawn as such.
+**A counter-derived badge means *its counter rose within the last 24 h*.** That is D1's twelve and
+D2's `seq_gap`, `seq_collision`, `epoch_reset` and `reporter_ahead`
+([D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters),
+[D2 § 7.2](FLEET-STATE.md#72-this-planes-own-counters-and-badges), card#9491): one dropped event at 09:00
+badges `lossy` until 09:00 the next day, and the badge then clears while the counter keeps its total.
+The panel renders each with **the counter's value**, which is the seat's running total and not the size
+of the recent rise. `clock_skew`, `fold_lag` and `derivation_error` are current conditions and are drawn
+as such.
 
 **`badges_since` is one line for the whole cluster, not a stamp per badge.**
 [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) declares it as *"when the **oldest**
@@ -3506,7 +3508,7 @@ minimum of the values"*, and *"one timestamp for D1's whole twelve-member array 
 did **this** badge appear', which is the only question `badges_since` is asked"*. So the cluster
 carries **one** line — *oldest badge since 09:14* — and **no badge is stamped with an onset the wire
 did not give it**. Stamping each member with `badges_since` would date a `fold_lag` that started
-thirty seconds ago to the sticky `lossy` that has been up all day: a misdated degradation, on the one
+thirty seconds ago to a `lossy` that has been up all day: a misdated degradation, on the one
 panel whose job is to date degradations. `badge_first_seen` is a stored column
 ([D2 § 6.4](FLEET-STATE.md#64-ddl)) and appears in neither
 [§ 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s object nor
@@ -8226,7 +8228,7 @@ reason to leave two readings live.
     values* — then says in terms that one timestamp *"cannot answer 'when did **this** badge appear',
     which is the only question `badges_since` is asked"*. The map is a column
     ([D2 § 6.4](FLEET-STATE.md#64-ddl)) and appears on neither read surface. **Blocks:** dating an
-    individual badge — a `fold_lag` that began thirty seconds ago, on a seat whose sticky `lossy` has
+    individual badge — a `fold_lag` that began thirty seconds ago, on a seat whose `lossy` has
     been up all day, has no onset a consumer can render. **In the meantime:** the panel carries **one**
     cluster-scoped line, *oldest badge since HH:MM*, and stamps no individual badge
     ([§ 7.2](#72-badges-every-member-has-a-render)); a per-badge *since* would be a misdated
@@ -8295,8 +8297,8 @@ reason to leave two readings live.
     **derivation lag** — the four § 2.4 fixes a wording for — plus [§ 5.3](#53-the-fleet-on-both-screens)'s
     **sweep age** (`fleet.sweep_last_run_at`, *"indicator plus the age"*) and **ingest-recency age**
     (`fleet.ingest_last_receipt_at`, *"rendered as an age"*), [§ 4.3](#43-the-desk-drill-down-panel)'s
-    **context sample age** (*"the sample's own age"*) and **reporter uptime** (`reporter.uptime_s`,
-    under its *since reporter start* framing), [§ 5.2](#52-the-drill-down)'s **oldest-unsent age**
+    **context sample age** (*"the sample's own age"*) and **reporter uptime** (`reporter.uptime_s`),
+    [§ 5.2](#52-the-drill-down)'s **oldest-unsent age**
     (`delivery.oldest_unsent_age_s`) and **timeline row age** (`received_at`, *"the basis of the
     row's age"*), and [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s **fleet
     banner** figure. **The population is re-derivable rather than kept here**: scan every render
@@ -8981,7 +8983,7 @@ over it.
 | T17 | § 8.2.1 | `subagents[].title` is `null` when the spawn was lost — an honest orphan, **never invented**; a later `subagent.spawn` for the same `call_id` fills it | [§ 8](#8-interns--subagent-rendering-and-the-cap), [AT-D3-4](#at-d3-4-the-subagent-cap-boundary) |
 | T18 | § 8.2.1 | `subagents` is a stated reduction; `subagents_open` always carries the true count; the per-seat detail endpoint returns all of them | [§ 8](#8-interns--subagent-rendering-and-the-cap), [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
 | T19 | § 4.9 | `task.source` says which tier answered; `task.degraded` says a better one was dropped; a floor showing tier 3 everywhere is visibly a floor whose board integration is dark | [§ 5.1](#51-the-desk), [§ 5.2](#52-the-drill-down), [§ 14](#14-open-questions-for-the-review-loop) item 4 |
-| T20 | § 7.3 | The reporter's `degraded` array is rendered **"since reporter start"** with `reporter.uptime_s` and the counter's value beside it — never as "now". This row restates D2's obligation and renders nothing itself (**`named-not-rendered`**); the render is § 7.2's and § 5.2's, where the member carries its marker | [§ 7.2](#72-badges-every-member-has-a-render), [§ 5.2](#52-the-drill-down) |
+| T20 | § 7.3 | The reporter's `degraded` array is windowed at 24 h: a member means its counter rose within the last 24 h, rendered with the counter's value beside it (card#9491). This row restates D2's obligation and renders nothing itself (**`named-not-rendered`**); the render is § 7.2's and § 5.2's, where the member carries its marker | [§ 7.2](#72-badges-every-member-has-a-render), [§ 5.2](#52-the-drill-down) |
 | T21 | § 7.1 | `lossy` renders with its number; `seq_gap` is D2's own badge and is **never** rendered as `lossy` — they are different failures with different fixes | [§ 7.2](#72-badges-every-member-has-a-render) |
 | T22 | § 8.6 | The one outcome forbidden on the read surface — a `200` with an empty fleet — "renders as an empty office, which is indistinguishable from a fleet that has gone home" | [§ 9](#9-failure-paths-and-their-observables) F4–F6, [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office) |
 | T23 | § 9 | MFA gates the page, the stream **and** the REST snapshot — and is re-checked on the stream every 15 s; the live feed is browser-only | [§ 4.4](#44-routes-and-what-each-one-fetches), [§ 9](#9-failure-paths-and-their-observables) F6 |
