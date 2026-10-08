@@ -835,8 +835,30 @@ exits  "the control: --ref WITH a value still deploys" 0
 
 mkfix stale_marker
 printf 'started_at: 2026-09-08T00:00:00Z\nto_commit: deadbeef\n' > "$ROOT/.deploy-failed"
-run_refusal "stale marker" "a previous deploy failed and has not been reviewed" --dry-run
+# ⛔ NOT run_refusal: its promise is the one thing a refusal must NOT make here (card#9629 r1). A marker
+# means a previous deploy stopped in its window, so the app may be down — this run changed nothing, and
+# that is all it can say. Still exit 1: THIS run is a refusal, not an in-window stop.
+run --dry-run
+exits  "stale marker: exit 1 (refused, nothing touched by this run)" 1
+has "stale marker: the ⛔ REFUSED banner" "⛔ REFUSED — a previous deploy failed and has not been reviewed" "$OUT"
 has "stale marker: shows the marker's content" "to_commit: deadbeef" "$OUT"
+hasnt "stale marker: never says the previous release is still serving" "The previous release is still serving." "$OUT"
+has "stale marker: says this run changed nothing and names the marker" \
+    "This run changed nothing. A previous deploy left its failure marker at $ROOT/.deploy-failed" "$OUT"
+unlogged "stale marker: never opened the window" "artisan down"
+# The PRIMITIVE, not A2's wording: a refusal that runs BEFORE A2 (running as root, A1) sees the same marker
+# and makes the same statement — and, one variable away, with the marker gone it makes the promise again.
+export STUB_UID=0; run --dry-run
+exits  "stale marker, refused as root: exit 1" 1
+has "stale marker, refused as root: says why" "running as root" "$OUT"
+hasnt "stale marker, refused as root: no promise while a marker is on disk" "The previous release is still serving." "$OUT"
+has "stale marker, refused as root: names the marker" "left its failure marker at $ROOT/.deploy-failed" "$OUT"
+rm -f "$ROOT/.deploy-failed"; run --dry-run
+exits  "no marker, refused as root: exit 1" 1
+has "no marker, refused as root: the promise, which is true here" \
+    "Nothing was changed. The previous release is still serving." "$OUT"
+hasnt "no marker, refused as root: no marker line" "left its failure marker" "$OUT"
+unset STUB_UID
 
 mkfix dirty_tree; printf 'hand edit\n' >> "$ROOT/VERSION"
 run_refusal "dirty tree" "local modifications" --dry-run
@@ -3872,6 +3894,8 @@ eq  "migrate fails: HEAD did move (the checkout landed)" "$V2" "$(git -C "$ROOT"
 run --redeploy
 exits  "bare re-run after a failure: exit 1 (refused)"     1
 has "bare re-run: names the unreviewed failure"         "a previous deploy failed and has not been reviewed" "$OUT"
+hasnt "bare re-run: never says the previous release is still serving, with the app down" \
+      "The previous release is still serving." "$OUT"
 unlogged "bare re-run: did not reopen the window"       "artisan down"
 
 section "IN-WINDOW FAILURE — the daemon restart, each way it can go wrong"

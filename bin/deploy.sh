@@ -276,7 +276,14 @@ refuse() {
   # is read once, under pressure, by someone deciding whether prod is broken.
   local line
   for line in "$@"; do printf '%s\n' "$line" | sed 's/^/   /' >&2; done
-  printf '\n   Nothing was changed. The previous release is still serving.\n' >&2
+  # ⛔ THE PROMISE ONLY WHERE IT IS TRUE (card#9629 r1). A failure marker means a previous deploy stopped
+  # inside its window, so the app may be down now — this run changed nothing, and that is all it may say.
+  # The exit stays 1: THIS run is a refusal. MARKER is set before the first `refuse` that can run.
+  if [ -e "$MARKER" ]; then
+    printf '\n   This run changed nothing. A previous deploy left its failure marker at %s,\n   so the app may be DOWN and the previous release may NOT be serving.\n' "$MARKER" >&2
+  else
+    printf '\n   Nothing was changed. The previous release is still serving.\n' >&2
+  fi
   exit 1
 }
 
@@ -287,7 +294,7 @@ usage() { sed -n '/^# USAGE/,/^# CARD/p' "$0" | grep -v '^# CARD' | sed 's/^# \{
 # after it. <line> is the line the CALLER is on, which goes into the marker's `failed_line:`.
 window_stop() {
   local line="$1"; shift
-  printf '%s\n' "${@:2}" >&2
+  [ $# -lt 2 ] || printf '%s\n' "${@:2}" >&2
   FAILED_STEP="$FAILED_STEP — $1"
   # `false ||` so the banner reports a failing status, as it does for every other in-window failure
   # (in_window_failure reads `$?`).
@@ -340,10 +347,26 @@ BANNER
   exit 2
 }
 
+# ── the deploy root ───────────────────────────────────────────────────────────────────────────
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+# Canonical: the crontab entries A13 matches and the window installs carry this path and cron runs them
+# from HOME, and phase B `cd`s into server/ before it re-execs through it — a relative MEZZ_DEPLOY_ROOT
+# would be wrong in each. Phase B exports the canonical value, so the re-exec cannot re-resolve it.
+# RESOLVED HERE, BEFORE THE ARGUMENTS, AND REFUSED ONLY AFTER THEM (card#9629). Every `refuse` reads
+# MARKER — a marker on disk means the app may be down, and the promise is withheld — so MARKER is set before
+# the first `refuse` that can run, the argument loop's included. A root that does not resolve keeps the value
+# as given: in the re-exec that is the canonical root phase A wrote the marker under, which in_window_failure
+# names. The refusal itself waits for the phase, below the arguments.
+DEPLOY_ROOT_UNRESOLVED=0
+DEPLOY_ROOT="$(readlink -f -- "${MEZZ_DEPLOY_ROOT:-$(dirname "$SELF")/..}")" \
+  || { DEPLOY_ROOT="${MEZZ_DEPLOY_ROOT:-}"; DEPLOY_ROOT_UNRESOLVED=1; }
+APP_DIR="$DEPLOY_ROOT/server"          # D-16: the Laravel app is not at the repo root
+ENV_FILE="$APP_DIR/.env"
+MARKER="$DEPLOY_ROOT/.deploy-failed"   # git-ignored; see .gitignore
 # ── arguments, and the phase they say this is ─────────────────────────────────────────────────
-# ⛔ PARSED BEFORE THE CONFIGURATION BELOW, BECAUSE THAT CAN REFUSE (card#9629). Resolving
-# MEZZ_DEPLOY_ROOT can fail, and the run that matters is the re-exec, inside the window: parsed after it,
-# the script did not yet know its phase and refused with phase A's promise while the app was down.
+# ⛔ PARSED BEFORE ANYTHING BELOW CAN REFUSE (card#9629). Resolving MEZZ_DEPLOY_ROOT can fail, and the
+# run that matters is the re-exec, inside the window: refused before the parse, the script did not yet know
+# its phase and refused with phase A's promise while the app was down.
 # Until the loop below ends DEPLOY_IN_WINDOW is 0, so a refusal IN the loop is phase A's. The re-exec
 # reaches none of them: phase_b_open_window passes one argument and its non-empty value.
 DEPLOY_IN_WINDOW=0
@@ -389,22 +412,10 @@ if [ -n "$POST_CHECKOUT_SHA" ] && [ "${MEZZ_DEPLOY_IN_WINDOW:-0}" = "1" ]; then 
 # before phase_b_open_window sets the first step of the window.
 FAILED_STEP="the re-exec into the deployed release's bin/deploy.sh"
 
-# ── configuration ─────────────────────────────────────────────────────────────────────────────
-SELF="$(readlink -f "${BASH_SOURCE[0]}")"
-# Canonical: the crontab entries A13 matches and the window installs carry this path and cron runs them
-# from HOME, and phase B `cd`s into server/ before it re-execs through it — a relative MEZZ_DEPLOY_ROOT
-# would be wrong in each. Phase B exports the canonical value, so the re-exec cannot re-resolve it.
-# A root that does not resolve is refused only once APP_DIR, ENV_FILE and MARKER are set from it as given
-# (card#9629): in the re-exec that is the canonical root phase A wrote the marker under, and `refuse`
-# there is in_window_failure, which names that marker.
-DEPLOY_ROOT_UNRESOLVED=0
-DEPLOY_ROOT="$(readlink -f -- "${MEZZ_DEPLOY_ROOT:-$(dirname "$SELF")/..}")" \
-  || { DEPLOY_ROOT="${MEZZ_DEPLOY_ROOT:-}"; DEPLOY_ROOT_UNRESOLVED=1; }
-APP_DIR="$DEPLOY_ROOT/server"          # D-16: the Laravel app is not at the repo root
-ENV_FILE="$APP_DIR/.env"
-MARKER="$DEPLOY_ROOT/.deploy-failed"   # git-ignored; see .gitignore
 [ "$DEPLOY_ROOT_UNRESOLVED" -eq 0 ] \
   || refuse "MEZZ_DEPLOY_ROOT '${MEZZ_DEPLOY_ROOT:-}' does not resolve to a path"
+
+# ── configuration ─────────────────────────────────────────────────────────────────────────────
 REMOTE="${MEZZ_REMOTE:-origin}"
 # The PHP-FPM binary A14 reads, DERIVED from the PHP this host actually runs. card#9203: the
 # literal `php8.3-fpm` unit name that used to sit here was one of three surfaces that drifted
