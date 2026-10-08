@@ -3,14 +3,14 @@
 # "released" stage, correlating by the `card#<id>` token in the RELEASED RANGE's
 # commit subjects.
 #
-# ⚑ VENDORED, NOT AUTHORED HERE — AND FORKED AT EXACTLY TWO DECLARED SITES. Everything BELOW
+# ⚑ VENDORED, NOT AUTHORED HERE — AND FORKED AT THE DECLARED SITES BELOW. Everything BELOW
 # THIS HEADER BLOCK is `bin/promote-cards-by-token` from PupFuzz/agent-board-framework at commit
-# e2f131f796baa93a5aa9cec620969bcaa21ac7fe (2026-07-27), byte for byte, EXCEPT the two sites
-# listed next. Both arrived in this repo's #51 (2026-08-31) and both exist for one reason:
-# upstream's "first-ever release" wording is FALSE here — mezzanine HAS released, so explaining
-# an empty range as a first-ever release misdirects the only person who will ever read it. Each
-# site is located by a distinctive unbroken fragment of its own text, NEVER by a line number:
-# line numbers rot, and this list has to survive the next re-vendor.
+# e2f131f796baa93a5aa9cec620969bcaa21ac7fe (2026-07-27), byte for byte, EXCEPT the sites
+# listed next. (1) and (2) arrived in this repo's #51 (2026-08-31) for one reason: upstream's
+# "first-ever release" wording is FALSE here — mezzanine HAS released, so explaining an empty
+# range as a first-ever release misdirects the only person who will ever read it. (3) is
+# card#11527's. Each site is located by a distinctive unbroken fragment of its own text, NEVER
+# by a line number: line numbers rot, and this list has to survive the next re-vendor.
 #   DECLARED LOCAL EDITS — this is the COMPLETE list. Anything else below is a defect.
 #     (1) the false-all-clear COMMENT on the `..HEAD` refusal — the three lines carrying
 #         `nothing to do" and exit 0 on a release whose cards`. Upstream's reads "…on a
@@ -21,6 +21,14 @@
 #         clone; a deliberate re-promote of the EARLIEST release, which has no predecessor tag
 #         to derive from), says a force-pushed or rewritten `main` is NOT this error, and
 #         points at `docs/KANBAN.md § G-2`.
+#     (3) the FOREIGN-CARD SKIP in the resolve loop (card#11527) — `confirm_foreign_403() {`
+#         and everything it touches: the `CONTROL_ID` it reads back, the `not_on_board` report
+#         line, the `403)` arm, the readable out-of-board card skipped instead of counted in exit
+#         3, the `TO_MOVE` list that makes every read precede every write, and the summary's
+#         `not on this board` count. Upstream's body at the pin dies (exit 2) on ANY non-404
+#         card read, so one card token naming another board's card stopped a whole release
+#         (v0.8.0, Actions run 37707232205). Upstream carries the same defect; a re-vendor
+#         keeps (3) until upstream's own body tells a foreign 403 from a lost credential.
 # ⛔ THIS HEADER USED TO CLAIM THE WHOLE BODY WAS BYTE-FOR-BYTE and called that "a one-diff
 # check". Nobody ran the diff. #51's two edits had been sitting in the body for eleven days and
 # the claim went on reading as true — a declaration with NO CHECK, which is worse than silence:
@@ -32,9 +40,9 @@
 # freely) and runs on EVERY PR, in the `card-token-lint` workflow, behind a `--selftest` that
 # first proves it reds on a mutated body. Any edit below this header reds CI until the pin AND
 # the list above are updated in the SAME commit. That list is ENFORCED, not a courtesy — in ONE
-# direction, stated exactly: the check carries (1) and (2)'s fragments itself and reds if
-# either is no longer in the body, so the pin cannot be bumped past a list that has gone stale.
-# It CANNOT tell you that a THIRD, undeclared edit has appeared — that comparison needs
+# direction, stated exactly: the check carries every listed site's fragment itself and reds if
+# any is no longer in the body, so the pin cannot be bumped past a list that has gone stale.
+# It CANNOT tell you that a further, undeclared edit has appeared — that comparison needs
 # upstream, which is private and unreachable from a public runner; what catches that is the sha
 # going red and a human reading the diff. A green means "the body is what this repo last
 # DECLARED", never "the body matches upstream".
@@ -46,7 +54,7 @@
 #   header grows too, and a copied-out number is wrong the moment it does). The ONE spelling of
 #   that rule is `BODY_AWK` in `bin/vendor-pin-check.sh`; apply it to upstream's file and take
 #   everything from the line it prints to EOF. It is not restated here so it cannot drift.
-#   Then re-apply (1) and (2), or drop either ON PURPOSE and delete it from the list above AND
+#   Then re-apply every listed site, or drop one ON PURPOSE and delete it from the list above AND
 #   from the FRAGMENTS table; then re-pin the sha in `bin/vendor-pin-check.sh`. ⚠ UPSTREAM HAS
 #   MOVED ON: by
 #   v0.50.0 (d3fd558) the `api` helper lives in `bin/_api_seam.sh`, so a re-vendor from HEAD
@@ -126,9 +134,12 @@
 #     Unlike the toolkit's, this guard is REQUIRED, not opt-in: this leg exists only
 #     for a board whose released stage is terminal.
 #   - BOARD-SCOPE. `card#<id>` resolves against a GLOBAL task-id space, so a token can
-#     name a card on another board. A resolved card whose `board_id` is not the
-#     configured board is REJECTED and reported loudly — the BRIDGE-WRITEBACK.md
-#     § board-scope-guard invariant, applied to this mover.
+#     name a card on another board. Such a card is NEVER moved: it is skipped and named on
+#     a `not on this board` line, and the rest of the release still moves — the
+#     BRIDGE-WRITEBACK.md § board-scope-guard invariant, applied to this mover. A card read
+#     that answers 403 is called another board's card only after the same token reads a
+#     board card back and a board-scoped lookup does not find the id (confirm_foreign_403);
+#     otherwise it is the lost-credential case and exit 2.
 #   - IDEMPOTENT. Re-running over the same range performs no writes and exits 0 (a re-run
 #     over a NON-merge tip performs no writes and re-reports the same loud 4 — the tip does
 #     not become trustworthy by being read twice).
@@ -177,17 +188,21 @@
 # Reported cumulatively (every degraded state prints), exiting on the MOST severe: 1 > 4 > 3.
 # The stranded-card residue report is WARN-ONLY and never participates (see above).
 #   0  healthy: every correlated token resolved, and each match either moved, was
-#      already released, or was deliberately stage-guarded.
+#      already released, was deliberately stage-guarded, or is another board's card
+#      (named on a `not on this board` line, never moved).
 #   1  one or more card moves FAILED (non-2xx / transport error on a write). DIVERGENCE
 #      from `promote-released-cards`, which exits 1 only when NOTHING moved — a green job
 #      with one un-promoted shipped card. Here ANY failed write is non-zero.
 #   2  refusal / fatal precondition, and NOTHING was written: bad config, missing
-#      credentials, host-guard refusal, unreadable board, a missing option argument, or an
-#      un-derivable range (no push-`before` and no release tag; or a `before` sha that is
-#      absent from this checkout or not an ancestor of the head).
-#   3  one or more card tokens matched NO card on the configured board (absent,
-#      archived, or on another board). Deliberately NOT a warning: on this board every
-#      `card#<id>` in a release range is supposed to be a live card here, so an
+#      credentials, host-guard refusal, unreadable board, a degraded card read (5xx,
+#      timeout, 401, or a 403 not proven to be another board's card), a missing option
+#      argument, or an un-derivable range (no push-`before` and no release tag; or a
+#      `before` sha that is absent from this checkout or not an ancestor of the head).
+#      Every card is read before any is written, so a refusal at a card read is still
+#      write-free.
+#   3  one or more card tokens matched NO card (absent or archived). Another board's
+#      card is NOT this code: it is named and skipped (0). Deliberately NOT a warning: on
+#      this board every `card#<id>` in a release range is supposed to be a live card here, so an
 #      unresolved one means either a typo'd id (a card that will NEVER be promoted) or
 #      an archived card — both need a human. A ~2-minute check is the right side of
 #      the asymmetry against a silently un-promoted shipped card.
@@ -592,38 +607,91 @@ fi
 
 # PREFLIGHT — one board read whose ONLY job is to tell "the token cannot see this board"
 # apart from "no card matched". Without it, a token that lost board membership would make
-# every per-id read 404 and the run would look like "all cards archived" instead of
-# "credentials are wrong" (200-but-empty is the classic silent-green — see
+# every per-id read 403 and the run would look like "every card is on another board" instead
+# of "credentials are wrong" (200-but-empty is the classic silent-green — see
 # RELEASE-AUTOMATION.md § Robustness patterns). This is also why this tool does NOT need
 # the toolkit's whole-board paging + short-read census: its correlation key is the card's
-# own id, so an unreadable or incomplete board announces itself per token (exit 3) rather
-# than hiding as an absent payload stamp.
+# own id, so an unreadable or incomplete board announces itself per token (exit 3 on a 404,
+# exit 2 on a refused read) rather than hiding as an absent payload stamp.
 code="$(api GET "$API/tasks/search.json?q=board_id=$BOARD&limit=1")"
 [ "$code" = "200" ] \
   || die "board $BOARD preflight read failed (HTTP $code) against $API — check KANBAN_WRITEBACK_TOKEN and the api base."
 nvis="$(jq '(.data // []) | length' < "$BODY" 2>/dev/null || echo 0)"
 [ "${nvis:-0}" -gt 0 ] \
   || die "board $BOARD returned 0 visible cards — the token's user is likely not a member of board $BOARD (or this is the wrong kanban instance). Refusing to conclude 'nothing to promote' from a blind read."
+# The row the preflight just read is a card of board $BOARD this token can see: the CONTROL
+# confirm_foreign_403 reads back before it believes any 403 (below).
+CONTROL_ID="$(jq -r '(.data // [])[0].id // empty' < "$BODY" 2>/dev/null || true)"
 
-# --- resolve + move ----------------------------------------------------------
-moved=0; already=0; guarded=0; unmatched=0; failed=0
+# confirm_foreign_403 <id> — return only when card <id>, whose read just answered 403, is
+# MEASURED to be another board's card; otherwise refuse (exit 2, nothing written yet).
+# A 403 cannot say whose card it refused. kanban answers the same 403 "This action is
+# unauthorized." for another board's card AND for this board's card read by a token that has
+# lost board view (rotated, role changed, membership removed after the preflight) — measured
+# 2026-10-08, card#11527. Treating every 403 as "foreign" would let that lost-credential run
+# skip every card and exit 0 having moved nothing. So two reads decide, the same pair the
+# webhook bridge uses (its MappedBoardGuard / kanban-integration-contract § 2):
+#   1. the CONTROL — the preflight's own board-$BOARD card read back through the SAME route
+#      that refused <id>. 200 on board $BOARD proves this token may view board $BOARD's cards
+#      now; anything else is the credential case and refuses. That one card stands for the
+#      board because kanban authorizes a task read by BOARD view, not per card — the bridge
+#      contract's source read of kanban (TaskPolicy::view), not measured here.
+#   2. a BOARD-SCOPED lookup of <id> (`q=board_id=$BOARD id=<id>`). Zero rows is the verdict
+#      "not a card of board $BOARD". A row naming <id> means the card IS here and the token was
+#      refused anyway; a row naming any other card means the filter was ignored. Both refuse.
+confirm_foreign_403() {
+  local id="$1" code cbd rows
+  case "$CONTROL_ID" in
+    ''|*[!0-9]*) die "card#$id read was refused (HTTP 403) and the preflight returned no card id to test this token against, so 'another board's card' cannot be told from 'this token lost board $BOARD'. Refusing." ;;
+  esac
+  code="$(api GET "$API/tasks/$CONTROL_ID.json")"
+  cbd="$(jq -r '.data.board_id // empty' < "$BODY" 2>/dev/null || true)"
+  [ "$code" = "200" ] && [ "$cbd" = "$BOARD" ] \
+    || die "card#$id read was refused (HTTP 403), and a read of card#$CONTROL_ID, which the preflight found on board $BOARD, answered HTTP $code${cbd:+ (board $cbd)}: this token cannot read board $BOARD's cards. Check KANBAN_WRITEBACK_TOKEN (revoked, rotated, or its user lost board $BOARD's view permission). Refusing — nothing was written."
+  code="$(api GET "$API/tasks/search.json?q=board_id=$BOARD%20id=$id&limit=1")"
+  [ "$code" = "200" ] \
+    || die "card#$id read was refused (HTTP 403) and the board-scoped lookup of card#$id on board $BOARD failed (HTTP $code), so where card#$id lives is unmeasured. Refusing — nothing was written."
+  rows="$(jq -r '(.data // []) | map("\(.id)") | join(",")' < "$BODY" 2>/dev/null)" \
+    || die "card#$id read was refused (HTTP 403) and the board-scoped lookup of it returned an unparseable body. Refusing — nothing was written."
+  case "$rows" in
+    '') return 0 ;;
+    "$id"|"$id",*|*,"$id"|*,"$id",*)
+      die "card#$id is on board $BOARD (the board-scoped lookup found it) yet its read was refused (HTTP 403): this token's scope on board $BOARD is wrong. Refusing — nothing was written." ;;
+    *) die "the board-scoped lookup of card#$id on board $BOARD returned other card(s) ($rows) — the id filter was not applied, so no verdict can be read from it. Refusing — nothing was written." ;;
+  esac
+}
+
+# not_on_board <id> <where> — the ONE report line for a card token naming another board's card.
+not_on_board() {
+  echo "  ↷ card#$1: not on this board (board $BOARD) — $2; skipped, never moved across boards" >&2
+  foreign=$((foreign + 1))
+}
+
+# --- resolve, then move -------------------------------------------------------
+# EVERY card is read and judged before ANY card is written, so a refusal (exit 2) at any read
+# really has written nothing — interleaved, a read failing after an earlier card's PATCH
+# exited 2 over a half-applied release.
+moved=0; already=0; guarded=0; unmatched=0; failed=0; foreign=0
+TO_MOVE=()
 for id in $IDS; do
   code="$(api GET "$API/tasks/$id.json")"
   case "$code" in
     200) ;;
     404) echo "  ? card#$id: no such card — absent or deleted (report: it may have been archived, or the token is a typo)" >&2
          unmatched=$((unmatched + 1)); continue ;;
-    *)   die "card#$id read failed (HTTP $code) — refusing to continue on a degraded board read (a partial run would leave shipped cards silently un-promoted)." ;;
+    403) confirm_foreign_403 "$id"
+         not_on_board "$id" "on a board this token cannot see (403; this token reads board $BOARD, and board $BOARD has no card#$id)"
+         continue ;;
+    *)   die "card#$id read failed (HTTP $code) — refusing to continue on a degraded board read (a partial run would leave shipped cards silently un-promoted). Nothing was written." ;;
   esac
   cbd="$(jq -r '.data.board_id // empty' < "$BODY")"
   cur="$(jq -r '.data.workflow_stage_id // empty' < "$BODY")"
   gone="$(jq -r '(.data.archived_at // .data.deleted_at) // empty' < "$BODY")"
   # BOARD-SCOPE guard (BRIDGE-WRITEBACK.md § Board-scope guard on the `card#` fallback):
-  # task-ids are global, so a token can name another board's card. Reject loudly; never
-  # let commit text redirect a move across boards.
+  # task-ids are global, so a token can name another board's card. Name it and skip it;
+  # never let commit text redirect a move across boards.
   if [ "$cbd" != "$BOARD" ]; then
-    echo "  ? card#$id: on board $cbd, not board $BOARD — REJECTED (a card token must not move an out-of-board card)" >&2
-    unmatched=$((unmatched + 1)); continue
+    not_on_board "$id" "on board $cbd"; continue
   fi
   if [ -n "$gone" ]; then
     echo "  ? card#$id: archived/deleted ($gone) — not on the board; left alone" >&2
@@ -638,6 +706,10 @@ for id in $IDS; do
     echo "  ⊘ card#$id: current stage $cur is not a Shipped-class source stage ($SHIPPED_STAGES) — SKIPPED; promotion never resurrects a backlog/declined card into a terminal stage" >&2
     guarded=$((guarded + 1)); continue
   fi
+  TO_MOVE+=("$id:$cur")
+done
+for m in ${TO_MOVE[@]+"${TO_MOVE[@]}"}; do
+  id="${m%%:*}"; cur="${m#*:}"
   if [ "$DRY" = 1 ]; then
     echo "  → card#$id: would move $cur → $STAGE"; moved=$((moved + 1)); continue
   fi
@@ -651,7 +723,7 @@ for id in $IDS; do
   esac
 done
 
-echo "promote-cards-by-token: $moved moved, $already already-released, $guarded stage-guarded, $unmatched no-card, $failed failed$([ "$DRY" = 1 ] && printf ' (dry-run)')."
+echo "promote-cards-by-token: $moved moved, $already already-released, $guarded stage-guarded, $foreign not on this board, $unmatched no-card, $failed failed$([ "$DRY" = 1 ] && printf ' (dry-run)')."
 
 # The negative complement of everything above — read-only, and evaluated BEFORE the exit
 # policy so the FAILED lines that DO carry a code stay the last thing on stderr.
@@ -672,14 +744,15 @@ if [ "$failed" -gt 0 ]; then
 fi
 # Newly promoted NOTHING despite a non-empty token set, from a COMPLETE derivation
 # (explicit --cards, or a MERGE-commit release tip whose range carries every feature
-# subject) ⇒ the tokens are genuinely already-released / stage-guarded ⇒ WARN, exit 0.
+# subject) ⇒ the tokens are genuinely already-released / stage-guarded / another board's ⇒
+# WARN, exit 0.
 # The idempotent re-run lands here — and must stay quiet-and-0, so this is the ONLY
 # thing keyed on the move count.
 if [ "$moved" = 0 ] && [ "$DERIVE_COMPLETE" = 1 ]; then
-  echo "promote-cards-by-token: WARNING — 0 cards newly promoted (all matches were already released or stage-guarded)." >&2
+  echo "promote-cards-by-token: WARNING — 0 cards newly promoted (all matches were already released, stage-guarded or not on this board)." >&2
 fi
 if [ "$unmatched" -gt 0 ]; then
-  echo "promote-cards-by-token: FAILED — $unmatched card token(s) matched no card on board $BOARD (absent, archived, or on another board). Each is a card that will never be promoted; resolve them by hand." >&2
+  echo "promote-cards-by-token: FAILED — $unmatched card token(s) matched no card on board $BOARD (absent or archived). Each is a card that will never be promoted; resolve them by hand." >&2
 fi
 # INCOMPLETE DERIVATION — evaluated on EVERY non-merge tip, INDEPENDENT of how many cards
 # moved. This was previously nested inside `if moved == 0`, which meant one surviving token
