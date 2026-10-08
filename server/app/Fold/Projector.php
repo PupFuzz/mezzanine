@@ -36,8 +36,16 @@ use Illuminate\Support\Facades\DB;
  * So each group is guarded on the column that already records when that group was written —
  * `last_turn_ended_at` for the `L` record, `ended_at` for the close, `closed_at` for a call,
  * `resolved_at` for a request, `context_sampled_at` for the gauge, `started_at` for a session
- * start — and `applied_*` is maintained as the row's high-water mark. Every one of § 10.2's
- * out-of-order rows is satisfied by construction rather than by a rule an implementer must hold.
+ * start — and `applied_*` is maintained as the row's high-water mark. A server-inferred turn close
+ * is not an observation, so a `turn.end` is ordered against the start of the turn it closed instead
+ * (`turnRecordTime()`, card#11561).
+ *
+ * ⚠ THE GUARDS MAKE A PAIR OF EVENTS CONVERGE; THEY DO NOT MAKE EVERY COMPOSITION CONVERGE. A group's
+ * guard compares an event with what that group holds, and cannot apply the effects a NEWER event of
+ * another kind would have had on it in order — a `session.end` older than activity already applied
+ * still closes calls and a turn opened after it, and a `turn.start` or `tool.start` older than a
+ * session close still opens in the ended session. `docs/design/FLEET-STATE.md § 6.5` lists the known
+ * cases and the upstream fix they share (card#11561).
  */
 /*
  * NOT `final`, and the reason is a test seam rather than an extension point. `Fold` takes
@@ -425,24 +433,26 @@ class Projector
         // RE-OPEN a turn that has already ended — without that, AT-D2-11's "a completed call
         // reopens and renders working forever" arrives through the turn instead of the call.
         //
-        // BUT THE GUARD IS ON THE FLAG ALONE, AND NOT ON THE ROW. The narrative fields land either
-        // way, because AT-D2-11's GREEN is that the final state equals IN-ORDER delivery exactly,
-        // and in order this turn's `turn_started_at` and `prompt_chars` would be on the row. A
-        // guard that refused the whole event would make the out-of-order run diverge on two
-        // columns while looking like it was protecting a state — which is the same over-broad
-        // shape the `session.start` path avoids by guarding on `started_at IS NULL`.
+        // TWO GROUPS, TWO GUARDS, and neither refuses the whole event. The OPEN FLAG is guarded on
+        // the turn record (`last_turn_ended_at`): a start older than the newest close does not
+        // re-open. The NARRATIVE — `turn_started_at`, `turn_prompt_chars` and the console link — is
+        // guarded on its own time, `turn_started_at`: it describes the NEWEST turn, so a start older
+        // than the one already written leaves it alone (card#11561 — it used to be written
+        // unconditionally, so an older `turn.start` arriving after a newer one put the earlier
+        // prompt in the drill-down). A start older than the newest CLOSE but newer than the stored
+        // start still lands its narrative, because in order this turn's `turn_started_at` and
+        // `prompt_chars` would be on the row — the same per-group reading the `session.start` path
+        // makes by guarding on `started_at IS NULL`.
         $superseded = $this->groupIsOlder($e, $row->last_turn_ended_at, $row);
 
-        $update = [
-            'turn_started_at' => $e->eventTime,
-            'turn_prompt_chars' => $e->int('prompt_chars'),
-            'updated_at' => $e->receivedAt,
-        ];
+        $update = ['updated_at' => $e->receivedAt];
 
-        // card#9416: the session's console URL, as of its NEWEST turn — so an older `turn.start`
-        // arriving late never replaces it. Written on every newest turn, `null` included: the
-        // reporter sends `null` when the bridge has ended, and that must take the link away.
         if (! $this->groupIsOlder($e, $row->turn_started_at, $row)) {
+            $update['turn_started_at'] = $e->eventTime;
+            $update['turn_prompt_chars'] = $e->int('prompt_chars');
+            // card#9416: the session's console URL, as of its NEWEST turn. Written on every newest
+            // turn, `null` included: the reporter sends `null` when the bridge has ended, and that
+            // must take the link away.
             $update['console_url'] = $this->consoleUrl($e);
         }
 
@@ -493,8 +503,10 @@ class Projector
         $ref = $this->sessionRef($e);
         $row = DB::table('sessions')->where('id', $ref)->first();
 
-        // AT-D2-11: "a superseded `turn.end` must not overwrite a newer one".
-        if ($this->groupIsOlder($e, $row->last_turn_ended_at, $row)) {
+        // AT-D2-11: "a superseded `turn.end` must not overwrite a newer one" — guarded on the time
+        // of the newest OBSERVED write to the turn record (`turnRecordTime()`), so the server's own
+        // inferred close never outranks the seat's real `turn.end` for the same turn.
+        if ($this->groupIsOlder($e, $this->turnRecordTime($row), $row)) {
             $this->touchApplied($ref, $e);
 
             return;
@@ -541,6 +553,21 @@ class Projector
                 'billing_error', 'invalid_request', 'model_not_found', 'max_output_tokens',
                 'oauth_org_not_allowed', 'account_on_hold', 'unknown', 'unrecognised',
             ]);
+        }
+
+        // A SESSION CLOSE NEWER THAN THIS EVENT HAS ALREADY BEEN APPLIED (card#11561), so in order
+        // this `turn.end` lands first and the close then acts on what it wrote. The close's
+        // effects on the turn record are applied here, as `sessionEnd()` states them: card #7337's
+        // background-task count goes to 0, and a stall this event opens is cleared by the close —
+        // `S` is already false through `ended_at`, and § 4.6 needs the clearer recorded. ⚠ A SECOND
+        // STATEMENT OF `sessionEnd()`'s RULES, which is the per-group design's limit rather than a
+        // choice: see the class docblock's composition note.
+        if ($row->closed_by === 'wire' && $this->groupIsOlder($e, $row->ended_at, $row)) {
+            $update['last_turn_background_tasks_open'] = 0;
+
+            if ($endReason === 'api_error') {
+                $update['stalled_cleared_by'] = 'session_end';
+            }
         }
 
         DB::table('sessions')->where('id', $ref)->update($update);
@@ -1121,7 +1148,8 @@ class Projector
     {
         $existing = DB::table('sessions')
             ->where('seat_ref', $e->seatRef)->where('session_id', $e->sessionId)
-            ->first(['id', 'ended_at', 'end_reason', 'closed_by']);
+            ->first(['id', 'ended_at', 'end_reason', 'closed_by',
+                'applied_event_time', 'applied_seq_epoch', 'applied_seq']);
 
         if ($existing !== null) {
             // An event for a session the SERVER closed on an inference re-opens it: the seat is
@@ -1132,9 +1160,18 @@ class Projector
             // `clear`, a `logout`, any wire `end_reason` but `inferred_silence` — is the seat's own
             // observation that the session ended, and reopening it would be the server overruling
             // the seat.
+            //
+            // AND ONLY AN EVENT NEWER THAN THE CLOSE (card#11561). The close group is guarded like
+            // every other: an event stamped before the inference is history the seat sent while
+            // the session was live, not evidence that it is alive after the close. The flusher
+            // emits `session.end(inferred_silence)` from its own process, so a hook that read its
+            // clock first can reach the spool after it — measured — and reopening on that event
+            // made the out-of-order run end with an open session where in-order delivery ends
+            // with a closed one.
             $inferredSilence = $existing->end_reason === 'inferred_silence';
 
-            if ($existing->ended_at !== null && ($inferredSilence || $existing->closed_by === 'server_offline')) {
+            if ($existing->ended_at !== null && ($inferredSilence || $existing->closed_by === 'server_offline')
+                && ! $this->groupIsOlder($e, $existing->ended_at, $existing)) {
                 DB::table('sessions')->where('id', $existing->id)->update([
                     'ended_at' => null,
                     'end_reason' => null,
@@ -1206,6 +1243,27 @@ class Projector
         $c = strcmp($e->eventTime, $groupTime);
 
         return $c < 0 || ($c === 0 && ! Ordering::newer($this->tripleOf($e), $this->appliedTripleOf($row)));
+    }
+
+    /**
+     * The time a `turn.end` is ordered against — the newest OBSERVED write to the turn record.
+     *
+     * A turn the SERVER closed (`turn_close_source` `session_close` from `sessionEnd()`, or
+     * `server_offline` from the sweeper's quiescence) has an inferred record stamped with the
+     * close's own time, and nothing was observed about when that turn ended. The seat's real
+     * `turn.end` for that turn is stamped EARLIER than the inference and can arrive after it
+     * (card#11561: the flusher's `session.end(inferred_silence)` and a `Stop` hook race to the
+     * spool), and in order it would have closed the turn before the session close found it open.
+     * So against an inferred close the record's time is the start of the turn it closed: any
+     * `turn.end` newer than that start ends this turn and supersedes the inference, and one older
+     * than it ended an earlier turn and is refused, exactly as in-order delivery decides. An
+     * observation overrides an inference (D1 § 12.5).
+     */
+    private function turnRecordTime(object $row): ?string
+    {
+        return in_array($row->turn_close_source, ['session_close', 'server_offline'], true)
+            ? $row->turn_started_at
+            : $row->last_turn_ended_at;
     }
 
     /** @return array{0: string, 1: string, 2: int} */
