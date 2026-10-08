@@ -1563,7 +1563,7 @@ second writer on a fact one writer already owns.
 | `logout` | `SessionEnd(reason: "logout")` |
 | `prompt_input_exit` | `SessionEnd(reason: "prompt_input_exit")` |
 | `other` | any other `reason`, including one this reporter does not recognise. **This is a common value, not a residue**: a non-interactive (`claude -p`) session ends with `reason: "other"` — MEASURED, and the majority of the capture run's `SessionEnd`s, one of which [§ 17](#17-appendix--the-captured-harness-payloads) reproduces beside the `clear` one. **D2: a consumer must not read `other` as a degradation signal** — it is an ordinary member, and no badge, no degradation and no rule may read it |
-| `inferred_silence` | the one **inferred** member: the flusher has seen no event for that session for 90 min |
+| `inferred_silence` | the one **inferred** member: the flusher has seen no event for that session for 90 min, and no attention request is open in it (below) |
 
 | `data` field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
@@ -1584,6 +1584,18 @@ derived from the longest legitimate silence *inside a live session* — a sessio
 call can legitimately emit nothing until that call's 60-minute orphan ceiling
 ([§ 12.5](#125-late-completions-and-orphan-timeouts)) — and 90 min is 1.5× that. `session_reopened`
 is the observable that re-derives it from real data: a non-zero count means 90 min is too tight.
+
+**A session waiting on a human is the one silence no number covers, so the flusher does not infer
+from it** (card#9527). An agent stuck on a permission prompt emits no hook at all, for as long as the
+operator is away — and the operator's ruling of 2026-09-14 is that this is *"common … for hours at a
+time"*. Closing that session at 90 minutes would hand D2 a `session.end` reading as the agent going
+away while it still waits, and D2 would stop rendering *blocked*. So the silence close **skips any
+session with an attention request open in it**; the session closes on its own `SessionEnd`, on the
+next request edge (the request resolves and the silence clock applies again from the session's last
+activity), or on [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)'s
+16-session cap if its harness died while waiting. **D2:** a request whose harness died while waiting
+is resolved by the seat's next activity event — in practice the next session starting
+([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)).
 
 **What is deliberately gone: the `superseded` inference.** An earlier draft minted `session.end`
 whenever a hook arrived carrying a `session_id` different from the index's current one. Two terminals
@@ -2376,7 +2388,8 @@ deleted and `notification_kind` is a table lookup:
 *blocked* on every seat.** `D2-MUST` #5 makes `attention.request` the *only* source of *blocked*, so
 an unconditional emission would put a desk into *blocked* every time the harness fired
 `auth_success` or `agent_completed` — a seat that just **finished** a task would render as waiting on
-a human, and would stay there until the next tool close, the next prompt, or the 60-minute ceiling.
+a human, and would stay there until the next tool close or the next prompt — and since card#9527 there
+is no ceiling to end it sooner ([§ 6.13](#613-attentionresolved)).
 That is the exact mirror of the false-idle defect this document exists to prevent, so the gate is on
 the emitting side. It is the one carve-out to
 [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 2, stated there with this hook named
@@ -2461,9 +2474,11 @@ resolution row exists precisely to keep the `granted` edge reachable when it is 
 
 ### 6.13 `attention.resolved`
 
-**Trigger:** the first exit edge to arrive for an open `attention.request`. Four of the six are
-direct observations; the two that are inferences — the no-`call_id` close and the timeout — are named
-as inferences below and both are bounded.
+**Trigger:** the first exit edge to arrive for an open `attention.request`. Four of the five are
+direct observations; the one inference — the no-`call_id` close — is named as one below. **There is no
+timeout** (card#9527): the operator's ruling of 2026-09-14 is that *"Mezzanine should assume agent is
+stuck until it gets another status update from that agent"*, so the reporter never resolves a request
+on a clock — see *Why there is no timer*, below.
 
 | First of these to arrive, in the same session | `resolution` | `resolution_source` |
 |---|---|---|
@@ -2472,14 +2487,13 @@ as inferences below and both are bounded.
 | where the request carries **no** `call_id`: the next `tool.end` in that session with any outcome other than `aborted` — the agent is running tools again, so it is no longer waiting on a human | `granted` | `call_close` |
 | a `UserPromptSubmit` — a human typing is a human present. **This is also the edge a human-refused permission takes**, see below | `human_input` | `user_prompt_submit` |
 | that session's `SessionEnd`, or any reap of it | `session_ended` | `session_end` |
-| **60 min** with none of the above | `timeout` | `timeout` |
 
 **`denied` means *auto mode* denied it — a human clicking "no" does not take this edge.**
 `PermissionDenied` fires when auto mode denies a tool call, including denials with no classifier
 verdict ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read), DOCS-CITED); it is not the
 interactive refusal hook. On a fleet running interactive approvals — which is most seats — a human
 refusal produces no `PermissionDenied` at all. The request instead resolves as `human_input` when the
-operator types their next instruction, or as `timeout` if they walk away, and the refused call itself
+operator types their next instruction — however long they are away — and the refused call itself
 closes on the turn's `Stop` reap ([§ 6.6](#66-toolend): a permission-refused call fires **no** close
 hook, MEASURED). So `resolution` is honest about what it observed rather than about what happened:
 `denied` is a narrow, auto-mode-only fact, and the distribution across a fleet reads accordingly.
@@ -2488,44 +2502,49 @@ Reading a low `denied` share as "few refusals" would be wrong; it means "few *au
 | `data` field | Type | Units | Null? | Bounds | Example |
 |---|---|---|---|---|---|
 | `request_id` | ULID | — | no | the `attention.request` this closes | `"01K3TB1N2P3Q4R5T6W7X8Y9Z0B"` |
-| `resolution` | enum | — | no | `granted` \| `denied` \| `human_input` \| `session_ended` \| `timeout` | `"granted"` |
-| `resolution_source` | enum | — | no | as the table above | `"call_close"` |
+| `resolution` | enum | — | no | `granted` \| `denied` \| `human_input` \| `session_ended` \| `timeout` — **`timeout` is retired** (card#9527): no reporter from that card on emits it, and it stays in the set so the ingest keeps accepting it from a reporter released before ([`docs/VERSIONING.md`](../VERSIONING.md) rule 4 makes removing a member a schema bump) | `"granted"` |
+| `resolution_source` | enum | — | no | `permission_denied_hook` \| `call_close` \| `user_prompt_submit` \| `session_end` \| `timeout` — the table above's sources, and `timeout`, retired on the same terms as the row above's | `"call_close"` |
 | `waited_ms` | int | ms | no | ≥ 0, from the request's `event_time` | `18402` |
 
 **Why the second row exists.** A `PermissionRequest` can arrive before the tool call it is about is
 open — the hook order is not documented — so `attention.request.call_id` is `null` whenever no single
 open call could be named. Without that row the `granted` edge would be unreachable in exactly that
-case and an ordinary approved permission would sit *blocked* until the 60-minute ceiling. Resolving on
+case and an ordinary approved permission would sit *blocked* until the next prompt. Resolving on
 the session's next non-aborted tool close is an inference, and it is labelled as one: it shares
 `resolution_source: "call_close"`, and `waited_ms` shows how long the seat was rendered blocked.
 
-**Derivation of 60 min.** The timeout is the weakest member, and it is reachable only when every
-earlier edge failed to arrive — so it is a *fallback for a broken signal*, not the normal
-path, and the asymmetry decides the number: a desk that shows *blocked* slightly too long is
-misleading in a way an operator can see and correct, while a desk that silently un-blocks itself
-while the agent is still waiting on a human is the false-idle defect of
-[§ 8.1](#81-the-problem-restated) wearing a different hat. So err long, and reuse the number the same
-argument already produced — the 60-minute `Task` orphan ceiling
-([§ 12.5](#125-late-completions-and-orphan-timeouts)) — so that a seat can never render *blocked*
-after every call it was blocked on has already been reaped.
+**Why there is no timer.** Until card#9527 a sixth row resolved the request `timeout` after **60 min**
+with none of the edges above, and D2's server mirrored it. It was argued as a *fallback for a broken
+signal* that erred long, on the reading that a desk showing *blocked* slightly too long is correctable
+while one that un-blocks itself while the agent still waits is
+[§ 8.1](#81-the-problem-restated)'s false-idle defect wearing a different hat. The operator's ruling of
+2026-09-14 applies that same asymmetry without a cut-off: *"There may be times when operators do not
+check the stats for 60 mins and it is common for an agent to be stuck waiting for operator input for
+hours at a time."* So the reporter keeps the request open until an edge above arrives, the flusher's
+90-minute silence close skips a session holding one ([§ 6.2](#62-sessionend)), and the broken-signal
+case the timer used to cover is closed on the server instead: **D2:** the seat's next activity event —
+from any of its sessions — resolves a request still open
+([D2 § 4.4](FLEET-STATE.md#44-activity-states-every-entry-and-exit-edge)). A harness killed while
+waiting sends no `SessionEnd`, and its request resolves when the seat's next session starts, which is
+when the operator restarted it. In the reporter, that dead session's index entry — and the request in
+it — stays until [§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open)'s
+16-session cap evicts it, which reaps it as any eviction does.
 
-**The predicate that watches this, and what it can and cannot see.** `attention_resolved_by_hook`
-counts observed resolutions (`true`) against timeouts (`false`). If *every* exit edge stops arriving
-the branch goes constant-`false` and the predicate-constant alarm
-([§ 9.4](#94-the-predicate-constant-alarm)) says so. Be precise about its reach, though, because an
-over-claimed instrument is worse than a missing one: on a fleet running interactive approvals the
-`true` branch is carried by `call_close` and `user_prompt_submit`, **not** by the permission hooks, so
-a death of `PermissionRequest`/`PermissionDenied` alone would not move this predicate. The instrument
-that *would* see that is the `attention.request.source` distribution — a `permission_request_hook`
-share falling to zero on a seat that is still being blocked — which is why
-[§ 9.4](#94-the-predicate-constant-alarm) carries `attention_source_permission_hook` as its own
-predicate rather than folding it in here.
+**No predicate watches the exits any more, and that is the instrument following its subject.**
+`attention_resolved_by_hook` counted observed resolutions (`true`) against timeouts (`false`); with no
+timeout its `false` branch had no writer, which is a check that cannot fail, so card#9527 retired it
+from [§ 9.4](#94-the-predicate-constant-alarm). A death of every exit edge now shows as desks that
+stay *blocked* across work — visible on the floor itself, dated by D2's `blocked_since` — and is
+closed by D2's seat-activity exit rather than hidden by a timer. A death of
+`PermissionRequest`/`PermissionDenied` alone is still `attention_source_permission_hook`'s to see, as
+it always was.
 
 > **`D2-MUST` #5 — the blocked rule.** A consumer may mint *blocked* only from an
 > `attention.request`, and must clear it on the matching `attention.resolved` (joined by
-> `request_id`), on the seat leaving live state (`stale`, `offline`), or on that session ending —
-> whichever comes first. A seat may never render *blocked* for longer than the 60-minute ceiling
-> without a matching `attention.resolved`, because past that the reporter has already emitted one.
+> `request_id`), on that session ending, or on the seat's next activity event — whichever comes
+> first. It must **not** clear it on a clock or on the seat leaving live state: a wait on a human
+> lasts until the agent's next status update (the operator's ruling of 2026-09-14, card#9527), and a
+> seat that goes quiet while waiting and comes back still waiting is still *blocked*.
 
 ```json
 { "event_id":"01K3TB1P3Q4R5T6W7X8Y9Z0A1C","schema_version":1,"kind":"attention.resolved",
@@ -2558,7 +2577,7 @@ predicate rather than folding it in here.
 | `degraded` | array\<enum\> | — | no | 0…12 elements, one per member of the set [§ 9.3](#93-degradation-counters) declares; no duplicates, ordered as [§ 9.3](#93-degradation-counters) lists them | `["batches_rejected"]` |
 | `counters` | object | — | no | ≤ 1.5 KiB serialized, all monotonic since flusher start; reduction rule below | see below |
 | `counters_omitted` | int | — | no | ≥ 0, counters dropped to fit the cap | `0` |
-| `predicates` | object | — | no | ≤ 512 B, `{name:{true:int,false:int}}`; one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate, worst case **396 B** — **no reduction rule, and none owed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5's named exemption; the arithmetic is below) | see below |
+| `predicates` | object | — | no | ≤ 512 B, `{name:{true:int,false:int}}`; one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate, worst case **316 B** — **no reduction rule, and none owed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5's named exemption; the arithmetic is below) | see below |
 | `selftest` | object | — | no | ≤ 256 B, `{name:"pass"\|"fail"}`, every key matching `^[a-z][a-z0-9_]*$` and ≤ 32 B; one member per check the member table below declares, worst case **210 B** — **no reduction rule, and none owed** (same exemption) | see below |
 | `config_fingerprint` | string | — | no | 16 hex chars = SHA-256 of `install_id\|seat_id\|ingest_url`, **token excluded** | `"9f2c41a7be03d518"` |
 
@@ -2671,16 +2690,17 @@ are pretty-printed only for the page — and `tools/design/verify-event-schema.p
 every run**, so a row added to either table reds the gate rather than quietly falsifying a number
 written here.
 
-- **`predicates` — 396 B worst case, 512 B cap.** One member per predicate in
+- **`predicates` — 316 B worst case, 512 B cap.** One member per predicate in
   [§ 9.4](#94-the-predicate-constant-alarm)'s table, and adding a predicate to the reporter without
   adding it to that table is already a review-blocking defect there, so that table *is* this object's
   population. A member serializes as `"name":{"true":N,"false":M}` — 21 B of keys and punctuation,
   plus the name, plus two integers whose widest admissible value is a JS safe integer
-  ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)), 16 digits. The five names total
-  125 B, so: `2 + 5×(21 + 32) + 125 + 4 = 396 B` — two braces, five members at maximum integer width,
-  the names, four separators. That is **116 B under the cap with every branch count at
+  ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)), 16 digits. The four names total
+  99 B, so: `2 + 4×(21 + 32) + 99 + 3 = 316 B` — two braces, four members at maximum integer width,
+  the names, three separators. That is **196 B under the cap with every branch count at
   9,007,199,254,740,991**, a value no seat reaches and one rule 5's own clamp forbids exceeding. A
-  sixth predicate fits while its name is ≤ 62 B.
+  fifth predicate fits while its name is ≤ 142 B. (Card#9527 retired a fifth,
+  `attention_resolved_by_hook`, with the attention timeout it counted.)
 - **`selftest` — 210 B worst case, 256 B cap.** One member per check the table below declares. A
   member serializes as `"name":"pass"` — 9 B plus the name — and both values are 4 B, so every
   combination of results costs the same. The seven names total 139 B, so: `2 + 7×9 + 139 + 6 = 210 B`,
@@ -2798,8 +2818,7 @@ case, which is what makes this exemption checkable rather than asserted.
     "predicates":{"attention_source_permission_hook":{"true":19,"false":6},
                   "descriptor_allowlisted":{"true":2841,"false":93},
                   "clear_reap_by_session_end":{"true":11,"false":11},
-                  "agent_scope_subagent":{"true":412,"false":2522},
-                  "attention_resolved_by_hook":{"true":25,"false":0}},
+                  "agent_scope_subagent":{"true":412,"false":2522}},
     "selftest":{"sanitizer_fixtures":"pass","harness_payload_keys":"pass",
                 "config_readable":"pass","tls_verify":"pass",
                 "schema_version_accepted":"pass","predicate_discrimination":"pass",
@@ -2814,8 +2833,7 @@ everything against, which is what a *maximally* busy seat looks like. An earlier
 48,374 events against a one-day uptime, i.e. 4.6× a ceiling the same document called a ceiling — a
 worked example quietly refuting the number it was illustrating. The cross-checks inside the example
 hold too: `descriptor_allowlisted` 2,841 + 93 = 2,934 = `agent_scope_subagent` 412 + 2,522 (both are
-per-`tool.start`), and `attention_resolved_by_hook` 25 + 0 = `attention_source_permission_hook`
-19 + 6 = 25.
+per-`tool.start`).
 
 ---
 
@@ -3263,9 +3281,9 @@ subscribes `StopFailure` to prevent, arriving through the door
 subagent had nowhere to record the scope it fired under, so the reap key for it was undefined.
 
 The last two are in this journal for the same reason the calls are: an attention request is opened by
-one hook process and resolved by a different one, the flusher needs the open set to fire the 60-minute
-ceiling and to fill `open_attention` on the heartbeat, and none of those three can read each other's
-memory. One index, one concurrency discipline.
+one hook process and resolved by a different one, the flusher needs the open set to fill
+`open_attention` on the heartbeat and to keep [§ 6.2](#62-sessionend)'s silence close off a waiting
+session, and none of those three can read each other's memory. One index, one concurrency discipline.
 
 The folded index holds at most **64 open entries** and **64 tombstones**; entry 65 in either set
 evicts the oldest and increments `open_call_index_overflow` (64 = far above any observed concurrent
@@ -3869,8 +3887,7 @@ same reason adding one with an unreachable threshold is.
 | `descriptor_allowlisted` | tool on the allowlist / not | ~1,000–3,000/day | **0 % or 100 % across ≥ 500 evaluations in a rolling 24 h** | constant-false: the allowlist no longer matches any tool name the harness sends |
 | `agent_scope_subagent` | `agent_id` present / absent ([§ 6.5](#65-toolstart)) | ~1,000–3,000/day | same 500 / 24 h rule | constant-true: the harness now sends `agent_id` everywhere; constant-false: it stopped sending it |
 | `clear_reap_by_session_end` | which `/clear` signal reaped first — `SessionEnd` / `SessionStart` ([§ 8.4](#84-detecting-a-clear-with-two-independent-signals)) | ~10–80/day | **0 % or 100 % across ≥ 20 evaluations in a rolling 7 days** | one of the two `/clear` signals has died; the other is still reaping, so nothing else looks broken |
-| `attention_source_permission_hook` | an `attention.request` opened by `PermissionRequest` / by `Notification` ([§ 6.12](#612-attentionrequest)) | 0–50/day | **0 % or 100 % across ≥ 50 evaluations in a rolling 7 days** | constant-false: the permission hooks stopped firing and every *blocked* now comes from a notification. This is the predicate that would have seen a permission-hook death, which `attention_resolved_by_hook` cannot ([§ 6.13](#613-attentionresolved)) |
-| `attention_resolved_by_hook` | resolved by an observed edge / by the 60-minute timeout ([§ 6.13](#613-attentionresolved)) | 0–50/day | **any** `false` branch in a rolling 24 h is surfaced; constant-false over ≥ 10 resolutions alarms | every *blocked* is now ending on a timer rather than on an observed edge |
+| `attention_source_permission_hook` | an `attention.request` opened by `PermissionRequest` / by `Notification` ([§ 6.12](#612-attentionrequest)) | 0–50/day | **0 % or 100 % across ≥ 50 evaluations in a rolling 7 days** | constant-false: the permission hooks stopped firing and every *blocked* now comes from a notification. This is the predicate that would have seen a permission-hook death ([§ 6.13](#613-attentionresolved)) |
 
 **On the 500 (and the 50, and the 20).** A threshold must exceed the longest legitimate run of one
 branch, and nobody has measured that on any seat yet. 500 is chosen so the high-volume alarms need
@@ -3990,8 +4007,8 @@ batch. Retrying is correct; the duplicates it creates must be free.
 > days, but a **quiet** seat — one emitting little more than its 1,440 daily heartbeats — takes far
 > longer. A heartbeat is not a ~500 B typical event: its `data` alone allows 1.5 KiB of counters plus
 > 512 B of predicates plus 256 B of selftest, and the worked example in
-> [§ 6.14](#614-reporterheartbeat) serializes to **1,618 B**. At 1,618 B, 1,440/day is
-> **~2.33 MB/day**, so a heartbeat-only seat fills 32 MiB in **~14.40 days**. Two earlier readings of
+> [§ 6.14](#614-reporterheartbeat) serializes to **1,567 B**. At 1,567 B, 1,440/day is
+> **~2.26 MB/day**, so a heartbeat-only seat fills 32 MiB in **~14.87 days**. Two earlier readings of
 > this same paragraph were wrong in the same direction — 50+ days from a 500 B assumption, then
 > ~25 days from a "~900 B" measurement of the worked example **taken with its 524 B `counters` object
 > left out**, which is why the third one is *measured by the gate* rather than read off:
@@ -4001,11 +4018,12 @@ batch. Retrying is correct; the duplicates it creates must be free.
 > and [§ 15](#15-decisions-taken-revisable-at-review) were still carrying the "50+ days" it had
 > replaced, so the fill time now has **one home — this paragraph** — and those three state the
 > property they actually rest on (the fill time exceeds the dedup window) rather than a copy of the
-> number. **The conclusion survives and its margin has narrowed four times** — most recently by the member
+> number. **The conclusion survives and its margin has narrowed four times** — by the member
 > `card#11144` added to this event ([§ 6.14](#614-reporterheartbeat)), after the two `card#9296`
-> added, which is the gate re-measuring rather than a reader re-reading —
-> which argues for holding the age cap rather than relaxing it: 14.40 days still leaves the oldest
-> event 4.40 days past a 10-day dedup window while it is still queued, and a spool *line* carries the
+> added — and widened once, when card#9527 retired the `predicates` member
+> `attention_resolved_by_hook`, which is the gate re-measuring rather than a reader re-reading —
+> which argues for holding the age cap rather than relaxing it: 14.87 days still leaves the oldest
+> event 4.87 days past a 10-day dedup window while it is still queued, and a spool *line* carries the
 > event plus its `v`/`t` wrapper ([§ 11.2](#112-spool-line-format)), so the real fill is marginally
 > faster than the event bytes alone. Residency has to be bounded by age, and the age bound is the
 > one the coupling is stated against.
@@ -4546,7 +4564,7 @@ about the store is D2's to decide.
 | 2 | **`stale` (300 s) and `offline` (900 s) are visibly degraded rendered states, never `idle`,** and a seat with `degraded` non-empty renders its badge. |
 | 3 | **Per-event dedup on `(install_id, seat_id, event_id)` with a 10-day window,** and the window must exceed the spool's 8-day residency cap ([§ 10.3](#103-idempotency-and-the-dedup-window)). |
 | 4 | **State transitions are ordered by `(event_time, seq_epoch, seq)`, never by arrival order,** `received_at` is the only clock used for liveness, retention and cross-seat comparison, and a repeated `(seq_epoch, seq)` with differing `event_id`s is counted as `seq_collision` rather than silently applied. **`seq_epoch` is part of the key because `seq` restarts at an epoch reset** ([§ 10.2](#102-ordering-seq-and-gap-detection)), so a two-part key is not total across one — two events either side of a reset can carry the same `seq` and the comparator has nothing left to separate them. The three-part key reduces to `(event_time, seq)` whenever the epoch is constant, which is every seat that has never lost its `state.json`, so this is a refinement of the old key and not a different one. |
-| 5 | **Blocked is minted only from `attention.request` and cleared only by its matching `attention.resolved`** (joined on `request_id`), by the session ending, or by the seat leaving live state — and never rendered for longer than the 60-minute ceiling without a resolution ([§ 6.13](#613-attentionresolved)). This holds because D1 undertakes that `attention.request` is emitted **only** for a genuine wait on a human: [§ 6.12](#612-attentionrequest) gates the `Notification` hook on `notification_type` so that `auth_success`, `agent_completed`, `idle_prompt` and the rest never open one. **D2 needs no second predicate over `notification_kind`** — and the reason is the gate, not the enum: no member of that field (`permission_required`, `input_awaited`, `elicitation`) can arrive from a type the gate suppresses, so D2 has nothing left to exclude at the field. **The undertaking is a per-row JUDGEMENT in D1's table, not a property any check can establish** ([§ 6.12](#612-attentionrequest) says so at the table), and it has been wrong once: `idle_prompt` — the harness's ~60-second *nobody has typed* timer, which is a wait on nothing — sat on the emitting side and rendered every cleanly-finished seat *blocked* a minute after it went quiet (card#9419). It was moved to the no-emit row rather than patched on D2's side, because a second predicate here would have made *blocked* depend on two documents' agreement about the same thing. **What D2 is owed, and what it is not:** D1 owns the gate and the counters that instrument it (`notification_not_attention.<type>`, and the `input_awaited`-to-`permission_required` ratio those make readable); D1 does **not** offer a mechanized proof that each emitting row is a real wait, and D2 must not build a render branch on the assumption that one exists. An earlier draft's fourth member, `other`, was unreachable and is deleted ([§ 6.12](#612-attentionrequest)), so there is no member left for D2 to have to exclude. |
+| 5 | **Blocked is minted only from `attention.request` and cleared only by its matching `attention.resolved`** (joined on `request_id`), by the session ending, or by the seat's next activity event — never by a clock and never by the seat leaving live state, because a wait on a human lasts until the agent's next status update (the operator's ruling of 2026-09-14, card#9527; [§ 6.13](#613-attentionresolved)). This holds because D1 undertakes that `attention.request` is emitted **only** for a genuine wait on a human: [§ 6.12](#612-attentionrequest) gates the `Notification` hook on `notification_type` so that `auth_success`, `agent_completed`, `idle_prompt` and the rest never open one. **D2 needs no second predicate over `notification_kind`** — and the reason is the gate, not the enum: no member of that field (`permission_required`, `input_awaited`, `elicitation`) can arrive from a type the gate suppresses, so D2 has nothing left to exclude at the field. **The undertaking is a per-row JUDGEMENT in D1's table, not a property any check can establish** ([§ 6.12](#612-attentionrequest) says so at the table), and it has been wrong once: `idle_prompt` — the harness's ~60-second *nobody has typed* timer, which is a wait on nothing — sat on the emitting side and rendered every cleanly-finished seat *blocked* a minute after it went quiet (card#9419). It was moved to the no-emit row rather than patched on D2's side, because a second predicate here would have made *blocked* depend on two documents' agreement about the same thing. **What D2 is owed, and what it is not:** D1 owns the gate and the counters that instrument it (`notification_not_attention.<type>`, and the `input_awaited`-to-`permission_required` ratio those make readable); D1 does **not** offer a mechanized proof that each emitting row is a real wait, and D2 must not build a render branch on the assumption that one exists. An earlier draft's fourth member, `other`, was unreachable and is deleted ([§ 6.12](#612-attentionrequest)), so there is no member left for D2 to have to exclude. |
 
 ### 12.7 Server-side counters
 
@@ -5089,9 +5107,10 @@ call ledger turns on.*
   inside a dispatched subagent, because only the second exercises the rule that `Stop` cannot, and
   [AT-1](#at-1-kill-vs-complete-the-headline-test) case D is its RED. Asserting this separately is what keeps the `resolution`
   distribution interpretable — a low `denied` share means few *auto-mode* refusals, not few refusals.
-- **GREEN — the ceiling:** with the resolution hooks stubbed out, the request is resolved at 60 min
-  with `resolution: "timeout"`, `attention_resolved_by_hook` shows a `false` branch, and the seat is
-  no longer rendered *blocked*.
+- **GREEN — no timer** (card#9527): with the resolution hooks stubbed out, two hours on the flusher
+  has emitted no `attention.resolved` and has not closed the waiting session as `inferred_silence`,
+  while a second, idle session of the same seat **is** closed (the control that the silence close still
+  runs); the human's next prompt then resolves the request `human_input` with `waited_ms` of two hours.
 - **RED:** remove `attention.resolved` entirely (the design this replaced) → the seat enters *blocked*
   and never leaves it; every subsequent turn renders under a stale blocked badge, and no counter
   anywhere marks the state as unresolved. A state with an entry event and no exit event is the defect.
@@ -5535,13 +5554,12 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Harness build the MEASURED facts are pinned to | Claude Code **2.1.247** | **Measured** — 63 payloads across 11 hook events captured 2026-08-27, of which [§ 17](#17-appendix--the-captured-harness-payloads) reproduces the **18** distinct shapes every MEASURED row is read from. The 18 is re-derived from the appendix by the verifier; the 63 is capture-run provenance and is not checkable from this repo ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)). Every MEASURED row is versioned to the build; [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) obligation 2 owns **when a re-capture is owed and on which axes** (amended by card #7337, gained its MODE axis and its measured cost at the 2.1.247 discharge, card #7930) and is not restated here | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | `reporter.heartbeat.degraded` length | 12 elements | **Derived** — not chosen: the array carries at most one of each declared member, so its bound *is* the size of [§ 9.3](#93-degradation-counters)'s member table and moves only when that table moves | [§ 9.3](#93-degradation-counters) |
 | `reporter.heartbeat.counters` cap | 1.5 KiB | **Chosen** — above [§ 9.3](#93-degradation-counters)'s ~30 named counters at ~32 B an entry, and below what its open-ended counter families can reach. It is the one heartbeat object a seat can grow past its cap, which is why it is the one that states a reduction rule | [§ 6.14](#614-reporterheartbeat) |
-| `reporter.heartbeat.predicates` cap | 512 B; worst case **396 B** | **Derived** — one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate: `2 + 5×(21 + 32) + 125 + 4`, both branch counts at the 16-digit JS-safe-integer ceiling. 116 B spare, so the cap is a guard rather than a path and the field owes no reduction rule ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5). Re-derived by `tools/design/verify-event-schema.py`, never trusted as written | [§ 6.14](#614-reporterheartbeat) |
+| `reporter.heartbeat.predicates` cap | 512 B; worst case **316 B** | **Derived** — one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate: `2 + 4×(21 + 32) + 99 + 3`, both branch counts at the 16-digit JS-safe-integer ceiling. 196 B spare, so the cap is a guard rather than a path and the field owes no reduction rule ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5). Re-derived by `tools/design/verify-event-schema.py`, never trusted as written | [§ 6.14](#614-reporterheartbeat) |
 | `reporter.heartbeat.selftest` cap | 256 B; worst case **210 B** | **Derived** — one member per check [§ 6.14](#614-reporterheartbeat)'s member table declares: `2 + 7×9 + 139 + 6`. 46 B spare, same exemption, re-derived by the same tool | [§ 6.14](#614-reporterheartbeat) |
 | Worst-case heartbeat `data` | 2,923 B of the 3 KiB cap | **Derived** — every field at its worst at once, each integer at its own stated bound; [§ 6.14](#614-reporterheartbeat) owns that composition and it is deliberately not restated here. 149 B spare, so the counters reduction rule alone is what keeps a maximally-degraded heartbeat inside [§ 4.3](#43-common-per-event-fields)'s cap. Unlike the two rows above, this figure is **hand-verified**: `tools/design/verify-event-schema.py` does not re-derive it | [§ 6.14](#614-reporterheartbeat) |
 | Wire enum fields, and how many are classified | all of them — the figure is deliberately not written here: `python3 tools/design/verify-event-schema.py` prints it on every run, as `enum fields re-derived: N, M classified` | **Derived** — re-derived from [§ 6](#6-event-kinds)'s field tables by `tools/design/verify-event-schema.py` on every run, which fails on any row absent from [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s classification table. Stated as a population, never as a maintained list | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
-| Session `inferred_silence` | 90 min | Derived — 1.5× the 60 min `Task` orphan ceiling, the longest legitimate silence inside a live session. Cheap to be wrong now that an early close is reversible (`session_reopened` re-derives it) | [§ 6.2](#62-sessionend) |
+| Session `inferred_silence` | 90 min | Derived — 1.5× the 60 min `Task` orphan ceiling, the longest legitimate silence inside a live session **that is not waiting on a human**; a session holding an open attention request is never closed by it (card#9527). Cheap to be wrong now that an early close is reversible (`session_reopened` re-derives it) | [§ 6.2](#62-sessionend) |
 | Compaction close timeout | 10 min | Derived — ~10× a typical one-minute compaction | [§ 6.10](#610-compactionend) |
-| Attention resolution ceiling | 60 min | Chosen — reuses the `Task` orphan ceiling so a seat cannot render *blocked* after every call it was blocked on has been reaped; erring long is the safe direction | [§ 6.13](#613-attentionresolved) |
 | Heartbeat interval | 60 s | Chosen — 1,440/day ≈ 14 % of the ceiling volume for continuous liveness | [§ 9.1](#91-the-cadence-and-the-alarm) |
 | Flush interval | 10 s | Chosen — under human "live" perception; caps request rate at 6/min | [§ 11.5](#115-retry-and-backoff) |
 | Flush event trigger | 50 events | Derived — ~25 KB, a batch worth a WAN round-trip | [§ 11.5](#115-retry-and-backoff) |

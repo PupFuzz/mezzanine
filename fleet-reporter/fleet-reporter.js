@@ -92,7 +92,6 @@ const K = {
   TOMBSTONES: 64,                // § 8.2
   SESSIONS: 16,                  // § 8.2
   TOMBSTONE_MS: 900000,          // § 8.2 15 min, == the ordinary orphan timeout
-  ATTENTION_MS: 3600000,         // § 6.13 60 min
   COMPACTION_MS: 600000,         // § 6.10 10 min
   SILENCE_MS: 5400000,           // § 6.2 90 min
   SAMPLE_STALE_MS: 300000,       // § 6.9 300 s
@@ -185,7 +184,7 @@ const DEGRADED = [
  * and stayed wrong for 30 days. Adding a predicate without adding it here is a review-blocking
  * defect there; `selftest`'s `predicate_discrimination` check asserts the set is complete. */
 const PREDICATES = ['attention_source_permission_hook', 'descriptor_allowlisted',
-  'clear_reap_by_session_end', 'agent_scope_subagent', 'attention_resolved_by_hook'];
+  'clear_reap_by_session_end', 'agent_scope_subagent'];
 
 /* The `selftest` checks § 6.14's member table declares — the same set the subcommand runs and
  * the heartbeat reports, so the two cannot drift apart. */
@@ -1494,8 +1493,9 @@ function reap(ctx, ix, select, abortReason, closeSource, atMs) {
 }
 
 /* A reap that ends a session also closes any attention request open in it: a *blocked* desk
- * whose session has ended is not blocked, and D2-MUST #5 needs the exit edge to say so. */
-function resolveAttention(ctx, ix, sessionId, resolution, source, atMs, byHook) {
+ * whose session has ended is not blocked, and D2-MUST #5 needs the exit edge to say so.
+ * Every caller is an OBSERVED edge (§ 6.13): the request has no timer of its own (card#9527). */
+function resolveAttention(ctx, ix, sessionId, resolution, source, atMs) {
   const a = ix.attention.get(sessionId);
   if (!a) return false;
   journal(ctx.spool, { k: 'attention_close', request_id: a.request_id, resolution });
@@ -1504,7 +1504,6 @@ function resolveAttention(ctx, ix, sessionId, resolution, source, atMs, byHook) 
     request_id: a.request_id, resolution, resolution_source: source,
     waited_ms: Math.max(0, atMs - Date.parse(a.opened_at || atMs)),
   }, atMs);
-  if (byHook !== undefined) predicate('attention_resolved_by_hook', byHook);
   return true;
 }
 
@@ -1632,7 +1631,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       // A human typing is a human present (§ 6.13). D1-SILENT on the order of the two events;
       // the resolution is emitted FIRST, matching every other close-before-trigger ordering in
       // § 8.3 and putting the human's presence before the turn it starts.
-      resolveAttention(ctx, ix, sid, 'human_input', 'user_prompt_submit', atMs, true);
+      resolveAttention(ctx, ix, sid, 'human_input', 'user_prompt_submit', atMs);
       touchSession(ctx, ix, sid);
       const prompt = typeof payload.prompt === 'string' ? payload.prompt : null;
       journal(ctx.spool, { k: 'turn_open', session_id: sid, prompt_id: payload.prompt_id || null });
@@ -1795,7 +1794,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       // § 6.13 rows 2 and 3 — the tool ran, so permission was given.
       const a = ix.attention.get(sid);
       if (a && outcome !== 'aborted' && (a.call_id === entry.call_id || a.call_id === null)) {
-        resolveAttention(ctx, ix, sid, 'granted', 'call_close', atMs, true);
+        resolveAttention(ctx, ix, sid, 'granted', 'call_close', atMs);
       }
       break;
     }
@@ -1898,7 +1897,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       touchSession(ctx, ix, sid);
       // `denied` means AUTO MODE denied it. A human clicking "no" fires nothing at all, and
       // takes the human_input edge on their next prompt instead (§ 6.13).
-      resolveAttention(ctx, ix, sid, 'denied', 'permission_denied_hook', atMs, true);
+      resolveAttention(ctx, ix, sid, 'denied', 'permission_denied_hook', atMs);
       break;
     }
     case 'Notification': {
@@ -3077,18 +3076,21 @@ async function flusherMain() {
   releaseLock(spool, state);
 }
 
-/* Every open fact has a ceiling, and each one's expiry is a WIRE EVENT this reporter emits —
- * an entry edge with no exit event is not a state, it is a one-way trapdoor (§ 6.12). */
+/* Every open HARNESS fact has a ceiling, and each one's expiry is a WIRE EVENT this reporter
+ * emits — an entry edge with no exit event is not a state, it is a one-way trapdoor (§ 6.12).
+ * An attention request is the one open fact with NO ceiling (§ 6.13, card#9527): it is a wait on a
+ * human, and "Mezzanine should assume agent is stuck until it gets another status update from that
+ * agent". Its exits are all observed edges, and D2 closes the trapdoor on the seat's next activity
+ * event — so this loop neither times it out nor lets the silence close below end its session. */
 function expireOpenFacts(ctx, ix, atMs) {
-  for (const [sid, a] of [...ix.attention]) {
-    if (atMs - Date.parse(a.opened_at || atMs) > K.ATTENTION_MS) {
-      resolveAttention(ctx, ix, sid, 'timeout', 'timeout', atMs, false);
-    }
-  }
   for (const [sid, c] of [...ix.compactions]) {
     if (atMs - Date.parse(c.started_at || atMs) > K.COMPACTION_MS) closeCompaction(ctx, ix, sid, 'timeout', atMs);
   }
   for (const [sid, s] of [...ix.sessions]) {
+    // A session waiting on a human is silent BECAUSE it is waiting, which is not the silence
+    // § 6.2's 90 minutes infers a dead session from. Closing it would hand D2 a `session.end` that
+    // reads as the agent going away while it still waits (§ 6.2, card#9527).
+    if (ix.attention.has(sid)) continue;
     if (atMs - Date.parse(s.last_active || s.opened_at || atMs) > K.SILENCE_MS) {
       /* § 6.2 — the 90-minute `inferred_silence` close is NOT the reap path and emits NO
        * turn.end: it fires in the flusher, which holds no observation of a turn ending. The

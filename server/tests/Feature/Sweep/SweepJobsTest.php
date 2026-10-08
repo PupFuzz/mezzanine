@@ -3,12 +3,14 @@
 namespace Tests\Feature\Sweep;
 
 use App\Fold\Clock;
+use App\Read\SeatObject;
 use App\Sweep\PlaneClock;
 use App\Sweep\Predicates;
 use Illuminate\Support\Facades\DB;
 
 /**
- * `docs/design/FLEET-STATE.md § 2.1`'s SEVEN time-derived jobs, one section each.
+ * `docs/design/FLEET-STATE.md § 2.1`'s time-derived jobs, one section each — and, for job 3, which
+ * card#9527 retired, the behaviour its absence must produce.
  *
  * Every test here is written so that it FAILS IF ITS JOB IS REMOVED — that is the card's
  * load-bearing requirement and the reason each one asserts a write the fold provably cannot make.
@@ -148,65 +150,39 @@ class SweepJobsTest extends SweepTestCase
         $this->assertSame('orphan_timeout', $this->callRow()->abort_reason);
     }
 
-    // ── JOB 3: attention ceilings (§ 4.4) ────────────────────────────────────────────────────
+    // ── JOB 3: retired — an attention request has no ceiling (§ 4.4, card#9527) ─────────────────
 
-    public function test_job_3_an_open_attention_request_is_resolved_at_its_sixty_minute_ceiling(): void
+    /**
+     * The card's first acceptance line: "a request open for 4 h with heartbeats flowing renders
+     * blocked with `blocked_since` 4 h ago". The seat clock moves with the server's, so "ago" is
+     * measured on one clock.
+     *
+     * RED on the code before card#9527: the sweeper resolved the request `server_ceiling` at 60
+     * minutes and the seat rendered `idle`/`unknown` for the remaining three hours.
+     */
+    public function test_job_3_is_retired_a_request_open_four_hours_with_heartbeats_still_renders_blocked(): void
     {
-        $this->deliver($this->blockedPair(requestOnly: true));
-        $this->fold();
-
-        $this->assertSame('blocked', $this->state()->render_state);
-        $ceiling = $this->requestRow()->ceiling_at;
-
-        $this->advanceServerClock(61 * 60);
-        $this->stayAlive();
-
-        $this->assertNull($this->requestRow()->resolved_at, 'the FOLD does not fire a ceiling');
-
-        $this->sweep();
-
-        $request = $this->requestRow();
-        $this->assertSame('server_ceiling', $request->resolution);
-        $this->assertSame('server_ceiling', $request->resolution_source);
-
-        // RESOLVED AT THE CEILING, not at the pass time: `D2-MUST` #5's bound is the ceiling, and
-        // stamping `now` would put up to one sweep cadence of the server's own scheduling into
-        // `waited_ms` and give one physical event two answers depending on sweeper load.
-        $this->assertSame($ceiling, $request->resolved_at);
-        $this->assertSame(3_600_000, (int) $request->waited_ms);
-
-        $this->assertSame(1, $this->counter('attention_ceiling_expired'));
-
-        // The cause value exists "so the drill-down can say THE SERVER CLEARED THIS, which is
-        // exactly the distinction a `staleness_sweep` or a `wire_event` cause would lose" (§ 4.4).
-        $this->assertContains('attention_ceiling', $this->causes());
-        $this->assertNotSame('blocked', $this->state()->render_state);
-    }
-
-    public function test_job_3_a_late_attention_resolved_overrides_the_ceiling_and_never_reopens_blocked(): void
-    {
-        // D1 § 12.5's rule applied to the state D1 hands D2: "an observation overrides an
-        // inference". This is the sweeper's half of § 4.4's `attention_ceiling_overridden`, which
-        // had no producer before this card because nothing fired the ceiling.
         $events = $this->blockedPair(requestOnly: true);
-        $requestId = $events[2]['data']['request_id'];
+        $openedMs = $this->clockMs;
 
         $this->deliver($events);
         $this->fold();
 
-        $this->advanceServerClock(61 * 60);
-        $this->stayAlive();
-        $this->sweep();
+        // Four hours of a live seat: a heartbeat every 15 minutes keeps it well inside § 4.5's
+        // 300 s, and a sweep after each one gives a ceiling sixteen chances to fire.
+        for ($i = 0; $i < 16; $i++) {
+            $this->advanceServerClock(15 * 60);
+            $this->clockMs += 15 * 60_000 - 60_000;   // heartbeats() adds the last minute
+            $this->stayAlive();
+            $this->sweep();
+        }
 
-        $this->deliver([$this->event('attention.resolved', [
-            'request_id' => $requestId, 'resolution' => 'granted',
-            'resolution_source' => 'call_close', 'waited_ms' => 3_601_000,
-        ])]);
-        $this->fold();
+        $this->assertNull($this->requestRow()->resolved_at);
+        $this->assertSame('blocked', $this->state()->render_state);
 
-        $this->assertSame('granted', $this->requestRow()->resolution);
-        $this->assertSame(1, $this->counter('attention_ceiling_overridden'));
-        $this->assertNotSame('blocked', $this->state()->render_state);
+        $seat = SeatObject::forSeatRef($this->seatRef, Clock::toMs(Clock::sql(now())));
+        $this->assertSame($this->wireTime($openedMs), $seat['blocked_since']);
+        $this->assertGreaterThanOrEqual(4 * 3_600_000, $this->clockMs - $openedMs, 'the seat clock is four hours on');
     }
 
     // ── JOB 4: compaction ceilings (§ 4.6) ───────────────────────────────────────────────────
@@ -291,25 +267,40 @@ class SweepJobsTest extends SweepTestCase
         $this->assertSame('stalled_left_live', $state->unknown_reason);
     }
 
-    public function test_job_5_an_open_attention_request_is_resolved_when_the_seat_leaves_live(): void
+    /**
+     * The card's second acceptance line: "the seat going offline and back with no activity renders
+     * offline, then blocked again". The lid closes on a waiting prompt, the seat crosses `stale`
+     * and then `offline` — quiescence runs — and the lid opens on the same prompt.
+     *
+     * RED on the code before card#9527: job 5 resolved the request `seat_left_live` at 300 s, so the
+     * seat came back rendering whatever its other facts said, with the wait gone.
+     */
+    public function test_job_5_a_seat_leaving_live_keeps_its_request_and_renders_blocked_when_it_returns(): void
     {
         $this->deliver($this->blockedPair(requestOnly: true));
         $this->fold();
-
         $this->assertSame('blocked', $this->state()->render_state);
 
         $this->advanceServerClock(400);
         $this->sweep();
+        $this->assertSame('stale', $this->state()->render_state);
+        $this->assertSame('blocked', $this->state()->activity_state, 'masked by the link state, not cleared');
 
-        $request = $this->requestRow();
-        $this->assertSame('seat_left_live', $request->resolution);
-        $this->assertSame('server_left_live', $request->resolution_source);
-        $this->assertSame(1, $this->counter('left_live_resolved_attention'));
+        $this->advanceServerClock(600);
+        $this->sweep();
+        $this->assertSame('offline', $this->state()->render_state);
+        $this->assertNull($this->requestRow()->resolved_at, 'neither leaving live nor quiescence resolves it');
 
-        // § 4.4: "a seat returning at 400 s must not re-render a wait whose evidence is five minutes
-        // stale" — discharged by CLEARING THE FACT rather than by masking it, which is why this is
-        // asserted on `activity_state` and not only on the render.
-        $this->assertNotSame('blocked', $this->state()->activity_state);
+        // The lid opens: the reporter's heartbeat, and nothing from the agent.
+        $this->stayAlive();
+        $this->sweep();
+        $this->assertSame('blocked', $this->state()->render_state);
+
+        // The third acceptance line, on this path: the agent's next status update resolves it.
+        $this->deliver([$this->event('turn.start', ['prompt_chars' => 4])]);
+        $this->fold();
+        $this->assertSame('seat_activity', $this->requestRow()->resolution);
+        $this->assertNotSame('blocked', $this->state()->render_state);
     }
 
     public function test_job_5_idle_is_deliberately_not_in_this_rule(): void
@@ -443,8 +434,9 @@ class SweepJobsTest extends SweepTestCase
      * `resolution_source: server_offline`) have no writer whatever the schedule. What IS asserted
      * here is § 4.6's actual requirement — "ONE QUIET SEAT, ONE WRITE-SITE, ON THE EARLIER EDGE" —
      * on the hardest path for it: a seat silent for more than 900 s between two passes takes
-     * `offline` DIRECTLY and never has a pass in which § 4.5 rule 3 matched, so both facts must
-     * still be cleared, once, in the LEAVING-LIVE vocabulary.
+     * `offline` DIRECTLY and never has a pass in which § 4.5 rule 3 matched, so the stall must
+     * still be cleared, once, in the LEAVING-LIVE vocabulary. The attention request beside it is
+     * the other half since card#9527: written by NEITHER job, it is still open after the pass.
      *
      * The mutation that reds it is a SECOND WRITE-SITE — quiescence resolving the request itself —
      * which is exactly the alternative § 4.6 refuses: "two sweeper jobs racing to record different
@@ -452,11 +444,18 @@ class SweepJobsTest extends SweepTestCase
      */
     public function test_job_6_quiescence_adds_no_second_write_site_for_a_seat_going_quiet(): void
     {
-        $events = $this->blockedPair(requestOnly: true);
+        // The stall FIRST and the request after it: since card#9527 a `turn.end` that follows a
+        // request is the seat's next status update and resolves it (§ 4.4), so the other order
+        // would leave no open request for this test to watch.
+        $events = $this->openCall();
         $events[] = $this->event('turn.end', [
             'end_reason' => 'api_error', 'api_error_type' => 'rate_limit', 'duration_ms' => 800,
             'open_calls_at_end' => 1, 'aborted_call_ids' => [], 'stop_hook_active' => false,
             'background_tasks_open' => 0, 'tool_calls' => 1, 'failed_calls' => 0,
+        ]);
+        $events[] = $this->event('attention.request', [
+            'request_id' => $this->ulid(), 'source' => 'permission_request_hook',
+            'notification_kind' => 'permission_required', 'call_id' => null, 'open_calls' => 1,
         ]);
 
         $this->deliver($events);
@@ -470,13 +469,11 @@ class SweepJobsTest extends SweepTestCase
         $this->sweep();
 
         $this->assertSame('left_live', $this->sessionRow()->stalled_cleared_by);
-        $this->assertSame('seat_left_live', $this->requestRow()->resolution);
-        $this->assertSame('server_left_live', $this->requestRow()->resolution_source);
         $this->assertSame(1, $this->counter('left_live_cleared_stalls'));
-        $this->assertSame(1, $this->counter('left_live_resolved_attention'));
 
-        // § 7.2: "There is no `offline_quiesced_attention` twin: an open attention request is
-        // resolved by the leaving-live clear before quiescence sees it."
+        // § 7.2: there is no `offline_quiesced_attention` counter because NEITHER job resolves the
+        // request (card#9527) — it waits for the seat's next activity event (§ 4.4).
+        $this->assertNull($this->requestRow()->resolved_at);
         $this->assertSame(0, $this->counter('offline_quiesced_attention'));
     }
 
@@ -577,19 +574,21 @@ class SweepJobsTest extends SweepTestCase
 
     public function test_job_7_the_alarm_pass_covers_predicates_this_process_does_not_evaluate(): void
     {
-        // `attention_resolved_by_wire` is evaluated by the FOLD (a wire resolution) and by the
-        // SWEEPER (a ceiling). Its criterion — "ANY server-ceiling resolution in 24 h is surfaced" —
-        // is job 7's to apply, and job 7 iterates the TABLE rather than a list of names it owns, so
-        // a predicate recorded elsewhere is still alarmed on.
-        $this->deliver($this->blockedPair(requestOnly: true));
-        $this->fold();
+        // Job 7 iterates the TABLE rather than a list of names it owns, so a predicate recorded
+        // elsewhere is still alarmed on. `call_closed_by_wire`'s share is decided by the ALARM pass
+        // (unlike a run, which `record()` latches), so it is the predicate that can show it: the
+        // FOLD's branch counts below — written with no sweep between them — fire only when a pass
+        // evaluates them. (`attention_resolved_by_wire` carried this test until card#9527 retired
+        // it with the attention ceiling.)
+        Predicates::record($this->seatRef, 'call_closed_by_wire', true, Clock::sql(now()), 950);
+        Predicates::record($this->seatRef, 'call_closed_by_wire', false, Clock::sql(now()), 50);
+        $this->assertNull($this->predicate('call_closed_by_wire')->alarm_since);
 
-        $this->advanceServerClock(61 * 60);
+        $this->advanceServerClock(86_400 + 15);
         $this->stayAlive();
         $this->sweep();
 
-        $this->assertSame(1, (int) $this->predicate('attention_resolved_by_wire')->false_count);
-        $this->assertNotNull($this->predicate('attention_resolved_by_wire')->alarm_since);
+        $this->assertNotNull($this->predicate('call_closed_by_wire')->alarm_since);
     }
 
     public function test_job_7_turn_clean_records_both_branches_from_the_fold(): void
@@ -660,11 +659,9 @@ class SweepJobsTest extends SweepTestCase
      * declared in § 5 and evaluated nowhere is a branch count that reads zero for ever, which is
      * the 30-day-dark shape this whole section exists to prevent.
      */
-    public function test_job_7_all_seven_declared_predicates_have_a_writer(): void
+    public function test_job_7_every_declared_predicate_has_a_writer(): void
     {
         $this->deliver($this->cleanTurn());
-        $this->fold();
-        $this->deliver($this->blockedPair(requestOnly: true));
         $this->fold();
 
         $this->advanceServerClock(61 * 60);

@@ -2,17 +2,18 @@
 
 namespace Tests\Feature\Fold;
 
-use App\Fold\Clock;
 use Illuminate\Support\Facades\DB;
 
 /**
- * AT-D2-5 — blocked has an exit.
+ * AT-D2-5 — blocked has an exit, and every exit is the seat saying something.
  *
- * ⚠ SCOPE. § 11's test has five GREENs; the two that belong to the SWEEPER — the 60-minute server
- * ceiling and the leaving-live resolution — are not built by either half of card #7339 and are not
- * asserted here. The PR body says so rather than letting the file's name imply coverage. What is
- * here is every exit the WIRE carries, plus the server-side session close that § 4.4 requires "so
- * a lost resolution cannot strand the state".
+ * The operator's ruling of 2026-09-14 (card#9527): "Mezzanine should assume agent is stuck until it
+ * gets another status update from that agent." So a request has NO TIMER — the 60-minute reporter
+ * and server ceilings are gone, and so is the leaving-live resolution — and § 4.4's exits are all
+ * events: the request's own `attention.resolved`, its session closing, and the seat-activity exit
+ * this file drives most of. The time-side half of the ruling — four hours with heartbeats, and a
+ * seat that goes offline and comes back — needs the sweeper and is in `SweepJobsTest` (job 3,
+ * retired, and job 5).
  */
 class At5BlockedTest extends FoldTestCase
 {
@@ -94,31 +95,189 @@ class At5BlockedTest extends FoldTestCase
         $this->assertCount(2, DB::table('attention_requests')->where('seat_ref', $this->seatRef)->get());
         $this->assertSame('blocked', $this->state()->activity_state);
 
-        // The OLDEST unresolved request holds the state, so the 60-minute ceiling that will bound
-        // it is the one belonging to the request that actually opened `blocked`.
+        // The OLDEST unresolved request holds the state, so `blocked_since` dates the request that
+        // actually opened `blocked`.
         $this->assertSame(
             $first,
             DB::table('attention_requests')->where('id', $this->state()->open_attention_ref)->value('request_id'),
         );
     }
 
-    public function test_the_ceiling_is_materialized_at_sixty_minutes_from_the_seat_clock(): void
+    /**
+     * § 4.4's seat-activity exit, on the path the 60-minute ceiling used to cover: the reporter's
+     * own `attention.resolved` never arrives, and the seat's next `tool.end` is what ends the wait.
+     *
+     * RED on the code before card#9527: nothing on the fold resolved a request on activity, so this
+     * seat stayed `blocked` until the sweeper's ceiling an hour later.
+     */
+    public function test_the_seats_next_tool_end_resolves_it_when_no_resolution_arrives(): void
     {
-        // § 4.7: the attention ceiling is measured from the request's own `event_time` — the SEAT
-        // clock — and deliberately not from receipt, because the REPORTER owns the competing timer
-        // and fires at 60 min on its own clock. Using receipt would make the server clear first on
-        // every skewed seat and mint a `server_ceiling` for a request the reporter was about to
-        // resolve properly. The sweeper that FIRES this is out of scope; the materialized column it
-        // will range-scan is not.
+        $events = $this->blockedPair(requestOnly: true);
+        $call = $events[1]['data']['call_id'];
+
+        $this->deliver($events);
+        $this->fold();
+        $this->assertSame('blocked', $this->state()->activity_state);
+
+        $this->deliver([$this->toolEnd($call)]);
+        $this->fold();
+
+        $request = $this->requestRow();
+        $this->assertSame('seat_activity', $request->resolution);
+        $this->assertSame('server_seat_activity', $request->resolution_source);
+        $this->assertSame(1000, (int) $request->waited_ms, 'seat clock: the tool.end is one fixture second later');
+        $this->assertNotSame('blocked', $this->state()->activity_state);
+    }
+
+    /** A prompt — `turn.start` — is the agent's next status update too, and resolves it the same way. */
+    public function test_the_seats_next_prompt_resolves_it(): void
+    {
         $this->deliver($this->blockedPair(requestOnly: true));
         $this->fold();
 
-        $request = DB::table('attention_requests')->where('seat_ref', $this->seatRef)->first();
+        $this->deliver([$this->event('turn.start', ['prompt_chars' => 9])]);
+        $this->fold();
 
-        $this->assertSame(
-            60 * 60 * 1000,
-            Clock::toMs($request->ceiling_at) - Clock::toMs($request->opened_at),
+        $this->assertSame('seat_activity', $this->requestRow()->resolution);
+        $this->assertSame('working', $this->state()->activity_state);
+    }
+
+    /**
+     * The card's acceptance: "a new session on the seat resolves the old session's request". A
+     * harness killed while waiting sends no `SessionEnd`, so the old session never closes on the
+     * wire, and the next thing the seat says about it is a new session starting.
+     *
+     * RED on the code before card#9527, and worse than the ceiling's hour: the request is
+     * seat-wide state (§ 4.3 rule 1 reads every session), so the restarted agent's desk would have
+     * rendered `blocked` over its new work until the ceiling fired.
+     */
+    public function test_a_new_session_on_the_seat_resolves_the_old_sessions_request(): void
+    {
+        $this->deliver($this->blockedPair(requestOnly: true));
+        $this->fold();
+
+        $restarted = 'b81e0f37-2c4d-4a9b-8e61-5d2c7a3f9e10';
+        $this->deliver([$this->event('session.start', [
+            'source' => 'startup', 'project_label' => 'mezzanine', 'harness_label' => null,
+            'previous_session_id' => null,
+        ], $restarted)]);
+        $this->fold();
+
+        $this->assertSame('seat_activity', $this->requestRow()->resolution);
+        $this->assertNull(
+            DB::table('sessions')->where('seat_ref', $this->seatRef)->where('session_id', $this->sessionId)->value('ended_at'),
+            'the old session is not closed by this — only its wait is',
         );
+        $this->assertNotSame('blocked', $this->state()->activity_state);
+    }
+
+    /**
+     * THE CONTROLS — each a seat event that is NOT the agent's next status update, and each SEEN to
+     * fail by adding its kind to `Projector::SEAT_ACTIVITY_KINDS` (or, for the last, by dropping the
+     * `opened_at` bound): the request resolves and the first `assertNull` reds.
+     *
+     *  - a heartbeat: the REPORTER saying it is alive, which a waiting agent's reporter keeps doing;
+     *  - another call's `tool.start`: the call awaiting permission can itself open after the request;
+     *  - another session's `inferred_silence` close: the flusher's inference, not the agent's act;
+     *  - a `tool.end` stamped BEFORE the request on the seat clock: delivered late, it is not news.
+     */
+    public function test_events_that_are_not_the_agents_next_status_update_leave_it_blocked(): void
+    {
+        $events = $this->blockedPair(requestOnly: true);
+        $openedMs = $this->clockMs;
+
+        $this->deliver($events);
+        $this->fold();
+
+        $other = 'c4d2e8a1-7b3f-4e5d-9c0a-1f2e3d4c5b6a';
+        $this->deliver([
+            ...$this->heartbeats(2),
+            $this->event('tool.start', [
+                'call_id' => $this->ulid(), 'tool_name' => 'Read', 'descriptor' => 'Read: a.md',
+                'descriptor_truncated' => false, 'agent_scope' => 'main', 'parent_call_id' => null,
+                'harness_call_ref' => null, 'open_calls_before' => 1,
+            ]),
+            $this->event('session.end', [
+                'end_reason' => 'inferred_silence', 'duration_ms' => null, 'turns' => 0, 'aborted_calls' => 0,
+            ], $other),
+            $this->toolEnd($this->ulid(), $openedMs - 5000),
+        ]);
+        $this->fold();
+
+        $this->assertNull($this->requestRow()->resolved_at);
+        $this->assertSame('blocked', $this->state()->activity_state);
+    }
+
+    /**
+     * The seat-activity exit is an INFERENCE and the reporter's resolution an OBSERVATION, so the
+     * second relabels the first (D1 § 12.5). On an ordinary approval the reporter emits the
+     * `tool.end` FIRST and its `attention.resolved(granted)` straight after (D1 § 6.13), so this is
+     * the order every approval takes through the fold.
+     */
+    public function test_the_reporters_resolution_relabels_the_seat_activity_inference(): void
+    {
+        $events = $this->blockedPair(requestOnly: true);
+        $call = $events[1]['data']['call_id'];
+        $requestId = $events[2]['data']['request_id'];
+
+        $this->deliver($events);
+        $this->fold();
+
+        $this->deliver([
+            $this->toolEnd($call),
+            $this->event('attention.resolved', [
+                'request_id' => $requestId, 'resolution' => 'granted',
+                'resolution_source' => 'call_close', 'waited_ms' => 1000,
+            ]),
+        ]);
+        $this->fold();
+
+        $request = $this->requestRow();
+        $this->assertSame('granted', $request->resolution);
+        $this->assertSame('call_close', $request->resolution_source);
+        $this->assertNotSame('blocked', $this->state()->activity_state);
+    }
+
+    /**
+     * § 7.2's `attention_long_wait`: counted ONCE, on the request's first resolution, when the wait
+     * reached 60 minutes — and not by the reporter's relabel that follows, which is the same wait.
+     * The 59-minute request is the control: SEEN to fail by lowering the threshold below it.
+     */
+    public function test_a_wait_of_an_hour_or_more_is_counted_once(): void
+    {
+        $events = $this->blockedPair(requestOnly: true);
+        $call = $events[1]['data']['call_id'];
+        $requestId = $events[2]['data']['request_id'];
+        $openedMs = $this->clockMs;
+
+        $this->deliver($events);
+        $this->fold();
+
+        $this->deliver([
+            $this->toolEnd($call, $openedMs + 59 * 60_000),
+        ]);
+        $this->fold();
+        $this->assertSame(0, $this->counter('attention_long_wait'), '59 minutes is not a long wait');
+
+        $events = $this->blockedPair(requestOnly: true);
+        $call = $events[1]['data']['call_id'];
+        $requestId = $events[2]['data']['request_id'];
+        $openedMs = $this->clockMs;
+
+        $this->deliver($events);
+        $this->fold();
+
+        $this->deliver([
+            $this->toolEnd($call, $openedMs + 60 * 60_000),
+            $this->event('attention.resolved', [
+                'request_id' => $requestId, 'resolution' => 'granted',
+                'resolution_source' => 'call_close', 'waited_ms' => 3_600_000,
+            ], null, $openedMs + 60 * 60_000),
+        ]);
+        $this->fold();
+
+        $this->assertSame(1, $this->counter('attention_long_wait'));
+        $this->assertSame('granted', DB::table('attention_requests')->where('request_id', $requestId)->value('resolution'));
     }
 
     public function test_the_discriminating_control_a_seat_that_is_never_blocked_never_renders_blocked(): void
@@ -131,5 +290,20 @@ class At5BlockedTest extends FoldTestCase
 
         $this->assertSame('idle', $this->state()->activity_state);
         $this->assertSame(0, DB::table('attention_requests')->where('seat_ref', $this->seatRef)->count());
+    }
+
+    private function requestRow(): object
+    {
+        return DB::table('attention_requests')->where('seat_ref', $this->seatRef)->orderByDesc('id')->first();
+    }
+
+    /** @return array<string, mixed> */
+    private function toolEnd(string $call, ?int $seatClockMs = null): array
+    {
+        return $this->event('tool.end', [
+            'call_id' => $call, 'tool_name' => 'Write', 'outcome' => 'completed',
+            'abort_reason' => null, 'duration_ms' => 900, 'duration_source' => 'harness',
+            'close_source' => 'post_tool_use', 'match' => 'sole_open',
+        ], null, $seatClockMs);
     }
 }

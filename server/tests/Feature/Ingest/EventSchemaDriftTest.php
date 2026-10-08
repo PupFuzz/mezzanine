@@ -133,8 +133,10 @@ class EventSchemaDriftTest extends TestCase
             // A row with no members of its own defers to another section: § 6.8 does it for all
             // three of its enums — "by reference and never restated — this event is a second
             // projection of that call's close, so a value set written twice is a value set free
-            // to drift" — and § 6.13's `resolution_source` says "as the table above". The
-            // referenced rows carry the values; `deferredEnumRows()` accounts for these.
+            // to drift". The referenced rows carry the values; `deferredEnumRows()` accounts for
+            // these. (§ 6.13's `resolution_source` deferred to "the table above" too until
+            // card#9527 retired that table's `timeout` row and the field row began listing its
+            // members, the retired one included.)
             if ($members !== []) {
                 $cases["{$kind}.{$field}"] = [$kind, $field, $members];
             }
@@ -345,7 +347,8 @@ class EventSchemaDriftTest extends TestCase
         //
         // The count is deliberately NOT a literal. An earlier version of this assertion carried
         // `- 3` for "subagent.stop's three deferred rows" and was wrong: § 6.13's
-        // `resolution_source` defers too, so the real number was four. A written figure stops
+        // `resolution_source` deferred too at the time, so the real number was four — and
+        // card#9527 later moved it back to extracted, which a written figure would have missed again. A written figure stops
         // living in the loop and starts living in an artifact the loop cites; a re-derivation
         // survives the document moving.
         $extracted = array_keys(self::enumMemberRows());

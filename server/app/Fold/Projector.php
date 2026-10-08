@@ -52,8 +52,40 @@ class Projector
 
     private const ORPHAN_DISPATCH_MS = 60 * 60 * 1000;
 
-    /** D1 § 6.13 / § 4.7 — measured from the request's own `event_time` (the seat clock). */
-    private const ATTENTION_CEILING_MS = 60 * 60 * 1000;
+    /**
+     * `docs/design/FLEET-STATE.md § 4.4`'s seat-activity exit of `blocked` — the kinds that are
+     * "another status update from that agent" (the operator's ruling of 2026-09-14, card#9527).
+     *
+     * A REQUEST HAS NO TIMER. It stays open until the seat it was raised on reports activity, and
+     * this is that set: a prompt, a turn ending, a tool finishing, a session starting or ending. It
+     * is a SUBSET of `StateRecompute::ACTIVITY_KINDS`, and each member that set has and this one
+     * does not is left out for a stated reason:
+     *
+     *  - `tool.start` — D1 § 6.13 says the order of `PermissionRequest` against the call it is about
+     *    is undocumented, so the very call awaiting permission can open AFTER the request. Counting
+     *    it would resolve the wait on the event that is waiting. Its `tool.end` is in the set.
+     *  - `subagent.spawn` / `subagent.stop` — each rides a dispatch call's `tool.start` / `tool.end`
+     *    (D1 § 6.7), so the call event already speaks for it.
+     *  - `compaction.*` — the harness reclaiming context, not the agent reporting (§ 4.8).
+     *  - `attention.*` — a second request is not an answer to the first (§ 4.4's NOT-an-exit row),
+     *    and a resolution is its own exit.
+     *
+     * `context.sample` and `reporter.heartbeat` are not activity at all (§ 3.2): a heartbeat is the
+     * REPORTER saying it is alive, and a waiting agent's reporter keeps sending one.
+     *
+     * `session.end` with `end_reason: inferred_silence` is excluded at the call site: it is the
+     * flusher's inference that a session went quiet, not something the agent did (D1 § 6.2).
+     */
+    private const SEAT_ACTIVITY_KINDS = [
+        'turn.start', 'turn.end', 'tool.end', 'session.start', 'session.end',
+    ];
+
+    /**
+     * § 7.2's `attention_long_wait` threshold: a request whose wait reached it is counted once, when
+     * it resolves. Visibility only — nothing resolves at it. 60 min is the ceiling card#9527 removed,
+     * so the counter reads as "how often the old ceiling would have cleared a wait that was real".
+     */
+    private const ATTENTION_LONG_WAIT_MS = 60 * 60 * 1000;
 
     /**
      * D1 § 6.7 — the dispatch tool's payload `tool_name` is `Agent` on this build, MEASURED at
@@ -108,6 +140,13 @@ class Projector
             // forbids outright.
             default => throw new \LogicException('no projection for kind '.$e->kind),
         };
+
+        // AFTER the projection, so a `session.end` has already resolved its OWN session's request
+        // as `session_ended` — the more specific label — and this resolves whatever is left.
+        if (in_array($e->kind, self::SEAT_ACTIVITY_KINDS, true)
+            && ! ($e->kind === 'session.end' && $e->str('end_reason', 32) === 'inferred_silence')) {
+            $this->resolveOnSeatActivity($e);
+        }
     }
 
     // ── sessions ─────────────────────────────────────────────────────────────────────────────
@@ -236,11 +275,18 @@ class Projector
 
         DB::table('sessions')->where('id', $ref)->update($update);
 
-        // § 4.4's `blocked` third exit: "the server also closes the request when the session
+        // § 4.4's `blocked` session exit: "the server also closes the request when the session
         // closes, so a lost resolution cannot strand the state". D1 emits
         // `attention.resolved(session_ended)` after the boundary event; if it arrives, it is an
         // ordinary re-resolution of an already-resolved row and the LWW guard makes it a no-op.
-        $this->resolveOpenRequests($e, $ref);
+        $this->resolveRequests(
+            $e->seatRef,
+            DB::table('attention_requests')
+                ->where('seat_ref', $e->seatRef)->where('session_ref', $ref)->whereNull('resolved_at'),
+            $e->eventTime,
+            'session_ended',
+            'session_end',
+        );
 
         $this->touchApplied($ref, $e);
     }
@@ -265,19 +311,71 @@ class Projector
         Predicates::record($e->seatRef, 'call_closed_by_wire', $byWire, $e->receivedAt, $count);
     }
 
-    private function resolveOpenRequests(FoldEvent $e, int $sessionRef): void
+    /**
+     * § 4.4's seat-activity exit: an activity event from the seat resolves every request still
+     * open on that seat that was raised BEFORE it — in any of the seat's sessions.
+     *
+     * ⛔ SEAT-WIDE, NOT SESSION-SCOPED, AND THAT IS card#9527's ACCEPTANCE RATHER THAN A SHORTCUT:
+     * "a new session on the seat resolves the old session's request". A harness killed while
+     * waiting sends no `SessionEnd`, and the next thing the seat ever says
+     * about it is a NEW session starting — which is when the operator restarted it. Scoped to the
+     * request's session, that wait would have no exit at all. The cost is stated in § 4.4: on a
+     * seat running two terminals, activity in one resolves a wait in the other.
+     *
+     * "BEFORE" IS ON THE SEAT CLOCK, the request's own `opened_at` against the event's
+     * `event_time` — one seat, one clock, so no skew enters the comparison. Strictly before: an
+     * event stamped in the same millisecond as the request is not evidence the wait is over.
+     *
+     * NO `applied_*` TRIPLE IS WRITTEN, the same as the session close above: this is an INFERENCE,
+     * and the reporter's own `attention.resolved` — which for an ordinary approval is emitted right
+     * after the `tool.end` that lands here first — relabels the row through `attentionResolved()`'s
+     * ordinary LWW path. An observation overrides an inference (D1 § 12.5).
+     */
+    private function resolveOnSeatActivity(FoldEvent $e): void
     {
-        $open = DB::table('attention_requests')
-            ->where('seat_ref', $e->seatRef)->where('session_ref', $sessionRef)->whereNull('resolved_at')
-            ->get(['id', 'opened_at']);
+        $this->resolveRequests(
+            $e->seatRef,
+            DB::table('attention_requests')
+                ->where('seat_ref', $e->seatRef)->whereNull('resolved_at')
+                ->where('opened_at', '<', $e->eventTime),
+            $e->eventTime,
+            'seat_activity',
+            'server_seat_activity',
+        );
+    }
 
-        foreach ($open as $request) {
+    /**
+     * The one write-site for a SERVER-side resolution — the session close and the seat-activity
+     * exit — so the `waited_ms` arithmetic and § 7.2's `attention_long_wait` count are stated once.
+     * The wire's resolution has its own path (`attentionResolved()`), because it carries the
+     * reporter's `waited_ms` and the LWW triple; it counts the long wait through the same helper.
+     */
+    private function resolveRequests(
+        int $seatRef,
+        \Illuminate\Database\Query\Builder $open,
+        string $at,
+        string $resolution,
+        string $source,
+    ): void {
+        foreach ($open->get(['id', 'opened_at']) as $request) {
+            $waited = max(0, Clock::toMs($at) - Clock::toMs($request->opened_at));
+
             DB::table('attention_requests')->where('id', $request->id)->update([
-                'resolved_at' => $e->eventTime,
-                'resolution' => 'session_ended',
-                'resolution_source' => 'session_end',
-                'waited_ms' => max(0, Clock::toMs($e->eventTime) - Clock::toMs($request->opened_at)),
+                'resolved_at' => $at,
+                'resolution' => $resolution,
+                'resolution_source' => $source,
+                'waited_ms' => $waited,
             ]);
+
+            $this->countLongWait($seatRef, $waited);
+        }
+    }
+
+    /** § 7.2's `attention_long_wait` — counted on a request's FIRST resolution only. */
+    private function countLongWait(int $seatRef, int $waitedMs): void
+    {
+        if ($waitedMs >= self::ATTENTION_LONG_WAIT_MS) {
+            Counters::seat($seatRef, 'attention_long_wait');
         }
     }
 
@@ -819,13 +917,10 @@ class Projector
                 'permission_required', 'input_awaited', 'elicitation',
             ]),
             'call_id' => $e->str('call_id', 26),
+            // NO CEILING IS MATERIALIZED (card#9527). The request stays open until the seat says
+            // something: § 4.4's exits are all events, and none of them is a clock.
             'opened_at' => $e->eventTime,
             'opened_received_at' => $e->receivedAt,
-            // § 4.7's materialized ceiling, measured from the request's own `event_time` — the
-            // SEAT clock, and deliberately not receipt: the reporter owns the competing 60-minute
-            // timer and fires on that basis, so the same basis makes the two fire together instead
-            // of the server minting a `server_ceiling` on every skewed seat.
-            'ceiling_at' => Clock::fromMs(Clock::toMs($e->eventTime) + self::ATTENTION_CEILING_MS),
         ] + $this->triple($e));
     }
 
@@ -847,22 +942,21 @@ class Projector
             // values — and § 7.2 has no counter for the case, so it cannot even be counted without
             // inventing vocabulary. Nothing is written. The state is still BOUNDED, which is why
             // this is a hole and not a trapdoor: when the request lands it opens `blocked`, and the
-            // session close above or the sweeper's 60-minute ceiling closes it. See the PR body.
+            // seat's next activity event or the session close resolves it. See the PR body.
             return;
         }
 
         // An observation OVERRIDES an inference and NEVER re-opens a state (D1 § 12.5's rule,
-        // applied to the state D1 hands this document). An `attention.resolved` arriving after the
-        // sweeper's ceiling fired relabels the resolution to the reporter's and counts
-        // `attention_ceiling_overridden` — rising means the ceiling is firing too early, i.e.
-        // resolutions are merely slow rather than lost.
-        if ($request->resolved_at !== null) {
-            if ($request->resolution_source === 'server_ceiling') {
-                Counters::seat($e->seatRef, 'attention_ceiling_overridden');
-            } elseif (! Ordering::newer($this->tripleOf($e), $this->appliedTripleOf($request))) {
-                return;
-            }
+        // applied to the state D1 hands this document). The server's two resolutions — the session
+        // close and the seat-activity exit — write no `applied_*` triple, so the reporter's own
+        // resolution arriving after either is newer than the request's triple and relabels it.
+        if ($request->resolved_at !== null
+            && ! Ordering::newer($this->tripleOf($e), $this->appliedTripleOf($request))) {
+            return;
         }
+
+        $waited = $e->int('waited_ms')
+            ?? max(0, Clock::toMs($e->eventTime) - Clock::toMs($request->opened_at));
 
         DB::table('attention_requests')->where('id', $request->id)->update([
             'resolved_at' => $e->eventTime,
@@ -872,23 +966,17 @@ class Projector
             'resolution_source' => $e->enum('resolution_source', [
                 'permission_denied_hook', 'call_close', 'user_prompt_submit', 'session_end', 'timeout',
             ]),
-            'waited_ms' => $e->int('waited_ms')
-                ?? max(0, Clock::toMs($e->eventTime) - Clock::toMs($request->opened_at)),
+            'waited_ms' => $waited,
             'applied_event_time' => $e->eventTime,
             'applied_seq_epoch' => $e->seqEpoch,
             'applied_seq' => $e->seq,
         ]);
 
-        // § 5's `attention_resolved_by_wire`, WIRE branch — "per resolution — 0–50/seat/day".
-        //
-        // ⚠ ITS TWO BRANCHES ARE `attention.resolved` AND **THE SERVER CEILING**, and no other
-        // server-side resolution records either. § 5 names the pair exactly that way, and its alarm
-        // criterion is "ANY server-ceiling resolution in 24 h is surfaced" — so folding § 4.5's
-        // `seat_left_live` or the session close into the false branch would make an ORDINARY quiet
-        // seat raise the alarm that exists to say "resolutions are being LOST". Those two closes
-        // have their own counters (`left_live_resolved_attention`, and the session close is D1's
-        // own emission path); this predicate is about the reporter's resolution arriving or not.
-        Predicates::record($e->seatRef, 'attention_resolved_by_wire', true, $e->receivedAt);
+        // A RELABEL IS NOT A SECOND WAIT: the long wait is counted on the request's first
+        // resolution, whichever path wrote it.
+        if ($request->resolved_at === null) {
+            $this->countLongWait($e->seatRef, $waited);
+        }
     }
 
     // ── the heartbeat ────────────────────────────────────────────────────────────────────────

@@ -210,8 +210,8 @@ class StateRecompute
      *                                        the first write of this unit of work
      * @param  array<string, mixed>  $detail  the facts that changed, for the drill-down (§ 6.4)
      * @param  bool  $owesRow  true for a job that must record its own cause even when the render
-     *                         did not move — § 4.4's attention ceiling and § 4.6's quiescence both
-     *                         change facts under a render that `link_state` is already masking
+     *                         did not move — § 4.6's orphan close and quiescence both change
+     *                         facts under a render that `link_state` may already be masking
      * @return bool whether `state_version` was bumped (⇒ a `seat.delta` was published)
      */
     public function forSeat(int $seatRef, array $before, string $cause, array $detail = [], bool $owesRow = false): bool
@@ -416,7 +416,7 @@ class StateRecompute
 
         // The OLDEST unresolved request, not the newest: a second request while one is open is
         // stored as a duplicate and never opens a second `blocked` (§ 4.4), so the one that
-        // actually opened the state is the one whose 60-minute ceiling bounds it.
+        // actually opened the state is the one whose `opened_at` is § 8.2.1's `blocked_since`.
         $openAttention = DB::table('attention_requests')
             ->where('seat_ref', $seatRef)->whereNull('resolved_at')
             ->orderBy('opened_at')->orderBy('id')
