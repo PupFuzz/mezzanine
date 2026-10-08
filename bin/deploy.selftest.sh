@@ -10,9 +10,9 @@
 # WHAT IS REAL AND WHAT IS STUBBED.
 #   REAL: bash, git (throwaway fixture repositories in a temp dir), the whole of bin/deploy.sh —
 #         including the re-exec, which really does hand off to the checked-out copy — and
-#         bin/supervision.sh. And THE DAEMON RESTART: flock, fuser, setsid, ps and kill run for real (fuser
-#         behind a pass-through that one case slows by 0.3 s, to know when a lock is first sampled, and ps
-#         behind one that one case blinds; mktemp, too, is the real one, behind a pass-through § card#9816
+#         bin/supervision.sh. And THE DAEMON RESTART: flock, fuser, setsid, kill and /proc run for real (fuser
+#         behind a pass-through that one case slows by 0.3 s, to know when a lock is first sampled; mktemp,
+#         too, is the real one, behind a pass-through § card#9816
 #         makes fail after a set number of calls; and git, behind one the card#9616 cases turn into a git
 #         without `:(literal)` pathspec magic) against stub daemons holding locks inside the temp dir, so
 #         "the old process is gone and a new one holds the lock" is observed, not merely recorded.
@@ -147,6 +147,27 @@ notverified() {
   local l; for l in "${@:2}"; do printf '                       %s\n' "$l" >&2; done
 }
 eq()  { cases=$((cases+1)); [ "$2" = "$3" ] && ok "$1" || bad "$1 — expected '$2', got '$3'"; }
+# exits <label> <expected> [status] [output] — THE exit-code assertion: <status> (default $RC) is <expected>, and on
+# a mismatch everything <output> holds (default $OUT — what the same run printed, stdout and stderr together) is
+# printed under the FAIL line (card#11557). A status alone cannot say which gate returned it: deploy.sh's 2 is every
+# in-window failure there is, and a red that names no step can only be rerun, never read.
+# ⚠ THE WHOLE OUTPUT, NOT ITS TAIL: the in-window banner (in_window_failure) is itself longer than a short tail, and
+# the line naming the gate that failed is printed just above it — measured, a 20-line tail showed the banner and
+# not the cause. A red is the only time this prints, and it is the time the whole of it is wanted.
+# Every site that captures a status captures the run's output beside it (`run`, `run_via`, `run_full` and the
+# inline `OUT=…; RC=$?` sites), so the output is always the run the status came from.
+# ⛔ WHAT IT CAN PRINT IS FIXTURE DATA ONLY: every case runs deploy.sh against a fixture root this suite built in a
+# temp dir, whose .env write_env (or a case) writes with FAKE_KEY and FAKE_PW, so no real credential is in reach of
+# what it prints. deploy.sh itself prints no credential's value (A5 prints APP_ENV, APP_DEBUG, DB_CONNECTION and
+# CACHE_STORE); the `no DB password is printed` and `leaks no APP_KEY` cases check that on the paths they run.
+exits() {
+  local label="$1" want="$2" got="${3-$RC}" out="${4-$OUT}"
+  cases=$((cases+1))
+  if [ "$want" = "$got" ]; then ok "$label"; return 0; fi
+  bad "$label — expected '$want', got '$got'"
+  printf '         ┆ what it printed:\n' >&2
+  printf '%s\n' "$out" | sed 's/^/         ┆ /' >&2
+}
 neq() { cases=$((cases+1)); [ "$2" != "$3" ] && ok "$1" || bad "$1 — expected anything but '$2'"; }
 has() { cases=$((cases+1)); case "$3" in *"$2"*) ok "$1" ;; *) bad "$1 — output did not contain '$2'" ;; esac; }
 hasnt() { cases=$((cases+1)); case "$3" in *"$2"*) bad "$1 — output unexpectedly contained '$2'" ;; *) ok "$1" ;; esac; }
@@ -180,7 +201,6 @@ no_shell_death() { hasnt "$1: no shell diagnostic of bash's own (bash-floor trip
 # this suite's own stub as soon as one is written, and a stub that execs itself never returns.
 REAL_FUSER="$(command -v fuser)" || { echo "selftest: fuser not found" >&2; exit 1; }
 REAL_PHP="$(command -v php)" || { echo "selftest: php not found (deploy.sh parses the stream pool's JSON status with php -r)" >&2; exit 1; }
-REAL_PS="$(command -v ps)" || { echo "selftest: ps not found" >&2; exit 1; }
 REAL_MKTEMP="$(command -v mktemp)" || { echo "selftest: mktemp not found" >&2; exit 1; }
 REAL_GIT="$(command -v git)" || { echo "selftest: git not found" >&2; exit 1; }
 REAL_BASH="$(command -v bash)" || { echo "selftest: bash not found" >&2; exit 1; }
@@ -307,14 +327,6 @@ if [ -e "$KNOBS/slow_fuser" ]; then sleep 0.3; fi
 exec "$REAL_FUSER" "$@"
 STUB
 } > "$T/bin/fuser"
-# ps: the REAL one — blinded, by a knob, to print no process age at all, as a ps that cannot read a pid does.
-{
-  printf '#!/usr/bin/env bash\nKNOBS=%q\nREAL_PS=%q\n' "$T/knobs" "$REAL_PS"
-  cat <<'STUB'
-if [ -e "$KNOBS/blind_ps" ]; then exit 0; fi
-exec "$REAL_PS" "$@"
-STUB
-} > "$T/bin/ps"
 # mktemp: the REAL one — and, while the `mktemp_passes` knob holds N, the first N calls succeed and every
 # later one is handed a TMPDIR that does not exist, so it fails with mktemp's OWN error, exactly as on a
 # host whose TMPDIR is gone (card#9816). Each call is logged while the knob is set. A count, because the
@@ -472,7 +484,7 @@ reset_stubs() {
         MEZZ_REMOTE MEZZ_GIT_READ_LEDGER STUB_FPM_STDERR STUB_FPM_BROKEN
   kill_streams
   : > "$T/knobs/dies_after_start"; : > "$T/knobs/ignores_term"; : > "$T/knobs/transient_loser"
-  rm -f "$T/knobs/slow_fuser" "$T/knobs/blind_ps" "$T/knobs/mktemp_passes" "$T/knobs/git_magic" \
+  rm -f "$T/knobs/slow_fuser" "$T/knobs/mktemp_passes" "$T/knobs/git_magic" \
         "$T/knobs/bash_calls" "$T/knobs/git_remote_fail" "$T/knobs/mktemp_fill_after" \
         "$T/knobs/git_stderr_unreadable"
   # 9.2.0 is ABOVE the npm 7 the fixture's lockfileVersion 3 implies without BEING it, so a case
@@ -629,7 +641,7 @@ run_via() {
 section "CONTROL — a well-formed host passes every precondition (--dry-run)"
 mkfix control
 run --dry-run
-eq  "control: exit 0"                       0 "$RC"
+exits  "control: exit 0"                       0
 has "control: the § 6.9 migration gate ran and passed" "no undeclared ALTER" "$OUT"
 has "control: prints the plan"              "DRY RUN" "$OUT"
 hasnt "control: no config drift on a host whose .env covers .env.example" "does not set:" "$OUT"
@@ -711,7 +723,7 @@ ledgered_dry_run() {
 
 mkfix ledger
 ledgered_dry_run "$T/ledger.control"
-eq  "ledger: the control deploys with the ledger on" 0 "$RC"
+exits  "ledger: the control deploys with the ledger on" 0
 has "ledger: …and it is the whole dry run, not a part of it" "DRY RUN" "$OUT"
 neq "ledger: it recorded path reads (an empty ledger is a measurement that never happened)" 0 \
     "$(grep -c '^read' "$T/ledger.control")"
@@ -731,10 +743,10 @@ eq  "ledger: …and the same probe, with it set, is called (the control that the
 
 # Library mode (card#9644): sourcing runs no deploy, and a gate is then callable on its own.
 OUT="$(lib "$ROOT/bin/deploy.sh" true 2>&1)"; RC=$?
-eq  "library mode: sourcing bin/deploy.sh exits 0" 0 "$RC"
+exits  "library mode: sourcing bin/deploy.sh exits 0" 0
 hasnt "library mode: and runs no deploy" "Mezzanine prod deploy" "$OUT"
 OUT="$(lib "$ROOT/bin/deploy.sh" gate_a11_trusted_proxies "$V2" 2>&1)"; RC=$?
-eq  "library mode: a gate runs on its own over a commit" 0 "$RC"
+exits  "library mode: a gate runs on its own over a commit" 0
 has "library mode: and says what it says inside phase_a" "no trustProxies() configured" "$OUT"
 
 eq  "LEG 1: the functions the control's run read through ARE the declaration" \
@@ -752,7 +764,7 @@ undeclared_reader() { # a gate that asks a helper nobody declared to read the re
 }
 mkfix ledger_undeclared "" undeclared_reader
 ledgered_dry_run "$T/ledger.undeclared"
-eq  "LEG 1 mutant: it still deploys — nothing but the declaration is wrong" 0 "$RC"
+exits  "LEG 1 mutant: it still deploys — nothing but the declaration is wrong" 0
 eq  "LEG 1 mutant: the undeclared reader is named, with the path it read" \
     "undeclared reader extra_reader read $V2:server/artisan" "$(leg1 "$T/ledger.undeclared" "$ROOT/bin/deploy.sh")"
 
@@ -762,7 +774,7 @@ divergent_entry() { # a gate whose reads depend on a global a deploy sets and a 
 }
 mkfix ledger_divergent "" divergent_entry
 ledgered_dry_run "$T/ledger.divergent"
-eq  "LEG 2 mutant: it still deploys" 0 "$RC"
+exits  "LEG 2 mutant: it still deploys" 0
 eq  "LEG 2 mutant: LEG 1 does not see it — the reader IS declared" "" "$(leg1 "$T/ledger.divergent" "$ROOT/bin/deploy.sh")"
 eq  "LEG 2 mutant: the path the entry does not read on its own is named" \
     "gate_a11_trusted_proxies read inside phase_a and NOT on its own: $V2:server/artisan" \
@@ -776,12 +788,12 @@ eq  "LEG 2 mutant: the path the entry does not read on its own is named" \
 # ignored — and the ledger must not have been written.
 mkfix ledger_ignored
 run --dry-run; unset_rc="$RC"; unset_out="$OUT"
-eq  "a RUN, ledger unset: the control this case compares against deploys" 0 "$unset_rc"
+exits  "a RUN, ledger unset: the control this case compares against deploys" 0 "$unset_rc" "$unset_out"
 for target in writable unwritable; do
   if [ "$target" = writable ]; then led="$T/ledger.ignored"; : > "$led"; else led="$T/no-such-dir/ledger"; fi
   MEZZ_GIT_READ_LEDGER="$led" run --dry-run
   unset MEZZ_GIT_READ_LEDGER
-  eq  "a RUN, ledger set to a $target path: the same exit status as with it unset" "$unset_rc" "$RC"
+  exits  "a RUN, ledger set to a $target path: the same exit status as with it unset" "$unset_rc"
   eq  "a RUN, ledger set to a $target path: the same output, but for the one warning" "$unset_out" \
       "$(printf '%s\n' "$OUT" | grep -v '^⚠ MEZZ_GIT_READ_LEDGER is set in this shell and was IGNORED')"
   has "a RUN, ledger set to a $target path: says it was ignored" "MEZZ_GIT_READ_LEDGER is set in this shell and was IGNORED" "$OUT"
@@ -808,7 +820,7 @@ section "REFUSAL — the host is not in a deployable state"
 run_refusal() { # run_refusal <label> <needle> <args…>
   local label="$1" needle="$2"; shift 2
   run "$@"
-  eq  "$label: exit 1 (refused, nothing touched)" 1 "$RC"
+  exits  "$label: exit 1 (refused, nothing touched)" 1
   has "$label: the ⛔ REFUSED banner, so exit 1 is a verdict and not a death" "⛔ REFUSED — " "$OUT"
   has "$label: the phase-A promise" "Nothing was changed. The previous release is still serving." "$OUT"
   has "$label: says why" "$needle" "$OUT"
@@ -816,7 +828,7 @@ run_refusal() { # run_refusal <label> <needle> <args…>
 }
 
 mkfix as_root; export STUB_UID=0; run --dry-run
-eq "root: exit 1" 1 "$RC"; has "root: says why" "running as root" "$OUT"
+exits "root: exit 1" 1; has "root: says why" "running as root" "$OUT"
 hasnt "root: offers no escalation route" "sudo" "$OUT"
 
 # ── S1 — an option with no value ───────────────────────────────────────────────────────────────
@@ -826,7 +838,7 @@ hasnt "root: offers no escalation route" "sudo" "$OUT"
 # parameter's NAME. Both go through `refuse` now. `eq 1` was green before the fix, on both.
 mkfix option_needs_value
 run --dry-run --ref
-eq  "--ref with no value: exit 1" 1 "$RC"
+exits  "--ref with no value: exit 1" 1
 has "--ref with no value: the ⛔ REFUSED banner, so the 1 is this script's verdict" \
   "⛔ REFUSED — --ref needs a value" "$OUT"
 has "--ref with no value: the phase-A promise" \
@@ -837,15 +849,15 @@ unlogged "--ref with no value: never opened the window" "artisan down"
 # An EMPTY value is the same decision — which is what `${2:?}` did, and what a `[ $# -ge 2 ]` test
 # would have quietly dropped: `--ref ''` would then resolve `refs/remotes/origin/` at A7.
 run --dry-run --ref ''
-eq  "--ref '': exit 1, the empty value refused exactly as a missing one" 1 "$RC"
+exits  "--ref '': exit 1, the empty value refused exactly as a missing one" 1
 has "--ref '': the banner" "⛔ REFUSED — --ref needs a value" "$OUT"
 run --dry-run --internal-post-checkout
-eq  "--internal-post-checkout with no value: exit 1" 1 "$RC"
+exits  "--internal-post-checkout with no value: exit 1" 1
 has "--internal-post-checkout with no value: refused BY NAME, where bash printed only \`2\`" \
   "⛔ REFUSED — --internal-post-checkout needs a value" "$OUT"
 # THE CONTROL, one variable away: the same option WITH a value deploys.
 run --dry-run --ref main
-eq  "the control: --ref WITH a value still deploys" 0 "$RC"
+exits  "the control: --ref WITH a value still deploys" 0
 
 mkfix stale_marker
 printf 'started_at: 2026-09-08T00:00:00Z\nto_commit: deadbeef\n' > "$ROOT/.deploy-failed"
@@ -883,7 +895,7 @@ hasnt "unreadable .env: no DB password is printed" "$FAKE_PW" "$OUT"
 hasnt "unreadable .env: no store verdict is reached on a file that was never read" "store on this host" "$OUT"
 # The twin, one variable away: the same file, openable by this user, passes every check.
 chmod 640 "$ROOT/server/.env"; run --dry-run
-eq "the same .env, readable: exit 0" 0 "$RC"
+exits "the same .env, readable: exit 0" 0
 
 # ── card#9610 — A .ENV THAT OPENED AND COULD NOT BE READ TO ITS END ────────────────────────────
 # The residual card#9605 left, and the sibling of the case above one step further in. Splitting the OPEN
@@ -965,7 +977,7 @@ env_lib() (
 env_get_status() { local _rc=0; env_get "$1" >/dev/null || _rc=$?; printf 'rc=%s' "$_rc"; }
 
 OUT="$( env_lib /proc/self/mem env_file_scan 2>&1 )"; RC=$?
-eq  "EIO at the loader: exit 1 (refused, nothing touched)" 1 "$RC"
+exits  "EIO at the loader: exit 1 (refused, nothing touched)" 1
 has "EIO at the loader: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
 has "EIO at the loader: the phase-A promise" "Nothing was changed. The previous release is still serving." "$OUT"
 has "EIO at the loader: says the read stopped short, not that the file is empty" \
@@ -979,7 +991,7 @@ hasnt "EIO at the loader: no NUL verdict on a file no byte of which was read" "c
 # H1b — the directory, card#9610's own T4 shape. It is a SECOND case and not the first: a `[ -d ]` test
 # passes it while leaving H1 red, which is the whole reason H1 exists.
 OUT="$( env_lib "$T" env_file_scan 2>&1 )"; RC=$?
-eq  "a directory at the loader: exit 1" 1 "$RC"
+exits  "a directory at the loader: exit 1" 1
 has "a directory at the loader: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
 has "a directory at the loader: the same refusal, by the same route" "was opened but could not be read to its end" "$OUT"
 has "a directory at the loader: bash's errno says which fault it was" "Is a directory" "$OUT"
@@ -1018,7 +1030,7 @@ eq "the same reader on a readable .env: the value, unchanged" "https://mezzanine
 # shellcheck disable=SC2030  # TMPDIR is MEANT to be local to this expansion — a broken TMPDIR leaking into
 # the rest of the suite would break every later fixture. The subshell is the containment, not an accident.
 OUT="$( export TMPDIR="$ROOT/server/.env"; env_lib "$ROOT/server/.env" env_file_scan 2>&1 )"; RC=$?
-eq  "no scratch file for the diagnostic: exit 1" 1 "$RC"
+exits  "no scratch file for the diagnostic: exit 1" 1
 has "no scratch file for the diagnostic: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
 has "no scratch file for the diagnostic: the phase-A promise" \
     "Nothing was changed. The previous release is still serving." "$OUT"
@@ -1061,7 +1073,7 @@ env_scan_unopenable_scratch() { # the reader env_lib runs: mktemp succeeds, its 
 # No TMPDIR is exported here, and that is part of what the case says: this failure does not need one to
 # be wrong, and the reason it produces must not mention one.
 OUT="$( env_lib "$ROOT/server/.env" env_scan_unopenable_scratch 2>&1 )"; RC=$?
-eq  "a scratch file that cannot be opened: exit 1" 1 "$RC"
+exits  "a scratch file that cannot be opened: exit 1" 1
 has "a scratch file that cannot be opened: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
 has "a scratch file that cannot be opened: the same headline — no scratch file, whichever step failed" \
     "could not be read: no usable scratch file for bash's read diagnostic" "$OUT"
@@ -1081,7 +1093,7 @@ hasnt "a scratch file that cannot be opened: does not send the operator to check
 # the unopenable-scratch one between them — not reaching here, which is the arrangement this twin depends
 # on: each case exports its own, and neither sees the other's.
 OUT="$( export TMPDIR="$T"; env_lib "$ROOT/server/.env" env_file_scan 2>&1 )"; RC=$?
-eq "a working TMPDIR, same .env: the scan passes" 0 "$RC"
+exits "a working TMPDIR, same .env: the scan passes" 0
 
 mkfix wrong_app_env; sed -i 's/^APP_ENV=.*/APP_ENV=local/' "$ROOT/server/.env"
 run_refusal "APP_ENV=local" "APP_ENV is 'local'" --dry-run
@@ -1097,7 +1109,7 @@ run_refusal "APP_DEBUG=true" "APP_DEBUG is 'true'" --dry-run
 mkfix debug_literals
 debug_is() { # debug_is <text> <expected exit>
   sed -i "s/^APP_DEBUG=.*/APP_DEBUG=$1/" "$ROOT/server/.env"; run --dry-run
-  eq "APP_DEBUG=$1: exit $2" "$2" "$RC"
+  exits "APP_DEBUG=$1: exit $2" "$2"
 }
 debug_is FALSE 0
 debug_is False 0
@@ -1132,7 +1144,7 @@ store_env() { # store_env <KEY=value…> — write_env's .env with the CA remove
 store_passes() { # store_passes <label> <needle> <KEY=value…>
   local label="$1" needle="$2"; shift 2
   store_env "$@"; run --dry-run
-  eq  "$label: exit 0" 0 "$RC"
+  exits  "$label: exit 0" 0
   has "$label: names why TLS is not required" "$needle" "$OUT"
 }
 mkfix store_locality
@@ -1146,7 +1158,7 @@ store_passes "DB_URL host localhost over a remote DB_HOST, no CA" "store on this
   DB_HOST=db.internal DB_URL=mysql://u:p@localhost/mezzanine
 hasnt "DB_URL localhost: the URL's credentials are not printed" "u:p" "$OUT"
 store_env DB_HOST=localhost MYSQL_ATTR_SSL_CA=/etc/ssl/certs/ca-certificates.crt; run --dry-run
-eq  "same host with a CA set: exit 0 — the operator's choice is not refused" 0 "$RC"
+exits  "same host with a CA set: exit 0 — the operator's choice is not refused" 0
 has "same host with a CA set: says it is not required" "MYSQL_ATTR_SSL_CA is set, though not required" "$OUT"
 has "same host with a CA set: warns that pdo_mysql then requires TLS to it" "a MariaDB that offers no TLS refuses every connection" "$OUT"
 store_env DB_HOST=localhost; run --dry-run
@@ -1155,7 +1167,7 @@ hasnt "same host without a CA: no TLS warning" "offers no TLS" "$OUT"
 store_env DB_HOST=db.internal
 run_refusal "remote DB_HOST, no CA" "MYSQL_ATTR_SSL_CA is unset for a store on another host (DB_HOST is 'db.internal')" --dry-run
 store_env DB_HOST=db.internal MYSQL_ATTR_SSL_CA=/etc/ssl/certs/ca-certificates.crt; run --dry-run
-eq    "remote DB_HOST with a CA: exit 0" 0 "$RC"
+exits    "remote DB_HOST with a CA: exit 0" 0
 hasnt "remote DB_HOST with a CA: prints no same-host line" "store on this host" "$OUT"
 # DB_HOST unset would pass on its own (the case above), so this refusal is the URL's host replacing it.
 store_env DB_URL=mysql://u:p@db.internal/mezzanine "DB_PASSWORD=$FAKE_PW"
@@ -1227,7 +1239,7 @@ store_passes "DB_SOCKET single-quoted over a remote DB_HOST, no CA" "store on th
 store_passes "a commented-out remote DB_HOST above DB_HOST=localhost, no CA" "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" \
   '# DB_HOST=db.internal' '  # export DB_HOST=db.internal' DB_HOST=localhost
 store_env DB_HOST=db.internal "MYSQL_ATTR_SSL_CA='/etc/ssl/\$certs/ca.crt'"; run --dry-run
-eq  "a \$ inside a single-quoted value is literal to Dotenv, and read: exit 0" 0 "$RC"
+exits  "a \$ inside a single-quoted value is literal to Dotenv, and read: exit 0" 0
 
 section "A5 — a value Laravel reads as null, false or empty is not the TEXT of it (card#9561 r1)"
 # Illuminate\Support\Env::get maps `null`, `false`, `empty` and their `(…)` forms, case-insensitively, to
@@ -1258,7 +1270,7 @@ ca_literal_refused "'0'"
 # name, and pdo_mysql fails closed at connect on a file that does not exist rather than silently.
 ca_kept() { # ca_kept <value>
   store_env DB_HOST=db.internal "MYSQL_ATTR_SSL_CA=$1"; run --dry-run
-  eq "remote DB_HOST, MYSQL_ATTR_SSL_CA=$1 (Laravel: a CA by that name): exit 0" 0 "$RC"
+  exits "remote DB_HOST, MYSQL_ATTR_SSL_CA=$1 (Laravel: a CA by that name): exit 0" 0
 }
 ca_kept 0.0
 ca_kept 0e0
@@ -1296,7 +1308,7 @@ cache_refused '"null"'
 # literals, so the app receives the string 'Array', which names no store in config/cache.php and throws
 # "Cache store [Array] is not defined" at boot (measured 2026-09-15). Loud is not this check's hole.
 store_env; sed -i 's/^CACHE_STORE=.*/CACHE_STORE=file/' "$ROOT/server/.env"; run --dry-run
-eq "CACHE_STORE=file: exit 0 — a persistent store is not refused" 0 "$RC"
+exits "CACHE_STORE=file: exit 0 — a persistent store is not refused" 0
 
 section "A5 — a .env Laravel's own parser does not read as the lines it is written in (card#9561 r2)"
 # env_get reads a LINE; Dotenv reads the FILE. Two file-level defects make every key's value
@@ -1357,7 +1369,7 @@ hasnt "a NUL byte in .env: does not name the wrong cause (every key read as unse
 # The twin, one byte away: the same file with a printable character in place of the NUL is read normally.
 store_env DB_HOST=127.0.0.1; printf 'NOTE=aXb\n' >> "$ROOT/server/.env"
 run --dry-run
-eq  "the same .env with no NUL: exit 0" 0 "$RC"
+exits  "the same .env with no NUL: exit 0" 0
 # The twins: every form Dotenv DOES parse passes the scan — including the ones env_get then refuses BY
 # NAME, which is a different refusal, and including a `#` before a `="` (Dotenv's own comment rule).
 store_passes "interpolation, an export prefix, an inline comment, a spaced = and a bare key all parse" \
@@ -1395,7 +1407,7 @@ run_refusal "the same file with an LF in place of the CR" "MYSQL_ATTR_SSL_CA is 
 # and so does A5 — the line the CR ended is read, not narrowed away.
 env_after '# note\rDB_HOST=localhost\n'
 run --dry-run
-eq  "a lone CR above DB_HOST=localhost: exit 0" 0 "$RC"
+exits  "a lone CR above DB_HOST=localhost: exit 0" 0
 has "a lone CR above DB_HOST=localhost: the store is judged on the line the CR ended" \
   "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" "$OUT"
 # The same root, the login-path enumeration oracle (docs/PLAN.md § 5): a CACHE_STORE the app receives as
@@ -1413,7 +1425,7 @@ hasnt "a hidden DB_URL: the URL's host is not printed" "db.internal" "$OUT"
 # Laravel, which is the product behaviour a `\r` refusal would have got wrong.
 crlf_env DB_HOST=localhost
 run --dry-run
-eq  "a whole-file CRLF .env, loopback store: exit 0" 0 "$RC"
+exits  "a whole-file CRLF .env, loopback store: exit 0" 0
 has "a whole-file CRLF .env: the store is judged" "store on this host (loopback; DB_HOST is 'localhost') — TLS not required" "$OUT"
 hasnt "a whole-file CRLF .env: no key is reported unreadable" "in a form this deploy does not read" "$OUT"
 # Its remote twin still refuses — on the host, which is the reason, and not on the line endings.
@@ -1450,11 +1462,11 @@ path_without() { # path_without <dir> [command-to-hide]
 }
 mkfix tool_control; path_without "$T/path-control"
 : > "$CALL_LOG"; OUT="$(PATH="$T/path-control" MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
-eq "control: the rebuilt PATH, hiding nothing, deploys" 0 "$RC"
-for hide in crontab flock fuser setsid ps cgi-fcgi; do
+exits "control: the rebuilt PATH, hiding nothing, deploys" 0
+for hide in crontab flock fuser setsid cgi-fcgi; do
   mkfix "tool_$hide"; path_without "$T/path-$hide" "$hide"
   : > "$CALL_LOG"; OUT="$(PATH="$T/path-$hide" MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
-  eq  "no $hide: exit 1" 1 "$RC"
+  exits  "no $hide: exit 1" 1
   has "no $hide: names it" "missing required command(s): $hide" "$OUT"
 done
 # card#9561 r2 MINOR 2: A5's reading of `.env` must not shell out to a command A1 does not require. It
@@ -1463,7 +1475,7 @@ done
 # WARNING still uses `tr`, and degrades to no warning here; that is a separate gap, not A5's.)
 mkfix tool_tr; path_without "$T/path-no-tr" tr
 : > "$CALL_LOG"; OUT="$(PATH="$T/path-no-tr" MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
-eq    "no tr on PATH: exit 0 — A5 reads .env with bash alone" 0 "$RC"
+exits    "no tr on PATH: exit 0 — A5 reads .env with bash alone" 0
 hasnt "no tr on PATH: APP_KEY is not refused for want of a lowercasing tool" "APP_KEY is empty" "$OUT"
 
 section "CRON SUPERVISION (A13) — the deployed release's block, judged by that release's own install"
@@ -1477,42 +1489,42 @@ has "control: an intact crontab — the window rewrites the block unchanged" "is
 SWEEP_LINE="* * * * * $(supervision_command "$ROOT" "$T/bin/php" mezzanine:sweep)"
 drop_lines '^\* \* \* \* \* .* artisan mezzanine:sweep '
 run --dry-run
-eq    "no every-minute entry for the sweep, dry run: exit 0 — the window installs it" 0 "$RC"
+exits    "no every-minute entry for the sweep, dry run: exit 0 — the window installs it" 0
 has   "sweep missing: names the exact line the window adds" "+ $SWEEP_LINE" "$OUT"
 hasnt "sweep missing: adds no line that IS installed" "+ * * * * * $(supervision_command "$ROOT" "$T/bin/php" mezzanine:fold)" "$OUT"
 unlogged "sweep missing, dry run: the crontab was not written" "crontab -$"
 run
-eq  "sweep missing, full run: exit 0" 0 "$RC"
+exits  "sweep missing, full run: exit 0" 0
 has "sweep missing, full run: the crontab carries the sweep's entry again" "$SWEEP_LINE" "$(cat "$STUB_CRONTAB_FILE")"
 
 mkfix cron_reboot_missing; drop_lines '^@reboot .* artisan mezzanine:fold '; run --dry-run
-eq  "no @reboot entry for the fold: exit 0" 0 "$RC"
+exits  "no @reboot entry for the fold: exit 0" 0
 has "@reboot missing: names it as added" "+ @reboot $(supervision_command "$ROOT" "$T/bin/php" mezzanine:fold)" "$OUT"
 
 mkfix cron_scheduler_missing; drop_lines 'artisan schedule:run'; run --dry-run
-eq  "no schedule:run entry: exit 0" 0 "$RC"
+exits  "no schedule:run entry: exit 0" 0
 has "schedule:run missing: names it as added (mezzanine:purge runs from it)" "+ * * * * * cd $ROOT/server && $T/bin/php artisan schedule:run" "$OUT"
 
 mkfix cron_commented
 sed -i 's|^\(\* \* \* \* \* .* artisan mezzanine:fold \)|# \1|' "$STUB_CRONTAB_FILE"; run --dry-run
-eq  "the fold's entry commented out: exit 0" 0 "$RC"
+exits  "the fold's entry commented out: exit 0" 0
 has "commented out: the commented line is named as removed" "- # * * * * * $(supervision_command "$ROOT" "$T/bin/php" mezzanine:fold)" "$OUT"
 
 mkfix cron_none; rm -f "$STUB_CRONTAB_FILE"; run --dry-run
-eq  "no crontab at all ('no crontab for …', exit 1): exit 0" 0 "$RC"
+exits  "no crontab at all ('no crontab for …', exit 1): exit 0" 0
 has "no crontab: the whole block is named as added" "+ $(supervision_begin "$ROOT")" "$OUT"
 
 mkfix cron_empty; : > "$STUB_CRONTAB_FILE"; run --dry-run
-eq  "an EMPTY crontab (crontab -l exits 0, prints nothing): exit 0" 0 "$RC"
+exits  "an EMPTY crontab (crontab -l exits 0, prints nothing): exit 0" 0
 has "empty crontab: the whole block is named as added" "+ $(supervision_begin "$ROOT")" "$OUT"
 
 mkfix cron_other_checkout; supervision_render "/srv/elsewhere" "$T/bin/php" > "$STUB_CRONTAB_FILE"; run --dry-run
-eq    "only ANOTHER checkout's block: exit 0" 0 "$RC"
+exits    "only ANOTHER checkout's block: exit 0" 0
 has   "another checkout: this checkout's block is named as added" "+ $(supervision_begin "$ROOT")" "$OUT"
 hasnt "another checkout: its block is kept, not removed" "- $(supervision_begin /srv/elsewhere)" "$OUT"
 
 mkfix cron_other_php; supervision_render "$ROOT" "/usr/bin/php8.1" > "$STUB_CRONTAB_FILE"; run --dry-run
-eq  "this checkout's block rendered for ANOTHER php binary: exit 0" 0 "$RC"
+exits  "this checkout's block rendered for ANOTHER php binary: exit 0" 0
 has "another php: its lines are named as removed" "- * * * * * cd $ROOT/server && /usr/bin/php8.1 artisan schedule:run" "$OUT"
 
 # What the release's install would refuse, the deploy refuses — before anything is touched.
@@ -1539,7 +1551,7 @@ run_refusal "a hand-staged fold line BESIDE the managed block (the release's ins
 has "beside the block: carries install's own reason" "already runs a supervised command outside the managed block" "$OUT"
 eq  "beside the block: the crontab is unchanged" "$(cat "$T/crontab.before")" "$(cat "$STUB_CRONTAB_FILE")"
 drop_lines 'flock -n /tmp/fold\.lock'; run --dry-run
-eq  "control: with that line removed, the same host deploys" 0 "$RC"
+exits  "control: with that line removed, the same host deploys" 0
 
 drop_supervision() { rm -f "$1/bin/supervision.sh"; }
 mkfix target_no_supervision drop_supervision
@@ -1561,7 +1573,7 @@ has "timestamps off: names the deploy user's app pool" "[178815168175465]" "$OUT
 has "timestamps off: names the stream pool too — it serves the app's code as well" "[mezz-stream]" "$OUT"
 has "timestamps off: says the previous release would keep serving" "would go on serving the PREVIOUS release" "$OUT"
 export STUB_OPCACHE_VALIDATE=On; run --dry-run
-eq "control: the same host with validate_timestamps=On deploys" 0 "$RC"
+exits "control: the same host with validate_timestamps=On deploys" 0
 
 mkfix fpm_pool_override
 printf 'php_admin_flag[opcache.validate_timestamps] = off\n' >> "$POOL"
@@ -1569,13 +1581,13 @@ run_refusal "the deploy user's POOL turns timestamps off (the ini says On)" "opc
 
 mkfix fpm_opcache_off; export STUB_OPCACHE_ENABLE=Off STUB_OPCACHE_VALIDATE=Off
 run --dry-run
-eq  "control: opcache OFF, timestamps off, deploys — nothing is cached" 0 "$RC"
+exits  "control: opcache OFF, timestamps off, deploys — nothing is cached" 0
 has "control: and says why that is safe" "opcache is off, so every request reads the disk" "$OUT"
 
 mkfix fpm_freq_override
 printf 'php_value[opcache.revalidate_freq] = "7"\n' >> "$POOL"
 run --dry-run
-eq  "control: a pool's revalidate_freq override deploys" 0 "$RC"
+exits  "control: a pool's revalidate_freq override deploys" 0
 has "control: and the wait follows the POOL's 7 s, not the ini's 0 s" "revalidates a changed file within 7 s" "$OUT"
 
 mkfix fpm_preload; export STUB_OPCACHE_PRELOAD=/srv/preload.php
@@ -1608,7 +1620,7 @@ run_refusal "every pool file of the deploy user's is unreadable" "cannot read $P
 hasnt "unreadable pools: never says no pool runs as the deploy user — two do" "no PHP-FPM pool runs as" "$OUT"
 # The twin, one variable away: the same files, readable again, deploy.
 chmod 644 "$POOL" "$STREAM_POOL"; run --dry-run
-eq "control: the same pool files, readable, deploy" 0 "$RC"
+exits "control: the same pool files, readable, deploy" 0
 
 # ⭐ ONE unreadable pool file beside a readable one of the same user's is the FAIL-OPEN direction, and the reason
 # this is not only a wording defect: the stream pool still ran as this user, so the drop reached no refusal at all
@@ -1619,7 +1631,7 @@ eq "unreadable pool: the fixture really is unopenable by this user (a root runne
   unopenable "$(env_openability "$POOL")"
 run_refusal "the deploy user's app pool file is unreadable, its stream pool readable" "cannot read $POOL" --dry-run
 chmod 644 "$POOL"; run --dry-run
-eq "control: the same pool file, readable, deploys" 0 "$RC"
+exits "control: the same pool file, readable, deploys" 0
 
 # The SECOND false cause: the app's pool is readable, so a pool of this user's IS found and the run gets as far
 # as the stream pool, whose unreadable file used to leave "no pool of that name is defined".
@@ -1638,7 +1650,7 @@ eq "unreadable pool.d: the fixture really cannot be listed by this user (a root 
 run_refusal "the pool directory the include lists is unreadable" "cannot read $STUB_FPM_ETC/pool.d" --dry-run
 hasnt "unreadable pool.d: never says no pool runs as the deploy user" "no PHP-FPM pool runs as" "$OUT"
 chmod 755 "$STUB_FPM_ETC/pool.d"; run --dry-run
-eq "control: the same pool directory, readable, deploys" 0 "$RC"
+exits "control: the same pool directory, readable, deploys" 0
 
 # ⭐ READABLE BUT NOT SEARCHABLE (644) — the shape the DIRECTORY half of fpm_readable exists for, and the one a
 # chmod 000 fixture cannot separate, because 000 takes both bits away together. Measured (bash 5.3.9): a 644
@@ -1660,7 +1672,7 @@ mkfix fpm_pool_dir_unsearchable_literal; literal_includes
 eq "literal includes: php-fpm.conf really names both pool files by path" 2 \
   "$(grep -cxF -e "include=$POOL" -e "include=$STREAM_POOL" "$STUB_FPM_ETC/php-fpm.conf")"
 run --dry-run
-eq "control: literal includes into a searchable pool.d deploy" 0 "$RC"
+exits "control: literal includes into a searchable pool.d deploy" 0
 chmod 644 "$STUB_FPM_ETC/pool.d"
 run_refusal "a 644 pool directory behind a LITERAL include" "cannot read $STUB_FPM_ETC/pool.d" --dry-run
 hasnt "644 pool.d (literal): never says no pool runs as the deploy user — two do" "no PHP-FPM pool runs as" "$OUT"
@@ -1680,7 +1692,7 @@ mkfix fpm_pool_named_like_the_glob
 cat "$POOL" "$STREAM_POOL" > "$STUB_FPM_ETC/pool.d/*.conf"; rm -f "$POOL" "$STREAM_POOL" "$STUB_FPM_ETC/pool.d/www.conf"
 eq "a file named '*.conf': it is the only file in pool.d" '*.conf' "$(ls "$STUB_FPM_ETC/pool.d")"
 run --dry-run
-eq  "a file named '*.conf': read as the pool file it is, and deploys" 0 "$RC"
+exits  "a file named '*.conf': read as the pool file it is, and deploys" 0
 has "a file named '*.conf': the stream pool it defines was found" "stream pool [mezz-stream]" "$OUT"
 chmod 000 "$STUB_FPM_ETC/pool.d/*.conf"
 run_refusal "a file named '*.conf' this user cannot read" "cannot read $STUB_FPM_ETC/pool.d/*.conf" --dry-run
@@ -1696,7 +1708,7 @@ mkfix fpm_pool_unreadable_phase_b unreadable_pool_in_window
 eq "phase-B mutant: the deployed release really drops the pool's mode before the re-read" 1 \
    "$(gitc "$SRC" show "HEAD:bin/deploy.sh" | grep -c 'pool made unreadable by the selftest mutant')"
 run
-eq  "a pool unreadable in phase B: exit 2 — the window fails, as for an unreadable php-fpm.conf" 2 "$RC"
+exits  "a pool unreadable in phase B: exit 2 — the window fails, as for an unreadable php-fpm.conf" 2
 has "a pool unreadable in phase B: names the file it could not read" "cannot read $POOL" "$OUT"
 hasnt "a pool unreadable in phase B: never says no pool runs as the deploy user" "no PHP-FPM pool runs as" "$OUT"
 unlogged "a pool unreadable in phase B: the app is NEVER brought up" "artisan up"
@@ -1713,7 +1725,7 @@ has "an FPM whose -i fails: FPM's own stderr is printed with the refusal" \
   "ERROR: selftest-fpm could not load its configuration" "$OUT"
 mkfix fpm_info_warns; export STUB_FPM_STDERR="NOTICE: selftest-fpm healthy-run warning"
 run --dry-run
-eq  "control: a healthy FPM that warns on stderr deploys" 0 "$RC"
+exits  "control: a healthy FPM that warns on stderr deploys" 0
 hasnt "control: and its stderr stays out of a healthy run's output" "selftest-fpm healthy-run warning" "$OUT"
 
 section "REFUSAL — a .user.ini over the app's scripts (A14)"
@@ -1721,12 +1733,12 @@ section "REFUSAL — a .user.ini over the app's scripts (A14)"
 # off, and with it removed again.
 mkfix uini_docroot
 run --dry-run
-eq  "control: a document root with no .user.ini deploys" 0 "$RC"
+exits  "control: a document root with no .user.ini deploys" 0
 printf '; per-directory tuning\nopcache.validate_timestamps = Off ; saves a stat\n' > "$MEZZ_DOCROOT/.user.ini"
 run_refusal "the document root's .user.ini turns timestamps off" \
   "[178815168175465] under $MEZZ_DOCROOT/.user.ini" --dry-run
 rm -f "$MEZZ_DOCROOT/.user.ini"; run --dry-run
-eq  "control: the same host with that .user.ini removed deploys" 0 "$RC"
+exits  "control: the same host with that .user.ini removed deploys" 0
 printf 'opcache.validate_timestamps=\n' > "$MEZZ_DOCROOT/.user.ini"
 run_refusal "an EMPTY validate_timestamps in a .user.ini (PHP reads it as off)" "[178815168175465] under $MEZZ_DOCROOT/.user.ini" --dry-run
 
@@ -1737,12 +1749,12 @@ run_refusal "the RELEASE's server/public/.user.ini turns timestamps off (read fr
 uini_release_freq() { mkdir -p "$1/server/public"; printf 'opcache.revalidate_freq = "9"\n' > "$1/server/public/.user.ini"; }
 mkfix uini_release_freq uini_release_freq
 run --dry-run
-eq  "control: a release whose .user.ini sets revalidate_freq deploys" 0 "$RC"
+exits  "control: a release whose .user.ini sets revalidate_freq deploys" 0
 has "control: and the wait follows that 9 s, not the ini's 0 s" "revalidates a changed file within 9 s" "$OUT"
 
 mkfix uini_no_docroot; export MEZZ_DOCROOT="$T/no-such-docroot"
 run --dry-run
-eq  "a document root that does not exist: still deploys (a warning, not a refusal)" 0 "$RC"
+exits  "a document root that does not exist: still deploys (a warning, not a refusal)" 0
 has "no document root: names it, and how to name the right one" "no document root at $T/no-such-docroot" "$OUT"
 has "no document root: says MEZZ_DOCROOT"                     "MEZZ_DOCROOT" "$OUT"
 
@@ -1750,17 +1762,17 @@ section "REFUSAL — the feed stream's host conditions (A14: § 8.3 R1's ini hal
 # Control, mutant, control on ONE host wherever the variable can be put back.
 mkfix r1_zlib
 run --dry-run
-eq  "control: the host's ini (zlib off) deploys" 0 "$RC"
+exits  "control: the host's ini (zlib off) deploys" 0
 export STUB_ZLIB=On
 run_refusal "zlib.output_compression on in the FPM ini" "zlib.output_compression is on for [mezz-stream]" --dry-run
 has "zlib on: names what it does to the stream (measured)" "measured to hold the stream until the request ends" "$OUT"
 export STUB_ZLIB=Off; run --dry-run
-eq  "control: the same host with zlib off again deploys" 0 "$RC"
+exits  "control: the same host with zlib off again deploys" 0
 
 mkfix r1_pool_override
 printf 'php_admin_flag[zlib.output_compression] = on\n' >> "$POOL"
 run --dry-run
-eq  "control: zlib on for ANOTHER pool of this user (not the stream's) is not the stream's hazard" 0 "$RC"
+exits  "control: zlib on for ANOTHER pool of this user (not the stream's) is not the stream's hazard" 0
 printf 'php_admin_flag[zlib.output_compression] = on\n' >> "$STREAM_POOL"
 run_refusal "zlib.output_compression on in the STREAM pool's override" "zlib.output_compression is on for [mezz-stream]" --dry-run
 
@@ -1768,7 +1780,7 @@ mkfix r1_uini_abort
 printf 'ignore_user_abort = On\n' > "$MEZZ_DOCROOT/.user.ini"
 run_refusal "ignore_user_abort on in a .user.ini over the app" "ignore_user_abort is on for [mezz-stream] under $MEZZ_DOCROOT/.user.ini" --dry-run
 rm -f "$MEZZ_DOCROOT/.user.ini"; run --dry-run
-eq  "control: the same host with that .user.ini removed deploys" 0 "$RC"
+exits  "control: the same host with that .user.ini removed deploys" 0
 
 mkfix r1_ini_abort; export STUB_IUA=On
 run_refusal "ignore_user_abort on in the FPM ini" "ignore_user_abort is on for [mezz-stream]" --dry-run
@@ -1776,12 +1788,12 @@ run_refusal "ignore_user_abort on in the FPM ini" "ignore_user_abort is on for [
 mkfix r1_handler; export STUB_OH=ob_gzhandler
 run_refusal "output_handler = ob_gzhandler" "output_handler is 'ob_gzhandler' for [mezz-stream]" --dry-run
 export STUB_OH="no value"; run --dry-run
-eq  "control: no output_handler deploys" 0 "$RC"
+exits  "control: no output_handler deploys" 0
 
 mkfix r2_unset; unset MEZZ_STREAM_POOL
 run_refusal "MEZZ_STREAM_POOL unset" "MEZZ_STREAM_POOL is unset" --dry-run
 export MEZZ_STREAM_POOL=mezz-stream; run --dry-run
-eq  "control: the same host with the stream pool named deploys" 0 "$RC"
+exits  "control: the same host with the stream pool named deploys" 0
 
 mkfix r2_missing; export MEZZ_STREAM_POOL=no-such-pool
 run_refusal "MEZZ_STREAM_POOL names a pool that is not defined" "MEZZ_STREAM_POOL names [no-such-pool], and no pool of that name is defined" --dry-run
@@ -1792,7 +1804,7 @@ run_refusal "the stream pool runs as another user (SIGTERM would need root)" "th
 mkfix r2_terminate; sed -i 's/^request_terminate_timeout = .*/request_terminate_timeout = 30s/' "$STREAM_POOL"
 run_refusal "request_terminate_timeout 30s on the stream pool" "request_terminate_timeout is '30s'" --dry-run
 sed -i 's/^request_terminate_timeout = .*/request_terminate_timeout = 0/' "$STREAM_POOL"; run --dry-run
-eq  "control: request_terminate_timeout 0 again deploys" 0 "$RC"
+exits  "control: request_terminate_timeout 0 again deploys" 0
 
 mkfix r2_no_status_path; sed -i '/^pm.status_path/d' "$STREAM_POOL"
 run_refusal "no pm.status_path on the stream pool" "pm.status_path is not set" --dry-run
@@ -1804,7 +1816,7 @@ has "no status_listen: says why it is not optional (measured)" "queues behind th
 mkfix r2_status_down; : > "$T/knobs/status_down"
 run_refusal "the stream pool's status does not answer" "status did not answer over pm.status_listen" --dry-run
 rm -f "$T/knobs/status_down"; run --dry-run
-eq  "control: the same host with the status answering deploys" 0 "$RC"
+exits  "control: the same host with the status answering deploys" 0
 
 mkfix r2_status_other_pool; printf '178815168175465' > "$T/knobs/status_pool"
 run_refusal "the listener answers for ANOTHER pool" "answers for pool '178815168175465', not [mezz-stream]" --dry-run
@@ -1829,7 +1841,7 @@ OLD_STREAM="$(start_stream_worker "$(( $(date +%s) - 3600 ))")"   # opened an ho
 NEW_STREAM="$(start_stream_worker "$(( $(date +%s) + 3600 ))")"   # a request younger than fleet.reload
 eq  "control: the stand-in workers are running before the deploy" "alive alive" "$(alive "$OLD_STREAM") $(alive "$NEW_STREAM")"
 run
-eq  "residual stream: exit 0 (a stale stream is never a reason to stay down)" 0 "$RC"
+exits  "residual stream: exit 0 (a stale stream is never a reason to stay down)" 0
 logged "residual stream: wrote fleet.reload" "php artisan mezzanine:feed-reload"
 has "residual stream: names the stream still open at the ceiling" "still open after a 2 s drain that began once fleet.reload had been read: pid(s) $OLD_STREAM" "$OUT"
 eq  "residual stream: the previous release's stream worker was ended by SIGTERM" "gone" "$(alive "$OLD_STREAM")"
@@ -1845,13 +1857,13 @@ mkfix drain_kill_cut cut_stream_kill
 eq  "drain mutant: the mutator really cut the kill" 1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'stream kill cut out by the selftest mutant')"
 OLD_STREAM="$(start_stream_worker "$(( $(date +%s) - 3600 ))")"
 run
-eq  "drain mutant: still exit 0" 0 "$RC"
+exits  "drain mutant: still exit 0" 0
 eq  "drain mutant: the stream worker SURVIVES — the assertion above can fail" "alive" "$(alive "$OLD_STREAM")"
 has "drain mutant: and the deploy says so, by pid" "SIGTERM did not end pid(s) $OLD_STREAM" "$OUT"
 
 mkfix drain_none
 run
-eq  "control: no stream left open — exit 0" 0 "$RC"
+exits  "control: no stream left open — exit 0" 0
 has "control: says every stream ended on fleet.reload" "every stream the previous release served had ended on fleet.reload" "$OUT"
 
 # The deploy that FIRST ships the stream-pool check: phase A runs the serving release's copy, which has none, so a
@@ -1864,7 +1876,7 @@ mkfix first_ship release_with_the_check serving_without_stream_check; unset MEZZ
 eq  "first ship: the release really carries the check" 0 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c '^stream_pool_ready() { return 0;')"
 eq  "first ship: the serving release really lacks the check" 1 "$(git -C "$SRC" show "$V1:bin/deploy.sh" | grep -c '^stream_pool_ready() { return 0;')"
 run
-eq  "first ship: exit 0 — the app comes back up" 0 "$RC"
+exits  "first ship: exit 0 — the app comes back up" 0
 logged "first ship: fleet.reload is still written" "php artisan mezzanine:feed-reload"
 has "first ship: says the stream pool is not ready, and that the next deploy will refuse" "the next deploy will refuse this host until it is" "$OUT"
 has "first ship: and names what is missing" "MEZZ_STREAM_POOL is unset" "$OUT"
@@ -1873,7 +1885,7 @@ strict_phase_b() { release_with_the_check "$1"; sed -i 's/^    \[ -n "\$POST_CHE
 mkfix first_ship_strict strict_phase_b serving_without_stream_check; unset MEZZ_STREAM_POOL
 eq  "first ship mutant: the release really fails phase B on it" 1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'phase-B leniency cut out by the selftest mutant')"
 run
-eq  "first ship mutant: exit 2 — the window stays down over the stream pool" 2 "$RC"
+exits  "first ship mutant: exit 2 — the window stays down over the stream pool" 2
 unlogged "first ship mutant: the app is NEVER brought up" "artisan up"
 
 section "REFUSAL — what is being deployed"
@@ -1883,13 +1895,13 @@ printf 'x\n' > "$SRC/hotfix.txt"; gitc "$SRC" add -A >/dev/null
 gitc "$SRC" commit -qm 'unreleased hotfix'; gitc "$SRC" push -q origin hotfix
 run_refusal "ref not on main" "is not contained in origin/main" --dry-run --ref hotfix
 run --dry-run --ref hotfix --allow-unreleased
-eq  "control: --allow-unreleased deploys it" 0 "$RC"
+exits  "control: --allow-unreleased deploys it" 0
 has "control: and says so loudly"            "DEPLOYING UNRELEASED CODE" "$OUT"
 
 mkfix same_sha; gitc "$ROOT" checkout -q --detach "$V2"
 run_refusal "already deployed" "is already what is checked out" --dry-run
 run --dry-run --redeploy
-eq "control: --redeploy proceeds" 0 "$RC"
+exits "control: --redeploy proceeds" 0
 
 mig_alter_bare() {
   cat > "$1/server/database/migrations/2026_02_02_000000_add_col_to_events.php" <<'MIG'
@@ -1913,12 +1925,12 @@ run_refusal "undeclared ALTER on events" "without stating an ALGORITHM" --dry-ru
 has "undeclared ALTER: names the file" "add_col_to_events.php" "$OUT"
 mkfix mig_declared mig_alter_declared      # single-variable control: only the comment differs
 run --dry-run
-eq "control: the SAME migration with ALGORITHM=INSTANT passes" 0 "$RC"
+exits "control: the SAME migration with ALGORITHM=INSTANT passes" 0
 
 env_drift() { printf 'NEW_FEATURE_TOKEN=\n' >> "$1/server/.env.example"; }
 mkfix env_drift_case env_drift
 run --dry-run
-eq  "config drift: still deploys (a warning, not a refusal)" 0 "$RC"
+exits  "config drift: still deploys (a warning, not a refusal)" 0
 has "config drift: names the key the host does not set" "does not set: NEW_FEATURE_TOKEN" "$OUT"
 # card#9561 r3 MINOR 2. A10b was the last reader judging a `.env` line by a hand-rolled `^[[:space:]]*KEY=`
 # grep — the pre-r1 one — so a key written `export KEY=…` or `"KEY"=…`, both of which ARE that key to
@@ -1928,7 +1940,7 @@ has "config drift: names the key the host does not set" "does not set: NEW_FEATU
 # never reads it, so the run reaches A10b (a key A5 reads would refuse by name before this point).
 sed -i "s/^DB_PASSWORD=/export DB_PASSWORD=/" "$ROOT/server/.env"
 run --dry-run
-eq    "a key written \`export KEY=\`: still deploys (a warning, not a refusal)" 0 "$RC"
+exits    "a key written \`export KEY=\`: still deploys (a warning, not a refusal)" 0
 has   "a key written \`export KEY=\`: reported as written in a form this deploy does not read" \
       "does not read, so whether the release's default or the host's value is in force is not established: DB_PASSWORD" "$OUT"
 hasnt "a key written \`export KEY=\`: NOT reported as a key the host does not set" "does not set: DB_PASSWORD" "$OUT"
@@ -2031,7 +2043,7 @@ fi
 no_migrations() { rm -rf "$1/server/database/migrations"; }
 mkfix git_read_no_migrations no_migrations
 run --dry-run
-eq  "a release with no migrations at all: still deploys" 0 "$RC"
+exits  "a release with no migrations at all: still deploys" 0
 has "a release with no migrations at all: says THAT, not that it read a list" "ships no migrations" "$OUT"
 hasnt "a release with no migrations at all: claims nothing about migrations it never had" \
   "no undeclared ALTER" "$OUT"
@@ -2139,7 +2151,7 @@ eq "non-ASCII fixture: exactly one migration in the release's tree really has a 
    "$(gitc "$SRC" -c core.quotePath=false ls-tree --name-only -r HEAD -- server/database/migrations \
       | LC_ALL=C grep -c '[^ -~]')"
 run --dry-run
-eq    "a migration with a non-ASCII NAME: the healthy release still deploys" 0 "$RC"
+exits    "a migration with a non-ASCII NAME: the healthy release still deploys" 0
 has   "a migration with a non-ASCII NAME: the § 6.9 gate read it and passed" "no undeclared ALTER" "$OUT"
 hasnt "a migration with a non-ASCII NAME: not refused as absent from its own tree" \
       "was not there to read" "$OUT"
@@ -2155,7 +2167,7 @@ mkfix git_read_local_collision "" collide_with_reader_local
 eq "collision mutant: the call site really asks for a variable named \`content\`" 1 \
    "$(gitc "$SRC" show "$V1:bin/deploy.sh" | grep -c 'git_read_at content "\$SHA" bin/supervision.sh')"
 run --dry-run
-eq    "a call site naming its variable \`content\`: the healthy release still deploys" 0 "$RC"
+exits    "a call site naming its variable \`content\`: the healthy release still deploys" 0
 hasnt "a call site naming its variable \`content\`: no false 'missing or empty'" \
       "bin/supervision.sh is missing or empty" "$OUT"
 
@@ -2173,7 +2185,7 @@ mkfix git_read_in_window read_fails_in_phase_b
 eq "phase-B mutant: the deployed release really re-reads the tree after the checkout" 1 \
    "$(gitc "$SRC" show "HEAD:bin/deploy.sh" | grep -c 'phase-A guard cut out by the selftest mutant')"
 run
-eq    "a git read that fails INSIDE the window: exit 2 (not 1)"     2 "$RC"
+exits    "a git read that fails INSIDE the window: exit 2 (not 1)"     2
 has   "a git read that fails in the window: the banner"             "THE APP IS DOWN AND STAYS DOWN" "$OUT"
 has   "a git read that fails in the window: names the read"         "reading the release out of git" "$OUT"
 hasnt "a git read that fails in the window: never promises nothing was changed" \
@@ -2273,14 +2285,14 @@ if blind_object "$V2" \
   # waive, so the flag does not apply and the deploy still refuses. Its control is two cases below,
   # where the same flag deploys the same hotfix once the store is readable.
   run --dry-run --ref hotfix --allow-unreleased
-  eq  "unreadable ancestry: --allow-unreleased waives no question that was never answered" 1 "$RC"
+  exits  "unreadable ancestry: --allow-unreleased waives no question that was never answered" 1
   has "unreadable ancestry: and says why the flag does not apply" "--allow-unreleased does NOT apply here" "$OUT"
 fi
 
 # ── THE CONTROLS: the same fixture, the same three --ref values, every object readable ──────────
 three_releases git_rev_readable_object
 run --dry-run --ref "$V2"
-eq  "control: that same --ref <sha>, with its object readable, deploys" 0 "$RC"
+exits  "control: that same --ref <sha>, with its object readable, deploys" 0
 run_refusal "control: a ref that is genuinely absent, on a healthy store" \
   "'no-such-branch' does not resolve to a commit on origin" --dry-run --ref no-such-branch
 hasnt "control: absent ref on a healthy store names no read that failed" "git could not read" "$OUT"
@@ -2289,7 +2301,7 @@ run_refusal "control: the ancestry is READ, and says the commit is not released"
 hasnt "control: the read-failure refusal is not what fires when the graph is readable" \
   "git could not" "$OUT"
 run --dry-run --ref hotfix --allow-unreleased
-eq  "control: --allow-unreleased deploys the hotfix once the graph can be read" 0 "$RC"
+exits  "control: --allow-unreleased deploys the hotfix once the graph can be read" 0
 
 # ⛔ THE ANNOTATED TAG, which A7's second candidate exists for. The old call peeled every candidate
 # with `^{commit}` and got this for free; git_commit_of resolves the NAME to an object and peels it
@@ -2302,7 +2314,7 @@ gitc "$SRC" push -q origin v0.0.2
 gitc "$ROOT" fetch -q --tags origin
 neq "tag fixture: the tag OBJECT is not the commit it points at" "$V2" "$(gitc "$ROOT" rev-parse refs/tags/v0.0.2)"
 run --dry-run --ref v0.0.2
-eq  "control: an ANNOTATED tag resolves and deploys" 0 "$RC"
+exits  "control: an ANNOTATED tag resolves and deploys" 0
 has "control: and it is the COMMIT the tag points at that would be checked out, not the tag object" \
   "git checkout --detach $(gitc "$ROOT" rev-parse --short "$V2")" "$OUT"
 
@@ -2324,7 +2336,7 @@ gitc "$ROOT" fetch -q --tags origin
 eq "tree-tag fixture: the store is whole — every object reads" \
   0 "$(gitc "$ROOT" fsck >/dev/null 2>&1; echo $?)"
 run --dry-run --ref treeonly
-eq   "a tag that peels to a TREE: refused, nothing touched" 1 "$RC"
+exits   "a tag that peels to a TREE: refused, nothing touched" 1
 has  "tree tag: git's own message is what the operator gets" "dereferences to tree type" "$OUT"
 has  "tree tag: says the objects behind the tag WERE read" "WAS read" "$OUT"
 hasnt "tree tag: nothing claims git could not read" "git could not" "$OUT"
@@ -2386,7 +2398,7 @@ fi
 # ── CONTROL: the same --ref, one variable away — every object readable ─────────────────────────
 three_releases git_rev_syntax_readable_store
 run --dry-run --ref 'main~2' --redeploy
-eq  "control: that same rev syntax resolves and deploys once the object can be read" 0 "$RC"
+exits  "control: that same rev syntax resolves and deploys once the object can be read" 0
 has "control: and it is V1 — the commit the walk arrives at — that would be checked out" \
   "git checkout --detach $(gitc "$ROOT" rev-parse --short "$V1")" "$OUT"
 # THE ABBREVIATION, which is the one shape the silence cannot discriminate: it is looked up IN the
@@ -2436,7 +2448,7 @@ hasnt "invalid-name --ref: and does not send a typo after a full commit id" \
 # THE CLASS, not the one input: three more of check-ref-format's rules, none of them rev syntax.
 for bad_ref in 'main..dev' 'foo.lock' 'ab[c'; do
   run --dry-run --ref "$bad_ref"
-  eq   "invalid-name --ref '$bad_ref': refused, nothing touched" 1 "$RC"
+  exits   "invalid-name --ref '$bad_ref': refused, nothing touched" 1
   has  "invalid-name --ref '$bad_ref': named as a name git refuses" "is not a valid ref NAME" "$OUT"
   hasnt "invalid-name --ref '$bad_ref': is NOT called rev syntax" "carries rev syntax" "$OUT"
 done
@@ -2450,7 +2462,7 @@ done
 # with `--ref 'main^{blob}'`. git_commit_of's tag branch already tells this shape apart for its own
 # peel; this is that same discrimination one branch up.
 run --dry-run --ref 'main^{blob}'
-eq  "peel to a type the object is not: refused" 1 "$RC"
+exits  "peel to a type the object is not: refused" 1
 has "peel mismatch: git's own message is what the operator gets" "dereferences to tree type" "$OUT"
 hasnt "peel mismatch: nothing claims git could not read" "git could not" "$OUT"
 hasnt "peel mismatch: and nothing claims git's error names something unreadable" \
@@ -2479,12 +2491,12 @@ has "no release branch: says the flag applies, because the question WAS answered
 # shape the in-window recovery banner tells an operator with the app DOWN to run, so this is that
 # documented last resort exercised against the condition it now meets.
 run --dry-run --ref "$V2" --allow-unreleased
-eq  "the recovery banner's own shape (--ref <sha> --allow-unreleased) deploys with no release branch" \
-  0 "$RC"
+exits  "the recovery banner's own shape (--ref <sha> --allow-unreleased) deploys with no release branch" \
+  0
 has "recovery shape: and says in the log WHY it is unreleased — there is no branch" \
   "DEPLOYING UNRELEASED CODE: there is no origin/main to contain" "$OUT"
 run --dry-run --ref hotfix --allow-unreleased
-eq  "no release branch: the flag waives it for a branch too" 0 "$RC"
+exits  "no release branch: the flag waives it for a branch too" 0
 
 # ── AND THE OTHER 128, one variable away: the graph that genuinely could not be read ───────────
 # Same flag, same refusal to deploy — the finding was never made, so there is none to waive — but
@@ -2494,7 +2506,7 @@ three_releases git_rev_unreadable_ancestry
 if blind_object "$V2" \
   "the unreadable-ancestry refusal under --allow-unreleased, and every repair it prescribes"; then
   run --dry-run --ref hotfix --allow-unreleased
-  eq  "unreadable ancestry: still refused — a question never answered has no finding to waive" 1 "$RC"
+  exits  "unreadable ancestry: still refused — a question never answered has no finding to waive" 1
   has "unreadable ancestry: says origin/main itself was THERE, and what was not read" \
     "origin/main IS there" "$OUT"
   has "unreadable ancestry: names the repair as the next step" \
@@ -2577,7 +2589,7 @@ three_releases git_ref_oid_answers
 
 # ANSWER 0 — <var> is a full object id, and the deploy goes on to use it.
 run --dry-run --ref main
-eq  "answer 0: a name that resolves deploys" 0 "$RC"
+exits  "answer 0: a name that resolves deploys" 0
 has "answer 0: and it is what origin/main points at that would be checked out" \
   "git checkout --detach $(gitc "$ROOT" rev-parse --short "$V3")" "$OUT"
 
@@ -2673,7 +2685,7 @@ eq "fixture: a name resolve really is 128 AND loud with packed-refs unreadable (
 eq "fixture: A3 passes it — \`rev-parse --git-dir\` does not read the refs" 0 \
   "$(LC_ALL=C gitc "$ROOT" rev-parse --git-dir >/dev/null 2>&1; echo $?)"
 run --dry-run --ref main
-eq   "answer other-loud: exit 1 — a gate REFUSES on it before git_ref_oid is reached" 1 "$RC"
+exits   "answer other-loud: exit 1 — a gate REFUSES on it before git_ref_oid is reached" 1
 has  "answer other-loud: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" "⛔ REFUSED — " "$OUT"
 has  "answer other-loud: the phase-A promise" \
   "Nothing was changed. The previous release is still serving." "$OUT"
@@ -2771,7 +2783,7 @@ else
     128 "$dubious_rc"
   : > "$CALL_LOG"
   OUT="$(env "${DUBIOUS_ENV[@]}" MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
-  eq  "dubious ownership: exit 1" 1 "$RC"
+  exits  "dubious ownership: exit 1" 1
   has "dubious ownership: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
   has "dubious ownership: the phase-A promise" \
     "Nothing was changed. The previous release is still serving." "$OUT"
@@ -2788,7 +2800,7 @@ else
   : > "$CALL_LOG"
   OUT="$(env GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$T/empty.gitconfig" \
       MEZZ_DEPLOY_ROOT="$ROOT" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
-  eq "the control: the same checkout, owned by this user, deploys" 0 "$RC"
+  exits "the control: the same checkout, owned by this user, deploys" 0
 fi
 
 # ── G2-G5 — the four shapes that really ARE "not a git checkout", each preserved ───────────────
@@ -2799,7 +2811,7 @@ mkfix repo_plain_dir
 mkdir -p "$T/repo_plain_dir/plain"
 : > "$CALL_LOG"
 OUT="$(MEZZ_DEPLOY_ROOT="$T/repo_plain_dir/plain" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
-eq  "a plain directory: exit 1" 1 "$RC"
+exits  "a plain directory: exit 1" 1
 has "a plain directory: still refused as not a git checkout" \
   "$T/repo_plain_dir/plain is not a git checkout" "$OUT"
 hasnt "a plain directory: not the generic 'could not open' answer" "git could not open" "$OUT"
@@ -2830,7 +2842,7 @@ mkfix repo_root_is_a_file
 printf 'x\n' > "$T/repo_root_is_a_file/afile"
 : > "$CALL_LOG"
 OUT="$(MEZZ_DEPLOY_ROOT="$T/repo_root_is_a_file/afile" "$ROOT/bin/deploy.sh" --dry-run 2>&1)"; RC=$?
-eq  "a deploy root that is a file: exit 1" 1 "$RC"
+exits  "a deploy root that is a file: exit 1" 1
 has "a deploy root that is a file: refused as not a git checkout (git says \`cannot change to\`)" \
   "is not a git checkout" "$OUT"
 hasnt "a deploy root that is a file: not the generic 'could not open' answer" "git could not open" "$OUT"
@@ -2859,7 +2871,7 @@ hasnt "unreadable index: makes no claim about A3, which passed" "is not a git ch
 chmod 644 "$ROOT/.git/index"
 # THE CONTROL, one variable away: the same checkout with a readable index deploys.
 run --dry-run
-eq "the control: the same checkout, index readable, deploys" 0 "$RC"
+exits "the control: the same checkout, index readable, deploys" 0
 
 # ── A7 — the fetch, whose status was never read ────────────────────────────────────────────────
 # ⛔ STATUS ONLY, NEVER STDERR. A fetch that SUCCEEDS prints to stderr as a matter of course, and
@@ -2877,7 +2889,7 @@ three_releases fetch_tip_blind
 if blind_object refs/remotes/origin/main \
   "F1, the fetch over an unreadable remote-tracking tip (its control below still runs)"; then
   run --dry-run
-  eq  "fetch on an unreadable tip: exit 1" 1 "$RC"
+  exits  "fetch on an unreadable tip: exit 1" 1
   has "fetch on an unreadable tip: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" \
     "⛔ REFUSED — " "$OUT"
   has "fetch on an unreadable tip: the phase-A promise" \
@@ -2897,7 +2909,7 @@ fi
 # THE CONTROL, one variable away: the same fixture with that object readable deploys. It runs on every
 # runner — where the tip could not be blinded, the object was readable all along.
 run --dry-run
-eq "the control: the same checkout, that object readable, deploys" 0 "$RC"
+exits "the control: the same checkout, that object readable, deploys" 0
 
 # ⭐ F2 — THE ASYMMETRIC ONE, and the reason it is here. A reader of the card writes `[ "$fetch_rc"
 # -ne 1 ] || refuse …`: it handles the exit 1 the card names, F1 passes, and git's 128 still escapes
@@ -2908,8 +2920,8 @@ eq "the control: the same checkout, that object readable, deploys" 0 "$RC"
 mkfix fetch_remote_gone
 mv "$ORIGIN" "$ORIGIN.gone"
 run
-eq  "fetch with the remote gone: exit 1 (128 is what git gave; the REFUSAL is what the operator gets)" \
-  1 "$RC"
+exits  "fetch with the remote gone: exit 1 (128 is what git gave; the REFUSAL is what the operator gets)" \
+  1
 has "fetch with the remote gone: the ⛔ REFUSED banner" "⛔ REFUSED — " "$OUT"
 has "fetch with the remote gone: the phase-A promise" \
   "Nothing was changed. The previous release is still serving." "$OUT"
@@ -2926,7 +2938,7 @@ eq  "fetch with the remote gone: HEAD is where it was" "$V1" "$(gitc "$ROOT" rev
 # THE CONTROL, one variable away: put the remote back and the same command deploys.
 mv "$ORIGIN.gone" "$ORIGIN"
 run --dry-run
-eq "the control: the same checkout with its remote back deploys" 0 "$RC"
+exits "the control: the same checkout with its remote back deploys" 0
 
 # F3 — MEZZ_REMOTE naming no remote of this checkout. ⚠ THIS CASE MOVED, AND ITS OLD ASSERTIONS
 # WERE THE DEFECT card#9832 CLOSES. It used to reach the FETCH and assert that the headline "names
@@ -2961,7 +2973,7 @@ has "no bootstrap/app.php: names the command that would fail first, and where" \
 no_env_example() { rm -f "$1/server/.env.example"; }
 mkfix no_env_example_file no_env_example
 run --dry-run
-eq  "a release with no server/.env.example: still deploys (a warning, not a refusal)" 0 "$RC"
+exits  "a release with no server/.env.example: still deploys (a warning, not a refusal)" 0
 has "no .env.example: says which comparison did not happen" \
     "no key of it was compared against this host's .env" "$OUT"
 
@@ -2993,14 +3005,14 @@ run_refusal "PHP 8.4.0 under a ^8.4.1 floor" "does not satisfy server/composer.j
 
 # CONTROL — exactly AT the floor, one variable from the case above.
 mkfix php_at_floor; STUB_PHP_VERSION=8.4.1; run --dry-run
-eq  "control: PHP 8.4.1 is exactly the floor, and deploys" 0 "$RC"
+exits  "control: PHP 8.4.1 is exactly the floor, and deploys" 0
 has "control: names the constraint it read and where from" "PHP 8.4.1 satisfies ^8.4.1, declared by server/composer.json" "$OUT"
 
 # CONTROL — above the floor on a LATER minor. The old case list allowed that by ENUMERATING
 # `8.5*`; this allows it by EVALUATING `^8.4.1`, and the FPM binary A14 reads follows the host.
 mkfix php_above_floor; STUB_PHP_VERSION=8.5.4
 run --dry-run
-eq     "control: PHP 8.5.4 satisfies ^8.4.1"                         0 "$RC"
+exits     "control: PHP 8.5.4 satisfies ^8.4.1"                         0
 logged "control: the FPM binary is derived from the host's PHP"      "php-fpm8.5 -i"
 unlogged "control: and not from a literal minor"                     "php-fpm8.4 -i"
 
@@ -3025,7 +3037,7 @@ hasnt "raised floor: it did NOT read the checkout's own ^8.4.1" "composer.json's
 # CONTROL — the same release, on a host that meets the raised floor.
 mkfix floor_raised_ok raise_floor; STUB_PHP_VERSION=8.5.4
 run --dry-run
-eq "control: the same raised floor deploys on 8.5.4" 0 "$RC"
+exits "control: the same raised floor deploys on 8.5.4" 0
 
 # A constraint the check cannot evaluate REFUSES rather than guessing: a floor check that misreads
 # its constraint is the defect this card filed, not a fix for it.
@@ -3061,7 +3073,7 @@ run_refusal "no server/composer.json in the release at all" "server/composer.jso
 
 mkfix internal_flag
 export MEZZ_DEPLOY_IN_WINDOW=0; run --internal-post-checkout "$V2"
-eq "post-checkout entry point by hand: exit 1" 1 "$RC"
+exits "post-checkout entry point by hand: exit 1" 1
 has "post-checkout entry point: says why" "not an operator entry point" "$OUT"
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -3146,7 +3158,7 @@ eq "ver_ge: a floor that is not a version at all is refused, not truncated to 0"
 eq "ver_ge: a HOST version that is not a version is refused too" refused "$(bash_pred banana "$BASH_FLOOR_HERE")"
 # …and the refusal says what it could not do, rather than reporting a floor verdict it never reached.
 VER_GE_OUT="$(env_lib "$T/none" bash_meets_floor "" "" 2>&1)"; VER_GE_RC=$?
-eq  "ver_ge refusal: exit 1" 1 "$VER_GE_RC"
+exits  "ver_ge refusal: exit 1" 1 "$VER_GE_RC" "$VER_GE_OUT"
 has "ver_ge refusal: the ⛔ REFUSED banner, so it is a verdict and not a death" "⛔ REFUSED — " "$VER_GE_OUT"
 has "ver_ge refusal: names the comparison it could not perform" \
     "a version comparison this deploy cannot perform" "$VER_GE_OUT"
@@ -3191,7 +3203,7 @@ unlogged "raised bash floor: npm ci never ran" "npm ci"
 floor_at_host() { sed -i "s/^BASH_FLOOR=.*/BASH_FLOOR=$HOST_BASH_MM/" "$1/bin/deploy.sh"; }
 mkfix bash_at_target_floor floor_at_host
 run --dry-run
-eq  "control: a release whose floor IS this host's bash deploys" 0 "$RC"
+exits  "control: a release whose floor IS this host's bash deploys" 0
 has "control: and says which floor it held the bash to, and where it read it" \
   "ok — bash $HOST_BASH_MM meets BASH_FLOOR=$HOST_BASH_MM, declared by bin/deploy.sh at" "$OUT"
 
@@ -3200,7 +3212,7 @@ has "control: and says which floor it held the bash to, and where it read it" \
 drop_bash_floor() { sed -i '/^BASH_FLOOR=/d' "$1/bin/deploy.sh"; }
 mkfix bash_target_no_floor drop_bash_floor
 run --dry-run
-eq  "a release with no BASH_FLOOR line: deploys" 0 "$RC"
+exits  "a release with no BASH_FLOOR line: deploys" 0
 has "a release with no BASH_FLOOR line: says so, and names the floor enforced instead" \
   "declares no BASH_FLOOR (it predates card#9616); only this copy's floor, $BASH_FLOOR_HERE, was enforced (A1)" "$OUT"
 
@@ -3435,10 +3447,10 @@ has "npm 6.14.0: says the failure was moved out of the window" "with the app alr
 
 mkfix npm_at_lockfile_floor; export STUB_NPM_VERSION=7.0.0
 run --dry-run
-eq  "control: npm 7.0.0 is EXACTLY lockfileVersion 3's floor, and deploys" 0 "$RC"
+exits  "control: npm 7.0.0 is EXACTLY lockfileVersion 3's floor, and deploys" 0
 mkfix npm_above_lockfile_floor
 run --dry-run
-eq  "control: npm 9.2.0 deploys a lockfileVersion 3 release" 0 "$RC"
+exits  "control: npm 9.2.0 deploys a lockfileVersion 3 release" 0
 has "control: says which floor it held npm to, and where that floor came from" \
   "ok — npm 9.2.0 meets npm 7, which lockfileVersion 3 in server/package-lock.json at" "$OUT"
 logged "control: the host's npm really was asked for its version" "npm --version"
@@ -3453,7 +3465,7 @@ run_refusal "a release that moves its lockfile to v3, on npm 6.14.0" \
 # …and the other way round: a v2 release, for which npm's docs state no floor, deploys on npm 6.
 mkfix npm_target_lockfile_v2 lockfile_v2 lockfile_v2; export STUB_NPM_VERSION=6.14.0
 run --dry-run
-eq  "control: a lockfileVersion 2 release on npm 6.14.0 deploys (npm's docs: v2 is backwards compatible to v1)" 0 "$RC"
+exits  "control: a lockfileVersion 2 release on npm 6.14.0 deploys (npm's docs: v2 is backwards compatible to v1)" 0
 has "control: and says it compared NOTHING, rather than that npm met a floor" \
   "is lockfileVersion 2, for which npm's docs state no floor; npm 6.14.0 was not compared" "$OUT"
 
@@ -3506,7 +3518,7 @@ hasnt "a partly-readable npm version: no npm floor verdict it never reached" "is
 # can install the lockfile perfectly well.
 mkfix npm_version_prerelease; export STUB_NPM_VERSION='9.2.0-pre.1'
 run --dry-run
-eq  "control: an npm whose version carries a prerelease suffix deploys" 0 "$RC"
+exits  "control: an npm whose version carries a prerelease suffix deploys" 0
 has "control: and it was compared as its release, not refused" \
   "ok — npm 9.2.0-pre.1 meets npm 7" "$OUT"
 
@@ -3555,7 +3567,7 @@ mkfix window_interpreter
 : > "$T/knobs/bash_calls"          # turns the bash pass-through's recording on for this case only
 start_old_daemons
 run_via "$REAL_BASH"
-eq  "explicit interpreter: the deploy runs to completion" 0 "$RC"
+exits  "explicit interpreter: the deploy runs to completion" 0
 has "explicit interpreter: and really deployed" "✔ DEPLOYED" "$OUT"
 # THE POSITIVE TWIN, first: without it the two `unlogged`-shaped assertions below would pass just as
 # happily with the recorder switched off, or absent from PATH, having observed nothing at all.
@@ -3574,7 +3586,7 @@ mkfix first_deploy
 eq "fixture: a first deploy really starts with no daemon lock file" "" \
   "$(compgen -G "$ROOT/server/storage/framework/daemon-*.lock" || true)"
 run
-eq  "first deploy: exit 0" 0 "$RC"
+exits  "first deploy: exit 0" 0
 has "first deploy: reports success" "✔ DEPLOYED" "$OUT"
 has "first deploy: says it stopped nothing, rather than reporting pids it never saw" \
   "stopped — pid(s) none were running" "$OUT"
@@ -3621,32 +3633,32 @@ F="$STUB_CRONTAB_FILE"; BLOCK="$(supervision_render "$ROOT" "$T/bin/php")"
 inst() { : > "$CALL_LOG"; INS="$("$ROOT/bin/supervision.sh" install --root "$ROOT" --php "$T/bin/php" 2>&1)"; IRC=$?; }
 
 rm -f "$F"; inst
-eq "install into NO crontab at all: exit 0"          0 "$IRC"
+exits "install into NO crontab at all: exit 0"          0 "$IRC" "$INS"
 eq "install: the crontab is exactly the rendered block" "$BLOCK" "$(cat "$F")"
 
 printf 'MAILTO=ops@example.invalid\n0 3 * * * /usr/local/bin/backup\n' > "$F"
 inst; FIRST="$(cat "$F")"; inst; SECOND="$(cat "$F")"
-eq  "install beside other lines: exit 0"              0 "$IRC"
+exits  "install beside other lines: exit 0"              0 "$IRC" "$INS"
 has "install: keeps a line it does not manage"        "0 3 * * * /usr/local/bin/backup" "$SECOND"
 has "install: keeps MAILTO"                           "MAILTO=ops@example.invalid" "$SECOND"
 eq  "install: a second install changes nothing"       "$FIRST" "$SECOND"
 eq  "install: one managed block, not two"             1 "$(grep -c '^# BEGIN mezzanine-supervision ' "$F")"
 
 supervision_render "/srv/other-checkout" "$T/bin/php" >> "$F"; inst
-eq  "install beside ANOTHER checkout's block: exit 0 (it is not a duplicate)" 0 "$IRC"
+exits  "install beside ANOTHER checkout's block: exit 0 (it is not a duplicate)" 0 "$IRC" "$INS"
 has "install: keeps the other checkout's block" "# BEGIN mezzanine-supervision /srv/other-checkout" "$(cat "$F")"
 
 printf '* * * * * cd /home/x/server && flock -n /tmp/fold.lock /usr/bin/php8.5 artisan mezzanine:fold >> x 2>&1\n' >> "$F"
 cp "$F" "$T/crontab.before"; inst
-eq  "install beside a HAND-STAGED fold line: exit 1"   1 "$IRC"
+exits  "install beside a HAND-STAGED fold line: exit 1"   1 "$IRC" "$INS"
 has "hand-staged: names the line"                      "artisan mezzanine:fold >> x" "$INS"
 eq  "hand-staged: the crontab is unchanged"            "$(cat "$T/crontab.before")" "$(cat "$F")"
 unlogged "hand-staged: nothing was written"            "crontab -$"
 grep -v 'flock -n /tmp/fold.lock' "$F" > "$F.new"; mv "$F.new" "$F"; inst
-eq "control: with that line removed, install succeeds" 0 "$IRC"
+exits "control: with that line removed, install succeeds" 0 "$IRC" "$INS"
 
 export STUB_CRONTAB_BROKEN="cannot open crontab: Permission denied"; cp "$F" "$T/crontab.before"; inst
-eq  "install when crontab -l fails (not 'no crontab'): exit 1" 1 "$IRC"
+exits  "install when crontab -l fails (not 'no crontab'): exit 1" 1 "$IRC" "$INS"
 has "unreadable: says it would not write over it"      "not because the crontab is empty" "$INS"
 unlogged "unreadable: nothing was written"             "crontab -$"
 eq  "unreadable: the crontab is unchanged"             "$(cat "$T/crontab.before")" "$(cat "$F")"
@@ -3654,7 +3666,7 @@ unset STUB_CRONTAB_BROKEN
 
 mkdir -p "$T/pct%root/server"; : > "$T/pct%root/server/artisan"
 INS="$("$HERE/supervision.sh" install --root "$T/pct%root" --php "$T/bin/php" 2>&1)"; IRC=$?
-eq  "install for a root cron cannot carry ('%'): exit 1" 1 "$IRC"
+exits  "install for a root cron cannot carry ('%'): exit 1" 1 "$IRC" "$INS"
 has "'%' root: says why"                               "cron cannot carry" "$INS"
 
 # RELATIVE --root and --php: cron runs every entry from the account's HOME, so they must be installed
@@ -3662,7 +3674,7 @@ has "'%' root: says why"                               "cron cannot carry" "$INS
 rm -f "$F"; inst
 eq "control: an absolute install is the rendered block"  "$BLOCK" "$(cat "$F")"
 rm -f "$F"; INS="$(cd "$T/install_cases" && "$ROOT/bin/supervision.sh" install --root root --php ../bin/php 2>&1)"; IRC=$?
-eq "install with RELATIVE --root and --php: exit 0"      0 "$IRC"
+exits "install with RELATIVE --root and --php: exit 0"      0 "$IRC" "$INS"
 eq "relative: installed as the block for the ABSOLUTE paths" "$BLOCK" "$(cat "$F")"
 inst
 eq "control: an absolute install after it leaves one managed block, not two" 1 "$(grep -c '^# BEGIN mezzanine-supervision ' "$F")"
@@ -3672,7 +3684,7 @@ section "THE FULL RUN — the window, the order, the daemons, the close"
 mkfix full_run
 start_old_daemons
 run
-eq "full run: exit 0"                                   0 "$RC"
+exits "full run: exit 0"                                   0
 eq "full run: HEAD moved to the target commit"          "$V2" "$(git -C "$ROOT" rev-parse HEAD)"
 has "full run: reports success"                         "✔ DEPLOYED" "$OUT"
 eq "full run: the failure marker is gone"               "absent" "$([ -e "$ROOT/.deploy-failed" ] && echo present || echo absent)"
@@ -3721,7 +3733,7 @@ section "THE OPCACHE WAIT — seen to fail against a release that skips it"
 waited() { printf '%s\n' "$OUT" | sed -n 's/.*and \([0-9]*\) s have passed since the last code write.*/\1/p'; }
 mkfix fpm_wait; export STUB_OPCACHE_FREQ=3 MEZZ_DAEMON_SETTLE_S=0
 run
-eq  "wait control: exit 0"                               0 "$RC"
+exits  "wait control: exit 0"                               0
 has "wait control: a host whose daemons were already dead still gets them relaunched" "stopped — pid(s) none were running" "$OUT"
 eq  "wait control: ≥ revalidate_freq + 1 s passed before up" "yes" "$([ "$(waited)" -ge 4 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
 cut_wait() { sed -i 's/^  if \[ "\$wait_s" -gt 0 \]; then sleep "\$wait_s"; fi$/  : wait cut out by the selftest mutant/' "$1/bin/deploy.sh"; }
@@ -3740,7 +3752,7 @@ uini_freq_4() { uini_freq "$1" 4; }
 uini_freq_1() { uini_freq "$1" 1; }
 mkfix fpm_floor uini_freq_1 uini_freq_4; export MEZZ_DAEMON_SETTLE_S=0
 run
-eq  "floor: exit 0"                                                    0 "$RC"
+exits  "floor: exit 0"                                                    0
 has "floor: phase A read the previous release's 4 s"                  "revalidates a changed file within 4 s" "$OUT"
 eq  "floor: ≥ the PREVIOUS release's revalidate_freq + 1 s passed before up" "yes" "$([ "$(waited)" -ge 5 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
 cut_floor() {
@@ -3758,7 +3770,7 @@ section "WHOLE SECONDS READ FROM OUTSIDE — a leading zero is base 10; a non-nu
 mkfix freq_leading_zero; export MEZZ_DAEMON_SETTLE_S=0
 printf 'php_value[opcache.revalidate_freq] = 08\n' >> "$POOL"
 run
-eq  "freq 08: exit 0"                                         0 "$RC"
+exits  "freq 08: exit 0"                                         0
 has "freq 08: read as 8 s"                                    "revalidates a changed file within 8 s" "$OUT"
 eq  "freq 08: ≥ 8 + 1 s passed before up"                     "yes" "$([ "$(waited)" -ge 9 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
 # The floor as a serving release hands it over — one whose phase A passed on the digits it read, as bbba3cd's did.
@@ -3766,24 +3778,24 @@ hand_over_010() { sed -i 's/ MEZZ_DEPLOY_REVALIDATE_FLOOR_S="\$FPM_REVALIDATE_S"
 mkfix floor_leading_zero "" hand_over_010; export MEZZ_DAEMON_SETTLE_S=0
 eq  "floor 010: the serving release really hands over 010"    1 "$(git -C "$SRC" show "$V1:bin/deploy.sh" | grep -c ' MEZZ_DEPLOY_REVALIDATE_FLOOR_S=010$')"
 run
-eq  "floor 010: exit 0"                                       0 "$RC"
+exits  "floor 010: exit 0"                                       0
 has "floor 010: read as 10 s"                                 "(before the checkout: within 10 s)" "$OUT"
 eq  "floor 010: ≥ 10 + 1 s passed before up"                  "yes" "$([ "$(waited)" -ge 11 ] 2>/dev/null && echo yes || echo "no ($(waited))")"
 mkfix timeout_leading_zero; export MEZZ_DAEMON_STOP_TIMEOUT_S=08
 run
-eq  "stop timeout 08: exit 0"                                 0 "$RC"
+exits  "stop timeout 08: exit 0"                                 0
 mkfix timing_not_a_number; export MEZZ_DAEMON_STOP_TIMEOUT_S=3s
 run_refusal "stop timeout 3s (A1b)" "MEZZ_DAEMON_STOP_TIMEOUT_S is '3s', not a whole number of seconds" --dry-run
 export MEZZ_DAEMON_STOP_TIMEOUT_S=3 MEZZ_DAEMON_SETTLE_S=-1
 run_refusal "settle -1 (A1b)" "MEZZ_DAEMON_SETTLE_S is '-1', not a whole number of seconds" --dry-run
 export MEZZ_DAEMON_SETTLE_S=2; run --dry-run
-eq  "control: the same host with both timings whole deploys"  0 "$RC"
+exits  "control: the same host with both timings whole deploys"  0
 # …and in the window, under a serving release that never checked: phase B reads them again before building anything.
 cut_timing_check() { sed -i 's/^  daemon_timings || refuse "\$TIMING_NOT_READY"$/  : timing check cut out by the selftest mutant/' "$1/bin/deploy.sh"; }
 mkfix timing_unchecked_by_serving "" cut_timing_check; export MEZZ_DAEMON_STOP_TIMEOUT_S=3s
 eq  "unchecked 3s: the serving release really lacks the check" 1 "$(git -C "$SRC" show "$V1:bin/deploy.sh" | grep -c 'timing check cut out by the selftest mutant')"
 run
-eq  "unchecked 3s: exit 2"                                    2 "$RC"
+exits  "unchecked 3s: exit 2"                                    2
 has "unchecked 3s: names the value"                           "MEZZ_DAEMON_STOP_TIMEOUT_S is '3s', not a whole number of seconds" "$OUT"
 has "unchecked 3s: the banner"                                "THE APP IS DOWN AND STAYS DOWN" "$OUT"
 unlogged "unchecked 3s: nothing was built"                    "composer install"
@@ -3792,7 +3804,7 @@ unlogged "unchecked 3s: the app is NEVER brought up"          "artisan up"
 section "IN-WINDOW FAILURE — down and stay down, and a bare re-run refuses"
 mkfix migrate_fails
 STUB_FAIL_RE='artisan migrate'; run
-eq  "migrate fails: exit 2 (not 1 — this one broke)"    2 "$RC"
+exits  "migrate fails: exit 2 (not 1 — this one broke)"    2
 has "migrate fails: the banner is unmissable"           "THE APP IS DOWN AND STAYS DOWN" "$OUT"
 has "migrate fails: names the step"                     "php artisan migrate --force" "$OUT"
 unlogged "migrate fails: the app is NEVER brought up"   "artisan up"
@@ -3801,14 +3813,14 @@ eq  "migrate fails: the marker is on disk"              "present" "$([ -e "$ROOT
 eq  "migrate fails: HEAD did move (the checkout landed)" "$V2" "$(git -C "$ROOT" rev-parse HEAD)"
 # THE TRAP FAMILY, exercised: the obvious operator reflex is to run it again. It must refuse.
 run --redeploy
-eq  "bare re-run after a failure: exit 1 (refused)"     1 "$RC"
+exits  "bare re-run after a failure: exit 1 (refused)"     1
 has "bare re-run: names the unreviewed failure"         "a previous deploy failed and has not been reviewed" "$OUT"
 unlogged "bare re-run: did not reopen the window"       "artisan down"
 
 section "IN-WINDOW FAILURE — the daemon restart, each way it can go wrong"
 mkfix daemon_dies; printf 'mezzanine:fold\n' > "$T/knobs/dies_after_start"
 run
-eq  "dead daemon: exit 2"                               2 "$RC"
+exits  "dead daemon: exit 2"                               2
 has "dead daemon: names it, and its lock held by nothing" "mezzanine:fold: nothing holds" "$OUT"
 has "dead daemon: …the daemon died on start"            "the daemon died on start" "$OUT"
 unlogged "dead daemon: the app is NEVER brought up"     "artisan up"
@@ -3816,7 +3828,7 @@ unlogged "dead daemon: the app is NEVER brought up"     "artisan up"
 mkfix daemon_ignores_term; printf 'mezzanine:sweep\n' > "$T/knobs/ignores_term"
 start_old_daemons; : > "$T/knobs/ignores_term"
 run
-eq  "a previous daemon that ignores SIGTERM: exit 2"     2 "$RC"
+exits  "a previous daemon that ignores SIGTERM: exit 2"     2
 has "ignores SIGTERM: says so, within the stop timeout"  "did not exit within 3 s of SIGTERM" "$OUT"
 unlogged "ignores SIGTERM: the app is NEVER brought up"  "artisan up"
 
@@ -3831,20 +3843,25 @@ mkfix daemon_snapshot_cut cut_snapshot
 eq "snapshot mutant: the mutator really cut the snapshot" 1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'snapshot cut out by the selftest mutant')"
 start_old_daemons; sleep 2
 run
-eq  "snapshot mutant: exit 2"                                2 "$RC"
+exits  "snapshot mutant: exit 2"                                2
 has "snapshot mutant: the lock holder predates the restart"  "BEFORE this restart — it is running the previous release's code" "$OUT"
 unlogged "snapshot mutant: the app is NEVER brought up"      "artisan up"
-# A holder whose start cannot be read cannot be proven fresh. An unmutated deploy under a ps that prints no age: the
-# relaunched daemons hold their locks and are alive, so what fails the window is holders_started_after's EMPTY-age
-# branch — without it `$((now - age))` reads the empty age as 0, a process started this very second, and the deploy
-# goes green without proving anything.
-mkfix daemon_blind_ps
-: > "$T/knobs/blind_ps"
+# A holder whose start cannot be read cannot be proven fresh. A release whose proof reads every holder's start from a
+# path that does not exist: the relaunched daemons hold their locks and are alive, so what fails the window is
+# holders_started_after's unread-start branch — without it the empty start would be compared as a number and the
+# deploy would go green without proving anything. Only the HOLDERS' reads are cut: the step's own start (`self`) is
+# still read, so a red here is that branch and not the step failing before any holder was judged.
+blind_start_read() {
+  # shellcheck disable=SC2016,SC2317  # sed's own text, written LITERALLY into the release's deploy.sh; called by mkfix
+  sed -i 's/^    if ! started="\$(proc_started "\$pid")"; then$/    if ! started="$(proc_started "blind-$pid")"; then # start read blinded by the selftest mutant/' "$1/bin/deploy.sh"
+}
+mkfix daemon_blind_start blind_start_read
+eq "blind start: the mutator really blinded the holders' read" 1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'start read blinded by the selftest mutant')"
 run
-eq  "blind ps: exit 2"                                  2 "$RC"
-has "blind ps: says the holder's start cannot be read"  "cannot read when pid" "$OUT"
-hasnt "blind ps: no success line"                       "✔ DEPLOYED" "$OUT"
-unlogged "blind ps: the app is NEVER brought up"        "artisan up"
+exits  "blind start: exit 2"                                  2
+has "blind start: says the holder's start cannot be read"  "cannot read when pid" "$OUT"
+hasnt "blind start: no success line"                       "✔ DEPLOYED" "$OUT"
+unlogged "blind start: the app is NEVER brought up"        "artisan up"
 
 section "IN-WINDOW — cron's losing flock, sampled beside a live daemon, is not a daemon that died"
 # cron's minute tick runs `flock -n` against the lock the running daemon holds, and the loser has the
@@ -3854,7 +3871,7 @@ section "IN-WINDOW — cron's losing flock, sampled beside a live daemon, is not
 # sighting would call the fold dead at the settle. The fold is alive.
 mkfix loser_sampled; printf 'mezzanine:fold\n' > "$T/knobs/transient_loser"; : > "$T/knobs/slow_fuser"
 run
-eq    "transient loser: exit 0 (the fold did not die)"     0 "$RC"
+exits    "transient loser: exit 0 (the fold did not die)"     0
 hasnt "transient loser: not reported as died on start"     "died on start" "$OUT"
 rm -f "$T/knobs/slow_fuser"; : > "$T/knobs/transient_loser"
 
@@ -3869,12 +3886,12 @@ mkfix release_adds_daemon add_daemon
 eq  "adds a daemon: the mutator really added it to the release's list" 1 "$(git -C "$SRC" show HEAD:bin/supervision.sh | grep -c '^SUPERVISED_DAEMONS=(.* mezzanine:extra)$')"
 EXTRA_CMD="$(supervision_command "$ROOT" "$T/bin/php" mezzanine:extra)"
 run --dry-run
-eq  "adds a daemon, dry run: exit 0"                               0 "$RC"
+exits  "adds a daemon, dry run: exit 0"                               0
 has "adds a daemon, dry run: names the entry the window will add" "+ * * * * * $EXTRA_CMD" "$OUT"
 unlogged "adds a daemon, dry run: the crontab was not written"    "crontab -$"
 start_old_daemons
 run
-eq  "adds a daemon: exit 0"                                       0 "$RC"
+exits  "adds a daemon: exit 0"                                       0
 no_shell_death "adds a daemon" "$OUT"
 has "adds a daemon: the crontab carries its every-minute entry"   "* * * * * $EXTRA_CMD" "$(cat "$STUB_CRONTAB_FILE")"
 has "adds a daemon: …and its @reboot entry"                       "@reboot $EXTRA_CMD" "$(cat "$STUB_CRONTAB_FILE")"
@@ -3892,7 +3909,7 @@ mkfix release_drops_daemon drop_daemon
 eq "drops a daemon: the mutator really dropped $DROPPED from the release's list" 0 "$(git -C "$SRC" show HEAD:bin/supervision.sh | grep -c "^SUPERVISED_DAEMONS=(.*$DROPPED")"
 start_old_daemons
 run
-eq  "drops a daemon: exit 0"                                       0 "$RC"
+exits  "drops a daemon: exit 0"                                       0
 for pid in $OLD_PIDS; do
   eq "drops a daemon: the previous daemon pid $pid is gone" "gone" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
 done
@@ -3911,7 +3928,7 @@ mkfix checkout_stop_cut cut_checkout_stop
 eq  "checkout-stop mutant: the mutator really cut it" 1 "$(git -C "$SRC" show HEAD:bin/deploy.sh | grep -c 'checkout-wide stop cut out by the selftest mutant')"
 start_old_daemons
 run
-eq  "checkout-stop mutant: exit 2"                              2 "$RC"
+exits  "checkout-stop mutant: exit 2"                              2
 has "checkout-stop mutant: names the lock still held"           "still hold $(dropped_lock)" "$OUT"
 unlogged "checkout-stop mutant: the app is NEVER brought up"   "artisan up"
 
@@ -3923,7 +3940,7 @@ mkfix release_moves_locks move_locks
 eq "moves the locks: the mutator really moved them" 1 "$(git -C "$SRC" show HEAD:bin/supervision.sh | grep -c "daemon-%s.v2.lock'")"
 start_old_daemons
 STUB_FAIL_RE='artisan migrate'; run
-eq  "moves the locks: exit 1 — refused, nothing touched"          1 "$RC"
+exits  "moves the locks: exit 1 — refused, nothing touched"          1
 has "moves the locks: says the release would move them"           "would move the daemons' lock files" "$OUT"
 has "moves the locks: names where the release would put them"     "$ROOT/server/storage/framework/daemon-*.v2.lock" "$OUT"
 unlogged "moves the locks: never opened the window"               "artisan down"
@@ -3940,14 +3957,14 @@ section "RECOVERY — a re-run after a window that failed stops what is RUNNING,
 mkfix recover_after_failure drop_daemon
 start_old_daemons
 STUB_FAIL_RE='artisan migrate'; run
-eq "recovery: the first run fails in the window (exit 2)" 2 "$RC"
+exits "recovery: the first run fails in the window (exit 2)" 2
 no_shell_death "recovery, the failed window" "$OUT"
 for pid in $OLD_PIDS; do
   eq "recovery: the previous daemon pid $pid still runs after the failed window" "alive" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
 done
 rm -f "$ROOT/.deploy-failed"; STUB_FAIL_RE=''
 run --redeploy
-eq  "recovery: the re-run deploys (exit 0)"                   0 "$RC"
+exits  "recovery: the re-run deploys (exit 0)"                   0
 no_shell_death "recovery, the re-run" "$OUT"
 for pid in $OLD_PIDS; do
   eq "recovery: the previous daemon pid $pid is gone" "gone" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
@@ -3959,17 +3976,17 @@ eq  "recovery: nothing holds the dropped daemon's lock"       "" "$(fuser "$(dro
 mkfix stop_timeout_rerun drop_daemon
 printf '%s\n' "$DROPPED" > "$T/knobs/ignores_term"; start_old_daemons; : > "$T/knobs/ignores_term"
 run
-eq  "stop timeout: exit 2"                                      2 "$RC"
+exits  "stop timeout: exit 2"                                      2
 has "stop timeout: says so"                                     "did not exit within 3 s of SIGTERM" "$OUT"
 rm -f "$ROOT/.deploy-failed"
 run --redeploy
-eq    "stop timeout, re-run: exit 2 again — the stubborn daemon still holds its lock" 2 "$RC"
+exits    "stop timeout, re-run: exit 2 again — the stubborn daemon still holds its lock" 2
 has   "stop timeout, re-run: says so"                           "did not exit within 3 s of SIGTERM" "$OUT"
 hasnt "stop timeout, re-run: no success line beside it"         "✔ DEPLOYED" "$OUT"
 fuser -k -KILL "$(dropped_lock)" >/dev/null 2>&1
 rm -f "$ROOT/.deploy-failed"
 run --redeploy
-eq  "stop timeout, after the operator killed it: exit 0"        0 "$RC"
+exits  "stop timeout, after the operator killed it: exit 0"        0
 for pid in $OLD_PIDS; do
   eq "stop timeout: the previous daemon pid $pid is gone" "gone" "$(kill -0 "$pid" 2>/dev/null && echo alive || echo gone)"
 done
@@ -3977,23 +3994,23 @@ done
 section "A RELATIVE MEZZ_DEPLOY_ROOT — canonical before anything renders it or re-execs through it"
 mkfix relative_root
 : > "$CALL_LOG"; OUT="$(cd "$T/relative_root" && MEZZ_DEPLOY_ROOT=root root/bin/deploy.sh --dry-run 2>&1)"; RC=$?
-eq  "relative root, dry run: exit 0"                          0 "$RC"
+exits  "relative root, dry run: exit 0"                          0
 has "relative root: the lock files are judged for the canonical path" "lock files at $ROOT/server/" "$OUT"
 : > "$CALL_LOG"; OUT="$(cd "$T/relative_root" && MEZZ_DEPLOY_ROOT=root root/bin/deploy.sh 2>&1)"; RC=$?
-eq  "relative root, full run: exit 0 (the re-exec, run from server/, found the checkout)" 0 "$RC"
+exits  "relative root, full run: exit 0 (the re-exec, run from server/, found the checkout)" 0
 eq  "relative root, full run: HEAD moved"                     "$V2" "$(git -C "$ROOT" rev-parse HEAD)"
 
 section "POST-WINDOW — the smoke check is not the same failure"
 mkfix smoke_fails
 STUB_HTTP_CODE=503; run
-eq  "smoke fails: exit 3 (up, but unverified)"          3 "$RC"
+exits  "smoke fails: exit 3 (up, but unverified)"          3
 has "smoke fails: says the app IS serving"              "THE APP IS UP BUT" "$OUT"
 logged "smoke fails: the window WAS closed"             "artisan up"
 eq  "smoke fails: the marker stays, so the next run refuses" "present" "$([ -e "$ROOT/.deploy-failed" ] && echo present || echo absent)"
 
 mkfix smoke_unread_url; sed -i 's/^APP_URL=/export APP_URL=/' "$ROOT/server/.env"
 run
-eq  "APP_URL in a form env_get does not read: exit 0, as for an unset APP_URL" 0 "$RC"
+exits  "APP_URL in a form env_get does not read: exit 0, as for an unset APP_URL" 0
 has "APP_URL unread: says so, and that the deploy is unverified" "APP_URL is in a form this script does not read" "$OUT"
 unlogged "APP_URL unread: no smoke request was made to a URL that was not read" "curl "
 
@@ -4002,7 +4019,7 @@ unlogged "APP_URL unread: no smoke request was made to a URL that was not read" 
 # `null/up` answered 000. The control is every other case here, whose APP_URL is a URL and IS requested.
 mkfix smoke_null_url; sed -i 's|^APP_URL=.*|APP_URL=null|' "$ROOT/server/.env"
 run
-eq  "APP_URL=null (Laravel: no URL at all): exit 0, as for an unset APP_URL" 0 "$RC"
+exits  "APP_URL=null (Laravel: no URL at all): exit 0, as for an unset APP_URL" 0
 has "APP_URL=null: reported as unset, and the deploy as unverified" "APP_URL is unset" "$OUT"
 unlogged "APP_URL=null: no smoke request was made to a URL the app does not have" "curl "
 
@@ -4058,7 +4075,7 @@ mkfix env_unreadable_phase_b unreadable_before_the_smoke
 eq "phase-B mutant: the deployed release really drops .env's mode before the smoke read" 1 \
    "$(gitc "$SRC" show "HEAD:bin/deploy.sh" | grep -c 'made unreadable by the selftest mutant')"
 run
-eq  "a .env unreadable in phase B: exit 0 — the app is up and this is not a refusal" 0 "$RC"
+exits  "a .env unreadable in phase B: exit 0 — the app is up and this is not a refusal" 0
 has "a .env unreadable in phase B: names the file, not the key" "server/.env could not be read" "$OUT"
 has "a .env unreadable in phase B: says the deploy is UNVERIFIED" "UNVERIFIED" "$OUT"
 has "a .env unreadable in phase B: points at the run that names the cause" "names the cause the way A5 does" "$OUT"
@@ -4105,7 +4122,7 @@ mkfix env_directory_phase_b env_directory_before_the_smoke
 eq "phase-B directory mutant: the deployed release really replaces .env before the smoke read" 1 \
    "$(gitc "$SRC" show "HEAD:bin/deploy.sh" | grep -c 'replaced by a DIRECTORY by the selftest mutant')"
 run
-eq  "a .env whose read stops short in phase B: exit 0 — the app is up and this is not a refusal" 0 "$RC"
+exits  "a .env whose read stops short in phase B: exit 0 — the app is up and this is not a refusal" 0
 eq  "a .env whose read stops short in phase B: the fixture really is a directory afterwards" \
   yes "$( [ -d "$ROOT/server/.env" ] && printf yes || printf no )"
 has "a .env whose read stops short in phase B: bash's own errno reaches the operator" \
@@ -4150,7 +4167,7 @@ mkfix scratch_tmpdir_gone
 TMPDIR="$T/no-such-dir" run --dry-run
 has "TMPDIR gone: the fixture reaches mktemp, and names the scratch file as the reason" \
   "No scratch file could be created for bash's read diagnostic" "$OUT"
-eq  "TMPDIR gone: exit 1" 1 "$RC"
+exits  "TMPDIR gone: exit 1" 1
 has "TMPDIR gone: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" "⛔ REFUSED — " "$OUT"
 has "TMPDIR gone: the phase-A promise" "Nothing was changed. The previous release is still serving." "$OUT"
 # ⭐ AND THE HEADLINE, which the three above cannot see (card#9933). This is the operator's own sequence —
@@ -4182,7 +4199,7 @@ scratch_refused() {
   has "$label: the fixture reaches mktemp and it fails — mktemp's own error is on screen" \
     "$MKTEMP_FAILED" "$OUT"
   has "$label: and names the directory it tried" "$T/no-such-dir/" "$OUT"
-  eq  "$label: exit 1" 1 "$RC"
+  exits  "$label: exit 1" 1
   has "$label: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" "⛔ REFUSED — " "$OUT"
   has "$label: the phase-A promise" "Nothing was changed. The previous release is still serving." "$OUT"
   has "$label: the headline names the scratch file" "⛔ REFUSED — $needle" "$OUT"
@@ -4200,7 +4217,7 @@ scratch_refused() {
 mkfix scratch_sites
 printf '99\n' > "$T/knobs/mktemp_passes"
 run --dry-run
-eq "the control: every scratch file created, the same fixture passes" 0 "$RC"
+exits "the control: every scratch file created, the same fixture passes" 0
 rm -f "$T/knobs/mktemp_passes"
 
 # S1 — git_ref_oid's stderr file: A7's first candidate, the call after the loader's.
@@ -4236,7 +4253,7 @@ gitc "$SRC" tag -a v0.0.2 -m 'selftest: an annotated tag over the release' "$V2"
 gitc "$SRC" push -q origin v0.0.2
 eq "fixture: v0.0.2 is an ANNOTATED tag, so resolving it peels" tag "$(gitc "$SRC" cat-file -t v0.0.2)"
 run --dry-run --ref v0.0.2
-eq "the control: the same tag, every scratch file created, deploys" 0 "$RC"
+exits "the control: the same tag, every scratch file created, deploys" 0
 scratch_refused "A7, git_commit_of's tag peel" 3 \
   "no scratch file could be created for git's error output while peeling the tag 'refs/tags/v0.0.2'" \
   --dry-run --ref v0.0.2
@@ -4313,7 +4330,7 @@ if [ "$FULL_OK" = 1 ]; then
   # the namespace is not itself what refuses the cases below.
   mkfix scratch_full_sites
   run_full 99 --dry-run
-  eq  "full-TMPDIR control: the same namespace with room on the tmpfs deploys" 0 "$RC"
+  exits  "full-TMPDIR control: the same namespace with room on the tmpfs deploys" 0
   unlogged "full-TMPDIR control: nothing was filled" "mktemp FILLED"
 
   # full_refused <label> <passes> <headline needle> <args…> — the refusal every case here shares.
@@ -4321,7 +4338,7 @@ if [ "$FULL_OK" = 1 ]; then
     local label="$1" passes="$2" needle="$3"; shift 3
     run_full "$passes" "$@"
     logged "$label: the tmpfs was filled before the call under test" "mktemp FILLED"
-    eq  "$label: exit 1" 1 "$RC"
+    exits  "$label: exit 1" 1
     has "$label: the ⛔ REFUSED banner, so the 1 is a verdict and not a death" "⛔ REFUSED — " "$OUT"
     has "$label: the phase-A promise" "Nothing was changed. The previous release is still serving." "$OUT"
     has "$label: the headline names the scratch space the run could not write" "⛔ REFUSED — $needle" "$OUT"
@@ -4392,7 +4409,7 @@ if [ "$FULL_OK" = 1 ]; then
   gitc "$SRC" tag -a v0.0.2 -m 'selftest: an annotated tag over the release' "$V2"
   gitc "$SRC" push -q origin v0.0.2
   run_full 99 --dry-run --ref v0.0.2
-  eq "full-TMPDIR control: the same tag with room on the tmpfs deploys" 0 "$RC"
+  exits "full-TMPDIR control: the same tag with room on the tmpfs deploys" 0
   full_refused "full TMPDIR, git_commit_of's tag peel" 3 \
     "the scratch file for git's error output while peeling the tag 'refs/tags/v0.0.2' ($(gitc "$SRC" rev-parse v0.0.2)) was created and could not be written" \
     --dry-run --ref v0.0.2
@@ -4490,7 +4507,7 @@ section "card#9933 — the loader's scratch file fails in phase B, AFTER the mai
 mkfix scratch_phase_b_control
 printf '999\n' > "$T/knobs/mktemp_passes"
 run
-eq "the control: every scratch file created, the whole deploy — window and all — finishes" 0 "$RC"
+exits "the control: every scratch file created, the whole deploy — window and all — finishes" 0
 scratch_calls="$(grep -c '^mktemp ' "$CALL_LOG" || true)"
 rm -f "$T/knobs/mktemp_passes"
 # The count is ASSERTED usable before it is used: a zero or a one would mean the stub logged nothing (the
@@ -4502,7 +4519,7 @@ mkfix scratch_phase_b
 printf '%s\n' "$((scratch_calls - 1))" > "$T/knobs/mktemp_passes"
 run
 rm -f "$T/knobs/mktemp_passes"
-eq  "no scratch file in phase B: the deploy FINISHES — exit 0, because the window is closed" 0 "$RC"
+exits  "no scratch file in phase B: the deploy FINISHES — exit 0, because the window is closed" 0
 has "no scratch file in phase B: and it says the release is deployed" "DEPLOYED" "$OUT"
 hasnt "no scratch file in phase B: no phase-A refusal — the failure is past every one of them" \
   "⛔ REFUSED — " "$OUT"
@@ -4612,7 +4629,7 @@ has "MEZZ_REMOTE as a URL: and says how to add the one that was meant" "remote a
 gitc "$ROOT" remote add "$FAKE_TOKEN" "$ORIGIN"
 export MEZZ_REMOTE="$FAKE_TOKEN"
 run --dry-run
-eq  "the positive twin: a remote NAMED with that same string deploys" 0 "$RC"
+exits  "the positive twin: a remote NAMED with that same string deploys" 0
 has "the positive twin: and this output DOES carry it — the absences above are measurements" \
   "Fetching $FAKE_TOKEN" "$OUT"
 
@@ -4622,7 +4639,7 @@ mkfix remote_name_with_at
 gitc "$ROOT" remote add 'backup@nas' "$ORIGIN"
 export MEZZ_REMOTE='backup@nas'
 run --dry-run
-eq  "⭐ a LEGAL remote name carrying @: deploys (a pattern match on \`://\` or \`@\` refuses it)" 0 "$RC"
+exits  "⭐ a LEGAL remote name carrying @: deploys (a pattern match on \`://\` or \`@\` refuses it)" 0
 has "a legal remote name carrying @: and it is the remote that was fetched" "Fetching backup@nas" "$OUT"
 
 # A configured name that is not the default, which is what the variable is FOR.
@@ -4630,14 +4647,14 @@ mkfix remote_named_not_origin
 gitc "$ROOT" remote add prod-mirror "$ORIGIN"
 export MEZZ_REMOTE=prod-mirror
 run --dry-run
-eq  "a MEZZ_REMOTE naming a configured remote other than origin: deploys" 0 "$RC"
+exits  "a MEZZ_REMOTE naming a configured remote other than origin: deploys" 0
 has "a configured non-default remote: it is the one that was fetched" "Fetching prod-mirror" "$OUT"
 
 # THE DEFAULT PATH, unchanged: MEZZ_REMOTE unset is `origin`, and `origin` is a configured remote
 # of any checkout this deploy runs on, so the gate is silent on every ordinary host.
 mkfix remote_default_origin
 run --dry-run
-eq  "the default: MEZZ_REMOTE unset deploys, exactly as before this gate" 0 "$RC"
+exits  "the default: MEZZ_REMOTE unset deploys, exactly as before this gate" 0
 has "the default: and it fetched origin" "Fetching origin" "$OUT"
 
 # `origin` IS NOT SPECIAL-CASED: on a checkout with no remotes at all the default is refused too,
@@ -4685,10 +4702,10 @@ has "a multi-line MEZZ_REMOTE: both halves are listed as the names that WOULD ha
 # refusal above is about the joining and not about either name being unknown.
 export MEZZ_REMOTE=origin
 run --dry-run
-eq  "the control: the first half alone is a configured remote and deploys" 0 "$RC"
+exits  "the control: the first half alone is a configured remote and deploys" 0
 export MEZZ_REMOTE=upstream
 run --dry-run
-eq  "the control: the second half alone is a configured remote and deploys" 0 "$RC"
+exits  "the control: the second half alone is a configured remote and deploys" 0
 has "the control: and it is the remote that was fetched" "Fetching upstream" "$OUT"
 
 # ⛔ `git remote`'s OWN STATUS. Unguarded, a failure here would end phase A with git's status and no
@@ -4710,7 +4727,7 @@ hasnt "git remote failed: and the value is withheld on this branch too (it is se
 # back to the default, since the URL it was set to is what the gate below refuses.
 rm -f "$T/knobs/git_remote_fail"; unset MEZZ_REMOTE
 run --dry-run
-eq  "the control: the same fixture with \`git remote\` answering deploys" 0 "$RC"
+exits  "the control: the same fixture with \`git remote\` answering deploys" 0
 
 # ── card#9991 — A REMOTE WHOSE NAME CONTAINS A COLON IS REFUSED AS MEZZ_REMOTE, AND A3c DOES NOT PRINT IT ──
 # card#9832's membership test passes a value that IS a configured remote, and `git config` will
@@ -4790,7 +4807,7 @@ eq  "the advice: and the renamed remote has no fetch refspec, which is why the s
 gitc "$ROOT" config remote.renamed-mirror.fetch '+refs/heads/*:refs/remotes/renamed-mirror/*'
 export MEZZ_REMOTE=renamed-mirror
 run --dry-run
-eq  "the advice: the renamed remote deploys" 0 "$RC"
+exits  "the advice: the renamed remote deploys" 0
 has "the advice: and it is the remote that was fetched" "Fetching renamed-mirror" "$OUT"
 
 # LEG 2, RED-FIRST: the SAME checkout shape, with MEZZ_REMOTE naming nothing — a refusal that has
@@ -4825,14 +4842,14 @@ mkfix remote_legal_odd_name
 gitc "$ROOT" remote add "$LEGAL_ODD_NAME" "$ORIGIN"
 export MEZZ_REMOTE="$LEGAL_ODD_NAME"
 run --dry-run
-eq  "⭐ a legal name carrying / @ . - and no ':': deploys (a URL-shape predicate refuses it)" 0 "$RC"
+exits  "⭐ a legal name carrying / @ . - and no ':': deploys (a URL-shape predicate refuses it)" 0
 has "a legal name with no ':': it is the remote that was fetched" "Fetching $LEGAL_ODD_NAME" "$OUT"
 # And the rule is about MEZZ_REMOTE, not the checkout: a checkout that CARRIES a colon-named remote
 # deploys from a legal one — here the default, origin — and the colon-named remote is not printed.
 mkfix remote_colon_beside_default
 gitc "$ROOT" config "remote.$COLON_NAME.url" "$ORIGIN"
 run --dry-run
-eq  "the control: a checkout carrying a colon-named remote deploys from origin" 0 "$RC"
+exits  "the control: a checkout carrying a colon-named remote deploys from origin" 0
 has "the control: and it fetched origin" "Fetching origin" "$OUT"
 hasnt "the control: and the colon-named remote is not printed by a deploy that never lists it" \
   "$COLON_TOKEN" "$OUT"

@@ -566,7 +566,7 @@ rule violations anyone could have committed at the time.
     daemon the new release dropped, and, on a re-run after a deploy that failed in the window, every
     daemon the previous release still has up — relaunches the command cron runs, and fails the window
     unless each of its locks is held, a settle later, only by processes that started after the restart
-    (their start read with `ps`; a holder whose start cannot be read fails it), and every other lock
+    (their start read from `/proc/<pid>/stat` in the kernel's clock ticks, against the restart's own start on the same clock; a holder whose start cannot be read fails it), and every other lock
     file is held by nothing. No daemon registers a signal handler, so a kill
     mid-pass is a crash — which § 2.1 already requires every process to survive; a daemon added later
     must keep that property, and `bin/deploy.sh § restart_daemons` says how to re-measure it. The fold's guarantee is § 6.5's (the cursor advance is in the
@@ -595,8 +595,8 @@ rule violations anyone could have committed at the time.
   `bash`, `git` or `npm` is too old** (card#9616 — each by name, in phase A, before anything is
   touched; the detail is the bullet below this list), a migration that
   ALTERs `events` without stating its algorithm (`docs/design/FLEET-STATE.md § 6.9` rule 1 —
-  *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`, `setsid`
-  or `ps`, a crontab the deployed release's own install would refuse (an unreadable one included), a
+  *"the deploy checks it"*, and this is that check), a missing `crontab`, `flock`, `fuser`
+  or `setsid`, a crontab the deployed release's own install would refuse (an unreadable one included), a
   release with no `bin/supervision.sh` or one that no longer defines what the deploy runs from it, a
   release that would move the daemons' lock files, a PHP-FPM whose opcache would not re-read changed files (timestamps
   off in the ini, a pool or a `.user.ini`; preload set; no pool running as the deploy user; no FPM
