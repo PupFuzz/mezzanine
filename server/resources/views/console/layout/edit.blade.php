@@ -15,7 +15,7 @@
             empty one: every install renders on a floor of its own, alone, in the <code>open</code>
             form — exactly the building this deployment drew before floors could be composed.
         @else
-            Current: <strong>revision {{ $version }}</strong>, saved {{ $updatedAt }} by
+            Current: <strong>revision {{ $version }}</strong>, saved <x-utc-time :at="$updatedAt" /> by
             {{ $updatedBy }}. <a href="{{ route('admin.layout.revisions') }}">Revisions, diffs and
             restores</a>
         @endif

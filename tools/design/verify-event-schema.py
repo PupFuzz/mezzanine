@@ -501,48 +501,62 @@ def first_byte_bound(row):
     return int(m.group(1).replace(",", "")) if m else None
 sec614 = re.search(r"^### 6\.14 .*?(?=^### |^## )", raw, re.S | re.M)
 sec186 = re.search(r"^#### 18\.6 .*?(?=^#### |^### |^## )", raw, re.S | re.M)
-hb_name_row = next((l for l in (sec614.group(0) if sec614 else "").splitlines()
-                    if l.startswith("| `protocol_agent_name` |")), None)
 wire_name_row = next((l for l in (sec186.group(0) if sec186 else "").splitlines()
                       if l.startswith("| `opened_by` |")), None)
 d2_raw = (ROOT / "docs" / "design" / "FLEET-STATE.md").read_text()
 d2_sec64 = re.search(r"^### 6\.4 .*?(?=^### )", d2_raw, re.S | re.M)
 d2_sec821 = re.search(r"^#### 8\.2\.1 .*?(?=^#### )", d2_raw, re.S | re.M)
-d2_ddl = re.search(r"^\s*protocol_agent_name\s+VARCHAR\((\d+)\)",
-                   d2_sec64.group(0) if d2_sec64 else "", re.M)
-d2_name_row = next((l for l in (d2_sec821.group(0) if d2_sec821 else "").splitlines()
-                    if l.startswith("| `protocol_agent_name` |")), None)
-name_column = r"(?<!\w)protocol_agent_name(?!\w)"
-sizes_column = re.compile(r"string\(\s*'protocol_agent_name'\s*,\s*(\d+)\s*\)")
-places_after_column = re.compile(r"after\(\s*'protocol_agent_name'\s*\)")
-mig_widths, mig_unreadable = [], []
-for m in sorted((ROOT / "server" / "database" / "migrations").glob("*.php")):
-    src = m.read_text()
-    if not re.search(name_column, src):
-        continue
-    up = php_method_body(src, "up")
-    if up is None:
-        mig_unreadable.append(f"{m.name} (its `up()` body could not be read)")
-        continue
-    if re.search(name_column, places_after_column.sub("", sizes_column.sub("", up))):
-        mig_unreadable.append(m.name)
-        continue
-    widths = sizes_column.findall(up)
-    if widths:
-        mig_widths.append((m.name, int(widths[-1])))
-for name in mig_unreadable:
-    fail.append(f"check 12 CONTROL: migration {name} touches `protocol_agent_name` in its `up()` in a "
-                f"form this check cannot read -- only `string('protocol_agent_name', N)` and "
-                f"`after('protocol_agent_name')` are read, so a width set any other way would pass "
-                f"unheld against § 18.6's bound")
-name_bounds = {
-    "D1 § 18.6 `opened_by`": first_byte_bound(wire_name_row),
-    "D1 § 6.14 `protocol_agent_name`": first_byte_bound(hb_name_row),
-    "D2 § 6.4 `protocol_agent_name VARCHAR`": int(d2_ddl.group(1)) if d2_ddl else None,
-    "D2 § 8.2.1 `protocol_agent_name`": first_byte_bound(d2_name_row),
-    f"migration {mig_widths[-1][0] if mig_widths else '(none sizes the column)'}":
-        mig_widths[-1][1] if mig_widths else None,
-}
+registry_src = (ROOT / "server" / "app" / "Ingest" / "KindRegistry.php").read_text()
+
+
+def migration_width(column):
+    """(file, width) of the LAST migration whose `up()` sizes `column`, plus the files mentioning it in
+    a form this check cannot read."""
+    name_column = rf"(?<!\w){column}(?!\w)"
+    sizes_column = re.compile(rf"string\(\s*'{column}'\s*,\s*(\d+)\s*\)")
+    places_after_column = re.compile(rf"after\(\s*'{column}'\s*\)")
+    widths, unreadable = [], []
+    for m in sorted((ROOT / "server" / "database" / "migrations").glob("*.php")):
+        src = m.read_text()
+        if not re.search(name_column, src):
+            continue
+        up = php_method_body(src, "up")
+        if up is None:
+            unreadable.append(f"{m.name} (its `up()` body could not be read)")
+            continue
+        if re.search(name_column, places_after_column.sub("", sizes_column.sub("", up))):
+            unreadable.append(m.name)
+            continue
+        found = sizes_column.findall(up)
+        if found:
+            widths.append((m.name, int(found[-1])))
+    return (widths[-1] if widths else None), unreadable
+
+
+# card#11144: the relayed `protocol_agent_role` is a slug by the NAME's own pattern and bound (§ 3.1),
+# so every home that states its figure is held to the same § 18.6 reference as the name's -- the same
+# five homes, plus the ingest's registry for both members, which is what actually refuses.
+name_bounds = {"D1 § 18.6 `opened_by`": first_byte_bound(wire_name_row)}
+for column in ("protocol_agent_name", "protocol_agent_role"):
+    hb_row = next((l for l in (sec614.group(0) if sec614 else "").splitlines()
+                   if l.startswith(f"| `{column}` |")), None)
+    d2_ddl = re.search(rf"^\s*{column}\s+VARCHAR\((\d+)\)", d2_sec64.group(0) if d2_sec64 else "", re.M)
+    d2_row = next((l for l in (d2_sec821.group(0) if d2_sec821 else "").splitlines()
+                   if l.startswith(f"| `{column}` |")), None)
+    reg = re.search(rf"'{column}'\s*=>\s*(\d+)\s*,", registry_src)
+    mig, mig_unreadable = migration_width(column)
+    for name in mig_unreadable:
+        fail.append(f"check 12 CONTROL: migration {name} touches `{column}` in its `up()` in a "
+                    f"form this check cannot read -- only `string('{column}', N)` and "
+                    f"`after('{column}')` are read, so a width set any other way would pass "
+                    f"unheld against § 18.6's bound")
+    name_bounds.update({
+        f"D1 § 6.14 `{column}`": first_byte_bound(hb_row),
+        f"D2 § 6.4 `{column} VARCHAR`": int(d2_ddl.group(1)) if d2_ddl else None,
+        f"D2 § 8.2.1 `{column}`": first_byte_bound(d2_row),
+        f"ingest registry `{column}`": int(reg.group(1)) if reg else None,
+        f"migration {mig[0] if mig else '(none sizes the column)'} `{column}`": mig[1] if mig else None,
+    })
 unread = [home for home, n in name_bounds.items() if n is None]
 if unread:
     fail.append(f"check 12 CONTROL: no byte bound could be read at {unread} (parsed {name_bounds}) — "
@@ -557,6 +571,32 @@ else:
                         f"migration, and a name between two of them is accepted by one and fails at "
                         f"the other")
 
+# The roster MEMBERS this design reads (card#11144).  § 3.1's DECLARED leg is the contract published to
+# the coordination framework's owner, and it names the members the reporter reads -- `roster[].name`,
+# and since card#11144 `roster[].role`.  The set is re-derived from that leg on every run, and every
+# `roster[].X` this document names elsewhere must be in it: a member named anywhere else is one a
+# builder could read that the contract does not declare.  The reporter's roster read is held to the
+# same set, member access by member access, so a build reading a third member reds here too.
+declared_leg = re.search(r"^- \*\*DECLARED\b.*?(?=^- \*\*)", sec31.group(0) if sec31 else "", re.S | re.M)
+roster_members = set(re.findall(r"`roster\[\]\.([A-Za-z_]+)`", declared_leg.group(0))) if declared_leg else set()
+reporter_src = (ROOT / "fleet-reporter" / "fleet-reporter.js").read_text()
+roster_read = re.search(r"^function readRosterNames\(file\) \{.*?^\}", reporter_src, re.S | re.M)
+reporter_members = set(re.findall(r"\br\.([A-Za-z_]+)", roster_read.group(0))) if roster_read else set()
+if not roster_members or not reporter_members:
+    fail.append(f"check 12 CONTROL: the roster members parsed as {sorted(roster_members)} from § 3.1's "
+                f"DECLARED leg and {sorted(reporter_members)} from the reporter's `readRosterNames` -- a "
+                f"contract or a read this check cannot parse is one nothing holds to the other")
+else:
+    for i, line in enumerate(raw.splitlines(), 1):
+        for member in re.findall(r"roster\[\]\.([A-Za-z_]+)", line):
+            if member not in roster_members:
+                fail.append(f"L{i}: names `roster[].{member}`, a roster member § 3.1's DECLARED leg does "
+                            f"not declare ({sorted(roster_members)}) -- a read the contract published to "
+                            f"the coordination framework's owner does not cover")
+    for member in sorted(reporter_members - roster_members):
+        fail.append(f"fleet-reporter.js `readRosterNames` reads `r.{member}`, a roster member § 3.1's "
+                    f"DECLARED leg does not declare ({sorted(roster_members)})")
+
 print(f"json blocks parsed: {n_json}; doc anchors: {len(doc_anchors)}; "
       f"enum fields re-derived: {n_enum}, {n_enum - n_unclassified} classified; "
       f"counter-name mentions checked: {n_counter} against {len(wire_fields)} wire fields; "
@@ -567,7 +607,8 @@ print(f"json blocks parsed: {n_json}; doc anchors: {len(doc_anchors)}; "
       f"selftest {worst_self} B from {n_self} members; "
       f"roster resolution sites re-derived from § 3.1, in order: {sites}; "
       f"flusher start paths re-derived from § 2.3: {starts if sites and at27 and row6 is not None else 'not read'}; "
-      f"protocol agent name bound per home: {name_bounds}")
+      f"protocol agent name and role bound per home: {name_bounds}; "
+      f"roster members declared by § 3.1: {sorted(roster_members)}, read by the reporter: {sorted(reporter_members)}")
 if fail:
     print(f"\nFAILURES ({len(fail)}):")
     for f in fail:

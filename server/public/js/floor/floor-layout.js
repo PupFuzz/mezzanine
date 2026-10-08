@@ -60,12 +60,12 @@ const FNV_OFFSET_BASIS = 2166136261;
 const FNV_PRIME = 16777619;
 
 /**
- * § 3.2's `h(seat)` — FNV-1a-32 over the UTF-8 bytes of `install_id + "/" + seat_id`. Both ids are
- * ASCII by D1 § 3.1's slug patterns, and the encoder is the platform's so a non-ASCII id hashes
- * its real bytes rather than its code units.
+ * FNV-1a-32 over the UTF-8 bytes of `text`, with § 3.2's published constants — the hash a seat's slot
+ * is seeded from (`hashSeat()`). The encoder is the platform's, so a non-ASCII string hashes its real
+ * bytes rather than its code units.
  */
-export function hashSeat(installId, seatId) {
-    const bytes = new TextEncoder().encode(`${installId}/${seatId}`);
+export function fnv1a32(text) {
+    const bytes = new TextEncoder().encode(text);
 
     let h = FNV_OFFSET_BASIS;
 
@@ -79,18 +79,37 @@ export function hashSeat(installId, seatId) {
 }
 
 /**
- * § 3.2's assignment for ONE room: the room's seats in ascending `(h, seat_id)`, each taking the
- * first free slot from `(h + i) mod S`, and the ones with no slot in that same order.
+ * § 3.2's `h(seat)` — FNV-1a-32 over `install_id + "/" + seat_id`. Both ids are ASCII by D1 § 3.1's
+ * slug patterns.
+ */
+export function hashSeat(installId, seatId) {
+    return fnv1a32(`${installId}/${seatId}`);
+}
+
+/**
+ * § 3.2's assignment for ONE room: the reserved desk's holder at the reserved desk, then the room's
+ * other seats in ascending `(h, seat_id)`, each taking the first free slot from `(h + i) mod S`, and
+ * the ones with no slot in that same order.
  *
  * `S` of `0` — a map that declares no `desks` object at all — puts every seat in the overflow row
  * rather than probing an empty ring, which is the same answer as a map one desk short taken to its
  * limit.
  *
- * @param {Iterable<{install_id: string, seat_id: string}>} seats this room's rendered seat set
+ * ⛔ THE RESERVED DESK IS A SLOT TAKEN BEFORE THE LOOP, HELD OR NOT (§ 3.2, card#11144). Its holder is
+ * the room's ONE seat whose relayed `protocol_agent_role` equals the desk's `reserved_for`, compared
+ * as strings and as nothing else: a `null`, or any value that is not a string, matches no desk. With
+ * no such seat the desk stays empty (the operator's ruling Q3 A), and with two or more NONE of them
+ * is seated there (Q4 A) — each hashes as an ordinary seat and the floor says so (§ 9 F22). Either
+ * way the loop below never hands the desk out: a hash landing on it probes on, exactly as one
+ * landing on a held desk does, so the ring stays `S` desks wide and every other seat's hash is
+ * unchanged by the reservation.
+ *
+ * @param {Iterable<{install_id: string, seat_id: string, protocol_agent_role?: string|null}>} seats this room's rendered seat set
  * @param {number} slotCount the room's `S` — the count of its map's `desks` objects (§ 10.3)
- * @returns {{slots: Map<string, number>, probes: Map<string, number>, order: list<string>, overflow: list<string>}}
+ * @param {{index: number, id: number|null, role: string}|null} [reservation] the room's reserved desk (`mapReservation()`), or `null`
+ * @returns {{slots: Map<string, number>, probes: Map<string, number|null>, order: list<string>, overflow: list<string>, reserved: object|null, holder: string|null, eligible: list<string>}}
  */
-export function assignSlots(seats, slotCount) {
+export function assignSlots(seats, slotCount, reservation = null) {
     // `S` is taken as given, because its one producer is `mapDesks()`'s own length and § 3.2 states
     // the answer for a room that declares none: the probe loop runs zero times and every seat is the
     // overflow row. A guard here would be a check on a state the caller cannot express.
@@ -100,17 +119,38 @@ export function assignSlots(seats, slotCount) {
         .map((seat) => ({
             key: `${seat.install_id}/${seat.seat_id}`,
             seat_id: seat.seat_id,
+            role: seat.protocol_agent_role,
             h: hashSeat(seat.install_id, seat.seat_id),
         }))
         // § 3.2: ascending by `(h, seat_id)` — total, because `seat_id` is unique within an install.
         .sort((a, b) => a.h - b.h || (a.seat_id < b.seat_id ? -1 : a.seat_id > b.seat_id ? 1 : 0));
+
+    const eligible = reservation === null
+        ? []
+        : order.filter((seat) => typeof seat.role === 'string' && seat.role === reservation.role).map((seat) => seat.key);
+    const holder = eligible.length === 1 ? eligible[0] : null;
 
     const taken = new Map();
     const slots = new Map();
     const probes = new Map();
     const overflow = [];
 
+    if (reservation !== null) {
+        taken.set(reservation.index, holder);
+    }
+
+    if (holder !== null) {
+        slots.set(holder, reservation.index);
+        // The holder was seated by its role and never probed: § 3.2's worked table writes `role`
+        // in this column for it, and `null` is that cell here.
+        probes.set(holder, null);
+    }
+
     for (const seat of order) {
+        if (seat.key === holder) {
+            continue;
+        }
+
         let placed = false;
 
         for (let i = 0; i < S; i++) {
@@ -137,7 +177,26 @@ export function assignSlots(seats, slotCount) {
         probes,
         order: order.map((seat) => seat.key),
         overflow,
+        reserved: reservation,
+        holder,
+        eligible,
     };
+}
+
+/**
+ * A room's reserved desk, read off `mapDesks()`'s answer: the desk's INDEX (its position after the
+ * `id` sort — § 3.2's slot number), its Tiled `id` (the name every operator-facing line uses for it,
+ * § 10.3) and the role it is reserved for; `null` for a room that reserves none.
+ *
+ * The first reserved desk is the one: the console refuses a map reserving two at the write and at a
+ * restore (§ 10.3's `desks` row), so no map this client is served carries a second.
+ */
+export function mapReservation(desks) {
+    const index = desks.findIndex((desk) => desk.reserved_for !== null);
+
+    return index === -1
+        ? null
+        : Object.freeze({ index, id: desks[index].id, role: desks[index].reserved_for });
 }
 
 /**
@@ -166,32 +225,111 @@ export function mapGrid(map) {
 }
 
 /**
+ * Every LEAF layer of a Tiled document — each `tilelayer`, `objectgroup` and `imagelayer` — in
+ * document order, bottom first, with § 10.3's `group` layers walked rather than returned: Tiled
+ * nests layers, § 10.3's `layers[]` row holds every one of its rules to the layers inside a
+ * `group`, and its `desks` row finds that layer at any depth — which is what the server's reader
+ * (`App\Floor\FloorMap`) does at the write. Each entry carries what it and its enclosing groups
+ * contribute — the summed `offsetx`/`offsety` (the layer's own included, which is the sum the
+ * server's `FloorMap::offset()` judges a desk at), the multiplied `opacity`, and whether it and
+ * every group above it are `visible` — so a reader decides which of those apply to it rather than
+ * re-walking the tree.
+ *
+ * ⛔ THE ONE WALK OF A MAP'S LAYER TREE ON THIS CLIENT. The tiles (`floor/scene.js`'s `mapTiles()`)
+ * and the desk slots (`mapDesks()` below) both read it; a reader that looked at `map.layers` itself
+ * would see the top level only, which is how a map the console accepted with its `desks` inside a
+ * group was drawn with `S = 0` and every seat in the overflow row (card#11187).
+ *
+ * @returns {list<{layer: object, offset: {x: number, y: number}, opacity: number, visible: boolean}>}
+ */
+export function mapLayers(map) {
+    const out = [];
+
+    const walk = (layers, offset, opacity, visible) => {
+        for (const layer of Array.isArray(layers) ? layers : []) {
+            if (layer === null || typeof layer !== 'object') {
+                continue;
+            }
+
+            const here = { x: offset.x + (layer.offsetx ?? 0), y: offset.y + (layer.offsety ?? 0) };
+            const alpha = opacity * (layer.opacity ?? 1);
+            const shown = visible && layer.visible !== false;
+
+            if (layer.type === 'group') {
+                walk(layer.layers, here, alpha, shown);
+
+                continue;
+            }
+
+            out.push(Object.freeze({ layer, offset: Object.freeze(here), opacity: alpha, visible: shown }));
+        }
+    };
+
+    walk(map?.layers, { x: 0, y: 0 }, 1, true);
+
+    return out;
+}
+
+/**
  * § 10.3: the map's object layer named `desks` carries the slots, and `S` is their count in `id`
- * order. The objects' own `x`/`y` are where a desk is drawn inside the room, in the map's pixel
- * space, so slot *i*'s position on the FLOOR is this plus the room's `origin`.
+ * order. Each slot's `x`/`y` is where a desk is drawn inside the room, in the map's pixel space, so
+ * slot *i*'s position on the FLOOR is this plus the room's `origin`.
+ *
+ * ⛔ THE LAYER IS FOUND AT ANY DEPTH, through `mapLayers()`: a `desks` layer inside a `group` is the
+ * one the server counted `S` from when it accepted the map, so it is the one this client seats.
+ *
+ * ⛔ AND A SLOT SITS WHERE TILED SHOWS IT (card#11252, operator ruling 2026-10-04): the object's own
+ * `x`/`y` plus the offset `mapLayers()` summed for the layer — its own `offsetx`/`offsety` and every
+ * enclosing group's, the same sum the tiles are drawn at — so a group an author drags carries its
+ * desks with its furniture. It is the position the server's `App\Floor\FloorMap` judged at the
+ * write, *wholly inside the grid* included. A layer's or a group's `visible` still hides no desk,
+ * because the server counts `S` from the layer whatever its visibility.
  *
  * ⛔ THE LAYER NAME IS § 10.3's AND THE ORDER IS ITS `id` ORDER, not the document's array order:
  * Tiled writes objects in insertion order and an author who deletes and re-adds one can hand this
  * an array whose order is not the ids'. Sorting is what makes `S` and slot *i* properties of the
  * document rather than of the editing session that produced it.
+ *
+ * ⛔ EACH DESK CARRIES ITS RESERVATION (card#11144): `reserved_for`, the role the map reserves that
+ * desk for, or `null`. § 10.3 names a reserved desk by its Tiled `id` and the console holds that id
+ * unique, so the desk's INDEX here — its position after the `id` sort, the slot function's own
+ * number — is resolved by this sort and by nothing else. It is read as the server's
+ * `App\Floor\FloorMap` accepts it at the write: the property named `reserved_for`, a Tiled `string`
+ * or a property with no `type` (Tiled's documented default). `mapReservation()` reads it off this
+ * answer and `assignSlots()` seats by it.
  */
 export function mapDesks(map) {
-    const layers = Array.isArray(map?.layers) ? map.layers : [];
-    const desks = layers.find((layer) => layer?.type === 'objectgroup' && layer?.name === 'desks');
+    const entry = mapLayers(map)
+        .find(({ layer }) => layer.type === 'objectgroup' && layer.name === 'desks');
 
-    if (desks === undefined || !Array.isArray(desks.objects)) {
+    if (entry === undefined || !Array.isArray(entry.layer.objects)) {
         return [];
     }
+
+    const { layer: desks, offset } = entry;
 
     return [...desks.objects]
         .sort((a, b) => (a?.id ?? 0) - (b?.id ?? 0))
         .map((object) => Object.freeze({
             id: object?.id ?? null,
-            x: object?.x ?? 0,
-            y: object?.y ?? 0,
+            x: offset.x + (object?.x ?? 0),
+            y: offset.y + (object?.y ?? 0),
             width: object?.width ?? 0,
             height: object?.height ?? 0,
+            reserved_for: deskReservation(object),
         }));
+}
+
+/**
+ * One desk object's `reserved_for` role, or `null` — the property `App\Floor\FloorMap::reservedFor()`
+ * accepts: named `reserved_for`, typed `string` or untyped. The console refuses every other shape at
+ * a save and at a restore (§ 10.3's `desks` row), which is why the value is read as it stands.
+ */
+function deskReservation(object) {
+    const property = (object?.properties ?? [])
+        .find((p) => p.name === 'reserved_for' && (p.type === undefined || p.type === 'string'));
+
+    return property?.value ?? null;
 }
 
 /** § 4.6's half-open footprints: two rooms may share an EDGE and may never share a pixel. */

@@ -15,7 +15,7 @@
  * ⛔ A MODEL AND NOT A PAGE, for the reason every renderer in Appendix B keeps the split: there is no
  * browser on the build host, so every decision about where the viewer is looking is made here and
  * read headlessly (`Tests\Feature\Floor\TheCameraMovesTheViewerAndNeverTheFleetTest`, AT-D3-21), and
- * the page only wires the wheel and the pointer to these functions and sets the drawing's `viewBox`.
+ * the page only wires the wheel and the pointers to these functions and sets the drawing's `viewBox`.
  *
  * ⛔ NAVIGATION IS NEVER STATE (§ 4.5). Nothing here reads a seat, writes to the animation log or
  * starts anything through the animation set: this module imports nothing, and a camera value holds
@@ -26,8 +26,9 @@
  * zoom ceiling and no glide duration, because they carry no fact. The ratified reference's
  * (`docs/design/floor-preview/floor-preview.html`) are the worked example the step, the ceiling and
  * the glide were taken from. The reference zooms a step per wheel event whatever its size — the
- * defect `wheel()` states and does not copy — so the notch's scroll, the line's height and the arrow
- * key's pan are this module's own.
+ * defect `zoom()` states and does not copy — and zooms on the plain wheel, which the operator's ruling
+ * of 2026-10-01 (card#11045) moved to Ctrl+wheel and the pinch, the plain wheel panning (`pan()`). So
+ * the notch's scroll, the line's height and the arrow key's pan are this module's own.
  *
  * The value: `{ surface: {width, height}, bounds: {x, y, w, h} | null, zoom, x, y, fitted, view }` —
  * `surface` the drawing's size in CSS px; `bounds` the framed rect in scene px, `null` while nothing
@@ -40,19 +41,23 @@
 export const ZOOM_STEP = 1.18;
 
 /**
- * How far one notch scrolls, in CSS px: a wheel event zooms by `ZOOM_STEP` raised to its scroll over
- * this, so a mouse's one notch of 100 px is one step and a trackpad's or a pinch's stream of small
- * deltas zooms in proportion to the distance it covers rather than by a step per event.
+ * How far one notch scrolls, in CSS px: a Ctrl+wheel event zooms by `ZOOM_STEP` raised to its scroll
+ * (after `PINCH_GAIN`) over this, so a trackpad pinch's stream of small deltas zooms in proportion to the
+ * distance it covers rather than by a step per event, and no event zooms past one step.
  */
 export const NOTCH_PX = 100;
 
 /**
- * The gain on a pinch's scroll. A browser delivers a trackpad pinch as a wheel event with `ctrlKey`
- * set, and its deltas are far smaller than a scroll's, so a pinch at the scroll's rate barely zooms.
- * d3-zoom's `defaultWheelDelta` (d3/d3-zoom `src/zoom.js`, read 2026-09-26) multiplies a `ctrlKey`
- * wheel delta by 10 for this reason, and this is that figure.
- * ⚠ NOT BROWSER-VERIFIED: no browser runs on the build host, so how a pinch feels at this gain — on
- * any browser or OS — has not been seen; the harness holds only the arithmetic.
+ * The gain on a Ctrl+wheel's scroll — every event `zoom()` takes. A browser delivers a trackpad pinch
+ * as a wheel event with `ctrlKey` set, and its deltas are far smaller than a scroll's, so a pinch at the
+ * scroll's rate barely zooms. d3-zoom's `defaultWheelDelta` (d3/d3-zoom `src/zoom.js`, read 2026-09-26)
+ * multiplies a `ctrlKey` wheel delta by 10 for this reason, and this is that figure. A mouse's
+ * Ctrl+notch, already a notch's scroll, saturates at the one-notch bound and is one step.
+ * ⚠ NOT VERIFIED ON A REAL TRACKPAD: synthetic Ctrl+wheel events in headless Chromium were seen to zoom
+ * (card#11045 PR-B); how a real pinch feels at this gain — on any browser or OS — has not been seen.
+ * Safari's trackpad pinch does not come through this gain: `wire/camera-gestures.js` takes it as Safari's own
+ * `gesture*` events, each a `pinch()` by its scale's ratio, and prevents the Ctrl+wheel Safari would send after
+ * them (card#11045 PR-C).
  */
 export const PINCH_GAIN = 10;
 
@@ -92,8 +97,9 @@ export function frameOn(camera, bounds) {
 }
 
 /**
- * Nothing framed any more — the route has left the drawn floor (the capability floor's list view).
- * The next framing is a first framing again, so a floor that comes back comes back at fit.
+ * Nothing framed any more — the lobby with no building to draw (`lobby/lobby-screen.js`: no snapshot
+ * yet, no layout held, or no plate). The next framing is a first framing again, so a building that
+ * comes back comes back at fit.
  */
 export function unframe(camera) {
     return settle({ ...camera, bounds: null, fitted: false });
@@ -150,47 +156,105 @@ function centredOn(camera, rect, zoom) {
  * that point stays under it, then the clamp.
  */
 export function zoomAt(camera, point, factor) {
+    return pinch(camera, point, point, factor);
+}
+
+/**
+ * A touch screen's two-finger pinch, one step of it (§ 4.5, the operator's ruling of 2026-10-01 on
+ * card#11045: *two-finger pinch on touch screens zooms*): zoom by `factor` — the fingers' spread over
+ * their spread at the last step — and carry the scene point that was under their midpoint `from` to
+ * where the midpoint is now, `to` (both CSS px from the surface's top-left), then the clamp. So the
+ * fingers zoom about their midpoint and, moving together, pan; `zoomAt()` is the one where the
+ * midpoint stays put.
+ */
+export function pinch(camera, from, to, factor) {
     if (camera.bounds === null) {
         return camera;
     }
 
     const [low, high] = zoomRange(camera);
     const zoom = Math.min(high, Math.max(low, camera.zoom * factor));
-    const at = toScene(camera, point);
+    const at = toScene(camera, from);
 
-    return clamp({ ...camera, zoom, x: at.x - point.x / zoom, y: at.y - point.y / zoom, fitted: false });
+    return clamp({ ...camera, zoom, x: at.x - to.x / zoom, y: at.y - to.y / zoom, fitted: false });
 }
 
 /**
- * One wheel event at a point on the surface — a mouse's notch, a trackpad's scroll, or a pinch (which a
- * browser delivers as a wheel event with `ctrlKey` set, through this same path): a zoom about that point
- * by `ZOOM_STEP ** (-scroll / NOTCH_PX)`, where `scroll` is `deltaY` in CSS px after `deltaMode` is
- * normalised (pixels as they are, lines at `LINE_PX`, pages at the surface's height) and, on a pinch,
- * multiplied by `PINCH_GAIN`. A negative `deltaY` zooms in. One event scrolls at most one notch either
- * way, after the gain, so an accelerated wheel, a page-mode event or a fast pinch cannot leap past a
- * step.
+ * A plain wheel event — a mouse's notch, or a trackpad's two-finger scroll — as a PAN (§ 4.5, the
+ * operator's ruling of 2026-10-01 on card#11045: *plain mouse wheel / two-finger trackpad scroll pans the
+ * view in any direction*). The view moves the way the page would scroll: `deltaY` down moves it down the
+ * scene and `deltaX` right moves it right, each in CSS px after `deltaMode` is normalised — pixels as
+ * they are, lines at `LINE_PX`, pages at the surface's width (for `deltaX`) or height (for `deltaY`) —
+ * then the clamp. Ctrl+wheel is `zoom()`'s, never this.
+ *
+ * Returns the camera it leaves and whether the act CONSUMED the event — took it from the page's own
+ * scroll. ⛔ THE EDGE RELEASES THE WHEEL TO THE PAGE (card#11045 Q3, the operator's ruling of 2026-10-01):
+ * the wheel is consumed while the view can still move the wheel's way on an axis its delta moves along,
+ * and released — `consumed: false`, the camera left as it is — once it can move that way on none, so the
+ * page scrolls on past the drawing. Decided here, from where the clamp lets the view stand
+ * (`panRange()`), and never inferred by a caller from an unchanged view. A camera that frames nothing
+ * consumes nothing, and neither does a wheel that moves along no axis.
+ *
+ * @param {object} camera
+ * @param {{deltaX?: number, deltaY?: number, deltaMode?: number}} delta the `WheelEvent`'s own members
+ *        (a `WheelEvent` itself will do); each absent 0
+ * @returns {{camera: object, consumed: boolean}}
+ */
+export function pan(camera, { deltaX = 0, deltaY = 0, deltaMode = 0 }) {
+    if (camera.bounds === null) {
+        return { camera, consumed: false };
+    }
+
+    // The edge (Q3): an axis takes the wheel only while the view can still move that axis's way.
+    const [xs, ys] = panRange(camera);
+    const room = (delta, pos, [low, high]) => (delta > 0 && pos < high) || (delta < 0 && pos > low);
+    const consumed = room(deltaX, camera.x, xs) || room(deltaY, camera.y, ys);
+
+    if (!consumed) {
+        return { camera, consumed };
+    }
+
+    const ux = deltaMode === 2 ? camera.surface.width : deltaMode === 1 ? LINE_PX : 1;
+    const uy = deltaMode === 2 ? camera.surface.height : deltaMode === 1 ? LINE_PX : 1;
+
+    return { camera: panBy(camera, -deltaX * ux, -deltaY * uy), consumed };
+}
+
+/**
+ * A Ctrl+wheel event at a point on the surface — a mouse's Ctrl+notch, or a trackpad's pinch, which a
+ * browser delivers as a wheel event with `ctrlKey` set (§ 4.5, the operator's ruling of 2026-10-01 on
+ * card#11045) — as a ZOOM about that point by `ZOOM_STEP ** (-scroll / NOTCH_PX)`, where `scroll` is
+ * `deltaY` in CSS px after `deltaMode` is normalised (pixels as they are, lines at `LINE_PX`, pages at
+ * the surface's height), multiplied by `PINCH_GAIN`. A negative `deltaY` zooms in. One event scrolls at
+ * most one notch either way, after the gain, so a mouse's Ctrl+notch is one step and an accelerated
+ * wheel, a page-mode event or a fast pinch cannot leap past one.
  *
  * ⛔ THE ZOOM IS PROPORTIONAL TO THE SCROLL AND NEVER A STEP PER EVENT. A trackpad fires dozens of
- * events of a few px for one gesture; a step per event took the floor from its fit to the ceiling in
+ * events of a few px for one pinch; a step per event took the floor from its fit to the ceiling in
  * a fraction of one.
+ *
+ * Returns the camera it leaves and whether the act consumed the event: a camera that frames something
+ * takes every Ctrl+wheel from the browser's own page zoom.
  *
  * @param {object} camera
  * @param {{x: number, y: number}} point the cursor, in CSS px from the surface's top-left
- * @param {{deltaY: number, deltaMode?: number, ctrlKey?: boolean}} delta the `WheelEvent`'s own
- *        members (a `WheelEvent` itself will do); `deltaMode` is 0 (pixels), 1 (lines) or 2 (pages),
- *        absent 0; `ctrlKey` true marks a pinch, absent false — so a caller that passes only `deltaY`
- *        and `deltaMode` (row 16's, say) zooms exactly as before
+ * @param {{deltaY: number, deltaMode?: number}} delta the `WheelEvent`'s own members; `deltaMode` 0
+ *        (pixels), 1 (lines) or 2 (pages), absent 0
+ * @returns {{camera: object, consumed: boolean}}
  */
-export function wheel(camera, point, { deltaY, deltaMode = 0, ctrlKey = false }) {
-    const unit = deltaMode === 2 ? camera.surface.height : deltaMode === 1 ? LINE_PX : 1;
-    const gain = ctrlKey ? PINCH_GAIN : 1;
-    const scroll = Math.min(NOTCH_PX, Math.max(-NOTCH_PX, deltaY * unit * gain));
-
-    if (scroll === 0) {
-        return camera;
+export function zoom(camera, point, { deltaY, deltaMode = 0 }) {
+    if (camera.bounds === null) {
+        return { camera, consumed: false };
     }
 
-    return zoomAt(camera, point, ZOOM_STEP ** (-scroll / NOTCH_PX));
+    const unit = deltaMode === 2 ? camera.surface.height : deltaMode === 1 ? LINE_PX : 1;
+    const scroll = Math.min(NOTCH_PX, Math.max(-NOTCH_PX, deltaY * unit * PINCH_GAIN));
+
+    if (scroll === 0) {
+        return { camera, consumed: true };
+    }
+
+    return { camera: zoomAt(camera, point, ZOOM_STEP ** (-scroll / NOTCH_PX)), consumed: true };
 }
 
 /**
@@ -279,20 +343,32 @@ export function between(from, to, t) {
 function clamp(camera) {
     const [low, high] = zoomRange(camera);
     const zoom = Math.min(high, Math.max(low, camera.zoom));
-    const b = camera.bounds;
-    const axis = (pos, span, start, length) => {
-        const a = start;
-        const c = start + length - span;
-
-        return Math.min(Math.max(pos, Math.min(a, c)), Math.max(a, c));
-    };
+    const [xs, ys] = panRange({ ...camera, zoom });
 
     return settle({
         ...camera,
         zoom,
-        x: axis(camera.x, camera.surface.width / zoom, b.x, b.w),
-        y: axis(camera.y, camera.surface.height / zoom, b.y, b.h),
+        x: Math.min(Math.max(camera.x, xs[0]), xs[1]),
+        y: Math.min(Math.max(camera.y, ys[0]), ys[1]),
     });
+}
+
+/**
+ * Where the clamp lets the view's top-left stand at the camera's zoom, per axis, as `[low, high]`: where
+ * the view is smaller than the framed rect it stays on the rect, and where it is larger the rect stays
+ * wholly inside it. The clamp's one statement, and `pan()`'s edge: a camera at `high` on an axis can pan
+ * no further that way.
+ */
+function panRange(camera) {
+    const b = camera.bounds;
+    const axis = (span, start, length) => {
+        const a = start;
+        const c = start + length - span;
+
+        return [Math.min(a, c), Math.max(a, c)];
+    };
+
+    return [axis(camera.surface.width / camera.zoom, b.x, b.w), axis(camera.surface.height / camera.zoom, b.y, b.h)];
 }
 
 function fitZoom(surface, bounds) {

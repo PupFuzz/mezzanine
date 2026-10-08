@@ -60,8 +60,9 @@ export const NOTHING_DONE_YET = 'nothing done yet';
 export const SEAT_CLOCK = 'seat clock';
 
 /**
- * A seat-clock instant, LABELLED as one: `HH:MM:SS (seat clock)`, from the wire's own digits
- * (`wire/clock.js`). `null` in, `null` out — the caller draws the member's own absence.
+ * A seat-clock instant, LABELLED as one: `HH:MM:SS (seat clock)`, in the viewer's zone like every
+ * other instant (`wire/clock.js`, card#9446) — the label names whose clock made the claim, not a
+ * zone. `null` in, `null` out — the caller draws the member's own absence.
  *
  * ⭐ THE PRECISION IS `HH:MM:SS`, ON EVERY SURFACE, AND THAT WAS DECIDED RATHER THAN INHERITED
  * (card#7341 step 5, the builder's call per comment 6246 item 3). FLOOR's worked instances write a

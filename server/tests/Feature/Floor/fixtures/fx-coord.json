@@ -92,6 +92,7 @@
             "enabled": true,
             "protocol_agent_name": null,
             "protocol_agent_name_check": null,
+            "protocol_agent_role": null,
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -171,6 +172,7 @@
             "enabled": true,
             "protocol_agent_name": null,
             "protocol_agent_name_check": null,
+            "protocol_agent_role": null,
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -242,6 +244,7 @@
             "enabled": true,
             "protocol_agent_name": null,
             "protocol_agent_name_check": null,
+            "protocol_agent_role": null,
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -313,6 +316,7 @@
             "enabled": true,
             "protocol_agent_name": null,
             "protocol_agent_name_check": null,
+            "protocol_agent_role": null,
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -389,6 +393,7 @@
             "enabled": true,
             "protocol_agent_name": null,
             "protocol_agent_name_check": null,
+            "protocol_agent_role": null,
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -504,6 +509,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -583,6 +589,7 @@
                       "enabled": true,
                       "protocol_agent_name": "coder",
                       "protocol_agent_name_check": "unchecked",
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -654,6 +661,7 @@
                       "enabled": true,
                       "protocol_agent_name": "helper",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -725,6 +733,7 @@
                       "enabled": true,
                       "protocol_agent_name": "helper",
                       "protocol_agent_name_check": "unchecked",
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -801,6 +810,7 @@
                       "enabled": true,
                       "protocol_agent_name": "reviewer",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -833,10 +843,10 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
         "/api/building/rooms/aimla/map": [
@@ -851,7 +861,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -863,7 +873,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -1433,72 +1443,6 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 510,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
                         "y": 200,
                         "width": 80,
                         "height": 48
@@ -1674,8 +1618,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -1781,6 +1725,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1860,6 +1805,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1931,6 +1877,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2002,6 +1949,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2078,6 +2026,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2122,7 +2071,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -2134,7 +2083,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -2704,72 +2653,6 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 510,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
                         "y": 200,
                         "width": 80,
                         "height": 48
@@ -3042,6 +2925,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3121,6 +3005,7 @@
                       "enabled": true,
                       "protocol_agent_name": "coder",
                       "protocol_agent_name_check": "unchecked",
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3192,6 +3077,7 @@
                       "enabled": true,
                       "protocol_agent_name": "helper",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3263,6 +3149,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3339,6 +3226,7 @@
                       "enabled": true,
                       "protocol_agent_name": "reviewer",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3383,7 +3271,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -3395,7 +3283,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -3965,72 +3853,6 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 510,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
                         "y": 200,
                         "width": 80,
                         "height": 48

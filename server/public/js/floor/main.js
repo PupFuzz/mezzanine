@@ -27,17 +27,18 @@
  * imports the two art modules through the painter (the asset route's URLs), hands the screen the
  * scene's inputs once they answer, and paints each frame's scene; the painter reports every asset it
  * could not draw back to the screen, which is § 9 F14's placeholder and the strip's `art` line on the
- * next render. Below the drawing each desk is its row of the LIST VIEW (Appendix B row 15, slice A):
- * `desk/desk-list.js`'s `deskListRow()` decides every line from the desk model and this file paints
- * them; row 8's page-side `deskLine()` is gone.
+ * next render. Below the drawing each desk is also its row of the LIST VIEW (Appendix B row 15, slice A),
+ * the desks as text beside the drawing at every size: `desk/desk-list.js`'s `deskListRow()` decides
+ * every line from the desk model and this file paints them; row 8's page-side `deskLine()` is gone.
  *
- * ⛔ THE CAPABILITY FLOOR AND THE CAMERA ARE THE SCREEN's (Appendix B row 15, § 4.5); this file supplies
- * the viewport and the drawing surface's size, wires the wheel and the drag (through
+ * ⛔ THE CAMERA IS THE SCREEN's (Appendix B row 15, § 4.5); this file supplies
+ * the drawing surface's size — the drawing element's own box, re-read whenever it changes — wires the wheel, the drag and the pinch (through
  * `wire/camera-gestures.js`) and the keyboard and the zoom buttons (through `wire/camera-keys.js`),
  * both of which the lobby shares, and the fit-floor control to the screen's camera acts, and sets the drawing's view from the camera
- * each returns — a camera act renders nothing. Below § 12's viewport floor the frame is the list view
- * and this file paints the desk list — `paintDesks()`, over `deskListRow()` — and hides the drawing;
- * at or above it, the drawing under the camera and no list. The whole-building control is a link to
+ * each returns — a camera act renders nothing. The drawing is shown at every window size — there is no
+ * minimum and no substitute view (§ 4.5, the operator's ruling of 2026-10-01 on card#7341): a window
+ * smaller than the room is one the viewer pans and zooms across, and the desk list — `paintDesks()`,
+ * over `deskListRow()` — is painted below it at every size too. The whole-building control is a link to
  * `/` (§ 4.4's lobby route), never a second scale drawn here.
  * A glide is the page's alone — the camera's state is already its destination — and under
  * `prefers-reduced-motion` the screen hands back no glide at all, so the view cuts. How a glide steps
@@ -55,7 +56,7 @@ import { livePage } from '../wire/live-page.js';
 import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
 import { renderDrillDown } from '../drilldown/main.js';
-import { createPainter, loadArt, measurer } from './painter.js';
+import { createPainter, loadArt, measurer, themeInputs } from './painter.js';
 import { cameraView } from '../wire/camera-view.js';
 import { cameraGestures } from '../wire/camera-gestures.js';
 import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
@@ -102,10 +103,11 @@ function list(id, lines) {
 const root = el('floor');
 
 /**
- * The drawing's zoom buttons — handed to `wire/camera-keys.js` to wire — and its framing control, *Fit the
- * floor*: all three offered by `offerKeys()` on every render (card#7343 comment 7692).
+ * The drawing's zoom buttons — handed to `wire/camera-keys.js` to wire — its framing control, *Fit the
+ * floor*, and the gesture hint under the drawing (card#11045): all four offered by `offerKeys()` on every
+ * render (card#7343 comment 7692).
  */
-const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit') };
+const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit'), hint: el('floor-hint') };
 
 let lastFrame = null;
 
@@ -118,14 +120,18 @@ let painter = null;
  */
 const { show, glideTo, current } = cameraView((camera) => painter?.view(camera));
 
-/** The viewer's viewport in CSS px — what § 4.5's capability floor reads. */
-function viewport() {
-    return { width: window.innerWidth, height: window.innerHeight };
-}
-
-/** The drawing surface: the floor section's width, the viewport's height (the view's stylesheet). */
+/**
+ * The drawing surface: `#floor-drawing`'s own box, as the lobby reads `#lobby-building`'s. Its height is
+ * the page chrome sheet's (`public/css/mezzanine.css`: the room takes the viewport height the chrome above
+ * it leaves, which changes whenever a banner, a statement or a notice is shown), so it is read off the
+ * element and never off the window — a surface the drawing is not is one the camera fits wrongly, and the
+ * painter's `viewBox` then letterboxes the room off every pointer position (card#11045, design review r3
+ * MAJOR-A).
+ */
 function surface() {
-    return { width: root.clientWidth, height: window.innerHeight };
+    const box = el('floor-drawing');
+
+    return { width: box.clientWidth, height: box.clientHeight };
 }
 
 const { client, clock, fetch: pageFetch, requestRender, log } = livePage(() => screen.render());
@@ -228,6 +234,7 @@ function paint(frame) {
     say('floor-feed', `feed: ${strip.feed}`);
     say('floor-connection', `stream: ${strip.connection}`);
     say('floor-resyncs', strip.resyncs);
+    say('floor-fleet-counts', `building: ${strip.totals}`);
     say('floor-last-message', strip.last_message);
     // § 9 F14: the strip's own line when art the room drawing asked for did not load.
     say('floor-art', strip.art);
@@ -268,29 +275,20 @@ function paint(frame) {
         + (thread.unresolved.length > 0 ? ` — unresolved: ${thread.unresolved.join(', ')}` : '')
     ))));
 
-    // § 4.5's capability floor, decided by the screen: the drawing under the camera, or the list view.
-    const drawn = frame.capability === 'floor';
-
-    el('floor-drawing').hidden = !drawn;
     // § 9 F6/F7: the floor beneath the sign-in prompt is dimmed, never blanked — the drawing as the list.
     el('floor-drawing').dataset.dimmed = String(frame.failure.sign_in !== null);
-    el('floor-camera').hidden = !drawn || frame.scene === null;
-    el('floor-desks-heading').hidden = drawn;
+    el('floor-camera').hidden = frame.scene === null;
     // The camera is offered only while it frames the floor (card#7343 r4b, comment 7692): with nothing
     // framed its controls do nothing, so the zoom buttons and *Fit the floor* are hidden and the drawing is
     // no tab stop and names no keys.
     offerKeys(el('floor-drawing'), zoomButtons, frame.camera);
 
-    if (drawn) {
-        // A render never moves the viewer: a glide in flight keeps its step, and otherwise the drawing
-        // shows the screen's camera, which the render left where the viewer put it.
-        painter?.paint(frame.scene ?? null, current(frame.camera));
-    } else {
-        show(frame.camera);
-        painter?.paint(null, frame.camera);
-    }
+    // § 4.5: the room is drawn at every window size. A render never moves the viewer: a glide in flight
+    // keeps its step, and otherwise the drawing shows the screen's camera, which the render left where
+    // the viewer put it.
+    painter?.paint(frame.scene ?? null, current(frame.camera));
 
-    paintDesks(frame, drawn ? {} : frame.desks.desks);
+    paintDesks(frame, frame.desks.desks);
     paintPanel(frame.panel);
     list('floor-log', client.eventLog);
 }
@@ -299,8 +297,10 @@ const screen = startFloorScreen(client, pageFetch, clock, log, paint, {
     floor: root.dataset.floor,
     seat: root.dataset.seat === '' ? null : root.dataset.seat,
     reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-    viewport: viewport(),
     surface: surface(),
+    // § 6.2's walk note item 4: a walk's last frame is a paint-only refresh on the browser's timer — it
+    // reaches `paint` and never `screen.render()`, so it drains nothing and writes no animation-log row.
+    timers: { after: (ms, fire) => window.setTimeout(fire, ms), cancel: (id) => window.clearTimeout(id) },
 });
 
 // § 2.5's 1 s tick: the ages over the desks the last render read — and the open panel's — with
@@ -309,11 +309,8 @@ startAgeTicker(screen.desks, clock, window, (readouts) => {
     if (lastFrame !== null) {
         const desks = screen.desks.view(readouts);
 
-        if (lastFrame.capability === 'floor') {
-            painter?.refresh(screen.sceneView(desks));
-        } else {
-            paintDesks(lastFrame, desks.desks);
-        }
+        painter?.refresh(screen.sceneView(desks));
+        paintDesks(lastFrame, desks.desks);
 
         paintPanel(screen.panelView(lastFrame.floor?.name ?? null));
     }
@@ -321,9 +318,10 @@ startAgeTicker(screen.desks, clock, window, (readouts) => {
 
 // Appendix B row 14: the art modules, by the asset route. The screen draws no scene until they have
 // answered; a module that failed is reported as the failed asset it is (§ 9 F14).
-loadArt().then(({ furniture, characters, failed }) => {
+loadArt().then(({ furniture, characters, registry, themes, failed }) => {
     painter = createPainter({
         characters,
+        themes,
         failed: (ids) => {
             screen.assetsFailed(ids);
             requestRender();
@@ -334,9 +332,12 @@ loadArt().then(({ furniture, characters, failed }) => {
     if (furniture !== null) {
         screen.sceneInputs({
             box: furniture.FURNITURE_BOX,
-            desk_sprite: furniture.DESK_SPRITE,
             measure: measurer(),
             character: { w: characters?.SCENE_W ?? 0, h: characters?.SCENE_H ?? 0 },
+            // FLOOR.md § 10.6: the registry each floor's `theme` is resolved against (item 5, § 9 F23) and
+            // which themes the page holds (item 8). A registry or a theme whose import was rejected is
+            // § 9 F14's: the floor draws its fallback, and the strip names the asset.
+            themes: themeInputs(registry, themes),
         });
     }
 
@@ -357,29 +358,33 @@ el('floor-panel-more').addEventListener('click', () => {
     screen.morePanel().then(requestRender);
 });
 
-// Appendix B row 15: the viewer's camera. The wheel zooms about the cursor in proportion to its scroll
-// (a trackpad's small deltas and a pinch — a wheel event with `ctrlKey`, which the camera scales by its
-// `PINCH_GAIN` — through the same path) and a drag with the primary button pans, both wired by
-// `wire/camera-gestures.js`; the keyboard and the zoom buttons zoom about the drawing's centre and pan
+// Appendix B row 15: the viewer's camera (§ 4.5, the operator's ruling of 2026-10-01 on card#11045). A
+// plain wheel or a trackpad's two-finger scroll pans; a Ctrl+wheel or a trackpad's pinch (a wheel event
+// with `ctrlKey`, which the camera scales by its `PINCH_GAIN`) zooms about the cursor in proportion to its
+// scroll; one finger or the primary button drags to pan, and two fingers pinch to zoom about their
+// midpoint — all wired by `wire/camera-gestures.js`; the keyboard and the zoom buttons zoom about the drawing's centre and pan
 // by a step, wired by `wire/camera-keys.js` — both modules the lobby's too. None renders — each sets
 // the drawing's view from the camera the screen hands back, and each leaves its event to the browser
 // while the camera frames nothing (card#7343 r4b).
 const drawing = el('floor-drawing');
 
-cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);
+cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);
 cameraKeys(drawing, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);
 el('floor-fit').addEventListener('click', () => {
     const { from, to, glide_ms: ms } = screen.fitFloor();
 
     glideTo(from, to, ms);
 });
-// A resize re-shows the screen's camera at once — stopping a glide in flight, whose every later step
-// would otherwise be computed over the surface it started on — before the render it asks for.
-window.addEventListener('resize', () => {
-    screen.resize(viewport(), surface());
+// A resize of the DRAWING re-shows the screen's camera at once — stopping a glide in flight, whose every
+// later step would otherwise be computed over the surface it started on — before the render it asks for.
+// The drawing's box, not the window's: the chrome above it grows and shrinks with what the page has to
+// say (a banner, a statement, a notice), and each of those resizes the drawing with no window resize at
+// all (card#11045, design review r3 MAJOR-A).
+new ResizeObserver(() => {
+    screen.resize(surface());
     show(screen.camera());
     requestRender();
-});
+}).observe(drawing);
 
 // Back and forward move the seat segment; the screen resolves it on the next render (§ 4.4).
 window.addEventListener('popstate', () => {

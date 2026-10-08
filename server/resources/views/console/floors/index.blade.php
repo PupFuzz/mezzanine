@@ -48,6 +48,33 @@
         </section>
     @endif
 
+    {{-- ⭐ docs/design/FLOOR.md § 14 item 36(5), item 28(1)(iii)'s extension (card#11046): every room whose current
+         map names a tileset or a tile the repository no longer ships — LISTED, never refused. --}}
+    @php($retired = array_values(array_filter($rows, fn (array $row) => $row['retired_art'] !== [])))
+    @if ($retired !== [])
+        <section id="rooms-naming-retired-art">
+            <h2>Rooms whose map names art no longer shipped</h2>
+            <p>
+                Each map below was stored before the floor's art changed, and names a tileset or a tile the
+                floor no longer has — those cells are drawn as nothing. <strong>Nothing was refused:</strong>
+                each room stays on the floor as it is until its author saves a map that names only what ships.
+            </p>
+            <ul>
+                @foreach ($retired as $row)
+                    <li>
+                        <strong>{{ $row['install_id'] }}</strong>, revision {{ $row['map_version'] }}
+                        — <a href="{{ route('admin.floors.edit', $row['install_id']) }}">Edit map</a>
+                        <ul>
+                            @foreach ($row['retired_art'] as $line)
+                                <li>{{ $line }}</li>
+                            @endforeach
+                        </ul>
+                    </li>
+                @endforeach
+            </ul>
+        </section>
+    @endif
+
     <table>
         <thead>
             <tr>
@@ -100,7 +127,7 @@
                     </td>
                     <td>
                         @if ($row['authored'])
-                            {{ $row['updated_at'] }} by {{ $row['updated_by'] }}
+                            <x-utc-time :at="$row['updated_at']" /> by {{ $row['updated_by'] }}
                         @else
                             —
                         @endif

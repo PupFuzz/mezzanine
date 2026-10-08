@@ -39,6 +39,9 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
     /** A file inside the floor tree whose extension clause 1 does not admit, made for one test. */
     private const UNADMITTED = 'zz-art-route-probe.txt';
 
+    /** A raster the floor tree is planted with for one arm — clause 1 admits `.png`, and none ships. */
+    private const PNG = 'zz-art-route-probe.png';
+
     private function signedIn(): static
     {
         return $this->actingAs(User::factory()->twoFactorConfirmed()->create());
@@ -68,14 +71,14 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
 
     public function test_a_request_with_no_session_or_no_second_factor_is_refused(): void
     {
-        $this->assertSame([], $this->sessionDefects('/art/floor/tiles/furniture-kit/desk.png'));
+        $this->assertSame([], $this->sessionDefects('/art/floor/tiles/floor-plane/bookcase.svg'));
         $this->assertSame([], $this->sessionDefects('/art/characters/index.js'));
     }
 
     public function test_a_shipped_tileset_image_and_the_character_trees_entry_are_served_with_their_media_type(): void
     {
-        $this->assertSame([], $this->servedDefects($this->signedIn()->get('/art/floor/tiles/furniture-kit/desk.png'), 'image/png'));
-        $this->assertSame([], $this->servedDefects($this->signedIn()->get('/art/floor/tiles/furniture-kit.tsx'), 'application/xml'));
+        $this->assertSame([], $this->servedDefects($this->signedIn()->get('/art/floor/tiles/floor-plane/bookcase.svg'), 'image/svg+xml'));
+        $this->assertSame([], $this->servedDefects($this->signedIn()->get('/art/floor/tiles/floor-plane.tsx'), 'application/xml'));
         $this->assertSame([], $this->servedDefects($this->signedIn()->get('/art/characters/index.js'), 'text/javascript'));
     }
 
@@ -86,14 +89,22 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
      */
     public function test_svg_and_xml_are_served_sandboxed_and_javascript_and_images_are_not(): void
     {
-        $this->assertSame([], $this->sandboxDefects($this->signedIn()->get('/art/floor/tiles/floor-plane/planks.svg'), 'image/svg+xml'));
-        $this->assertSame([], $this->sandboxDefects($this->signedIn()->get('/art/floor/tiles/furniture-kit.tsx'), 'application/xml'));
+        $this->assertSame([], $this->sandboxDefects($this->signedIn()->get('/art/floor/tiles/floor-plane/bookcase.svg'), 'image/svg+xml'));
+        $this->assertSame([], $this->sandboxDefects($this->signedIn()->get('/art/floor/tiles/floor-plane.tsx'), 'application/xml'));
 
-        foreach (['/art/characters/index.js' => 'text/javascript', '/art/floor/furniture-box.js' => 'text/javascript', '/art/floor/tiles/furniture-kit/desk.png' => 'image/png'] as $uri => $type) {
+        $unpolicied = function (string $uri, string $type): void {
             $response = $this->signedIn()->get($uri);
             $this->assertSame([], $this->servedDefects($response, $type), $uri);
             $this->assertNull($response->headers->get('Content-Security-Policy'), "{$uri} gained a policy it was not meant to");
-        }
+        };
+
+        $unpolicied('/art/characters/index.js', 'text/javascript');
+        $unpolicied('/art/floor/furniture-box.js', 'text/javascript');
+
+        // § 10.1 clause 1 admits `.png`, and since card#11046 retired the bridge kit no PNG ships: one is
+        // planted in a TEMPORARY floor tree for the length of this arm, so the raster branch is still served
+        // and still checked, and the repository's own tree is never written to.
+        $this->withPlantedPng(fn () => $unpolicied('/art/floor/'.self::PNG, 'image/png'));
     }
 
     public function test_the_painters_own_import_specifiers_are_served_as_javascript(): void
@@ -124,14 +135,14 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
                 'CONTROL (a handler with no extension allowlist) did not bite');
         });
 
-        $this->assertNotSame([], $this->sessionDefects('/art-open/floor/tiles/furniture-kit/desk.png'),
+        $this->assertNotSame([], $this->sessionDefects('/art-open/floor/tiles/floor-plane/bookcase.svg'),
             'CONTROL (the route outside the auth + mfa gate) did not bite');
 
-        $this->assertNotSame([], $this->servedDefects($this->signedIn()->get('/art/floor/tiles/furniture-kit/desk.png'), 'text/javascript'),
+        $this->assertNotSame([], $this->servedDefects($this->signedIn()->get('/art/floor/tiles/floor-plane/bookcase.svg'), 'text/javascript'),
             'CONTROL (a served file checked against the wrong media type) did not bite');
 
         // A handler that serves the SVG with no policy — what this route did before MINOR-E.
-        $this->assertNotSame([], $this->sandboxDefects($this->signedIn()->get('/art-plant/tiles/floor-plane/planks.svg'), 'image/svg+xml'),
+        $this->assertNotSame([], $this->sandboxDefects($this->signedIn()->get('/art-plant/tiles/floor-plane/bookcase.svg'), 'image/svg+xml'),
             'CONTROL (an SVG served with no sandboxing policy) did not bite');
 
         $misnamed = str_replace("CHARACTER_TREE = '/art/characters/index.js'", "CHARACTER_TREE = '/art/characters/nobody-ships-this.js'", $this->painterSource());
@@ -222,9 +233,10 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
     /** Each asset-route specifier the painter imports is served by the route as JavaScript. */
     private function specifierDefects(string $painter): array
     {
-        preg_match_all("/^export const (?:CHARACTER_TREE|FURNITURE_MODULE) = '([^']+)';$/m", $painter, $m);
+        preg_match_all("/^export const (?:CHARACTER_TREE|FURNITURE_MODULE|THEME_REGISTRY) = '([^']+)';$/m", $painter, $m);
 
-        $this->assertCount(2, $m[1], 'the painter\'s two import specifiers were not read out of its source');
+        // The furniture box, the character tree and (card#11046 row 21) the theme registry.
+        $this->assertCount(3, $m[1], 'the painter\'s import specifiers were not read out of its source');
 
         $defects = [];
 
@@ -275,6 +287,35 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
             $body();
         } finally {
             @unlink($path);
+        }
+    }
+
+    /**
+     * `$body` run with the floor tree pointed at a temporary copy holding one planted PNG: the application's
+     * base path is moved under a temporary directory whose `../resources/floor/` is that tree (`FloorAssets::TREES`
+     * is relative to the base path), and moved back after — so nothing is ever written into the repository's tree.
+     */
+    private function withPlantedPng(callable $body): void
+    {
+        $base = $this->app->basePath();
+        $tmp = sys_get_temp_dir().'/art-route-'.bin2hex(random_bytes(6));
+
+        mkdir($tmp.'/server', 0777, true);
+        mkdir($tmp.'/resources/floor', 0777, true);
+        // A 1 × 1 transparent PNG — a real raster, so the route's media type is judged on a real file.
+        file_put_contents($tmp.'/resources/floor/'.self::PNG, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='));
+
+        try {
+            $this->app->setBasePath($tmp.'/server');
+            $this->assertNotNull(FloorAssets::resolve(self::PNG), 'the planted PNG is not in the temporary tree — this arm would prove nothing');
+            $body();
+        } finally {
+            $this->app->setBasePath($base);
+            @unlink($tmp.'/resources/floor/'.self::PNG);
+            @rmdir($tmp.'/resources/floor');
+            @rmdir($tmp.'/resources');
+            @rmdir($tmp.'/server');
+            @rmdir($tmp);
         }
     }
 

@@ -17,10 +17,17 @@ use Illuminate\Support\Facades\DB;
  * which is worth stating rather than leaving to be re-derived: that reset clears a SECOND FACTOR,
  * never a password, it signs nobody in, and `App\Auth\TwoFactorReset` reads the subject through
  * `User::scopeActive()` at BOTH ends — so a retired account cannot use it and retirement is not
- * reversible by anyone holding the mailbox. The only way back is shell
- * access and `mezzanine:user:create`, which is why that command is documented as the escape
- * hatch in `README.md`. A confirm dialog was rejected for this: a dialog is a READ, and it is
+ * reversible by anyone holding the mailbox. The only way back is shell access and
+ * `mezzanine:user:create` (or `mezzanine:user:role` to promote an account that exists), which is why
+ * those commands are documented as the escape hatch in `README.md`. A confirm dialog was rejected for this: a dialog is a READ, and it is
  * the operator — the one person already sure — who clicks through it.
+ *
+ * ⛔ SINCE CARD#9415 THE LAST ONE THAT COUNTS IS THE LAST ACTIVE OPERATOR, not the last active
+ * account. An observer cannot reach the console (`can:operate` on its route group), so an install
+ * left with only observers is as locked out as one left with nobody — and the count of active
+ * accounts this used before would let exactly that happen: one operator and one observer count two,
+ * and retiring the operator would pass. The question is `App\Admin\UserRoles::leavesNoOperator()`, the same one a
+ * demotion asks, over the same locked rows.
  *
  * ⛔ THE COUNT IS TAKEN UNDER A ROW LOCK IN THE SAME TRANSACTION AS THE WRITE. Two operators
  * retiring the last two accounts at the same moment would each see a count of 2, each pass the
@@ -52,11 +59,11 @@ final class UserRetirement
     /** The account was already retired; nothing was written and nothing was overwritten. */
     public const ALREADY_RETIRED = 'already_retired';
 
-    /** D4: this is the last account that can still administer the install. Refused. */
-    public const REFUSED_LAST_ACTIVE = 'refused_last_active';
+    /** D4: this is the last active operator — the last account that can administer the install. Refused. */
+    public const REFUSED_LAST_OPERATOR = 'refused_last_operator';
 
     /**
-     * @return self::RETIRED|self::ALREADY_RETIRED|self::REFUSED_LAST_ACTIVE
+     * @return self::RETIRED|self::ALREADY_RETIRED|self::REFUSED_LAST_OPERATOR
      *
      * @throws \InvalidArgumentException if the author or the reason is empty
      */
@@ -69,14 +76,14 @@ final class UserRetirement
             // the model handed in was loaded before the request reached here, so its
             // `retired_at` is a value from the past, and deciding a no-op on a stale read is how
             // a second act gets written.
-            $active = User::query()->active()->lockForUpdate()->get(['id']);
+            $active = UserRoles::lockActive();
 
             if (! $active->contains('id', $target->getKey())) {
                 return self::ALREADY_RETIRED;
             }
 
-            if ($active->count() <= 1) {
-                return self::REFUSED_LAST_ACTIVE;
+            if (UserRoles::leavesNoOperator($active, $target)) {
+                return self::REFUSED_LAST_OPERATOR;
             }
 
             User::query()->whereKey($target->getKey())->update([

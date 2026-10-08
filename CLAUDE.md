@@ -1,4 +1,4 @@
-<!-- BEGIN coord:solo-orientation (synced from coord v0.58.0) -->
+<!-- BEGIN coord:solo-orientation (synced from coord v0.63.0) -->
 # Agent Board Framework — solo agent orientation
 
 > **⚠ Only two sections of this file reach a session automatically: `## Who you are` and
@@ -196,27 +196,20 @@ your repo too, and read a green as "the shape is right", never as "the audience 
 **Declare how you built it — the `Built:` line (card#4870).** Every PR body you open carries a
 REQUIRED one-line `Built:` field declaring how the work was produced — one of the legitimate values
 defined in `built-line.md`, which is **canonical for
-the value set and for the conditions on the restricted values**; read them there rather than
+the value set and for the rule that derives a value**; read them there rather than
 restating them. It is one of the machine-read, process-native lines the PR-body standard above
 explicitly preserves, so trimming a body never removes it. You are your own reviewer here, which is
 exactly why the field has to be right without one: nobody else will catch a wrong count.
 
-**Write the count when it is true, not when you open the PR** (the spec's *Durable store* rules).
-Put `Built: dispatched (coder ×N / mechanic ×M)` in the body **at PR creation**, and record any
-dispatch that lands before the PR exists on the **item's tracking issue or card** — the branch is
-pushed first and the PR opened after, so that issue/card (your install's stand-in for a coordination
-thread) is the store that exists when the count becomes true. Increment in the **same action** that
-records each later round of work. **Never reconstruct a count afterwards** from commits, worktrees,
-or transcripts: nothing in the tree records a dispatch — a worktree does not record how many
-contexts touched it, and a transcript is not the record for a branch — so a reassembled figure is a
-fabricated attestation, strictly worse than the gap it fills, because a gap is visible and a
-plausible number is not. You are the dispatching seat for everything you push and there is no other
-seat to ask, so record the count at the dispatch and no gap opens on a branch you built unless you
-miss that increment — a process miss you name, never repair by reconstructing. The narrow
-conditions under which `Built: unattestable — <reason>` is legitimate at all are owned by the
-`built-line.md` — **read them there rather than from a copy here.** Note only that they are
-written for installs with several seats, so any of them that turn on a *different* seat simply never
-arise on yours.
+**Write the count when it is true, not when you open the PR.** You are the dispatching seat for
+everything you push and there is no other seat to ask, so record the count at the dispatch — on
+the item's tracking issue or card, your install's stand-in for a coordination thread, until the PR
+exists — complete that record when the dispatch returns, and never reconstruct it afterwards: a
+miss is a process miss you name, never one you repair. Which stores qualify, what completing one
+means, and how a missed leg is stated are owned by `built-line.md` § *Durable store* and § *The
+rule* — **read them there rather than from a copy here.** The rule also names any other party a
+record shows worked your branch — your operator's hand commit is the case on a solo install — so it
+applies unchanged.
 
 **Cut releases via the `coord:release-pr` skill** — it walks the release-pattern checklist
 (version bump, CHANGELOG entry, "recent changes" doc row, SBOM regeneration, PR title,
@@ -237,7 +230,8 @@ merge-button intent) using each repo's own conventions. Use it whenever cutting 
   test measures clean on this PR's head merge commit (the `release-pr` skill, § Step C, owns the
   test). Both, not either — the merge is the production approval, the measurement earns the
   review exemption. Use a **merge commit** (`gh pr merge --merge`,
-  **not** `solo-self-merge` — that wrapper squashes; back-merge must preserve topology). Note:
+  **not** `solo-self-merge` — that wrapper is squash-only, so it **refuses** a back-merge sync PR by
+  name; back-merge must preserve topology). Note:
   raw `gh pr merge` is deliberately **not** allow-listed (only `solo-self-merge` is), so this
   **prompts once** in auto-mode — that's expected and fine here, because a human just merged the
   release PR that triggered the back-merge (so a human is present). If the sync PR has conflicts,
@@ -246,8 +240,8 @@ merge-button intent) using each repo's own conventions. Use it whenever cutting 
   production gate; never self-merge them.
 - **Hard-gate changes** (error handling / validation rules / business-logic flow / permissive
   "fixes" / destructive DB / safety-critical / regulated surfaces / anything
-  irreversible or outward-facing) → **ask your human before proceeding** (see § Ask-first
-  gates below). On their go-ahead you implement and self-merge the integration PR; the
+  irreversible or outward-facing / a new mechanism's design) → **ask your human before
+  proceeding** (see § Ask-first gates below). On their go-ahead you implement and self-merge the integration PR; the
   change still reaches prod only through the user-gated release.
 
 ---
@@ -321,7 +315,10 @@ recurring prompt). Specify it **behaviorally**, not as a frozen command. **Each 
 3. **Push WIP — before you dispatch or await any long-running step** (test suite, subagent
    build, CI). Load-bearing for detection: an un-pushed branch is indistinguishable from no
    work; the push precedes the wait, never follows it, so a halt during the wait leaves
-   commits, not silence.
+   commits, not silence. Once a PR is open and under review, this per-cycle rule is superseded
+   for that PR's branch by the round cadence `dispatching-briefs.md § Builder discipline` owns —
+   read it there for when pushing resumes, and for the zero-CI checkpoint that carries this same
+   field lesson (signal before the halt-prone wait) into a review round.
 4. Then await verification / open the PR, and continue to the next unblocked item.
 
 **Bounds — load-bearing. An unbounded self-loop runs away** (opens dozens of PRs, burns
@@ -375,13 +372,20 @@ action.
   - **Isolated hard reasoning** (a gnarly algorithm, a security analysis) that doesn't need
     your session history → the **`coder`** (top tier). You pay the premium only on a small
     fresh context, not on your whole accreted session.
+  - **A DESIGN rather than code** (a design document, an implementation plan, an amendment to
+    a ratified doc) → the **`designer`**, whose tier your install picks separately
+    (`docs/MODEL-TIERING.md` § The design tier) and which can read a cited external spec at its
+    source. It writes the design; implementing it is a separate `coder` dispatch — and it gets its
+    own `Built:` slot, the three-slot form `built-line.md` owns.
 
 **Verifier ≥ producer for judgment calls.** When a subagent's output is *judgment-based* and
 a tool can't check it (is this design sound? is this analysis complete?), the verifier must
 be peer-tier with the producer — judge it yourself only if you are at that tier, otherwise
 spawn a peer-tier reviewer subagent. Never let a cheaper seat rubber-stamp reasoning it can't
 actually check. (When the check *is* mechanical, tier doesn't matter — the tool is the
-verifier.)
+verifier.) A producer ABOVE the review ceiling — the `designer` on its default pin — is the one
+exception, and who may review its work is owned by `docs/MODEL-TIERING.md` § The design tier;
+follow it there.
 
 **Non-trivial coding is dispatched because your human asked for it (card#4870, card#5937).** The
 authorization is **not** this section and **not** framework policy: your human granted it by running
@@ -432,10 +436,11 @@ owned by `dispatching-briefs.md` § `Resuming a terminated builder` [owns: termi
 
 **You stay at spec/review altitude**, and **what the dispatch prompt must carry is owned by
 `dispatching-briefs.md § What a dispatch carries`** (a canonical framework doc, in the plugin's
-`docs/`) — read it there; it is deliberately not restated here. That one section is carved out of
-that doc's "not applicable in solo mode" banner and says so: the rest of the file is `[BRIEF]`-path
-machinery a solo install has no use for, but a subagent dispatch is a subagent dispatch. Your
-merge-authority model above governs the review-and-merge half.
+`docs/`) — read it there; it is deliberately not restated here. And
+`dispatching-briefs.md § Builder discipline` beside it owns push cadence once a PR is open — read
+it there too. Both are carved out of that doc's "not applicable in solo mode" banner and say so: the
+rest of the file is `[BRIEF]`-path machinery a solo install has no use for, but a subagent dispatch
+is a subagent dispatch. Your merge-authority model above governs the review-and-merge half.
 
 ---
 
@@ -452,6 +457,8 @@ go, or the action is hard-gate, surface it and wait.
 - Production release / deploy.
 - Safety-critical or regulated surfaces.
 - Anything irreversible or outward-facing (external sends, force-push, permanent deletes).
+- A new mechanism: its design goes to your human as an operator decision before any build
+  (`USER-GATING.md § 2g` owns the rule).
 
 **Capture is never gated** (canon #2 carves this out explicitly; whether a finding also earns an
 ITEM is #18's mint gate, a different question). Routing a capture to your human as a question is
@@ -459,7 +466,8 @@ itself a defect — record it, then tell them what you recorded.
 
 **What you do NOT gate on (obvious next step → just do it):**
 
-- Routine implementation work within your current tasking.
+- Routine implementation work within your current tasking. A new mechanism is not routine
+  (`USER-GATING.md § 2g`).
 - Self-merging a routine integration PR (your normal merge authority, above).
 - Pulling the next board item when the current one is done.
 - An obvious non-choice where both paths must happen anyway.
@@ -551,8 +559,10 @@ up.
 
 1. **Leave your work resumable.** Commit + push in-progress code to its branch (a `wip/…`
    branch if it isn't PR-ready) so nothing lives only in this session's context — uncommitted
-   WIP is lost on restart. Record the branch name + the exact next step in the handoff (step
-   4).
+   WIP is lost on restart. Once a PR is open, the WIP goes to a per-session
+   `wip/<branch>--<stamp>` side ref, never to the PR head —
+   `dispatching-briefs.md § Builder discipline` owns that push. Record the branch (or side ref)
+   name + the exact next step in the handoff (step 4).
 2. **Leave a clean tree.** No stray uncommitted files in any owned repo; verify with `git
    status` for each active repo.
 3. **Surface anything gated.** If you are waiting on a human response (a hard gate, a
@@ -577,7 +587,8 @@ up.
    which line shapes those are, and `--check-region` reports the span resolved on your file; there
    is no closing marker to move). INSIDE the
    region, any line with a status-token (SHA / `vX.Y.Z` / merge-state / `stage:`) must carry
-   `(this cycle)` (a verification act) or a SoT pointer (`see #N` / `→ #N`) — the
+   `(this cycle)` (a verification act) or a repo-qualified SoT pointer (`see owner/repo#N` /
+   `→ owner/repo#N` — `handoff-check.py` does not resolve a bare `#N` it cannot attribute) — the
    `session-end-skip-lint` backstop inspects only in-region lines and WARNs "status-region
    unscanned" if the marker is gone. The skeleton's own header owns the rest of the rule (including
    where not-live material goes); read it there rather than from a list here.
@@ -790,17 +801,21 @@ old ones, so a run of it measures how far the ADOPTION has travelled and never h
 is. A red there blocks nothing: the job judges open PRs only. Judge a single body you are about to
 push with the second command below instead.
 
-### The standard binds a CHANGE PR too, and this is the shape it leaves
+### Mezzanine holds a change PR to the same allowed section set, by choice
 
-⛔ **DO NOT READ THE ALLOWED SET AS RELEASE-ONLY BECAUSE ITS EXAMPLES ARE RELEASE-SHAPED.** The
-question was settled by reading the standard rather than inferring it from the linter. § PR body's
-opening paragraph says it in one sentence — *"it governs **every** PR body an agent writes —
-feature, fix, docs, dependency, release"* — in the same breath as explaining that it lives in the
-release skill only because the release PR is the largest body the framework drafts. The sections a
-change PR has no use for are marked as such **in the standard's own IN table**: `Bundled` and
-`Release artifacts` both come from the row that reads `Release PRs only`, and no other admitted
-section carries that restriction. ⇒ The allowed set is an ALLOWLIST, never a required list —
-nothing obliges a change PR to carry a section — so what it leaves a PR into `dev` is exactly:
+⛔ **A CHANGE PR HERE IS HELD TO THE RELEASE SECTION SET AND SCOPE LINE, AND CI ENFORCES IT.** Since
+coord 0.63.0 (upstream card#10493), § PR body owns the shape of the PR whose title opens `release:`.
+It leaves a feature, fix, docs or dependency PR's shape to its repository, and the linter follows
+the title. **Mezzanine chooses the same allowed set for its change PRs** (seat ruling on #298:
+the gate stays as strict as it was before the re-vendor). The `pr-body-lint` job therefore judges a
+change PR's body twice. The first run passes the title, as upstream's workflow does, and applies
+the every-PR rules: banned openers, live-state readings, `Built:`, `**Coordinated in:**` and both
+attribution rules. The second run passes NO title, which is the linter's full release standard, so
+the closed section set and the scope line hold on every change PR as well. A `release:` PR gets
+the full standard from the first run. The OUT table binds every body. `bin/change-pr-body.py` emits
+the shape below, and `bin/change-pr-body.selftest.py` holds that skeleton to the same no-title
+verdict on every CI run. The allowed set is an ALLOWLIST, never a required list — nothing obliges a
+change PR to carry a section — so what it leaves a PR into `dev` is exactly:
 
 | Part | When |
 |---|---|
@@ -832,7 +847,8 @@ Everything this repository used to put in a body keeps its obligation and change
 -->
 
 ⚠ **The map's left column is not a closed list of what an author might invent** — the RULE is that
-any H2 outside the allowlist has a home outside the body, and the linter's finding names it. The
+any H2 outside the allowlist has a home outside the body, and the job's no-title run names it on
+every PR. The
 map covers the sections this repository actually used; re-derive that population from the merged
 bodies rather than trusting the column:
 
@@ -880,7 +896,9 @@ a body (release bodies especially — `release-pr-body` emits neither), put them
 a line window: put them anywhere outside a fenced block, in either the bold or the plain spelling.
 `built-line.md` owns the `Built:` value set.
 
-Read the verdict on a body before you push it, the same verdict the check will reach:
+Read the verdict on a body before you push it, the same verdict the check will reach. These
+commands pass no title on purpose: the no-title run applies every rule the titled run does and the
+section set besides, so one run reproduces both of the job's verdicts.
 
 ```
 gh api repos/PupFuzz/mezzanine/pulls/<N> --jq .body | python3 bin/pr-body-lint.py --body-file=-

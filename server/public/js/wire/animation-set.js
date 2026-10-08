@@ -42,14 +42,18 @@
  * is drawn.
  */
 
+import { DESK } from '../desk/desk-poses.js';
+import { deskDrawsCharacter } from '../desk/task-bubble.js';
+import { isRenderState } from '../lobby/render-state.js';
+
 /**
  * § 6.2's table: each row's class, the Animation cell's words, and the Reduced-motion form cell's
  * (§ 6.4 — a first-class rendering, never a degradation). Both cells are the document's, plain:
  * links followed to their own text, emphasis and backticks dropped, whitespace collapsed.
  */
 export const ANIMATION_SET = Object.freeze({
-    A1: Object.freeze({ class: 'edge', animation: 'arrive — the character walks in and sits', reduced: 'the character is simply present' }),
-    A2: Object.freeze({ class: 'edge', animation: 'depart — the character stands and walks out, leaving the chair empty', reduced: 'the chair is empty and labelled' }),
+    A1: Object.freeze({ class: 'edge', animation: "arrive — the elevator's leaves open, the character steps out, walks to its desk and sits", reduced: 'the character is simply present' }),
+    A2: Object.freeze({ class: 'edge', animation: 'depart — the character stands, walks to the elevator, the leaves open, it steps in and is gone, and the leaves close, leaving the chair empty', reduced: 'the chair is empty and labelled' }),
     A3: Object.freeze({ class: 'held', animation: 'work — typing at the keyboard, with the eye blink and the gentle in-place wiggle, 4 fps loop', reduced: 'a working pose, static, with the glyph' }),
     A4: Object.freeze({ class: 'held', animation: 'think — leaning back, watching the monitor, with the same blink and wiggle, 4 fps loop', reduced: 'a thinking pose, static' }),
     A5: Object.freeze({ class: 'edge', animation: "tool-swap — the monitor's glyph changes, one 250 ms cross-fade", reduced: 'the glyph changes with no fade' }),
@@ -261,22 +265,36 @@ const gained = (a, b) => [...b].some((v) => !a.has(v));
  * (A3 against A4, which `desk/desk-render.js` owns) and no other, so no row here suppresses
  * another and one delta satisfying two conditions writes two rows.
  *
- * ⛔ A1 READS THE OBJECT BEFORE THE MERGE, BECAUSE *LEAVES `offline`* IS A TRANSITION AND NOT A
- * VALUE. Read as *the new value is not `offline`* it would fire an arrival on every state change
- * a desk ever makes; § 3.4's table and this row's own *its absence means* — **the seat has not
- * left `offline`** — both make it the transition out of that state.
+ * ⛔ A1 AND A2 ARE EDGES BETWEEN § 7.1's *Desk* COLUMN's TWO SIDES, READ OFF THE OBJECT BEFORE AND
+ * AFTER THE MERGE (card#9566, FLOOR § 6.2's walk note item 1). STAFFED is a value that column draws a
+ * character for — `deskDrawsCharacter()` — and EMPTY is one it draws the empty chair for — `DESK`'s
+ * `empty-chair` pose. ⚠ THE TWO ARE NOT COMPLEMENTS: `retired` draws neither and an unrecognised value
+ * is neither, so *not staffed* is never read as *empty* — which is what keeps A2 off `working →` an
+ * unrecognised value. Keyed on one side alone, A2 would fire on `stale → offline` and on a re-sent
+ * `offline` (a walk out of a chair already empty), and A1 on `working → idle`.
  *
- * ⛔ AND A1 EXCLUDES A13's CONDITION, THROUGH A13's OWN PREDICATE RATHER THAN A COPY OF IT. An
- * `offline → retired` delta leaves `offline` and is not an arrival: A13 removes the desk, and a
- * client that fired both played a character walking in to a desk it was deleting. § 6.2 hosts the
- * exclusion on A1 — the row that yields — exactly as it hosts A3's exclusion of A4 (card#7341
- * step 6), and `retiring` below is the one definition both rows read.
+ * ⛔ AND NEITHER FIRES WITH A13, BY CONSTRUCTION RATHER THAN BY A CLAUSE. An `offline → retired`
+ * delta is not an arrival and a `working → retired` one is not a departure: A13 removes the desk, and
+ * a client that fired both would play a walk to or from a desk it was deleting. § 6.2 states the
+ * exclusion on A1 and A2; it holds here because `retired` is on neither side — it is no `DESK` key and
+ * is one of `NO_CHARACTER_STATES` — so a `!retiring` clause on either row could never be reached.
+ * `retiring` below is A13's predicate alone.
  */
 const retiring = (before, after) => after.render_state === 'retired';
 
+/**
+ * § 7.1's *Desk* column's empty chair, read off `desk/desk-poses.js`'s `DESK` — the column itself, in a
+ * module of its own so this file imports nothing that imports it back.
+ */
+const emptyChair = (state) => isRenderState(state) && DESK[state]?.pose === 'empty-chair';
+const staffed = (state) => deskDrawsCharacter(state);
+
 const DELTA_ROWS = Object.freeze([
-    Object.freeze({ id: 'A1', changed: 'render_state', fires: (before, after) => before.render_state === 'offline' && after.render_state !== 'offline' && !retiring(before, after) }),
-    Object.freeze({ id: 'A2', changed: 'render_state', fires: (before, after) => after.render_state === 'offline' }),
+    // A1's and A2's exclusions of A13 (§ 6.2) hold by construction rather than by a clause: `retired` is
+    // neither staffed nor an empty chair, so each side's own predicate refuses it. Reading either side as
+    // the other's complement is the defect that would let a retirement walk in or out too.
+    Object.freeze({ id: 'A1', changed: 'render_state', fires: (before, after) => emptyChair(before.render_state) && staffed(after.render_state) }),
+    Object.freeze({ id: 'A2', changed: 'render_state', fires: (before, after) => staffed(before.render_state) && emptyChair(after.render_state) }),
     Object.freeze({ id: 'A5', changed: 'action', fires: (before, after) => toolName(before) !== toolName(after) }),
     Object.freeze({ id: 'A10', changed: 'subagents', fires: (before, after) => !sameMembers(callIds(before), callIds(after)) }),
     Object.freeze({ id: 'A11', changed: 'badges', fires: (before, after) => gained(badges(before), badges(after)) }),
@@ -439,7 +457,9 @@ export class AnimationSet {
     /**
      * § 3.3's displacement: an arriving seat took an incumbent's slot, so the incumbent walks to
      * its new one. `cause` is § 11's own answer for this row — the seat-set change, recorded as
-     * the ARRIVING seat's key — while the row itself names the desk that MOVED.
+     * the ARRIVING seat's key (or a departure's, § 3.5), or, where an applied delta changed which
+     * seat the reserved desk seats (§ 3.2, card#11144), that delta's `state_version` — while the row
+     * itself names the desk that MOVED.
      *
      * ⚠ THE CALLER IS `floor/floor-screen.js` (card#7341 step 7), and it is the slot function's
      * own answer rather than a diff of two renders: the screen re-assigns § 3.2's slots over the
@@ -447,8 +467,8 @@ export class AnimationSet {
      * before that caller so that the step read § 6.4's form and § 11's `cause` off this set rather
      * than minting a second answer.
      */
-    displaced(installId, seatId, arrivingKey, at) {
-        this.#edge('A16', arrivingKey, installId, seatId, at);
+    displaced(installId, seatId, cause, at) {
+        this.#edge('A16', cause, installId, seatId, at);
     }
 
     /**

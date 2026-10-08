@@ -251,6 +251,61 @@ class ConsoleShellTest extends TestCase
     }
 
     /**
+     * ⛔ CARD#9415 · THE CONSOLE IS OPERATOR-ONLY, over the same two populations the MFA arms use —
+     * every console page and every console write — so a route added later is refused to an observer
+     * or reds a population check, never neither. The observer here is ENROLLED: an unenrolled one
+     * would be refused by `mfa` first, and this arm would pass without the role gate existing.
+     *
+     * The control is `test_every_console_page_allows_a_second_factor_session` above (the factory's
+     * default account is an operator) and the enrolled write below, on the same routes.
+     */
+    public function test_every_console_page_refuses_an_enrolled_observer(): void
+    {
+        foreach ($this->pages() as $name => $url) {
+            $status = $this->actingAs($this->observer())->get($url)->getStatusCode();
+
+            $this->assertSame(403, $status, $name.' is reachable by an observer');
+        }
+    }
+
+    public function test_every_console_write_refuses_an_enrolled_observer(): void
+    {
+        foreach ($this->writes() as $name => [$method, $url, $payload]) {
+            $status = $this->actingAs($this->observer())->$method($url, $payload)->getStatusCode();
+
+            $this->assertSame(403, $status, $name.' is writable by an observer');
+        }
+
+        // The control: the same write as an enrolled operator reaches the action's own answer.
+        $this->actingAs($this->enrolled())
+            ->post(route('admin.agents.retire', ['aimla', 'aimla-pm']), ['reason' => 'x'])
+            ->assertRedirect(route('admin.agents.index'))
+            ->assertSessionHasErrors('retire');
+    }
+
+    /**
+     * The reason the WHOLE console is gated rather than only the per-desk write controls: user
+     * management is where a role is written, so an observer that reached it could promote itself.
+     */
+    public function test_an_observer_cannot_promote_itself(): void
+    {
+        $observer = $this->observer();
+
+        $this->actingAs($observer)
+            ->patch(route('admin.users.update', $observer), [
+                'name' => $observer->name, 'email' => $observer->email, 'role' => User::OPERATOR,
+            ])
+            ->assertForbidden();
+
+        $this->assertSame(User::OBSERVER, $observer->fresh()->role);
+    }
+
+    private function observer(): User
+    {
+        return User::factory()->twoFactorConfirmed()->observer()->create();
+    }
+
+    /**
      * The shell renders its nav from `ConsoleModules`, so a module added to that list is reachable
      * from every console page without an edit to a layout — which is the property card#9070 asks
      * for when it says floors and agents "must not require a rewrite of this".

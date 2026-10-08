@@ -31,11 +31,11 @@ and the flusher's two starts are § 2.3.
 | seat account, home | `mezzanine`, `/home/mezzanine` | no root and no sudo anywhere; every path below sits under this home |
 | `install_id` | `mezzanine` | D1 § 3.1's slug pattern |
 | `seat_id` | `mezzanine-solo` | D1 § 3.1's slug pattern. The token is bound to the pair (§ 3.3), so a second seat is a second token |
-| `protocol_agent_name` | `mezzanine` | D1 § 3.1: the name must be a member of the roster at `$COORD_CONFIG`, or the check is `disagreed` and the name resolves to no desk. This seat's roster holds `mezzanine` and not `mezzanine-solo`, which is why the name is not the `seat_id` ([Step 2](#step-2--issue-the-seat-token-straight-into-the-config)) |
+| `protocol_agent_name` | `mezzanine` | D1 § 3.1: the name must be a member of the roster at `$COORD_CONFIG`, or the check is `disagreed` and the name resolves to no desk. This seat's roster holds `mezzanine` and not `mezzanine-solo`, which is why the name is not the `seat_id` ([Step 2](#step-2--issue-the-seat-token-into-the-config-on-this-host-or-through-a-carried-file)) |
 | `$COORD_CONFIG` | `/home/mezzanine/.config/coord/coordination.config.json`, read from `~/.claude/settings.local.json` | resolved by Step 2's `coord-config.js`, never typed. Claude Code's settings precedence puts project-local `settings.local.json` over `settings.json` (<https://code.claude.com/docs/en/settings>, *Settings precedence*). The seat's sessions run with `$HOME` as the project, so the two files are `~/.claude/settings.local.json` and `~/.claude/settings.json`. An empty result means none is set, and § 3.1 then says to deliver nothing |
 | `node` | `/usr/bin/node` | `readlink -f "$(command -v node)"`, resolved when Step 5 runs. Cron's `PATH` is not the login shell's, so the crontab names `node` absolutely |
 | ingest URL | `https://sandboxmezzanine.neeba.com/api/ingest/events` | `https://` only (§ 3.5) |
-| server checkout | `/home/mezzanine/mezzanine/server` | where `php artisan` runs. On the sandbox it is the same host; on another host, run Step 2 there and move the token by hand (see that step) |
+| server checkout | `/home/mezzanine/mezzanine/server` | where `php artisan` runs. On the sandbox it is the same host; on another host, the token is issued there into a `0600` file and carried by hand to the seat as `~/.config/fleet-reporter/mezzanine-reporter-token` (Step 2, [hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file)) |
 | artifact | `/home/mezzanine/.local/share/fleet-reporter/` | § 2.1's Linux install directory |
 | config | `/home/mezzanine/.config/fleet-reporter/config.json` | § 3.1: mode `0600`, directory `0700` |
 | spool | `/home/mezzanine/.local/state/fleet-reporter` | § 3.1's example location |
@@ -147,7 +147,12 @@ exits 0 and prints nothing (`rc=0`). So hooks may be wired before the config exi
 is not safe. A settings entry whose script path does not exist yet makes `node` exit non-zero on every
 tool call, and the harness puts that error in the transcript.
 
-## Step 2 — issue the seat token, straight into the config
+## Step 2 — issue the seat token into the config, on this host or through a carried file
+
+On a seat on the Mezzanine server's own host, the issue command pipes straight into the config. When
+the server is on another host, the token reaches the seat in one named file the operator carries
+([the hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file)). Both
+routes use the same resolver, identity check and writer, which come first.
 
 **Resolve `$COORD_CONFIG` the way the seat's sessions see it.** Save the resolver. It reads each
 settings file in precedence order, lowest first, so the last file that sets the value wins. It prints
@@ -187,36 +192,74 @@ Declaring `mezzanine-solo` would have been `disagreed`.
 
 **The token is a credential, and it must never reach a terminal, an argv, a shell history or a log.**
 `mezzanine:ingest-token:issue` prints the plaintext once and stores only its SHA-256. So the issue
-command is piped straight into a small writer. The writer takes the token off the pipe, writes the
-config with mode `0600`, and prints every other line of the command's output, with the token line
-replaced. It receives the token, so it lives in `$B` and nowhere another account can write. Save it:
+command is piped straight into a small writer. On the same host the writer takes the token off the pipe,
+writes the config with mode `0600`, and prints every other line of the command's output, with the token
+line replaced. It receives the token, so it lives in `$B` and nowhere another account can write. Save
+it:
 
 ```bash
 ( set -euo pipefail
   cat > "$B/write-config.js" <<'JS'
 const fs = require("fs"), path = require("path");
 const e = process.env, out = [], TOKEN = /^\s*token\s+(mzn_[A-Za-z0-9_-]{43})\s*$/, SHAPE = /mzn_[A-Za-z0-9_-]{43}/g;
-let raw = ""; process.stdin.setEncoding("utf8");
-process.stdin.on("data", (d) => { raw += d; });
-process.stdin.on("end", () => {
-  let token = null;
-  for (const line of raw.split("\n")) {
-    const m = TOKEN.exec(line);
-    if (m) { token = m[1]; out.push("  token       <written to the config, not shown>"); } else out.push(line.replace(SHAPE, "<redacted>"));
-  }
-  console.log(out.join("\n"));
-  if (!token) { console.error("no token line in the issue output: NOTHING WRITTEN"); process.exit(1); }
+const FILE_TOKEN = /^mzn_[A-Za-z0-9_-]{43}\n?$/;
+const DESCRIPTORS = e.FR_DESCRIPTORS || "full";
+const die = (why) => { console.error(why + ": NOTHING WRITTEN"); process.exit(1); };
+if (!["full", "paths", "none"].includes(DESCRIPTORS)) die("FR_DESCRIPTORS must be full, paths or none");
+for (const k of ["FR_TOKEN_FILE", "FR_TOKEN_OUT"]) if (k in e && !e[k]) die(k + " is set but empty");
+if (e.FR_TOKEN_FILE && e.FR_TOKEN_OUT) die("FR_TOKEN_FILE and FR_TOKEN_OUT are two different steps; set one");
+const mode = (st) => (st.mode & 0o777).toString(8);
+function writeConfig(token) {
   const cfg = {
     install_id: e.FR_INSTALL, seat_id: e.FR_SEAT, ingest_url: e.FR_URL, token,
     spool_dir: e.FR_SPOOL, ca_file: null, proxy_url: null,
-    wrapped_statusline: e.FR_WRAPPED || null, protocol_agent_name: e.FR_AGENT || null, enabled: true,
+    wrapped_statusline: e.FR_WRAPPED || null, protocol_agent_name: e.FR_AGENT || null,
+    descriptors: DESCRIPTORS, enabled: true,
   };
   fs.mkdirSync(path.dirname(e.FR_CONFIG), { recursive: true, mode: 0o700 });
   fs.chmodSync(path.dirname(e.FR_CONFIG), 0o700);
   const fd = fs.openSync(e.FR_CONFIG, "wx", 0o600);
   fs.writeSync(fd, JSON.stringify(cfg, null, 2) + "\n"); fs.closeSync(fd);
-  console.log("wrote " + e.FR_CONFIG + " (mode " + (fs.statSync(e.FR_CONFIG).mode & 0o777).toString(8) + ")");
-});
+  console.log("wrote " + e.FR_CONFIG + " (mode " + mode(fs.statSync(e.FR_CONFIG)) + ")");
+}
+if (e.FR_TOKEN_FILE) {
+  // The seat end of a hand delivery: the token comes from the carried file, never from stdin.
+  let st;
+  try { st = fs.lstatSync(e.FR_TOKEN_FILE); } catch (err) { die("cannot read the token file " + e.FR_TOKEN_FILE + " (" + err.code + ")"); }
+  if (!st.isFile()) die("the token file " + e.FR_TOKEN_FILE + " is not a regular file");
+  if (st.uid !== process.getuid()) die("the token file " + e.FR_TOKEN_FILE + " is not owned by this account");
+  if ((st.mode & 0o777) !== 0o600) die("the token file " + e.FR_TOKEN_FILE + " has mode " + mode(st) + ", not 600");
+  const dir = path.dirname(e.FR_TOKEN_FILE), dst = fs.lstatSync(dir);
+  if (!dst.isDirectory() || dst.uid !== process.getuid()) die("the token file's directory " + dir + " is not a directory owned by this account");
+  if ((dst.mode & 0o777) !== 0o700) die("the token file's directory " + dir + " has mode " + mode(dst) + ", not 700");
+  const body = fs.readFileSync(e.FR_TOKEN_FILE, "utf8");
+  if (!FILE_TOKEN.test(body)) die("the token file " + e.FR_TOKEN_FILE + " does not hold exactly one well-formed mzn_ token");
+  console.log("read the token from " + e.FR_TOKEN_FILE + " (mode 600)");
+  try { writeConfig(body.trimEnd()); } catch (err) { die("could not write " + e.FR_CONFIG + " (" + err.code + ")"); }
+} else {
+  let raw = ""; process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (d) => { raw += d; });
+  process.stdin.on("end", () => {
+    let token = null;
+    const where = e.FR_TOKEN_OUT ? "the token file" : "the config";
+    for (const line of raw.split("\n")) {
+      const m = TOKEN.exec(line);
+      if (m) { token = m[1]; out.push("  token       <written to " + where + ", not shown>"); } else out.push(line.replace(SHAPE, "<redacted>"));
+    }
+    console.log(out.join("\n"));
+    if (!token) die("no token line in the issue output");
+    if (e.FR_TOKEN_OUT) {
+      // The issuer end of a hand delivery: the token alone, in a 0600 file, for the operator to carry.
+      try {
+        const fd = fs.openSync(e.FR_TOKEN_OUT, "wx", 0o600);
+        fs.writeSync(fd, token + "\n"); fs.closeSync(fd);
+      } catch (err) { die("could not write " + e.FR_TOKEN_OUT + " (" + err.code + ")"); }
+      console.log("wrote " + e.FR_TOKEN_OUT + " (mode " + mode(fs.statSync(e.FR_TOKEN_OUT)) + ")");
+    } else {
+      try { writeConfig(token); } catch (err) { die("could not write " + e.FR_CONFIG + " (" + err.code + ")"); }
+    }
+  });
+}
 JS
   node --check "$B/write-config.js" && echo writer-saved )
 ```
@@ -224,6 +267,16 @@ JS
 Before this ran for real, the writer was driven three ways: with a fabricated issue output, which wrote
 the file at mode `600` in a `700` directory; against a config that already existed, which refused
 (`'wx'`) and wrote nothing; and with output that had no token line, which exited 1 and wrote nothing.
+The writer reads the token from one of two places and writes it to one of two places. On the same host,
+which is the pipeline below, it reads the issue command's output on stdin and writes the config.
+When the server is on another host, the token makes two hops through the same writer. `FR_TOKEN_OUT`
+writes the token alone to a file on the Mezzanine host, and `FR_TOKEN_FILE` reads it from that file on
+the seat; [the hand delivery](#when-the-server-is-on-another-host-carry-the-token-in-one-named-file)
+below runs both, and says what card#11331's scratch run of them showed.
+
+`FR_DESCRIPTORS` is how much of each tool call the seat sends as its descriptor: `full` (the default when
+it is unset), `paths` or `none`. D1 § 3.1 defines the three values, and Step 3 says how to change it later.
+The writer refuses any other value before it writes anything.
 
 `FR_WRAPPED` is the statusLine command the seat has **now**, read from `statusLine.command` in
 `~/.claude/settings.json`. On the sandbox it was the coord framework's context sensor. It is recorded
@@ -232,13 +285,17 @@ is applied, and (b) refuses unless the live statusLine still equals it.
 
 Then issue the token and write the config in one pipeline. The first line refuses unless `$B` is
 still the seat account's own `0700` directory, so the pipeline never hands the token to a writer
-anyone else could have placed. That guard was driven on copies, with a stub `php` on `PATH`. With `$B`
+anyone else could have placed. The second line refuses unless `node` is on `PATH`: without it the
+pipe would issue a token that nothing receives, and the prefix line would never be printed, leaving
+nothing to revoke it by. That guard was driven on copies, with a stub `php` on `PATH`. With `$B`
 pointed at a `0755` directory it printed `NOTHING RUN`, and `php` was never called. With the real `$B`,
-`php` was called:
+`php` was called. Card#11331 drove the `node` line the same way: with no `node` on `PATH` it printed
+`NOTHING RUN`, and the stub `php` was never called:
 
 ```bash
 ( set -euo pipefail
   { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not the seat's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }
+  command -v node >/dev/null || { echo "no node on PATH, so the writer cannot take the token: NOTHING RUN" >&2; exit 1; }
   cd /home/mezzanine/mezzanine/server
   php artisan mezzanine:ingest-token:issue mezzanine mezzanine-solo --by=card-9368 2>&1 | FR_CONFIG=/home/mezzanine/.config/fleet-reporter/config.json FR_INSTALL=mezzanine FR_SEAT=mezzanine-solo FR_URL=https://sandboxmezzanine.neeba.com/api/ingest/events FR_SPOOL=/home/mezzanine/.local/state/fleet-reporter FR_AGENT=mezzanine FR_WRAPPED="bash ~/.local/bin/context-sensor.sh ''" node "$B/write-config.js" ); echo "pipeline rc=$?"
 ```
@@ -262,11 +319,114 @@ takes it, and Step 8 needs it.
 - **If the pipeline fails after the token is issued**, for example because the config already exists,
   the token is lost by design, since nothing stored it. Revoke it by its prefix, fix the cause, and run
   the pipeline again.
-- **If the server is on another host**, the pipe cannot cross between machines. Run the issue command in
-  a terminal nothing records, and type the token into the config with an editor, never on a command
-  line. Then set the mode to `0600`.
+- **If the server is on another host**, the pipe cannot cross between machines. Carry the token in the
+  one named file the next section describes.
 - **Rotation.** D1 § 3.3's order applies: issue the new token, write it into the config, and only then
   revoke the old one.
+
+#### When the server is on another host, carry the token in one named file
+
+The token makes two hops through Step 2's writer, and between them it is a file the operator carries by
+hand. The file has one name on every seat, so every seat's runbook, rollback and clean-up look in the
+same place:
+
+```
+~/.config/fleet-reporter/mezzanine-reporter-token      mode 0600, in the 0700 directory of the config it feeds
+```
+
+It holds the token and nothing else, one line, `mzn_` and 43 characters of `[A-Za-z0-9_-]`. It lives
+only from (a), which writes it, to (d), which shreds it on both hosts.
+
+**(a) On the Mezzanine host, issue the token into a 0600 file.** Make an attempt directory there the
+way Step 0 makes `$B`, with its first two lines and the issuing account's home in place of the seat's,
+and save the writer into it with the block above. Then pipe the issue command into the writer with
+`FR_TOKEN_OUT` set. The writer prints the issue output with the token line replaced, so the **prefix**
+stays on screen, and writes the token alone to the file with mode `0600`. It refuses a file that
+already exists. The guard on the first line is the same-host pipeline's:
+
+```bash
+( set -euo pipefail
+  { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not this account's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }
+  command -v node >/dev/null || { echo "no node on PATH, so the writer cannot take the token: NOTHING RUN" >&2; exit 1; }
+  cd <server checkout>
+  php artisan mezzanine:ingest-token:issue <install_id> <seat_id> --by=<operator> 2>&1 | FR_TOKEN_OUT="$B/mezzanine-reporter-token" node "$B/write-config.js" ); echo "pipeline rc=$?"
+```
+
+Keep the prefix: Step 8 needs it, and so does every failure below.
+
+**(b) Carry the file to the seat by hand.** The means is the operator's, provided nothing on the way
+records the file's contents: a copy between two accounts the operator controls, over SSH, is one such
+means. It arrives at `~/.config/fleet-reporter/mezzanine-reporter-token` in the seat account's home,
+with mode `0600`, in a directory with mode `0700` that holds no config yet. On the seat, make the
+directory first if it is not there:
+
+```bash
+install -d -m 0700 /home/mezzanine/.config/fleet-reporter
+stat -c '%a %U %n' /home/mezzanine/.config/fleet-reporter /home/mezzanine/.config/fleet-reporter/mezzanine-reporter-token
+```
+
+Both lines must show the seat account, `700` on the directory and `600` on the file.
+
+**(c) On the seat, write the config from the file.** Make `$B` with Step 0 and save the writer into it
+with the block above, as on a same-host seat. The pipeline is the same-host one with the issue command
+taken out: `FR_TOKEN_FILE` names the carried file, and the writer reads the token from it rather than
+from stdin. It writes the config exactly as the same-host pipeline does, with the same keys and mode
+`0600`. Before it writes anything, it confirms that the file is a regular file the seat account owns,
+that its mode is exactly `0600`, that its directory is one the seat account owns with mode exactly
+`0700`, and that it holds one well-formed token and nothing else. Its messages
+name the file and never print what it holds:
+
+```bash
+( set -euo pipefail
+  { [ -O "$B" ] && [ "$(stat -c %a "$B")" = 700 ] && [ -f "$B/write-config.js" ] && [ -O "$B/write-config.js" ]; } || { echo "\$B is not the seat's own 0700 directory holding its writer: NOTHING RUN" >&2; exit 1; }
+  FR_TOKEN_FILE=/home/mezzanine/.config/fleet-reporter/mezzanine-reporter-token FR_CONFIG=/home/mezzanine/.config/fleet-reporter/config.json FR_INSTALL=mezzanine FR_SEAT=mezzanine-solo FR_URL=https://sandboxmezzanine.neeba.com/api/ingest/events FR_SPOOL=/home/mezzanine/.local/state/fleet-reporter FR_AGENT=mezzanine FR_WRAPPED="bash ~/.local/bin/context-sensor.sh ''" node "$B/write-config.js" ); echo "pipeline rc=$?"
+```
+
+On success it prints two lines, `read the token from …/mezzanine-reporter-token (mode 600)` and
+`wrote …/config.json (mode 600)`, and `pipeline rc=0`.
+
+**(d) Shred the file, on the seat and on the Mezzanine host, and confirm both are gone.** Run this on
+the seat once (c) printed `pipeline rc=0`, with `F` as written. Run it on the Mezzanine host with
+`F="$B/mezzanine-reporter-token"`, `$B` being (a)'s attempt directory. It shreds `F` only when `F` is a
+regular file and not a symlink, because `shred` follows a link and overwrites whatever it points at.
+For a symlink it removes the link alone and names the file it pointed at, which may hold the token
+and is the operator's to inspect and shred. It ends by printing `gone` or `PRESENT` for `F`:
+
+```bash
+F=/home/mezzanine/.config/fleet-reporter/mezzanine-reporter-token
+if [ -L "$F" ]; then echo "$F is a symlink to $(readlink -f -- "$F"): the link is removed and that file is left for you to inspect and shred" >&2; rm -- "$F"
+elif [ -f "$F" ]; then shred -u -- "$F"; fi
+if [ -e "$F" ] || [ -L "$F" ]; then echo "token file PRESENT: $F"; else echo "token file gone: $F"; fi
+```
+
+Both hosts must print `gone`. `shred -u` overwrites the file and then removes it. `man shred` names file
+systems on which the overwrite is not assured, journaling and snapshotting ones among them, so the
+file's short life in a `0700` directory is what protects the token, and the shred is the clean-up.
+
+If a step fails:
+
+- **(a) fails after the token is issued**, for example because the token file already exists: nothing
+  holds the token, so revoke it by the prefix (a) printed, fix the cause, and run (a) again.
+- **(c) refuses because the config already exists**, or fails for any other reason after it has read
+  the file: the token is still whole and still only in the two `0600` files. Fix the cause and run (c)
+  again. Run (d) only after (c) succeeds.
+- **(c) refuses the file or its directory** — its type, owner, mode or content: the seat cannot show
+  that the file reached it unread, or that it holds the token (a) issued. Treat the token as exposed
+  rather than repair the mode and go on. Run (d) on both hosts, revoke the token by its prefix on the
+  Mezzanine host, and start again at (a).
+
+**What card#11331's scratch run showed.** The writer was extracted from this page and driven in a
+scratch directory with a fabricated token of the right shape, standing in for the issue command's
+output. (a) wrote the token file at mode `600` holding the token alone, and printed the prefix line.
+Run again, it refused the existing file with a one-line message. (c) refused a `0644` token file, a
+`0600` token file in a `0755` directory, a malformed token, a file holding two tokens, a token with
+other text on its line, a symlink, a missing file and an empty `FR_TOKEN_FILE`, and wrote no config in
+each case. It then wrote the config at mode `600` in a `700` directory, with the same keys and
+token as the same-host pipeline writes from the same input. Run again, it refused the existing config
+and left the token file in place for the retry. (d) left no file behind, and run against a symlink it
+removed the link and left the file it pointed at intact, byte for byte. In every case the token
+appeared on neither stdout nor stderr. ⚠ The run used neither the real issue command nor a carry
+between two hosts: the first real hand delivery exercises both.
 
 ## Step 3 — check the config file
 
@@ -277,6 +437,30 @@ node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));
 
 On the sandbox this printed `700` and `600`, and then every key with the token shown only as
 `<well-formed>`.
+
+**Choose what the descriptor carries: the `descriptors` key.** Each tool call reaches the floor with a
+short label built from its arguments, after the reporter has replaced the credential, host-name, IP,
+email and home-path shapes D1 § 7.3 lists (§ 7.3 also states the shapes it does not catch). `descriptors` decides how much of that label is sent at all:
+
+| Value | What the floor shows for a tool call |
+|---|---|
+| `"full"`, or the key absent | the sanitized label: `Bash: composer test`, `Read: ~/…/docs/PLAN.md`, and a subagent's title |
+| `"paths"` | the file path for `Read`, `Write`, `Edit` and `Glob`; the tool name alone for everything else, and no subagent title |
+| `"none"` | the tool name alone, for every tool, and no subagent title |
+
+Under `"paths"` and `"none"` the seat also sends no console link (D1 § 6.3): an operator's drill-down
+offers **Open console on claude.ai** only for a seat on `"full"`.
+
+Any other value is a config error: `selftest`'s `config_readable` fails and the flusher sends nothing
+until the value is fixed. The events spooled meanwhile are built as under `"none"`. To change the value on an installed seat, rewrite the one key with
+the config's mode kept. This reads and writes the file without printing it:
+
+```bash
+node -e 'const fs=require("fs"),f=process.argv[1],v=process.argv[2]; if(!["full","paths","none"].includes(v)) throw new Error("full, paths or none"); const c=JSON.parse(fs.readFileSync(f,"utf8")); c.descriptors=v; fs.writeFileSync(f, JSON.stringify(c,null,2)+"\n", {mode:0o600}); console.log("descriptors =", v)' /home/mezzanine/.config/fleet-reporter/config.json none
+```
+
+Every hook reads the config when it fires, so the next tool call uses the new value. Nothing needs a
+restart.
 
 **`harness_label` is left unset, on purpose.** D1 § 6.1 wants `claude-code/<version>`, and the reporter
 can only read that from this config key (see the note in the README's open-questions table). Claude Code
@@ -643,6 +827,9 @@ route the batches take (card#9473). Read its exit code by D1 § 6.14:
   `detail.protocol_agent_name_in_roster.malformed_declaration` is not `null`, the check failed for
   another reason: the declared value is not a valid name by D1 § 3.1, and that field shows the value,
   or its type for a non-string. The seat still reports, as `undeclared`, until the config is fixed.
+  The same detail's `roster_role` shows the role the seat relays from its roster entry (card#11144),
+  or why it relays `null`: *no role: the entry carries none*, *not a slug: …*, or *ambiguous: N
+  entries named X* when two roster entries share the declared name. None of those fails the command.
 - **`rc=2`** — no check failed and at least one is `not_measured`. The probe reached no ingest
   (`detail.tls_verify.probe_error`), or the ingest answered without its accepted set
   (`detail.schema_version_accepted.http_status`; a `401` is the ingest refusing the config's token,
@@ -732,12 +919,14 @@ the pre-hooks `settings.json`, and `20260913T193245Z` for item 2, the crontab. I
    It prints how long the exit took, or `NOT STOPPED` once the bound derived from the artifact's
    constants has passed. Do not go on to item 4 while a flusher runs. It checks the pid rather than
    pattern-matching process names, so it cannot match its own shell.
-4. **Revoke the token on the server**, by prefix:
+4. **Revoke the token on the server**, by prefix, on the Mezzanine host:
    `php artisan mezzanine:ingest-token:revoke mzn_YTRScmlE --reason='uninstall'`. To take the desk off the
    floor as well, run `php artisan mezzanine:retire --seat=mezzanine/mezzanine-solo --by=<operator> --reason=<why>`
    (FLEET-STATE § 4.10). Revocation leaves the seat's rows, and retirement is what hides the desk.
 5. **Remove the seat's files**:
    `rm -rf /home/mezzanine/.config/fleet-reporter /home/mezzanine/.local/state/fleet-reporter /home/mezzanine/.local/share/fleet-reporter /home/mezzanine/.local/state/fleet-reporter-flusher.flock`.
+   If the token was carried from another host, also run Step 2 (d)'s block on the Mezzanine host with
+   `F` set to `mezzanine-reporter-token` in the attempt directory that issued it. It must print `gone`.
 
 ⚠ **As of card#9368, only the non-destructive part of this rollback has been run.** On the first
 install, item 2's `sed` ran into a file. The `diff` against Step 0's backup printed nothing, the
@@ -753,6 +942,15 @@ processes, as Step 5 reports.
   install used a checkout of `4ce0a19` (Step 1), which is older. A seat running an older build sends no
   name, and the snapshot shows `protocol_agent_name: null`, until Step 1's artifact is replaced and
   Step 5's flusher restarted.
+- **`protocol_agent_role` is sent only by a build that includes card#11144.** That build relays the
+  roster entry's `role` beside the name. A seat running an older build sends no role, and the
+  snapshot shows `protocol_agent_role: null`, until Step 1's artifact is replaced and Step 5's flusher
+  restarted.
+- **The console link is sent only by a build that includes card#9416.** That build reads each
+  session's console address from its transcript and sends it on every `turn.start`. A seat running an
+  older build sends none, and an operator's drill-down offers no **Open console** link for it, until
+  Step 1's artifact is replaced. Every hook loads the reporter when it fires, so the next prompt
+  after the replacement carries the link; no flusher restart is needed for it.
 - **A seat installed from a build before card#9374 stays badged `epoch_reset`.** That build counted
   the first start's missing `state.json` as D1 § 11.4's state reset, so the first heartbeat carried
   `state_reset: 1`. On the sandbox the badge was still on heartbeat seq 10, eleven minutes later and

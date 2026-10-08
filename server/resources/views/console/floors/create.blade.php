@@ -37,6 +37,9 @@
         object layer named <code>desks</code>; their count is the floor's <code>S</code>
         (<code>§ 10.3</code>). Size <code>S</code> above the seats you plan to run: a floor with
         more seats than slots still draws every one of them, in an overflow row with a notice
-        (<code>§ 3.2</code>).
+        (<code>§ 3.2</code>). One desk object may carry a <code>string</code> property
+        <code>reserved_for</code> naming a role, such as <code>pm</code>, to reserve that desk for
+        the role; a desk object may carry no other property. The floor seats the room's one seat
+        relaying that role at the reserved desk, or nobody (<code>§ 3.2</code>).
     </p>
 @endsection

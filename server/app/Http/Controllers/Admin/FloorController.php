@@ -28,8 +28,9 @@ use Illuminate\Validation\Rule;
  * ⭐ WHAT THE REVISION MODULE IS FOR, AND IT IS NOT BOOKKEEPING. § 6.11: the authored store took
  * away the four things version control gave a build artifact — a diff, a review, a revert and a
  * blame — and gives back three. This module is those three. ⚠ The fourth, REVIEW, is the one it
- * does not give back: "every authenticated user is an operator (card#9070), so no second person
- * stands between a save and the floor", and until the console PREVIEWS a document with the
+ * does not give back: "every account that can reach the console is an operator (the console's own
+ * rule, card#9070; card#9415 keeps observers out of it), so no second person stands between a save
+ * and the floor", and until the console PREVIEWS a document with the
  * floor's own renderer — which exists now (Appendix B step 7's layout and row 14's room drawing),
  * and which the console does not yet draw with — **restore is the only thing between a bad save
  * and every viewer.** That is why restore shipped in card#9208's slice and the preview did not.
@@ -42,8 +43,10 @@ use Illuminate\Validation\Rule;
  * two reloads and two server restarts agree without a stored position and without a server
  * field". So there is no action here that names a seat, and `App\Floor\Floors` has no column that
  * could hold one: pinning a named seat to a chosen desk is card#9071's ruling — **no**, 2026-09-12
- * — and `App\Floor\FloorMap` now refuses a desk object carrying ANY property so that a seat's name
- * cannot arrive as one.
+ * — and `App\Floor\FloorMap` refuses a desk object carrying any property but `reserved_for` so
+ * that a seat's name cannot arrive as one. `reserved_for` (card#11144) reserves one desk for a
+ * ROLE, never for a seat: the map says which desk a role sits at, and which seat holds that role
+ * is still the fleet's to say, never the map's.
  *
  * ⛔ AND THERE IS NO "CREATE AN INSTALL" EITHER, for the same reason the agent module has no
  * "add a seat". A floor IS an install (`§ 3.1`), an install row is written by exactly one act —
@@ -60,9 +63,8 @@ use Illuminate\Validation\Rule;
  * card#9292). Both are the operator's to fix and both name what to do, so both come back on the
  * form they were submitted from.
  *
- * ⚠ NO `Authorize`/policy CALLS — card#9070's D3: every authenticated user is an operator, and
- * the authorization statement is the route group's middleware. `routes/admin.php` carries the
- * decision and the trigger that would void it.
+ * ⚠ NO `Authorize`/policy CALLS — the authorization statement is the route group's middleware,
+ * whose `can:operate` admits operators only (card#9415). `routes/admin.php` carries the decision.
  */
 class FloorController extends Controller
 {
@@ -131,7 +133,8 @@ class FloorController extends Controller
 
     /**
      * § 6.11's BLAME and the way into its revert: every revision of this room's map, newest
-     * first, with who authored it, when, and what `S` it declares.
+     * first, with who authored it, when, what `S` it declares and which desk it reserves
+     * (card#11144) — both read from ONE parse of the revision (`FloorMap::readable()`).
      *
      * ⚠ A ROOM WITH NO REVISIONS IS A ROOM NOBODY HAS AUTHORED, and it is a legal state rather
      * than a 404: it renders the shipped default (§ 8.7), and the page says so. A 404 would be
@@ -143,15 +146,20 @@ class FloorController extends Controller
             'active' => 'floors',
             'installId' => $installId,
             'current' => Floors::forInstall($installId),
-            'revisions' => Revisions::history(Revisions::ROOM_MAP, $installId)->map(fn (object $row) => [
-                'revision' => (int) $row->revision,
-                'removal' => $row->document === null,
-                'restored_from' => $row->restored_from === null ? null : (int) $row->restored_from,
-                'authored_by' => (string) $row->authored_by,
-                'authored_at' => (string) $row->authored_at,
-                'slots' => FloorMap::slotsOf($row->document),
-                'bytes' => $row->document === null ? null : strlen((string) $row->document),
-            ])->all(),
+            'revisions' => Revisions::history(Revisions::ROOM_MAP, $installId)->map(function (object $row) {
+                $map = FloorMap::readable($row->document);
+
+                return [
+                    'revision' => (int) $row->revision,
+                    'removal' => $row->document === null,
+                    'restored_from' => $row->restored_from === null ? null : (int) $row->restored_from,
+                    'authored_by' => (string) $row->authored_by,
+                    'authored_at' => (string) $row->authored_at,
+                    'slots' => $map?->slots,
+                    'reserved' => $map?->reservationLabel(),
+                    'bytes' => $row->document === null ? null : strlen((string) $row->document),
+                ];
+            })->all(),
         ]);
     }
 
@@ -258,8 +266,10 @@ class FloorController extends Controller
         // ⛔ `S` BEFORE, READ BEFORE THE WRITE — § 10.3: "a save that changes `S` re-slots EVERY
         // desk in that room … and the console shows `S` before and after a save for exactly that
         // reason". It is what an operator needs to know they have just moved every desk, and it
-        // is unreadable a line later, so it is taken here rather than reconstructed.
-        $before = FloorMap::slotsOf(Floors::forInstall($installId)?->map);
+        // is unreadable a line later, so it is taken here rather than reconstructed — and the
+        // reserved desk before (card#11144) with it, from the same parse.
+        $previous = FloorMap::readable(Floors::forInstall($installId)?->map);
+        $before = $previous?->slots;
 
         try {
             $version = Floors::save($installId, $map, (string) $request->user()->email);
@@ -268,7 +278,7 @@ class FloorController extends Controller
         }
 
         return redirect()->route('admin.floors.index')->with('status', sprintf(
-            '%s now has a map declaring %d desk slot%s, saved as revision %d.%s Which seat sits at '
+            '%s now has a map declaring %d desk slot%s, saved as revision %d.%s%s Which seat sits at '
             .'which desk is still derived from the seats themselves (docs/design/FLOOR.md § 3.2) '
             .'— the map decides how many desks there are and where they sit, never who is at them.',
             $installId,
@@ -282,6 +292,19 @@ class FloorController extends Controller
                     ' It declared %d before, and the slot function is `h mod S` — so EVERY desk in '
                     .'this room is now at a different slot.',
                     $before,
+                ),
+            },
+            // card#11144: the reserved desk before and after, as the revisions list names it.
+            match (true) {
+                $previous === null => sprintf(' Reserved desk: %s.', $map->reservationLabel()),
+                $previous->reservationLabel() === $map->reservationLabel() => sprintf(
+                    ' Reserved desk: %s, unchanged.',
+                    $map->reservationLabel(),
+                ),
+                default => sprintf(
+                    ' Reserved desk: %s; it was %s before.',
+                    $map->reservationLabel(),
+                    $previous->reservationLabel(),
                 ),
             },
         ));

@@ -335,7 +335,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         $html = $this->lobbyPage();
 
         foreach ([
-            'a stylesheet' => '<link rel="stylesheet" href="/build/app.css">',
+            'a second stylesheet' => '<link rel="stylesheet" href="/build/app.css">',
             'a style block' => '<style>body { font-size: 14px }</style>',
             'a style attribute' => '<main style="font-size: 14px">',
             'a single-quoted style attribute' => "<main style='font-size: 14px'>",
@@ -345,14 +345,29 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             $this->assertNotSame($planted, $html, "the {$what} control's anchor is gone — it mutated nothing");
             $this->assertNotSame([], $this->baseDefects($planted), "CONTROL ({$what}) did not bite");
         }
+
+        // card#11045 PR-A: the page chrome sheet is linked, so what it may not do is planted in it.
+        $sheet = $this->chromeSheet();
+
+        foreach ([
+            'the root text size' => ':root { font-size: 20px; }',
+            'the body text size' => 'body { font-size: 14px; }',
+            'the html text size, in the shorthand' => 'html { font: 15px/1.4 sans-serif; }',
+            'every element\'s text size' => '* { font-size: 12px; }',
+            'a plate line\'s own element' => 'main a { font-size: 12px; }',
+            'a text size that beats the plate\'s own' => '.anything { font-size: 9px !important; }',
+        ] as $what => $rule) {
+            $this->assertNotSame([], $this->sheetDefects($sheet."\n".$rule), "CONTROL (a sheet setting {$what}) did not bite");
+        }
     }
 
     // ── The checks ─────────────────────────────────────────────────────────────────────────────
 
     /**
      * Every painted text of every drawn plate, under every transform a run shows it at, each a defect
-     * unless it is `1rem` on the screen — and the run must have measured something: a fit, a wheel that
-     * moved the zoom, and two glides whose midpoints are neither end.
+     * unless it is `1rem` on the screen — and the run must have measured something: a fit, a Ctrl+wheel
+     * that moved the zoom, a plain wheel that panned (card#11045), and two glides whose midpoints are
+     * neither end.
      *
      * @return list<string>
      */
@@ -379,8 +394,12 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             $act = $a['act']['act'];
             $samples["after the {$act} at {$a['at']} ms"] = $a['label']['after'];
 
-            if ($act === 'wheel' && abs($a['after']['zoom'] - $a['before']['zoom']) < self::EPSILON) {
-                $defects[] = "the wheel at {$a['at']} ms did not move the zoom — the clause measured nothing";
+            if ($act === 'ctrl_wheel' && abs($a['after']['zoom'] - $a['before']['zoom']) < self::EPSILON) {
+                $defects[] = "the Ctrl+wheel at {$a['at']} ms did not move the zoom — the clause measured nothing";
+            }
+
+            if ($act === 'scroll' && abs($a['after']['x'] - $a['before']['x']) < self::EPSILON && abs($a['after']['y'] - $a['before']['y']) < self::EPSILON) {
+                $defects[] = "the plain wheel at {$a['at']} ms did not pan — the clause measured nothing";
             }
 
             if (in_array($act, ['building', 'ride'], true)) {
@@ -396,7 +415,7 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
             }
         }
 
-        foreach (['wheel', 'building', 'ride'] as $act) {
+        foreach (['ctrl_wheel', 'scroll', 'building', 'ride'] as $act) {
             if (! in_array($act, array_map(static fn (array $a): string => $a['act']['act'], $result['camera_acts']), true)) {
                 $defects[] = "the run has no {$act}";
             }
@@ -872,8 +891,18 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
     {
         $defects = [];
 
-        if (preg_match('/<link\b[^>]*\brel\s*=\s*["\']?stylesheet/i', $html) === 1) {
-            $defects[] = 'the lobby page loads a stylesheet — re-derive the body text size from it';
+        // card#11045 PR-A: the layout links the page chrome sheet (`ThePageChromeIsOneLinkedStylesheetTest`
+        // holds the link), and that sheet is read below; any OTHER stylesheet is one nobody re-derived.
+        preg_match_all('/<link\b[^>]*\brel\s*=\s*["\']?stylesheet[^>]*>/i', $html, $links);
+
+        foreach ($links[0] as $link) {
+            if (preg_match('#href="[^"]*/css/mezzanine\.css\?v=\d+"#', $link) !== 1) {
+                $defects[] = "the lobby page loads a stylesheet ({$link}) — re-derive the body text size from it";
+            }
+        }
+
+        if (count($links[0]) === 1 && $defects === []) {
+            $defects = [...$defects, ...$this->sheetDefects($this->chromeSheet())];
         }
 
         if (preg_match('/<style[\s>]/i', $html) === 1) {
@@ -897,6 +926,59 @@ class ThePlateNameIsReadAtTheBodyTextSizeTest extends TestCase
         }
 
         return $defects;
+    }
+
+    /**
+     * Whether the page chrome sheet moves a plate's text off the body text size. A plate's label sets
+     * its own `font-size: 1rem` inline (`plate-row.js`'s `LABEL_FONT`), so what the sheet could still
+     * move is: the size `1rem` IS (a font size on `:root` or `html`); the body text size it must equal (on
+     * `body`); the elements inside the label (a size on `*`, or on a tag `plate-row.js` creates —
+     * derived from that file, never listed here); and the label's own inline size (`!important`).
+     *
+     * @return list<string>
+     */
+    private function sheetDefects(string $sheet): array
+    {
+        $row = (string) file_get_contents($this->moduleDir().'/'.self::ROW);
+        preg_match_all("/createElement\\('([a-z]+)'\\)|textEl\\(doc, '([a-z]+)'/", $row, $m);
+        $tags = array_values(array_unique(array_filter([...$m[1], ...$m[2]])));
+
+        $this->assertContains('a', $tags, 'plate-row.js creates no tags this parse can read — the tag clause reads nothing');
+
+        $sized = [...$tags, 'html', 'body', ':root', '*'];
+        $css = (string) preg_replace('#/\*.*?\*/#s', '', $sheet);
+        $defects = [];
+
+        preg_match_all('/([^{}]+)\{([^{}]*)\}/', $css, $rules, PREG_SET_ORDER);
+
+        $this->assertGreaterThan(5, count($rules), 'the sheet parsed to almost no rules — the sheet clause reads nothing');
+
+        foreach ($rules as [, $selectors, $body]) {
+            if (preg_match('/(^|;|\s)font(-size)?\s*:/i', $body) !== 1) {
+                continue;
+            }
+
+            if (preg_match('/font(-size)?\s*:[^;]*!\s*important/i', $body) === 1) {
+                $defects[] = "the sheet sets a text size with !important (`{$selectors}`) — it beats the plate label's own";
+            }
+
+            foreach (explode(',', $selectors) as $selector) {
+                $parts = preg_split('/[\s>+~]+/', trim($selector)) ?: [];
+                $subject = (string) end($parts);
+                $type = preg_match('/^(\*|:root|[a-z][a-z0-9]*)/i', $subject, $t) === 1 ? strtolower($t[1]) : null;
+
+                if ($type !== null && in_array($type, $sized, true)) {
+                    $defects[] = "the sheet sets a text size on `{$type}` (`".trim($selector).'`) — a plate\'s text is then not the body text size';
+                }
+            }
+        }
+
+        return $defects;
+    }
+
+    private function chromeSheet(): string
+    {
+        return (string) file_get_contents(public_path('css/mezzanine.css'));
     }
 
     /** `LABEL_FONT` through the `--label-scale` write, in `lobby/label-paint.js` — one anchor for a plant of both. */

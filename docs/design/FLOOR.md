@@ -110,7 +110,7 @@ it, and what it must never draw.
 | Identity: seat → desk, install → room, rooms → floor, desk position, collisions, first appearance, retirement | [§ 3](#3-identity-seat--desk-install--room-rooms--floor) |
 | The building layout: which rooms are on which floor, each room's form, what a room outside it renders as — and the floor **plan**: where each room sits, what is drawn where none is, and how a floor with no plan is arranged | [§ 4.6](#46-the-building-layout) |
 | The three screens — lobby, floor, drill-down — and what each fetches | [§ 4](#4-the-screens) |
-| The render map: every rendered fact, its D2 field and its example value; **the null render for every one of [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s 39 nullable members, in one table** ([§ 5.6](#56-the-null-render-for-every-nullable-member)); the one surface whose facts are the client's own ([§ 5.5](#55-the-clients-own-narration)); and the **coordination thread line** ([§ 5.7](#57-the-coordination-thread-line)) — [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s two objects, the only render on this page drawn between desks rather than at one, carrying its own null column because § 5.6's population is § 8.2.1's and is closed against it both ways | [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field) |
+| The render map: every rendered fact, its D2 field and its example value; **the null render for every one of [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s 40 nullable members, in one table** ([§ 5.6](#56-the-null-render-for-every-nullable-member)); the one surface whose facts are the client's own ([§ 5.5](#55-the-clients-own-narration)); and the **coordination thread line** ([§ 5.7](#57-the-coordination-thread-line)) — [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s two objects, the only render on this page drawn between desks rather than at one, carrying its own null column because § 5.6's population is § 8.2.1's and is closed against it both ways | [§ 5](#5-the-render-map--every-rendered-fact-and-its-d2-field) |
 | The honesty principle and the closed animation table | [§ 6](#6-the-honesty-principle--every-animation-and-its-driving-event) |
 | Degraded rendering, per state and per badge | [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) |
 | Subagent rendering and the array cap | [§ 8](#8-interns--subagent-rendering-and-the-cap) |
@@ -125,11 +125,11 @@ it, and what it must never draw.
 | **Any server-side change** — a new field, a new endpoint, a new message type, a new query parameter | [D2](FLEET-STATE.md). This document consumes the read surfaces exactly as D2 publishes them. Where a UI need is unmet, [§ 14](#14-open-questions-for-the-review-loop) files it as a D2 amendment need and states what is rendered in the meantime. **A UI that needed one new field to be honest would be a UI that is dishonest today**, so each of those items also says what the floor does without it |
 | **The state model** — what `working` means, when a seat is `stale`, which rule mints `idle` | [D2 § 4](FLEET-STATE.md#4-the-seat-state-model). This document renders `render_state`; it never computes one |
 | **The wire schema and the reporter** | [D1](EVENT-SCHEMA.md), cards #7335–#7337 |
-| **The choice of rendering library, bundler, or component framework** | The implementer's, deliberately. This document states the *capabilities* required ([§ 4.5](#45-the-viewport-rule-and-the-capability-floor)) and constrains nothing else: a spec that pinned a framework would be a spec that expires when the framework does, and none of the properties here depend on one. What it does constrain is the **asset pipeline**, because that is where a licence violation enters ([§ 10](#10-art-and-assets--provenance-as-a-gate)) |
+| **The choice of rendering library, bundler, or component framework** | The implementer's, deliberately. This document states the *capabilities* required ([§ 4.5](#45-the-viewport-rule-and-the-camera)) and constrains nothing else: a spec that pinned a framework would be a spec that expires when the framework does, and none of the properties here depend on one. What it does constrain is the **asset pipeline**, because that is where a licence violation enters ([§ 10](#10-art-and-assets--provenance-as-a-gate)) |
 | **MFA, login, session lifetime** | Card #7334 (Fortify + a stock TOTP package, D-04). This document states what the floor does when a session **expires** ([§ 9](#9-failure-paths-and-their-observables)); it does not specify the second factor |
 | **Prod and sandbox provisioning, deploy** | D-13 and D-15 (`docs/PLAN.md § 5`), owned by the Mezzanine build agent |
 | **Operator ACLs — who may see which install** | [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 7 owns it: **all-or-nothing, for now**, by operator ruling on 2026-09-13, to be reopened before a second organisation's install reports in. Any MFA-authenticated user sees every install ([D2 § 9](FLEET-STATE.md#9-read-side-authentication)), and this document renders exactly what the snapshot returns |
-| **The producer of task-title tier 1** — a board poller | ⚠ **Narrowed twice, and this cell said otherwise both times** — and narrowed a third time when card#7582 designed the board poller (ratified 2026-09-12), which this cell also said otherwise about until 2026-09-14. The GitHub receiver it also used to name **is** designed — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), whose read surface D2 carries at [§ 8.3.3](FLEET-STATE.md#833-the-coordination-objects) (card#9212) — and **tier 2, the title it fed, was then retired outright by operator ruling (card#9234, 2026-09-10)**, which is why this row now names one producer. The **board poller** is designed in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (card#7582, ratified 2026-09-12) and is not built. The agent-name→`seat_id` **join** to a desk is no longer unowned — a seat **declares** its own protocol agent name and D2 publishes the declaration on the seat object ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects); card#7957's ruling (d), built on the server's side on card#9296 and on the reporter's on card#9375) — and an unresolved participant remains a first-class rendering here rather than a guessed desk, which is that ruling's other half and is permanent — [§ 5.7](#57-the-coordination-thread-line) is where that rendering is now specified, and it is the one this document builds to. ⛔ Retiring tier 2 did **not** retire that producer or its objects; it removed the second consumer of one producer, and the join is now the **thread line's** to wait on rather than a title's. [§ 5.1](#51-the-desk) renders whichever tier `task.source` says answered, and [§ 14](#14-open-questions-for-the-review-loop) item 4 records the question closed by operator ruling, 2026-09-14 |
+| **The producer of task-title tier 1** — a board poller | ⚠ **Narrowed twice, and this cell said otherwise both times** — and narrowed a third time when card#7582 designed the board poller (ratified 2026-09-12), which this cell also said otherwise about until 2026-09-14. The GitHub receiver it also used to name **is** designed — [D1 § 18](EVENT-SCHEMA.md#18-the-coordination-event-producer), whose read surface D2 carries at [§ 8.3.3](FLEET-STATE.md#833-the-coordination-objects) (card#9212) — and **tier 2, the title it fed, was then retired outright by operator ruling (card#9234, 2026-09-10)**, which is why this row now names one producer. The **board poller** is designed in [`docs/design/BOARD-TASK.md`](BOARD-TASK.md) (card#7582, ratified 2026-09-12) and built on card#11289; it stays dark until an operator configures it (`BOARD-TASK.md § 10`). The agent-name→`seat_id` **join** to a desk is no longer unowned — a seat **declares** its own protocol agent name and D2 publishes the declaration on the seat object ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects); card#7957's ruling (d), built on the server's side on card#9296 and on the reporter's on card#9375) — and an unresolved participant remains a first-class rendering here rather than a guessed desk, which is that ruling's other half and is permanent — [§ 5.7](#57-the-coordination-thread-line) is where that rendering is now specified, and it is the one this document builds to. ⛔ Retiring tier 2 did **not** retire that producer or its objects; it removed the second consumer of one producer, and the join is now the **thread line's** to wait on rather than a title's. [§ 5.1](#51-the-desk) renders whichever tier `task.source` says answered, and [§ 14](#14-open-questions-for-the-review-loop) item 4 records the question closed by operator ruling, 2026-09-14 |
 | **Sound** | There is no audio in this design. A sound is an animation by another sense and would need its own rows in [§ 6.2](#62-the-animation-table--the-closed-set) with the same totality rule; adding one without them would be adding an un-driven cue. If audio is wanted it is a review decision, not an implementer's |
 | **Historical views, charts, trends** | [D2 § 1.2](FLEET-STATE.md#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) rules out the warehouse; the product answers *what is happening now*. The drill-down's timeline is a bounded window over retained events, not a history |
 | **Multi-tenant theming and per-user preferences** | Nobody has asked. ⚠ This row also said *layout customisation* until card#9208's reversal (2026-09-12): a room's design and a floor's composition are now operator-authored at runtime ([§ 10.3](#103-the-floor-map), [§ 4.6](#46-the-building-layout)), and what stays out is customisation **per viewer**. The one preference honoured is the platform's own `prefers-reduced-motion` ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)), because a state carried only by motion is a state some users cannot read |
@@ -578,7 +578,7 @@ omission.
   |---|---|---|---|
   | **quiet age** | `activity.last_received_at` | ***nothing done for 4m 12s*** | desk and drill-down; version-bearing, so it ticks. On an `idle` desk it appears inside that state's label line as *finished — nothing done for 4m 12s* ([§ 7.1](#71-the-render-per-state)) — the same readout under the state's own sentence, never a second wording |
   | **receipt age** | `delivery.last_receipt_at` | ***no data for 11m*** | the **desk**, under the **`dark-only`** marker below, which owns which desks may draw it and why it may tick; and the drill-down's transport block on **any** seat, under that block's *as of* stamp, **never** ticked (**`fetch-fresh`**). The form's exemplar is 11m rather than the 4m 12s the rows above use, because 4m 12s is inside no state the first surface named here can be in ([D2 § 4.5](FLEET-STATE.md#45-link-states): `stale` begins at 300 s). **`named-not-rendered`** — this row fixes the string and draws no value from the member; the two markers it names are pointers to the rule below, and it is the render-map rows that draw it that carry them |
-  | **action elapsed** | `action.started_received_at` | ***running for 2m 05s*** | desk and drill-down, wherever the open action is drawn; version-bearing, so it ticks. **Both ends are the server clock**, which is what makes it the one honest duration over an action ([§ 5.1](#51-the-desk)) — `action.started_at` is the seat's own claim and is rendered as a labelled timestamp beside it, never subtracted from anything |
+  | **action elapsed** | `action.started_received_at` | ***running for 2m 05s*** | the drill-down and the desk list, wherever the open action is drawn — not the desk, since the operator's ruling of 2026-10-02 (card#11058, Q5 b); version-bearing, so it ticks. **Both ends are the server clock**, which is what makes it the one honest duration over an action ([§ 5.1](#51-the-desk)) — `action.started_at` is the seat's own claim and is rendered as a labelled timestamp beside it, never subtracted from anything |
   | **derivation lag** | `derivation.fold_lag_ms` | ***this state is 1m 57s behind*** | **`fetch-fresh`**, so never ticked on any surface — and *which* surfaces is [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s to say, not this table's. This row fixes the string; that section owns where it appears and under what condition. **`named-not-rendered`** — this row draws no value from the member either, for the same reason: the marker it names is the one the render-map row that draws it carries |
 
   **Two rendered figures look like a fifth row and are neither.** *(a)* A **currency label's
@@ -617,6 +617,19 @@ pair carries values. The timestamp says *when* and is
   ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by), citing
   [D1 § 10.1](EVENT-SCHEMA.md#101-two-clocks-and-which-is-authoritative-for-what)), and the seat's
   `delivery.clock_skew_ms` is rendered beside it in the drill-down whenever it is non-null.
+- **Every timestamp on this page is shown in the viewer's browser zone** — the zone
+  `Intl.DateTimeFormat().resolvedOptions().timeZone` names in the viewer's own browser — and every one
+  of them goes through **one converter**, `public/js/wire/clock.js` (card#9446; the operator's ruling of
+  2026-09-14). The wire and the store stay UTC, the server emits UTC only, and there is no stored
+  per-user zone, no picker and no setting. A server-clock stamp and a *seat clock* claim are converted
+  alike: *seat clock* names whose clock made the claim, never a zone. The zone is said **once per
+  page**, by [§ 5.5](#55-the-clients-own-narration)'s zone line, so the stamps themselves keep their
+  bare *HH:MM:SS* forms. The wall clock was the viewer's own time before this rule and is unchanged by
+  it. The console's server-rendered pages print each instant as labelled UTC inside a
+  `<time datetime="…Z">` that the same converter rewrites to `YYYY-MM-DD HH:MM:SS GMT±H[:MM]` (`UTC`
+  at a zero offset), so with JavaScript off they read UTC and say so. `Tests\Feature\Support\EveryTimeGoesThroughTheConverterTest`
+  reds when the client, a view or a controller prints an instant in one of the raw-print shapes it
+  names; its own docblock states the shapes it cannot see.
 
 **Ten fields the feed never re-sends, and the two markers every render of one must carry. This
 section owns that rule** — the two markers, the third token, which tables the rule runs over and what
@@ -757,7 +770,7 @@ would let a live desk carry the receipt age honestly.
 | **desk** | `(install_id, seat_id)` | [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object), which carries both on every seat object and every delta, bounded at 32 B and 48 B | D1's identity-stability rule: both are **config-file resident** and "survive session restarts, `/clear`, reboots, host renames, and harness upgrades" ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)). They change only when a human edits the file, which is a deliberate re-identification of the desk |
 | **room** | `install_id` | the snapshot's `installs[].install_id`, and the `install_id` every message on the stream carries ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)) | same file, same rule |
 | **floor** | its **key** — the lexically least `install_id` among the floor's rooms ([§ 4.6](#46-the-building-layout)), **derived and never authored**. ⚠ A floor's **label** ([§ 4.6](#46-the-building-layout), card#9273) is **not this column**: it is a rendered name, nothing routes, sorts or matches on it, and editing it moves no key | the **building layout**, authored by the operator and read by nobody on the write side; an install the layout does not place is a floor of its own, keyed by itself. A floor key is always the `install_id` of one of the floor's own rooms, so it is stable in exactly the way the row above is | the layout is authored in the admin console and served by [D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed) (card#9208's reversal, 2026-09-12 — it was a deploy-time artifact until then); a floor changes when an operator composes one, which is a deliberate act with a revision behind it ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)), and its key moves only when a room that sorts below it is added — the old key still resolves ([§ 4.4](#44-routes-and-what-each-one-fetches)) |
-| **character identity** (which sprite a seat gets) | `(install_id, seat_id)` | the procedural generator, seeded from the key ([§ 10.2](#102-characters-the-munder-difflin-port)) | a seat looks the same on every reload and on every browser, because the seed is the identity and not a random draw |
+| **character identity** (which sprite a seat gets) | `(install_id, seat_id)` | the creature generator, seeded from the key ([§ 10.2](#102-characters-original-creatures-drawn-by-code), [§ 10.4](#104-the-art-direction-as-a-specification)) | a seat looks the same on every reload and on every browser, because the seed is the identity and not a random draw |
 
 ⭐ **A ROOM IS AN INSTALL; A FLOOR IS AN OPERATOR-COMPOSED SET OF ROOMS — operator ruling, 2026-09-11
 (card#9267), which closed [§ 14](#14-open-questions-for-the-review-loop) item 6 and is the reason this
@@ -811,24 +824,58 @@ slot sets drawn on one screen; the function is layout-agnostic and does not know
                                                           # over the UTF-8 bytes; both ids are ASCII
                                                           # by D1 § 3.1's slug patterns
   S        = the number of slots the ROOM's map declares
-  order    = the room's seats ascending by (h, seat_id)    # total: seat_id is unique within an install
+  (k, R)   = (index after the id sort, role) of the one `desks` object carrying
+             `reserved_for` (§ 10.3), else NONE
+  eligible = { seat in room : seat.protocol_agent_role === R }   # strings only: null equals nothing
+  holder   = the single member of eligible when |eligible| == 1, else NONE
+  taken    = { k } if k is not NONE                        # reserved, held or not
+  slot(holder) = k                                         # if holder is not NONE
+  order    = the room's seats other than holder, ascending by (h, seat_id)
+                                                          # total: seat_id is unique within an install
   for seat in order:
       for i in 0 … S-1:
-          if slot ((h + i) mod S) is free -> take it, stop
+          if slot ((h + i) mod S) is not taken -> take it, stop
       # no free slot: the overflow rule below
 ```
 
-**Worked assignment — the shipped default map, S = 12, which is the map the `aimla` room renders
+**The reserved desk is a slot taken before the loop** (card#11144). A map may reserve one desk for a
+role ([§ 10.3](#103-the-floor-map)'s `reserved_for`); the room's one seat whose relayed
+`protocol_agent_role` ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)) equals it, compared as
+strings, sits there, and the client knows no role by name — only the equality. **With nobody eligible
+the desk stays empty and reserved** (the operator's ruling Q3 A), and **with two or more eligible
+nobody sits there** (Q4 A): each hashes as an ordinary seat and [§ 9](#9-failure-paths-and-their-observables)
+F22's notice names them. Either way the loop never hands the desk out — a hash landing on it probes
+on exactly as one landing on a held desk does, so the ring stays `S` desks wide and no other seat's
+hash changes because a desk is reserved.
+
+| Case | What happens | Who moves | Animation / narration |
+|---|---|---|---|
+| reserved, nobody eligible | the desk is empty and reserved; the others hash with `k` taken | nobody | the plain floor at the desk; [§ 5.5](#55-the-clients-own-narration)'s *reserved for `pm` (id 3) — no seat holds that role* |
+| a seat's first appearance with the role | [§ 3.4](#34-a-new-seats-first-appearance)'s first-appearance row | the seat, and at most its chain | [A1](#62-the-animation-table--the-closed-set) (or an insert) at its hash slot, then [A16](#62-the-animation-table--the-closed-set) to the reserved desk |
+| the holder retires | [A13](#62-the-animation-table--the-closed-set); `k` stays empty and reserved | nobody ([§ 3.5](#35-retirement-and-the-only-removal)) | A13 only |
+| a relayed role changes on a delta | the seat moves between its hash slot and `k`; the chain through the slot it leaves or takes re-probes | that seat, and at most its chain | A16, its `cause` the delta's `state_version` |
+| two eligible seats (Q4 A) | the desk seats nobody; both hash as ordinary seats; the incumbent walks out and may displace one | the incumbent, and at most its chain | A16 (its `cause` the arriving seat's key, or the delta that made the second seat eligible); [§ 9](#9-failure-paths-and-their-observables) F22's notice |
+| a handover | F22 while both are present: the incumbent walks out; on the old one's retirement the new one walks in. Retiring the old one first avoids the walk-out | both, in turn | A16, then A13 and A16 |
+| no reservation on the map | the function above with `k` NONE — every seat hashes | — | — |
+| a save adds or removes the reservation | a layout act; the chain through `k` re-probes | at most that chain | none ([decision 29](#13-decisions-taken-revisable-at-review)) |
+| ordinary seats past `S − 1` | the overflow row below; [§ 9](#9-failure-paths-and-their-observables) F13 counts them against the `S − 1` desks left | — | — |
+
+**Worked assignment — the shipped default map, S = 6, which is the map the `aimla` room renders
 until an operator authors one.** The map is **served at runtime** ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), and
 [§ 10.3](#103-the-floor-map) is where the default lives — it is in the tree since card#9269 — and what holds `S` to it. Every value below is re-derived by
 `tools/design/verify-floor.py` from the function above, not transcribed:
 
-| Seat | `h` | `h mod 12` | Probes | Slot |
+| Seat | `h` | `h mod 6` | Probes | Slot |
 |---|---|---|---|---|
-| `aimla/aimla-review` | 185683291 | 7 | 0 | **7** |
+| `aimla/aimla-review` | 185683291 | 1 | 0 | **1** |
 | `aimla/aimla-impl-1` | 671323131 | 3 | 0 | **3** |
-| `aimla/aimla-impl-2` | 688100750 | 2 | 0 | **2** |
-| `aimla/aimla-pm` | 2865560748 | 0 | 0 | **0** |
+| `aimla/aimla-impl-2` | 688100750 | 2 | 2 | **4** |
+| `aimla/aimla-pm` | 2865560748 | 0 | role | **2** |
+
+The default reserves its desk id 3 — index **2** after the id sort — for `pm`
+([§ 10.3](#103-the-floor-map)), and `aimla-pm` is the room's one seat relaying `pm`, so it sits there
+by its role and its Probes cell reads `role`: it never entered the loop. `aimla-impl-2`'s hash slot
+**is** the reserved desk, so it probes 2 → 3 → 4 — the reserved desk skipped exactly as a held one is.
 
 **Why a hash and not the obvious alternatives.** Sorting seats by `seat_id` into slots 1…N is simpler
 and is rejected: inserting `aimla-alpha` would shift **every** later desk by one, so provisioning one
@@ -850,8 +897,13 @@ map needs no naming: a floor now has N maps, and *which map is short* is the que
 exists to answer (card#9292). A floor plan changes no seat's fate here: a room
 drawn *for PM+3impl* holds its map's `S` desks and a seat past them is this row, planned or not.
 Map authors should size `S` above the install's planned seat count; the
-shipped default declares 12, which for the `aimla` room's four seats is 3× ([`docs/PLAN.md § 5`](../PLAN.md#5-deployment): aimla's
-four seats first, then a Windows validation seat, then others as they opt in).
+shipped default declares 6, because most floors hold six agents or fewer (the operator's ruling of
+2026-10-01, card#11045, which sized the default for six so its room is legible at fit in a laptop
+window) — a PM at its reserved desk and five others (card#11144); for the `aimla` room's four seats,
+the PM among them, that leaves two desks free
+([`docs/PLAN.md § 5`](../PLAN.md#5-deployment): aimla's four seats first, then a Windows validation seat,
+then others as they opt in). **A seventh agent is this row and its notice**, and that notice is the
+prompt to author a map with more desks: the bench is the designed answer to growth, not an accident.
 
 ### 3.3 Collision, displacement, and why a desk move is itself an event
 
@@ -859,9 +911,11 @@ Two seats of one install can hash to one slot. The chain resolves by the `(h, se
 which means an **arriving seat can displace an incumbent** — deterministically, and only when it sorts
 lower in the chain.
 
-**Worked collision.** On the shipped default above — the `aimla` room's map — provisioning `aimla-impl-4` (h = 721655988,
-h mod 12 = **0**) collides with `aimla-pm` (h = 2865560748, slot 0). 721655988 < 2865560748, so
-`aimla-impl-4` takes slot 0 and `aimla-pm` probes to slot **1**. Every other desk is untouched.
+**Worked collision.** On the shipped default above — the `aimla` room's map — provisioning `aimla-mac-1` (h = 214254736,
+h mod 6 = **4**) collides with `aimla-impl-2` (h = 688100750, slot 4). 214254736 < 688100750, so
+`aimla-mac-1` takes slot 4 and `aimla-impl-2` probes to slot **5**. Every other desk is untouched — the
+holder included: an arrival never displaces the reserved desk. (`aimla-impl-4`, h mod 6 = 0, lands on
+the PM's free hash slot and moves nobody.)
 
 This is a real cost and it is paid deliberately: incumbent-stability would require tenure, tenure would
 require a `first_seen` the wire does not carry, and inventing one is what
@@ -875,9 +929,14 @@ make the cost bounded and honest:
 2. **It is bounded to the collision chain.** No seat outside the chain moves, and
    [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) asserts exactly that against the fixture
    above.
-3. **The frequency is stated, not hoped.** The chance that an arriving seat collides is `N/S`; on the
-   shipped default as the `aimla` room renders it (N = 4, S = 12) that is **1 in 3**, and it displaces only when it also sorts lower —
-   so a map author who wants displacement rarer raises `S`, and the formula says by how much.
+3. **The frequency is stated, not hoped.** The chance that an arriving seat collides is `N/S`, where
+   `N` counts the held-or-reserved slots — the reserved desk counts as held whether or not anyone
+   holds it ([§ 3.2](#32-the-desk-slot-function)); on the
+   shipped default as the `aimla` room renders it (N = 4, S = 6) that is **2 in 3**, and it displaces only when it also sorts lower —
+   so a map author who wants displacement rarer raises `S`, and the formula says by how much. ⚠ **That is
+   twice the twelve-desk default's 1 in 3, and it is the price of the six-desk room** (card#11045): a fifth
+   `aimla` seat is more likely than not to land on a held slot, and when it sorts lower it moves one desk
+   ([A16](#62-the-animation-table--the-closed-set)) — bounded, animated and caused, as above.
 
 **Two seats claiming one identity is not a case, and no branch is built for it.** A token binds exactly
 one `(install_id, seat_id)` ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file),
@@ -895,9 +954,10 @@ A seat exists on the floor from the moment it is provisioned, because
 | Moment | What the floor shows | Driven by |
 |---|---|---|
 | provisioned, never reported | the desk, the nameplate, **no character** — an empty chair and the label *no data yet* | `render_state: "offline"`, `unknown_reason: "no_data_yet"` — and `delivery.last_receipt_at: null` is the upstream **input** D2 § 4.5 rule 1 mints those from, **`named-not-rendered`** here ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) |
-| first batch lands | the character **walks in** and sits ([A1](#62-the-animation-table--the-closed-set)) | the delta whose `changed[]` carries `render_state`, leaving `offline` |
+| first batch lands | the character **steps out of the elevator**, walks to its desk and sits ([A1](#62-the-animation-table--the-closed-set)) | the delta whose `changed[]` carries `render_state`, leaving `stale` or `offline` for a member that draws a character ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 1) |
 | first `tool.start` | the working loop begins ([A3](#62-the-animation-table--the-closed-set)) | `render_state: "working"` |
-| the seat was inserted by [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s fetch | the desk appears **without** an arrival animation, and the client's event log records *seat added to the floor* | an insert is not a state change; the arrival animation is reserved for a seat leaving `offline`, which is a claim the wire actually made |
+| the seat was inserted by [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s fetch | the desk appears **without** an arrival animation, and the client's event log records *seat added to the floor* | an insert is not a state change; the arrival animation is reserved for a seat leaving `stale` or `offline` for a member that draws a character ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 1), which is a claim the wire actually made |
+| the seat relays the role its room's map reserves a desk for ([§ 3.2](#32-the-desk-slot-function), card#11144) | **first at its hash slot**, by the row above that applies — [A1](#62-the-animation-table--the-closed-set) for a client holding the seat from a snapshot, the insert's appearance with no animation for a client that connected before it was provisioned — **then a walk to the reserved desk** ([A16](#62-the-animation-table--the-closed-set)), and the chain through the slot it left re-probes | a provisioned seat renders `offline` with `protocol_agent_role: null` before it reports, and the reporter's first pass drains before it heartbeats, so the role arrives on a later delta than the one that took the seat out of `offline`. That delta is A16's `cause` ([§ 11](#11-acceptance-tests)); landing while the A1 walk is in flight, it cancels that walk ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 6), and the seat appears seated at the reserved desk |
 
 The distinction in the last row is the honesty principle applied to the one edge where an implementer
 would naturally reach for the nicer effect: *a desk appearing because the client had not fetched it yet*
@@ -929,6 +989,7 @@ from it. The nameplate was never doing the disambiguating work claimed for it.
 | `retired.at` / `.by` / `.reason` | **not rendered on this floor at all.** The record does not go with the desk — it **moves**: the admin console's agent module is its home, where it is queryable, bounded by no window, and consumes no slot on a floor whose slot count is finite ([D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)). ⛔ The client draws **no** retirement plate, and must not assemble one from the removal log line: `by` is not on the wire at the moment of the announcement, so a plate that named an operator would name one the wire never sent ([§ 5.4](#54-what-is-never-rendered)) |
 | `link_state` / `activity_state` underneath | nothing on this floor renders them once the desk is gone — the drill-down goes with the desk. D2 keeps deriving them ([D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)) and its own read surfaces stop serving the seat at `retired_at`, so this client cannot fetch what a removed seat was doing; the console above is where that question is asked |
 | the seat's absence from the next snapshot | **nothing happens — the desk left on the announcement**, and a population that no longer lists the seat agrees with a floor that no longer draws it. [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)'s last row remains as the **backstop** for the one client this cannot reach: one that was disconnected when the announcement went out |
+| the reserved desk's holder ([§ 3.2](#32-the-desk-slot-function), card#11144) | its desk is removed like any other, and **the reserved desk stays empty and reserved** — taken before the probe loop whether or not anyone holds it, so the holder's retirement **moves nobody** and writes no [A16](#62-the-animation-table--the-closed-set) |
 | the desks that shared its collision chain | they **re-probe**, because [§ 3.2](#32-the-desk-slot-function)'s assignment is a pure function of the **rendered seat set** and that set just changed. The move is [A16](#62-the-animation-table--the-closed-set) — a desk move is an event and is animated as one — and it is bounded to the chain, exactly as an arrival's displacement is ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)). ⚠ **This is a cost the ruling adds, stated here rather than discovered on a floor:** a retirement can move one other desk. Holding the departed seat's slot to avoid it would be a stored position — which [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith) forbids this document from minting — and would make the assignment depend on history instead of on the set |
 
 **A desk still never vanishes because data went missing.** The rule
@@ -985,7 +1046,7 @@ summary** over the seats the client already holds in [§ 7.1](#71-the-render-per
 order, the fleet totals and the membership stamp are the same two readouts, and **the plate is the
 link** exactly as the list row was. No new field is read, no count is recomputed, and
 [§ 4.4](#44-routes-and-what-each-one-fetches)'s three routes are untouched — an elevator ride and a
-zoom-to-floor are [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera arriving at
+zoom-to-floor are [§ 4.5](#45-the-viewport-rule-and-the-camera)'s camera arriving at
 `/floor/{floor}`, which is the route this document already declares and which must still
 deep-link on a cold start (the cross-section and the cab's ride between plates are built — PR #96, card#7343 part 1, `server/public/js/lobby/building-model.js` — and so are the ride's arrival at that route and row 15's camera at building scale, [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 16's slice A, and the plate drawn as the reference's section with its cab, the roof sign and the ground lobby, its slice B). **A cross-section that had replaced the summary with the desks themselves
 would have been a different change** — it would have made the lobby's counts a thing a viewer counts
@@ -1146,7 +1207,7 @@ edges aligned, [§ 12](#12-every-number-and-where-it-comes-from)'s gap apart, an
 union of all of it — **every room placed on the floor, the room whose map failed included**, which is
 [§ 4.6](#46-the-building-layout) rule 5 and is where its reasoning is — computed from documents the
 client holds and from where the plan put them, stored nowhere — and
-[§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera pans and zooms over it as over any floor wider than the viewport.
+[§ 4.5](#45-the-viewport-rule-and-the-camera)'s camera pans and zooms over it as over any floor wider than the viewport.
 **The wall clock and the windows are drawn ONCE, on a back-wall band the floor screen itself owns,
 spanning the floor's whole extent above the composed slab** — inside no room's map and inside no
 hallway's, which is what makes them the floor's. A floor of five offices has one clock over all
@@ -1175,6 +1236,84 @@ which is this floor's strongest state vocabulary. The lobby's plates carry a sum
 names, never a drawn interior, and draw no clock at all (card#9267,
 [§ 4.1](#41-the-lobby--the-building-summary)).
 
+**The floor's FRAME — what the floor draws around and under any map (card#11045 PR-D, the operator's
+rulings of 2026-10-01).** The look is [§ 10.4](#104-the-art-direction-as-a-specification)'s 3/4 top-down oblique: the back wall face-on at the top, the floor plane
+under it seen from a little above, the author's furniture and the built desks standing on that plane. A
+configurable plan renders well because the floor supplies the frame and the map supplies the interior, so
+an author places floor, interior walls, furniture and desk slots and nothing else. **Nothing the frame draws
+sits over an author's grid**: the band and the slab lie outside every room's footprint and the hallway's, and
+each grid's plane lies exactly under its own grid. The layer order is the build's, with the frame inside it:
+the band and the slab, the hallway's plane and its scenery, each room's plane then its own scenery in draw
+order, the decorative glows, the coordination lines, the desks, the strip's header, the transient effects.
+Since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 22 (card#11046) everything in the
+frame that carries no fact is drawn by the **floor's THEME** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme),
+the operator's ruling of 2026-10-07: a design per building floor), over a flat fallback fill the painter
+draws on every paint. The frame, top to bottom:
+
+- **The exterior** — the floor's bare ground beyond every room and hallway, which is the drawing's own
+  background (`server/public/css/mezzanine.css`'s `#floor-drawing`: `--ground` fading to `--ground-deep`) and
+  not a scene element, so it lies behind wherever the camera looks.
+- **The back-wall band, 160 px tall**, spanning the floor's extent above the slab, **in its floor's THEME**
+  ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)): the theme draws the wall — its skirting and
+  its end posts among it — and the surrounds of the elevator, the clock and each window, over the band's flat
+  fallback fill (`--house-wall`); the leaves, the clock's hands and its unset treatment, and the glazing with
+  its sky stay the painter's on every theme. Its left **272 px is a reserved zone**: the **two-door elevator** — two leaves meeting at a
+  seam in the theme's surround, which draws the frame, the header plate with its plain dial, the lamp, the
+  recess and the call buttons; the leaves are the lobby cab's, in the lobby's own door
+  colours (`--door` / `--door-edge`, [§ 10.4](#104-the-art-direction-as-a-specification)), so the floor and
+  the lobby read as one building — and the **wall clock**, A17's, hung at mid-wall right of it. **The elevator
+  is where a seat leaves the floor and where it comes back** (card#9566, the operator's request of
+  2026-09-14): its leaves open and close as part of [§ 6.2](#62-the-animation-table--the-closed-set)'s
+  [A1](#62-the-animation-table--the-closed-set) and [A2](#62-the-animation-table--the-closed-set) and
+  for nothing else — it takes no row of its own, and the walk note under that table owns when the leaves
+  move. At rest, and under reduced motion always, the leaves are closed. **It still never navigates**: the
+  elevator that navigates is the lobby's ([§ 4.1](#41-the-lobby--the-building-summary)), reached by the
+  floor's *whole building* control. ⚠ Until card#9566 this sentence read *the elevator is scenery: it never
+  opens and takes no § 6.2 row*. A band narrower than its zone — a stored map narrower than that
+  ([§ 9](#9-failure-paths-and-their-observables) F21) — is widened to the zone, so the clock always hangs on
+  the wall. **The windows** fill the wall past the zone: `⌊(width − zone − margin) ÷ 360⌋` of them, at least
+  one, spread evenly, each **208 × 80 px** of glazing 22 px below the band's top ([decision 61](#13-decisions-taken-revisable-at-review), the
+  approved picture's), the sky's phase inside; its frame, cross mullion, curtains, rod and sill are the floor's
+  theme's window surround, drawn over the glazing in the glazing grown by § 12's surround margin ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)),
+  so the short window above the rail and the sage lower wall still reads as an office's and not a jail's; on a band too short for a full one the window is
+  narrowed to its cell less a gap, never under a minimum. **Which rule holds where** (design review r3
+  MINOR-1): *at least one* holds from the width that fits the zone, the margin and one minimum window with
+  its gap (`ZONE_W + margin + min_w + gap` in `server/public/js/floor/scene.js`) upward, which every floor one
+  furniture box wide clears; below that width the band draws **no** window, because the only place one could
+  stand is inside the zone. **No window and no other band primitive ever meets the clock's face**
+  ([AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor)'s clock
+  clause), and no window's surround or the elevator's does either ([AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s
+  band leg). **The end posts** (the operator's ruling of 2026-10-04 on the back corner, option B): a post
+  8 px wide and the band's full height up each end of the band — the side walls' end faces rising beside the
+  back wall's, so the corner where a map's side strips meet the band closes — drawn by the floor's theme in
+  its wall (the house theme's `#9aa982`). They lie inside the band's span and outside every grid, and stand on
+  an authored map with no side strips too, where they read as the back wall's own end thickness.
+- **The slab** — the front wall's top edge, a strip under the floor's extent in the wall colour, across the
+  band's span, outside every grid.
+- **Each grid's plane** — for every room whose map is drawn, and for a planned floor's hallway, a plane over
+  exactly that grid, a room's opaque over the hallway as a room is (above), drawn before that grid's scenery
+  and so under everything the author placed: the floor's theme's drawing of the grid — its floor, the light
+  on it, its `accent` region, its `wall` runs and, on the topmost grid holding the elevator's threshold, the
+  landing ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) items 2, 6 and 7) — over a flat
+  `--scene-floor` fill. This is the whole of what the frame draws per grid; a per-room sign and a baseboard
+  were both refused in design, because each would sit over an author's grid edge or inside an abutting
+  neighbour's. Two rooms on one storey are drawn in one theme and one floor ([decision 58](#13-decisions-taken-revisable-at-review)),
+  and are told apart by § 12's gap on an unplanned floor, by the author's own walls and by their names —
+  [decision 40](#13-decisions-taken-revisable-at-review)'s seeded per-room tints retired at row 22.
+- **The overflow bench** — [§ 3.2](#32-the-desk-slot-function)'s overflow row, drawn only when a seat is on
+  it, which **wraps** at the floor's width into further rows (F13).
+- **A mapless room** ([§ 9](#9-failure-paths-and-their-observables) F16) — its desks are placeholders at its
+  origin, and that origin enters the floor's extent as a point ([§ 4.6](#46-the-building-layout) rule 5,
+  `server/public/js/floor/floor-layout.js`'s `placeRooms()`), so the band spans it; it gets no plane, because
+  F16 draws every fact and no room.
+
+**An unused slot is plain floor** — plain floor under the lamplight pool every slot has ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)), and still no desk — no spare desk stands at a slot no seat holds
+([decision 41](#13-decisions-taken-revisable-at-review)). `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` holds
+the frame over the smallest room a valid map makes, a sparse map, a planned floor of two abutting rooms over
+a hallway — the hallway's plane among its planes — and a mapless room, and sweeps the band at every whole
+width from 1 px up to the test's own bound;
+it reads rects, so the look is the screenshots' to show.
+
 The desk is the unit. Everything on it is [§ 5.1](#51-the-desk)'s table; every motion on it is
 [§ 6.2](#62-the-animation-table--the-closed-set)'s table — **the desk takes no decorative motion at
 all**, because it is the element a `render_state` is rendered on and
@@ -1184,13 +1323,49 @@ motion there claim-bearing; every degraded treatment is
 
 **The floor is legible without hover.** A viewer standing back must be able to read, per desk: the
 state (pose + glyph), whether the state is current (the currency treatment), the seat name (nameplate),
-and whether anything is wrong (badge cluster). Everything else — the descriptor, the task, the gauge
+and whether anything is wrong (the badge row and the flag, [§ 5.1](#51-the-desk)'s *the glance set*). Everything else — the descriptor, the task, the gauge
 numerals, the ages — is desk-adjacent text at a size that rewards approaching, and all of it is in the
 drill-down at full fidelity. **The task's thought bubble ([§ 5.1](#51-the-desk)) sits across that
 split rather than on one side of it, and deliberately:** its *presence* is readable standing back — a
 desk with a task and a desk without are different shapes — while its *text* rewards approaching like
 the rest of this paragraph's list. Presence is exactly the fact `task` being non-null carries, so
 nothing is claimed at the distance the text cannot be read at.
+
+**The page around the room — its chrome, top to bottom (card#11045 PR-A).** The room drawing is one
+part of a page, and this is the list of the others, in the order the page shows them: the layout's
+**header** — the page's `<h1>`, kept on every page, with the **building's** counts beside it
+(`fleet.seats_total` · `fleet.seats_live`, the lobby's own words from [§ 4.1](#41-the-lobby--the-building-summary)
+row 3, never recounted) and the way back to the lobby; the **status strip**, one row of chips in
+clusters — this page's own connection ([§ 5.5](#55-the-clients-own-narration)), the fleet's indicators,
+never aggregated ([§ 5.3](#53-the-fleet-on-both-screens)), and the room render's clock and sky — each
+chip its WORDS alone, with no coloured state dot: a dot's colour would be a verdict on the value, and
+`server/public/js/floor/main.js` decides nothing, so a dot waits until the strip's model
+(`floor/status-strip.js`) carries a tone per chip, while a fixed colour would claim *ok* on a feed that is
+down ([§ 4.5](#45-the-viewport-rule-and-the-camera)'s colour rule says a dot could never be the only
+carrier anyway); the
+**statements and notices** of [§ 9](#9-failure-paths-and-their-observables), each a bar present only
+while its condition holds; the **camera row** — the floor's name, and the camera's controls
+([§ 4.5](#45-the-viewport-rule-and-the-camera)), outside the drawing so that no control covers a desk
+at fit; the **drawing**; the **gesture hint** under it — one line, *scroll to pan · ctrl+scroll or pinch to
+zoom · drag to pan · arrows · + −* (*drag to pan · pinch to zoom* in a narrow window), offered with the
+camera's controls and hidden while the camera frames nothing, its row's height kept either way (card#11045
+PR-B, [§ 4.5](#45-the-viewport-rule-and-the-camera)); and below it **the sections — the desks, the overflow, the coordination
+threads and this page's event log — each a `<details>` closed by default** (the operator's ruling on
+card#11045). The drill-down ([§ 4.3](#43-the-desk-drill-down-panel)) is a card over the room, below the
+strip and the camera row so both stay in view while it is open; the sign-in prompt is a card centred on
+the window; neither is inside one of those sections. **The drawing's height is ALL the viewport's height
+the chrome shown above it leaves**, never under a floor and with no ceiling, less a reveal that — while
+the drawing is above its 320 px minimum — keeps the first section's summary in view directly under the
+drawing's hint line; at that minimum the summary sits below the fold — a ceiling left a tall window's
+remaining height empty between the room and the sections (card#11045 review r1);
+those two figures and the palette are `server/public/css/mezzanine.css`'s, the one stylesheet the
+layout links, and the camera's surface is the drawing's own box, re-read whenever the chrome above it
+changes ([§ 12](#12-every-number-and-where-it-comes-from)'s reference-viewport row says which surface
+its figure is). Only the chrome reflows in a narrow window; the drawing is the same at every size.
+`tools/design/floor-chrome.browser.mjs`, run by hand (no browser on the build host), renders this view
+under that sheet across a sweep of window sizes and reds on any gap between the drawing, the hint's row and
+the first section, a hint row that is not its 24 px, a reveal that is not the sheet's, a drill-down over the strip or the camera row, or a drawing
+narrower than the page; `--selftest` plants each in a copy of the sheet and watches it red.
 
 ### 4.3 The desk drill-down panel
 
@@ -1225,17 +1400,27 @@ stamp instead, so a reader can always see which moment those numbers describe.
 | Panel section | Contents | Source |
 |---|---|---|
 | **header** | seat name, floor, `render_state` with its plain-language line, the currency label if any | [§ 5.1](#51-the-desk) |
+| **the desk's render** | the desk as the floor draws it, on one line: the glyph · the pose · the lighting · its motion — ***moving*** or ***still***, [§ 6.2](#62-the-animation-table--the-closed-set)'s `motion` under this page's reduced-motion reading and [§ 9](#9-failure-paths-and-their-observables) F6's stilled floor · ***unconfirmed*** for a seat [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5 can no longer confirm; and [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s ***sending nothing*** on a `config_invalid` seat | `render_state`, `open_turn`, `open_calls`, `badges[]`, [§ 7.1](#71-the-render-per-state) |
+| **unrecognised values** | one line per value [§ 5.4](#54-what-is-never-rendered) does not recognise — in `render_state`, `link_state`, `activity_state`, `unknown_reason`, `api_error_type` or `badges[]` — as the raw ***field: value***, under the word ***unrecognised***; no line and no heading when there is none | the six fields, [§ 5.4](#54-what-is-never-rendered) |
 | **current task** | `task.title`, the tier that answered (`task.source`), the reference as plain text ([§ 5.2](#52-the-drill-down)), *stale title dropped* when `task.degraded` | `task.*` |
-| **current action** | `action.tool_name`, `action.descriptor`, the seat-clock start time as a labelled timestamp, the elapsed time from `action.started_received_at` as ***running for 2m 05s*** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)), `agent_scope`, `parent_call_id` | `action.*` |
+| **current action** | `action.tool_name`, `action.descriptor`, the seat-clock start time as a labelled timestamp, the elapsed time from `action.started_received_at` as ***running for 2m 05s*** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)), `agent_scope`, `parent_call_id`; the open-call count as ***N open calls*** when it exceeds 1 and nothing otherwise ([§ 5.1](#51-the-desk)); and the monitor — ***monitor*** and its light (`on`, `dimmed` or `off`, [§ 7.1](#71-the-render-per-state)), with ***a subagent's call*** when [§ 5.1](#51-the-desk)'s marker is drawn | `action.*`, `open_calls` |
 | **context gauge** | the bar, the percentage to one decimal, `used_tokens / total_tokens` when non-null, the sample's own age, and `context.source` (`harness` or `computed`, never mixed — [D1 § 6.11](EVENT-SCHEMA.md#611-contextsample)) | `context.*` |
 | **interns** | the subagent list — from the **detail** response, uncapped ([§ 8](#8-interns--subagent-rendering-and-the-cap)) | `detail`, `subagents_open` |
 | **recent activity** | the timeline, newest first: `kind`, the seat-clock `event_time`, the receipt time, and the per-kind detail this document renders ([§ 5.2](#52-the-drill-down)) | the timeline endpoint |
 | **transport** — **`fetch-fresh`**, one *as of* stamp | both ages, `no_data_since`, `clock_skew_ms`, `spool_lag_events`, `oldest_unsent_age_s`, `seq_epoch`, `last_seq` | `delivery.*` |
 | **derivation** — **`fetch-fresh`**, one *as of* stamp | `computed_at`, `fold_lag_ms`, `cursor_event_id`, and the *this state is N behind* line on the terms [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) states — this cell names the block's contents and leaves the render rule where it is owned | `derivation.*` |
 | **reporter** — **`fetch-fresh`**, one *as of* stamp | `version`, `platform`, `selftest_failed`, `enabled` patch live; `uptime_s` is **`fetch-fresh`** and is **re-sent under the shallow merge** whenever one of the first three moves, so the block's stamp advances with it ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule) rather than dating a fetch the value has already outlived | `reporter.*`, `enabled` |
-| **badges** | every member of `badges[]`, each with its meaning and its counter value from `detail`, *since reporter start* framing for D1's array, and **one cluster-scoped** *oldest badge since HH:MM* line — `badges_since` is the minimum over the present members and is never stamped on an individual badge ([§ 7.2](#72-badges-every-member-has-a-render)) | `badges[]`, `badges_since`, `detail` |
+| **badges** | every member of `badges[]`, each row opening with the badge's id as text, then its meaning and its counter value from `detail`, *since reporter start* framing for D1's array, and **one cluster-scoped** *oldest badge since HH:MM* line — `badges_since` is the minimum over the present members and is never stamped on an individual badge ([§ 7.2](#72-badges-every-member-has-a-render)) | `badges[]`, `badges_since`, `detail` |
 | **session** | `session_id`, start (seat clock), `source`, `project_label`, `harness_label`, `model_label` | `session.*`, `model_label` |
+| **console** — an operator's only | ***Open console on claude.ai***, a link to the seat's current session console that opens in a new tab (`target="_blank" rel="noopener noreferrer"`); **no line at all** when the response carries no `console_url` or carries it `null` ([§ 5.2](#52-the-drill-down)) | `detail`'s `console_url` |
 | **raw** | `state_version` and the applied `seq_epoch` / `last_seq`, so a rendered state can be correlated with the wire. `state_version` and `seq_epoch` are version-bearing; `last_seq` is one of the ten and is **`fetch-fresh`** under the transport block's stamp | `state_version`, `delivery.*` |
+
+**The desk's render, the unrecognised values, the open-call count, the monitor and the badge ids are read
+off the seat object alone**, so each draws whether or not the detail request answered
+([§ 9](#9-failure-paths-and-their-observables) F11). They are here because the desk is a glance and the
+panel is where every fact a desk carries can be read in full (operator ruling 2026-10-02, card#11058). The
+words *monitor*, *a subagent's call*, *unconfirmed*, *moving* and *still* are the list view's, shared with
+it and not yet ratified.
 
 **There is no retirement block.** A retired seat has no desk and the drill-down goes with the desk
 ([§ 3.5](#35-retirement-and-the-only-removal)): the announcement that removes the desk closes a panel
@@ -1269,7 +1454,7 @@ B](#appendix-b--what-an-implementer-builds-from-this) row 8's floor page, landed
 the route inside the `auth`+`mfa` middleware group, `resources/views/floor.blade.php`, and
 `server/public/js/floor/main.js`, which constructs the client protocol with a real `EventSource` and
 its stream recovery. The redirect above is performed by that page, from the floor screen's own
-decision. [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14 paints the room on it, and row 15's slice B puts it under the camera and draws it only at or above [§ 12](#12-every-number-and-where-it-comes-from)'s viewport floor; below the floor the page renders the desks as text instead of the drawing — each desk its row of [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s list view, a headless model over every fact the desk model emits, built at row 15's slice A, which the page only paints. ⭐ **The drill-down form, `/floor/{floor}/{seat_id}`, is served** — [Appendix
+decision. [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14 paints the room on it, and row 15's slice B puts it under the camera, at every window size ([§ 4.5](#45-the-viewport-rule-and-the-camera), the operator's ruling of 2026-10-01 on card#7341); below the drawing the page renders the desks as text too — each desk its row of [§ 4.5](#45-the-viewport-rule-and-the-camera)'s list view, a headless model over every fact the desk model emits, built at row 15's slice A, which the page only paints. ⭐ **The drill-down form, `/floor/{floor}/{seat_id}`, is served** — [Appendix
 B](#appendix-b--what-an-implementer-builds-from-this) row 10: the same floor page, the seat segment
 handed over as data, the panel opened over the floor and closed back to it with no second stream.
 **The seat segment is resolved against every room on the floor**, because the redirect from
@@ -1289,28 +1474,56 @@ floor***, and one naming desks in more than one room reads ***the seat `seat_id`
 than one room on this floor — `install_id`, `install_id`***, the rooms in key order. Neither opens a
 panel.
 
-### 4.5 The viewport rule and the capability floor
+### 4.5 The viewport rule and the camera
 
-- **The floor requires ≥ 1,280 × 800 CSS px.** Below that, the route renders the **floor page's list
-  view** — the same facts as text, one row per seat, no map: **every fact the desk model emits** for
-  the seat, each as the string the model already decided. **No list of those facts is written here**:
-  the list view is a function over the desk model's output, and [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
+- **The floor is drawn at every viewport size — there is no minimum and no substitute view.** Operator
+  ruling 2026-10-01, card#7341: *"All screens should display with any browser size. If the resolution is
+  less than browser window resolution, user should be able scroll in any direction within the browser
+  window and zoom in/out."* A window smaller than the room shows the room under the camera (*the camera is
+  navigation*, below), at fit on entry, and the viewer pans it in any direction — the wheel or a trackpad's
+  two-finger scroll, a drag (one finger on a touch screen), the arrow keys — and zooms it in and out —
+  Ctrl+wheel or a trackpad's pinch about the pointer, a touch screen's two-finger pinch about the fingers'
+  midpoint, `+`/`-`, the zoom buttons — with *Fit the floor* bringing the whole floor back into view. **The
+  gestures are the operator's ruling of 2026-10-01 on card#11045** ([§ 13](#13-decisions-taken-revisable-at-review)
+  row 39): *plain mouse wheel / two-finger trackpad scroll pans the view in any direction; Ctrl+wheel and
+  trackpad pinch zoom about the pointer; two-finger pinch on touch screens zooms; one finger drags to pan* —
+  on the floor and in the lobby alike, through the one camera wire (`wire/camera-gestures.js`), and said on
+  the page by the gesture hint under each drawing ([§ 4.2](#42-the-floor)). **At the drawing's edge the
+  wheel goes on to scroll the page** (card#11045 Q3, the operator's ruling of 2026-10-01): a plain wheel is
+  taken from the page while the camera can still pan the wheel's way on an axis the wheel moves along, and
+  once it can pan that way on none — the view at its edge — the wheel is the page's scroll and the camera
+  does not move. The camera decides it (`wire/camera.js`'s `pan()` answers whether it consumed the event,
+  from the clamp's own range) and the gesture wire only obeys the answer; nothing infers it from a view
+  that did not change. A Ctrl+wheel or a pinch over a framed drawing is always taken from the page — the
+  browser's own page zoom never sees it — and so is every wheel over the lobby during a ride, whatever the
+  edge (the ride-hold bullet below). **Safari's trackpad pinch zooms about the pointer too** (card#11045
+  PR-C): Safari reports it as its own `gesturestart` / `gesturechange` / `gestureend` events carrying a
+  cumulative scale, and the gesture wire turns each into the camera's pinch by the scale's ratio to the last,
+  about the pointer. Over a framed drawing every one is taken from the page, which also keeps Safari from
+  sending the Ctrl+wheel it otherwise follows each with, so one pinch zooms once; over a drawing that frames
+  nothing they are the browser's. iOS and iPadOS Safari report a touch screen's two-finger pinch as these
+  events as well as pointer events, and the touch pinch zooms by its pointers alone, once. A real Mac
+  trackpad and a real iPhone or iPad have not exercised this (synthetic events in a headless browser have). The card#7341 ruling replaced the rule this bullet stated until then —
+  *the floor requires ≥ 1,280 × 800 CSS px, and below that the route renders a list view instead of the
+  map* — and [§ 13](#13-decisions-taken-revisable-at-review) row 14 records the reversal.
+  **At fit in a small window the desk text is drawn small, and zooming in is how it is read:** the
+  camera's zoom reaches the scene's own text size in a window of any size, and
+  [§ 12](#12-every-number-and-where-it-comes-from)'s reference-viewport row measures how small the fit
+  draws that text at 1,280 × 800. That row's figure is the size the measurement is taken at, and no
+  minimum.
+- **The desks are also given as text, below the drawing, at every size — the floor page's list view**,
+  in the first of the sections below the room, a `<details>` closed by default and reached as a
+  disclosure by its heading's words ([§ 4.2](#42-the-floor)'s chrome list; the operator's ruling on
+  card#11045):
+  one row per seat, **every fact the desk model emits** for the seat, each as the string the model
+  already decided, in full where the drawing cuts a string to fit its box. **No list of those facts is
+  written here**: the list view is a function over the desk model's output, and [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
   row 15's guard holds every member of that output either rendered on the row or excluded by name, so
   the population is the model's and a list copied into this sentence would be the copy that drifts.
-  The rule is here because a list that dropped [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s marks would be the one render a small viewport gets
-  showing a degraded seat marked by its raw badge id alone. A scaled-down floor whose
-  nameplates and badges are unreadable is a floor that shows state without letting anyone read it,
-  which is worse than the honest list.
-  **Being crisp at any zoom does not license shrinking this number**, and the sentence is here
-  because *"it is vector now, so it scales"* is exactly the argument the next reader will make. The
-  floor is not 1,280 × 800 because of pixel density; it is 1,280 × 800 because a **nameplate and a
-  badge cluster have to be readable**, and a legible glyph has a minimum size in the viewer's eye
-  that no amount of resolution independence changes. Resolution independence removes the
-  *resampling* failure; it does not remove the *legibility* failure, and this rule was always about
-  the second. ⚠ **That 1,280 × 800 is where they BECOME readable is not established:** the camera's
-  measurement at this size is [§ 12](#12-every-number-and-where-it-comes-from)'s viewport row, the figure stays Chosen, and the criterion
-  it rests on is open at [§ 14](#14-open-questions-for-the-review-loop) item 28(3) — read the sentences above as the rule's reason,
-  not as a measured fact about this number.
+  The rule is here because a list that dropped [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s marks would be the page's one text render
+  showing a degraded seat marked by its raw badge id alone. The list stands BESIDE the drawing and
+  never in its place: replacing the drawing with it at some size is the rule the operator's ruling
+  above removed.
 - **Capabilities the implementer must have, and nothing further:** a renderer able to draw the map and
   the characters **at any camera zoom without resampling artefacts** — that is, a
   **resolution-independent** one, which is a property rather than a technology and is the property
@@ -1338,8 +1551,9 @@ panel.
 - **The click commits the ride, and the hold protects the glide.** An elevator ride the viewer has
   clicked always arrives: from the click until the camera's glide has reached the plate and the page
   has asked for `/floor/{key}`, the ride control is refused and no camera act moves the camera off the
-  plate — a wheel, a key, a zoom button, a drag, a resize or the whole-building control during the
-  glide cuts it to the plate and the page arrives, and the keyboard's focus moving to a plate leaves
+  plate — a wheel (its pan or its Ctrl+zoom, either still taken from the page), a touch pinch, Safari's
+  trackpad pinch (taken from the page as the wheel is), a key, a zoom button, a drag, a resize or the whole-building control during the glide cuts it to the plate and
+  the page arrives, and the keyboard's focus moving to a plate leaves
   the glide running. **The committed ride wins over a plate link:** a plate link clicked during the
   glide — by the pointer, or by the keyboard's Enter, which is the same click — does not navigate, so
   the page arrives where the ride was going (card#7343: the seat's r3 ruling, made true of the code at
@@ -1348,27 +1562,29 @@ panel.
   ruling, and the seat's r2-4 ruling, 2026-09-27).
 
 ⭐ **Built at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) rows 14–16** — rows 14 and 15 card#7341's (the design round after step 8), row 16 card#7343's: the camera and the
-capability floor at row 15, over the room drawing row 14 paints, and, at row 16, the ride's arrival over
+list view at row 15, over the room drawing row 14 paints, and, at row 16, the ride's arrival over
 the cross-section PR #96 built. The camera is one machinery at two scales, and the second scale is
 reached by a route rather than by zooming past a plate ([§ 4.1](#41-the-lobby--the-building-summary): a
 plate is a summary, never a drawn interior).
 ⛔ **Release gate — operator ruling 2026-09-25 (card#7341 comment 6517): the room drawing stays as row 14
 built it until row 15's camera lands, and `dev` is not promoted to `main` before row 15 lands** — a drawn room
-with no camera is not a floor an operator can use at this viewport floor, and it ships to nobody meanwhile.
+with no camera is not a floor an operator can use, and it ships to nobody meanwhile.
 Row 15 has landed ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15's marker, with
 [§ 14](#14-open-questions-for-the-review-loop) item 29's build list), so the condition this ruling set is
 met; promoting `dev` to `main` is the operator's act.
-Row 15's slice B (2026-09-26) built the camera and the capability floor:
-at or above the viewport floor the page draws the room under the camera and no desk text, and below it
-the desks as text and no drawing — **the list view** the first rule names, which row 15's slice A built
-in place of row 8's page-side text render: a headless model over every fact the desk model emits, which
-the page only paints.
+Row 15's slice B (2026-09-26) built the camera and, with it, a capability floor: at or above a
+1,280 × 800 viewport the page drew the room under the camera and no desk text, and below it the desks
+as text and no drawing. The operator's ruling of 2026-10-01 (card#7341) removed that floor: the page
+draws the room under the camera at every window size and paints **the list view** the second rule
+names below the drawing at every size too — the list row 15's slice A built in place of row 8's
+page-side text render: a headless model over every fact the desk model emits, which the page only
+paints.
 Row 16's slice A (card#7343, 2026-09-27) built the ride's arrival and row 15's camera at building scale —
 whole-building is every plate in view, zoom-to-a-plate is the ride, and a ride arrives at `/floor/{key}`,
 under the rule above that the click commits it — a plate link clicked during it included; the lobby's keys
 and zoom buttons are the floor's, and the keyboard's focus on a plate outside the view brings the camera to it.
-On either page a camera that frames nothing takes no event from the browser — no wheel, key, press or
-drag — and offers none of the camera: no keys, zoom buttons, framing control or tab stop (card#7343 r4b and comment 7692;
+On either page a camera that frames nothing takes no event from the browser — no wheel, key, press,
+pinch or drag — and offers none of the camera: no keys, zoom buttons, framing control, gesture hint or tab stop (card#7343 r4b and comment 7692;
 [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 16 says how).
 Row 16's slice B (card#7343, 2026-09-29) drew the plates as the reference's section under the same
 camera — the roof and its sign, a storey under each plate, the ground lobby, and the cab in its shaft,
@@ -1411,12 +1627,13 @@ floor route.
 
 | Member | What it is | The rule, refused at load when broken |
 |---|---|---|
-| a floor | one entry in the layout's **list** of floors: a record of its `rooms` — a mapping of the rooms on it — optionally its `label` (card#9273), and, optionally and only when every room is placed, its **`hallway`** (card#9292, the plan below) | `rooms` non-empty. The list carries **no floor id** — a floor is its rooms — and an entry that carries a key is **refused** rather than read past, because the key would be a name this design does not have. A member of the record the reader does not know is refused **by name** for the same reason: the member an author reaches for is an id. `floors` is a JSON **array**: `"floors": {}` is a JSON object and is refused by name, and never read as the empty building `"floors": []` (card#9322) |
+| a floor | one entry in the layout's **list** of floors: a record of its `rooms` — a mapping of the rooms on it — optionally its `label` (card#9273), optionally its **`theme`** (card#11046, row 21 — the row below), and, optionally and only when every room is placed, its **`hallway`** (card#9292, the plan below) | `rooms` non-empty. The list carries **no floor id** — a floor is its rooms — and an entry that carries a key is **refused** rather than read past, because the key would be a name this design does not have. A member of the record the reader does not know is refused **by name** for the same reason: the member an author reaches for is an id. `floors` is a JSON **array**: `"floors": {}` is a JSON object and is refused by name, and never read as the empty building `"floors": []` (card#9322) |
 | a floor's **key** | the `{floor}` of [§ 4.4](#44-routes-and-what-each-one-fetches)'s route and [§ 4.1](#41-the-lobby--the-building-summary)'s sort — **derived, never authored**: the lexically least `install_id` among the floor's rooms | not in the document, so nothing to refuse. Unique by construction, because a room is on one floor |
 | a floor's **label** | optional: the name a viewer sees for the floor — on [§ 4.1](#41-the-lobby--the-building-summary)'s plate, on the stop the elevator offers, and wherever the floor screen names itself ([§ 4.2](#42-the-floor)). ⭐ **Operator ruling, 2026-09-11, card#9273**: *"yes, I want to be able to name a floor"* | a non-blank string, or absent — an absent label is not a defect: **the floor reads as its key**, which is honest, and no placeholder is invented. An explicit `null` **is** absent (it is how a JSON column encodes an unnamed floor, and the store is the caller's — below), not a value to refuse. **Refused at load:** a label of any other non-string type (never coerced); a blank one (a floor whose name renders as nothing is the hole one level up); and **two floors that would read the same** — the label where given, else the key — named by both keys and the authored string, because two plates reading alike is a building nobody can navigate and the reader never repairs a document by drawing a key beside a label. ⭐ **Stored exactly as authored, compared on what it RENDERS as**: the label is kept byte for byte and trimmed never, while both refusals above are asked of its *rendered* form — whitespace stripped at the ends and collapsed inside, which is what a browser's own `white-space: normal` does to the text a plate writes — so ` the solos` and `the  solos` are the same name as `the solos`, and a label of one NO-BREAK SPACE is a blank one. ⛔ **It is never a key**: nothing routes, sorts, redirects or matches on it, [§ 4.4](#44-routes-and-what-each-one-fetches)'s segment is the key whatever the label says, and editing a label moves no floor and breaks no link — which is the whole reason it is a separate member |
 | a floor's rooms | the `install_id` of each room on that floor, each mapped to a **record** of that room: its `form`, and on a planned floor its `origin` (card#9292). ⚠ Until card#9292 the value was the bare form string; the record is the one shape, paid for now for the reason [§ 13](#13-decisions-taken-revisable-at-review) row 25 paid for the `rooms` wrapper — the only authored documents when it was paid for were the empty shipped file and the fixture, and since card#9208's build slice 1 there is no shipped file at all: the layout is authored in the console and the fixture is the only one in the tree | an `install_id` appears on **at most one floor** — a room is in one place, and a room named twice is a refusal rather than a precedence question; a room's value that is not a record is refused by name, the message naming the record's shape, and never read as a form; and `rooms` written as a JSON **list** is refused by name, because a room is keyed by its `install_id` and a list entry carries none (card#9322) |
 | a room's **`origin`** | where the room's grid is drawn on the floor: its top-left corner, `{x, y}`, in the floor's pixel space — Tiled's own object unit — integers ≥ 0. Named `origin` and not `at`, because `at` is the feed's timestamp member on four messages ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)) and a coordinate under that name beside them is a trap; it is not [§ 10.1](#101-the-manifest-and-the-two-gates)'s `origin`, an asset's provenance, which never shares a document with this one. **It is the whole of what the plan says about a room.** The room's extent is its map's grid ([§ 10.3](#103-the-floor-map)), read from the document [D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed) answers for the room — authored, else the shipped default — and the plan carries no size, so an extent in two homes is unrepresentable rather than checked | `origin` on **every** room of the floor or on **none**: a floor with some rooms placed is refused by name — the unplaced rooms would have nowhere to go that the plan did not claim, and a default arrangement laid beside an authored one is two rules on one screen. A member of `origin` other than `x` and `y`, a non-integer, or a negative is refused by name — a `width` or a `height` there is the second home this row exists to refuse. ⚠ **No upper bound is imposed, and that is a named unchecked case rather than an oversight:** an absurd origin draws a floor the camera must pan across, which the preview shows before the save and one further save repairs; a bound would be a number with no derivation behind it. **Two rooms on one floor whose footprints would intersect are refused by name, naming both** — a footprint is the **half-open** rectangle `[x, x + w) × [y, y + h)`, so two rooms may **share an edge** and may never share a pixel, because *a floor subdivided into two rooms* (the operator's words above) is naturally drawn with one wall between them — at every write that could make it so: the layout's save **or restore** (a restored revision is checked against today's room maps, not the ones it was checked against when it was authored), and a room map's save, restore or removal on a planned floor ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) — a room's footprint is its map's, and the map has a write path of its own |
 | a floor's **`hallway`** | optional, and only on a planned floor: a Tiled document — the floor's own tiles, drawn at the floor's origin **under** its rooms — for the space no room occupies: the corridor between the offices, a reception, the slab. Read by [§ 10.3](#103-the-floor-map)'s table with the one difference stated there — it declares **no `desks` layer**, because a hallway seats nobody and the slot function runs per room ([§ 3.2](#32-the-desk-slot-function)) | on a floor whose rooms carry no `origin`: refused by name — a corridor with no rooms placed along it is a picture of nothing. Every refusal [§ 10.3](#103-the-floor-map)'s table states for a room map, plus a `desks` layer present. It is inside the layout document, so the layout's write bound covers it ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) |
+| a floor's **`theme`** | optional, built at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 21 (card#11046): the name of the theme the floor's back-wall band, its hallway and every room on it are drawn in — [§ 10.6](#106-themes--a-floors-design-and-the-house-theme), the operator's ruling of 2026-10-07 that a theme is authored per building floor (card#11046). Keyed by nothing: it rides the entry, so a re-key moves no theme. Carried on the normalised floor `GET /api/building` serves only where the entry names one, as `origin` and `hallway` are, so a layout naming none is served byte for byte as before; the browser's composition reads it as delivered and coerces nothing | a string the theme registry names, or absent — and an explicit `null` is absent, as for `label`; absent is the **house theme**. **Refused at load:** a value of any other type, by name. **Refused at the write** (the console's layout save and restore): a name the registry does not hold, by name. ⚠ **Not refused at read:** a layout stored before a deploy removed the theme it names is drawn in the house theme under [§ 9](#9-failure-paths-and-their-observables) F23's notice — a refusal there would take the building down for an appearance, F18's precedent. ⚠ **Rollback:** a reader from before row 21 does not know the member and refuses the whole layout by name (F17), so a rollback past row 21 first saves the layout without it |
 | a room's **form** | `open` or `office` — the closed set, and the whole of it | any other value is **refused by name and never mapped to the nearest one**. The form is what [§ 10.3](#103-the-floor-map)'s map selection reads once an office map exists; it declares what the room is **for**, and an authored map is what the room **looks like** |
 
 **⭐ THE FLOOR PLAN — how a floor is DIVIDED into rooms is operator-authored, and it is the floor's
@@ -1485,10 +1702,9 @@ each with its reason — and the list is the count, so nothing here states one:
    origin says where a room begins and nothing the client holds says how far its content reaches.
    **F18 is untouched:** an overlap is a determination over footprints, and a room with none is left
    out of it exactly as it was. ⚠ **The point carries NO SIZE, and what that leaves unchecked is
-   named rather than filled:** nothing the client holds gives a placeholder grid a width, and the one
-   figure that could — [§ 12](#12-every-number-and-where-it-comes-from)'s desk sprite width — is
-   measured off the bridge tileset that row retires with, so a size derived from it would pin a
-   permanent geometry to a temporary asset. ⇒ A mapless room at the union's right or bottom edge has
+   named rather than filled:** nothing the client holds gives a placeholder grid a width — the one
+   figure that could, § 12's desk sprite width, was measured off the bridge tileset and retired with it at
+   Appendix B row 22 (card#11046), so no size was ever derived from it. ⇒ A mapless room at the union's right or bottom edge has
    its placeholder grid drawn from that edge outward, and keeping the grid inside the band is the
    drawing layer's — the same residue this section already carries for an absurd `origin`, and for
    the same reason: a number with no derivation is worse than a named gap.
@@ -1523,6 +1739,11 @@ answers for the room — for an unauthored room, the shipped default's own `widt
 11 lands the plan, and on this repository step 11 landed **first** — and until the default landed the
 check had nothing to read and said so by name, which is what the paragraph at the end of this
 section records.
+⭐ **card#11045 is such a deploy.** It re-composes the default from 3,024 × 496 px to 1,576 × 544 px
+([§ 12](#12-every-number-and-where-it-comes-from)'s grid row): narrower, but 48 px taller, so a planned
+floor with a room placed 496 to 543 px below an unauthored room, and within its new width across, meets
+F18 on upgrade. The overlap check that every write runs reads the new grid from the file, so the
+operator's way out is the one F18 names — one layout save that moves a room.
 
 **Both of the operator's floors, worked** — the maps say how big, the entry says where:
 
@@ -1677,7 +1898,7 @@ and the console's forms carry no seat.
 | Reader | Reads | Owns |
 |---|---|---|
 | the lobby | the composed floors, floor ids ascending | [§ 4.1](#41-the-lobby--the-building-summary)'s plate per floor — named by its label, else its key (card#9273) — its summary over that floor's rooms' seats, and the room names on the row |
-| the elevator | the same composed stack | [§ 4.1](#41-the-lobby--the-building-summary)'s ride between plates — still navigation, still no [§ 6.2](#62-the-animation-table--the-closed-set) row ([§ 4.5](#45-the-viewport-rule-and-the-capability-floor)); the stop it offers is named the way the plate is, and the cab's position is the key (card#9273) |
+| the elevator | the same composed stack | [§ 4.1](#41-the-lobby--the-building-summary)'s ride between plates — still navigation, still no [§ 6.2](#62-the-animation-table--the-closed-set) row ([§ 4.5](#45-the-viewport-rule-and-the-camera)); the stop it offers is named the way the plate is, and the cab's position is the key (card#9273) |
 | the floor route | one floor, the rooms on it, and its **plan** — each room's `origin` and the floor's `hallway`, or neither (card#9292) | [§ 4.4](#44-routes-and-what-each-one-fetches)'s `/floor/{floor}`, and the redirect from a room that is not its floor's id; the screen names the floor by its label, else its key, and routes by the key alone (card#9273); [§ 4.2](#42-the-floor)'s composition — each room at its origin over the hallway, or the default arrangement when the floor has no plan |
 | the slot function | **nothing** | [§ 3.2](#32-the-desk-slot-function) runs per room against that room's own `S`, so no desk moves when the building is rearranged |
 
@@ -1805,35 +2026,65 @@ one, so the two documents can be read side by side.
 
 | Rendered element | D2 field | Example | When null / absent |
 |---|---|---|---|
-| nameplate | `seat_id` | `"aimla-pm"` | never null |
+| nameplate — on its plate, painted above [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s hatch, at 13 px bold on a 16 px line: the one string in the desk's name role ([§ 12](#12-every-number-and-where-it-comes-from)'s *Nameplate type size* row, the operator's ruling of 2026-10-02 on card#11058 Q2), cut to its plate in that role | `seat_id` | `"aimla-pm"` | never null |
 | floor name, and the desk's floor when seen from the lobby | `install_id` | `"aimla"` | never null |
-| **pose and glyph** | `render_state` | `"working"` | never null. The one field the desk's appearance is switched on ([§ 7.1](#71-the-render-per-state)) |
+| **pose and glyph** — the glyph is the state chip's word (operator ruling 2026-10-02, Q4); a glyph carrying a raw string draws the fixed word *unrecognised* ([§ 5.4](#54-what-is-never-rendered)) | `render_state` | `"working"` | never null. The one field the desk's appearance is switched on ([§ 7.1](#71-the-render-per-state)) |
 | currency treatment — whether the pose may be read as *now* | `link_state` | `"live"` | never null ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) |
 | the underlying activity, shown **under a label** when the desk is not `live` | `activity_state` | `"working"` | never null |
-| the *why we do not know* line | `unknown_reason` | `null` | non-null only when `activity_state == "unknown"`; then one of seven reasons, each with its own sentence ([§ 7.1](#71-the-render-per-state)) |
-| the rate-limit line on a `stalled` desk | `api_error_type` | `null` | non-null only when `activity_state == "stalled"`; **rendered verbatim** — e.g. `rate_limit`, the wire's own member, and **never** [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s phrase *rate limit* standing in for it, which is what this cell's own illustration did from this document's first revision onward, while the sentence around it said *verbatim*. [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) publishes the composed line the phrase sits beside it in |
+| the *why we do not know* line — rendered verbatim in the drill-down and the list; the desk's label line draws its non-raw form ([§ 5.4](#54-what-is-never-rendered)) | `unknown_reason` | `null` | non-null only when `activity_state == "unknown"`; then one of seven reasons, each with its own sentence ([§ 7.1](#71-the-render-per-state)) |
+| the rate-limit line on a `stalled` desk — rendered verbatim in the drill-down and the list; the desk's label line draws its non-raw form ([§ 5.4](#54-what-is-never-rendered)) | `api_error_type` | `null` | non-null only when `activity_state == "stalled"`; **rendered verbatim** — e.g. `rate_limit`, the wire's own member, and **never** [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s phrase *rate limit* standing in for it, which is what this cell's own illustration did from this document's first revision onward, while the sentence around it said *verbatim*. [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) publishes the composed line the phrase sits beside it in |
 | the *waiting since* line on a `blocked` desk | `blocked_since` | `null` | non-null only when `activity_state == "blocked"` ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)); rendered as a **labelled seat-clock timestamp** — *since 14:31 (seat clock)* — and **never as a duration of any kind**, which [§ 2.4](#24-the-clock-and-every-age-on-the-page) forbids of every seat clock. A raised hand's only ordering is how long it has been up, and a `blocked` desk that is `live` carries **no currency label** ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) to carry a time in its place — so this is the live desk's one dating of the wait, and without it the **stale** blocked desk would be the better-informed of the two. Version-bearing, so the hand going up and coming down are both delivered |
 | the monitor's content — what the seat is doing right now | `action.tool_name`, `action.descriptor` | `"Bash"`, `"Bash: composer test"` | `action` is null when no call is open: the monitor shows the desk's state line instead, never a stale last action |
-| the action's start, as the seat's claim | `action.started_at` | `"2026-08-23T14:23:09.882Z"` | rendered *seat clock*, never as an age ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) |
-| the action's elapsed time | `action.started_received_at` | `"2026-08-23T14:23:14.201Z"` | rendered ***running for 2m 05s***, the fourth of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s four durations. It is the basis of the **only** honest elapsed time over an action, because both ends are the server clock; version-bearing, so it ticks |
-| the intern join key, and the *this is a subagent's call* marker | `action.call_id`, `action.agent_scope`, `action.parent_call_id` | `"01K3TA4E5F6G7H8J9K0M1N2P3Q"`, `"main"`, `null` | labels, and **the intern join is what they are stored for** — what [D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) forbids is a **state rule** gated on them ("a scope-dependent state rule"; "stored for the intern join and never gate anything"). So no pose, currency label or badge reads them; they attribute an intern's own calls back to it, which is the join D2 names. [§ 5.2](#52-the-drill-down)'s intern list is selected on the dispatch calls (`calls.is_dispatch`) and not on them |
-| the open-call count, when it exceeds 1 | `open_calls` | `1` | never null; `0` renders nothing rather than a zero. Worded ***N open calls*** (ratified by the operator on card#7342, 2026-09-25) |
-| the *thinking* pose — a turn open with no call | `open_turn` | `true` | never null; read **with** `open_calls`, and both are D2's facts, not an inference ([§ 6.2](#62-the-animation-table--the-closed-set) row A4) |
-| the side table's stools | `subagents`, `subagents[].title`, `subagents[].subagent_type`, `subagents[].started_at`, `subagents[].call_id` | `"draft the D1 event schema"`, `"coder"` | a null `title` renders **untitled** and never an invented one ([§ 8](#8-interns--subagent-rendering-and-the-cap)) |
-| the *+N more* tag on the side table | `subagents_open` | `1` | never null; the tag appears only when it exceeds the array's length |
+| the action's start, as the seat's claim — **drill-down and list**; the desk's monitor shows the descriptor | `action.started_at` | `"2026-08-23T14:23:09.882Z"` | rendered *seat clock*, never as an age ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) |
+| the action's elapsed time — **drill-down and list** (operator ruling 2026-10-02, Q5) | `action.started_received_at` | `"2026-08-23T14:23:14.201Z"` | rendered ***running for 2m 05s***, the fourth of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s four durations. It is the basis of the **only** honest elapsed time over an action, because both ends are the server clock; version-bearing, so it ticks |
+| the intern join key, and the *this is a subagent's call* marker — the marker in the **drill-down and list** | `action.call_id`, `action.agent_scope`, `action.parent_call_id` | `"01K3TA4E5F6G7H8J9K0M1N2P3Q"`, `"main"`, `null` | labels, and **the intern join is what they are stored for** — what [D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) forbids is a **state rule** gated on them ("a scope-dependent state rule"; "stored for the intern join and never gate anything"). So no pose, currency label or badge reads them; they attribute an intern's own calls back to it, which is the join D2 names. [§ 5.2](#52-the-drill-down)'s intern list is selected on the dispatch calls (`calls.is_dispatch`) and not on them |
+| the open-call count, when it exceeds 1 — **drill-down (current action) and list** | `open_calls` | `1` | never null; `0` renders nothing rather than a zero. Worded ***N open calls*** (ratified by the operator on card#7342, 2026-09-25) |
+| the *thinking* pose — a turn open with no call; the think pose's glyph *thinking* is the chip's text | `open_turn` | `true` | never null; read **with** `open_calls`, and both are D2's facts, not an inference ([§ 6.2](#62-the-animation-table--the-closed-set) row A4) |
+| the interns — one sprite per element on the desk ([§ 8](#8-interns--subagent-rendering-and-the-cap)); their labels, types and start times in the **drill-down and list** | `subagents`, `subagents[].title`, `subagents[].subagent_type`, `subagents[].started_at`, `subagents[].call_id` | `"draft the D1 event schema"`, `"coder"` | a null `title` renders **untitled** and never an invented one ([§ 8](#8-interns--subagent-rendering-and-the-cap)) |
+| the *+N more* tag beside the interns | `subagents_open` | `1` | never null; the tag appears only when it exceeds the array's length |
 | the **thought bubble** — the desk's one rendered form of `task`, anchored to the character ([the rule below](#51-the-desk)) | `task.title`, `task.source`, `task.ref`, `task.as_of`, `task.degraded` | `"ingest endpoint"`, `"board_card"`, `"card#7338"` | `task` null ⇒ **no bubble**, never a placeholder title. A desk that draws no character draws no bubble either — the same absence for a different reason, and the rule below is where both are stated |
-| the context gauge | `context.used_pct` | `73.2` | `context` null ⇒ the gauge renders as *not reported*, **never as 0 %** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)) |
-| the gauge's numerals and its own age | `context.used_tokens`, `context.total_tokens`, `context.source`, `context.sampled_at`, `context.sampled_received_at` | `146401`, `200000`, `"harness"` | tokens are nullable; the bar still renders from `used_pct`, which is not |
-| the model label | `model_label` | `"claude-opus-5"` | null ⇒ omitted |
-| badge cluster | `badges`, `badges_since` | `["lossy"]` | empty ⇒ nothing rendered, and `badges_since` is then null; a badge appearing is animation [A11](#62-the-animation-table--the-closed-set). `badges_since` is the **cluster's** oldest onset ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), never a per-badge stamp ([§ 7.2](#72-badges-every-member-has-a-render)) |
+| the context gauge — the desk draws the bar and the percentage | `context.used_pct` | `73.2` | `context` null ⇒ the gauge renders as *not reported*, **never as 0 %** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)) |
+| the gauge's numerals and its own age — **drill-down and list** | `context.used_tokens`, `context.total_tokens`, `context.source`, `context.sampled_at`, `context.sampled_received_at` | `146401`, `200000`, `"harness"` | tokens are nullable; the bar still renders from `used_pct`, which is not |
+| the model label — **drill-down and list** | `model_label` | `"claude-opus-5"` | null ⇒ omitted |
+| the badge row and the flag — a row of two, the treatment badges then recognised badges in the wire's order, and ***⚠ +N*** for the rest ([§ 5.1](#51-the-desk)'s *the glance set*); every member, and `badges_since`'s line, in the **drill-down and list** | `badges`, `badges_since` | `["lossy"]` | empty ⇒ nothing rendered, and `badges_since` is then null; a badge appearing is animation [A11](#62-the-animation-table--the-closed-set). `badges_since` is the **cluster's** oldest onset ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), never a per-badge stamp ([§ 7.2](#72-badges-every-member-has-a-render)) |
 | the *reporting disabled* treatment | `enabled` | `true` | `null` before the first heartbeat, which is not the same as `false` and does not render as off |
 | *no data since …* | `delivery.no_data_since` | `null` | non-null only when `link_state ∈ {stale, offline}`; then the desk's label reads *no data since 14:18* rather than a bare glyph ([D2 § 4.5](FLEET-STATE.md#45-link-states)). It is **version-bearing**, so the transition into dark is delivered; [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) declares it *"equals `last_receipt_at`"* there, which is why the row below may tick an age from the same instant |
 | the receipt age, on a dark desk only | `delivery.last_receipt_at` | `"2026-08-23T14:23:14.201Z"` | **`dark-only`**, and the marker is the whole of this cell: [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s marker table owns which desks draw this age, in which states, why it may tick and what a `live` desk therefore does not show — this row neither repeats that rule nor qualifies it. What is this table's own is the **field**: it is one of [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s ten, and the *since* timestamp the desk draws beside the age comes from the version-bearing `delivery.no_data_since` of the row above. In the drill-down's transport block the same field is **`fetch-fresh`** ([§ 5.2](#52-the-drill-down)) |
-| the quiet age | `activity.last_received_at` | `"2026-08-23T14:23:14.201Z"` | drives *nothing done for N*. All three `activity` members are **version-bearing** — every activity event emits a delta ([D2 § 6.5](FLEET-STATE.md#65-the-fold)) — so this is the one age a live desk may render and tick. Its divergence from the receipt age is the product ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)), and the drill-down is where both are read under one stamp |
-| the last thing the seat did, and when it says it did it | `activity.last_kind`, `activity.last_event_time` | `"tool.start"`, `"2026-08-23T14:23:09.882Z"` | the second is a seat-clock claim |
+| the quiet age — **stays a desk row** (operator ruling 2026-10-02, Q5) | `activity.last_received_at` | `"2026-08-23T14:23:14.201Z"` | drives *nothing done for N*. All three `activity` members are **version-bearing** — every activity event emits a delta ([D2 § 6.5](FLEET-STATE.md#65-the-fold)) — so this is the one age a live desk may render and tick. Its divergence from the receipt age is the product ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)), and the drill-down is where both are read under one stamp |
+| the last thing the seat did, and when it says it did it — **drill-down and list** | `activity.last_kind`, `activity.last_event_time` | `"tool.start"`, `"2026-08-23T14:23:09.882Z"` | the second is a seat-clock claim |
 | the *replaying history* treatment | `link_state`, `delivery.oldest_unsent_age_s` | `"catching_up"`, `null` | the **treatment** is driven by `link_state` / `render_state`, which are version-bearing and therefore delivered; `oldest_unsent_age_s` is the input D2 derives them from (`> 300` ⇒ `catching_up`, [D2 § 4.5](FLEET-STATE.md#45-link-states)) and is one of the ten, so its **number** is **`fetch-fresh`** in the drill-down and never on the desk. The desk renders the drain, not the work |
 | the *this state is N behind* label | `badges`, `derivation.fold_lag_ms` | `["fold_lag"]`, `117` | [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns this render — the four things it draws, the two surfaces it draws them on, and why the **badge** and not the number decides the treatment — and this row states none of it a second time. What is this table's own is the **source**: the treatment reads `badges`, which is version-bearing and therefore delivered, and the number is `derivation.fold_lag_ms`, one of [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s ten and therefore **`fetch-fresh`**. `fold_lag_ms` is never null ([D2 § 2.3](FLEET-STATE.md#23-a-frozen-fold-is-the-dangerous-degradation)) |
 | the retirement plate — **removed, and the row is kept to say so** | `retired.at`, `retired.by`, `retired.reason` | `null` | ⛔ **Nothing on the desk renders these, and on a rendered seat they are `null` by construction** ([§ 3.5](#35-retirement-and-the-only-removal), card#9078): a retired seat has no desk, and D2's read surfaces stop serving it at `retired_at`, so no object this floor holds can carry a non-null `retired` except the announcement's own delta — whose render is the desk's **removal**, not a plate. The row stays rather than being dropped so that the plate this floor used to draw is a recorded absence and not a forgotten one; the record's home is the admin console ([D2 § 4.10](FLEET-STATE.md#410-retirement-is-a-rendered-state)) |
+
+⭐ **The glance set — what the desk draws, and nothing else** (the operator's ruling of 2026-10-02,
+card#11058, Q0 (a) and Q1 (B)). The desk draws a fixed set: the character (or the empty chair), the
+nameplate, the **state chip**, the task bubble, and the warning treatments —
+[§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s hatch and lag line,
+[§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s dimming and currency label, and the two
+treatment badges `config_invalid` and `fold_lag`; beside them, the monitor's task text, the context bar
+and its percentage, a **badge row of 2** — the treatment badges first, then recognised badges in the
+wire's order, each chip 108 px wide — the interns ([§ 8](#8-interns--subagent-rendering-and-the-cap)),
+the label line and the quiet age. **Anything else unusual is ONE flag, ⚠ +N**, and **N is the number of
+unusual items whose raw form is not drawn on the desk: every line of the drill-down's *unrecognised
+values* (`field: value` — `render_state`, `link_state`, `activity_state`, `unknown_reason`,
+`api_error_type` and `badges` alike, since none of them is drawn) plus every recognised badge not in the
+row.** This sentence is the one definition of N; [§ 5.4](#54-what-is-never-rendered),
+[§ 12](#12-every-number-and-where-it-comes-from) and
+[AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised) cite it. ⛔ **No raw unrecognised
+string is drawn on the desk:** the chip reads *unrecognised*, the label line *unrecognised*, *unknown —
+unrecognised reason* or *API error — unrecognised*, and the currency label *was: unrecognised (…)*.
+**Every fact the desk does not draw — every raw string among them — is guaranteed in the drill-down
+([§ 4.3](#43-the-desk-drill-down-panel)) and the desk list ([§ 4.5](#45-the-viewport-rule-and-the-camera))**,
+and `Tests\Feature\Floor\TheNewDeskKeepsEveryLeafTest` holds that of every leaf the desk drew before
+the ruling, and holds the desk to exactly this set. **The desk never reflows:** its rows are fixed, an
+absent line leaves its row empty, and the bubble's band is reserved. The rects are a table
+`server/public/js/floor/desk-layout.js` derives from the furniture box (`deskRects()`): the character
+54 × 96, the monitor beside it, the chip and the plate under them, the facts in one column to their
+right. ⚠ Three of the set's places are the ruling read rather than the ruling's words, and await the
+operator's confirmation: the **label line** (the desk's state text, Q1 (B)'s carrier of the state), the
+**currency label** and the **lag line** (both read as Q0's *warning treatments*). ⚠ Not ratified, as
+display forms: the chip's vocabulary (the glyph strings `desk/desk-poses.js` and `desk/desk-render.js` publish, and
+*unrecognised*), the non-raw label forms above, and the flag's glyph and *+N*.
 
 ⭐ **The `task` row's rendered form is a THOUGHT BUBBLE anchored to the character, and it REPLACES the
 text chip an earlier revision of that row named — it does not join it.** The operator's ask was for
@@ -1949,6 +2200,7 @@ Everything in [§ 5.1](#51-the-desk), at full fidelity, plus:
 | counters | `detail`'s `seat_counters` rows and the reporter's `heartbeat_counters` / `heartbeat_predicates` snapshots | — | **`fetch-fresh`** by construction — `detail` exists only on the fetch ([D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)) and no delta carries it. The reporter's are labelled **since reporter start** with `reporter.uptime_s` beside them, per [D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled) — never as *now* |
 | the intern list, uncapped | `detail`'s full open-call list | — | [§ 8](#8-interns--subagent-rendering-and-the-cap). **The selection is stated rather than left to the reader:** the intern list is the subset of that list whose calls are **dispatches** — [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `calls.is_dispatch`, which [D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end)'s worked trace sets on the `Agent` call at E1 and reads there as *`subagents` gains a title-less entry*. That is the same population as the seat object's `subagents[]` without the cap, which is what [§ 8](#8-interns--subagent-rendering-and-the-cap) means by *two artifacts, two sources*, and it is the only selection under which § 8's own label rows have a `title` and a `subagent_type` to draw. `agent_scope` and `parent_call_id` attribute an intern's OWN calls back to it — the intern join [D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) stores them for — so selecting on them lists the calls the interns are making rather than the interns. ⭐ Operator ruling, 2026-09-25 (card#7342): this selection replaces an earlier one on `agent_scope == "subagent"` / a non-null `parent_call_id`, which selects the disjoint set — a dispatch is the MAIN agent's call, so it carries `agent_scope: "main"` and no parent. [§ 14](#14-open-questions-for-the-review-loop) item 1 names this as the reading it took, because *"the open call list in full"* could equally have meant every open call, and the panel that listed every one would call a seat's own `Bash` call an intern |
 | the recent-activity timeline | the timeline endpoint | — | see the rule below |
+| the console link | `detail`'s `console_url` | `"https://claude.ai/code/session_01AbCdEfGhIjKlMnOpQrStUv"` | card#9416. ***Open console on claude.ai***, opening in a new tab with `rel="noopener noreferrer"`. **Rendered for an operator only, and the gate is the server's, not this client's:** [D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response) puts the member on an operator's response alone, so an observer's panel has nothing to draw and draws nothing. Absent or `null` ⇒ no line — not *no console*: a `null` says the session reported no link, and an observer must not learn even that much. **`fetch-fresh`**: `detail` exists only on the fetch, so the link is as of the panel's open and a delta never moves it. ⚠ Whether the link opens a LIVE console depends on the session's Remote Control state, which nothing on the wire reports; a link to an ended session opens claude.ai's own page for it |
 | the task reference | `task.ref` | `"card#7338"` | renders as **plain text, never a link**. ⭐ Operator ruling, 2026-09-13 ([§ 14](#14-open-questions-for-the-review-loop) item 3): no link base URL is configured, because the board is private. A guessed URL is a link that goes somewhere wrong, which is worse than no link. `card#N` is the one shape [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here) still declares; `<repo>#N` was **tier 2's** and retired with it on card#9234 |
 
 **The timeline renders only fields that provably exist.** [D2 § 8.2](FLEET-STATE.md#82-rest) declares
@@ -1999,7 +2251,11 @@ seat did and when, and nothing is guessed onto it.
   seeded **vibe line** ([§ 10.4](#104-the-art-direction-as-a-specification)), are all pure functions
   of `(install_id, seat_id)` — two fields the wire **does** send
   ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)) — so none of them is a fact the client
-  invented; each is the identity redrawn. What the rule above does bind is the **direction**: an
+  invented; each is the identity redrawn. **An intern's look is admitted on the same footing**: it is
+  a pure function of the intern key `seat~<call_id>` ([§ 10.4](#104-the-art-direction-as-a-specification);
+  the operator's ruling of 2026-10-02 on card#11058 Q3) — `subagents[].call_id` is on the wire beside
+  the seat's pair ([§ 8](#8-interns--subagent-rendering-and-the-cap)) — and it is bound by everything
+  below exactly as the seat's is. What the rule above does bind is the **direction**: an
   appearance-class rendering may **never become a fact about state**, so it carries a label saying it
   is seeded, and it drives **no pose, no currency label, no badge and no animation**. That is the
   same boundary [§ 5.5](#55-the-clients-own-narration) draws for the client's own narration, arriving
@@ -2011,10 +2267,16 @@ seat did and when, and nothing is guessed onto it.
   ([D2 § 9](FLEET-STATE.md#9-read-side-authentication)) and nothing on any screen may display one even
   if a future field carried it.
 - **An unrecognised enum member guessed into a known one.** A `render_state`, `link_state`,
-  `activity_state`, `unknown_reason`, `api_error_type` or badge the client does not know renders as an
-  explicitly **unrecognised** glyph carrying the raw string, and the desk is treated as
+  `activity_state`, `unknown_reason`, `api_error_type` or badge the client does not know renders, on the
+  desk, as the fixed word **unrecognised** on the chip and the label line for an unrecognised
+  `render_state`, and **every unrecognised value, `render_state` included, is counted into the flag
+  ⚠ +N** (N as [§ 5.1](#51-the-desk)'s *the glance set* defines it) — no raw string is drawn on the desk — and the desk is treated as
   not-current — never mapped to the nearest known member and never defaulted to a healthy-looking one
   ([§ 9](#9-failure-paths-and-their-observables), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised)).
+  **Every such value, `render_state` and badges included, is listed in the drill-down** as its raw
+  `field: value` line ([§ 4.3](#43-the-desk-drill-down-panel)'s *unrecognised values* row,
+  `data-panel-unrecognised`), and an unrecognised badge's row there reads its raw id, then
+  **unrecognised**; the desk list prints the same lines ([§ 4.5](#45-the-viewport-rule-and-the-camera)).
   **"The client does not know" is a membership test against a set this document publishes, and all six
   sets are published here**: `render_state` and `unknown_reason` in [§ 7.1](#71-the-render-per-state),
   the 18 badges in [§ 7.2](#72-badges-every-member-has-a-render), and `link_state`, `activity_state`
@@ -2022,8 +2284,9 @@ seat did and when, and nothing is guessed onto it.
   A rule whose known-set lived nowhere would be a rule an implementer could only guess at, and the
   first thing it would guess wrong is the member this document forgot to list.
   **`api_error_type` is rendered verbatim *and* membership-tested, which is not a contradiction**: the
-  line carries the raw string either way ([§ 5.1](#51-the-desk)), and membership decides only whether
-  it carries its plain-language sentence or the **unrecognised** marker beside the raw value. Reading
+  raw string is rendered verbatim in the drill-down and the list ([§ 5.1](#51-the-desk)), the desk's
+  label line draws the non-raw form *API error — unrecognised*, and membership decides only whether the
+  drill-down's line carries its plain-language sentence or the **unrecognised** marker beside the raw value. Reading
   the two rules as alternatives is what would make one of them dead.
 
 ### 5.5 The client's own narration
@@ -2044,9 +2307,12 @@ the client's own, and never becomes a fact about a seat.**
 | ***membership as of HH:MM:SS*** | the moment of the last full snapshot **apply** | the age of the *membership* picture, rendered separately from the age of the *state* picture ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) |
 | ***showing N of M desks — one desk could not be read***, and in the other direction ***showing N desks — the building lists M*** | the per-floor counts it holds, against `fleet.seats_total` | the only narration line that names a wire number, and it names it **as the wire's**: [§ 4.1](#41-the-lobby--the-building-summary) renders the disagreement rather than picking a winner ([AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count)) |
 | ***floor map is short N desks*** — and, on a floor of several rooms, ***floor map is short N desks — `install_id`***, one per short room | the rendered seat count against `S`, the map's own slot count ([§ 3.2](#32-the-desk-slot-function)); the room's suffix is the one [§ 4.6](#46-the-building-layout)'s layout names it by (card#9292) | a fact about the map and this client's layout, not about any seat ([§ 9](#9-failure-paths-and-their-observables) F13) |
+| ***reserved for `pm` (id 3) — no seat holds that role*** — the room's reserved desk, by the role it is reserved for and its Tiled `id`; and, on a floor of several rooms, suffixed ***— `install_id`*** as the short-map line is | the map's one `desks` object carrying `reserved_for` ([§ 10.3](#103-the-floor-map)) against the relayed `protocol_agent_role` of the room's seats: no seat's equals it ([§ 3.2](#32-the-desk-slot-function), card#11144) | a fact about the map and the roles the client holds, not about any seat: the desk is drawn empty and reserved (the operator's ruling Q3 A), and the line is what tells a viewer the empty desk is reserved rather than free. A seat relaying `null` — `unchecked`, `disagreed`, `undeclared`, or a reporter older than card#11144 ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)) — matches no desk, so a PM whose flusher cannot read its roster leaves this line standing. Two or more seats relaying the role is [§ 9](#9-failure-paths-and-their-observables) F22's line instead |
 | ***rooms `X` and `Y` overlap on this floor*** | two footprints the client computed from the maps it holds sharing a pixel — the two `install_id`s in key order ([§ 4.6](#46-the-building-layout), [§ 9](#9-failure-paths-and-their-observables) F18, card#9292) | a fact about this client's layout and the documents it holds, not about any seat; it is rendered only where every write's refusal was passed, so it is rare and it names what to move |
+| ***floor theme `name` is not installed — drawn in the house theme — `floor`*** | the floor's layout entry's `theme` against the theme registry the page loaded: `name` is the entry's value as authored, `floor` the floor's name by [§ 4.6](#46-the-building-layout)'s rendering rule ([§ 9](#9-failure-paths-and-their-observables) F23, card#11046, built at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 21) | a fact about this client's layout and the build it loaded, not about any seat; it is rendered only past the write's refusal, so it is rare, and it names what to re-save |
 | ***desk objects `i` and `j` intersect — `install_id`: `seat`, `seat`***, one per pair, and ***desk object `i` is smaller than the furniture box — `install_id`: `seat`***, one per object | two `desks` objects of a map the client holds sharing a pixel on half-open rects, or one object smaller than [§ 12](#12-every-number-and-where-it-comes-from)'s furniture box at the cap — `i` and `j` are the objects' Tiled `id`s, never [§ 3.2](#32-the-desk-slot-function)'s 0-based slot index, in `id` order; the room's suffix as [§ 4.6](#46-the-building-layout)'s layout names it; and after the colon the `seat_id` at each object, omitted for an empty one ([§ 10.3](#103-the-floor-map), [§ 9](#9-failure-paths-and-their-observables) F21) | a fact about the map and this client's layout, not about any seat — the seat names are there so that a desk drawn under another is still named on the page, and are the way to its drill-down once row 10 serves [§ 4.4](#44-routes-and-what-each-one-fetches)'s route. It is rendered for **any** map the client holds — the shipped default, an authored save, a stored or restored revision — because the console's refusals landed with row 14's slice C ([§ 14](#14-open-questions-for-the-review-loop) item 28, ruled) and a refusal at the write reaches no revision stored before it, nor one saved against an earlier box; so this line, and not a harness test, is what tells a viewer and the map's author, and it is drawn by [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's scene from the map alone |
 | the **wall clock** and the windows' **sky** ([§ 6.2](#62-the-animation-table--the-closed-set) A17) | the **viewer's own clock**, read at the moment a `feed.heartbeat` arrives — never the server clock, never corrected by [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset, and never a seat's | a fact about **the viewer's machine**, labelled on the page as the viewer's own local time so that nothing about it reads as wire data. It is the one line here rendered by an animation rather than as text, which is why the rule below is stated in terms of *drives* rather than *appears in*: the heartbeat drives A17 and this value is what A17 **sets**. Its stopping is the point ([§ 9](#9-failure-paths-and-their-observables) F1) and it carries no *as of* stamp of its own — the feed-status line above is where this page says how current it is |
+| the **zone line** — ***times: your local time (GMT+5:30)*** | the viewer's browser zone, as its offset at the moment the page loaded | a fact about **the viewer's machine**, like the wall clock above: said once on the floor and once on the lobby so that every bare *HH:MM:SS* stamp on the page reads in a known zone ([§ 2.4](#24-the-clock-and-every-age-on-the-page), card#9446). It is text, set once, and drives nothing |
 
 **None of these is a state, and none of them may become one.** A narration line never drives a desk's
 pose, a currency label, a badge or an animation — the only effect the client's own connection state has
@@ -2086,7 +2352,7 @@ which is what an earlier revision of this document did for two dozen of them, in
 live desk ticks.
 
 **The population is [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s own `Null? yes` column,
-all 39 of it**, re-derived by `tools/design/verify-floor.py` on every run and set-differenced against
+all 40 of it**, re-derived by `tools/design/verify-floor.py` on every run and set-differenced against
 this table **in both directions** (G10): a member D2 marks nullable with no row here, and a row here
 for a member D2 does not mark nullable, both red the gate. That is the same closure
 [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) gives the six enum
@@ -2135,6 +2401,7 @@ it.
 | `enabled` | **the *reporting disabled* treatment is not applied.** Null is *before the first heartbeat* and is not `false`; rendering the two alike would be [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s *off must not look like gone* failing on the third value ([§ 5.1](#51-the-desk)) |
 | `protocol_agent_name` | the seat joins **nothing**: no coordination participant resolves to this desk, and the desk itself renders exactly as it did before — no marker, no *(no agent)* label, and never `seat_id` in its place ([§ 5.7](#57-the-coordination-thread-line)). Null is *this seat declares no protocol agent name*, *no heartbeat has arrived yet*, or *the last heartbeat carried neither declaration member* — for example from a reporter that predates [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s fields; the member below is `undeclared` only on the seat that declares none |
 | `protocol_agent_name_check` | nothing is drawn, and the seat resolves nothing. Null is **not** read as `undeclared`: `undeclared` is a seat that reported and declared none, null is a seat that has not reported at all **or** whose last heartbeat carried neither declaration member — for example from a reporter that predates [D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)'s fields. Neither null says the seat declares none — the same refusal to read null as a value that `enabled`'s row above makes, for the same reason. The state is rendered only beside a participant this seat resolves ([§ 5.7](#57-the-coordination-thread-line)), so a seat resolving nothing renders none of it |
+| `protocol_agent_role` | **nothing is drawn** — no role label, no marker, and never `protocol_agent_name` or `seat_id` standing in for it: the role is a label the reporter relays from the coordination roster ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), and `null` equals no role at all. Null is *no heartbeat yet*, *the last heartbeat omitted it* — a reporter that predates card#11144 — or *the reporter relayed none*: a check other than `checked`, a roster entry with no slug-shaped `role`, or a declared name two roster entries share. None of those is read as a role |
 | `reporter.version` | *not reported*. Never the last version the client held — the flusher may have restarted into a different one, which is the fact `uptime_s` exists to discriminate |
 | `reporter.platform` | *not reported*. Never inferred from anything else on the object |
 | `reporter.uptime_s` | *not reported*, never 0 — **`fetch-fresh`**, under the reporter block's own stamp. The ***since reporter start*** framing beside D1's twelve badges ([§ 7.2](#72-badges-every-member-has-a-render), [D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled)) then reads *since reporter start — uptime not reported*, because the counters are still monotonic-since-start and only the **length** of that window is unknown |
@@ -2452,8 +2719,8 @@ it carries the same fact.
 
 | # | Class | Animation | Where | Driving fact (D2) | Edge that starts it, or the fact it is held by | Ends | Reduced-motion form | Its absence means |
 |---|---|---|---|---|---|---|---|---|
-| **A1** | `edge` | `arrive` — the character walks in and sits | desk | `render_state` | a delta whose `changed[]` contains `render_state` and whose new value leaves `offline` **and not** [A13](#62-the-animation-table--the-closed-set)'s condition — `retired` is the one exit from `offline` that is not an arrival, and stating it here is what keeps a desk being REMOVED from also walking in, exactly as [A3](#62-the-animation-table--the-closed-set) states its exclusion of [A4](#62-the-animation-table--the-closed-set) on the row that yields (card#7341 step 6) | on arrival at the desk | the character is simply present | the seat has not left `offline` |
-| **A2** | `edge` | `depart` — the character stands and walks out, leaving the chair empty | desk | `render_state` | a delta whose new `render_state` is `offline` | at the door | the chair is empty and labelled | the seat is still reporting |
+| **A1** | `edge` | `arrive` — the elevator's leaves open, the character steps out, walks to its desk and sits | desk, floor, back-wall band | `render_state` | a delta whose `changed[]` contains `render_state`, whose old value [§ 7.1](#71-the-render-per-state)'s *Desk* column draws as an empty chair and whose new value it draws a character for, **and not** [A13](#62-the-animation-table--the-closed-set)'s condition — `retired` is the one exit from `offline` that is not an arrival, and stating it here is what keeps a desk being REMOVED from also walking in, exactly as [A3](#62-the-animation-table--the-closed-set) states its exclusion of [A4](#62-the-animation-table--the-closed-set) on the row that yields (card#7341 step 6). The walk note under this table owns how it is drawn (card#9566) | when the walker sits, in the pose the seat then holds | the character is simply present | the seat did not go from an empty chair to a member that draws a character |
+| **A2** | `edge` | `depart` — the character stands, walks to the elevator, the leaves open, it steps in and is gone, and the leaves close, leaving the chair empty | desk, floor, back-wall band | `render_state` | a delta whose `changed[]` contains `render_state`, whose old value [§ 7.1](#71-the-render-per-state)'s *Desk* column draws a character for and whose new value it draws as an empty chair, **and not** [A13](#62-the-animation-table--the-closed-set)'s condition — `retired` draws no character either, and a removal is not a departure. The walk note under this table owns how it is drawn (card#9566) | when the elevator's leaves have closed behind it | the chair is empty and labelled | the seat did not go from a member that draws a character to an empty chair |
 | **A3** | `held` | `work` — typing at the keyboard, with the eye **blink** and the gentle in-place **wiggle**, 4 fps loop | desk | `render_state` | `render_state == "working"` **and not** A4's condition — the two are exclusive, and stating it here is what makes *the held rows this table predicts* a single answer rather than two ([§ 7.1](#71-the-render-per-state)'s `working` row says the same thing in prose) | when it is not | a *working* pose, static, with the glyph | the seat is not working **now** |
 | **A4** | `held` | `think` — leaning back, watching the monitor, with the same **blink** and **wiggle**, 4 fps loop | desk | `open_calls`, `open_turn` | `render_state == "working"` **and** `open_calls == 0` **and** `open_turn == true` | when either fact changes | a *thinking* pose, static | there is an open call, so A3 runs instead |
 | **A5** | `edge` | `tool-swap` — the monitor's glyph changes, one 250 ms cross-fade | desk monitor | `action.tool_name` | a delta whose `changed[]` contains `action` and whose `action.tool_name` differs from the held one | after one tick | the glyph changes with no fade | the action did not change |
@@ -2467,11 +2734,165 @@ it carries the same fact.
 | **A13** | `edge` | `retire` — the character stands, leaves, and **the desk is removed from the floor** ([§ 3.5](#35-retirement-and-the-only-removal), card#9078: it used to clear the desk and stamp a plate) | desk, floor | `render_state`, `seat.retired` | `render_state == "retired"`, or the `seat.retired` message | when the desk is gone | the desk is simply absent on the next render | the seat is not retired |
 | **A14** | `edge` | `feed-pulse` — a one-frame pulse on the feed indicator | status strip | `feed.heartbeat` | each `feed.heartbeat` message received | after one frame | a *last message HH:MM:SS* readout that updates instead | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables)) |
 | **A15** | `held` | `catching-up` — a replay marker sweeps the monitor, 4 fps loop | desk | `render_state` | `render_state == "catching_up"` — D2 derives it from `delivery.oldest_unsent_age_s > 300`, but that input is one of [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s ten and a held copy of it freezes, so the **delivered** collapse is what holds this render | when it is not | a static replay marker and the *replaying* label | the seat's spool is not draining |
-| **A16** | `edge` | `desk-move` — a displaced character walks to its new desk | floor | the rendered seat set | a seat entering the set displaces an incumbent ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)), or a retirement's ANNOUNCEMENT takes a seat out of it and an incumbent re-probes into the slot it frees ([§ 3.5](#35-retirement-and-the-only-removal)) | on arrival | the desk appears in its new slot on the next render | no arrival collided and no announced retirement freed a slot |
+| **A16** | `edge` | `desk-move` — a displaced character walks to its new desk | floor | the rendered seat set, `protocol_agent_role` | a seat entering the set displaces an incumbent ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)), or a retirement's ANNOUNCEMENT takes a seat out of it and an incumbent re-probes into the slot it frees ([§ 3.5](#35-retirement-and-the-only-removal)), or a delta or seat-set change changes which seat the room's reserved desk seats — the holder walks in or out, and the chain through the slot it takes or leaves re-probes ([§ 3.2](#32-the-desk-slot-function), card#11144) | on arrival | the desk appears in its new slot on the next render | no arrival collided, no announced retirement freed a slot, and no delivered change moved the reserved desk's holder |
 | **A17** | `edge` | `room-tick` — the wall clock's hands step to the viewer's current minute and the windows' sky is re-evaluated for that time | the **floor's room render** — the drawn interior, and not [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s room key (card#9267): its wall clock, and the sky in its windows ([§ 4.2](#42-the-floor)). **On the lobby it is this row or nothing:** [§ 4.1](#41-the-lobby--the-building-summary)'s cross-section renders a per-floor *summary*, and the rooms only by **name**, so it draws no room interior and no wall clock at all; it draws the sky behind the building (the operator's ruling on card#7343, 2026-09-30), and that sky is this row's, on this row's driver (`floor/floor-layout.js`'s `RoomClock`, the floor screen's own), and never a second one of its own — A17 is the lobby's one row | `feed.heartbeat` | each `feed.heartbeat` message received on the one stream. **The same trigger as A14, and the pairing is the design rather than a duplication** — the note below is where that is argued | at the new time and the new sky value: one step, no tween | the hands **jump** to position and the sky **steps** to its new value with no cross-fade — the same fact, without the transition ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)) | **no message has arrived** — which at 45 s is the feed-down condition itself ([§ 9](#9-failure-paths-and-their-observables) F1). **A stopped clock is that condition in the form every viewer reads without being told**, which is why this row exists at all |
 | **A18** | `held` | `thread-line` — a line drawn between the desks a thread's participants resolve to, held for as long as the thread is open ([§ 5.7](#57-the-coordination-thread-line)) | floor | `coord_thread.lifecycle` | the last `coord.thread` this client holds for that `thread_ref` says a value other than `closed`, **and at least two of its participants resolve to a desk** — one endpoint is not a line, and a guessed second endpoint is what [§ 5.7](#57-the-coordination-thread-line) clause 1 forbids | when a `coord.thread` arrives whose lifecycle is `closed`, or when the resolved endpoints fall below two | the line is drawn **static** — same line, same endpoints, no travel along it | no open thread on this floor has two participants that resolve to a desk — which is **every** thread on a fleet whose seats declare no protocol agent name or run a reporter build that does not include card#9375, and since card#9296 and card#9375 that is a fact about how an install's seats are provisioned — each seat's config and the build it runs — rather than about a join nothing owns ([§ 5.7](#57-the-coordination-thread-line) clause 1) |
 | **A19** | `edge` | `envelope` — an envelope travels the line once, from the origin desk to each destination desk | floor | `coord.round`, `coord_round.targets` | one `coord.round` message applied, whose `install_id` is this floor's, whose origin resolves to a desk and at least one of whose destinations does. A destination that does not resolve gets **no envelope and no line**, and the ones that do still get theirs | on arrival at the destination desk | the bead is simply present at the destination end, with no travel | no post arrived that this client can draw between two desks. ⛔ **It is not** *the post reached nobody*: that is a `targets` of `[]`, and a `null` `targets` is *the fan-out is not resolvable here* — three states the wire keeps apart and this row does not collapse |
 | **A20** | `edge` | `broadcast-pulse` — one ring expands from the origin desk across the floor | floor | `coord_round.to`, `coord_round.from` | one `coord.round` whose `to` carries the literal `all`, verbatim off the wire, **and whose origin resolves to a desk** ([§ 5.7](#57-the-coordination-thread-line) clause 1) — the ring expands **from** that desk, so a post whose origin resolves to nothing has no desk to expand from and draws none, exactly as A19 has none to depart from. ⛔ **The address is not the whole trigger, and reading it as one is how a ring lands on a guessed desk** — it is also what [§ 5.7](#57-the-coordination-thread-line) already says of this row, *"all three were unreachable until the join landed"*, which is false of an address-only trigger. D2 publishes no `is_broadcast` boolean because *"`to` carries `all` verbatim and `targets` carries the resolved fan-out"*, so this row reads the member D2 kept rather than a flag it refused | at the floor's edge — one expansion, and never a repeating ring | the origin desk carries a **static broadcast marker** for that post | the post was addressed to named agents rather than to `all`, or its origin resolves to no desk. The ring says the ADDRESS was a broadcast; it never says how far the post got, which is `coord_round.targets`' answer and A19's render |
+
+**A1 and A2 — the walk to and from the elevator (card#9566).** The operator's request, verbatim
+(2026-09-14): *"when a desk transitions from staffed to empty, have the person walk from their desk to
+the elevator and then disappear. When an agent reappears, draw the animation for the person to exit the
+elevator and move to their desk where they start working"*. This note owns how the two rows above are
+drawn, and every other site points here. **One principle governs all of it: a walk is presentation,
+never state.** The rows fire, and the animation log is written, at the apply exactly as for every other
+`edge` row; held episodes are entered and left at the apply exactly as before; no
+[§ 11](#11-acceptance-tests) rule changes. The walk is only how the floor draws a row it has already
+logged.
+
+1. **Staffed and empty are [§ 7.1](#71-the-render-per-state)'s *Desk* column, read off the delta.**
+   A `render_state` value is **staffed** where that column draws a character — shipped as
+   `server/public/js/desk/task-bubble.js`'s `deskDrawsCharacter()` — and **empty** where it draws the
+   empty chair — shipped as `server/public/js/desk/desk-poses.js`'s `DESK` map, whose `empty-chair`
+   pose is that column's; no list of members is written here. **The two are not complements**: a
+   value that draws no character is not thereby empty — `retired` draws neither, and an unrecognised
+   value is neither ([§ 9](#9-failure-paths-and-their-observables) F9) — so *not staffed* is never read
+   as *empty*, and A2 does not fire on `working →` an unrecognised value. A2 fires on a delivered delta whose old value is staffed and
+   whose new value is empty, and A1 on one whose old value is empty and whose new value is staffed;
+   **both exclude [A13](#62-the-animation-table--the-closed-set)'s condition**, because an edge into
+   `retired` is a removal, not a departure — and since `retired` is on neither side, each row's own
+   two sides hold the exclusion with no clause of its own. So a seat that
+   goes quiet walks out at its `stale` edge, and nothing moves when that desk later turns `offline`.
+   ⚠ **Until card#9566 the two rows were keyed on `offline` alone**, and that key predicted walks the
+   request rules out: A2 on `stale → offline` and on a delta re-sending `offline` unchanged
+   ([§ 2.5](#25-what-re-renders-and-when): a re-sent value still counts as changed), each a walk out
+   of a chair that was already empty; and A1 on any exit from `offline`, `offline → stale` included.
+   Every seat that goes quiet crosses `stale → offline` at [D2 § 4.5](FLEET-STATE.md#45-link-states)'s
+   `offline` threshold, so the first of them fired on every quiet seat; none was seen only because no
+   walk was drawn (item 3).
+2. **What fires neither row.**
+   - **A retirement** — A13's alone (item 1).
+   - **The first render, and every render [§ 6.5](#65-a-snapshot-never-animates) names** — a snapshot,
+     a resync, a per-seat insert, a reconnect, a backgrounded tab's return
+     ([§ 9](#9-failure-paths-and-their-observables) F15). There is no edge.
+   - **[§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5's empty chair,
+     in either direction** ([decision 50](#13-decisions-taken-revisable-at-review)), on
+     [§ 11](#11-acceptance-tests)'s existing ruling: an emptied desk *"is a claim about what the
+     client knows, not about anything the seat did, so nothing about it moves"*, and an `edge` row
+     needs a wire message the client applied. The chair empties with no walk, as it does today.
+   - **An unrecognised `render_state`** on either side ([§ 9](#9-failure-paths-and-their-observables)
+     F9): it is neither a staffed nor an empty value of the *Desk* column (item 1), so neither edge
+     touches it — A2 is keyed on the empty chair itself, never on the absence of a character.
+   - **A displacement or a retirement's walk.** [A16](#62-the-animation-table--the-closed-set) and
+     A13 keep their shipped drawing — a moved desk jumps, a removed desk goes — and
+     [§ 14](#14-open-questions-for-the-review-loop) item 31 carries walking them as a follow-up.
+3. **The path is A16's rule, and this is what that rule IS today.** `server/public/js/floor/scene.js`'s
+   `buildEffects()` computes a walk as one **straight segment** between two points — for A16 the
+   previous render's anchor and this render's, each `anchorOf()`'s *character's column at the desk's
+   mid-height* — in `⌈length ÷ 48⌉` frames, at least one, at [§ 12](#12-every-number-and-where-it-comes-from)'s
+   loop rate (`WALK_PX_PER_FRAME`, § 12's *Walk speed* row). It reads no tile, wall or furniture, so a
+   walk crosses whatever lies on the segment. A1 and A2 take the same rule between the desk's anchor
+   and **the elevator's threshold**: the seam's `x` at the foot of the leaves (`backWall()`'s
+   `elevator`, its `seam` and `y + h`), on the one band the floor draws, which every walker on a floor
+   of several rooms shares. ⚠ **Two facts about the shipped code this note corrects rather than
+   inherits.** `buildEffects()` today sends A1 in from, and A2 out to, the floor extent's **bottom
+   edge** under the desk — the "door" the old Ends cell named and no section defined. And
+   `server/public/js/floor/painter.js`'s `paintEffects()` has **no branch for any walk**: a walk effect
+   carries `from` and `to` and no `at`, so the painter draws nothing for it. card#9566's build draws
+   the walker for A1 and A2, in the character's own walk frames
+   (stand, step-left, step-right — `resources/characters/index.js`'s `walkFrames()` since card#11046; it was `painter.js`'s `WALK` phases over the pixel tree until then).
+4. **The desk under a walk draws the empty chair.** From the render that applies an A2, the desk is
+   § 7.1's empty chair for the new value, and the walker carries the person to the elevator. From the
+   render that applies an A1, the desk draws **the empty chair** until the walker sits — with its
+   label line, chip and every other fact the desk carries drawn from the applied object on that
+   frame — and on the walk's last frame it draws its current state, the character in the pose the
+   seat then holds. The held episode the A1 delta entered is logged at the apply as every entry is;
+   its loop is first drawn when the walker sits. **The walk's last frame triggers a PAINT-ONLY
+   refresh**: it re-paints the scene the last render built, with that seat's walk ended — over the
+   viewer's camera, route and drill-down as they stand, and the ages at its own instant as the 1 s tick
+   reads them, so it never moves the viewer back to where the applying render left them
+   ([§ 4.5](#45-the-viewport-rule-and-the-camera)). It drains
+   nothing, applies nothing, writes no animation-log row and fires no edge, so it is **not a render**
+   in [§ 2.5](#25-what-re-renders-and-when)'s sense or in [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
+   row 15's. [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s timer
+   bullet admits it as an edge row's own bounded frames, and its tween bullet states the one pose
+   exception it makes.
+5. **Frame by frame.** A2: the walker stands at the desk's anchor and walks the segment; at the
+   threshold the leaves open over **2** frames, the walker steps into the doorway over **1** and is no
+   longer drawn, and the leaves close over **2** (§ 12's *Elevator leaves* row). A1 in reverse: the
+   leaves open, the walker steps out, they close behind it while it walks, and it sits on the walk's
+   last frame.
+6. **At most one walk per seat, and any render that TOUCHES the seat cancels it.** A render touches
+   seat S, with a walk in flight, **if and only if** at least one of these holds:
+   - **the render's journal applied an entry for S** — a delta of any kind, firing a row or not; a
+     row that replaced S's object, from a snapshot, a resync, a per-seat insert or a reconnect; or
+     S's removal;
+   - **S's [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5 condition or
+     the floor's stilled condition ([§ 9](#9-failure-paths-and-their-observables) F6/F7) changed**;
+   - **S's desk anchor differs from the one the walk was computed against** — which is the anchor of
+     the render that applied the walk's row, stored with the walk — a re-slot no entry for
+     S carries: an [A16](#62-the-animation-table--the-closed-set) chain re-probe, a `seat.retired`
+     re-probe ([§ 3.5](#35-retirement-and-the-only-removal)), or a layout act, `room.map` or
+     `building.layout` ([§ 2.5](#25-what-re-renders-and-when));
+   - **the elevator's threshold moved** — a layout act that changes the floor's extent moves the band.
+
+   F9 and F15's return reach S through the first clause. The last two clauses are what keep a walker
+   from finishing at a desk that is no longer where it walks to; the first alone would miss them. A
+   render that draws no scene still drains its journal and is still tested: with no scene it has no
+   anchor for any seat, so the anchor clause cancels every walk in flight.
+   **Two things are not renders and touch nothing:** [§ 2.5](#25-what-re-renders-and-when)'s 1 s age
+   tick, which re-reads ages and applies nothing, and item 4's paint-only refresh. A touched seat's
+   walk is cancelled and its desk draws its current state at once. The anchor clause is written over
+   any walk, A2's and A1's alike, so one check serves both.
+   **No walk starts from a cancelled one**: if the cancelling delta fires a row of its own, the row
+   is logged and its walk is not drawn ([decision 51](#13-decisions-taken-revisable-at-review)). So
+   an A1 then an A2 inside the walk leaves the empty chair the A2 delivered, with one A2 row and no
+   second walk; an A2 then an A1 inside the walk draws the person seated. A seat's walk never meets
+   another walk of the same seat, which is why no ordering between them is needed.
+   ⚠ **A residual risk, stated for the build to measure on the sandbox:** a seat in `catching_up`
+   flushes its spool in back-to-back batches, and each applied delta for it touches it, so an A1 whose
+   seat returns through a replay may be cancelled before it reaches the desk and the person drawn
+   seated. Nothing in the design is wrong there; whether it happens often enough to read as a missing
+   walk is a measurement of the real flush cadence, which no document holds.
+   ⚠ **The reserved desk ([§ 3.4](#34-a-new-seats-first-appearance)'s last row).** A seat whose role
+   arrives on the delta after the one that took it out of `offline` has its A1 walk cancelled by
+   that delta, and [A16](#62-the-animation-table--the-closed-set)'s move to the reserved desk is drawn
+   as A16 is drawn today: the PM appears seated at the reserved desk.
+7. **When a route does not exist.** Under a straight segment it always does: a segment joins any two
+   points, the threshold exists on every floor that has an extent ([§ 4.2](#42-the-floor)'s band), and
+   the desk's anchor exists wherever the desk is drawn — inside a room, or on
+   [§ 3.2](#32-the-desk-slot-function)'s overflow strip, which `scene.js` places **below** the extent.
+   **No fallback branch is built**, because none is reachable. For the day
+   [§ 14](#14-open-questions-for-the-review-loop) item 30's tile path lands — when a walled-off desk
+   and every overflow desk, which stands on no room's or hallway's cells, become unroutable — the
+   fallback is decided: **that firing draws the row's reduced-motion form**. A fade at the desk was
+   refused: it is a visual form no row states, where the reduced form is a stated rendering of the
+   same fact.
+8. **A walk in flight survives repaints.** The painter rebuilds the drawing on every render
+   ([§ 2.5](#25-what-re-renders-and-when)) and a render follows each event the protocol handles, so
+   the screen keeps **one generic holder** of `edge` effects in flight, each with the geometry the
+   render that wrote it computed and its start instant, and every paint before its last frame draws it
+   at its elapsed frame. The same holder ends the truncation of
+   [A19](#62-the-animation-table--the-closed-set)'s envelope and
+   [A20](#62-the-animation-table--the-closed-set)'s ring that today's next render causes.
+9. **Several walkers at once each walk their own segment**, with no queue at the door: a queue would
+   make one seat's walk longer because another seat left, a quantity nothing sent
+   ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s third form). Walkers
+   are drawn above the desks, in the order their rows were written.
+10. **The leaves are open while any walk in flight is in its door frames**, and closed otherwise. A
+    walk whose door frames begin while they are already open opens nothing more. Their motion is
+    claim-bearing by [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s
+    vocabulary test, so they move only inside an A1 or A2 walk: an elevator that opened with nobody
+    in it would claim an arrival.
+11. **Reduced motion ([§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)):**
+    the same fact without the walk — on the applying render the chair is empty and labelled, or the
+    character is seated in its held pose; no walker is drawn and the leaves never move. Each firing
+    writes its row at `motion: false`.
+12. **Failure paths.** Item 6 already cancels a walk on every render that touches its seat, F9, F15
+    and row 5 included. On a floor [§ 9](#9-failure-paths-and-their-observables) F6 or F7 stills,
+    every walk in flight is cancelled and its desk drawn as the stilled render draws it. Where the
+    walker's art failed to load (F14), the walker is F14's placeholder rectangle at the character's
+    size, because F14 replaces the art's images and nothing else. No new failure path is minted.
 
 **Two rows move with no seat's state behind them — A14 and A17 — and both are driven by
 `feed.heartbeat`, so when the feed dies they stop together and every claim on the page goes still.**
@@ -2702,7 +3123,11 @@ permits this one.
 
 - **Motion driven by a timer.** **No claim-bearing motion** may be driven by the 1 s age tick, by a
   render loop's frame count, or by wall-clock time, except a state-held loop's own frames at the fixed
-  rate of [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2. ⚠ **Decorative motion is
+  rate of [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2, and **an `edge` row's own
+  bounded frames** at that rate — a count fixed by the render that applied the row's causing message,
+  run from that render and finishing within those frames, including the paint-only refresh that ends a
+  walk ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 4, card#9566). That refresh
+  drains nothing and starts nothing: it ends what a delivered message began. ⚠ **Decorative motion is
   necessarily on a timer, and this bullet deliberately does not reach it** — a loop with no driver is
   exactly what decorative motion **is**, so a bullet that forbade timers outright would have re-refused
   on 2026-08-30 everything the first bullet had just admitted. What makes decoration admissible is that
@@ -2717,7 +3142,9 @@ permits this one.
   [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s)'s RED exist to catch — the clock would keep
   moving after the feed died, which is the property the bullet above refuses under its dead-feed test.
   **The test is what would happen on a dead feed: claim-bearing motion that stops is caused;
-  claim-bearing motion that continues was on a timer.**
+  claim-bearing motion that continues was on a timer.** An `edge` row's frames are the bounded case
+  of the first: on a feed that dies mid-walk the walk is bounded and finishes within its frames, and
+  nothing moves after them.
 - **Motion whose rate, amplitude or direction encodes a quantity.** A faster typing loop for a busier
   seat, a gauge that drifts upward between samples, a badge that pulses harder as a counter rises: each
   invents a number the wire never sent.
@@ -2728,7 +3155,12 @@ permits this one.
   is the trace where that inference is wrong, and
   [AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere) is the test that catches it.
 - **A transition tween between two states.** A desk changes pose on the frame the delta is applied. An
-  interpolation between `working` and `idle` would be rendering a state that never existed.
+  interpolation between `working` and `idle` would be rendering a state that never existed. **The one
+  exception is an inbound walk** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 4,
+  card#9566): where [A1](#62-the-animation-table--the-closed-set)'s walker is on its way to the desk,
+  the desk draws the empty chair until the walker sits and its pose then, while its label line, its
+  chip and every other fact change on the frame the delta is applied. A walk is a row's own motion and
+  not a tween: it draws no state between two states, only the one person on the way to the desk.
 - ⭐ **Decorative motion that is not SLOW, LOW-AMPLITUDE and OUTSIDE the animation vocabulary.** ⚠ **The
   ordering above is historical and this section's bullets are cited BY ORDINAL from elsewhere in this
   document — *second forbidden form*, *third forbidden form*, *first bullet* — which is why this
@@ -2777,6 +3209,16 @@ permits this one.
   section says the **pulse** claims nothing; whether the desk may render occupancy as lamplight at all
   is § 5.1's question and is not answered here.
 
+  **Where a glow is drawn** (card#11045): the scene, not the painter, places it — an ellipse INSIDE its
+  lamp tile's own rect, at the tile's top where a floor lamp carries its shade, the tile's width
+  across — so a glow reaches no further than its tile, and a lamp kept inside the room's grid glows
+  inside it. Since card#11046's row 22 the lamp is a standing `floor-lamp` piece its floor's theme draws
+  ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 6), and its glow is drawn only where the
+  piece is.
+  `Tests\Feature\Floor\TheSceneDrawsOnlyWhatTheSetLoggedTest` holds every decoration's glow inside its
+  tile. Until then the painter drew it twice its tile's size, centred on the lamp's foot, and a lamp at
+  the room's edge glowed below the floor.
+
 ### 6.4 Reduced motion is a first-class rendering, not a degradation
 
 Under `prefers-reduced-motion: reduce`, every row of
@@ -2807,6 +3249,9 @@ selects and the two the heartbeat fires. **The other five are specified and unas
 delta, and AT-D3-6 delivers heartbeats and then nothing. Their reduced-motion forms are a contract this
 document states and no acceptance test checks; that is written down rather than covered over, and
 [§ 14](#14-open-questions-for-the-review-loop) item 15 carries what would close it.
+[A1](#62-the-animation-table--the-closed-set) and [A2](#62-the-animation-table--the-closed-set)'s
+reduced forms are asserted by [AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it),
+which replays its walks under `reduce` too (card#9566).
 
 **`prefers-reduced-motion` is read once, when the page is constructed, and is fixed for the page's
 life** (`floor/main.js`'s `matchMedia` read, which hands the one answer to `startFloorScreen()`). This
@@ -2959,8 +3404,8 @@ the answer was for D2 to publish one (card#8075, below).
 | `stalled` | head in hands | *API error — rate_limit (rate limit)* — a **worked instance** of the composed line [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable) publishes, which is where its order and its separators are stated; the raw wire value is on the line and § 7.6's phrase is beside it | A8 | folded into `unknown`; `api_error_type` is always on the line — **which the Label line cell beside this one denied from this document's first revision onward**, publishing the phrase with the raw value elided. One row contradicting itself is the cheapest proof available, and [§ 5.4](#54-what-is-never-rendered), [§ 5.1](#51-the-desk) and § 7.6's own column heading all say the same thing louder |
 | `unknown` | character present, question marker | one sentence per `unknown_reason` (below) | A9 | rendered as `idle`, and never as seven different desks |
 | `catching_up` | character present, replay marker, desaturated | *replaying history* — the state's own sentence and **nothing else**. `activity.last_event_time` belongs to the **currency label**, the second element drawn under this line as *was: working (last event 12:47, seat clock)* ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim), [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)) — so this line carried it too, the desk drew **one timestamp twice**, and [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one-rendered-form-per-fact rule reaches across the two elements exactly as it reaches across two surfaces. That the duplicate was invisible for so long is what the one-element reading bought: read as one line, the repetition was a paraphrase; read as two, it is the same field rendered twice on one desk | A15 | rendered as current work. This is [AT-D2-20](FLEET-STATE.md#at-d2-20-catching-up-is-not-current-and-not-stale)'s rule at the pixel layer |
-| `stale` | **empty chair**, desk dimmed | *no data since 14:18 — no data for 11m* — **the worked label line for this state**, derived from [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s **`dark-only`** marker rather than restating it, read at a corrected clock of **14:29**: the timestamp is the version-bearing `delivery.no_data_since` and the ticking age is `delivery.last_receipt_at`. The age is inside this state's own window and not merely large — [D2 § 4.5](FLEET-STATE.md#45-link-states) puts `stale` past 300 s and `offline` past 900 s, so a worked 41m here would have been an `offline` seat wearing the `stale` row's label | none | rendered as `idle`, ever ([D2](FLEET-STATE.md#42-render-precedence) `D2-MUST` #2) |
-| `offline` | empty chair, desk dark | *no data since 12:23 — no data for 2h 06m* — the same worked pair for this state, at the same **14:29** so the two rows describe one moment rather than two, silent past 900 s (**`dark-only`** for the age, [§ 2.4](#24-the-clock-and-every-age-on-the-page)). **When `delivery.no_data_since` is null** — the provisioned-never-reported seat [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints, whose `last_receipt_at` is `NULL` too — the line reads ***no data yet*** alone ([§ 3.4](#34-a-new-seats-first-appearance), [§ 5.6](#56-the-null-render-for-every-nullable-member)), never *no data since null* and never an age beside it | none (A2 played on the way in) | removed from the floor |
+| `stale` | **empty chair**, desk dimmed | *no data since 14:18 — no data for 11m* — **the worked label line for this state**, derived from [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s **`dark-only`** marker rather than restating it, read at a corrected clock of **14:29**: the timestamp is the version-bearing `delivery.no_data_since` and the ticking age is `delivery.last_receipt_at`. The age is inside this state's own window and not merely large — [D2 § 4.5](FLEET-STATE.md#45-link-states) puts `stale` past 300 s and `offline` past 900 s, so a worked 41m here would have been an `offline` seat wearing the `stale` row's label | none ([A2](#62-the-animation-table--the-closed-set) played on the way in, from a member that draws a character) | rendered as `idle`, ever ([D2](FLEET-STATE.md#42-render-precedence) `D2-MUST` #2) |
+| `offline` | empty chair, desk dark | *no data since 12:23 — no data for 2h 06m* — the same worked pair for this state, at the same **14:29** so the two rows describe one moment rather than two, silent past 900 s (**`dark-only`** for the age, [§ 2.4](#24-the-clock-and-every-age-on-the-page)). **When `delivery.no_data_since` is null** — the provisioned-never-reported seat [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints, whose `last_receipt_at` is `NULL` too — the line reads ***no data yet*** alone ([§ 3.4](#34-a-new-seats-first-appearance), [§ 5.6](#56-the-null-render-for-every-nullable-member)), never *no data since null* and never an age beside it | none ([A2](#62-the-animation-table--the-closed-set) played on the way in from a member that draws a character; from `stale`, the chair was already empty and nothing plays) | removed from the floor |
 | `disabled` | character present, monitor off | *reporting disabled* | none | shown as `offline` **while the client can confirm the seat** ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5) — a seat that is off and a seat that is gone must not look alike ([D1 § 6.14](EVENT-SCHEMA.md#614-reporterheartbeat)) — and once the client's own read of this seat has failed enough to leave it unconfirmed, that distinction is exactly what the client can no longer draw: row 5's empty chair is what renders instead, the same collapse every other confirmable state takes, never a `disabled` character held past what the client can still vouch for |
 | `retired` | **no desk** — the desk is removed from the floor on the announcement ([§ 3.5](#35-retirement-and-the-only-removal), card#9078). It is the one member of the ten with no held render, because it is not a state a rendered seat is ever in: it is the instruction to stop rendering one | none on the floor. The client's event log carries the line — *aimla-pm removed — host decommissioned* — with the reason and the time the message carries and **no operator name**, which the message does not ([§ 5.5](#55-the-clients-own-narration)) | A13 | **left on the floor** — a cleared desk, a stamped plate, or a nameplate of any kind; and, at the other extreme, removed with **no** log line, which is a desk that vanishes with nothing saying why |
 
@@ -2978,34 +3423,46 @@ as [D2 § 4.3](FLEET-STATE.md#43-the-derivation-function) intends ("the *renderi
 | `stalled_session_ended` | *rate-limited, then the session ended* |
 | `session_closed_turn_open` | *the session closed with a turn still open* |
 
+⭐ **The state's word is drawn on a CHIP under the nameplate, in the state's colour** (operator ruling
+2026-10-02, card#11058 Q4 (a)), and **the colour never carries the state alone**. The chip's vocabulary
+is the glyph strings `server/public/js/desk/desk-poses.js` and `server/public/js/desk/desk-render.js` publish — an unratified display form —
+and the fixed word *unrecognised* for an unrecognised member ([§ 5.4](#54-what-is-never-rendered)). On
+the desk an unrecognised `unknown_reason` reads *unknown — unrecognised reason*; the reason's raw string
+is the drill-down's and the desk list's. The **Desk** column's markers are the pose art's
+([§ 10.4](#104-the-art-direction-as-a-specification)), drawn inside the character's rect, and no scene
+element of their own — and, like the poses, not yet drawn: [§ 14](#14-open-questions-for-the-review-loop) item 34.
+
 ### 7.2 Badges: every member has a render
 
 `badges[]` carries **0…18** members — D1's twelve `degraded` members plus D2's seven server-derived
 badges, of which `epoch_reset` is in both
 ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object),
 [D2 § 7.2](FLEET-STATE.md#72-this-planes-own-counters-and-badges)). Every member has a render, because a
-badge a consumer does not draw is a condition the fleet reports and nobody sees.
+badge a consumer does not draw is a condition the fleet reports and nobody sees. **On the desk a
+badge is in the badge row of two — the treatment badges first, then recognised badges in the wire's
+order — or counted into the flag ⚠ +N** ([§ 5.1](#51-the-desk)'s *the glance set*); **every member's line is in the drill-down**,
+and the desk list prints every id.
 
 | Badge | Origin | Rendered on the desk | Drill-down line |
 |---|---|---|---|
-| `lossy` | D1 | badge cluster | *events discarded: N* — **the number is always beside it**, per [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters) and D2 S28: a loss is never a badge alone |
-| `batches_rejected` | D1 | badge cluster | *N batches refused — last status and error code*, the count read from `detail`'s `seat_counters` rows for `batches_refused.<error>` ([D2 § 7.1](FLEET-STATE.md#71-d1s-server-side-counters--where-they-live), which raises **no** server-side badge for them precisely because this one already exists). [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) also requires the **received and accepted schema versions** to be *readable in its drill-down*; neither is on any read surface, so the panel reads *the refused schema versions are not reported* rather than inventing them ([§ 14](#14-open-questions-for-the-review-loop) item 9, Appendix A U12) |
-| `harness_contract_moved` | D1 | badge cluster | *the harness payload moved under this reporter* |
-| `reporter_behind` | D1 | badge cluster | *the harness has an enum member this reporter coerces* |
-| `value_clamped` | D1 | badge cluster | *a reported value left its declared range and was clamped* |
-| `counters_omitted` | D1 | badge cluster | *N counters did not fit the heartbeat* |
-| `index_overflow` | D1 | badge cluster | *the seat passed its open-call or open-session index cap, or skipped history when its index journal tail was truncated at 8 MiB* — [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters) raises this badge from **three** counters (`open_call_index_overflow`, `open_session_index_overflow`, `index_fold_truncated`) and the line names all three cases, because the third is a seat whose own history is short rather than one that is merely busy |
-| `invalid_tool_name` | D1 | badge cluster | *a tool name failed its pattern and was sent as `INVALID_TOOL_NAME`* |
-| `bad_session_id` | D1 | badge cluster | *a session id failed its pattern and was sent as null* |
-| `config_invalid` | D1 | badge cluster, **and the desk is treated as not-current** | *the reporter's config failed validation; it is spooling and sending nothing* |
-| `statusline_degraded` | D1 | badge cluster | *the wrapped status-line command is failing* |
-| `epoch_reset` | both | badge cluster | *a new sequence epoch was minted; nothing was discarded* — and the drill-down says which side observed it, because D1's reporter and D2's server raise it independently ([D2 § 7.2](FLEET-STATE.md#72-this-planes-own-counters-and-badges)): *observed by the reporter*, *observed by the server*, or *observed by the reporter and by the server*; *observed by: not reported* when neither counter shows it, and *observed by:* followed by the panel's own word — **unavailable**, or *waiting for the seat detail* — when `detail` has not been read (ratified by the operator on card#7342, 2026-09-25) |
-| `seq_gap` | D2 | badge cluster | *N events the reporter sent did not arrive* — **not** the same statement as `lossy`, and the two are never merged ([D2 § 7.1](FLEET-STATE.md#71-d1s-server-side-counters--where-they-live)) |
-| `seq_collision` | D2 | badge cluster | *two events claimed one sequence number* |
-| `clock_skew` | D2 | badge cluster | *seat clock is N s from the server's* — rendered beside every seat-clock timestamp in the panel |
-| `reporter_ahead` | D2 | badge cluster | *this seat is sending values this server does not know* |
-| `fold_lag` | D2 | badge cluster, **and the desk is treated as not-current** | *this state is N behind the events that produced it* ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) |
-| `derivation_error` | D2 | badge cluster | *an event could not be projected; this seat's state is missing it* |
+| `lossy` | D1 | the badge row or the flag | *events discarded: N* — **the number is always beside it**, per [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters) and D2 S28: a loss is never a badge alone |
+| `batches_rejected` | D1 | the badge row or the flag | *N batches refused — last status and error code*, the count read from `detail`'s `seat_counters` rows for `batches_refused.<error>` ([D2 § 7.1](FLEET-STATE.md#71-d1s-server-side-counters--where-they-live), which raises **no** server-side badge for them precisely because this one already exists). [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) also requires the **received and accepted schema versions** to be *readable in its drill-down*; neither is on any read surface, so the panel reads *the refused schema versions are not reported* rather than inventing them ([§ 14](#14-open-questions-for-the-review-loop) item 9, Appendix A U12) |
+| `harness_contract_moved` | D1 | the badge row or the flag | *the harness payload moved under this reporter* |
+| `reporter_behind` | D1 | the badge row or the flag | *the harness has an enum member this reporter coerces* |
+| `value_clamped` | D1 | the badge row or the flag | *a reported value left its declared range and was clamped* |
+| `counters_omitted` | D1 | the badge row or the flag | *N counters did not fit the heartbeat* |
+| `index_overflow` | D1 | the badge row or the flag | *the seat passed its open-call or open-session index cap, or skipped history when its index journal tail was truncated at 8 MiB* — [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters) raises this badge from **three** counters (`open_call_index_overflow`, `open_session_index_overflow`, `index_fold_truncated`) and the line names all three cases, because the third is a seat whose own history is short rather than one that is merely busy |
+| `invalid_tool_name` | D1 | the badge row or the flag | *a tool name failed its pattern and was sent as `INVALID_TOOL_NAME`* |
+| `bad_session_id` | D1 | the badge row or the flag | *a session id failed its pattern and was sent as null* |
+| `config_invalid` | D1 | the badge row, **and the desk is treated as not-current**; its note in the drill-down | *the reporter's config failed validation; it is spooling and sending nothing* |
+| `statusline_degraded` | D1 | the badge row or the flag | *the wrapped status-line command is failing* |
+| `epoch_reset` | both | the badge row or the flag | *a new sequence epoch was minted; nothing was discarded* — and the drill-down says which side observed it, because D1's reporter and D2's server raise it independently ([D2 § 7.2](FLEET-STATE.md#72-this-planes-own-counters-and-badges)): *observed by the reporter*, *observed by the server*, or *observed by the reporter and by the server*; *observed by: not reported* when neither counter shows it, and *observed by:* followed by the panel's own word — **unavailable**, or *waiting for the seat detail* — when `detail` has not been read (ratified by the operator on card#7342, 2026-09-25) |
+| `seq_gap` | D2 | the badge row or the flag | *N events the reporter sent did not arrive* — **not** the same statement as `lossy`, and the two are never merged ([D2 § 7.1](FLEET-STATE.md#71-d1s-server-side-counters--where-they-live)) |
+| `seq_collision` | D2 | the badge row or the flag | *two events claimed one sequence number* |
+| `clock_skew` | D2 | the badge row or the flag | *seat clock is N s from the server's* — rendered beside every seat-clock timestamp in the panel |
+| `reporter_ahead` | D2 | the badge row or the flag | *this seat is sending values this server does not know* |
+| `fold_lag` | D2 | the badge row, **and the desk is treated as not-current** | *this state is N behind the events that produced it* ([§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)) |
+| `derivation_error` | D2 | the badge row or the flag | *an event could not be projected; this seat's state is missing it* |
 
 **D1's twelve are rendered *since reporter start*, never as *now*.**
 [D2 § 7.3](FLEET-STATE.md#73-how-the-reporters-own-counters-are-handled) states why: they are raised by
@@ -3055,10 +3512,16 @@ The rendering rule:
 |---|---|---|---|
 | `link_state == "live"`, no `fold_lag` | its activity render | as the pose | full colour, motion permitted |
 | `catching_up` | the replay render (A15) | under the label, as *was: working (last event 12:47, seat clock)* | desaturated, no working loop |
-| `stale` / `offline` | the empty-chair render | in the drill-down only, under *when it went dark* | dimmed |
+| `stale` | the empty-chair render | in the drill-down only, under *when it went dark* | dimmed |
+| `offline` | the empty-chair render | in the drill-down only, under *when it went dark* | dark |
 | badged `fold_lag` | its activity render, plus the fold-lag render [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy) owns in full | as the pose, explicitly labelled *N behind* | motion **stops**: a loop implies *now*, and *now* is what the lag denies |
-| badged `config_invalid` | its activity render, with the badge and *sending nothing* | as the pose | motion stops, for the same reason |
+| badged `config_invalid` | its activity render, with the badge on the desk; *sending nothing* in the drill-down and the list | as the pose | motion stops, for the same reason |
 | `disabled` | the *reporting disabled* render ([§ 7.1](#71-the-render-per-state)) — character present, monitor off | under the label, as *was: working (last event 12:47, seat clock)* | dimmed, motion **stops**; the seat is still heartbeating, which is how the flag is known at all, but it is sending no activity events, so everything under the label is older than the flag |
+
+**The currency label stays a desk element** — one of the warning treatments the operator's ruling of
+2026-10-02 keeps on the desk ([§ 5.1](#51-the-desk)'s *the glance set*) — and for an `activity_state` outside
+[§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s table it reads
+*was: unrecognised (…)* on the desk; the raw member is the drill-down's and the desk list's.
 
 **A desk carrying a value [§ 9](#9-failure-paths-and-their-observables) F9 does not recognise stops
 its motion too**, though it draws no currency label: F9 treats that desk
@@ -3094,7 +3557,8 @@ places on this document by name:
    string, [§ 5.1](#51-the-desk) and [§ 4.3](#43-the-desk-drill-down-panel) for the two surfaces'
    source rows, [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) for the currency
    treatment, [§ 7.2](#72-badges-every-member-has-a-render) for the badge's own line. **The whole
-   treatment, in one place, is four things and no others:** the **badge**, a **hatched overlay**, the
+   treatment, in one place, is four things and no others:** the **badge**, a **hatched overlay** — over
+   the art, the marker's place and the state chip, the nameplate painted above it — the
    **lag line** *this state is N behind — as of HH:MM:SS* — N being
    [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s duration format applied to `fold_lag_ms`, the
    same function every other duration on this page takes — and **motion stops** — "D3 must not
@@ -3108,7 +3572,7 @@ places on this document by name:
    **[§ 7.2](#72-badges-every-member-has-a-render)'s `fold_lag` row is therefore not a third surface
    for that line, and its wording is not a second string for it:** what that row's drill-down-line
    column carries — *this state is N behind the events that produced it* — is the **badge's own**
-   render, the sentence every badge in that table gets in the **badge cluster**, and it takes no
+   render, the sentence every badge gets in the **drill-down's badges block**, and it takes no
    *as of* stamp because it states the badge's condition rather than dating a number. Two facts, two
    owners, two strings: the badge's line is [§ 7.2](#72-badges-every-member-has-a-render)'s and the
    lag line is this section's, and neither is a restatement of the other. **The treatment is driven by
@@ -3256,6 +3720,11 @@ the phrase and keeps its raw string exactly as [§ 5.4](#54-what-is-never-render
 [§ 5.6](#56-the-null-render-for-every-nullable-member) says is not drawn, on a desk that keeps its
 pose and its label without one.
 
+**On the desk, the raw value is not drawn** (the operator's ruling of 2026-10-02, card#11058 Q0;
+[§ 5.1](#51-the-desk)'s *the glance set*): for a value in no row above the desk's label line reads *API error — unrecognised*,
+and for an `activity_state` outside its table the desk's currency label reads *was: unrecognised (…)*.
+The composed line above, raw value and all, is the drill-down's and the desk list's.
+
 [§ 7.1](#71-the-render-per-state)'s `stalled` cell is a **worked instance** of that form and not a
 second statement of it — *API error — rate_limit (rate limit)*, this line with the table's first row
 substituted in. That cell published *API error — rate limit* from this document's first revision until card#7966: the phrase with the
@@ -3289,11 +3758,11 @@ four steps after the tables that carry them.
 
 | Rendered | Source | Rule |
 |---|---|---|
-| one stool per open subagent | `subagents[]`, newest first ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)) | the array is a **reduction**, not the truth |
-| the intern's label | `subagents[].title` | from the `subagent.spawn` event's `title` — the dispatch's own description, **programmatic**, sanitized at the reporter ([D1 § 6.7](EVENT-SCHEMA.md#67-subagentspawn)). ≤ 120 B, one line |
-| a **title-less** intern | `subagents[].title == null` | renders **untitled**, with the `call_id` in the drill-down. The spawn was lost; D1 and D2 both call this an honest orphan and forbid inventing a title ([D1 § 6.8](EVENT-SCHEMA.md#68-subagentstop), [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)). **A later `subagent.spawn` for the same `call_id` fills it**, and the label appears then |
-| the intern's type | `subagents[].subagent_type` | a small tag beside the label, e.g. `coder` |
-| when it started | `subagents[].started_at` | a seat-clock claim, rendered as a **labelled timestamp** and never as *how long it has been running*: the field is the seat's own clock, and the only duration it could yield is a seat clock subtracted from the server's ([§ 2.4](#24-the-clock-and-every-age-on-the-page)). The drill-down carries it in full. There is no server-clock start time for a subagent on any read surface, which is why this row renders no duration rather than inventing one |
+| one intern per open subagent — a sprite on the desk, up to the cap and none hidden | `subagents[]`, newest first ([D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)), each by its `call_id` | the array is a **reduction**, not the truth. **The sprite is keyed by the intern's call**: the character tree draws it under the key `seat~<call_id>` ([§ 10.4](#104-the-art-direction-as-a-specification); operator ruling 2026-10-02, card#11058 Q3), so an intern keeps its look when the array reorders or a sibling leaves. It is drawn **static** — its chibi frame ([§ 10.4](#104-the-art-direction-as-a-specification)), in its 20 × 32 rect, clipped there; arrival and departure are A10's — and an intern whose art fails to load is drawn as [§ 9](#9-failure-paths-and-their-observables) F14's glyph in its own rect, that stool alone |
+| the intern's label — **drill-down and list**; the desk draws the intern's sprite | `subagents[].title` | from the `subagent.spawn` event's `title` — the dispatch's own description, **programmatic**, sanitized at the reporter ([D1 § 6.7](EVENT-SCHEMA.md#67-subagentspawn)). ≤ 120 B, one line |
+| a **title-less** intern | `subagents[].title == null` | renders **untitled** in the list and the drill-down, with the `call_id` in the drill-down, and a **dashed** intern on the desk — its sprite inside a dashed edge, or the glyph dashed where its art failed — both edges dashed `3 2` in `--scene-stool` with no fill, the sprite's at rx 3 and 1.5 wide ([§ 10.4](#104-the-art-direction-as-a-specification)). The spawn was lost; D1 and D2 both call this an honest orphan and forbid inventing a title ([D1 § 6.8](EVENT-SCHEMA.md#68-subagentstop), [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)). **A later `subagent.spawn` for the same `call_id` fills it**, and the label appears then |
+| the intern's type — **drill-down and list** | `subagents[].subagent_type` | a small tag beside the label, e.g. `coder` |
+| when it started — **drill-down and list** | `subagents[].started_at` | a seat-clock claim, rendered as a **labelled timestamp** and never as *how long it has been running*: the field is the seat's own clock, and the only duration it could yield is a seat clock subtracted from the server's ([§ 2.4](#24-the-clock-and-every-age-on-the-page)). The drill-down carries it in full. There is no server-clock start time for a subagent on any read surface, which is why this row renders no duration rather than inventing one |
 | **+N more** | `subagents_open` minus the array's length | appears only when positive. The count is the wire's, never `subagents.length` |
 | the full list | the seat-detail response's uncapped open-call list ([D2 § 8.2.3](FLEET-STATE.md#823-the-seat-detail-response)), **selected on the dispatch calls** — [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `calls.is_dispatch`, the same population as `subagents[]` without the cap, and the only one whose calls carry the `title` and `subagent_type` the rows above draw. `agent_scope` and `parent_call_id` attribute an intern's own calls back to it — the intern join they are stored for ([D2 § 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state)) — and do not select this list (operator ruling 2026-09-25, card#7342) | the drill-down's intern list is **not** `subagents[]`, is not capped at 8, and is not every open call of the seat either — a seat's own `Bash` call is not an intern ([§ 5.2](#52-the-drill-down), [§ 14](#14-open-questions-for-the-review-loop) item 1) |
 | arrival and departure | `subagents` in a delta's `changed[]` | animation [A10](#62-the-animation-table--the-closed-set) |
@@ -3310,15 +3779,15 @@ different number the cap moves… Closes it: D3's drill-down design."* **This do
 
 | Quantity | Value | Source |
 |---|---|---|
-| worst-case delta at the cap of 8 | **6,333 B** | D2, measured by serializing its published worst-case block |
+| worst-case delta at the cap of 8 | **6,428 B** | D2, measured by serializing its published worst-case block |
 | per-message bound | **8,192 B** (8 KiB) | D2 |
-| spare | **1,859 B** | 8,192 − 6,333 |
+| spare | **1,764 B** | 8,192 − 6,428 |
 | each further subagent element | **263 B** | D2, measured: the element at 262 B plus its comma |
-| further elements that fit | **7** | ⌊1,859 ÷ 263⌋ = 7 |
-| the cap could reach | **15** | 8 + 7, at a worst-case delta of **8,174 B** (6,333 + 7 × 263) |
-| 16 breaches | **8,437 B** | 8,174 + 263, which is **245 B over** the 8,192 B bound |
+| further elements that fit | **6** | ⌊1,764 ÷ 263⌋ = 6 |
+| the cap could reach | **14** | 8 + 6, at a worst-case delta of **8,006 B** (6,428 + 6 × 263) |
+| 15 breaches | **8,269 B** | 8,006 + 263, which is **77 B over** the 8,192 B bound |
 
-**So seven more would fit, and the answer is still 8.** Three reasons, in the order that decides it:
+**So six more would fit, and the answer is still 8.** Three reasons, in the order that decides it:
 
 1. **The drill-down does not read `subagents[]`.** It reads the seat-detail response, whose open-call
    list is explicitly *"in full (not capped at 8)"*
@@ -3329,17 +3798,19 @@ different number the cap moves… Closes it: D3's drill-down design."* **This do
 2. **The only consumer of the array is the floor's side table, where 8 is already past the point of
    reading.** A side table beside a desk is read at a glance for *how many, and doing what*; the
    *how many* is `subagents_open`, which is exact at any number, and the *doing what* is unreadable
-   past a handful of one-line labels at desk scale. Fifteen stools is D2's own objection to 64 — "a
+   past a handful of one-line labels at desk scale. Fourteen stools is D2's own objection to 64 — "a
    side table rendering 64 interns is a list, not a desk" — at a smaller number.
-3. **The 1,859 B of spare is worth more unspent, and card#8075 is what that means in practice.**
+3. **The 1,764 B of spare is worth more unspent, and card#8075 is what that means in practice.**
    It is the margin that lets a field be added to the seat object without moving this cap or any
    other bound — and the earlier wording of this bullet, *"without … re-measuring the worst case"*,
    was wrong in a way the first such addition exposed: D2's `blocked_since` cost the worst-case
    delta 59 B and **every figure in the table above was re-measured**, which is exactly what a
-   published worst-case block is for. What the margin buys is that the re-measurement changes no
-   decision. Spending 99 % of it on stools nobody reads, to make a bound that binds at 99.8 % of the
-   message limit, is buying a rendering nobody asked for with the headroom the next real change
-   will need — and one of those has now been spent, so there is less of it than there was.
+   published worst-case block is for; card#11144's `protocol_agent_role` cost it 95 B more, and the
+   re-measurement took the cap's ceiling from 15 to 14. What the margin buys is that the
+   re-measurement changes no decision. Spending 89 % of it on stools nobody reads, to make a bound
+   that binds at 97.7 % of the message limit, is buying a rendering nobody asked for with the
+   headroom the next real change will need — and two of those have now been spent, so there is less
+   of it than there was.
 
 **What moves this decision**: an observed fleet in which seats routinely run more than 8 concurrent
 dispatches *and* the floor's side table proves to be where operators read them. Both halves are
@@ -3364,19 +3835,21 @@ indistinguishable from a fleet that has gone home.
 | F6 | **Any read returns `401`** — session expired, or a token revoked/expired for an operator view | the status code and the `error` code ([D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange)) — ⛔ **neither reaches the client from a read it issues ON ITS OWN inside [§ 2.2](#22-connect-snapshot-deltas)'s reload grace**, where it issues none and an `EventSource` open failure carries no status code, so a session that expires there is not surfaced by the client's own doing and waits for the grace's end. **A read the USER causes is suppressed by nothing**: a drill-down, a route entry or an F10/F11 retry that returns `401` inside the grace fires this row by this row's own trigger, as usual. That section's clause (4) states the narrowed claim, the delay and its bound | a blocking sign-in prompt over the floor; **the floor beneath is dimmed and labelled *not live since HH:MM:SS***, and the stream is closed by the client | re-authenticate, then re-run [§ 2.2](#22-connect-snapshot-deltas) from step 1 — **on a new page load**: the prompt's *Sign in* is a link away from the floor, and the signed-out page re-opens nothing (`wire/fleet-client.js`, `#endSession()`, whose `signed-out` mode is terminal). So a floor once stilled stays stilled for its page's life; this cell owns that invariant, and [§ 11](#11-acceptance-tests)'s precedence for a held episode's exit rests on it | leaving a live-looking floor behind a modal. A frozen floor that still animates is the lie this whole document is written against |
 | F7 | **MFA session expires while the stream is open** — ⭐ **including the ordinary case nobody triggers: a floor left open reaches `SESSION_LIFETIME` (120 min here) and expires, because an open stream makes no request and so never refreshes the session** ([D2 § 9](FLEET-STATE.md#9-read-side-authentication)) | **the server**, on its next 15 s re-check — the client cannot detect it alone and no longer has to; see the note below for what remains | within [D2 § 9](FLEET-STATE.md#9-read-side-authentication)'s **enforcement bound**, which that section owns and this row does not restate — including the case it does **not** cap, a pass that overruns [D2 § 8.5](FLEET-STATE.md#85-gaps-reconnect-and-why-state_version-is-not-seq)'s stall bound, which is merely the last pass and is ended by the host — the stream ends with `feed.close{reason:"session"}` and F6's render fires; a REST `401` arriving first (a poll, a drill-down, a resync) fires it sooner, exactly as before | as F6 | claiming *live* past the `feed.close`; and treating the window between expiry and enforcement as a defect to render — it is D2's accepted window, and this row carried a figure for that window until the card#9287 maintainer round found it ~4× short, and a strip that flickered *not live* on a guess would be the lie in the other direction |
 | F8 | **`feed_version` changed under a running client** — an envelope carrying a `feed_version` the client does not know, which is what a changed one is to a client built for the previous one | that `feed_version` ([D2 § 8.1](FLEET-STATE.md#81-two-surfaces-two-compatibility-postures)) — on `fleet.reload` first, which the deploy writes on every deploy carrying the release's own ([D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed)), and on any later envelope, which is how a client whose stream the drain ended learns it once it reconnects. ⛔ **Never the message alone** (operator ruling A4, [§ 14](#14-open-questions-for-the-review-loop) item 20): a `fleet.reload` carrying a `feed_version` the client knows is F3's `reload`, and renders nothing | a full-width banner: **a new version was deployed — reload to continue**, and **delta application stops immediately** | the user reloads; the client re-opens no stream, because that reload is the reconnect | attempting a compatibility dance. [D2 § 8.1](FLEET-STATE.md#81-two-surfaces-two-compatibility-postures): "it does not attempt a compatibility dance it cannot win"; and raising this banner on a `feed_version` the client knows, which would put it in front of every viewer on every deploy |
-| F9 | **An unrecognised enum member** in any state or badge field | the value is not in this document's tables | the desk renders the **unrecognised** glyph carrying the raw string, is treated as not-current, and the client's event log records it once per distinct value | none needed; the value is displayed | mapping it to the nearest known member, or defaulting to a healthy-looking one |
+| F9 | **An unrecognised enum member** in any state or badge field | the value is not in this document's tables | the desk counts it into the flag ⚠ +N and an unrecognised `render_state` reads **unrecognised** on the chip and the label line — no raw string on the desk ([§ 5.1](#51-the-desk)'s *the glance set*) — the desk is treated as not-current, and the client's event log records it once per distinct value; the drill-down lists the raw `field: value` line ([§ 4.3](#43-the-desk-drill-down-panel)) and the desk list prints it | none needed; the value is displayed | mapping it to the nearest known member, or defaulting to a healthy-looking one |
 | F10 | **Timeline request fails** (any non-200) | the status code | the drill-down's timeline area reads **could not load recent activity — HTTP N**; the rest of the panel renders | retry on the user's action | an empty timeline, which reads as *this seat did nothing* |
 | F11 | **Seat-detail request fails** | the status code | the drill-down opens with the seat object it already holds and the sections that need `detail` read **unavailable**; the intern list falls back to `subagents[]` **and says it is capped**, worded ***unavailable — seat detail could not be read; showing the first 8 interns only***, the 8 being `subagents[]`'s cap ([§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)) (ratified by the operator on card#7342, 2026-09-25) | retry | showing a capped list as if it were complete |
 | F12 | **A delta names a seat the client does not hold** | the seat map | none — the client fetches it ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)); the client's event log records *seat added to the floor* | — | applying a shallow-merge patch to a partial object |
-| F13 | **Floor map has fewer slots than the install has seats** | `S` against the rendered seat count | the surplus seats render in a labelled **overflow row**, and a persistent notice reads *floor map is short N desks* — one per short room, naming it, on a floor of several rooms ([§ 3.2](#32-the-desk-slot-function), card#9292) | an operator edits the map | dropping a seat |
-| F14 | **An asset fails to load** — a tile, a sprite sheet | the load error | the desk renders its **placeholder**: a plain rectangle carrying the nameplate, the state label and the badge cluster — every fact, no art — and the status strip reads *some art failed to load*. Reachable since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14, which builds the layer the art is drawn on, and asserted by [AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk) | retry on reload | a blank desk, which reads as an empty office |
+| F13 | **Floor map has fewer slots than the install has seats** | `S` against the rendered seat count | the surplus seats render in a labelled **overflow row**, and a persistent notice reads *floor map is short N desks* — one per short room, naming it, on a floor of several rooms ([§ 3.2](#32-the-desk-slot-function), card#9292). The row **wraps**: as many desks to a row as the floor is wide, at least one, and further rows below, so it never runs past the floor's width however many seats it holds ([§ 4.2](#42-the-floor)'s frame, card#11045) | an operator edits the map | dropping a seat |
+| F14 | **An asset fails to load** — a tileset, the character tree's module, **the theme registry** (`/art/floor/themes/index.js`), a floor's theme module (`theme:<name>`) or one of its documents ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 8, built at row 22); or the creature generator throws for one key, which is how one character's art fails alone now that no character is a file ([§ 10.2](#102-characters-original-creatures-drawn-by-code)), or a theme's document throws for one input | the load error, or the throw | the desk renders its **placeholder**: a plain rectangle in place of the art's images only (since row 20 the side table is part of the art, so a placeholder desk draws none, its interns standing on the floor; since row 22 a desk's art is its theme's furniture set, all or nothing — [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 8). A registry or a theme module that fails is every desk's placeholder on every floor drawn in it, and the band and every plane draw only their flat fallback fills — no floor resolves a theme without the registry, so its failure is named rather than drawn as the house theme with no word ([§ 9](#9-failure-paths-and-their-observables) F23's *Never*); a tileset that fails costs the room the tiles drawn by its kinds — walls, accents, scenery — and no desk its art. On every placeholder desk the nameplate, the chip and the label line, the badge row and the flag, the monitor's text, the bubble and every other fact draw as on an intact desk; every fact, no art — and the status strip reads *some art failed to load*. **An intern's sprite is an asset of its own** (`intern:<install_id>/<seat_id>~<call_id>`): when it fails, that intern alone is drawn as the glyph inside its own 20 × 32 rect (dashed when untitled) — the desk's placeholder is not triggered, the other interns keep their sprites — and the strip reads the same line (card#11058). Reachable since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14, which builds the layer the art is drawn on, and asserted by [AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk) | retry on reload | a blank desk, which reads as an empty office |
 | F15 | **The browser tab is backgrounded and returns** | the gap in the age ticker, or a stream the platform closed | on return, the client re-runs [§ 2.2](#22-connect-snapshot-deltas) from step 1 and renders **without animation** ([§ 6.5](#65-a-snapshot-never-animates)) | — | replaying the deltas that arrived while hidden, which would animate a history the operator did not watch |
-| F16 | **A room's map request fails** — any non-200 from `GET /api/building/rooms/{install_id}/map`, the `503` included ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the status code | the room renders its desks with **no map**: every desk is F14's placeholder in a plain grid — nameplate, state label and badge cluster; every fact, no room — under a notice reading **room map could not be loaded — HTTP N**, naming the room. For the floor's arithmetic ([§ 4.6](#46-the-building-layout) — an unplanned floor's origins, a planned floor's extent, F18) the mapless room keeps the extent of the last map the client held for it, and with none held it has **no footprint**: the placeholder grid is drawn at the room's origin over whatever lies there, under this notice, and F18's determination leaves the room out — an overlap a failed fetch causes is this failure's render, already named, never a plan defect (card#9292). ⭐ **The room is in the FLOOR's extent all the same, as the point its origin is** ([§ 4.6](#46-the-building-layout) rule 5, operator-ruled on card#7341): that union is taken over every room placed on the floor, so [§ 4.2](#42-the-floor)'s back-wall band spans this room too. ⚠ **This row used to say the mapless room had no extent for a planned floor's extent, and that one sentence was answering two questions** — the room's own footprint and the floor's union. The footprint half stands and the union half is REVERSED: a room the union left out drew its desks outside the building's backdrop, where a real map outage is indistinguishable from a rendering defect | retry on the user's action, and on the next `room.map` for that room | **drawing the shipped default in its place.** A default drawn silently is a room the operator authored rendering as one they did not — the *which of the two am I looking at* defect [§ 4.6](#46-the-building-layout) refuses at building scale — and for a `503` it is D2's forbidden clean zero one surface over |
+| F16 | **A room's map request fails** — any non-200 from `GET /api/building/rooms/{install_id}/map`, the `503` included ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the status code | the room renders its desks with **no map**: every desk is F14's placeholder in a plain grid — every fact as F14 draws it, no room — under a notice reading **room map could not be loaded — HTTP N**, naming the room. For the floor's arithmetic ([§ 4.6](#46-the-building-layout) — an unplanned floor's origins, a planned floor's extent, F18) the mapless room keeps the extent of the last map the client held for it, and with none held it has **no footprint**: the placeholder grid is drawn at the room's origin over whatever lies there, under this notice, and F18's determination leaves the room out — an overlap a failed fetch causes is this failure's render, already named, never a plan defect (card#9292). ⭐ **The room is in the FLOOR's extent all the same, as the point its origin is** ([§ 4.6](#46-the-building-layout) rule 5, operator-ruled on card#7341): that union is taken over every room placed on the floor, so [§ 4.2](#42-the-floor)'s back-wall band spans this room too. ⚠ **This row used to say the mapless room had no extent for a planned floor's extent, and that one sentence was answering two questions** — the room's own footprint and the floor's union. The footprint half stands and the union half is REVERSED: a room the union left out drew its desks outside the building's backdrop, where a real map outage is indistinguishable from a rendering defect | retry on the user's action, and on the next `room.map` for that room | **drawing the shipped default in its place.** A default drawn silently is a room the operator authored rendering as one they did not — the *which of the two am I looking at* defect [§ 4.6](#46-the-building-layout) refuses at building scale — and for a `503` it is D2's forbidden clean zero one surface over |
 | F17 | **The layout request fails** — any non-200 from `GET /api/building` ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)), on connect or after a `building.layout` | the status code | the lobby renders a full-width statement **the building layout could not be loaded — HTTP N** over the floors it already holds, labelled *last known layout*; on a cold start there is no layout to keep, so under that statement it lists the snapshot's installs as rooms with **no floor claimed**, each a link to `/floor/{install_id}` that [§ 4.4](#44-routes-and-what-each-one-fetches) resolves **once the layout is readable** — until then, following it lands on this same render. **The floor route renders the same statement**: over the rooms it already holds when the layout was fetched before, and, on a cold-start deep link ([§ 4.4](#44-routes-and-what-each-one-fetches)), over the same uncomposed list — it does **not** compose the segment into a one-room floor, because deciding whether a segment is a floor's key or a room on someone else's floor needs the very document that failed. Every seat stays reachable; no composition is asserted on either screen | retry with backoff, and on the next `building.layout` | **composing the EMPTY layout's building** — one floor per install, `open` — from a failed fetch. An empty layout is a legal document ([§ 4.6](#46-the-building-layout)); a failed fetch is not that document, and a building composed from it is the wrong building drawn with confidence, which is F16's silent default one level up |
 | F18 | **Two rooms overlap on a planned floor** — reachable only past every write's refusal ([§ 4.6](#46-the-building-layout)): a deploy changed the shipped default's grid ([§ 10.3](#103-the-floor-map)) while a planned floor holds a room rendering it | the footprints the client computes from the maps it holds | both rooms are drawn, the later `install_id` on top, under a notice reading ***rooms `X` and `Y` overlap on this floor*** — the two `install_id`s in key order ([§ 5.5](#55-the-clients-own-narration)); every desk of both stays reachable | an operator moves one room — one layout save | **refusing the layout**, which takes the building down for a deploy the console never saw; and clipping either room, which hides desks |
 | F19 | **The stream opened and never spoke** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) R1 false: something between PHP-FPM and this browser is buffering the stream | F1's 45 s of silence **on a stream that has delivered zero messages since `open`** — the on-connect `fleet.health` is the handler's first byte, so a stream that opened and delivered nothing is not a feed that died, it is one that was never let through | F1's render, with the strip's words specific: **feed down — polling; the stream opened and never spoke (check the proxy: D2 § 8.3 R1)**. The floor renders from the polled snapshot | as F1 — and nothing the client does recovers it; the sentence is addressed to the operator | rendering it as F1's bare *feed down*, which sends an operator to look for a dead daemon this transport does not have |
 | F20 | **The stream cannot be opened, and REST is slow with it** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) R2 false: the FPM pool is exhausted by pinned streams | `EventSource` errors before `open` on each attempt, **and** the 10 s polls stall or return `504` while the last snapshot the client holds showed a healthy fleet | **feed unavailable — polling**, and when the polls fail too, F4's statement with the HTTP status — over a floor labelled *last known good*. **This is the console failing, not the feed**, and the strip does not pretend otherwise | reconnect and poll on the 10 s cadence; recovery is the operator's, at the pool | an empty office; and reconnect-looping faster than the poll cadence, which is one more request against a pool that has none to give |
-| F21 | **A room's `desks` objects intersect, or one is smaller than the furniture box** — two slots sharing a pixel on half-open rects, or a slot the cap of stools cannot be laid out inside ([§ 10.3](#103-the-floor-map)). Reachable on **any** map the client holds — an authored save, a stored or restored revision ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)), and the shipped default was one until [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice B re-authored it to the box (2026-09-25) — because the console's refusals landed with row 14's slice C ([§ 14](#14-open-questions-for-the-review-loop) item 28, ruled 2026-09-25) and a refusal at the write reaches no revision stored before it, nor one saved against an earlier box | the scene, from the map it holds and nothing else: step 7's half-open footprint test ([§ 4.6](#46-the-building-layout), F18's own) over the `desks` objects pairwise, and each object's `width` and `height` against [§ 12](#12-every-number-and-where-it-comes-from)'s furniture box at the cap (row 14) | **every desk is drawn** — an intersecting pair over each other, the later `id` on top; an undersized slot's desk at native size from its anchor and past its edge, neither scaled ([§ 13](#13-decisions-taken-revisable-at-review) row 14's refused alternative) nor clipped — under a notice naming the room, the objects by their Tiled `id`s and the seat at each: ***desk objects `i` and `j` intersect — `install_id`: `seat`, `seat`***, one per pair, and ***desk object `i` is smaller than the furniture box — `install_id`: `seat`***, one per object ([§ 5.5](#55-the-clients-own-narration)); no seat disappears — a desk drawn under another is named in the notice, its facts are on [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s list view below the viewport floor, and its name in the notice is the way to its drill-down once row 10 serves [§ 4.4](#44-routes-and-what-each-one-fetches)'s route — and every stool is drawn | an operator edits the map — a save, or a restore of a revision that passes — and the next `room.map` redraws the room; nothing on the page recovers it, and the notice is addressed to the author | **refusing the map**, which blanks a room for a document the console accepted and is F16's *Never* one defect over; clipping a desk to its slot, which hides stools ([§ 14](#14-open-questions-for-the-review-loop) item 28: a hidden stool is a dropped intern); and drawing the overlap with no word about it, which is this section's opening sentence — a floor that fails quietly |
+| F21 | **A room's `desks` objects intersect, or one is smaller than the furniture box** — two slots sharing a pixel on half-open rects, or a slot the cap of stools cannot be laid out inside ([§ 10.3](#103-the-floor-map)). Reachable on **any** map the client holds — an authored save, a stored or restored revision ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)), and the shipped default was one until [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice B re-authored it to the box (2026-09-25) — because the console's refusals landed with row 14's slice C ([§ 14](#14-open-questions-for-the-review-loop) item 28, ruled 2026-09-25) and a refusal at the write reaches no revision stored before it, nor one saved against an earlier box | the scene, from the map it holds and nothing else: step 7's half-open footprint test ([§ 4.6](#46-the-building-layout), F18's own) over the `desks` objects pairwise, and each object's `width` and `height` against [§ 12](#12-every-number-and-where-it-comes-from)'s furniture box at the cap (row 14) | **every desk is drawn** — an intersecting pair over each other, the later `id` on top; an undersized slot's desk at native size from its anchor and past its edge, neither scaled ([§ 13](#13-decisions-taken-revisable-at-review) row 14's refused alternative) nor clipped — under a notice naming the room, the objects by their Tiled `id`s and the seat at each: ***desk objects `i` and `j` intersect — `install_id`: `seat`, `seat`***, one per pair, and ***desk object `i` is smaller than the furniture box — `install_id`: `seat`***, one per object ([§ 5.5](#55-the-clients-own-narration)); no seat disappears — a desk drawn under another is named in the notice, its facts are on [§ 4.5](#45-the-viewport-rule-and-the-camera)'s list view, below the drawing, and its name in the notice is the way to its drill-down once row 10 serves [§ 4.4](#44-routes-and-what-each-one-fetches)'s route — and every stool is drawn | an operator edits the map — a save, or a restore of a revision that passes — and the next `room.map` redraws the room; nothing on the page recovers it, and the notice is addressed to the author | **refusing the map**, which blanks a room for a document the console accepted and is F16's *Never* one defect over; clipping a desk to its slot, which hides stools ([§ 14](#14-open-questions-for-the-review-loop) item 28: a hidden stool is a dropped intern); and drawing the overlap with no word about it, which is this section's opening sentence — a floor that fails quietly |
+| F22 | **Two or more seats relay the role a room's map reserves a desk for** — the install's coordination roster gives two of its agents the reserved role, or a handover is in progress ([§ 3.2](#32-the-desk-slot-function), card#11144) | the relayed `protocol_agent_role` of the room's seats against the map's `reserved_for` | **the reserved desk seats neither** (the operator's ruling Q4 A, 2026-10-03): it is drawn empty and reserved, each eligible seat hashes as an ordinary seat — the incumbent walks out ([A16](#62-the-animation-table--the-closed-set)) — and a notice reads ***reserved for `pm` (id 3) — 2 seats hold that role: `aimla-pm`, `aimla-pm-2`*** — the desk's role and Tiled `id`, the count, and the seats' `seat_id`s in [§ 3.2](#32-the-desk-slot-function)'s `order`, suffixed ***— `install_id`*** on a floor of several rooms ([§ 5.5](#55-the-clients-own-narration)) | an operator gives the role to one agent in the roster, or retires the outgoing seat; the remaining seat walks in (A16) | **picking one** — the lowest `(h, seat_id)` keeping the desk was the declined alternative: a choice with nothing on screen saying the install is misconfigured |
+| F23 | **A floor's layout entry names a theme the build does not ship** — reachable only past the write's refusal: a deploy removed a theme a stored layout names ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 5, [§ 4.6](#46-the-building-layout)'s `theme` row; built at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 21) | the entry's `theme` against the theme registry the page loaded | the floor is drawn in the **house theme**, every fact as always, under [§ 5.5](#55-the-clients-own-narration)'s notice ***floor theme `name` is not installed — drawn in the house theme — `floor`*** | an operator saves the layout naming a shipped theme or none; the next `building.layout` redraws | **refusing the layout**, which takes the building down for an appearance (F17's render for a document the console accepted); and **drawing the house theme with no word about it**, which hands the operator a floor that is not the one they authored with nothing to say why |
 
 **F7 was the residual, and card#9287 closed it at D2 rather than here.** The earlier revision noted
 that [D2 § 9](FLEET-STATE.md#9-read-side-authentication) refused machine tokens on the socket because
@@ -3424,7 +3897,11 @@ never vendored.* This section turns that decision into obligations an implemente
 under which the ported pixel generator is **interim placeholder art** and the product ships
 **original, high-resolution, resolution-independent** art of its own. `docs/PLAN.md § 0`'s register
 carries the supersession as an append beside D-07 rather than as an edit to it, because a register
-records what was decided when. **What this does to this section is one thing and it is the whole of
+records what was decided when. ⭐ **And on 2026-10-05 the operator ruled that the interim art be
+replaced** (card#11046): the characters become original animal and vegetable creatures drawn by
+first-party code, and once [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 19 lands
+the port is retired and nothing of it ships ([§ 10.2](#102-characters-original-creatures-drawn-by-code)),
+recorded by a second append beside D-07. **What this does to this section is one thing and it is the whole of
 § 10.1's change:** **Gate 2** used to enforce that the character tree held **no art at all**, which was
 the mechanised form of *the sprites are generated*. Art now ships as files, so an absence is the wrong
 assertion — and the right one is not a weaker version of it but a different one: **no asset without
@@ -3498,17 +3975,22 @@ files RED, not one of them for an embedded-bytes reason.**
 1. **File types.** Every file under `resources/` carries one of **`.ts`, `.js`, `.md`, `.svg`,
    `.png`, `.tmx`, `.tmj`, `.tsx`, `.tsj`** — and each member is here for a stated reason, because an
    allowlist whose members have no reasons is a denylist that has not noticed yet:
-   - **`.ts`, `.js`** — the generator's source. The seed machinery survives the art change unchanged
-     ([§ 10.2](#102-characters-the-munder-difflin-port)); appearance is still computed from the key.
-   - **`.md`** — the lineage file.
+   - **`.ts`, `.js`** — the creature generator's source: the characters are drawn by code, and
+     appearance is computed from the key ([§ 10.2](#102-characters-original-creatures-drawn-by-code)).
+   - **`.md`** — a lineage file: a port's own should one ever be taken into an asset tree
+     ([§ 10.2](#102-characters-original-creatures-drawn-by-code)). None ships today: the character tree's left
+     at Appendix B row 19 and the floor tileset's, `resources/floor/LINEAGE.md`, at row 22, each with what it
+     recorded (card#11046).
    - **`.svg`** — the ratified direction is **vector-first**, and vector is what
-     [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s resolution-independence requirement
+     [§ 4.5](#45-the-viewport-rule-and-the-camera)'s resolution-independence requirement
      actually needs. It is also **text**, so clause 2 can read inside it, which no raster format
      permits.
    - **`.png`** — the one raster admitted, for artwork that genuinely cannot be vector. Lossless, so
      an asset is not re-encoded into a worse copy of itself on each pass through a tool; universally
      decodable with no pipeline of its own; and already the format [§ 10.3](#103-the-floor-map)'s
-     Tiled tilesets ship in, so admitting it adds no decoder the floor did not already need.
+     Tiled tilesets ship in, so admitting it adds no decoder the floor did not already need. ⚠ Row 22
+     removes the tree's last PNG with the bridge kit ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)); the member stays admitted on its
+     first two reasons, and the third is history from then.
    - **`.tmx`, `.tmj`** — Tiled's map, in its XML and JSON spellings. [§ 10.3](#103-the-floor-map)
      makes Tiled the map format, inherited from `docs/PLAN.md § 3`; a map is an asset like any other
      and owes a row like any other. **Both** spellings, because the choice between them is the
@@ -3520,7 +4002,7 @@ files RED, not one of them for an embedded-bytes reason.**
    - ⚠ **`.tsx` is Tiled's Tileset XML here, and TypeScript-JSX everywhere else in the world.** The
      suffix genuinely means two things and this list admits only the first. Under `resources/` the
      collision is **harmless today** — this repository's generator is plain `.ts`/`.js`
-     ([§ 10.2](#102-characters-the-munder-difflin-port)) and nothing under the asset root is JSX — and
+     ([§ 10.2](#102-characters-original-creatures-drawn-by-code)) and nothing under the asset root is JSX — and
      it is written down anyway, because an allowlist that silently admits a second file type under one
      suffix is a trap for the next reader. What actually happens to a React component dropped under
      `resources/` is that clause 1 admits it by suffix and clause 3's XML parser then **fails it by
@@ -3612,9 +4094,12 @@ anything below; what stands in its place is weaker and is worth naming exactly:
 - the closed **`origin`** set with its per-value checks, which cannot detect a lie but can detect an
   **inconsistency** — the vendored asset whose author cell names somebody outside this project, or
   whose source URL is external while its origin says `first-party`;
-- the lineage file's *what was deliberately not taken and why*
-  ([§ 10.2](#102-characters-the-munder-difflin-port)), which is a human statement and is the only
-  artifact here that addresses intent at all;
+- a lineage file's *what was deliberately not taken and why*, for a port, which is a human statement and
+  is the only artifact here that addresses intent at all. No tree has one today (card#11046): the
+  character tree took nothing at row 19 and the floor took nothing at row 22
+  ([§ 10.2](#102-characters-original-creatures-drawn-by-code), [§ 10.6](#106-themes--a-floors-design-and-the-house-theme));
+  for the creatures and the themes that statement is
+  [§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate)'s review note;
 - the **IP line** ([§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate));
 - and **review**, which is now doing more of the work than it was and should be told so.
 
@@ -3624,9 +4109,9 @@ anyway is that the alternative — a gate that keeps asserting an absence the pr
 proves nothing at all while looking exactly as green.
 
 **The residue is named rather than implied.** No clause can refuse a generator that *fetches*
-upstream art at run time — nothing that inspects a tree can. That is refused by the lineage file's
-*what was deliberately not taken and why* ([§ 10.2](#102-characters-the-munder-difflin-port)) and by
-review, and it is said here so nobody reads Gate 2 as a proof that no upstream pixel can reach the
+upstream art at run time — nothing that inspects a tree can. That is refused by review and, for the
+character tree, by its selftest's no-I/O check — the generator requests nothing
+([§ 10.2](#102-characters-original-creatures-drawn-by-code)) — and it is said here so nobody reads Gate 2 as a proof that no upstream pixel can reach the
 screen. **Clause 3 adds one residue of its own, and it is a small one:** it reads *structure*, not
 pixels. It can say that a map's layer data is stored plainly and that every `<image>` names a file;
 it cannot say that the file named is the file the row describes, and it has nothing at all to say
@@ -3654,8 +4139,9 @@ and widening it is still the operator's act, not an inference from a family rese
 **does not authorise any particular port**. Admitting the licence removes the licence objection and
 nothing else; what an ISC asset costs is exactly what an MIT one costs, that **its copyright notice
 and permission notice be reproduced** in `docs/ATTRIBUTION.md` — and, for a port under
-`resources/characters/`, in `resources/characters/LINEAGE.md` as well. *That second home is
-[§ 10.2](#102-characters-the-munder-difflin-port)'s rule rather than the licence's, and it applies
+`resources/characters/` (there will be none once card#11046's row 19 lands), in that port's `resources/characters/LINEAGE.md`
+as well. *That second home is
+[§ 10.2](#102-characters-original-creatures-drawn-by-code)'s rule rather than the licence's, and it applies
 to an ISC port for the same reason it applies to the MIT one.*
 
 **That obligation is GATED, in the same change that created it, because a declaration nobody checks
@@ -3664,12 +4150,14 @@ copyright notice and this permission notice appear in all copies"* — so a publ
 redistributes an ISC asset without them is in breach while every other check is green. **The gate
 requires a declared licence's permission notice in EVERY FILE THIS SECTION SAYS OWES IT — the
 manifest as soon as ANY row declares that licence, and `resources/characters/LINEAGE.md` as soon as
-a row UNDER THAT TREE does** — matched as the licence's own text rather than as the label, for the
-reason [§ 10.2](#102-characters-the-munder-difflin-port) already gives about MIT: a link is not a
+that tree holds a port — a `licensed` row under it — and a row under it declares that licence** — matched as the licence's own text rather than as the label, for the
+reason [§ 10.2](#102-characters-original-creatures-drawn-by-code) already gives about MIT: a link is not a
 reproduction and neither is a name. The manifest half is keyed on a **row**, not on a tree, because
 an asset owing a notice need not be a port — a tileset vendored into `resources/floor/` owes it too
-and has no lineage file to hang it off; the lineage half is keyed on the **character tree**, because
-the second home is what § 10.2 asks of a *port*.
+and has no lineage file to hang it off; the lineage half is keyed on **a port in the character tree** —
+a `licensed` row under it — because the second home is what § 10.2 asks of a *port*. ⚠ It is keyed on
+the tree's mere existence until card#11046's row 19 lands, which is the same thing while the tree is a
+port and stops being so once the creatures make it first-party ([§ 10.2](#102-characters-original-creatures-drawn-by-code)).
 
 ⭐ **The obligation and the allowlist are ONE declaration, and that is the part to preserve.**
 `bin/asset-provenance.py` holds a single table from SPDX identifier to the notice that licence
@@ -3693,42 +4181,131 @@ under MIT and under ISC, so a per-licence check for one could not tell an ISC po
 from the MIT port's — and a check that cannot discriminate is a decoration. Neither half is a
 licence audit.
 
-### 10.2 Characters: the munder-difflin port
+### 10.2 Characters: original creatures, drawn by code
 
-**The port is MACHINERY, not the look. Read this subsection as answering one question — *what did the port actually buy, now that its art
-is not the product's art?*** The answer is *the seed machinery and the generator algorithm*, and
-nothing in the port's licence work is undone by the art direction changing.
+⭐ **Every character — every seat and every intern — is an original animal or vegetable creature, never a
+person.** The operator's rulings of 2026-10-05, as card#11046 records them (comments 9958 and 9963):
+*"Instead of people I want cute variations of animal and vegetable characters in the Studio Ghibili
+style"*, *"I also want drawings done in full resolution, not Minecraft block style"*, and, on the design
+sheet the seat drew from them, *"yes, I love them"* — with *"A"* to the question of the interns: they stay
+20 × 32 and become **chibi**, and the desk box does not change. *Studio Ghibli* names the feel and never the
+content: [§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate)'s line holds, original creatures
+only. This subsection says where the creatures come from and what they replaced;
+[§ 10.4](#104-the-art-direction-as-a-specification) says what they look like and how a key selects one.
 
-- **What is ported is the generator, not its art.** The upstream project ships a procedural character
-  generator under MIT *and* commercial tilesets under terms that do not permit redistribution. This
-  document's requirement is that the port takes the **algorithm and the MIT-licensed source only**.
-  *(This bullet used to end "…and that the character tree contains no image file at all". That
-  sentence was true of the pixel-art design and is false of the ratified one; it is gone from here,
-  from Gate 2, from [AT-D3-12](#at-d3-12-asset-provenance-gates-bite), from `docs/ATTRIBUTION.md`,
-  from `resources/characters/LINEAGE.md` and from `bin/asset-provenance.py`'s module docstring, which
-  is the whole of the population that carried it.)*
-- **The port's pixel art is INTERIM PLACEHOLDER art**, superseded by
-  [§ 10.4](#104-the-art-direction-as-a-specification). It renders today, from the seat key, in a plain
-  browser; it is not the look this product ships. **No rework of card#7340's lineage or licence work is
-  owed by that** — the obligations below are obligations of the *port*, and the port is still here.
-- **The identity property is unchanged and is the load-bearing half.** A character's appearance is
-  derived from `(install_id, seat_id)` ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)), so a
-  seat looks the same on every browser and every reload **with nothing stored** — the same property,
-  and the same reasoning, as the desk slot function. That property belongs to the *seed machinery*,
-  which the art direction does not touch: [§ 10.4](#104-the-art-direction-as-a-specification) changes
-  what is drawn, never what selects it.
-- **The port carries a lineage file** — `resources/characters/LINEAGE.md` — recording the upstream
-  repository URL, the **commit SHA** the port was taken from, the files ported, the MIT copyright line
-  and licence text as required by MIT, and, explicitly, **what was deliberately not taken and why**.
-  The last item is the one that makes a later reader able to tell a port from a fork, and it is
-  **unchanged in every particular** — it is also, now, one of the few things standing where Gate 2's
-  absence used to stand ([§ 10.1](#101-the-manifest-and-the-two-gates)).
-- **The MIT notice ships with the distribution**, in `docs/ATTRIBUTION.md` and in the lineage file. MIT's
-  obligation is to reproduce the copyright notice and permission notice; a link is not a reproduction.
-- **The upstream repository and commit are recorded** — closed by card#7340 on 2026-08-25 and carried
-  in the two files above ([§ 14](#14-open-questions-for-the-review-loop) item 7's generator half).
-  That item's other half, the **tileset**, closed on 2026-09-12 and is
-  [§ 10.3](#103-the-floor-map)'s; nothing about it touches the port.
+- **The look is the approved design sheet, ported and not redesigned.** The bodies, each drawn
+  *-ish* rather than as any particular animal's likeness: a fox-ish, bear-ish, rabbit-ish, owl-ish,
+  frog-ish, mole-ish, hedgehog-ish and otter-ish creature, and a radish, turnip, mushroom, pea-pod,
+  carrot, eggplant, pumpkin and potato. Pure SVG, seeded per key. The sheet was a prototype in the seat's
+  scratch space and is not in the repository, so **the reference that survives is the generator itself
+  and the sheet it draws** — `tools/characters/`'s harness, rebuilt over the creature tree (Appendix B row
+  19) — and the operator's screenshots of 2026-10-05 are what that sheet is compared against before the
+  build merges. **Two changes to the approved look are the seat's, named so nobody reads them as the
+  operator's:** a faint light rim on every silhouette, so the dark colourways (a charcoal bear, a dark
+  otter, a deep eggplant) do not sink into what they stand on ([§ 10.4](#104-the-art-direction-as-a-specification)'s
+  rim bullet, where the edge is eye-judged); and softer, curved hedgehog spines, so the back does not read as a saw-blade at 4× and
+  above.
+- **What still comes from the munder-difflin port: nothing.** Read from the code, file by file.
+  `portrait-art.js` is upstream's pixel recipes — the head box, the skin palettes, the hairstyles, the
+  garments, the outline pass — and the tree's one `licensed` file; it leaves. `seed.js`'s human recipe —
+  skin, hair and its `HAIR_COLORS` (the one value set derived from upstream), garments, ties and facial
+  hair — leaves with the people it describes. `index.js`'s RGBA cache and canvas blit leave with the
+  pixels they blit. **What stays is first-party and always was:** `seed.js`'s `fnv1a32`, `seatKey`,
+  `mix32` and `draw`, whose header has read *First-party (not ported)* since card#7340, and which the
+  creature generator draws every field through bit-for-bit. So **the identity property is untouched and
+  was never the port's**: a character is a pure function of `(install_id, seat_id)`
+  ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)), the same on every browser and every reload
+  with nothing stored, by the same reasoning as the desk slot function.
+- **So the munder-difflin lineage and attribution leave with the port.** `resources/characters/LINEAGE.md`,
+  `docs/ATTRIBUTION.md`'s `portrait-art.js` row, the upstream credit on its `seed.js` row, and its section
+  reproducing munder-difflin's MIT notice. MIT's condition attaches to *"all copies or substantial
+  portions of the Software"*, and once no line of upstream's ships there is no copy for it to attach to.
+  ⚠ **The manifest still owes an MIT notice** — every `first-party` row declares `MIT`, and
+  [§ 10.1](#101-the-manifest-and-the-two-gates)'s gate asks for the licence's own text whatever row
+  declares it — so that section is replaced by the repository's own notice (`LICENSE`), never just
+  deleted. **What keeps the history:** git, at card#7340's commits; `docs/PLAN.md § 0`'s D-07 append for
+  this card; and the changelog. **D-07's last clause — *the upstream's commercial tilesets are never
+  vendored* — is permanent and untouched**: nothing here vendors anything.
+- ⭐ **The lineage check re-keys from the tree to a port, because the tree no longer holds one.**
+  `bin/asset-provenance.py`'s lineage check fires on *any* asset under `resources/characters/`, which
+  was right while that tree was a port and is wrong once it is first-party: it would ask a tree that
+  took nothing for an upstream URL, a commit SHA and a *not taken* section — a record that could only be
+  written falsely, or kept as a museum piece that tells the next reader the tree is still a port. The
+  check fires instead on **any `licensed` row under `resources/characters/`** — a file that came from
+  outside, which is what a port or a vendored character would be — and asks such a tree for exactly
+  what it asks today. Its strictness over a port does not move; its trigger does, from *the tree
+  exists* to *the tree holds something from outside*.
+  [AT-D3-12](#at-d3-12-asset-provenance-gates-bite)'s lineage half carries both directions. **The
+  notice half is unchanged**: the manifest's notice is keyed on rows wherever they sit, as before.
+- **What a future port owes, should one ever be taken into the character tree (N1).** Its file's row is
+  `licensed` — it came from outside — which is what fires the lineage check. It then owes
+  `resources/characters/LINEAGE.md` recording the upstream repository URL, the commit SHA ported from, a
+  copyright line, and what was deliberately not taken and why; and the permission notice of its licence
+  reproduced in BOTH `docs/ATTRIBUTION.md` and that lineage file, a link not being a reproduction. That is
+  the record card#7340's port carried, and § 10.1, AT-D3-12 and `docs/ATTRIBUTION.md` point here for it.
+- **Asset shape: the creatures are CODE-DRAWN SVG, and no image file ships for any of them.** Three
+  reasons, the first sufficient alone. *(1)* The look is a seeded space — one drawing per key out of
+  far more than any file set could hold — and an intern's key is minted per dispatch
+  ([§ 8](#8-interns--subagent-rendering-and-the-cap)), so a file for it cannot exist before it is
+  drawn. *(2)* Resolution independence ([§ 4.5](#45-the-viewport-rule-and-the-camera),
+  [§ 10.4](#104-the-art-direction-as-a-specification)'s *Not pixel art*): **the tree emits each frame as a
+  standalone SVG document, and the painter shows it as an `<image href="data:image/svg+xml;…">` in the
+  character's clipping viewport** — today's painter model, kept: it caches each asset's frame URIs in its
+  own Map, swaps `href` among them to step a loop (the frames are held in that Map and never copied onto
+  the element — a frame is kilobytes, N8), and drops an intern's frames when it no longer draws it, as
+  the PNG path did; what changes is that the URI is a vector document instead of a PNG a canvas made, and
+  that canvas retires with the pixels. **The URI's encoding is named:** `data:image/svg+xml;charset=utf-8,`
+  followed by the document under `encodeURIComponent` — made by the painter (`floor/painter.js`'s
+  `svgUri`), never by the tree, so no text under `resources/` carries a `data:` URI (§ 10.1 clause 2).
+  **The tree's API, stated (N3):** `standingFrame(install, seat)`, `walkFrames(install, seat)` and
+  `chibiFrame(install, internKey)`, each returning documents, plus the footprint unit `SCENE_W` ×
+  `SCENE_H` the scene reads; the tree holds NO cache and has no `forget()` (the pixel tree's is gone),
+  so the painter's `frames.delete(asset)` for an intern it stopped drawing is the whole bound, and a paint
+  never throws for a character: a tree that failed to load or a generator that throws is § 9 F14, below. Each image is its own document, so two drawings' gradient ids
+  cannot collide and no id-prefix scheme is needed; the generator does not re-run on a repaint, because the
+  cached URL is what is handed to the rebuilt `<image>` (how the browser caches the decoded image is its
+  own, as it is for today's PNG); and the intern cache stays bounded by the painter dropping each intern
+  it no longer draws. ⭐ **That an SVG shown through `<image>` stays vector under zoom is a MEASUREMENT, not an
+  assumption** (the seat, 2026-10-06, on the review's F2): in headless Chromium (Playwright's
+  `chromium_headless_shell-1243`), one prototype character drawn at the 54 × 96 character rect inside an
+  outer `<svg>` whose `viewBox` maps that rect to 8× on screen — the camera's own mechanism — was
+  screenshotted three ways at device scale 1 and 2 (and at device scale 8 with a 1× box): as an SVG-data-URI
+  `<image>` in a clipping viewport, as the same drawing inlined, and as an `<image>` under a `scale(8)`
+  transform. Read by eye, the image's edges were as smooth as the inlined drawing's; pixel-compared, the
+  image and the inline drawing differed by more than 16 levels on 7 of 332,208 pixels at device scale 1.
+  **The control that shows the method can see a raster:** the same character rasterised to a 54 × 96 PNG and
+  shown in the same 8× layout differed from the inline drawing on 35,765 of 331,776 pixels and is visibly
+  blurred. So Chromium renders the data-URI SVG as vector at the zoomed size, and that is what this
+  shape rests on; a browser that rasterised it at 1× would be the same defect as today's PNG, and the
+  build's screenshot step re-runs the comparison on the shipped painter. *(3)* It is text, which Gate 2
+  can read.
+  **What the gates then mean.** *Gate 1:* a row per source file of the generator, `first-party` /
+  `MIT`. The drawings are not files and have no rows: the source is the asset, and every curve a
+  character can be drawn with is in it. *Gate 2:* clause 1 admits `.js` as it does today; clause 2 reads
+  that source — path data and hex colours, the content its discriminating pair already admits; clause 3
+  has no Tiled artifact to read. ⚠ **The residue, stated:** no gate inspects what the generator draws,
+  because its output never touches the tree. What stands there is the no-I/O check the tree's selftest
+  already carries — the generator requests nothing, so it can fetch no art — and
+  [§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate)'s review.
+  **[§ 9](#9-failure-paths-and-their-observables) F14 then has three causes, and each is a render it
+  already has.** *(a)* The tree's module fails to load — the painter's dynamic import rejects — so every
+  character on the page is a failed asset: every desk its placeholder, every intern its glyph, the
+  strip its line. *(b)* The generator throws for one key, so that key alone is a failed asset: a seat's
+  desk its placeholder, or an intern alone its glyph. **There is no per-intern file to fail**, so *(b)*
+  is the only way one intern's art fails while its siblings' does not; each drawing keeps its own asset
+  id (`intern:<install_id>/<seat_id>~<call_id>`), so F14's per-intern rendering stands as written. *(b)*
+  is a defect — the generator is required to be total over every key, and AT-D3-24 holds it so — and
+  that is why it is drawn as a failure rather than prevented by a fallback drawing. *(c)* A frame the
+  browser cannot decode — malformed XML, a root with no `xmlns`, an unescaped `&` — fires the `<image>`'s
+  `error` event, which the painter reports as that asset's failure, the same render as *(b)* (N2).
+  AT-D3-24's well-formedness leg holds every frame to strict XML with an SVG root and its namespace, so
+  *(c)* is a defect the selftest reds on before a browser ever meets it; `painter-probe.mjs` fires the `error`
+  event on a character `<image>` and holds the painter to reporting that asset alone.
+- **What the creature tree no longer draws, because nothing reads it:** the portrait — the drill-down
+  shows no character, and only the tree's own harness called it — and the back view of the walk, which
+  the painter has never drawn (it walks A1 and A2 front-facing, in the frames `resources/characters/index.js`'s `walkFrames()` returns). Both were the
+  port's, and neither is ported to the creatures. A consumer that needs one later is a change to
+  [§ 10.4](#104-the-art-direction-as-a-specification)'s frame contract, not a gap in it.
 
 ### 10.3 The floor map
 
@@ -3743,39 +4320,28 @@ nothing in the port's licence work is undone by the art direction changing.
   build otherwise for the vendored default, and the console refuses an authored map for the same
   clause (below). Both are Tiled export settings, not code.
 
-⭐ **THE TILESET IS CHOSEN AND VENDORED, AND IT IS A BRIDGE — operator ruling, 2026-09-12, which
-closes [§ 14](#14-open-questions-for-the-review-loop) item 7.** The floor's tiles are Kenney's
-**Furniture Kit** (<https://kenney.nl/assets/furniture-kit>, author Kenney, **`CC0-1.0`**), vendored
-as the Tiled tileset `resources/floor/tiles/furniture-kit.tsx` over the PNG renders beside it, each
-with the `docs/ATTRIBUTION.md` row Gate 1 requires. `resources/floor/LINEAGE.md` records the terms as
-read at the source, the archive's hash, what was curated, and what was deliberately not taken — the
-same job `resources/characters/LINEAGE.md` does for the port, for a vendoring rather than a port.
-Four things belong here rather than there, because they are this document's rulings and not that
-file's notes:
+⭐ **THE TILESET IS FIRST-PARTY, AND IT DECLARES KINDS, NOT PICTURES** (card#11046, [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
+row 22). The one tileset the repository ships is `resources/floor/tiles/floor-plane.tsx`, an image collection
+whose every tile declares a `kind` from the theme registry's closed set — `wall` and `accent`, the plane
+kinds, and `bookcase`, `plant`, `floor-lamp`, `armchair`, `cushion` and `book-pile`, the standing ones — and
+whose every image is an authoring MARKER for Tiled, a plain labelled outline the floor never draws: the floor
+draws a placed tile by its kind, in its floor's theme ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)
+item 6). Each marker carries the `docs/ATTRIBUTION.md` row Gate 1 requires. ⚠ **Until row 22 the floor's
+tiles were a BRIDGE**: Kenney's CC0 **Furniture Kit**, vendored on the operator's ruling of 2026-09-12 (which
+closed [§ 14](#14-open-questions-for-the-review-loop) item 7) explicitly as a stand-in for first-party vector
+art, pre-rendered raster that did not meet [§ 10.4](#104-the-art-direction-as-a-specification)'s bar and was
+never meant to. It left the tree at row 22 with its rows and `resources/floor/LINEAGE.md`, and the plank and
+rug tiles of this tileset left with it ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s
+retirements); the record of what it was stays in git and in `docs/PLAN.md § 0`'s D-07 appends. Three things
+belong here, because they are this document's rulings:
 
-- ⚠ **IT DOES NOT MEET [§ 10.4](#104-the-art-direction-as-a-specification)'s BAR, AND IT IS NOT MEANT
-  TO.** That subsection requires the shipped look to be **resolution-independent**, which is
-  [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s capability and not a style note; this pack
-  is **pre-rendered raster at one scale**, so it fails that requirement by construction. The operator
-  chose it **explicitly as a bridge to first-party vector art** — so the floor can be built, laid out
-  and measured against real sprites instead of against an intent, while the art that ships is drawn.
-  **Nothing about it is a precedent for what ships**, and the day the vector art lands this tileset
-  leaves the tree with its rows. Written here, and again where a reader meets the files, because an
-  interim asset nobody labelled is an interim asset somebody later mistakes for a decision.
-- **The `Side/` renders, not the `Isometric/` ones.** The ratified reference is a building seen in
+- **One projection, and it is not isometric.** The ratified reference is a building seen in
   **cross-section** — [§ 4.1](#41-the-lobby--the-building-summary)'s stacked floor plates with an
-  elevator between them — and [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera zooms
+  elevator between them — and [§ 4.5](#45-the-viewport-rule-and-the-camera)'s camera zooms
   and pans over it. That is an **elevation**: each floor is a horizontal band and the camera's zoom is
-  a scale change inside one projection. Isometric tiles recede along two axes, which is a *different*
-  projection whose floors cannot stack into a section without occluding each other. **Nothing in
-  this document asks for that projection**, and until this bullet was written the word did not occur
-  in it at all — every occurrence today is in this bullet, explaining the choice. Taking both was
-  rejected rather than overlooked: a renderer draws one projection, and the second set is four renders
-  per object that every Gate 1 row would have to keep true for nothing drawn.
-- **A desk sprite is 116 px wide and 57 px tall** (`resources/floor/tiles/furniture-kit/desk.png`),
-  which is the measurement [§ 12](#12-every-number-and-where-it-comes-from)'s viewport row has been
-  waiting on. What that settles, and the half of the derivation it does **not** settle, is that
-  table's row to say and is not restated here.
+  a scale change inside one projection, [§ 10.4](#104-the-art-direction-as-a-specification)'s 3/4 oblique.
+  Isometric tiles recede along two axes, which is a *different* projection whose floors cannot stack into
+  a section without occluding each other, so the console refuses a map in one by name.
 - **A tileset is not a map, and this bullet was written before the map existed.** What
   [§ 14](#14-open-questions-for-the-review-loop) item 7 asked for was the tileset *recorded*; the
   map — the **shipped default** below, since card#9208's reversal — was **card#9269's** and is in the
@@ -3787,28 +4353,54 @@ file's notes:
   [§ 12](#12-every-number-and-where-it-comes-from)'s Measured row has a sentence to bind to, and read out of
   that file's one declaration line — through the shape that class declares, never a copy of it — by
   `tools/design/verify-floor.py` on every run, which reds when the sentence and the file disagree.
-  **The shipped default's grid is 3,024 px wide and 496 px tall** — `width × tilewidth` by
+  **The shipped default's grid is 1,576 px wide and 544 px tall** — `width × tilewidth` by
   `height × tileheight` of the map the bullet below declares, read out of the file by the same gate on
   every run, which also holds every `desks` object of that map **at least the box** (row 14, slice B,
-  2026-09-25). **The composition is the operator's ruling of 2026-09-25 (card#7341 comment 6517): the
-  slots in rows, each slot the box, on a drawn FLOOR PLANE** — how many rows and how many slots each is
+  2026-09-25). **The composition is the operator's ruling of 2026-10-01 (card#11045): a six-desk office —
+  two rows of three slots, each slot the box, on a drawn FLOOR PLANE, with a narrow scenery strip at each
+  side and no conference room, no lounge and no wall of its own.** Its side walls and the PM office's
+  walls came with card#11144 (below), and the house picture's scenery and the PM office's oak with card#11046
+  (row 22, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)); the back wall is still the band's. **The shipped default reserves `id 3`
+  for `pm`** — the back-row right corner carries `reserved_for: pm` (the `desks` row of the table below),
+  the operator's ruling of 2026-10-03 (card#11144) — and the floor seats there the room's one seat
+  relaying `pm`, or nobody ([§ 3.2](#32-the-desk-slot-function)): a seat hashing to it probes past it. **The shipped default draws
+  walls** (card#11144, under [§ 10.4](#104-the-art-direction-as-a-specification)'s projection rule): the
+  room's two side edges, and a partition with a front return and a doorway around the reserved desk, as
+  top-edge strips: cells of the tileset's `wall` tile on a tile layer named `walls` between `accent` and
+  `furniture`, one cell wide, every cell outside every slot (held by `tools/design/verify-floor.py` G-walls),
+  the doorway a 96 px gap in the front return facing the room, and the floor's theme draws each straight
+  stretch as one strip ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 6). An author marks
+  walls the same way: the `wall` tile painted on any tile layer (`walls` by convention — the renderer looks
+  for no layer name), one cell wide, a doorway left unpainted, every cell kept out of every `desks` object (a
+  cell inside one is hidden under the desk, not refused). It is laid out from the desks
+  outward: three boxes across with 32 px aisles between them and a 96 px strip at each side
+  (96 + 3 × 440 + 2 × 32 + 96 = 1,576), two rows with a 40 px aisle between them and 24 px at the back and
+  the front (24 + 2 × 228 + 40 + 24 = 544) — how many rows and how many slots each is
   [§ 12](#12-every-number-and-where-it-comes-from)'s viewport row's to state, and the gate re-derives both
-  from the file. The plane is the ratified reference's cheated depth
-  ([§ 10.4](#104-the-art-direction-as-a-specification)'s worked example stands its desks on one), which
-  the bridge kit's `Side/` renders cannot give because they hold no floor plane; so the plane is
-  **first-party vector art** — `resources/floor/tiles/floor-plane.tsx` over the SVG tiles beside it, a
-  seamless plank course and a rug — drawn to § 10.4's bar (resolution-independent, warm, whimsical) under
-  Gate 1's rows and Gate 2's clauses like every other asset, and the first art in the tree that meets that
-  bar ([§ 14](#14-open-questions-for-the-review-loop) item 28(2)). The back row's feet stand just below the
-  kit's back wall, the front row's on the room's front edge, the plane laid in courses between and under
-  the wall's base; the room is still an elevation — one back wall, one projection — and the plane is what
-  the reference draws under its desks. ⚠ The box and the grid are the BRIDGE tileset's as the sprite's
-  is: the box holds that sprite and the interim characters at their drawn size, and it moves when the
-  art does ([§ 14](#14-open-questions-for-the-review-loop) item 28(1)(iii)); the grid moves with the box.
+  from the file. The scenery is small and only around the desks — standing pieces of the tileset's kinds the
+  floor's theme draws, as [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The shipped default*
+  lays them, each whole cell outside every slot (G-scenery), and no rug; the PM office's floor is painted
+  with the `accent` tile on a tile layer of its own, `accent`, inside its walls; a slot nobody holds is plain
+  floor under the lamplight pool every slot has. **The map paints no BACK wall: the floor's back-wall band IS the room's
+  back wall** ([§ 4.2](#42-the-floor)'s frame, drawn above every room's grid), so an author lays floor,
+  interior walls, furniture and desk slots and needs no back wall of their own — one painted inside the
+  grid reads as a second wall under the band. The plane is the ratified reference's cheated depth
+  ([§ 10.4](#104-the-art-direction-as-a-specification)'s worked example stands its desks on one): every
+  grid's floor is its floor's theme's PLANE — the floor's boards, the light on them, the accent region, the
+  walls and the landing, drawn as code over the grid ([§ 4.2](#42-the-floor), [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)
+  items 2 and 6) — so no tile paints a floor and nothing an author places is needed for a floor to be there.
+  The back row's slots begin 24 px below the band, the
+  front row's end 24 px short of the room's front edge; the room is drawn under § 10.4's projection rule — the back wall's face, everything else from the one viewer — and the
+  plane is what the reference draws under its desks. ⚠ The box holds the desk's rects
+  ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid*) — every piece of the
+  theme's furniture set draws into one of them — and the character rects at their drawn size; it moves when
+  the furniture art's rects do ([§ 14](#14-open-questions-for-the-review-loop) item 28(1)(iii)), and the grid
+  moves with the box. **Row 22's furniture did not move it:** the house theme draws into rects laid inside the
+  same box, so at row 22 the box was re-confirmed rather than re-measured.
 
 - The map declares an **object layer named `desks`** whose objects are the slots of
   [§ 3.2](#32-the-desk-slot-function), and `S` is their count in `id` order. The shipped default map
-  declares **12**.
+  declares **6**, and reserves one of them for a role (the bullet above names it).
 - ⭐ **THE MAP IS VENDORED, AND THE COUNT ABOVE IS NOW A MEASUREMENT OF A FILE (card#9269,
   2026-09-12).** The one map the repository ships is
   the **shipped default**, `resources/floor/default.tmj` — the map every room renders until an operator
@@ -3834,7 +4426,7 @@ file's notes:
   one-default rule), so a floor-v1 pull that landed `aimla.tmj` would red by name and say which
   sentence it disagrees with. With the file at the declared path the gate **counts the objects of
   the `desks` layer and reds if that count and `S` disagree** — which is the state in force, and it
-  is what makes **12** above a figure held against bytes rather than against prose; and it requires
+  is what makes **6** above a figure held against bytes rather than against prose; and it requires
   this section to
   name the read path a room's map is fetched from and reds unless [D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed) declares
   it — the inverse of the check it held while the ruling said there was none. Which is what writing
@@ -3844,8 +4436,9 @@ file's notes:
   which is the right place for it: delete the map and the gate reds rather than going quiet.
 - The map declares nothing about state. No slot is bound to a `seat_id`, because a map that named seats
   would be a second home for identity and would have to be edited every time a seat is provisioned —
-  **and the console refuses a desk object carrying ANY property at the write**, so that a `seat_id`
-  cannot arrive as one (card#9071, the table below).
+  **and the console refuses a desk object carrying any property but `reserved_for` at the write**, so
+  that a `seat_id` cannot arrive as one (card#9071, the table below). `reserved_for` names a ROLE and
+  never a seat (card#11144): which seat holds the role is the fleet's to say, never the map's.
 
 ⭐ **THE MAP IS SERVED AT RUNTIME FROM THE ADMIN CONSOLE'S STORE, AND THE CONSOLE IS THE SOURCE OF
 TRUTH — operator ruling, 2026-09-12, card#9208, REVERSING the same card's ruling of 2026-09-09.** The
@@ -3886,19 +4479,20 @@ of that decision this reverses and § 4.6 records why the operator's earlier wor
 
 **What the console lets an operator do, and what the renderer reads — the closed set, so that a map
 cannot carry a claim the floor does not draw.** The console (card#9085's floors module) accepts a Tiled
-JSON document pasted or uploaded, **validates** it, **previews** it with the floor's own renderer
-before it is saved, **saves** it as a revision, lists a room's **revisions** with author, time and
-`S`, shows a **diff** between two, **restores** any prior one, **exports** any one as a `.tmj`, and
+JSON document pasted or uploaded, **validates** it, **previews** it (ratified at
+[§ 13](#13-decisions-taken-revisable-at-review) row 28; not yet built — until it is, a restore from the
+revisions page is the only thing between a bad save and every viewer), **saves** it as a revision,
+lists a room's **revisions** with author, time, `S` and the desk it reserves, shows a **diff** between two, **restores** any prior one, **exports** any one as a `.tmj`, and
 **removes** a room's map back to the shipped default — the store, the revision rule and what recovery
 it does and does not give back are [D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)'s. The renderer reads, and the
 console checks, exactly these members of the document:
 
 | Member | The floor reads it as | Refused at the write when |
 |---|---|---|
-| `orientation`, `width`, `height`, `tilewidth`, `tileheight` | the room's grid: its pixel size is `width × tilewidth` by `height × tileheight`, and it is the room's own — a floor of N rooms draws N such grids ([§ 4.2](#42-the-floor)). **And that pixel size is the room's FOOTPRINT on a planned floor**: [§ 4.6](#46-the-building-layout)'s plan places the grid and never sizes it (card#9292), so this row is the one home of a room's extent | any is absent or not a positive integer; or `orientation` is anything but `orthogonal` — the floor is an elevation drawn from the tileset's `Side/` renders, and the tileset bullet above is the ruling that no other projection is asked for or vendored, so a map in any other is refused by name rather than drawn flat |
-| `tilesets[]` | the tile art, each entry's `source` resolving to a tileset **the repository ships** under `resources/floor/` and serves as a static asset with its image — in either of [§ 10.1](#101-the-manifest-and-the-two-gates) clause 1's tileset spellings, `.tsx` or `.tsj`, so the client decodes both; the two shipped today are XML — `resources/floor/tiles/furniture-kit.tsx`, the bridge, and the first-party `resources/floor/tiles/floor-plane.tsx` (the bullet above) — and a JSON map naming them is the ordinary case rather than an edge | an entry embeds an image, or names a `source` the repository does not ship — which **closes** the residue the 2026-09-09 revision of this section named — that a map naming a tileset nobody vendored was a broken reference the console could not see (its wording, since replaced): with the console serving the map it can see it, and does; and `tilesets` is present, not `null` and not a JSON array, or an entry of it is not a JSON object — `{}` is not the empty list `[]` (card#9322) |
-| `layers[]` of `type: "tilelayer"` | drawn in document order, bottom first — *floor*, *walls*, *furniture* are conventions an author names, never members the renderer looks for by name | a layer's `data` is not a plain array of GIDs — [§ 10.1](#101-the-manifest-and-the-two-gates) clause 3 in full, enforced at the write as it was before this ruling: CSV, no `compression`, no embedded tileset image, each refusal naming the clause, and every rule of this row reaches the layers inside a `group` layer; and `layers` — the map's own, or a `group` layer's — is not a JSON array (a `group` layer whose `layers` is absent or `null` is an empty group), or a layer is not a JSON object (card#9322) |
-| the one `objectgroup` named `desks` | the slots — `S` is the object count in `id` order, and each object's `x`, `y`, `width`, `height` is that slot's **furniture box**: the rect **everything the scene draws for the desk at rest, except the bubble**, is laid out INSIDE — so that two disjoint slots hold two disjoint desks by construction, which is card#7341's ruling (*static placement is collision-free by construction at the slot function*) made true by [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's scene and held by [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor). *At rest* is the layout every run of that test reads, because a snapshot never animates ([§ 6.5](#65-a-snapshot-never-animates)); a character in transit on one of [§ 6.2](#62-the-animation-table--the-closed-set)'s `edge` rows that walk the character is between desks and at none, and those transit frames are the second exclusion beside the bubble: the ruling is about static placement, and a walk is the fleet doing something. **What bounds the box's contents, so that *inside* is a construction and not a hope:** the sprite and the character are the art's own size; the side table holds [§ 8](#8-interns--subagent-rendering-and-the-cap)'s cap of stools and its *+N more* tag, and **a stool is never hidden** ([§ 14](#14-open-questions-for-the-review-loop) item 28: a hidden stool is a dropped intern); the badge cluster draws at most [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bound on `badges` ([§ 7.2](#72-badges-every-member-has-a-render)) and marks the rest *+N more*, as the side table does — the bound is upstream's, this client enforces nothing on it, and [§ 9](#9-failure-paths-and-their-observables) F9 treats a skewed wire as reachable, so the cluster is bounded here and not by trust; **what the cut keeps is ordered, not arbitrary**: unrecognised badges first, so F9's marker never falls under the mark ([AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised)), then the badges a [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) treatment reads ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s and [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s), then the rest in the wire's own order, and the mark counts what is left; and **every string drawn on the desk — [§ 5.1](#51-the-desk)'s rows, [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s marks and [§ 8](#8-interns--subagent-rendering-and-the-cap)'s labels, each as the string step 5's model already decided — is truncated to the box with a visible mark**, as [§ 5.1](#51-the-desk) rule 4 truncates the bubble's title: never clipped silently and never drawn past the edge, **through ONE truncation primitive in the scene** — a function of the string, the box's width and the measurer, returning the string cut with the mark — that every drawing site takes its string from and none re-implements, so that a string the fixtures never bound is cut by the same code as the ones they do (row 14; AT-D3-20's second RED is planted at it). The untruncated value is on [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s list view, below the viewport floor, and in the drill-down, row 10's — which is [§ 4.2](#42-the-floor)'s standing split between what the floor shows and what approaching shows, and is the dependency Appendix B's order note states. The box's worst case is therefore the cap of stools with the tag, the badge bound with its mark, and every string cut to fit — a size that depends on no wire string's length and on no array's — and that is the size [§ 12](#12-every-number-and-where-it-comes-from) carries as a Measured row since row 14's slice B. The bubble is [§ 5.1](#51-the-desk) rule 5's own pass and the one element that may leave the box. Rects are **half-open**, `[x, x + w) × [y, y + h)`, as [§ 4.6](#46-the-building-layout)'s footprints are, so two slots may share an edge and never a pixel. ⭐ **The shipped default's objects are at least the furniture box since row 14's slice B (2026-09-25)** — they were sprite-sized, the width and height the sprite bullet above measures, because nothing drew furniture when they were authored; the re-authoring is the box bullet above. Two objects that intersect, and an object smaller than the box, are refused at the write since row 14's slice C (2026-09-25) — this row's refusal column states both, at a restore as at a save ([§ 14](#14-open-questions-for-the-review-loop) item 28, ruled 2026-09-25) — and only at the write: a reader never refuses a stored map for either, so a map stored before that slice, or validated against a box that has since moved, stays on the floor under [§ 9](#9-failure-paths-and-their-observables) F21's notice and is listed on the console's room index until its author saves one that passes (item 28(1)(iii); each revision records the box it was validated against, [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `authored_revisions.furniture_box`); the shipped default is held pairwise disjoint and at least the box by `tools/design/verify-floor.py` G8 on every run | there is no such layer, or more than one; or its `objects` is not a JSON array (card#9322); or an object carries **any** `properties` at all — an allowlist of none, because the property an author reaches for is a seat's name, and a slot that named a seat would be a stored position ([§ 3.2](#32-the-desk-slot-function)); or an object is not **wholly inside the grid** — `x < 0`, `y < 0`, `x + width` past `width × tilewidth` or `y + height` past `height × tileheight` — refused by name since card#9292, because the grid is the room's footprint on a planned floor ([§ 4.6](#46-the-building-layout)) and a desk drawn past it would overhang a neighbour the footprint check had passed; **or — since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice C (2026-09-25), operator ruling 2026-09-25 ([§ 14](#14-open-questions-for-the-review-loop) item 28) — two objects whose half-open rects intersect, refused naming both, or an object smaller than [§ 12](#12-every-number-and-where-it-comes-from)'s furniture box at the cap, at a restore exactly as at a save**, because a restore is a forward revision that puts a document in front of viewers as a save does ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)). ⛔ **card#9071, operator ruling 2026-09-12: the console may not pin a seat to a desk** — this row keeps an identity out of the *document*; what it cannot keep out is stated under the table |
+| `orientation`, `width`, `height`, `tilewidth`, `tileheight` | the room's grid: its pixel size is `width × tilewidth` by `height × tileheight`, and it is the room's own — a floor of N rooms draws N such grids ([§ 4.2](#42-the-floor)). **And that pixel size is the room's FOOTPRINT on a planned floor**: [§ 4.6](#46-the-building-layout)'s plan places the grid and never sizes it (card#9292), so this row is the one home of a room's extent | any is absent or not a positive integer; or `orientation` is anything but `orthogonal` — the floor is [§ 10.4](#104-the-art-direction-as-a-specification)'s 3/4 top-down oblique, and an isometric map is a second projection; the projection bullet above is the ruling that no other projection is drawn, so a map in any other is refused by name rather than drawn flat |
+| `tilesets[]` | the tile art, each entry's `source` resolving to a tileset **the repository ships** under `resources/floor/` and serves as a static asset with its image — in either of [§ 10.1](#101-the-manifest-and-the-two-gates) clause 1's tileset spellings, `.tsx` or `.tsj`, so the client decodes both; the one shipped today is XML — the first-party `resources/floor/tiles/floor-plane.tsx` (the tileset paragraph above), whose every tile declares a `kind`; the bridge kit's `tiles/furniture-kit.tsx` left at row 22, so a map stored before naming it is refused at its next save and drawn without its tiles meanwhile, and the console LISTS it ([§ 14](#14-open-questions-for-the-review-loop) item 36(5)) — and a JSON map naming it is the ordinary case rather than an edge | an entry embeds an image, or names a `source` the repository does not ship — which **closes** the residue the 2026-09-09 revision of this section named — that a map naming a tileset nobody vendored was a broken reference the console could not see (its wording, since replaced): with the console serving the map it can see it, and does; and `tilesets` is present, not `null` and not a JSON array, or an entry of it is not a JSON object — `{}` is not the empty list `[]` (card#9322) |
+| `layers[]` of `type: "tilelayer"` | read in document order, bottom first — *accent*, *walls*, *furniture* are conventions an author names, never members the renderer looks for by name. A cell is drawn BY ITS TILE's `kind` and never by its image ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 6): a plane kind's cells are merged into runs for its grid's plane, a standing kind is drawn at its tile's cell rect in tile order, and a tile with no kind, or a kind the theme registry does not name, draws nothing | a layer's `data` is not a plain array of GIDs — [§ 10.1](#101-the-manifest-and-the-two-gates) clause 3 in full, enforced at the write as it was before this ruling: CSV, no `compression`, no embedded tileset image, each refusal naming the clause, and every rule of this row reaches the layers inside a `group` layer; and `layers` — the map's own, or a `group` layer's — is not a JSON array (a `group` layer whose `layers` is absent or `null` is an empty group), or a layer is not a JSON object (card#9322) |
+| the one `objectgroup` named `desks` | the slots — found at any depth, inside a `group` layer exactly as at the top level, by the console's write and by the client's read alike, so the map the console accepted is the map the floor seats (card#11187) — `S` is the object count in `id` order, and each object's `x`, `y`, `width`, `height` is that slot's **furniture box**: the rect **everything the scene draws for the desk at rest, except the bubble**, is laid out INSIDE — so that two disjoint slots hold two disjoint desks by construction, which is card#7341's ruling (*static placement is collision-free by construction at the slot function*) made true by [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's scene and held by [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor). *At rest* is the layout every run of that test reads, because a snapshot never animates ([§ 6.5](#65-a-snapshot-never-animates)); a character in transit on one of [§ 6.2](#62-the-animation-table--the-closed-set)'s `edge` rows that walk the character is between desks and at none, and those transit frames are the second exclusion beside the bubble: the ruling is about static placement, and a walk is the fleet doing something. **What bounds the box's contents, so that *inside* is a construction and not a hope:** the desk's art rects and the character are the art's own size ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid*); the desk holds [§ 8](#8-interns--subagent-rendering-and-the-cap)'s cap of interns, one sprite each, and its *+N more* tag, and **an intern is never hidden** ([§ 14](#14-open-questions-for-the-review-loop) item 28: a hidden stool is a dropped intern); the badge row draws two badges whatever `badges` carries and the flag ⚠ +N counts the rest ([§ 5.1](#51-the-desk)'s *the glance set*) — [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bound on `badges` ([§ 7.2](#72-badges-every-member-has-a-render)) is upstream's, this client enforces nothing on it, and [§ 9](#9-failure-paths-and-their-observables) F9 treats a skewed wire as reachable, so the row is bounded here and not by trust; **what the row keeps is ordered, not arbitrary**: the badges a [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable) treatment reads first ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s and [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s), then recognised badges in the wire's own order, and the flag counts what is left — an unrecognised badge is never drawn on the desk, so it is always counted (operator ruling 2026-10-02, card#11058); and **every string drawn on the desk — [§ 5.1](#51-the-desk)'s rows and [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s marks, each as the string step 5's model already decided — is truncated to the box with a visible mark**, as [§ 5.1](#51-the-desk) rule 4 truncates the bubble's title: never clipped silently and never drawn past the edge, **through ONE truncation primitive in the scene** — a function of the string, the box's width and the measurer, returning the string cut with the mark — that every drawing site takes its string from and none re-implements, so that a string the fixtures never bound is cut by the same code as the ones they do (row 14; AT-D3-20's second RED is planted at it). The untruncated value is on [§ 4.5](#45-the-viewport-rule-and-the-camera)'s list view, below the drawing, and in the drill-down, row 10's — which is [§ 4.2](#42-the-floor)'s standing split between what the floor shows and what approaching shows, and is the dependency Appendix B's order note states. The box's worst case is therefore the cap of interns with the tag, the badge row of two with the flag, and every string cut to fit — a size that depends on no wire string's length and on no array's — and that is the size [§ 12](#12-every-number-and-where-it-comes-from) carries as a Measured row since row 14's slice B. The bubble is [§ 5.1](#51-the-desk) rule 5's own pass and the one element that may leave the box. **A slot sits where Tiled shows it (card#11252, operator ruling 2026-10-04)**: its position is the object's own `x`/`y` plus the summed `offsetx`/`offsety` of the `desks` layer and of every `group` above it — the sum the room's tiles are drawn at, so a group an author drags carries its desks with its furniture — and that position is the one the floor draws the desk at and the one every refusal in this row judges, by `App\Floor\FloorMap` at the write and by `floor/floor-layout.js`'s `mapDesks()` at the read, each summing through its side's one walk of the layer tree. Rects are **half-open**, `[x, x + w) × [y, y + h)`, as [§ 4.6](#46-the-building-layout)'s footprints are, so two slots may share an edge and never a pixel. **At most one object carries `reserved_for`, a role name: the desk reserved for that role (card#11144)** — named by its Tiled `id` on every operator-facing surface; the console lists it beside `S` on the revisions page and in a save's result; the floor's client reads it with each desk — `floor/floor-layout.js`'s `mapDesks()` returns every slot with its `reserved_for` role or `null`, read through the same layer walk that finds the `desks` layer, so the reserved desk's index is its position after the `id` sort (card#11144) — and seats the room's one seat relaying that role there, taking the desk before [§ 3.2](#32-the-desk-slot-function)'s probe loop whether or not anyone holds it; otherwise a reserved slot is a slot like any other — held to the box, counted in `S`. ⭐ **The shipped default's objects are at least the furniture box since row 14's slice B (2026-09-25)** — they were sprite-sized, the bridge kit's desk sprite's 116 × 57, because nothing drew furniture when they were authored; the re-authoring is the box bullet above. Two objects that intersect, and an object smaller than the box, are refused at the write since row 14's slice C (2026-09-25) — this row's refusal column states both, at a restore as at a save ([§ 14](#14-open-questions-for-the-review-loop) item 28, ruled 2026-09-25) — and only at the write: a reader never refuses a stored map for either, so a map stored before that slice, or validated against a box that has since moved, stays on the floor under [§ 9](#9-failure-paths-and-their-observables) F21's notice and is listed on the console's room index until its author saves one that passes (item 28(1)(iii); each revision records the box it was validated against, [D2 § 6.4](FLEET-STATE.md#64-ddl)'s `authored_revisions.furniture_box`); the shipped default is held pairwise disjoint and at least the box by `tools/design/verify-floor.py` G8 on every run | there is no such layer, or more than one; or its `objects` is not a JSON array (card#9322); or an object carries any property but `reserved_for` — an allowlist of ONE since card#11144 (it was none under card#9071), because the property an author reaches for is a seat's name, and a slot that named a seat would be a stored position ([§ 3.2](#32-the-desk-slot-function)); or `properties` is not a JSON array; or `reserved_for` is not a Tiled `string` (an absent `type` is Tiled's default, `string`) holding a role name — the shape of [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s `protocol_agent_name`, lowercase `[a-z0-9-]` and at most 48 bytes — or appears twice on one object; or the reserved object declares no `id`, or an `id` another object in the layer also declares, because the reservation is resolved by its `id`; or more than one object carries it — a room has one reserved desk, and the refusal names both by Tiled `id`; or the `desks` layer or a `group` above it declares an `offsetx` or `offsety` that is not a number, because the slot's position cannot then be read (card#11252); or an object is not **wholly inside the grid** at that position — `x < 0`, `y < 0`, `x + width` past `width × tilewidth` or `y + height` past `height × tileheight` — refused by name since card#9292, because the grid is the room's footprint on a planned floor ([§ 4.6](#46-the-building-layout)) and a desk drawn past it would overhang a neighbour the footprint check had passed; **or — since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice C (2026-09-25), operator ruling 2026-09-25 ([§ 14](#14-open-questions-for-the-review-loop) item 28) — two objects whose half-open rects intersect, refused naming both, or an object smaller than [§ 12](#12-every-number-and-where-it-comes-from)'s furniture box at the cap, at a restore exactly as at a save**, because a restore is a forward revision that puts a document in front of viewers as a save does ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)). ⛔ **card#9071, operator ruling 2026-09-12: the console may not pin a seat to a desk** — this row keeps an identity out of the *document*; what it cannot keep out is stated under the table |
 | everything else | **ignored**, and preserved byte for byte by the store — an author's other object layers, custom properties on the map or on a tile layer, Tiled's editor settings | never: a document's members the floor does not read are not the floor's to refuse, and a future renderer that reads one is a change to this table |
 
 **The floor's `hallway` is read by this table too, with one row inverted (card#9292,
@@ -3969,47 +4563,210 @@ not a specification.** A reference artifact answers *what does it look like*; it
 may I change*, and an implementer holding only D3 (the standalone-implementer standard, D-14) could
 read every pixel of it and still not know which of them are rulings. Every bullet below is an
 **operator ruling** of the 2026-08-26 / 2026-08-27 sessions, not a suggestion, and the reference
-artifact is the worked example of it.
+artifact is the worked example of it. ⚠ **Except for its characters, since card#11046:** the reference
+draws people from a seven-silhouette space, and the operator's rulings of 2026-10-05 replaced them with
+the creatures ([§ 10.2](#102-characters-original-creatures-drawn-by-code)) — the bullets below that
+name the appearance space, the interns, the salt, the frames and the rim are the creatures', and the
+creature generator's sheet is their worked example.
 
 - **Visual target: high-resolution, whimsical, modern, warm** — Ghibli-adjacent in *feel*, never in
   content ([§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate)). **Not pixel art.** The look
   must be **resolution-independent**, which is not a style note but the capability
-  [§ 4.5](#45-the-viewport-rule-and-the-capability-floor) requires and the reason `.svg` heads
+  [§ 4.5](#45-the-viewport-rule-and-the-camera) requires and the reason `.svg` heads
   [§ 10.1](#101-the-manifest-and-the-two-gates) Gate 2's admitted formats: the camera zooms from a
   whole building to one desk, and art that resamples on the way is art that is wrong at every zoom but
   one.
-- **The seeded appearance space, and it is a space rather than a palette.** Appearance is drawn from
-  `fnv1a32(install_id, seat_id)` ([§ 3.2](#32-the-desk-slot-function)'s hash, already published here),
-  one independent draw per field, across **ten** dimensions: **7** silhouettes × **16** hues ×
-  **5** size buckets, plus pattern (**3**), ears (**4**), sprout (**5**), eye style (**4**), mouth
-  (**4**), accessory (**5**) and posture tilt (**3**). The operator's ruling is what makes this a
-  requirement rather than a flourish — *"we need more different characters, not just different colors.
-  Each agent and subagent needs their own appearance and personality"*, and then *"the AIMLA floor has
-  a repeated body. Be more creative on the different bodies and colors."* **Colour alone is not
-  variety**, and a body repeated across a floor is the defect that ruling names.
-- **Interns seed from the parent seat plus the intern index** — the key `seat~internN` — so siblings
-  at one side table differ from each other and from their seat
-  ([§ 8](#8-interns--subagent-rendering-and-the-cap)). One sprite **per open subagent**; the cap and
-  its arithmetic are § 8.1's and are **not** changed by anything here.
+- ⭐ **THE PROJECTION — the operator's ruling of 2026-10-03: a 3/4 top-down oblique, the 2D-game interior
+  convention.** One viewer, standing in front of the room and a little above it, and every element obeys
+  the same viewer ("Make sure all elements in a scene follow the same rules", slynyrd, *Pixelblog 3 —
+  Graphical projections*). Semi-realism, not realism: the floor is not foreshortened and angles stay clean.
+  The interior convention per element class is Space Station 14's *Art* guide's: structures face-on with
+  the viewer above them, mobs flat at eye level, floor tiles from above, walls by their top.
+  1. **The floor is seen from above.** The map's `y` axis is depth: lower on the grid is nearer the viewer.
+     The floor — its floor's theme's plane drawing of the grid, its `accent` regions and the landing — lies
+     flat, shows no face and no thickness ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme); the
+     plank and rug tiles that drew it until row 22 retired with it). *Eye-judged:* that the plane is drawn as a
+     plan. (No check reads a picture.)
+  2. **A standing thing is drawn face-on and anchored at its foot.** Furniture and scenery (desks, monitors,
+     chairs, shelves, lamps, plants, bins, the elevator) are drawn face-on; **a top sliver is permitted, not
+     required** — the house theme's desk shows one, its chairs and plants do not, and all comply.
+     ⭐ **The face drawn is the side that faces the viewer — for furniture used from behind, its BACK** (the
+     operator's ruling of 2026-10-06, card#11046 comment 10125, verbatim: *"The desks need to be reversed. The
+     agents are sitting behind the desk, so the drawers face the agent (we shouldn't see the the desk drawers -
+     we'd be seeing the other side)"*). A desk is seen from its far side — a back panel, no drawers, no handles,
+     no knee-hole — and a chair its sitter uses shows its back behind the sitter; any furniture whose user faces
+     away from the viewer does the same, and furniture whose user faces the viewer (an armchair) shows its
+     front. **The monitor is the one ruled exception** (comment 10126, verbatim: *"yes, the monitors face us and
+     show the status"*): its screen faces the viewer because it carries the desk's action and state line
+     ([§ 5.1](#51-the-desk)) — a deliberate 3/4-game cheat, and the only one. *Eye-judged:* that a desk's
+     drawing is its back; no check reads a picture. Built at row 22 ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)), the house theme's `desk`. **A
+     character is flat** — straight-on, no top — so its face stays legible (SS14's mob rule). The foot — the
+     bottom edge of the image or rect — is where it stands on the floor. *Code-cited, not test-held:* Tiled
+     image tiles are bottom-aligned to their cell (`server/public/js/floor/scene.js`'s `mapTiles()`,
+     `y = (row + 1) × tileheight − h`; `tileset-probe.mjs` holds the reader, not a placed tile's `y`); the
+     desk's art is `xMidYMax meet` inside its rect (`painter.js`'s `MEET`) — the clipping viewport and the
+     `meet` attribute are held by `painter-probe.mjs` on every character's image and every one of a desk's
+     theme documents (card#11046, rows 19 and 22); a standing scenery piece's image and the band's documents
+     are drawn through the same `art()` and held by no probe, so for them it is **eye-judged**.
+  3. **Y-sort: a thing with a lower foot draws later, over a thing whose foot is higher.** *Within a tile
+     layer* — row-major cell order (`mapTiles()`), code-cited, no test. *Within a desk* — the desk's layer
+     order (`desk-layout.js`): the character's foot at `slab + 26`, the desk's at `slab + 60`, so the desk
+     covers the character's feet; `painter-probe.mjs` holds every node at its rect, and AT-D3-20 reads
+     rects, so the ORDER is eye-judged. *Between desks* — the scene sorts by Tiled `id`; on a valid map the
+     slots are disjoint and AT-D3-20 (b) holds each bubble's base rect inside its own box with no lift, so
+     no two desks' pixels meet and the order is moot; it is reachable only under
+     [§ 9](#9-failure-paths-and-their-observables) F21 (undersized or intersecting objects, which the
+     console refuses at the write), where `id` order is what decides which desk's labels lie on top —
+     recorded here, no fix. *Between tiles and desks* — every tile draws under every desk: under this rule a
+     tile is a floor mark or a standing object whose foot an author keeps out of every slot, which
+     [§ 10.3](#103-the-floor-map)'s box already requires of furniture an author places.
+  4. **Walls.** The floor's **back wall shows its face**: it is [§ 4.2](#42-the-floor)'s band, 160 px
+     tall, with the windows, the clock and the elevator on it, and the map paints no back wall. **Every
+     other wall shows only its top edge**: a strip **one cell wide (8 px, the map's `tilewidth`)**, flat on
+     the plane, in the one wall colour, cells of the tileset's `wall` kind that the floor's theme draws on the
+     grid's plane, each straight stretch one strip ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)
+     item 6), and so under every standing thing. Side walls,
+     walls running front-to-back, and walls running left-to-right inside the room are all this strip; a
+     wall's **doorway is a gap in the strip**, at least as wide as a character (54 px). No wall but the
+     band shows a face. (Until row 22 the bridge kit carried face-on wall panels and doorways — its
+     elevation-only renders — which were never placed and left with it, card#11046.) Where a side wall's top meets the band, the band's two ends
+     carry the side walls' **end posts** — the frame's, by the operator's ruling of 2026-10-04 on the back
+     corner (option B; [§ 4.2](#42-the-floor)). *Code-held* on the shipped default by
+     `tools/design/verify-floor.py` G-walls. *Eye-judged* on an authored map: the console validates
+     documents, not pictures ([§ 10.3](#103-the-floor-map)'s residue).
+  5. **Light** comes from the top-left, one corner for the whole scene (slynyrd); contact shadows are soft
+     and sit at the foot. *Eye-judged.*
+  6. **Not scene objects:** the nameplate and its plate, the state chip, the badges and the flag, the
+     facts column, the bubble and its tail, the thread line and its label, the
+     [§ 6.2](#62-the-animation-table--the-closed-set) effects, the F14 placeholder and the overflow strip's
+     header are **labels over the scene** and obey no projection; they are [§ 5.1](#51-the-desk)'s and
+     [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s.
+
+  What this bullet replaces: [§ 4.2](#42-the-floor)'s *dollhouse elevation* wording and
+  [§ 10.3](#103-the-floor-map)'s *the room is an elevation — one back wall, one projection* (both reworded
+  with it). **Where a check holds
+  the rule, and where only the eye does — stated plainly:** item 4 on the shipped default (G-walls, two
+  legs with controls, and G-scenery for every standing piece's cell). Everything else — the pictures in items 1-2, the `meet` anchor and the tile anchor
+  (code-cited), every draw order, item 5, a character's silhouette edge against the floor (the rim
+  bullet below, card#11046), and anything on an authored map — is review by eye, stated as
+  [§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate) states its own gap, so a green build is not
+  read as "the question was asked".
+- **The seeded appearance space, and it is a space rather than a palette.** Appearance is drawn from the
+  key through the seed module's `draw(key, field)` — `mix32(fnv1a32(key + "#" + field))`,
+  [§ 3.2](#32-the-desk-slot-function)'s hash with the avalanche step appearance draws add — one
+  independent draw per **named** field, so a field added later re-rolls nobody. The operator's ruling is
+  what makes this a requirement rather than a flourish — *"we need more different characters, not just
+  different colors. Each agent and subagent needs their own appearance and personality"*, and then *"the
+  AIMLA floor has a repeated body. Be more creative on the different bodies and colors."* **Colour alone
+  is not variety**, and a body repeated across a floor is the defect that ruling names. The dimensions of
+  the approved creature generator (card#11046), each a closed list in the generator, which is their one
+  home — [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom) holds this
+  table to those lists, so a list that moves reds until the table moves with it:
+
+  | Dimension | Members | What it draws |
+  |---|---|---|
+  | **species** — the body | **16**: 8 animal, 8 vegetable ([§ 10.2](#102-characters-original-creatures-drawn-by-code)) | the silhouette, the ears or leaves, the face's placement; salted (the salt bullet below) |
+  | **colourway** | per species: **5**; the pea-pod, the radish and the turnip **4** (the last two after the operator's ruling of 2026-10-06 withheld one each, § 14 item 33(1)) | the body's paint, light falling top-left; one eggplant and one pumpkin colourway is striped |
+  | **variant** | the rabbit **2** (upright, or lop at 1 in 3); the mushroom **3** caps (dome, wide, bell); every other species none | a body shape inside its species |
+  | **girth** | **3** | the body's profile, widened or narrowed |
+  | **size** | **5** | a uniform scale about the foot |
+  | **tilt** | **3** | −3°, 0 or +3° about the foot |
+  | **eyes** | **5** | round, sparkle, happy, sleepy, bead |
+  | **mouth** | **5** | smile, open, cat, tiny, grin — the owl draws its beak instead |
+  | **blush** | **3** | none, light, full |
+  | **brows** | **3** distinct, none drawn at 2 in 4 | none, soft, worried |
+  | **hat** | none at 3 slots, plus the species' own list of **2–5** | the lop rabbit wears from the full five |
+  | **neck** | none at 2 slots, plus the species' list of **0–3** | scarf, neckerchief, bow |
+  | **extra** | none at 2 slots, plus the species' list of **1–4** | glasses, a satchel (only where the species has a neck to hang it from), a mug, a book |
+  | **accents** | **2** draws over **8** colours | the colours of whatever is worn or held, so drawn only where something is |
+  | **side** | **2** | mirrors the asymmetric parts — a tail, a flopped ear, a scarf's tail, a satchel |
+  | **details** | a named draw each, per species | the bear's chest mark, the upright rabbit's flopped ear, the frog's spots, the radish's fourth leaf, the leaf green of the radish, turnip and carrot, the mushroom's speckle, the pumpkin's leaf, the potato's lumps, dimples and sprout |
+
+  ⚠ **No figure for the size of the whole space is written here, and none is owed.** The prototype's own
+  `spaceSize()` multiplies a subset of these lists — it leaves out the accents, the side and the details,
+  and counts the hat lists before the lop rabbit's override — so it is not the space's size, and a
+  corrected product would be one more number for the next change to falsify. What the acceptance reads is
+  the measurement two bullets below, which needs no size.
+- **Interns seed from the parent seat plus the intern's CALL** — the key `seat~<call_id>`, the
+  operator's ruling of 2026-10-02 on card#11058 Q3 ([decision 47](#13-decisions-taken-revisable-at-review)),
+  which replaced the reference's `seat~internN` keyed by the intern's place in the array — so an intern
+  keeps its look when `subagents[]` reorders or a sibling leaves ([§ 8](#8-interns--subagent-rendering-and-the-cap)).
+  The character tree is handed the key in the seat's place (`server/public/js/floor/desk-layout.js`'s
+  `internKey()`); `~` is outside the `seat_id` alphabet (`App\Support\Slug::SEAT_ID`), so no intern key is
+  ever a seat's. One sprite **per open subagent**; the cap and its arithmetic are § 8.1's and are **not**
+  changed by anything here. Three things are the creatures' (card#11046):
+  - **An intern is CHIBI** — the operator's *"A"* of 2026-10-05: an oversized head on a tiny body, so the
+    face reads in [§ 8](#8-interns--subagent-rendering-and-the-cap)'s **20 × 32** rect, which does not
+    change. It is the intern's own frame, drawn by the generator from the same recipe as a seat's — same
+    species, colourway, face and worn things — and re-proportioned rather than shrunk: **the head takes at
+    least half the frame's drawn height**, measured from the generator's own geometry (the head's top to
+    its chin, over the head's top to the foot line) for every species and variant, and the foot sits on
+    the rect's floor line under `xMidYMax meet` as every character's does. *What re-derives the half:* the
+    operator's reading of the first drawn side table.
+  - **An intern never shares its seat's body.** Its species is drawn from its own key as a seat's is; where
+    that draw lands on the seat's species it is re-drawn, under a field of its own, over the other species.
+    That is a pure function of the intern's key, because the key carries its seat's — so it needs no stored
+    state and reads no sibling, and every intern whose first draw already differs — most of them —
+    keeps the body the plain draw gives it ([decision 54](#13-decisions-taken-revisable-at-review)). **What it
+    does NOT do is keep siblings apart**, and nothing pure can: a sibling's body depending on another
+    sibling's would move when that sibling left, which is the very property decision 47 exists to keep.
+  - **"Differs from its seat and its siblings" is therefore two claims, measured separately, and only one
+    is about the body.** *(a)* **The body differs from the seat's** — by construction, held over every key
+    of a synthetic population. *(b)* **The drawing differs from every sibling's** — the seat's standing frame and an intern's
+    chibi frame are different documents by construction, so the comparison that can fail is between
+    siblings (N6) — measured: over a synthetic population of desks at [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)'s
+    cap, a seat and its interns under call ids drawn from a seeded generator, no two of a desk's drawings
+    are the same drawing, each in the frame it is drawn in (the collision bullet's definition, below). ⚠ **And the body is NOT
+    distinct among siblings, and is not meant to be:** a full side table draws its interns from the species
+    other than its seat's, and a repeat among them is the common case, not the exception — so siblings are told apart by colourway, face and what they wear, and a viewer who reads
+    *differs* as *a different animal* has read more than this promises. **The repeat rates are the build's
+    printed measurement**, over its seeded synthetic desks at the cap — the share of desks with a repeated
+    body, and with a repeated body and colourway — beside the collision count; they gate nothing, because it is the expected shape of the space rather
+    than a defect. The salt cannot be searched against interns at all — a call id is a fresh ULID per
+    dispatch, so the population does not exist until the dispatches do — which is why *(b)* is a
+    measurement over a synthetic population and never a searched guarantee.
 - ⭐ **The salt is a design choice, and this is the rule that must survive this document's author.**
-  The per-field salts (the reference's `s18` for silhouette, `s3` for hue) were **searched against the
-  real roster** so that the known fleet renders all-distinct bodies and hues. **Determinism is
-  untouched** — one salt, picked once, fixed forever; the function stays pure and the appearance stays
-  a function of the key alone. **If the operator reports visible repetition, the response is to widen
-  the space or re-pick the salt — never to special-case a seat.** A special-cased seat is a *stored
-  appearance wearing a disguise*: it breaks [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s
-  property that two browsers agree with nothing stored, and it breaks it invisibly, because the seat
-  that was special-cased looks right on the machine where the special case lives.
-- **The collision acceptance is MEASURED, not asserted.** Full-tuple appearance collisions must be
-  vanishingly rare at fleet scale — call it **50** seats. What can be computed from the reference's
-  own field cardinalities is the size of the space: **8,064,000** distinct tuples
-  (7 × 16 × 5 × 3 × 4 × 5 × 4 × 4 × 5 × 3), and, **as an estimate that assumes the ten draws are
-  independent and uniform**, a birthday expectation of **1** collision in about **6,583** fleets of
-  50 seats. **That estimate is not the acceptance.** The assumption it rests on is exactly what a
-  *searched* salt perturbs, and a searched salt is what the bullet above requires — so the figure the
-  build owes is a **measurement**: run the shipped generator over the real roster and over a synthetic
-  roster at 50 seats, count full-tuple collisions, and record the count with the roster it was
-  measured against. State the measurement; do not restate the estimate as though it were one.
+  One field carries it: **species**, drawn under the field name `species:s1`. It was **searched once**
+  against a roster so that every room of that roster no larger than the species list renders
+  all-distinct bodies, and picked as the
+  first salt that passes. **Determinism is untouched** — one salt, picked once, fixed forever; the
+  function stays pure and the appearance stays a function of the key alone. **If the operator reports
+  visible repetition, the response is to widen the space or re-pick the salt — never to special-case a
+  seat.** A special-cased seat is a *stored appearance wearing a disguise*: it breaks
+  [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)'s property that two browsers agree with nothing
+  stored, and it breaks it invisibly, because the seat that was special-cased looks right on the machine
+  where the special case lives. ⚠ **Two things about the search the build owes, and the prototype did
+  not do:** *(1)* **the roster is committed and every key on it states its source** — a fixture's seat,
+  or a seat the fleet is known to run — because the prototype searched a sample roster that also named
+  seats no fixture holds and whose source it does not state, and a salt fitted to invented seats is fitted
+  to nothing;
+  *(2)* **the search reads seats only**, because the prototype also searched eight sample interns with
+  invented call ids, which is the population the previous bullet says cannot be searched. Measured on the
+  prototype's own roster, `:s1` is also the first salt that passes with the interns left out, so leaving
+  them out moves no body the operator approved. The build re-runs the criterion on the committed fleet
+  roster on every run; and because that fleet is too small to tell a salted draw from an unsalted one,
+  the search sample is committed beside it as the salt leg's labelled CONTROL, which the leg's
+  discrimination half reads ([§ 14](#14-open-questions-for-the-review-loop) item 33(2), the seat's ruling
+  of 2026-10-06). A fleet roster on which `:s1` fails is surfaced with the before and after — a re-pick
+  re-draws approved bodies — and never a silent re-pick.
+- **The collision acceptance is MEASURED, not asserted.** Two keys **collide** when the generator draws
+  them as **the same drawing**: the frame document each is actually drawn in — a seat's **standing
+  frame**, an intern's **chibi frame** ([§ 10.4](#104-the-art-direction-as-a-specification)'s frame
+  contract, below) — compared byte for byte. Each frame is its own document with fixed ids, so the
+  comparison needs no prefix to strip. That definition is chosen
+  because it is mechanical and has no hand-kept normalisation to drift — and its limit is stated with
+  it: two drawings that differ only where no eye could tell (a potato lump moved by a hair) are *not* a
+  collision under it, so it bounds identical characters from above and says nothing about near-twins.
+  The build measures it on **the committed roster**, where the count must be **zero**, and on **a
+  synthetic roster of 50 seats** — fleet scale — drawn from a seeded key generator whose seed is recorded
+  with the count, where the count must also be **zero** and is printed beside the roster it was measured
+  on. **No estimate stands in for either**: the per-field draws are not uniform (the *none* slots, the
+  weighted variants) and the species is searched, so a birthday figure over a product of cardinalities
+  would be an estimate dressed as a measurement — and no such figure is written here. **Bodies are a
+  separate claim and a weaker one:** on the committed roster every room no larger than the species
+  list draws distinct species (the salt's criterion); at 50 seats, more than there are species, bodies
+  repeat by pigeonhole, which is why the
+  full-drawing count, and not the body, is fleet scale's acceptance.
 - **The seeded vibe line.** A short flavour line in the drill-down, drawn from the same seed — the
   operator's *"each agent and subagent needs their own appearance and personality"*. It is
   **appearance-class text**: [§ 5.4](#54-what-is-never-rendered) admits it as a rendering of identity
@@ -4067,21 +4824,124 @@ artifact is the worked example of it.
   rather than joining it, a null task draws nothing, and it is not drawn on a desk with no character
   to anchor to. Those four are [§ 5.1](#51-the-desk)'s, stated there in full with the upstream
   behaviour that was refused and why, and this bullet states none of them a second time.
-- ⚠ **AN INTERIM FLOOR TILESET IS VENDORED AND IT DOES NOT MEET THE FIRST BULLET — see
-  [§ 10.3](#103-the-floor-map).** It is pre-rendered raster at one scale, so it fails the
-  resolution-independence requirement by construction, and the operator's ruling of 2026-09-12 chose
-  it **as a bridge to first-party vector art** rather than as a reading of this subsection. Nothing
-  above is relaxed by it: the reasoning, the view chosen and what retires with the pack are
-  § 10.3's, stated there once. **It is flagged here because this is the subsection a reader consults
-  to find out what may be drawn**, and an interim asset that only the asset tree admits to being
-  interim is one somebody eventually reads as a decision — which is the same failure mode
-  [§ 10.2](#102-characters-the-munder-difflin-port)'s interim pixel art needed a bullet to prevent.
+- **The interim floor tileset is gone, and nothing on the floor is raster** (card#11046, [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
+  row 22). The bridge kit the operator chose on 2026-09-12 as a stand-in — pre-rendered raster that failed
+  the first bullet by construction, flagged here while it stood so nobody read it as a decision — left the
+  tree when the floor's themes landed ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)), as the
+  creatures replaced the port's interim pixel art ([§ 10.2](#102-characters-original-creatures-drawn-by-code)).
+  Every piece of the room is now a vector document drawn by code, and § 10.3 keeps the record.
+- **The palette has one home in the build: `server/public/css/mezzanine.css`'s `:root` custom
+  properties** (card#11045 PR-A). The page chrome reads them, and so does the floor's drawing —
+  `server/public/js/floor/painter.js`'s embedded style names every colour as a `var(--…)` token, the frame's
+  wall, plane and elevator colours included, and carries no hex of its own — and
+  `Tests\Feature\ThePageChromeIsOneLinkedStylesheetTest` reds on a token the painter reads that the sheet
+  does not declare, and on a hex colour back in the painter. The lobby's palette stays
+  `building-scene.js`'s `INK` constants, which the lobby does arithmetic on; the two colours the floor's
+  elevator shares with the lobby's cab (`--door` / `--door-edge`, which the elevator's leaves read since
+  card#11045 PR-D) are copies on the sheet, held equal to `INK.door` / `INK.doorEdge` by the same test
+  (design review r3 MINOR-7: the copy is kept and checked, because the lobby's arithmetic cannot read a
+  custom property). The desk's own tokens (card#11058): one `--state-<member>` per `render_state` member,
+  which the state chip's rules are generated from (`server/public/js/lobby/render-state.js`'s
+  `RENDER_STATES`), with `--state-ink` / `--state-ink-unconfirmed` for the chip's word; `--scene-plate` /
+  `--scene-plate-edge` for the nameplate's plate; and `--scene-flag` / `--scene-flag-edge` /
+  `--scene-flag-ink` for the flag ⚠ +N. The test reads the painter's style as the painter builds it, so a
+  token spelled through a generated rule is read like any other.
+  `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` reds on a `--state-<member>` that holds `--state-ink` under
+  4.5:1 at full light, and `tools/design/state-chip-colours.py --check`, which CI runs on every pull request,
+  reds when a pair involving a quiet state (`stale`, `offline`, `disabled`) falls under the tool's bound as
+  the tokens, as the hollow chip's edge or as drawn (card#11218). This states WHERE the palette lives; the
+  values stay unspecified, as the *What is deliberately NOT specified* bullet below says. ⚠ **Since row 22
+  there is a second home for ART colours only** — each theme's module, whose palette export the theme's own
+  documents read ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)) — and the rows added sheet tokens for what stays the painter's: row 20 the
+  screen text's ink per lit state, row 22 `--scene-floor`, a plane's fallback fill. Row 22 retired the
+  `--room-<theme>` pairs with the seeded tints ([decision 58](#13-decisions-taken-revisable-at-review)), and the
+  frame's own flat shapes' tokens with the shapes the theme now draws (`--window-frame`, `--door-header`,
+  `--scene-chair`, `--scene-monitor-frame`, `--scene-side-table` and its edge).
+- **The desk's art contract — where a desk's art is drawn, and the clip that holds it there** (card#11058).
+  A desk's art — the character and its floor's theme's furniture set — is drawn into the rects
+  `server/public/js/floor/desk-layout.js`'s `deskRects()` derives from the furniture box
+  ([§ 12](#12-every-number-and-where-it-comes-from)'s *Desk element rects* row): the character 54 × 96,
+  the chair 54 × 64, the desk 180 × 60, the monitor's frame 96 × 46, the desk props 68 × 50 and the side
+  table 228 × 42. Each is drawn `xMidYMax meet` — kept in proportion, centred and standing on its
+  rect's floor line — inside a **clipping viewport**, a nested `<svg>` at the rect with `overflow: hidden`,
+  so whatever the art draws past its own frame is cut at the rect it was given and never reaches a
+  neighbouring element or the box's edge. `server/tests/Feature/Floor/painter-probe.mjs` (driven by
+  `Tests\Feature\Floor\TheNewDeskKeepsEveryLeafTest`) holds every node the painter draws for a desk at
+  its layout element's own rect, the viewport included. Since row 22 (card#11046, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme))
+  the chair (behind every creature), the desk's back, the monitor's frame, the desk props and the side table
+  with its seats are each the floor's theme's document in its own rect, all five drawn or none (§ 10.6 item 8);
+  the screen (88 × 31, in its three lit states) inside the frame and the plate stay the painter's shapes,
+  facts painted after the art. ⚠ **The chair carries no
+  unconfirmed treatment** — this bullet said *dashed when unconfirmed* until card#11046's review, which
+  is false of `painter.js`: it draws the chair as a plain rect and reads `unconfirmed` only for the chip, though
+  `desk-layout.js`'s `DRAWN_MEMBERS` maps the member to the chair. The claim is withdrawn rather than built ([decision 63](#13-decisions-taken-revisable-at-review)): an
+  unconfirmed seat is drawn on the hollow chip and its dimmed desk, which is what the product does, and
+  `DRAWN_MEMBERS` maps `unconfirmed` to the chip.
+  Each intern is its chibi frame under its key `seat~<call_id>` (the interns bullet above), drawn
+  `xMidYMax meet` in its own 20 × 32 rect inside a clipping viewport, static; an untitled one is that
+  frame inside a dashed edge at its own 20 × 32 rect — rx 3, no fill, `--scene-stool` at 1.5 wide, dashed
+  `3 2` — face-on, its foot on the rect's floor line; one whose art fails is
+  [§ 9](#9-failure-paths-and-their-observables) F14's glyph in that rect, that stool alone. **The
+  character's art is a vector document shown as an image** ([§ 10.2](#102-characters-original-creatures-drawn-by-code)):
+  each frame is a standalone SVG document behind an `<image href="data:image/svg+xml;…">`, so the camera
+  scales a curve rather than resampling a picture (measured, § 10.2), and each document's ids are its own.
+  The bridge kit's desk PNG that stood in for the desk until row 22 is gone: the desk's back is the theme's
+  document, drawn into the rect row 20 re-laid ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid*).
+- ⭐ **THE FRAME CONTRACT — what the character tree draws for every key, and it is PARITY with today**
+  (card#11046; the seat's ruling of 2026-10-06). Until this card the tree drew a portrait and a walk, and
+  the painter drew the walk's standing frame for whatever pose the desk asked for — stepping the walk's
+  frames where a held loop moved — so **no pose the desk model names has ever been drawn, and this card
+  does not start drawing them.** The creatures replace what the product draws today, frame for frame:
+  1. **One standing frame per key, and every pose draws it, as today.** Whatever `(pose, glyph)` the desk
+     model asks for — `server/public/js/desk/desk-poses.js`'s `DESK`, and A4's think pose, which
+     `desk-render.js` keeps unexported as `THINKING` and the tests reach through `deskModel()` itself
+     (a `working` seat with `open_calls` 0 and `open_turn` true, N5) —
+     a desk with a character draws this one frame; `empty-chair` still draws none
+     ([§ 7.1](#71-the-render-per-state)). A held loop that moves steps the walk's frames (item 2), as the
+     painter does today. **A state is told from another by its chip, its label line and its monitor, not
+     by the character** — which is true today and stays true; drawing the poses is
+     [§ 14](#14-open-questions-for-the-review-loop) item 34's, unscheduled.
+  2. **The walk: three phases** — stand, step-left, step-right — **front-facing**, which A1's and A2's
+     walker draws (`resources/characters/index.js`'s `walkFrames()`, which `floor/painter.js`'s `characterFrames()` caches) and A16 needs when it is walked; phase 0
+     is item 1's standing frame. No back view is drawn; the walker has never used one
+     ([§ 10.2](#102-characters-original-creatures-drawn-by-code)).
+  3. **The intern's chibi frame** (the interns bullet above), static, as [§ 8](#8-interns--subagent-rendering-and-the-cap) draws it.
+
+  **The projection every one of them obeys** is the projection bullet's item 2 and item 5, restated
+  nowhere: flat and straight-on, no top, the foot on the rect's floor line with its soft contact shadow
+  there, light from the top-left.
+- **A faint light RIM on every silhouette** (card#11046, the seat's addition to the approved look, made so
+  a dark colourway — a charcoal bear, a dark otter, a deep eggplant — does not sink into what it stands
+  on). Every character's outermost edge carries a thin light rim just outside its coloured line, which stays the
+  approved outline. **The edge is EYE-JUDGED, and no contrast bound holds it** (the seat's ruling of
+  2026-10-06): the operator approved the look with that outline, seen on a tan floor behind desks, and
+  the edge is judged by the operator on the real-floor screenshots reviewed before the build merges
+  ([§ 14](#14-open-questions-for-the-review-loop) item 33(3)). It is one of this subsection's eye-judged
+  items with the pictures in the projection bullet's items 1–2 and its item 5, and is stated as such so a
+  green build is not read as the question having been asked.
+- ⚠ **REVERSED, BOTH HALVES** — *the back wall stays the house's* by the operator's ruling of 2026-10-07 that
+  a theme is authored per building floor, band included ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme));
+  and the seeded per-room tints RETIRED at row 22 rather than becoming the house theme's plane variants
+  ([decision 58](#13-decisions-taken-revisable-at-review), the seat's ruling of 2026-10-07 recorded on card#11046),
+  so one storey is one theme and one floor. What the bullet said, kept as the record:
+  **Each room's floor plane takes a SEEDED THEME, and the back wall stays the house's** (card#11045, the
+  operator's ruling of 2026-10-01 on Q2, [decision 40](#13-decisions-taken-revisable-at-review)). The plane
+  ([§ 4.2](#42-the-floor)'s frame) takes one of four themes — oak, walnut, sage, slate — by
+  `fnv1a32(install_id) mod 4`, [§ 3.2](#32-the-desk-slot-function)'s hash over the ROOM's key, which never
+  moves; never over the floor's key, which moves when a lower-sorting room joins the floor
+  ([§ 4.6](#46-the-building-layout)), and would recolour every room on it. Appearance, carrying no fact:
+  stable for the room's life, the same in every browser. The band stays in the house palette, so a floor's
+  re-key recolours nothing. Oak is the default. Each theme is a pair of tokens on the sheet
+  (`--room-<theme>` / `--room-<theme>-2`, the plane's shade top to bottom), and
+  `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` reds on a theme that holds the scene's ink less legibly
+  than oak does, so a theme cannot make the desk text drawn over the floor harder to read.
 - **What is deliberately NOT specified here:** the palette's hex values, the drawing itself, the file
-  layout of the art, and the renderer. [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)'s
+  layout of the art, and the renderer — except the HOUSE THEME's colours, which [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) states, taken from
+  the prototype the operator approved as a picture, and holds equal to the module. [§ 1.2](#12-non-goals--stated-so-an-implementer-cannot-widen-scope-in-good-faith)'s
   non-goal stands — **no framework, bundler or state library is specified**, and this subsection does
   not sneak one in by naming SVG: SVG is a *file format on the asset side*, admitted by
   [§ 10.1](#101-the-manifest-and-the-two-gates) and required by
-  [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s property, not a rendering stack.
+  [§ 4.5](#45-the-viewport-rule-and-the-camera)'s property, not a rendering stack.
 
 ### 10.5 The IP line — stated, and unenforceable by gate
 
@@ -4100,6 +4960,509 @@ review**, by a human who looks at the picture, and that is the whole of it. This
 rather than left implicit for the reason [§ 10.1](#101-the-manifest-and-the-two-gates)'s cost
 paragraph gives: **a rule presented as gate-enforced when it is not is worse than one honestly
 labelled**, because the next reader sees a green build and concludes the question was asked.
+
+⭐ **The review note for the creatures (card#11046) — what was looked for, who looked, and what that
+does and does not establish.** The creature bodies were designed against this line, and the design
+deliberately avoided each of these, every one a recognisable trait of a character another rights-holder
+owns: **a leaf worn on the head; a white daikon spirit; a turnip-headed scarecrow; a red cap with white
+spots; a leaf bow tie; an X-mouthed white rabbit; a blue bulb with leaves.** Each stays out of every
+build that follows, and the generator carries one of them as code rather than intent: the mushroom's
+speckle is never drawn on its red colourway. ⭐ **Three members of the approved generator sat close
+enough to that list to be named for review, and none ships:** the `sprig` hat — two small leaves and a
+berry tucked at the side of the head — beside *a leaf worn on the head*; the radish's near-white
+colourway beside *a white daikon spirit*; and the turnip's lavender colourway beside *a blue bulb with
+leaves*. The operator's ruling of 2026-10-06, *"flagged items: Use your recommendations"* (card#11046 comment 10116), applied by the seat as withholding all three ([§ 14](#14-open-questions-for-the-review-loop) item 33(1)): each is an entry in
+`resources/characters/creatures.js`'s one closed `WITHHELD` list, which removes it from every list it
+was in. The animals are
+drawn *-ish* — a fox-ish creature, not a fox — so no body is a likeness of a particular animal character
+either. **A human reviewed the catalogue: the operator, who approved the design sheet on 2026-10-05**
+(*"yes, I love them"*, card#11046 comment 9963). **What that establishes:** the person this line names
+as its enforcement looked at every body, in its colourways, and accepted them. **What it does
+NOT establish**, stated so the approval is not over-read the way a green gate is: it is not a legal
+clearance or a search of any rights-holder's catalogue; it covered the prototype's sheet, so the
+seat's two additions (the rim, the hedgehog's spines), the walk and the chibi frames — none of which
+the operator has yet seen drawn — are reviewed at the build's own screenshot step before it merges
+([§ 14](#14-open-questions-for-the-review-loop) item 33); and it covered the catalogue, not every
+combination a key can draw. A hat, a colourway and a body that are each original can still combine
+into somebody's character, and the only answer to that is the one this subsection already gives:
+review, by a human looking at the picture, whenever the space changes.
+
+### 10.6 Themes — a floor's design, and the house theme
+
+⭐ **A building floor (a storey) is drawn in a THEME, and the house theme is the room the operator chose
+on 2026-10-07** (card#11046). The operator's words, verbatim from the card: on the room directions,
+*"I like the A design, but prefer the B colors. The "A" design floor color is too dark and close to the
+desk color.  Use A design but with the floor color closer to B. I do want each floor to have a different
+design, so eventually we could still add 'B' and others too."* (comment 10124); then *"1. A2+C  2. A  The
+monitor screen text can be smaller so that more letters can fit"* (comment 10137), where *1* chose a
+picture — the seat's prototype of direction A's design in B's colours, with C's oak floor in the PM's room
+and C's lit landing at the lift — and *2. A* chose, of the seat's readings of *"each floor"*, the **building
+floor**: a theme is authored per storey, and a floor's band and every room on it are drawn in that storey's
+theme (the seat's reading of the answer, recorded in comment 10137). The rulings that shape what a theme
+draws, each verbatim: *"The brick style floor is distracting. The small rug also doesn't make any sense on
+the floor layout; remove it."* (comment 10116); *"The desks need to be reversed. The agents are sitting
+behind the desk, so the drawers face the agent (we shouldn't see the the desk drawers - we'd be seeing the
+other side)"* (comment 10125); *"yes, the monitors face us and show the status"* (comment 10126); *"I think
+the monitors need to be wider to show a little more text"* (comment 10127); and *"The character does not
+need to site exactly in the middle of the desk; the character can be moved to 1/3 of the desk width"*
+(comment 10128). And the complaint they answer: *"The current vibe is like an early nintendo video game. The
+character sprites are great, but the rest of the floor doesn't match."* (comment 10118).
+
+✅ **BUILT: [Appendix B](#appendix-b--what-an-implementer-builds-from-this) rows 20–22 built it, in that
+order** — row 20 re-laid the desk with the painter's flat shapes, row 21 added the theme registry and the
+layout's `theme` member, and row 22 (card#11046, 2026-10-07) painted the house room and retired what it
+replaced: the bridge kit, the plank and rug tiles, the seeded room tints and the house-palette band's flat
+shapes. A sentence elsewhere marked with a row records what that row replaced.
+
+**The two decisions this subsection waited on are SEAT RULINGS, recorded on card#11046 (2026-10-07)**: the
+operator was asked in chat and had not answered, and both follow from the operator's own later rulings and
+can be reversed cheaply. [Decision 58](#13-decisions-taken-revisable-at-review): the seeded room tints
+RETIRE — the operator approved one floor colour and chose a design per FLOOR, and seeded tints would put
+mid-tone floors back beside the approved one; reversing it re-adds them as palette variants, a palette change
+plus a chip-gate re-run. [Decision 61](#13-decisions-taken-revisable-at-review): the windows' glazing is the
+approved picture's 208 × 80; reversing it is one § 12 row and the band's geometry.
+
+**What this subsection owns, and what it does not.** It owns the theme MODEL (what a theme is, where it
+lives, how a floor selects one, what it may and may not draw), the HOUSE THEME's specification, the desk's
+re-laid rects, and the retirements. It does not own the projection ([§ 10.4](#104-the-art-direction-as-a-specification),
+amended for the desk's far side), the creatures ([§ 10.2](#102-characters-original-creatures-drawn-by-code)),
+the band's geometry and the frame's layer order ([§ 4.2](#42-the-floor)), the slot function
+([§ 3.2](#32-the-desk-slot-function)) or the map's read members ([§ 10.3](#103-the-floor-map)), each of which a
+theme draws INTO and never moves.
+
+#### The theme model
+
+1. **A theme is one first-party module that DRAWS, as code, every piece of a floor that carries no fact.**
+   It lives at **`resources/floor/themes/<name>/theme.js`**, one directory per theme, and the closed set of
+   names is the **theme registry**, `resources/floor/themes/index.js` — a declaration line per member below, each parsed as
+   written by PHP the way `resources/floor/furniture-box.js` is (`App\Floor\FurnitureBox`'s precedent):
+   `THEMES`, the themes the build ships, held to the directories in both directions, so a theme with no
+   directory and a directory with no name are each a red; `HOUSE_THEME`, the default; `KINDS`, the tile kinds
+   every theme draws (item 6); and `API`, the names every theme module exports — `band`, `windowSurround`,
+   `elevatorSurround`, `clockCase`, `plane`, `scenery`, `chair`, `desk`, `monitorFrame`, `deskProps`,
+   `sideTable`, each a function returning one document for the inputs item 2 gives it, and two data exports:
+   - **`PALETTE`** — every colour the theme paints with, keyed by the piece that paints it; for the house theme
+     it is exactly the colours of the table below, which AT-D3-25's drift leg holds in both directions;
+   - **`surfaces()`** — the opaque colours **a desk group can stand on**, which are what its chip and its bare
+     text (the facts column, the quiet age, the *+N more* tag) are composited over: the floor's board tones at
+     both extremes, the lamplight pool's composite at its centre, the darkening's composite at its darkest, and
+     each accent floor at both ends of its gradient, under its pool and at the darkening's darkest — each returned as `#rrggbb` under a
+     name, computed by the same colour arithmetic the plane draws with, never transcribed. **Excluded, because
+     no desk object may stand on them:** the band (above every grid), `wall` runs (kept out of every `desks`
+     object, § 10.4 item 4) and standing scenery (G-scenery, item 6). **Excluded, and stated honestly rather
+     than claimed safe:** the landing and its glow, which a `desks` object on an authored map can overlap; over
+     them, as drawn on the house oat floor, the facts' ink stays above 4.5:1, and the lit screen's dimmed-desk
+     cell of the contrast table below falls to 4.44:1 over the glow and 4.47:1 over the landing, under the bar
+     by hundredths. On the shipped default the landing (about 72 px either side of the threshold and 26 px deep)
+     and its glow (about 52 px deep) reach only into the top-left desk object's bubble band, its top 30 px, where
+     no chip and no bare text stands — every bare text begins at box y 36 and the chip's rect at box y 212 (`deskRects()`'s `chip.y`, the box's height less 16); that is measured by
+     hand on the default's grid and held by no check. The chip tool reads `surfaces()` through
+     one node step, `tools/floor-themes/surfaces.mjs`, which imports every theme the registry names and prints
+     `{theme: {name: colour}}` as JSON on its standard output — the Python tool never parses a module. The house theme is **`studio`** — A2+C, below. Like the creature tree it is **pure, total and
+   does no I/O**: every function returns a standalone SVG **document** for its inputs and never throws for an
+   input the scene can hand it; it fetches nothing; and its seeded choices are drawn through the character
+   tree's `seed.js` `draw(key, field)` — the one seeded draw ([§ 10.4](#104-the-art-direction-as-a-specification)'s
+   appearance bullet) — under field names of its own (`theme:…`), imported by a relative path that resolves
+   the same on disk and under the asset route, because both trees sit under `/art/`
+   (`resources/floor/themes/studio/` to `resources/characters/` is `../../../characters/` in both).
+2. **What a theme draws — the closed list, each a document at a rect the SCENE decides:**
+
+   | Piece | Drawn at | Inputs the scene hands it | Replaces |
+   |---|---|---|---|
+   | the band's wall | the band's rect, under every band element | the band's width, its reserved zone, the elevator's and the clock's rects, every window's glazing rect | the flat `--house-wall` band, the skirting and the end posts |
+   | a window's surround — frame, mullions, curtains and their rod, the sill and what stands on it | the window's **surround rect**: the glazing rect grown by [§ 12](#12-every-number-and-where-it-comes-from)'s surround margin — 32 px each side, 16 above, 18 below — drawn over the glazing | the window's index and its glazing rect | the painter's window frame, mullions and sill |
+   | the elevator's surround — frame, header plate with a plain dial, lamp, call buttons, the recess behind the leaves | the elevator's **surround rect**: its frame rect grown 18 px to the right, where the call buttons hang, inside the reserved zone and clear of the clock | none | the painter's elevator frame, header and lamp |
+   | the clock's case — rim, face, ticks | the clock's rect | none | the painter's clock face |
+   | a **plane** — the floor, the light on it, its accent regions, the landing and its walls | a room's grid at its origin, and **the hallway's grid** on a planned floor that has one | the grid's size; its seed (a room's `install_id`, or for the hallway the floor's key); a room's `desks` objects as rects alone — which one is reserved is never handed over; its `wall` and `accent` cells as merged runs; the band's foot when the grid's top edge is it; the elevator's threshold when it lies over the grid | the `plane-<theme>` fill, the plank, rug and wall-strip tiles, and the hallway's own floor tiles |
+   | a standing scenery piece | its tile's cell rect, foot on the cell's floor line | the piece's kind, the cell's size, the grid's seed and the cell's index | the kit's furniture tiles |
+   | a desk's furniture — the chair's back, the desk's back, the monitor's frame, the desk props, the side table and its seats: one document each, one `<image>` each (item 8) | the desk's rects ([*The desk, re-laid*](#the-desk-re-laid) below) | the desk's key `(install_id, seat_id)` (the chair's colour and the props are seeded from it, as a creature is) and, for the side table, the number of seats — and nothing else about the seat: the seat count is [§ 12](#12-every-number-and-where-it-comes-from)'s *Side-table seats*, a layout of the interns the painter already draws, and no other state reaches a theme | the kit's desk sprite and the painter's chair, monitor and side-table rects |
+
+   Every document is shown as the creatures are ([§ 10.2](#102-characters-original-creatures-drawn-by-code)'s asset
+   shape, kept): an `<image href="data:image/svg+xml;…">` in a clipping viewport at its rect,
+   `xMidYMax meet`, its URI made by the painter (`svgUri`) and cached by the painter, never by the module,
+   **keyed on the document's inputs** — a map re-save changes a plane's grid, slots and runs without changing
+   its asset id, so a cache keyed on the asset id would draw the old room — so no file under `resources/` carries a `data:` URI ([§ 10.1](#101-the-manifest-and-the-two-gates)
+   clause 2) and whatever a document draws past its rect is cut at the rect. Beyond the side table's seat count, a theme's
+   documents take no input about a seat's state, which is what keeps them from carrying one.
+3. ⛔ **What a theme NEVER draws — every element that carries a fact or a [§ 6.2](#62-the-animation-table--the-closed-set)
+   motion stays the painter's, from the scene's data, in the sheet's tokens, on every theme:** the window's
+   glazing and its sky (A17); the clock's hands and its *unset* treatment (A17); the elevator's two leaves
+   (A1 and A2 open them; they keep the building's door colours, `--door` / `--door-edge`, because the elevator
+   is the one element every floor and the lobby share — [§ 4.2](#42-the-floor)); the monitor's **screen** and
+   its text; the character and the interns (the creature tree's); the nameplate and its plate, the chip,
+   the facts column, the badges and the flag, the gauge, the bubble, § 7.4's hatch, F14's placeholder, the
+   thread line, the § 6.2 effects, the overflow strip and every notice; **a power or status light** — no
+   indicator dot on a monitor or any furniture that a viewer could read as one desk's *on* or *off*, because the
+   desk's lit state is the screen's to say; the desk lamp and the floor lamp are lit alike on every desk and every
+   floor, whatever a seat's state (only § 7.3's dimming of the whole desk touches them), so they read as the
+   room's light and never as a seat's; and **any
+   light that would say what time it is** — no daylight on the floor under a window, because the glazing beside it may be showing night,
+   and a theme's static sunlight would be a second, wrong rendering of the time of day
+   ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s one rendered form per fact). If daylight on the floor is
+   ever wanted, it is a painter layer driven by A17's phase, and its own future item. **A theme changes how the
+   room looks, never where a fact is drawn or what it says.**
+4. **What every theme shares, and no theme may move:** the furniture box and `deskRects()` (every theme
+   draws into the same rects, so a map valid under one is valid under all and the box-based re-validation of
+   § 14 item 28(1)(iii) never fires on a theme change); the label layer and its type roles; the projection;
+   the creatures; the band's geometry — its height, its reserved zone, the elevator, the clock and the windows'
+   glazing — which the clock clause and A1/A2's threshold are held to; the slot function; and the map's read
+   members. A theme is an appearance and carries no fact, so two floors in two themes differ in nothing a
+   viewer reads off a desk.
+5. **How a floor selects its theme — one optional member of its layout entry,
+   [§ 4.6](#46-the-building-layout)'s `theme`** (built at row 21). Absent or `null`: the house theme. A name
+   the registry holds: that theme, for the floor's band, its hallway and every room on it. A value that is not
+   a string: **refused at load**, by name. A name the registry does not hold: **refused at the write**, by name
+   — the console's layout save and restore. A layout stored before a theme left the tree is not refused at
+   READ, because a refusal there would take the building down for an appearance: the floor is drawn in the
+   house theme under [§ 9](#9-failure-paths-and-their-observables) F23's notice ([§ 5.5](#55-the-clients-own-narration)'s
+   row) naming the floor and the name, which is F18's precedent (a read-time defect no write can reach is
+   drawn and named, never refused). An install the layout does not place is a floor of its own and has no
+   entry, so it is drawn in the house theme. The member is keyed by nothing: it rides the floor's entry, so a
+   re-key moves no theme ([§ 4.6](#46-the-building-layout): a floor's key moves when a lower-sorting room joins
+   it) — the property [decision 40](#13-decisions-taken-revisable-at-review) bought by keying on the room, kept
+   here by not being keyed at all. (The hallway's boards are seeded by the floor's key, so a re-key re-lays a
+   corridor's boards and nothing else — an appearance, at a layout act.)
+6. **The map says WHAT stands WHERE; the floor's theme says how it LOOKS — the tile's `kind`.** Every tile
+   of the shipped tileset, `resources/floor/tiles/floor-plane.tsx`, declares a Tiled tile property `kind`
+   from the registry's closed kind set, and the floor draws a placed tile by its kind in the floor's theme and
+   **never draws the tile's image**: the image is an authoring MARKER for Tiled — a plain labelled outline,
+   first-party SVG under Gate 1's rows — and a reader who mistook it for the art would be told so by the
+   marker itself. Two classes:
+   - **plane kinds** — `wall` (the top strip [§ 10.4](#104-the-art-direction-as-a-specification)'s item 4
+     rules, one cell wide, a doorway left unpainted, kept out of every `desks` object as before) and `accent`
+     (a region of the theme's accent floor — the house theme's oak). Their cells are merged into runs by the
+     scene's one region pass (`tileRegions()`) and handed to the grid's plane document, which draws them in
+     the floor, under every standing thing and every desk;
+   - **standing kinds** — the scenery: `bookcase`, `plant`, `floor-lamp`, `armchair`, `cushion`,
+     `book-pile`. Each is drawn at its tile's cell rect, bottom-aligned as every image tile is
+     (`mapTiles()`), sized by the TILE — the tileset may carry one kind at several sizes, a low and a tall
+     bookcase — and drawn in tile order, so the row-major y-sort of § 10.4 item 3 stands. A floor lamp's
+     tile carries `decoration: lamp` as the kit's lamps did, and [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s
+     glow inside its tile stands unchanged.
+
+   **There is no floor kind**: the floor of every grid — a room's and a hallway's — is its plane document, so
+   nothing an author paints is needed for a floor to be there. ⇒ **A map drawn under one theme is drawn under
+   every theme**: the author places kinds, the theme draws them, and swapping a floor's theme re-authors
+   nothing. **Every theme draws every kind** — the registry's kind set is the contract, and AT-D3-25's API leg
+   reds on a theme that lacks one. One rule is NEW here and binds an author: a standing piece's whole cell —
+   not only its foot, which is all [§ 10.3](#103-the-floor-map) asks of furniture today — lies outside every
+   `desks` object, so scenery never sits under a desk's facts. G-scenery ([§ 12](#12-every-number-and-where-it-comes-from))
+   holds it on the shipped default; on an authored map it is the author's and the preview's, as a wall's is.
+7. **Scenery is placed by the MAP, and the PM's oak floor is painted on it; the landing is DERIVED.** The
+   alternatives were weighed for each. *Scenery by the theme* — the theme finding free floor on an arbitrary
+   authored map — cannot be made safe: no theme can know an authored room's free space, and a piece it placed
+   could stand on an author's furniture or under a desk's facts. *The oak region derived from the reserved
+   desk and the walls* — a flood fill from the reserved slot to the walls — leaks through the doorway, which
+   is a gap by § 10.4's own rule, into the whole room; derived from the reserved slot alone it is a rug under
+   the desk, the shape the operator removed; and either way the theme would be handed which desk is reserved,
+   a fact the floor's seating owns ([§ 3.2](#32-the-desk-slot-function)). *A new map member* for either would
+   be a member the console must validate and § 10.3's table must grow for a thing Tiled already paints. So
+   both are tiles of a kind, painted with the tools an author already has —
+   [decision 49](#13-decisions-taken-revisable-at-review)'s argument for walls, applied twice. **The landing is
+   the one piece no author places**, because the elevator is the frame's and no map knows where it stands: it
+   is drawn on the plane of the **topmost grid in draw order** that holds the elevator's threshold
+   (`scene.js`'s `threshold()`, the point A1 and A2 walk to) — a room's, which is drawn over the hallway, else
+   the hallway's — under that grid's tiles, and where the threshold lies
+   over the exterior there is no landing, a stated gap and not a defect.
+8. **A theme that fails is [§ 9](#9-failure-paths-and-their-observables) F14, and its floor keeps every
+   fact.** The failure units are these asset ids — the theme registry's (`/art/floor/themes/index.js`, every
+   floor's, since no floor resolves a theme without it), `theme:<name>` for the module, `theme:<name>/band` for
+   the band's documents together — its wall, each window's surround, the elevator's surround and the clock's
+   case, drawn all or none like a desk's set —
+   `theme:<name>/plane:<install_id>` (and `theme:<name>/plane:hallway` for a floor's hallway),
+   `theme:<name>/scenery:<kind>`, and `theme:<name>/desk:<install_id>/<seat_id>` for one desk's **furniture
+   set**: the documents of `chair`, `desk`, `monitorFrame`, `deskProps` and `sideTable`, each its own `<image>`,
+   emitted in § 10.6's rule-2 order with the character between the chair and the desk, and **all or nothing** —
+   the painter generates every document of the set before it emits any, so one throw yields the desk's
+   placeholder and never a half-drawn set. The module's import rejected: every one of them fails — every desk draws F14's placeholder,
+   the band and every plane draw their **flat fallback fills** (the band's `--house-wall` pair, a plane's
+   `--scene-floor`, both drawn under the theme's documents on every paint, so the fallback is what is left when
+   a document is not), every fact draws as on an intact desk, and the strip reads *some art failed to load*.
+   One document throwing, or one `<image>` the browser cannot decode: that asset alone — a desk's set is that
+   desk's placeholder — with no side table, which is in the set — a plane is that grid's flat fill, a scenery
+   kind is that tile left undrawn. ⚠ **The
+   fallback fill is not the theme's floor and does not try to be:** it is one sheet token for every theme,
+   held to the facts' ink by AT-D3-25, so a failed theme is legible rather than pretty.
+9. **Migration — what an existing install meets on upgrade, and what a rollback costs.**
+   - *A stored layout:* no entry carries `theme` (the reader refuses a member it does not know, so none
+     could), so every floor draws in the house theme and nothing is re-saved. ⚠ **Rollback:** a layout saved
+     with a `theme` after row 21 is refused WHOLE by the reader of an older deploy — the lobby and every floor
+     draw [§ 9](#9-failure-paths-and-their-observables) F17 — so rolling back past row 21 means first saving
+     the layout without the member, and row 21's CHANGELOG entry says so.
+   - *A stored hallway:* one that laid the plank tile for its corridor keeps a floor — the theme's hallway
+     plane draws under its tiles — and its plank cells, a tile row 22 removed from `floor-plane.tsx`, are
+     undrawn; kit pieces on it are the next case.
+   - *A stored room map:* one that names the bridge kit's tileset names a tileset row 22 removed. The console
+     refuses a map naming a tileset the repository does not ship ([§ 10.3](#103-the-floor-map)'s
+     `tilesets[]` row, `FloorMap`'s write check) and so refuses it at its next save, and at a restore of a
+     revision that names it; until then the floor draws it with those tiles missing under F14's line, naming the
+     tileset. ⚠ **On a planned floor it also blocks the layout**: the layout's overlap check measures every placed
+     room's footprint from its stored map (`App\Building\RoomExtents`), and a map the parser refuses has none,
+     so every layout save that places the room is refused, naming it, until its map is re-saved
+     (`Tests\Feature\Admin\TheConsoleListsMapsNamingRetiredArtTest`). One that places the plank or the rug tile of the still-shipped `floor-plane.tsx` is neither refused
+     nor F14-lined — the write checks tilesets, not tiles — and the removed tiles are simply undrawn, which is
+     the intended result: the theme's plane is the floor, and the operator removed the rug.
+   - *Finding them:* **the EXTENSION of § 14 item 28(1)(iii), adopted** (item 36(5), the maintainer's call,
+     recorded on card#11046): the floors module lists every room whose CURRENT map *names a tileset or a tile
+     the repository no longer ships* beside the rooms whose map is *smaller than the box*, each with what it
+     names and how many cells place each retired tile, and each left on the floor until its author saves one
+     that names only what ships (`App\Floor\RetiredArt`, read out of the stored document because the parser
+     refuses such a map; `Tests\Feature\Admin\TheConsoleListsMapsNamingRetiredArtTest`). **Measured before
+     anything was removed, on 2026-10-07, over every store the build can reach** — the development sandbox's
+     database (no production host exists): **no current room map and no hallway names retired art**; one
+     room-map revision in the log does — a map of the kit's tileset placing the plank and the rug tiles — and
+     it is not current (a later removal is), so it draws nowhere, and a restore of it is refused by the write.
+   - *The shipped default* was re-authored by row 22 (below), so an unauthored room draws the house picture.
+10. ⭐ **Why code and not image files — decided, with the reason.** The pieces are PARAMETRIC: a band of any
+    width with windows at computed places, a plane over a grid of any size with a light pool at each slot and
+    an accent region of any shape, a side table for the seats it holds, a desk whose chair and props are seeded
+    from its key. A fixed file set holds none of that — the creature generator's first reason
+    ([§ 10.2](#102-characters-original-creatures-drawn-by-code), [decision 53](#13-decisions-taken-revisable-at-review)),
+    met here a second time — and a set of fixed pieces stretched to fit is the tile-grid look the operator
+    called *an early nintendo video game*. It is resolution-independent by the mechanism the creatures rest on
+    — measured for the creatures' small frames, and for a plane document the size of a room by row 22's
+    screenshot step at the camera's deepest zoom (§ 14 item 36(3)), which reads its paint time and whether a
+    tile goes blank. It is text, which Gate 2 reads. **What the gates then mean:** *Gate 1* — a `first-party` /
+    `MIT` row per source file (the registry, each `theme.js`, each marker SVG); the drawings are not files and
+    have no rows, the source being the asset. *Gate 2* — clause 1 admits `.js` and `.svg`; clause 2 reads the
+    source; clause 3 reads the tileset, which keeps declaring each marker's image by path. ⚠ **The residue is the
+    creature tree's, restated for a second tree rather than discovered:** no gate inspects what a theme MEANS to draw, because its output never touches the tree. What AT-D3-25 holds
+    is the form: every document is self-contained and well-formed, carries no `<text>`, `<tspan>` or
+    `<foreignObject>`, and takes no seat-state input. **A numeral or a word drawn as paths passes all of that**, and
+    is review's to catch, as a creature's likeness is.
+
+#### The house theme, `studio` — A2+C
+
+The operator approved a PICTURE — the seat's prototype *A2 + C — with oak office and lit landing* — and not a
+list of colours: **every hex value below was taken from that approved prototype**, ported and not
+redesigned. The prototype was drawn in the seat's scratch space and is not in the repository, so the
+reference that survives is this table, the module row 22 built from it, and the operator's screenshots of
+2026-10-07 — the arrangement § 10.2 records for the creatures' sheet. **This table is the colours'
+statement and the module's palette export is their one home in the build**, held equal to it by AT-D3-25's
+drift leg in both directions — the [§ 10.4](#104-the-art-direction-as-a-specification) creature table's
+arrangement, because a colour stated twice and checked nowhere is the copy that drifts. **The paint rules are
+the creatures'** (§ 10.4's projection item 5 and its rim bullet): light from the top-left; a shade leans plum
+(`#3d2b3c`), a highlight leans cream (`#fff6e6`); every line is its fill mixed halfway to `#3a2420`; a
+standing piece carries the faint cream rim the creatures carry; a contact shadow is a soft plum ellipse at the
+foot, inside the piece's own rect.
+
+| Piece | Specification | Colours | Held by |
+|---|---|---|---|
+| the wall (`PALETTE.wall`) | the band's face, top to bottom: the wall with faint wide stripes from its top to the rail; a rail; a sage lower wall with soft inset panels; the skirting; an end post at each end; the light from the top-left over it | wall `#eef0e0` → `#dfe4cc`, stripes `#ffffff` at 0.28, 22 px wide on a 56 px pitch; rail `#f4f1ea`; lower wall `#b7c6a0` → `#a5b58e`, panels `#93a57c`; skirting `#8d9b74` → `#77845f`; end posts `#9aa982` | drift leg (colours); eye (the drawing) |
+| a window's surround (`PALETTE.window`) | a cream frame round the glazing with a cross mullion; tied-back curtains either side on a rod with two knobs; a sill under it, with a seeded small plant or a short row of books on some sills — the plant's pot and leaf seeded too — at the glazing of [decision 61](#13-decisions-taken-revisable-at-review) | frame `#f6ecdb`, edge `#e2cfb0`; curtains `#ecc9a2`; rod `#b08a4a`, knobs `#d4a34f`; a sill plant's pot `#e9d8c4`, `#6f8fb0`, `#d9a54a` or `#b9643f`, its leaf `#7f9f6a`, `#6f9a52` or `#79a85a`; the books the bookcase's | drift leg; band leg (no surround meets the clock face); eye |
+| the elevator's surround (`PALETTE.elevator`) | a honey frame with a header plate and a plain dial — no numeral and no arrow, because this elevator indicates no floor — the lamp, the dark recess behind the leaves, call buttons beside it, all inside its surround rect | frame `#c9a873`, lamp `#f2b84b` | drift leg; band leg; eye |
+| the clock's case (`PALETTE.clock`) | a wooden rim, a cream face, twelve ticks; the hands are the painter's (A17) | rim `#b07a4f`, face `#fffaf0` | drift leg; eye |
+| a picture on the wall (`PALETTE.picture`) | a small framed landscape on the band past the last window's surround, where the wall has room for it; none on a band too short | frame `#b07a4f`; its sky `#f3d9a8` → `#e7b98f`, its hill `#8fa66b` | drift leg; eye |
+| the floor (`PALETTE.floor`) | pale oat boards, wide and quiet: courses 40 px deep, boards of seeded lengths, a slight seeded tone per board, faint grain and seams — no grid a viewer can see repeat, seeded by the grid's seed so two rooms' boards differ and each room's are the same on every load | boards `#d9c7a5`, each board's tone within ±0.03 of it | drift leg (colours); identity leg (seeded, stable); eye |
+| the light on it (`PALETTE.light`) | under each `desks` object, a pool of lamplight, at every slot alike, held or not and reserved or not; a gentle darkening toward the front and the side walls; the band's soft shadow along a grid's back edge where that edge is the band's foot. **No daylight patch under a window** (item 3) | lamplight `#fff3d6` at 0.55; the shade (`RULES.shade`) at 0.14 at the front edge, 0.08 at a side edge and 0.14 under the band | surfaces leg (the ink gate at 4.5:1 and the chip gate at § 12's ΔE2000 5.0 read the composites); eye |
+| an `accent` region (`PALETTE.accent`) | the PM's room: oak boards, a touch warmer; a slot inside it keeps the pool every slot has, at 0.7 of its strength | oak `#dcc196` → `#d1b285`, warmth `#e9a35a` at 0.07 | drift leg; surfaces leg; eye |
+| the landing (`PALETTE.landing`) | a lit half-moon doorstep at the elevator's threshold, with a warm glow, inside the grid | `#f7f0e0` → `#ebdfc6`, rim `#d9a54a`, glow `#fff4d6` | drift leg; surfaces leg; eye |
+| a `wall` run (`PALETTE['wall-run']`) | a soft rounded top strip with its shadow, each straight stretch one strip, a round cap at each free end that is a doorway's jamb — none at the grid's edge, where the wall runs on | `#9aa982` | G-walls (where); drift leg; eye |
+| the desk (`PALETTE.desk`) | **seen from its far side** (the projection's item 2): a top sliver, one modesty panel between two proud pedestal ends, one raised inset panel, a plinth — no drawers, no handles, no knee-hole | wood `#b5794c` | drift leg; eye (that it is the back) |
+| the chair (`PALETTE.chair`) | its back, behind the creature, at every desk with art — the empty chair of § 7.1 is this chair with no creature in it, which says what it says by the creature's absence; the chair's drawing itself carries no fact | seeded per desk from `#c8714f`, `#d9a54a`, `#8fa66b`, `#c98b8f`, `#6f9a9a`, `#a77c5a` | drift leg; identity leg; eye |
+| the monitor's frame (`PALETTE['monitor-frame']`) | a cream bezel round the screen, a stand and a foot on the desk, all inside its rect; **facing the viewer** (the projection's ruled exception); the screen inside it is the painter's | bezel `#efe2cc` | drift leg; re-laid leg (the screen inside the frame); eye |
+| the desk props (`PALETTE['desk-props']`) | on the desk's left third: a desk lamp leaning in, with its small pool of light on the desk top, and beside it a mug or a small plant — the choice and the colours seeded per desk | lamp `#c8714f`, `#6f9a9a`, `#d9a54a` or `#8fa66b`; mug or pot `#e9d8c4`, `#c8553d`, `#6f8fb0`, `#e0a43a`, `#7f9f6a` or `#d97f8f`; leaf `#79a85a`; the lamp's pool `#fff3d6` | drift leg; identity leg; eye |
+| the side table (`PALETTE['side-table']`) | a low tea table at every desk with art, with a teapot at its far end and cushion seats in front of it — [§ 12](#12-every-number-and-where-it-comes-from)'s *Side-table seats* — so an empty table shows its seats, and an intern stands in front of its seat; a seeded plant beside it where the table leaves room | wood `#c48d5c`; teapot `#7f9f6a`, lid `#e0a43a`; seats in turn `#c98b8f`, `#d9a54a`, `#8fa66b`, `#6f9a9a`, `#c8714f`; the plant's pot `#e9d8c4`, `#6f8fb0`, `#c8714f` or `#d9a54a`, its leaf `#79a85a`, `#6b9a52` or `#8db55e` | drift leg; re-laid leg (seats, foot line); eye |
+| `bookcase` (`PALETTE.bookcase`) | a wooden bookcase, shelves of seeded books, as many shelves as its cell is tall for | shelf `#a8714a`; books `#c8553d`, `#e0a43a`, `#6f8fb0`, `#7f9f6a`, `#94627e`, `#f2e6cf`, `#4f8a87`, `#d97f8f` | drift leg; eye |
+| `plant` (`PALETTE.plant`) | a floor plant in a big pot — tall in a narrow cell, else tall, round or monstera-like, seeded per cell, and its pot seeded too | pot `#b9643f`, `#d9a54a`, `#e9d8c4`, `#6f8fb0` or `#c8714f`; leaf `#6f9a52` | drift leg; eye |
+| `floor-lamp` (`PALETTE['floor-lamp']`) | a standing lamp with a warm shade; its light is [§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s decorative glow, which the painter draws inside the tile as before, so the theme draws no glow of its own | metal `#b08a4a`, shade `#f2dcae` | drift leg; eye |
+| `armchair` (`PALETTE.armchair`) | an armchair, face-on (its user faces the viewer) | `#c8714f`, legs `#8a5a3a` | drift leg; eye |
+| `cushion` (`PALETTE.cushion`) | a floor pouf, its colour seeded per cell | `#c98b8f` or `#d9a54a` | drift leg; eye |
+| `book-pile` (`PALETTE['book-pile']`) | a low pile of books on the floor | the books' colours: `#c8553d`, `#e0a43a`, `#6f8fb0`, `#7f9f6a`, `#94627e`, `#f2e6cf`, `#4f8a87`, `#d97f8f` | drift leg; eye |
+
+**What the house picture does NOT carry over from the prototype, each named so nobody reads it as an
+oversight:** the **daylight under the windows** (item 3); the **sky's hills and clouds** — the glazing is
+A17's sky and nothing else, for the same reason; the **screen's glow** on the wall behind the monitor — a
+second rendering of the monitor's lit state, drawn outside the monitor's rect; the **monitor's green bezel dot** — a power light (item 3); the **sage-glass elevator
+leaves** — the leaves keep the building's door colours (item 3); the **elevator's shadow on the floor** — it
+would lie over a room's grid, where the frame draws nothing ([§ 4.2](#42-the-floor)); the prototype's **window
+and clock positions** — the band's geometry is the scene's ([§ 12](#12-every-number-and-where-it-comes-from)),
+and the prototype hand-placed them; the **pool the prototype drew again for the reserved desk** — every slot has
+one pool, reserved or not (item 7); and the **two plants in the aisle between the desk columns** at the
+prototype's size — their leaves reached into both neighbouring slots, so the shipped default stands narrower
+plants wholly in the aisle (item 6's new rule). Every one of them is the build's screenshots' to show the
+operator ([§ 14](#14-open-questions-for-the-review-loop) item 36).
+
+#### The desk, re-laid
+
+**`deskRects()` at the 440 × 228 box, box-relative, today's value in brackets; built at row 20.** The furniture
+box does **not** move: every new rect lies inside it at the cap, so the box-based re-validation of § 14 item
+28(1)(iii) does not fire, the box is re-confirmed rather than re-measured, and AT-D3-20 *(a)* holds as written.
+
+| Element | Rect (x, y, w × h) | Rule |
+|---|---|---|
+| the character | 51, 58, 54 × 96 [81, 58] | its centre at a third of the desk's width — the desk's left edge plus a third of its width, the operator's ruling (comment 10128) |
+| the chair | 51, 90, 54 × 64 [81, 90] | follows the character; drawn **behind every creature** at every desk with art — until row 20 it was drawn only for an empty desk |
+| the desk | 18, 128, 180 × 60 [unchanged] | the desk's back (the house table) |
+| the monitor's frame | 102, 82, 96 × 46 [the whole monitor was 136, 84, 64 × 44] | its right edge is the desk's; the operator's *wider* (comment 10127), at the prototype's 96 × 46 |
+| the screen | 106, 86, 88 × 31 [the monitor's rect] | the monitor element the lit state is drawn on — `--scene-monitor-on`, `--scene-monitor-dim`, `--scene-monitor` as today — inside the frame |
+| the screen's text | 109, 95, 82 wide [140, 100, 56 wide] | inside the screen, in the **screen** type role below |
+| the desk props | 6, 94, 68 × 50 [new] | the desk's left third: the lamp and its light, the mug or the plant |
+| the side table | 212, 124, 228 × 42 [220, 168, 220 × 8, drawn only with interns] | between the flag row and the *+N more* row; drawn at every desk with art; **its foot line is its rect's bottom edge, box y 166, which is the interns' foot line** — the interns' rects (unchanged, 20 × 32 on a 24 px pitch from 220, 134) stand in front of it |
+
+**The element kinds and their members** (`deskLayout()`'s, partitioned by `DRAWN_MEMBERS`): the chair keeps
+`chair` and the member `character`; the desk keeps `desk-sprite` and `lighting`; the side table keeps `side-table`
+and `side_table`; and two kinds are new at row 20 — `monitor-frame` under `monitor`, and `desk-props` under
+`lighting` — at row 20 the frame a flat shape and the props' rect laid with nothing painted in it, and since
+row 22 both the floor's theme's documents.
+
+**How a desk's elements may lie on one another — the rules below, each held by one mechanical check.** The product
+need is that **no fact is ever hidden or unreadable**; whether two rects overlap was only ever a proxy for that,
+and a proxy that fails every time a fact sits on an art element. So the rules are stated on the need. The
+**fact elements** are the elements that carry text or state: the screen and its text, the chip, the label,
+currency and lag lines, the gauge, the badges and the flag, the interns and the *+N more* tag, the quiet age,
+the nameplate and its plate, § 7.4's hatch, F14's placeholder and the bubble. The **art elements** are the
+chair, the desk, the monitor's frame, the desk props and the side table; and **the character is neither** — it
+is the creature tree's drawing of the seat's identity, painted among the art.
+
+1. **Fact × fact stays geometric, as today, in AT-D3-20's scope:** two desks' boxes are disjoint, and an
+   intern meets no sibling and no other fact element of its desk ([AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor),
+   on half-open rects as [§ 9](#9-failure-paths-and-their-observables) F21 states them). Outside that scope fact
+   elements overlap by design, as they do today: the screen is drawn on F14's placeholder, and § 7.4's hatch lies
+   over the chip and the plate in the art column. This amendment adds no fact × fact pair, so no exception table
+   is kept.
+2. **Art × fact is paint order, not geometry:** every fact element of a desk is painted AFTER every art element
+   and the character of that desk, wherever their rects lie, so no art can cover a fact. The painter paints a
+   desk's elements in the order `deskLayout()` emits them (`painter.js`'s `paintDesk()`), so the rule is held on
+   the emitted order — art first (the chair, the character, the desk, the monitor's frame, the desk props, the
+   side table), then the facts — and AT-D3-25 reads it through `painter-probe.mjs`. Until row 20 the order broke it at
+   the side table, emitted after the badges and the flag; row 20 reordered it.
+3. **Legibility is contrast, not position:** a text fact drawn on its own backdrop — the screen's text, the
+   chip's word, a badge's and the flag's text, the nameplate on its plate, the bubble's text — meets its stated
+   contrast against that backdrop; a **bare** text fact (the label, currency and lag lines, the gauge's
+   percentage, the *+N more* tag, the quiet age) stands on the floor, so its rect meets no art rect and its ink
+   meets 4.5:1 over every colour the floor's theme's `surfaces()` returns. That one geometric check is
+   contrast's precondition — the colour under a bare text is then the floor's — and on the table above no bare
+   text meets art: they all lie in the facts column outside the side table's rows.
+4. **Art × art is free**, under [§ 10.4](#104-the-art-direction-as-a-specification)'s y-sort and foot rules.
+   The character lies among the art — over the chair, under the desk (y 128 to 154), the desk props (x 51 to 74,
+   y 94 to 144) and the monitor's frame (x 102 to 105) — and needs no exception list, because it is not a fact;
+   the frame's 3 px is the table's, held as a rect value like every other (below). ⚠ **The character's pose does
+   carry a state** (§ 7.1's raised hand, head in hands, sleeper), and the art may cover part of it; nothing is
+   lost, because the chip names the same state on every desk, and whether a pose stays readable under the desk
+   and its props is eye-judged on row 22's screenshots (§ 14 item 36(3)).
+
+**Beyond one desk, as today:** the floor paints the band, the slab, the tiles (planes, scenery and their glows),
+the thread lines, then every desk group, the overflow strip's header and the § 6.2 effects (`painter.js`'s
+`paint()`), so no plane or scenery art can cover a desk's fact. **Thread lines run under desk groups**, so a desk's
+art hides a thread only where the thread enters that desk — the line's anchor sits at the box's mid-height, clear of
+the side table, and the new furniture enlarges only the stretch inside the box that is covered. A bubble stays off
+every other desk's box by AT-D3-20 *(b)*, and that box includes the new art.
+
+- ⭐ **The 3 px where the creature and the monitor's frame overlap is ALLOWED, at x 51** (the brief's
+  either-or, decided): the character's rect is 51 to 105 and the frame's starts at 102. *(1)* The operator
+  approved the picture with it. *(2)* The monitor stands ON the desk in front of the sitter, so its covering
+  the sitter's edge is the projection's own reading — the desk's layer order draws the monitor after the
+  character (§ 10.4 item 3, within a desk). *(3)* Moving the creature to 48 takes it off the ruled third and
+  into the desk lamp. *(4)* No fact is covered: the screen and its text are facts, painted after the character by
+  rule 2, and they begin at 106 and 109, clear of the character's rect besides. A frame moved 4 px further left
+  is a rect that is not the table's, which AT-D3-25's table leg names.
+- ⭐ **The bubble's anchor follows the creature** — [§ 5.1](#51-the-desk) rule 3 anchors the bubble to the
+  character, and the scene anchored it at the art column's centre only because the character stood there. The
+  anchor is the character rect's centre line, and so is the desk's anchor for the thread line and the walks:
+  today every site that reads it is found by `grep -n 'ART_W / 2' server/public/js/floor/scene.js` (in
+  `placeBubbles()` and `anchorOf()`), and row 20 makes them ONE primitive over `deskRects()`, so the walker arrives where it sits. The prototype kept the tail at the
+  column's centre; that is one of the disagreements the amendment resolves toward the document.
+- ⭐ **THE SCREEN TYPE ROLE — 8 px on the facts' 12 px line, baseline 9 px below the line's top; a third
+  measured role beside the facts' 10 px and the nameplate's 13 px bold** (the operator's *"The monitor screen
+  text can be smaller so that more letters can fit"*). The size is the smallest that stays legible **at the
+  floor's default fit on a device-scale-1 screen**, which is the harder of the two screens a laptop has, and it
+  was **measured in a real browser**: the seat drew `fx-snapshot-4`'s `scene_default` run on the shipped floor
+  page in the Playwright-cached headless Chromium (`chromium_headless_shell-1243`, through
+  `tools/design/floor-fixture.browser.mjs`'s page and stage) at [§ 12](#12-every-number-and-where-it-comes-from)'s
+  1,280 × 800 reference viewport, the fit then 1,576 px of scene across 1,280 CSS px, with this table's screen
+  rects and the screen text at 10, 9, 8 and 7 px, and read each monitor at 1:1 at device scale 1 and 2. At 7
+  px, device scale 1, the glyphs of *waiting on a human* and *server/app/Feed* run together; at 8 px every
+  monitor reads; at device scale 2 every size down to 7 px reads, so device scale 1 decides it. ⚠ **The host's
+  `sans-serif` is DejaVu Sans, a wide face**: a laptop's own sans-serif fits as many glyphs or more, so the
+  counts below are a floor and not a promise. The fixture's strings, as the page's own measurer cut them into
+  the 82 px text rect (glyphs before the mark; a whole string has none):
+
+  | Monitor | The string | Today: 10 px in 56 px | 10 px in 82 px | 9 px | **8 px** | 7 px |
+  |---|---|---|---|---|---|---|
+  | `aimla-review`, `blocked` | *waiting on a human since 14:19:40 (seat clock)* | 9 | 14 | 15 | **16** | 19 |
+  | `aimla-pm`, its call | *Bash: composer test* | 8 | 12 | 14 | **16** | whole |
+  | `aimla-impl-1`, its call | *Edit: server/app/Feed/SeatDelta.php* | 9 | 14 | 16 | **18** | 21 |
+  | `aimla-impl-2`, `idle`, dimmed | *finished — nothing done for 1m 23s* | 9 | 13 | 15 | **17** | 20 |
+
+  At fit the role draws at about 6.5 CSS px (8 × 1,280 ÷ 1,576), under the facts' 8.1 — the operator asked
+  for smaller to show more, and the measurement is what says how much smaller still reads. The role is
+  measured, cut with the mark and drawn in its own font through `fit()` and the page's measurer exactly as the
+  name role is, and the suite's measurer states its glyph width as it does the other two
+  (`harness-measurer.mjs`). ⚠ **The measurement is a picture read by eye** and is re-taken on the built page
+  by row 22's screenshot step, which the operator reads ([§ 14](#14-open-questions-for-the-review-loop) item
+  36): no gate holds *legible*.
+- ⭐ **The screen's text has an ink per lit state, and the contrast it holds is stated at every light level
+  that still draws it** — a defect found by this amendment, not made by it: until row 20 the text on a **dimmed**
+  screen was the scene's ink on `--scene-monitor-dim`, **2.25:1** (`#3b2f2a` on `#4c6b73`), so every `idle`
+  desk's monitor line is barely readable, and the prototype's darker ink is 2.86:1. Since row 20 the text is drawn in
+  `--state-ink` on the lit screen and in the cream `#fff6e6` (`--scene-screen-ink-dim`) on the dimmed one; an `off` screen draws no text,
+  as today. Measured against [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s lighting, which
+  composites the whole desk over the floor (here the house oat floor):
+
+  | Screen, ink | full light | desaturated (`catching_up`) | dimmed, 0.72 (`stale`; any unconfirmed seat) | dark, 0.45 (`offline`) |
+  |---|---|---|---|---|
+  | lit, `--state-ink` | 9.41:1 | 9.09:1 | 4.74:1 | **2.41:1** |
+  | dimmed, cream | 5.35:1 | 5.42:1 | **3.23:1** | **2.04:1** |
+
+  **4.5:1 is met at full and desaturated light for both screens, and at dimmed light for the lit screen. It
+  is NOT met in the bold cells, and that is § 7.3's design rather than an oversight:** a dark desk —
+  `offline` — is drawn dark to say that nobody is there and nothing on it is current, and a dimmed desk to
+  say it is not current; no ink brings a 0.45-opacity desk to 4.5:1 without undoing that treatment, and the
+  bold cells are those the treatment exists to quiet. Every string on those monitors is in the desk list and
+  the drill-down at full contrast ([§ 4.5](#45-the-viewport-rule-and-the-camera)). **The full and desaturated
+  columns do not depend on the floor** — the desk is opaque there — so they are the gate: AT-D3-25's re-laid half
+  holds them at 4.5:1 or more at row 20, for every theme alike. **The dimmed and dark columns do depend on it**,
+  so they gate nothing: the theme half PRINTS them for every theme over every colour its `surfaces()` returns
+  (the figures above are over the house oat floor's base), because a lighter or darker floor moves them and a
+  pattern pinned to one floor would red a later theme for a legitimate colour.
+
+#### The retirements
+
+Retired at row 22 (card#11046, 2026-10-07), each with what holds its absence afterwards:
+
+- **The bridge kit** — `resources/floor/tiles/furniture-kit.tsx`, every PNG beside it, their
+  `docs/ATTRIBUTION.md` rows, and `resources/floor/LINEAGE.md` with its row, because nothing vendored is left
+  for it to describe. [§ 10.3](#103-the-floor-map)'s *it is a bridge* and *the day the vector art lands this
+  tileset leaves the tree with its rows* are discharged, and D-07's floor-art clause — *floor art from CC0
+  tilesets* — is superseded by a third append beside it in `docs/PLAN.md § 0` (its last clause, *the
+  upstream's commercial tilesets are never vendored*, is permanent and untouched: nothing here vendors
+  anything). `resources/floor/furniture-box.js` lost its `DESK_SPRITE` line, because no sprite is drawn, and
+  the page loads no tileset for a desk. [§ 12](#12-every-number-and-where-it-comes-from)'s *Desk sprite width*
+  row retired with the PNG it measured, and G8's sprite leg with it.
+- **The elevation-only tile ids** — § 10.4 item 4's ids, the kit's, left with it; G-walls' second leg, which
+  held them off the shipped default, became G-scenery's first: *every tile on the shipped default names a
+  tileset the repository ships and a tile that declares a kind*.
+- **The plank tile and the rug** — `floor-plane/planks.svg` and `floor-plane/rug.svg`, tiles 0 and 1 of
+  `floor-plane.tsx`, with their rows: the theme draws the floor, and the operator removed the rug
+  (*"remove it"*). [§ 14](#14-open-questions-for-the-review-loop) item 35's translucent plank never lands.
+- **The seeded room tints** — `ROOM_THEMES`, `roomTheme()` and the `--room-<theme>` pairs, retired rather than
+  kept as palette variants ([decision 58](#13-decisions-taken-revisable-at-review), the seat's ruling recorded
+  on card#11046); `TheFloorDrawsItsFrameTest`'s seeded-theme and theme-contrast legs retired with them, and
+  the floor's ink is held over every theme's surfaces by AT-D3-25's surfaces leg instead.
+- **The band's flat shapes** — the painter's window frames, mullions and sills, its elevator frame, header and
+  lamp, its skirting and end posts, and their tokens (`--window-frame`, `--door-header`): the theme draws them.
+- **The wall strip's image** — `floor-plane/wall-strip.svg` stays as tile 2's MARKER with `kind: wall`, so
+  every stored map's walls keep their meaning; its fill no longer has to be `--house-trim`, because nothing
+  draws it, and G-walls' copy leg became its second, *tile 2 declares `kind: wall`*.
+
+**The provenance that replaces them, all `first-party` / `MIT` under the repository's own URL:** the theme
+registry, `themes/studio/theme.js`, and one marker SVG per tile the tileset declares beyond the wall's — a kind
+the tileset carries at two sizes has a marker at each, since Tiled draws an image-collection tile at its
+image's own size. No
+licensed asset is left under `resources/floor/`; the manifest's MIT notice stands for the first-party rows
+([§ 10.2](#102-characters-original-creatures-drawn-by-code)'s *the manifest still owes an MIT notice*).
+
+**The shipped default since row 22 keeps** its `desks` objects as they are — [§ 12](#12-every-number-and-where-it-comes-from)'s
+*Desk slots* row, which G8 measures, its reserved desk and the worked assignment all stand — its grid, and its
+`walls` layer with the PM office's partition, front return and doorway. **It loses** the `plane` layer of
+planks, the rug and every kit piece on its `furniture` layer. **It gains** an `accent` layer painted over the
+PM office's floor inside its walls, and a `furniture` layer of standing kinds laid as the house picture lays
+them — a bookcase, a fern, a floor lamp and cushions in the left strip; the PM's library inside the office, a
+tall bookcase and a plant; a reading nook in the right strip, a floor lamp, an armchair, a book pile and a
+plant; and narrow plants standing wholly in the aisle between the columns — every cell outside every `desks`
+object (G-scenery). The aisle's plants stand in a 28 px cell, so they are drawn narrow and tall. Where each
+stands is the map's to say and the screenshots' to show; no coordinate of it is stated here.
 
 ---
 
@@ -4311,7 +5674,7 @@ one** `entered` row and **at most one** `left` row, and a `left` row's `episode_
 | `episode_id` | a fresh id, unique to this firing — an edge animation is an instant, so its episode is one row long and no `left` row ever carries this id | a fresh id, minted on entry | **the entering row's id**, repeated — this is the only field the two rows of one episode share by construction, and it is what makes *for how long* recoverable |
 | `class` | `edge` | `held` | `held` |
 | `phase` | **`fired`**, always — an edge animation is an instant, so it has exactly one row and no exit | `entered` | `left` |
-| `cause` | the id of the **wire message that caused it** — a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of [A16](#62-the-animation-table--the-closed-set), recorded as the key of **the arriving seat that now holds the displaced incumbent's former slot** — the seat that did the displacing, whichever of several arrivals in one render it is. ⚠ **In a cascade that seat did not arrive** (an arrival moved B, and B took C's slot), and C's row then records the arrival that sorts **lowest in [§ 3.2](#32-the-desk-slot-function)'s `order`**, ascending by `(h, seat_id)`, among that render's arrivals. That second clause is a **stated approximation**, not an attribution: no single arriving key displaced C. It is deterministic because `order` is a total order every client computes identically ([§ 14](#14-open-questions-for-the-review-loop) item 27). **A retirement's move ([§ 3.5](#35-retirement-and-the-only-removal)) is the departure side of the same row, and its `cause` is the DEPARTED seat's key** — the seat whose freed slot the mover now holds, or, where the mover took a slot another mover vacated, the departure that held the lowest slot; a move [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 4's backstop causes writes no row, because a snapshot animates nothing ([§ 6.5](#65-a-snapshot-never-animates); card#7342 step 10). A13 fired by the `seat.retired` message carries the message type, `seat.retired`, as the heartbeat's rows carry theirs. **An edge animation started with no causing message writes `null`**, which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail | the **`state_version` of the seat object the render is held by** — the object the client holds, whether it arrived by delta, snapshot, resync or per-seat fetch. **A held render entered against no held object writes `null`**, which is the same defect one class over: a render with nothing delivered behind it | the **`state_version` of the object the client holds at the render that ended the hold**, chosen by the precedence under this table — the object `held()` writes on its `left` row (`wire/animation-set.js`). For a desk a retirement removed, that is the retired object's version, which both announcements carry and the protocol's one removal journals as `seat.removed`'s `cause` (`wire/fleet-client.js`, `#remove`); for one [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 4's backstop removed it is the literal `snapshot`, because a population ended the hold and no object did (card#7342 step 10); where a condition the client holds itself ended it, it is the literal the paragraph under this table names for that condition. Never the entering version: two rows identical in every field are two rows from which *which states, and for how long* cannot be recovered, which is the whole reason the exit row is written |
+| `cause` | the id of the **wire message that caused it** — a `seat.delta`'s `state_version`, a `feed.heartbeat`, a `seat.retired`, or the seat-set change of [A16](#62-the-animation-table--the-closed-set), recorded as the key of **the arriving seat that now holds the displaced incumbent's former slot** — the seat that did the displacing, whichever of several arrivals in one render it is. ⚠ **In a cascade that seat did not arrive** (an arrival moved B, and B took C's slot), and C's row then records the arrival that sorts **lowest in [§ 3.2](#32-the-desk-slot-function)'s `order`**, ascending by `(h, seat_id)`, among that render's arrivals. That second clause is a **stated approximation**, not an attribution: no single arriving key displaced C. It is deterministic because `order` is a total order every client computes identically ([§ 14](#14-open-questions-for-the-review-loop) item 27). **A retirement's move ([§ 3.5](#35-retirement-and-the-only-removal)) is the departure side of the same row, and its `cause` is the DEPARTED seat's key** — the seat whose freed slot the mover now holds, or, where the mover took a slot another mover vacated, the departure that held the lowest slot; a move [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 4's backstop causes writes no row, because a snapshot animates nothing ([§ 6.5](#65-a-snapshot-never-animates); card#7342 step 10). **A move a change of the reserved desk's holder makes ([§ 3.2](#32-the-desk-slot-function), card#11144) is the third side of the row:** caused by an arrival or a departure, its `cause` is that seat's key as above; caused by a delta that relayed a role, it is that delta's `state_version` — on every desk the change moved, the holder's and its chain's. ⚠ A `state_version` is per seat, so on a chain desk the number names a delta of ANOTHER seat of the room — the one whose role changed; [AT-D3-22](#at-d3-22-the-reserved-desk-seats-its-role-and-nobody-else) resolves it against the room's delivered deltas. A13 fired by the `seat.retired` message carries the message type, `seat.retired`, as the heartbeat's rows carry theirs. **An edge animation started with no causing message writes `null`**, which is what makes [AT-D3-1](#at-d3-1-no-animation-without-its-event) able to fail | the **`state_version` of the seat object the render is held by** — the object the client holds, whether it arrived by delta, snapshot, resync or per-seat fetch. **A held render entered against no held object writes `null`**, which is the same defect one class over: a render with nothing delivered behind it | the **`state_version` of the object the client holds at the render that ended the hold**, chosen by the precedence under this table — the object `held()` writes on its `left` row (`wire/animation-set.js`). For a desk a retirement removed, that is the retired object's version, which both announcements carry and the protocol's one removal journals as `seat.removed`'s `cause` (`wire/fleet-client.js`, `#remove`); for one [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 4's backstop removed it is the literal `snapshot`, because a population ended the hold and no object did (card#7342 step 10); where a condition the client holds itself ended it, it is the literal the paragraph under this table names for that condition. Never the entering version: two rows identical in every field are two rows from which *which states, and for how long* cannot be recovered, which is the whole reason the exit row is written |
 | `motion` | `true`, or `false` when [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation)'s reduced-motion form is what was drawn | `true` while the loop runs; `false` when the held render is drawn static — the **two** states with no motion by design (`stalled` and `unknown` — `idle` was the third until [A6](#62-the-animation-table--the-closed-set) gained its sleeping loop), a loop stopped by a currency treatment ([§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)) or by a value [§ 9](#9-failure-paths-and-their-observables) F9 does not recognise, a desk re-entered on a floor [§ 9](#9-failure-paths-and-their-observables) F6 stilled (the paragraph under this table), or reduced motion | **`false`**, always — nothing is drawn by a render that has been left, so an exit row is never evidence that motion ran |
 | `at` | the **corrected server-clock instant** the row was written ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset, applied) — the client's own record of when it drew this, labelled as the client's own and rendered on no screen | as `edge` | as `edge` |
 
@@ -4546,14 +5909,16 @@ cannot be shown to obey the honesty principle, and the principle is the product'
 | `fx-snapshot-4` | [D2 § 8.2.2](FLEET-STATE.md#822-worked-snapshot)'s snapshot, extended to the four `aimla` seats of [§ 3.2](#32-the-desk-slot-function)'s worked assignment. **All four are `link_state: "live"`**, because D2's own `fleet` block in that snapshot reads `"seats_total": 4, "seats_live": 4` and [D2 § 8.2.4](FLEET-STATE.md#824-the-fleet-health-object) defines `seats_live` as `link_state == "live"` — so a non-live seat here would contradict the fixture's own fleet object. The three D2 does not publish are stated here rather than left to the builder, because [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s control asserts an **exact** log over all four: `aimla-pm` is D2's published seat verbatim (`working`, `open_calls: 1`, `open_turn: true`, one subagent, `badges: ["lossy"]` with its `badges_since` — [§ 14](#14-open-questions-for-the-review-loop) item 22). The other three take `aimla-pm`'s members except where [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) ties a member to one this row states, and those are stated here: **`aimla-impl-1`** is `working` with `open_calls: 1`, `open_turn: true` and a non-null `action`, its one open call; **`aimla-impl-2`** is `idle` with `open_calls: 0`, `open_turn: false`, `action: null`; **`aimla-review`** is `blocked` with `open_calls: 0`, `open_turn: false`, `action: null` and a non-null `blocked_since`. Those three carry `subagents: []` with `subagents_open: 0`, `badges: []` with `badges_since: null`, their own `session.session_id`, and their own `protocol_agent_name`, which D2 § 8.2.1 holds unique within one install. All four carry `enabled: true`, a non-null `context` and a non-null `session`; every `activity_state` equals its `render_state`. **No desk in this fixture renders a receipt age** — that readout is `dark-only` ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) and every seat here is `live` |
 | `fx-clear-trace` | `fx-snapshot-4`, then the **ten** deltas of [D2 § 10](FLEET-STATE.md#10-worked-example-the-clear-trace-folded-end-to-end)'s trace applied to `aimla-pm`, in order, in **one** hook order ([§ 14](#14-open-questions-for-the-review-loop) item 21 part 4: D2 § 10 states the wire is identical either way, so this document does not ship a second, byte-identical replay). `state_version` continues from `fx-snapshot-4`'s own **48219**, running **48220**…**48229** across the ten deltas (E0…E9); `at` advances **1 s** per delta from `fx-snapshot-4`'s own `server_time`, `E0` at `…:15.400Z` through `E9` at `…:24.400Z` ([item 21](#14-open-questions-for-the-review-loop) parts 1 and 3). **`E0` is authored to carry three facts at once, named so the fixture is buildable without guessing** ([item 21](#14-open-questions-for-the-review-loop) part 2): `aimla-pm`'s still-open `Bash: composer test` call closes (`completed`), its `coder` subagent stops (`completed`), and the trace's own `turn.start` fires (`T := true`) — `open_calls: 0`, `open_turn: true`, `action: null`, `subagents: []`, `subagents_open: 0` immediately after. E1…E9 are otherwise D2 § 10's own nine remaining rows, unamended, continuing from that state |
 | `fx-degraded` | one seat per non-`live` render a snapshot can carry: `catching_up` (with `oldest_unsent_age_s` = 4,000), `stale`, `offline`, `disabled`, plus a `live` `working` seat badged `fold_lag` with `derivation.fold_lag_ms` = 117,000 — which [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s duration format renders *1m 57s*, the lag line [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) asserts; that seat's `task` is tier 3's answer after tier 1's title was dropped past its bound (`task.source` `telemetry`, `task.degraded` `true`, `task.ref` `null`, [D2 § 4.9](FLEET-STATE.md#49-the-task-title-merge-and-what-is-not-specified-here)): the title is its open call's descriptor and `as_of` that call's server-clock receipt — so its bubble carries T19's degraded note, the desk-model member [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15's list-view guard must see at a non-default value and no fixture drove before (⛔ never on an `idle` seat: tier 3 answers only from an open call, and `idle` means there is none, so an idle seat has no tier-3 title to fall through to) — a `live` `idle` seat, the sleeper AT-D3-5's sleeper assertion compares the dark desks against in the same run — and a `live` `blocked` seat badged `config_invalid` — the one badge that draws [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s *sending nothing* note, which no fixture carried before; `blocked` because the fixture already has a `live` `working` seat and AT-D3-5 holds every desk apart by pose and label line. Its `fleet{}` counts every seat it carries — `seats_total`, and `seats_live` for the `live` ones, this seat included — so the lobby's discrepancy check ([§ 4.1](#41-the-lobby--the-building-summary)) sees no disagreement. ⚠ **The unconfirmed desk is not in this fixture**: [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5's condition is one no snapshot can carry, and it has a run of its own — `fx-confirm`'s `missing_persistent`, below — whose row states what its exit records and whether [AT-D3-1](#at-d3-1-no-animation-without-its-event) replays it. ⛔ **`retired` is deliberately not among them (card#9078)** — a retired seat leaves D2's read surfaces at `retired_at` ([§ 3.5](#35-retirement-and-the-only-removal)), so a snapshot fixture carrying one would be a fixture of a response the server cannot produce; the state is exercised by [AT-D3-16](#at-d3-16-retirement-removes-the-desk-and-the-removal-is-explained), which delivers the announcement instead. The `stale` and `offline` seats carry `delivery.no_data_since` **equal to** their `delivery.last_receipt_at`, which is what [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object) declares on those two states and what makes the desk's timestamp and its ticking age one instant ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s `dark-only`, [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded)), and an `activity_state` of `idle` underneath, which is what AT-D3-5's RED switches the desk onto. A fixture sets values; it renders none, so this row is **`named-not-rendered`** |
-| `fx-interns` | one seat — its `seat_id` at [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bound on that field, so its nameplate is the longest string the wire can send there — whose `subagents` goes 0 → 8 → 8-with-`subagents_open`-9, including one element with `title: null`; and **the cap leg** — `fx-snapshot-4` with that array at the cap on both `aimla-impl-2` and `aimla-impl-1` and `subagents_open` one past the cap on each, so the *+N more* tag is drawn; every intern `title` at [§ 8](#8-interns--subagent-rendering-and-the-cap)'s bound; `aimla-impl-1`'s `action.descriptor` at [D1 § 6.5](EVENT-SCHEMA.md#65-toolstart)'s bound; and `aimla-impl-2` badged `fold_lag` with a `derivation.fold_lag_ms`, so [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s lag line is drawn, and its `badges` carrying [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bound plus one member outside [§ 7.2](#72-badges-every-member-has-a-render)'s set, so the cluster's *+N more* mark is drawn beside F9's unrecognised badge — **the strings this fixture bounds, not every string the desk draws**: the ones it does not (the model label, the currency label, a raw API-error or unknown-reason string, the gauge's text) pass through the same truncation primitive, and [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor)'s second RED, planted at that primitive, is what covers them. A fixture sets values; it renders none, so this row is **`named-not-rendered`**. ⚠ It asserts nothing about where the two slots sit: a desk's containment inside its own slot needs no neighbour, and a precondition on adjacency — which an earlier revision of this row carried — would have bound row 14's re-authoring to a zero gutter it does not owe |
-| `fx-collision` | `fx-snapshot-4`, then a delta for `aimla-impl-4` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)); a run in which deltas for `aimla-impl-4` and `aimla-win-1` arrive while a discovery snapshot is in flight, their insert fetches fail, and the discovery's release applies both in one render; and a cascade run, `aimla-impl-5` then `aimla-win-3`, each inserted in its own render ([§ 14](#14-open-questions-for-the-review-loop) item 27) |
+| `fx-interns` | one seat — its `seat_id` at [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bound on that field, so its nameplate is the longest string the wire can send there — whose `subagents` goes 0 → 8 → 8-with-`subagents_open`-9, including one element with `title: null`; and **the cap leg** — `fx-snapshot-4` with that array at the cap on both `aimla-impl-2` and `aimla-impl-1` and `subagents_open` one past the cap on each, so the *+N more* tag is drawn; every intern `title` at [§ 8](#8-interns--subagent-rendering-and-the-cap)'s bound; `aimla-impl-1`'s `action.descriptor` at [D1 § 6.5](EVENT-SCHEMA.md#65-toolstart)'s bound; and `aimla-impl-2` badged `fold_lag` with a `derivation.fold_lag_ms`, so [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s lag line is drawn, and its `badges` carrying [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bound plus one member outside [§ 7.2](#72-badges-every-member-has-a-render)'s set, so the badge row draws its two and the flag ⚠ +N counts the rest, F9's unrecognised badge among them. On the cap leg every intern is drawn as a sprite, none hidden, with the *+N more* tag; the interns' labels, types and start times are asserted on the desk list and the drill-down, not on the desk (card#11058) — **the strings this fixture bounds, not every string the desk draws**: the ones it does not (the currency label, the lag line, the gauge's text) pass through the same truncation primitive, and [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor)'s second RED, planted at that primitive, is what covers them. A fixture sets values; it renders none, so this row is **`named-not-rendered`**. ⚠ It asserts nothing about where the two slots sit: a desk's containment inside its own slot needs no neighbour, and a precondition on adjacency — which an earlier revision of this row carried — would have bound row 14's re-authoring to a zero gutter it does not owe |
+| `fx-collision` | `fx-snapshot-4` over the shipped default's reservation (desk id 3 reserved for `pm`, so `aimla-pm` sits there by its role, card#11144), then a delta for `aimla-mac-1` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)); a delta for `aimla-impl-4` instead, which lands on the PM's free hash slot and moves nobody; a run in which deltas for `aimla-linux-4` and `aimla-win-5` arrive while a discovery snapshot is in flight, their insert fetches fail, and the discovery's release applies both in one render; and a cascade run, `aimla-impl-6` then `aimla-win-6`, each inserted in its own render ([§ 14](#14-open-questions-for-the-review-loop) item 27) |
+| `fx-office` | card#11144's reserved desk, every run over `fx-snapshot-4`'s four `aimla` seats and the shipped default map — itself, or a copy changed as the run says: `aimla-pm` the one seat relaying `pm`; relaying `null`, so nobody is eligible; a first appearance, from a snapshot and by an insert, whose role arrives on a later delta; a second seat relaying `pm`, by an arrival and by a relayed delta; the handover, the old PM retired; the `desks` layer inside a `group`; the desk reserved for `pm-helper`, held by the seat relaying it; and a role relayed in the same render as an arrival, both released by one discovery snapshot ([§ 3.2](#32-the-desk-slot-function)) |
 | `fx-membership` | **three legs.** (a) deltas for a seat absent from `fx-snapshot-4`, **each patching only `context`** — a patch that carried `render_state` would hand the patch-into-an-empty-object client the member [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched)'s RED reads as missing, and that RED could not fail; (b) a later snapshot missing a seat that was present; (c) **the mid-session install leg** — a `feed.heartbeat` whose `fleet.seats_total` is 6 against the four seats the client holds, then a snapshot carrying a **second install** `aimla-win` with two `live` seats (`aimla-win/win-1`, `aimla-win/win-2`), and a `seat.delta` for `aimla-win/win-1` emitted on the stream **during** that snapshot's round trip, while the client holds no `aimla-win` seat, at `state_version` one above the version both that snapshot and the seat's own fetch return |
 | `fx-confirm` | ✅ landed with step 3 (`server/tests/Feature/Floor/fixtures/fx-confirm.json`, replayed by `Tests\Feature\Floor\TheClientProtocolReplaysTheSameWayEveryTimeTest`) and declared here since PR #227's design round: [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5's runs, each a seat the client holds whose confirming read is refused. **`missing_persistent` is the unconfirmed desk's run** — a snapshot, then every read of one held seat refused past row 5's threshold of refused reads, the stream carrying on — the one run in which the desk model's `unconfirmed` is true, which no snapshot can make it. The held render that exits there is ended by a failed read and not by an object, and (3) of [§ 11](#11-acceptance-tests)'s precedence is what that exit records ([§ 14](#14-open-questions-for-the-review-loop) item 29, closed). Each refused read answers a `503` whose `server_time` is the instant it answers, on the run's own clock — every one is `clocked` (`server/tests/Feature/Support/scripted-fetch.mjs`) — so [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset, refreshed from each, keeps the corrected clock advancing. ⛔ [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s closed-set half replays the run; [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15 (e) owns what that replay rests on. A fixture sets values; it renders none, so this row is **`named-not-rendered`** |
 | `fx-gap` | `fx-snapshot-4`, then three deltas for one seat with the middle one dropped. **The dropped delta patches only a member neither delivered delta patches** (`context`, where the two delivered ones patch the call members): a dropped patch that a later delivered one overwrites leaves the apply-unconditionally client holding the served object, and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat)'s RED could not fail |
 | `fx-refusals` | the responses of [D2 § 8.6](FLEET-STATE.md#86-a-deliberately-invalid-exchange) and [§ 2.2](#22-connect-snapshot-deltas): `503 fleet_unavailable`, `401 token_revoked`, **a stream whose FIRST message is a `fleet.health` with `db: "down"` and whose LAST is `feed.close{reason:"unavailable"}`, the stream then ENDING** ([D2 § 2.2](FLEET-STATE.md#22-fail-posture-per-path)'s stream-connect posture: the connection is accepted to say why, and ends in the same breath), and **a `fleet.reload`, after which the stream also ends** — [D2 § 8.3](FLEET-STATE.md#83-the-websocket-delta-feed) declares that message terminal and pairs it with its own `feed.close` — in **two forms**, by operator ruling A4: carrying a `feed_version` the client does not know, and carrying its own, the second followed by re-opens the stub refuses `503` for the spans [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office) names before it accepts one; and **a stream that ends with no `feed.close` at all**, which is the deploy's drain ending a stream that missed the message ([D2 § 2.1](FLEET-STATE.md#21-processes)'s feed-reload row); and the warm `401` once more with an **open coordination line** on the floor — a `coord.thread` between `"pm"` and `"impl-1"`, two names `fx-snapshot-4`'s seats each declare once, opened before the refusal and never closed — so [§ 9](#9-failure-paths-and-their-observables) F6 stills the floor under a line that was moving (card#7341). ⛔ A fixture that held the `db: "down"` stream or the `fleet.reload` stream OPEN would be the posture card#9287's ruling withdrew, and [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office)'s GREEN would certify it — the fixture is where that certification starts, so the end is written here rather than left to the test |
 | `fx-coord` | Two installs. **`aimla`** — four seats: `aimla-pm` declares `protocol_agent_name: "pm"`, `checked`, and `aimla-impl-1` declares `"coder"`, **`unchecked`** — **one declaring seat each**, so both resolve and they are the two endpoints the line is drawn between. ⛔ **The two endpoints are deliberately in DIFFERENT check states.** An `unchecked` seat declared and no coordination roster was readable **on its own box** to check the declaration against ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), which neither rule of the join refuses: [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) **rule 1** counts the seats that **declare**, whatever their check state, so one `unchecked` declarer is not a duplicate, and **rule 2** — *"Only `checked` and `unchecked` resolve"* — admits it. So `"coder"` resolves exactly as `"pm"` does, and [§ 5.7](#57-the-coordination-thread-line)'s *rests on an UNCHECKED declaration* row gets the one thing that gates it at all: a **resolving** endpoint to mark, with the `checked` endpoint beside it as the control for *`checked` draws nothing extra*. On the duplicate arm below, where this fixture's only `unchecked` declaration first sat, the check state changes no outcome, so that row was left with nothing to break; `aimla-impl-2` and `aimla-review` **both** declare `"helper"` — `checked` and `unchecked` respectively, the **duplicate-declaration** case ([D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rule 1), whose duplicate arm counts every seat of the install that **declares** the name whatever its check state, so `"helper"` resolves to **nothing**. ⛔ **The duplicated name is deliberately one no object here needs as an endpoint.** A fixture that duplicates the name it also draws the line to has one resolving name left and cannot demonstrate a two-endpoint line at all — the render this fixture exists to gate ([§ 5.7](#57-the-coordination-thread-line)) — so the clean-resolve case and the must-not-resolve case are carried by different names here, on purpose. No seat's `seat_id` is itself a declared name. **`win`** — one seat, `win-1`, declares `"reviewer"`, `checked` — a name real on a **different** install. On `aimla`: a `coord.thread` (`thread_ref: "T1"`, `lifecycle: "opened"`, `participants: ["pm", "coder", "helper", "reviewer", "aimla-impl-2", "all"]` — **two** resolvable names, one duplicate, one other-install, one seat-id coincidence, and the literal `all`, unexpanded); `coord.round` **R1**, the thread's opening post (`from: "pm"`, `to: ["all"]`, `targets: null`, `declares_close: false`) — **the one wire state [D1 § 18.7](EVENT-SCHEMA.md#187-coordround) assigns `null` to**, *`to` contains `all` and that roster is unreadable*, which `coord_targets_unresolved` alarms on ([D1 § 18.8.1](EVENT-SCHEMA.md#1881-the-counters-this-route-mints)). ⛔ **`null` belongs on no other address.** D1 pins it to that case and publishes no second path to it, so a `to` naming a seat carries a resolved `targets` and never this — a fixture putting `null` beside `to: ["coder"]` would gate the *not resolvable* render against a combination the producer cannot emit. With `"pm"` resolving, R1 is also the post that draws a ring and **no** envelope, which splits [A20](#62-the-animation-table--the-closed-set) from [A19](#62-the-animation-table--the-closed-set) by **reach** where the R2/R3 pair below splits them by **origin**. ⚠ **The unreadable roster here is [D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)'s install-facts input, held by the PRODUCER** — the copy provisioned with the hook — and it is readable again by R2, which is the only way one thread carries both this answer and a resolved fan-out. It is **not** the roster `unchecked` names above, which is read on a **seat's own box**: two artifacts on two machines, and this fixture holds both unreadable on purpose so a builder does not covary them. ⛔ **The roster that input holds from R2 onward is `["pm", "coder", "helper"]`**, and **every `targets` below is re-derived from it** by [D1 § 18.7](EVENT-SCHEMA.md#187-coordround)'s rule rather than asserted: R1 is `null` because the input is unreadable there, R2 and R3 carry one address from two authors and therefore **different** fan-outs, and R4's `[]` is `to: ["pm"]` from `pm` with the author removed. ⚠ **Those are the coordination names `aimla`'s own seats declare, and the fixture CHOOSES that rather than inheriting it** — the input is a copy of another repository's config and nothing forces the two artifacts equal ([D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)) — so it is what an install in agreement with itself looks like, and it is what gives the author-removal clause of that rule two different answers to be checked by. A roster naming only `"pm"` satisfies all four values too, and gates that clause with nothing: neither R2's author nor R3's is in it, so removing the author removes nothing and the two broadcasts come out identical. ⛔ **`"helper"` is a roster member that resolves to no desk** — it is the duplicate declaration above — so R3's fan-out is this fixture's one case of [A19](#62-the-animation-table--the-closed-set)'s *"A destination that does not resolve gets **no envelope and no line**, and the ones that do still get theirs"*; `coord.round` **R2** (`from: "helper"` — unresolved, duplicate, and the object still renders — `to: ["all"]`, `targets: ["pm", "coder"]` — the roster with its own author removed, and **both** members resolve to a desk — `declares_close: false`); `coord.round` **R3** (`from: "coder"`, `to: ["all"]`, `targets: ["pm", "helper"]` — the same roster with a **different** author removed, so one member resolves and one does not — `declares_close: false` — R2's address from an origin that **does** resolve, the pair that holds [A19](#62-the-animation-table--the-closed-set)'s and [A20](#62-the-animation-table--the-closed-set)'s origin precondition apart from the address they read); `coord.round` **R4** (`from: "pm"`, `to: ["pm"]`, `targets: []` — the one address the roster is never consulted for, its whole membership being its own author, so *this post reached nobody*, which is not R1's *the fan-out is not resolvable here* — and `declares_close: true`, never rendered as convergence); then a `coord.thread` closing T1 (`lifecycle: "closed"`) |
-| `fx-nulls` | **two** seats, because the **39** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `blocked_since`, `model_label`, `badges_since`, `enabled`, `protocol_agent_name`, `protocol_agent_name_check`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat (a fixture sets values and renders none: **`named-not-rendered`**); all three nullable `reporter.*`. The two together cover all 39, and neither covers them alone. **`nulls-a`'s `render_state` is `idle`**, a state whose desk draws a character ([§ 7.1](#71-the-render-per-state)) — stated because [§ 5.1](#51-the-desk)'s thought bubble is anchored to one, so on a desk without a character *no bubble* would be true whatever `task` held and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero)'s assertion would pass without being able to fail. **`nulls-b` is the never-reported seat above**, which [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints `offline`: its desk draws no character, so it asserts nothing about the bubble and is not asked to |
+| `fx-nulls` | **two** seats, because the **40** members [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes` cannot all be null on one object — nulling a container removes its children rather than exercising their null renders, and a fixture that claimed otherwise would overstate its own coverage sixfold. **`nulls-a`** — every nullable **container** null: `action`, `task`, `context`, `session`, `retired`, plus `unknown_reason`, `api_error_type`, `blocked_since`, `model_label`, `badges_since`, `enabled`, `protocol_agent_name`, `protocol_agent_name_check`, `protocol_agent_role`, and `subagents: []`. **`nulls-b`** — every container **present** with every nullable member under it null: `action.descriptor` / `.agent_scope` / `.parent_call_id`; one `subagents[]` element with `title` and `subagent_type` null; `task.ref`; `context.used_tokens` / `.total_tokens`; `session.started_at` / `.source` / `.project_label` / `.harness_label`; all three `activity.*`; all eight `delivery.*` — `last_receipt_at` and `no_data_since` null being [§ 3.4](#34-a-new-seats-first-appearance)'s never-reported seat (a fixture sets values and renders none: **`named-not-rendered`**); all three nullable `reporter.*`. The two together cover all 40, and neither covers them alone. **`nulls-a`'s `render_state` is `idle`**, a state whose desk draws a character ([§ 7.1](#71-the-render-per-state)) — stated because [§ 5.1](#51-the-desk)'s thought bubble is anchored to one, so on a desk without a character *no bubble* would be true whatever `task` held and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero)'s assertion would pass without being able to fail. **`nulls-b` is the never-reported seat above**, which [D2 § 4.5](FLEET-STATE.md#45-link-states) rule 1 mints `offline`: its desk draws no character, so it asserts nothing about the bubble and is not asked to |
+| `fx-elevator` | card#9566's walks, every run over `fx-snapshot-4`'s four `aimla` seats on the shipped default map but the A19 variant, each run a sequence of deltas with the frames between renders stated: **leave-stale** (`aimla-impl-1` `working → stale`); **return-from-stale** (`stale → working`); **stale-then-offline** (`working → stale`; after its A2 walk has ended, `stale → offline`; then a delta re-sending `offline`); **staffed-step** (`working → idle`, a step between two members that draw a character); **reslot** (`aimla-impl-2` `working → offline`, then inside its A2 walk `fx-collision`'s `aimla-mac-1` arrival, which re-slots `aimla-impl-2` from slot 4 to 5 with no journal entry for `aimla-impl-2`; the run is written over the walk in flight, so an A1 variant is the same steps from `offline → working`); **reslot-no-row** (`aimla-impl-2` `working → offline`, then inside its A2 walk a `room.map` revision that moves the desk object `aimla-impl-2` holds, so its anchor moves with no seat entry in the journal at all); **return-then-leave** (`offline → working`, then inside A1's walk `working → offline`); **leave-then-return** (`working → offline`, then inside A2's walk `offline → working`); **resync-cancels** (`offline → working`, then inside A1's walk a delta gap whose resync fetch returns the seat `working`); **retire** (`working → retired`); **two-walkers** (`aimla-impl-1` and `aimla-review` go `→ offline` at one instant, a render apart, their walks differing in length by fewer frames than the door's opening and step, so the farther's door frames begin while the nearer's leaves are still open); **repaint** (`working → offline`, then a `feed.heartbeat` while its A2 is in flight); **stilled** (leave-stale, then inside its A2 walk a delta gap for `aimla-impl-2` whose resync fetch answers `401`, so the floor is stilled with no entry for `aimla-impl-1`); **unconfirmed** (leave-stale, then inside its A2 walk two delta gaps for `aimla-impl-1` whose resync fetches answer `503`, so its row 5 condition turns on with no entry applied); **elevator-moves** (leave-stale, then inside its A2 walk a `building.layout` revision placing a mapless `beta` above `aimla`, so the band and the elevator's threshold move and the desk's anchor does not); **zoom-mid-walk** (return-from-stale with the viewer zooming in two notches inside the A1 walk), with one **A19** variant over `fx-coord` (its round R2 in flight when a `feed.heartbeat` lands, `aimla-review` declaring a name of its own rather than `fx-coord`'s deliberate duplicate, so the install is valid and R2's envelopes reach two resolved desks) |
 
 ### AT-D3-1 no animation without its event
 
@@ -4693,6 +6058,12 @@ observable before both exist, so the test is **re-gated** rather than split furt
 - **Second RED:** drive the working loop's frame rate from `open_calls` — a "busier seats type faster"
   change that looks like a feature — and assert that the loop's frame interval is constant across every
   seat and every fixture. A rate that varies is a quantity the wire never sent.
+- **A16's causes (card#11144):** the closed-set half replays every run under the desk floor, which
+  writes no A16, so the floor's own row is asserted where it fires: [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart)
+  holds an arrival's and [AT-D3-16](#at-d3-16-retirement-removes-the-desk-and-the-removal-is-explained) a
+  departure's cause, and [AT-D3-22](#at-d3-22-the-reserved-desk-seats-its-role-and-nobody-else) holds that
+  every A16 a change of the reserved desk's holder writes names a message the run delivered — an
+  introduced or retired seat's key, or a delta whose `changed[]` carries `protocol_agent_role`.
 
 ### AT-D3-2 the `/clear` trace shows no idle anywhere
 
@@ -4739,34 +6110,46 @@ observable before both exist, so the test is **re-gated** rather than split furt
   shuffled. **Reads:** **the harness**, the **floor layout**, the **desk render**, the **animation set**, the
   **animation log**.
 - **GREEN:** the four assignments of [§ 3.2](#32-the-desk-slot-function)'s worked table, identically, in
-  all four runs — slot is a function of the key and not of arrival order, delivery order or session.
-- **GREEN — an arrival that collides:** replay `fx-collision` → `aimla-impl-4` takes slot 0,
-  `aimla-pm` moves to slot 1, **and no other desk moves**; the animation log carries exactly one A16
-  row, whose cause is the arriving seat.
-- **GREEN — an arrival that does not collide:** deliver `aimla-win-1` (h mod 12 = 9) instead → it takes
-  slot 9 and **no desk moves at all**; the log carries no A16 row.
-- **GREEN — two arrivals in one render:** replay `fx-collision`'s run that inserts `aimla-impl-4` and
-  `aimla-win-1` together, both released by one discovery snapshot → `aimla-pm` moves to slot 1 and the
-  log carries exactly one A16 row. Its cause is `aimla-impl-4`, the arrival that now holds `aimla-pm`'s
-  former slot, and never `aimla-win-1`, which sorts lower in [§ 3.2](#32-the-desk-slot-function)'s
+  all four runs — slot is a function of the key and not of arrival order, delivery order or session;
+  `aimla-pm` at the reserved desk by its role, and `aimla-impl-2` probed past it (card#11144).
+- **GREEN — an arrival that collides:** replay `fx-collision` → `aimla-mac-1` takes slot 4,
+  `aimla-impl-2` moves to slot 5, **and no other desk moves** — the reserved desk's holder included; the
+  animation log carries exactly one A16 row, whose cause is the arriving seat.
+- **GREEN — an arrival that does not collide:** deliver `aimla-win-5` (h mod 6 = 5) instead → it takes
+  slot 5 and **no desk moves at all**; the log carries no A16 row. The same for `aimla-impl-4`
+  (h mod 6 = 0), which lands on the PM's own hash slot — free, because the PM sits at the reserved desk.
+- **GREEN — two arrivals in one render:** replay `fx-collision`'s run that inserts `aimla-linux-4` and
+  `aimla-win-5` together, both released by one discovery snapshot → `aimla-impl-2` moves to slot 0 and the
+  log carries exactly one A16 row. Its cause is `aimla-linux-4`, the arrival that now holds `aimla-impl-2`'s
+  former slot, and never `aimla-win-5`, which sorts lower in [§ 3.2](#32-the-desk-slot-function)'s
   `order` and displaced nobody. The test re-derives both facts from the frames and the published
   function rather than transcribing them ([§ 14](#14-open-questions-for-the-review-loop) item 27).
-- **GREEN — a cascade:** replay `fx-collision`'s run that places `aimla-impl-5` (h mod 12 = 11) in one
-  render and then delivers `aimla-win-3`, which hashes to the same slot and sorts lower →
-  `aimla-win-3` takes slot 11, `aimla-impl-5` probes on into `aimla-pm`'s slot, and `aimla-pm` moves
-  again. The log carries two A16 rows. `aimla-impl-5`'s cause is `aimla-win-3`, the arrival holding its
-  former slot. `aimla-pm`'s former slot is held by `aimla-impl-5`, which did not arrive in that render,
-  so its cause is the render's lowest-order arrival and never `aimla-impl-5`.
-- **RED:** key the desk on `session.session_id` → replay a `/clear` on any seat (`fx-clear-trace`'s E9
-  mints a new session id) and the desk moves, taking its character with it, because the seat restarted
-  its session. Watch it once: it is the identity defect D1 § 3.4's 30-day incident is the general form
-  of.
-- **Second RED:** assign slots by sorted `seat_id` position → deliver `aimla-alpha` and every desk on
-  the floor shifts by one.
+- **GREEN — a cascade:** replay `fx-collision`'s run that places `aimla-impl-6` (h mod 6 = 4, held) at
+  slot 5 in one render and then delivers `aimla-win-6`, which hashes to the reserved desk and probes past
+  it to slot 3 → `aimla-impl-1` moves 3 → 4, `aimla-impl-2` 4 → 5 and `aimla-impl-6` 5 → 0. The log
+  carries three A16 rows. `aimla-impl-1`'s cause is `aimla-win-6`, the arrival holding its former slot.
+  `aimla-impl-2`'s and `aimla-impl-6`'s former slots are held by seats that did not arrive in that
+  render, so each one's cause is the render's lowest-order arrival and never the seat that took the slot.
+- **RED:** key the desk on `session.session_id` → replay a `/clear` on a seat the hash places
+  (`fx-collision`'s `session_restart` mints a new session id on `aimla-impl-2`) and the desk moves,
+  taking its character with it, because the seat restarted its session. Watch it once: it is the
+  identity defect D1 § 3.4's 30-day incident is the general form of. (The PM sits at the reserved desk
+  by its role, so no hash — the session's or the key's — moves it.)
+- **Second RED:** assign slots by sorted `seat_id` position → deliver `aimla-beta`, which sorts below
+  every seat and hashes to a free slot, and every desk the hash places shifts — where the shipped
+  function moves none; the reserved desk's holder stays where its role puts it.
 - **Third RED:** record the lowest-order arrival as every A16 cause — the rule this one replaced →
-  the two-arrival run's A16 row names `aimla-win-1`, a seat that displaced nobody.
+  the two-arrival run's A16 row names `aimla-win-5`, a seat that displaced nobody.
 - **Fourth RED:** record the holder of the former slot as the cause whether or not it arrived → the
-  cascade's `aimla-pm` row names `aimla-impl-5`, a seat that arrived in an earlier render.
+  cascade's rows name `aimla-impl-1` and `aimla-impl-2`, seats that did not arrive.
+- **RED — `test_red_a_reserved_desk_opened_when_nobody_is_eligible_seats_a_hashed_seat_in_it` (card#11144):** open the reserved desk when nobody is eligible → on `fx-office`'s run
+  where `aimla-pm` relays `null`, `aimla-impl-2`, whose hash slot is the reserved desk, sits in it.
+- **RED — `test_red_a_ring_without_the_reserved_desk_rehashes_the_room` (card#11144):** skip the reserved desk in the probe instead of counting it taken — hash
+  every seat over the `S − 1` other desks → the room re-hashes, and `aimla-impl-2`'s row of the worked
+  table tells the two rules apart.
+- **The rig's own selftest:** `documentSlots()` holds the worked table to the function it publishes —
+  the holder's row written with a numeric probe count, a row whose probes land elsewhere, a hashed seat
+  at the reserved desk and a `role` row over a map that reserves nothing each red it.
 
 ### AT-D3-4 the subagent cap boundary
 
@@ -5157,7 +6540,7 @@ observable on **no** surface built before step 10.*
   call that started in the future ([D2 § 3.3](FLEET-STATE.md#33-the-two-ages-and-the-arithmetic-each-one-is-computed-by)).
   The skewed seat is `fx-snapshot-4`'s `aimla-impl-1` with its seat-clock members moved +10 minutes,
   and the future start is observed as [§ 2.4](#24-the-clock-and-every-age-on-the-page) clause 1
-  renders it: a negative duration is `0s`, so the desk reads *running for 0s* on a call the server
+  renders it: a negative duration is `0s`, so the readout reads *running for 0s* on a call the server
   has watched run for seconds. The receipt age this test's floor half cannot see on `fx-snapshot-4`,
   where every seat is `live`, and the gauge age, which that fixture's inherited
   `sampled_received_at` pins at `0s`, are held by the same suite on a variant run of the same file
@@ -5167,26 +6550,41 @@ observable on **no** surface built before step 10.*
 
 ### AT-D3-11 an unrecognised member renders as unrecognised
 
-- **Build:** deliver a delta whose `render_state` is `"pondering"`, one whose `badges` contains
-  `"quantum_flux"`, and one whose `unknown_reason` is `"reasons"`. **Reads:** **the harness**, the **desk render**, the
-  **failure renders**, the **client's event record**.
-- **GREEN:** each renders the **unrecognised** glyph or badge carrying the raw string; the desk is
-  treated as not-current; **the client's event log** records each distinct value **once**
-  ([§ 5.5](#55-the-clients-own-narration): the record, not the lobby's rendering of it); nothing crashes and no
-  other desk is affected.
+*Two halves, gated at their own steps per [§ 11](#11-acceptance-tests)'s ordering rule: the desk-model
+half at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 8, the scene half at step
+14 — the desk's drawing (card#11058, the operator's ruling of 2026-10-02, Q0) and the drill-down's rows
+it is held against are built at steps 14 and 10.*
+
+- **Build — the desk-model half:** deliver a delta whose `render_state` is `"pondering"`, one whose
+  `badges` contains `"quantum_flux"`, and one whose `unknown_reason` is `"reasons"`.
+  **Reads:** **the harness**, the **desk render**, the **failure renders**, the **client's event record**.
+- **GREEN — the desk-model half:** each value is listed raw as unrecognised on the desk model, its glyph
+  and label line carrying the raw string; the desk is treated as not-current; **the client's event log**
+  records each distinct value **once** ([§ 5.5](#55-the-clients-own-narration): the record, not the
+  lobby's rendering of it); nothing crashes and no other desk is affected.
+- **Build — the scene half:** the same three deltas, the last desk models laid out by the scene and each
+  seat's panel rendered. **Reads:** **the harness**, the **desk render**, the **scene**, the **drill-down**.
+- **GREEN — the scene half:** the unrecognised `render_state` renders the fixed word **unrecognised** on
+  the chip and the label line; **every unrecognised value, `render_state` included, is counted into the
+  flag ⚠ +N** (N as [§ 5.1](#51-the-desk)'s *the glance set* defines it) and no raw string is drawn on
+  the desk; the drill-down lists each as its raw `field: value` line, and the desk list prints it.
 - **RED — the nearest match:** map the unknown `render_state` to the closest known member → a seat in a
   state this client has never heard of renders as `working`, which is the most flattering possible
   guess and the one a fresh deploy would produce during a rolling upgrade.
 - **Second RED — the healthy default:** default to `live`/`working` → the same defect with no guess at
   all.
+- **Third RED — the scene half:** the flag miscounted, the chip drawn from the raw glyph, or the
+  drill-down's unrecognised rows dropped → each reds by name
+  (`Tests\Feature\Floor\AnUnrecognisedMemberRendersAsUnrecognisedTest`).
 
 ### AT-D3-12 asset provenance gates bite
 
 *Two halves, gated at their own steps per [§ 11](#11-acceptance-tests)'s ordering rule: the manifest
-half at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 0, the lineage half at
-step 1. The gates themselves are step 0 and must exist before any asset does; the **lineage file**
-and the **character tree** are step 1's artifacts, so a lineage assertion at step 0 asserts the
-contents of a file no step has yet created.*
+half at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 0, and the lineage half at
+**step 19** (card#11046). The gates themselves are step 0 and must exist before any asset does. The
+lineage half reads row 19's artifacts — the re-keyed check, the shipped first-party tree with no lineage
+file, and the selftest's port trees — so it is gated where they are built; it was gated at step 1, where
+it first passed over the port, until the re-key moved what it reads.*
 
 *⚠ **Its RED set was rebuilt on 2026-08-27** with [§ 10.1](#101-the-manifest-and-the-two-gates)'s
 gates. The old third RED planted a `sprites.webp` in the character tree to fail an **absence** clause
@@ -5202,21 +6600,26 @@ there: not *is there art*, but **does every asset declare where it came from**.*
   in-repo reference, `licensed` against a genuine external one; and, **for every licence any row
   declares that obliges one, the manifest reproduces that licence's own permission notice**
   ([§ 10.1](#101-the-manifest-and-the-two-gates)).
-- **Build — the lineage half:** run the same gates over the repository, now that the ported character
-  tree exists ([§ 10.2](#102-characters-the-munder-difflin-port)). **Reads:** the **provenance gates**, the **lineage file**, the
-  **character tree**.
-- **GREEN — the lineage half:** the lineage file names the upstream repository, the commit, a
-  copyright line, and **the permission notice of every licence the character tree's own rows
-  declare** — the same check the manifest half runs, at the second home
-  [§ 10.2](#102-characters-the-munder-difflin-port) obliges;
+- **Build — the lineage half:** run the same gates over the repository, now that the character tree
+  exists, and over the selftest's trees of both kinds the lineage check tells apart once card#11046's row 19 lands — a
+  character tree holding a **port** (a `licensed` row under it) and one holding first-party files only,
+  which is the shipped tree once row 19 lands ([§ 10.2](#102-characters-original-creatures-drawn-by-code)). **Reads:** the
+  **provenance gates**, the **lineage file**, the **character tree**, the **creature generator**.
+- **GREEN — the lineage half:** for a tree holding a port, the lineage file names the upstream
+  repository, the commit, a copyright line, and **the permission notice of every licence the character
+  tree's own rows declare** — the same check the manifest half runs, at the second home
+  [§ 10.2](#102-characters-original-creatures-drawn-by-code) obliges;
+  a tree holding no port — the shipped one, once row 19 lands — owes no lineage file and passes without one;
   and every file under **`resources/`** carries an admitted extension, no embedded image
   bytes, and — for any Tiled artifact — CSV layer data with its tileset image referenced by path —
   Gate 2's three clauses, asserted here rather than at step 0, because a tree that does not
   exist yet satisfies all three for free.
-- **RED — the lineage half:** drop the **commit SHA** from `resources/characters/LINEAGE.md`, leaving
-  the repository URL → the lineage check fails naming the missing field. Watch that one: a port whose
+- **RED — the lineage half:** in a tree holding a port, drop the **commit SHA** from
+  `resources/characters/LINEAGE.md`, leaving the repository URL → the lineage check fails naming the
+  missing field; and **delete the lineage file outright** → it fails naming the file as missing — a port
+  that keeps no record at all is the same defect one step further. Watch that one: a port whose
   upstream commit nobody recorded is a port nobody can tell from a fork
-  ([§ 10.2](#102-characters-the-munder-difflin-port)).
+  ([§ 10.2](#102-characters-original-creatures-drawn-by-code)).
 - **RED — the unlisted asset:** add a tile with no row → Gate 1 fails naming the path. **Second RED —
   the undeclared picture:** drop a `creature.svg` into the character tree with **no manifest row** →
   Gate 1 fails naming it. This is the RED the amendment is *for*: under the old gate the file was
@@ -5262,7 +6665,7 @@ there: not *is there art*, but **does every asset declare where it came from**.*
   ([§ 10.1](#101-the-manifest-and-the-two-gates)).
   **Eleventh RED — the same `ISC` row, the manifest notice supplied, and `resources/characters/LINEAGE.md`
   forgotten:** an ISC port under the character tree owes its notice in **both** files
-  ([§ 10.2](#102-characters-the-munder-difflin-port)), so the lineage check fails naming the file, the
+  ([§ 10.2](#102-characters-original-creatures-drawn-by-code)), so the lineage check fails naming the file, the
   licence and the declaring rows. ⛔ **This fixture PASSED until card#8301's review, and it was the
   tenth RED's control** — the lineage half was hard-coded to MIT's text, so it asked an ISC port for
   MIT's notice, found the MIT port's copy, and reported clean. Watched going from exit 0 to exit 1.
@@ -5272,7 +6675,7 @@ there: not *is there art*, but **does every asset declare where it came from**.*
   and its `ISC` twin — the identical tree with one cell changed — was already red: one behaviour, two
   implementations, two different guarantees. Both are why [§ 10.1](#101-the-manifest-and-the-two-gates)
   now derives the allowlist from the notice table rather than keeping them as two edits.
-- **Discriminating controls — four, and the second is the one that keeps this gate switched on:**
+- **Discriminating controls — and the second is the one that keeps this gate switched on:**
   *(a)* the clean tree passes every check, so the gates are known to be capable of reporting
   *provenance is complete*; *(b)* **a genuinely complex first-party `.svg` — long, mixed-case,
   digit-dense path data — PASSES clause 2.** Without (b) the sixth RED is satisfied by a gate that
@@ -5284,7 +6687,11 @@ there: not *is there art*, but **does every asset declare where it came from**.*
   *(d)* **a `CC0-1.0` row in a manifest carrying NO notice at all PASSES** — a public-domain dedication
   attaches no attribution condition, and without this control the tenth to twelfth REDs are equally
   satisfied by a gate that demands a notice from every row it sees, which is a gate that reds on
-  correct work. All four run in `bin/asset-provenance.selftest.py`; any one alone is not evidence.
+  correct work. *(e)* **A character tree of first-party files only, with NO lineage file, PASSES** — the
+  shipped tree once card#11046's row 19 lands. Without (e) the lineage RED is equally satisfied by a gate that asks every
+  character tree for a port's record, which is the trigger card#11046 retired
+  ([§ 10.2](#102-characters-original-creatures-drawn-by-code)). Every control runs in
+  `bin/asset-provenance.selftest.py`; any one alone is not evidence.
 
 ### AT-D3-13 every state is legible without motion
 
@@ -5308,7 +6715,9 @@ building. It is not split, because no half of it is observable earlier.*
   alone, and each carries its label line — **including the `idle` / `stale` / `offline` triple, named
   here because it is the pair-set the ratified art makes hardest and the one
   [§ 7.5](#75-what-a-degraded-desk-may-never-look-like) turns into a rule**: `idle` is the **static
-  slumped sleeper** and `stale` and `offline` are the **empty chair**, so with the z's switched off
+  slumped sleeper** and `stale` and `offline` are the **empty chair** — ⚠ the slumped pose is pose art
+  not yet drawn ([§ 14](#14-open-questions-for-the-review-loop) item 34; until it lands every character
+  draws its standing frame, card#11046) — so with the z's switched off
   the difference is a character being there or not, and the assertion is that the three static images
   differ, not that three labels do; every animation row's reduced-motion form is what appears;
   the log gains **no `edge` row**, and every `held` row with **`phase: entered`** reads
@@ -5602,28 +7011,53 @@ model and painted nothing, so this row was unreachable and row 8's note said so.
 scene's, which is why the harness can read it: the painter reports which assets failed, and the scene draws
 the placeholder for the desks that lost their art.*
 
-- **Build:** replay `fx-snapshot-4` with the scene told — as the painter tells it — that every image of the
-  room's tileset failed to load — the vendored pack is an image collection, one file per tile; then that the bridge kit's images alone failed while the first-party floor plane's loaded ([§ 10.3](#103-the-floor-map)'s two tilesets); then, from an intact floor, that one seat's character art failed; then the same
-  floor with every asset loaded. **Reads:** **the harness**, the **scene**, the **placeholder**, the **status
-  strip**, the **animation log**.
-- **GREEN:** with the tileset failed, every desk of that room draws the placeholder — a plain rectangle
-  carrying the nameplate, the state label and the badge cluster, every fact and no art — under no tiles, and
-  the status strip reads *some art failed to load*; with the kit alone failed, every desk draws the placeholder
-  — the desk sprite is the kit's — over the plane's tiles, none of the kit's among them; with one seat's character failed, that desk alone draws
-  the placeholder and the room's tiles are drawn; the animation log gains no row from either failure and
+- **Build:** replay `fx-snapshot-4` on the shipped default with the room's tileset answered `404`; then with
+  the scene told — as the painter tells it — that the floor's theme failed (`theme:studio`); then with the theme
+  registry's import rejected; then, from an intact floor, that one desk's furniture set failed
+  (`theme:studio/desk:<install_id>/<seat_id>`), and that one seat's character art failed (the kit leg as it
+  stood until row 22 — the bridge kit's images failing alone — is rewritten here for the theme that replaced
+  it, and [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s
+  failure leg holds the fallback fills); then, on
+  `fx-interns`' cap leg, that one intern's art failed; then the same floors with every asset loaded. And,
+  through the painter over the fake DOM, the causes a code-drawn character fails by
+  ([§ 10.2](#102-characters-original-creatures-drawn-by-code), card#11046): a character tree whose import
+  rejects, and a generator that throws for one intern's key. **Reads:** **the harness**, the **scene**, the **placeholder**, the **status
+  strip**, the **animation log**, the **painter**.
+- **GREEN:** with the floor's theme failed, or the registry's import rejected, every desk draws the
+  placeholder — a plain rectangle in place of the art's images only, every fact drawn as on the intact desk
+  (the nameplate, the chip and the label line, the badge row and the flag, the monitor and its text, the
+  bubble) and no art — the band and every plane ask the theme for nothing and no standing piece is drawn, and
+  the status strip reads *some art failed to load*, the strip's failed assets naming `theme:studio` or the
+  registry; with the tileset failed, no wall, accent or standing piece is drawn, every desk keeps its art, and
+  the strip names the tileset; with one desk's furniture set failed, that desk alone draws the placeholder and
+  its asset alone is named; with one seat's character failed, that desk alone draws
+  the placeholder and the room's scenery is drawn; with one intern's art failed, that intern alone is drawn as
+  the glyph in its own rect — no desk draws the placeholder, every other intern keeps its sprite — and the strip
+  reads the same line; the animation log gains no row from either failure and
   every held render entered before it is still open, because an asset failure is not a state change
   ([§ 2.5](#25-what-re-renders-and-when) has no row for one) and a desk keeps its `render_state` through it.
+- **GREEN — the causes reach the report (card#11046):** with the tree's import rejected, the painter
+  reports every desk's and every intern's character asset, and nothing else it reports changes; with the
+  generator throwing for one intern's key, the painter reports that intern's asset id alone — its desk and
+  its siblings keep their drawings.
 - **RED — the blank desk:** draw nothing for a desk whose art failed → the desk is blank, which reads as an
   empty office — F14's *Never*, and [§ 9](#9-failure-paths-and-their-observables)'s opening sentence in one desk.
 - **Second RED — the silent strip:** draw the placeholder and write nothing on the strip → a viewer cannot
   tell a placeholder from the ratified look, and *why does the floor look like this* has no answer on the page.
 - **Third RED — the fact dropped with the art:** a placeholder carrying the nameplate and the state label but
-  not the badge cluster → a `lossy` seat's badge vanishes with the art, which is [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s degradation arriving
+  not the badge row — or not the monitor, its text or the bubble → a `lossy` seat's badge vanishes with the art, which is [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s degradation arriving
   through a load error.
+- **Fourth RED — the intern's failure spread or lost (card#11058):** draw the whole desk as the placeholder
+  for one intern's art, or fall back every intern of the desk, or ignore the failure, or leave it off the
+  strip → one intern's missing art costs the seat its look, or its siblings theirs, or nobody can tell why
+  the intern is a glyph.
+- **Fifth RED — the theme's failure ignored, spread or silent (card#11046):** draw a failed theme's furniture
+  anyway, or let one desk's set failing take every desk down, or leave the registry's rejection off the strip
+  (row 21's review finding) → the placeholder leg names the desk, or the strip names nothing.
 - **Not mechanised:** F14's recovery — *retry on reload* — is a request the browser makes, which the scene
   cannot show; it is read by a human on the built page and asserted by nothing here.
-- **Discriminating control:** with every asset loaded, no desk draws the placeholder and the strip carries no
-  such line — so the gate is known to be able to say *the art is there*.
+- **Discriminating control:** with every asset loaded, no desk draws the placeholder, every intern is its
+  sprite and the strip carries no such line — so the gate is known to be able to say *the art is there*.
 
 ### AT-D3-20 seat furniture never overlaps, and the overflow row stays below the floor
 
@@ -5633,8 +7067,8 @@ for, gated at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) **
 distinct slots), on [§ 10.3](#103-the-floor-map) (the map's slots are pairwise disjoint on half-open rects — held for the shipped
 default by `tools/design/verify-floor.py` G8, and for an authored map by the console's refusals row 14 builds — [§ 14](#14-open-questions-for-the-review-loop) item 28,
 ruled 2026-09-25 — with [§ 9](#9-failure-paths-and-their-observables) F21's notice for every revision those refusals never saw) and on row 14 (everything the scene draws for a
-desk except the bubble lies INSIDE its slot rect, under [§ 10.3](#103-the-floor-map)'s bounds — stools at [§ 8](#8-interns--subagent-rendering-and-the-cap)'s cap and never
-hidden, badges at D2's bound, every string truncated to the box with a mark). This test holds the last, which is
+desk except the bubble lies INSIDE its slot rect, under [§ 10.3](#103-the-floor-map)'s bounds — interns at [§ 8](#8-interns--subagent-rendering-and-the-cap)'s cap and never
+hidden, the badge row of two with the flag, every string truncated to the box with a mark). This test holds the last, which is
 the scene's and the one no map check can see, and it holds F21's notice, which is the scene's answer to the map
 defect no check refuses; the bubble is [§ 5.1](#51-the-desk) rule 5's own pass over the base rects and is checked as one. ⚠ The ratified reference is NOT the
 layout here: its `deskSVG` hangs the intern tray outside the slot, which its own comment hands to this build
@@ -5662,15 +7096,27 @@ the same reason: no browser on the build host.*
   bubble intersects another desk's furniture box, another bubble, the wall clock's face, or the overflow
   strip's own header, and the second reading places every bubble exactly where the first did — rule 5's pass
   over the base rects in a fixed order, so two browsers rendering one fleet agree with nothing stored
-  ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)); *(c)* on the overflowing run every overflow desk's furniture box and bubble lie below the
+  ([§ 3.1](#31-the-keys-and-why-they-are-the-only-ones)); **the clock clause, beside *(b)* and scoped to elements AT REST** (card#11045):
+  no primitive of the back-wall band — the elevator, a window, a sill, the skirting — and no scene element at
+  rest — a plane, the slab, a tile, a desk's furniture box, a bubble, the overflow strip or its header —
+  intersects the wall clock's face, on every run above but the undersized map (whose desk *(f)* draws past its
+  slot's edge by ruling) and on the band at every whole width from 1 px up to the test's bound. A19's and A20's transient effects are
+  outside it: the ring reaches the floor's farthest corner by ruling. ⚠ The thread line's label is outside the
+  population too, because the scene states where it starts and not how wide it is.
+  `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` holds the clause, over its own frame runs and these; *(c)* on the overflowing run every overflow desk's furniture box and bubble lie below the
   floor's extent and inside the strip's box, and no furniture of the floor reaches below the extent — one
   scalar per floor in each direction, which is the boundary the reference's check states; an overflow desk
   has no slot rect, so its box is § 12's furniture box at the cap, laid out in the strip at that pitch, and
   *(a)*'s containment is read against it; *(d)* every bubble's box is sized from the measurer's answer and
   the title at the bound is drawn truncated with a mark (rule 4); *(e)* on the cap leg and on the bound seat,
   every string the `fx-interns` row puts at its bound is drawn inside the box, truncated with a mark and never
-  past the edge, every one of the cap's stools and the *+N more* tag are drawn, none hidden, and the badge
-  cluster past D2's bound draws the bound and its *+N more* mark ([§ 10.3](#103-the-floor-map)'s bounds); *(f)* on the crowded map
+  past the edge, every one of the cap's interns is drawn as a sprite and the *+N more* tag drawn, none hidden —
+  each in its own 20 × 32 rect, keyed `seat~<call_id>` by the intern the wire put at that place, on one row in
+  the wire's order, meeting neither a sibling nor another FACT element of its desk — the side table it stands in front of is art,
+  painted first ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s rule 2, card#11046 row 20);
+  the badge row draws its two — the treatment badges, then recognised badges in the wire's order — and the flag
+  ⚠ +N counts the rest ([§ 5.1](#51-the-desk)'s *the glance set*); the nameplate at its 48 B bound is cut in the name role; the descriptor at its 200 B
+  bound is cut on the monitor; and no raw unrecognised string is drawn on the desk ([§ 10.3](#103-the-floor-map)'s bounds); *(f)* on the crowded map
   the scene emits F21's ***desk objects `i` and `j` intersect*** naming the two objects' Tiled `id`s, the room
   and the seat at each, and both desks are drawn, the later `id` on top, each inside its own slot; on the
   undersized map it emits ***desk object `i` is smaller than the furniture box*** naming the object, the room
@@ -5685,13 +7131,21 @@ the same reason: no browser on the build host.*
   input uncut → on the cap leg every bounded string crosses the slot's edge, *(a)* fails, and *(e)* fails on
   the missing mark. Planted at the primitive and not at a drawing site, because every desk string passes
   through it ([§ 10.3](#103-the-floor-map)). **What this RED proves, stated exactly:** that the primitive cuts and
-  marks, on the strings the fixture stretches. A drawing site that bypasses the primitive and draws a string
-  the fixture does not stretch — the model label, the currency label — is invisible to this RED and to
+  marks, on the strings the fixture stretches, in every role of `TYPE_ROLES` — the cap leg's descriptor in the
+  screen role ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), card#11046 row 20), the bound seat's nameplate in the name role
+  ([§ 12](#12-every-number-and-where-it-comes-from)'s *Nameplate type size* row), each of which *(e)* is required to
+  name, and in the fact role a facts-column string the cap leg stretches past the box when the primitive does not
+  cut it, which the RED reads element by element. A drawing site that bypasses the primitive and draws a string
+  the fixture does not stretch — the currency label, the lag line — is invisible to this RED and to
   *(e)* alike; § 10.3's one-primitive rule is what a reviewer of row 14's build reads such a site against,
   and no clause here claims otherwise. The desk drawn past its slot is the reference's tray defect arriving
   through text instead of furniture.
 - **Third RED — the hidden stool:** fit the cap inside the box by dropping the eighth stool, or the tag → *(e)*
   fails; a hidden stool is a dropped intern ([§ 14](#14-open-questions-for-the-review-loop) item 28), and the box is sized so that it never has to be.
+- **RED — the stool rects (card#11058):** lay the interns at a pitch narrower than their sprite, key them by
+  their place in the row rather than their call, or draw them at the old glyph's size → *(e)* fails on the cap
+  leg: siblings meet, an intern's sprite moves to whichever call the array puts at its place, or the sprite
+  is not the art contract's 20 × 32.
 - **Fourth RED — the silent crowded map:** draw the two desks over each other and emit no line → *(f)* fails;
   a viewer sees desks over desks with no word about why, which is F21's *Never* and the defect
   [§ 9](#9-failure-paths-and-their-observables)'s opening sentence names. Watched because the console's refusal reaches no revision stored before it ([§ 14](#14-open-questions-for-the-review-loop) item 28),
@@ -5705,6 +7159,9 @@ the same reason: no browser on the build host.*
 - **Eighth RED — the fixed-width bubble:** size the bubble from a constant → the title at the bound is clipped
   with no mark, and *(d)* fails — a clipped title read as the whole title is a claim about the wire the wire
   did not make ([§ 5.1](#51-the-desk) rule 4).
+- **Ninth RED — the flag that miscounts, or the raw badge in the row:** count one badge past the row out of
+  N, or draw an unrecognised badge's id in the row → *(e)* fails on the flag, or on the raw string the
+  operator's ruling of 2026-10-02 keeps off the desk (card#11058).
 - **Discriminating control:** the shipped default map — re-authored to the furniture box, which is row 14's
   obligation before this gate runs (slice B, 2026-09-25) — with the four `fx-snapshot-4` seats passes every
   clause, so the gate is known to be able to say *nothing overlaps* and *no line*; and the cap leg on that map
@@ -5715,43 +7172,54 @@ the same reason: no browser on the build host.*
   every drawn desk stands in is held equal to the file's own `desks` object, so a stand-in map cannot pass for
   the shipped one, and the GREEN clauses above run on that same file — the stand-in the suite replayed them on
   before slice B is gone.
+- **The reserved slot (card#11144):** the shipped default reserves a desk, and on `fx-snapshot-4`'s run
+  over it `aimla-pm` sits there by its role — so the positive control also requires a desk drawn at the
+  reserved slot holding the seat § 3.2's worked table seats there by its role, which puts the one slot
+  seated before [§ 3.2](#32-the-desk-slot-function)'s probe loop in *(a)*'s population.
 
 ### AT-D3-21 the camera moves the viewer and never the fleet
 
-*[§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s capability floor and its camera-is-navigation rule, mechanised — the rules of it a harness can read. Two halves, gated at their own steps: the **floor half** at [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
-**step 15**, where the camera and the capability floor are built; the **building half** at **step 16**,
+*[§ 4.5](#45-the-viewport-rule-and-the-camera)'s any-size rule and its camera-is-navigation rule, mechanised — the rules of it a harness can read. Two halves, gated at their own steps: the **floor half** at [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
+**step 15**, where the camera is built; the **building half** at **step 16**,
 where the cross-section is drawn over row 9's lobby. Navigation is never state, so the whole of what this
 test asserts is that nothing the camera does reaches the animation log or the fleet, and that what the
 viewer asked for is what the view does.*
 
 - **Build — the floor half:** replay `fx-snapshot-4` through the scene at a viewport the fixture states —
-  [§ 12](#12-every-number-and-where-it-comes-from)'s viewport floor, F; wheel-zoom at a stated cursor point, drag by a stated offset, fit-floor; then deliver a
-  `seat.delta`, a full snapshot, a resync and a `room.map`; then the same entry at F less one pixel in width and at F less one pixel in
-  height, then grown back; then `fx-degraded` at each short viewport; then [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor)'s overflowing run with fit-floor. **Reads:** **the harness**, the
-  **camera**, the **capability floor**, the **list view**, the **scene**, the **animation log**.
-- **GREEN — the floor half:** after the wheel-zoom the scene point that was under the cursor is still under
-  it; after the drag the pan moved by the offset and the clamp kept the floor in view; fit-floor frames the
+  [§ 12](#12-every-number-and-where-it-comes-from)'s reference viewport, F; Ctrl+wheel zoom at a stated cursor point, drag by a stated offset, fit-floor, a
+  plain wheel's pan in each `deltaMode` and twice past the floor's edge, a touch pinch out and in about a stated midpoint (card#11045); then deliver a
+  `seat.delta`, a full snapshot, a resync and a `room.map`; then the same entry in a window narrower than F (a phone's 390 × 700) and in one
+  as wide and lower (1,280 × 240), with the same camera acts; then a window shrunk to each and grown back; then `fx-degraded` in each small
+  window; then [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor)'s overflowing run with fit-floor. **Reads:** **the harness**, the
+  **camera**, the **list view**, the **scene**, the **animation log**.
+- **GREEN — the floor half:** after the Ctrl+wheel zoom the scene point that was under the cursor is still under
+  it; after the drag the pan moved by the offset and the clamp kept the floor in view; a plain wheel pans by
+  its scroll over the zoom, `deltaMode` normalised, with the zoom unchanged, the clamp keeping the floor in
+  view past the edge, and every one is consumed, at the edge too; a touch pinch zooms by its factor and
+  carries the scene point under the fingers' midpoint where the midpoint goes; fit-floor frames the
   floor's whole extent AND the overflow strip; every message applied afterwards leaves zoom and pan exactly
   as they were; the animation log gained no row from any camera act, and the rows it gained are the
-  messages' own; at either short dimension the route renders the list view — the same facts as text, one row
-  per seat, no map, every fact the desk model emits — read from the **list view**'s model through the harness,
-  which is what makes this clause runnable at all (`floor/main.js` is a DOM entry no harness loads, row 15):
-  on `fx-degraded` the `fold_lag` seat's row carries the lag line [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) asserts, the `catching_up`
-  seat's row its currency label, and the `config_invalid` seat's row [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s *sending nothing* note — and on growing back draws the floor again at fit, with no row for that either.
-- **RED — the logged zoom:** write an `edge` row for the zoom transition → the log carries a row with no
-  causing message. [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s totality half would catch it too; this test names the camera as its source, because
-  [§ 4.5](#45-the-viewport-rule-and-the-capability-floor) says a zoom transition is the single most natural thing to add to the table it does not belong in.
+  messages' own; in a window smaller than F in either dimension the route draws the room from its first frame,
+  at fit, and the Ctrl+wheel, the plain wheel, the pinch, the zoom step, the drag, the clamp and fit-floor each do there what they do at F; a
+  window shrunk and grown back keeps the room drawn, the floor in view and the viewer's zoom, with no row for
+  any of it; and on `fx-degraded` in each small window the room draws a desk for every seat and the frame
+  carries every seat's desk model, from which the **list view**'s rows are read through the harness (`floor/main.js`
+  is a DOM entry no harness loads, row 15): the `fold_lag` seat's row carries the lag line [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded) asserts, the `catching_up`
+  seat's row its currency label, and the `config_invalid` seat's row [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s *sending nothing* note.
+- **RED — the logged zoom:** write an `edge` row for the zoom transition — or for a wheel's pan or a touch
+  pinch (card#11045) → the log carries a row with no causing message. [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s totality half would catch it too; this test names the camera as its source, because
+  [§ 4.5](#45-the-viewport-rule-and-the-camera) says a zoom transition is the single most natural thing to add to the table it does not belong in.
 - **Second RED — the reset camera:** re-fit the floor on every render → a viewer zoomed in on one desk is
   thrown back to the whole floor on every delta, and the assertion that zoom and pan survive a message fails.
-- **Third RED — the scaled-down floor:** one pixel under F in width, draw the floor scaled to fit → the route renders a
-  floor whose nameplates are unreadable, which is [§ 13](#13-decisions-taken-revisable-at-review) row 14's refused alternative, and the list-view
-  assertion fails.
+- **Third RED — the substitute view below a minimum size:** below F in either dimension, draw no room → the list view
+  stands in for the drawing in a small window, which is [§ 13](#13-decisions-taken-revisable-at-review) row 14's refused alternative (the rule it
+  held until 2026-10-01), and the any-size assertion fails.
 - **Fourth RED — the fit that cuts the strip:** fit-floor frames the floor's extent alone → the overflow seats
   are outside the frame, which is the reference's own defect (card#7965) arriving in the build.
 - **Fifth RED — the list marked by the badge id alone:** drop the lag line from the list view, as row 8's text
   render did → below the floor the `fold_lag` seat's row is marked only by its raw badge id — [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s lag
   line and [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s note are missing — and [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s *a degraded seat is unmistakable* fails
-  on the one render a small viewport gets; the drawn floor above would have carried the hatched overlay, so
+  on the page's one text render; the drawn floor above it carries the hatched overlay, so
   this RED is the list view's own.
 - **Build — the building half:** `fx-snapshot-4` under a layout of two floors, one of them labelled, entered
   at [§ 4.4](#44-routes-and-what-each-one-fetches)'s lobby route; ride to the labelled floor, ride to the other, whole-building; then the same under
@@ -5763,13 +7231,420 @@ viewer asked for is what the view does.*
   ends at `/floor/{key}` — the KEY, on the labelled floor too — and the animation log gains no row from any
   ride or the whole-building control: it holds the run's heartbeats' A17 rows (the sky, [§ 4.1](#41-the-lobby--the-building-summary)) with
   the camera acts and without them alike; under
-  `prefers-reduced-motion` the cab and the camera cut rather than glide.
+  `prefers-reduced-motion` the cab and the camera cut rather than glide. The building's camera takes the
+  floor's gestures (card#11045) — the plain wheel pans, Ctrl+wheel and the pinch zoom — and during a ride
+  each leaves the camera on the plate, the wheel's two still consuming their event (row 16's in-flight run).
 - **Sixth RED — the label in the link:** ride to `/floor/{label}` → a route that does not resolve, which is
   [§ 4.4](#44-routes-and-what-each-one-fetches)'s ⛔ and card#9273's reason.
 - **Seventh RED — the desks on the plate:** draw the floor's desks on its plate → a count a viewer counts by
   eye, which [§ 4.1](#41-the-lobby--the-building-summary) names as the change this rendering is not, and the plate-draws-no-desk assertion fails.
 - **Discriminating control:** a client that never touches the camera reads the scene at fit and the log
   carrying exactly the rows the fixture's messages write, so a clean log is known to be reachable.
+
+### AT-D3-22 the reserved desk seats its role and nobody else
+
+- **Build:** replay every run of `fx-office` (card#11144). **Reads:** **the harness**, the **floor
+  layout**, the **animation set**, the **animation log**.
+- **GREEN — the function:** every run's last frame is [§ 3.2](#32-the-desk-slot-function)'s function
+  over that run's last seat set, relayed roles and map, re-derived by the test rather than transcribed:
+  the one eligible seat at the reserved desk, the desk empty with none or with two, every other seat
+  where the probe loop puts it with the desk taken. On the shipped default with `aimla-pm` relaying
+  `pm`, that is § 3.2's worked table, and the room carries no notice.
+- **GREEN — the holder:** where the desk seats a seat, it is the one relaying the desk's role — `pm`,
+  and `pm-helper` on the run reserving the desk for that role (the operator's ruling Q2 A: the client
+  knows no role by name, only the equality), and with the `desks` layer inside a `group` (card#11187).
+- **GREEN — nobody eligible (Q3 A):** `aimla-pm` relays `null`, which matches nothing → the desk is
+  empty, and the room's one notice is [§ 5.5](#55-the-clients-own-narration)'s reserved-desk line,
+  word for word.
+- **GREEN — two eligible (Q4 A):** a second seat relaying `pm` arrives, and in a second run an existing
+  seat's role is relayed as `pm` on a delta → the desk seats neither, the incumbent walks out — one A16,
+  whose cause is the arriving seat's key or the relaying delta's `state_version` — and the room's one
+  notice is [§ 9](#9-failure-paths-and-their-observables) F22's, word for word.
+- **GREEN — a first appearance ([§ 3.4](#34-a-new-seats-first-appearance)):** from a snapshot the seat
+  walks in at its hash slot (A1) and then to the reserved desk (A16); by an insert it appears with no
+  animation and then walks (A16). Each A16's cause is the `state_version` of the delta that relayed the
+  role.
+- **GREEN — the handover:** the incumbent walks out when the second `pm` arrives, and the newcomer walks
+  in when the old one's retirement is announced — A16 twice (causes: the arrival's key, then the departed
+  seat's), and A13.
+- **GREEN — a relay in the same render as an arrival:** one discovery release applies `aimla-pm`'s delta
+  relaying `pm`, `aimla-impl-2`'s relaying `impl-lead`, and the delta of `aimla-mac-1`, which arrives → in
+  that one render `aimla-pm` walks to the reserved desk, its A16's cause its own delta's `state_version`,
+  and `aimla-impl-2` is displaced by the arrival, its A16's cause `aimla/aimla-mac-1`: its own relay
+  changed no eligibility, so its delta is not its cause.
+- **GREEN — roles compared as strings only:** `assignSlots()` driven directly, over `fx-office`'s seats
+  and map with `aimla-pm` relaying `['pm']`, `true` or `1` → none of them is eligible and the desk stays
+  empty; relaying the string `pm`, the same call seats it (the control).
+- **GREEN — every cause has a message ([AT-D3-1](#at-d3-1-no-animation-without-its-event)'s clause):**
+  every A16 these runs write names a key a delta introduced or a `seat.retired` announced, or the
+  `state_version` of a delivered delta of that room whose `changed[]` carries `protocol_agent_role`; the
+  check is seen to refuse a key no message carries and a delta that relayed no role.
+- **RED:** ignore the reservation → the seated run's PM is at its hash slot.
+- **RED — `test_red_the_lowest_of_two_eligible_seats_keeping_the_desk_reds`, the declined
+  alternative:** the lowest `(h, seat_id)` of two eligible seats keeps the desk → the two-holder run
+  seats the incumbent.
+- **RED — `test_red_a_holder_change_that_writes_no_a16_reds`:** a holder change on a delta that writes
+  no A16 → the first appearance's walk is a desk that moved with no row.
+- **RED — `test_red_relays_that_ignore_the_eligibility_change_red_the_same_render_run`:** count every
+  held seat whose role a delta changed as a relay → in the same-render run `aimla-impl-2` names its own
+  delta.
+- **RED — `test_red_a_relay_cause_never_used_reds_the_same_render_run`:** give a relay the render's
+  arrival cause → `aimla-pm` names `aimla/aimla-mac-1`. A render whose one change is a single relay
+  names that relay's delta under this plant too, by the fallback, so it takes the same-render run.
+- **RED — `test_red_a_loose_role_comparison_seats_a_role_that_is_not_a_string`:** compare roles with
+  `==` and no string test → `['pm']` is seated. Either guard alone (`typeof` or the strict `===`)
+  holds the claim, so dropping one alone leaves the GREEN green.
+- [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) carries the REDs on the probe loop
+  (`test_red_a_reserved_desk_opened_when_nobody_is_eligible_seats_a_hashed_seat_in_it`, the desk
+  opened when nobody is eligible; `test_red_a_ring_without_the_reserved_desk_rehashes_the_room`, the
+  desk skipped instead of counted taken).
+
+### AT-D3-23 a seat leaves by the elevator and returns by it
+
+*card#9566 — [§ 6.2](#62-the-animation-table--the-closed-set)'s walk note, every numbered item of
+it that a replay can observe.*
+
+- **Build:** replay every run of `fx-elevator`, once as written and once under
+  `prefers-reduced-motion: reduce`, collecting the animation log, the scene of every render and every
+  paint-only refresh. **Reads:** **the harness**, the **desk render**, the **animation set**, the
+  **room drawing**, the **elevator walk**.
+- **GREEN — the rows:** leave-stale writes one A2 and return-from-stale one A1, each with its delta's
+  `state_version` as `cause`, written at the apply; retire writes A13 and no A2. Which values are
+  staffed and which empty is read from the shipped `NO_CHARACTER_STATES`, never re-listed by the
+  test.
+- **GREEN — the walk:** each walk's segment runs between the desk's anchor and the elevator's
+  threshold, both read off the render's own scene (`anchors`, `band.elevator`), its frames
+  `⌈length ÷ 48⌉` re-derived from those two points, and its door frames
+  [§ 12](#12-every-number-and-where-it-comes-from)'s *Elevator leaves* row. In return-from-stale,
+  under A1's walk the desk draws the empty chair with the applied object's label line and chip, and
+  the paint-only refresh at the walk's last frame draws the character, drains no journal entry and
+  writes no log row.
+- **GREEN — the edges' other side:** stale-then-offline writes its one A2 at the `stale` edge and
+  nothing at `stale → offline` or the re-sent `offline`; staffed-step writes neither A1 nor A2.
+- **GREEN — cancel:** return-then-leave ends with the empty chair the second delta delivered, one A1
+  and one A2 row, and no walk after the cancelled one; leave-then-return ends with the person seated
+  and no walk; resync-cancels draws the person seated on the resync's render, with no walker; reslot
+  draws `aimla-impl-2`'s empty chair at slot 5 with no A1 or A2 walker on the arrival's render, which
+  logs an A16 for `aimla-impl-2` ([§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event))
+  drawn as A16 is drawn today, a jump; reslot-no-row draws the empty chair at the desk object's new
+  place with no walker on the `room.map`'s render; stilled, unconfirmed and elevator-moves each draw
+  the walk on the render before the touch and no walker on the render that touches the seat, and
+  elevator-moves' threshold moves while the desk's anchor does not.
+- **GREEN — the refresh leaves the viewer:** in zoom-mid-walk the walk's end re-paints over the
+  camera the zoom left, not the applying render's, with ages newer than that render's.
+- **GREEN — effects across paints:** the repaint run and its A19 variant draw the effect in flight on
+  the heartbeat's render at its elapsed frame, with the geometry of the render that wrote it; the
+  two-walker run draws both walks with their own frame counts, and the leaves open across the union
+  of their door frames, opening once.
+- **GREEN — reduced motion:** under `reduce` every run writes the same rows at `motion: false`, the
+  scene draws no walker, and the leaves are closed on every render.
+- ⚠ **Each RED below names every run that catches it**, and the runs are cut so that most name one:
+  only leave-stale, return-from-stale and stale-then-offline cross a `stale` edge, every other walk
+  crossing `offline`, which the old keys also fired on; only retire reaches `retired`; only
+  staffed-step steps between two staffed members; only return-then-leave and leave-then-return cancel
+  a walk with a row of the opposite kind; only resync-cancels cancels by a non-animating render; only
+  reslot moves a desk under a walk with a seat entry for another seat, and only reslot-no-row with
+  no seat entry at all; only stilled, unconfirmed and elevator-moves touch a walking seat by the
+  stilled, the row 5 and the threshold clause alone, one clause each; only zoom-mid-walk moves the
+  camera inside a walk; and only the repaint run, its variant and two-walkers land a render that
+  touches no seat with a walk in flight under one — two-walkers' second render is the other seat's.
+- **RED:** A2 keyed on a new value of `offline` alone, the predicate the row read until card#9566 →
+  leave-stale writes no A2, and stale-then-offline writes two A2s — on `stale → offline` and on the
+  re-sent `offline` — and none at the `stale` edge. Caught by: leave-stale, stale-then-offline.
+- **RED:** A2 keyed on the new value alone, any member drawn as an empty chair → stale-then-offline
+  writes an A2 on `stale → offline` and another on the re-sent `offline`. Caught by:
+  stale-then-offline.
+- **RED:** A1 keyed on leaving `offline` alone → return-from-stale writes no A1. Caught by:
+  return-from-stale.
+- **RED:** A1 keyed on the new value alone, any member drawn with a character → staffed-step writes an
+  A1 on `working → idle`. Caught by: staffed-step.
+- **RED:** A2 keyed on the old value alone, any member drawn with a character, A13's exclusion kept →
+  staffed-step writes an A2 on `working → idle`. Caught by: staffed-step.
+- **RED:** A2's empty side read as *not staffed*, the complement item 1 refuses → retire writes an A2
+  beside its A13. Caught by: retire.
+- **RED:** a cancelling A2 draws its own walk (a chain) → return-then-leave draws an A2 walk after the
+  cancelled A1. Caught by: return-then-leave.
+- **RED:** a cancelling A1 draws its own walk (a chain) → leave-then-return draws an A1 walk after the
+  cancelled A2. Caught by: leave-then-return.
+- **RED:** a non-animating render that does not cancel → resync-cancels still draws the A1 walker
+  after the resync's render. Caught by: resync-cancels.
+- **RED:** cancel keyed on the render's journal alone → reslot draws `aimla-impl-2`'s A2 walker on
+  from the anchor of slot 4 after the desk has moved to slot 5. Caught by: reslot and its A1
+  variant, reslot-no-row.
+- **RED:** cancel keyed on the journal's seat entries and S's own rows — any seat's entry cancels, and
+  no anchor is compared → reslot-no-row draws the walker on from the desk object's old place after the
+  `room.map` moved it. Caught by: reslot-no-row, two-walkers, stilled, unconfirmed, elevator-moves.
+- **RED:** cancel without the row 5 clause → unconfirmed draws the walker on after the render that
+  turned row 5 on. Caught by: unconfirmed.
+- **RED:** cancel without the stilled clause → stilled draws the walker on over the stilled floor.
+  Caught by: stilled.
+- **RED:** cancel without the threshold clause → elevator-moves draws the walker on to the threshold
+  of the band before it moved. Caught by: elevator-moves.
+- **RED:** the walk's end re-paints the applying render's camera → zoom-mid-walk's refresh snaps the
+  viewer back from the zoom. Caught by: zoom-mid-walk.
+- **RED:** the walk's end re-paints the applying render's ages → zoom-mid-walk's refresh draws the
+  ages of the applying render. Caught by: zoom-mid-walk.
+- **RED:** the desk under A1's walk drawn as the applied object's render → return-from-stale draws a
+  seated character while the walker is on the floor. Caught by: return-from-stale.
+- **RED:** effects dropped at a repaint, the shipped painter's behaviour → the repaint run and its
+  A19 variant draw no effect on the heartbeat's render. Caught by: repaint and its A19 variant,
+  two-walkers.
+- **RED:** walkers queued at the door → the two-walker run's second walk is longer than its own
+  segment's frames. Caught by: two-walkers.
+- **RED:** the walk drawn under `reduce` → the reduced replays' scenes carry a walker. Caught by:
+  every run's reduced replay that fires A1 or A2.
+
+### AT-D3-24 a character is its key's creature, in every frame, at every zoom
+
+*card#11046 — [§ 10.2](#102-characters-original-creatures-drawn-by-code)'s creatures and
+[§ 10.4](#104-the-art-direction-as-a-specification)'s appearance space, interns, salt, collision
+acceptance and frame contract, every one of them a property of the generator's output that a node
+process can read with no browser. The rim's edge is eye-judged and is not here (§ 10.4). Gated at [Appendix B](#appendix-b--what-an-implementer-builds-from-this)
+**step 19**. Its home is `tools/characters/selftest.mjs`, rebuilt over the creature tree, with the
+painter's legs in `server/tests/Feature/Floor/painter-probe.mjs`.*
+
+- **Build:** load the creature generator as the page loads it and draw from it over four populations,
+  each derived on the run and none stored: **the committed roster** (§ 10.4's salt bullet); **a synthetic
+  roster of 50 seats** from a seeded key generator, its seed printed; **a synthetic population of desks
+  at [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)'s cap** — a seat and its full cap of interns,
+  each intern keyed `seat~<call_id>` under ULID-shaped call ids from a seeded generator; and **every
+  `(pose, glyph)` pair the desk model can ask a character for**, read out of `desk/desk-poses.js`'s `DESK`,
+  with A4's think pose reached through `deskModel()` (N5). Then paint desks of every such pair and one walker through the
+  painter over the fake DOM. **Reads:** the **creature generator**, the **desk
+  render**, the **painter**, the **creature gates**.
+- **GREEN — identity, and totality:** every key of every population draws and none throws; a key draws
+  byte-identical markup twice, and again after a fresh module load.
+- **GREEN — the space is the document's:** every figure § 10.4's table states — a count, or a range's two
+  ends — equals what the generator's own closed lists give it, read per species where the table states a
+  range (so a list inside a range is held only at the range's ends, and that is the leg's stated limit), and every member of every list is drawn by some key of a synthetic population —
+  with the control below that proves the reach assertion can fail.
+- **GREEN — the salt, two halves over two populations** (§ 14 item 33(2), the seat's ruling of
+  2026-10-06): *the guarantee* — under `species:s1`, every room of the committed fleet roster that holds no
+  more seats than there are species draws all-distinct species (a larger room cannot, by pigeonhole, and
+  is held to nothing here), and every key on that roster states its source; *the discrimination* — over
+  `tools/characters/salt-control.json`, the sample the salt was searched over, committed and labelled as a
+  CONTROL and never as fleet, the salted draw keeps every eligible room distinct and the unsalted draw
+  repeats a body in at least one.
+- **GREEN — the collisions, measured:** no two keys of the committed roster draw the same frame document,
+  each compared in the frame it is drawn in (§ 10.4's collision bullet), and no two of the synthetic 50; both counts are printed, the synthetic
+  one beside its seed — [§ 12](#12-every-number-and-where-it-comes-from)'s *Full-drawing collisions* row.
+- **GREEN — the interns:** over every synthetic desk, no intern's species is its seat's; no two of a
+  desk's drawings are the same document, each in the frame it is drawn in — the seat's standing frame, the
+  interns' chibi frames; and the sibling body-repeat and body-and-colourway-repeat rates are printed, the
+  build's measurement, and gate nothing (§ 10.4). Every species' and variant's chibi frame gives the head at least half its drawn
+  height — [§ 12](#12-every-number-and-where-it-comes-from)'s *Intern head share* row — measured from the
+  generator's own head and foot geometry, and stands on the 20 × 32 rect's floor line.
+- **GREEN — the frames, at parity:** for a key of every species and variant the standing frame, the walk's
+  three phases — distinct from each other, phase 0 the standing frame — and the chibi frame all draw;
+  and through the painter, a desk of every `(pose, glyph)` pair draws that key's standing frame, and a
+  held loop that moves steps the walk's frames, exactly as today (§ 10.4's frame contract).
+- **GREEN — vector and well-formed (N2):** every frame is one standalone SVG document that parses as
+  strict XML — every tag closed, every `&` an entity — with an `<svg>` root carrying
+  `xmlns="http://www.w3.org/2000/svg"`, and carries no `<image`, no `data:` URI and no reference that
+  leaves the document (a `<use>` naming an id inside it stays inside it). Through the painter, the desk's, the walker's and every intern's
+  character is an `<image>` in its clipping viewport whose `href` is a `data:image/svg+xml` URI, with
+  `preserveAspectRatio` `xMidYMax meet`; a held loop steps `href` among the cached frame URLs; and the
+  painter creates no canvas and no PNG for a character. (The text measurer's canvas is not a character
+  and is outside this leg.)
+- **RED — the salt dropped:** draw species under the field name `species` with no salt → a room of the
+  committed control draws one body twice, and the salt leg names the room (watched: aimla and sola). Watch
+  it once: it is the operator's *"the AIMLA floor has a repeated body"*, re-made. **A control on which the
+  unsalted draw repeats nothing FAILS the salt leg**, by name: it is too small to discriminate a salted
+  draw from an unsalted one, so a pass over it would report nothing about the salt.
+- **RED — the seat's body on its intern:** remove the intern re-draw → some synthetic intern wears its
+  seat's species, and the interns leg names the key.
+- **RED — a desk that loses its character:** have the painter draw nothing for a pose it has no frame
+  for (`asleep`, say) → that desk draws no character, and the parity leg names the pair; a sleeper drawn
+  as an empty desk is [§ 7.5](#75-what-a-degraded-desk-may-never-look-like)'s defect.
+- **RED — a raster frame:** have the painter show a character through an `<image>` whose `href` is not
+  `data:image/svg+xml` — today's PNG data URL — or make a canvas or a PNG for a character → the vector leg
+  fails naming the asset. And have one frame document embed an `<image href="data:image/png;…">` → it
+  fails naming the frame and the key.
+- **RED — an undecodable frame (N2):** emit a frame with an unescaped `&` in its text, or an unclosed
+  `<g>` → the well-formedness leg fails naming the defect; and a root without its `xmlns` fails too. Each
+  is what a browser refuses to decode, which § 10.2 names F14's third cause.
+- **RED — the chibi lost:** draw an intern as its seat's frame, shrunk → the head share falls under half,
+  and the chibi leg names the species.
+- **RED — the table drifts:** add a sixth eye style and leave § 10.4's table → the space leg names the
+  dimension, the list's size and the table's figure.
+- **RED — a draw that is not the key's:** take one field from `Math.random()` → the twice-drawn markup
+  differs, and the identity leg names the field's key.
+- **Discriminating controls:** *(a)* the reach assertion re-run with a constant draw reports members no
+  key reaches, so *every member is drawn* is a check that can fail; *(b)* with the salt in place and the
+  synthetic population at its seed, the salt, collision and intern legs all pass, so each is known to be
+  able to say *clean*; *(c)* a genuinely complex creature drawing passes the vector leg, so the leg is not
+  satisfied by refusing every path.
+- **Not mechanised:** whether a creature reads as cute, as Ghibli-adjacent in feel, or as somebody else's
+  character — [§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate)'s review, by a human looking
+  at the picture; whether the silhouette's edge — the approved outline and its faint rim — reads on the
+  floor, which is eye-judged (§ 10.4); whether the browser keeps the SVG-document image vector at zoom,
+  measured once in headless Chromium (§ 10.2) and re-checked on the shipped painter's screenshots; and
+  whether the chibi face reads at fit on a laptop window — which the operator's screenshot step judges ([§ 14](#14-open-questions-for-the-review-loop) item 33).
+
+### AT-D3-25 a floor is drawn in its theme, and a theme takes no fact and writes no text
+
+*card#11046 — [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s re-laid desk, theme model and house
+theme, every one of them a property a node process can read with no browser. **The halves below are each gated
+at the [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row that builds what they read:** the
+re-laid half at **step 20**, the selection half at **step 21**, the theme half at **step 22**. Its home is
+`Tests\Feature\Floor\TheDeskIsReLaidTest` over the scene and `painter-probe.mjs` for the re-laid half, the
+`Tests\Feature\Floor\TheFloorResolvesItsThemeTest` over the scene, `Tests\Feature\Building\BuildingLayoutTest`,
+`Tests\Feature\Admin\LayoutConsoleTest` and `Tests\Feature\Floor\TheThemeRegistryHasOneSourceTest` for the
+selection half, with the composition legs over `server/tests/fixtures/building/compose-cases.json`, the one fixture
+both runtimes are already held to; and for the third the **theme gates** — `tools/floor-themes/selftest.mjs`, a
+selftest over the theme registry and every theme it names, which plants each of the theme half's node REDs in a
+mirror of the tree on every run — with `Tests\Feature\Floor\AFloorIsDrawnInItsThemeTest` running it, holding the
+painter's legs through `theme-painter-probe.mjs` and the scene's over the shipped default and the planned floor,
+and AT-D3-19's test and `TheFloorDrawsItsFrameTest` holding the failure leg's scene half and the hallway's plane.*
+
+- **Build — the re-laid half:** replay `fx-snapshot-4` and `fx-interns`' cap leg on the shipped default through
+  the scene and the painter over the fake DOM, then under every
+  [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) lighting the desk model can select. **Reads:**
+  **the harness**, the **desk re-layout**, the **scene**, the **painter**.
+- **GREEN — the re-laid half, the table leg:** `deskRects()` at the box gives § 10.6's table, rect for rect;
+  every desk with art draws its chair and its side table, the table with
+  [§ 12](#12-every-number-and-where-it-comes-from)'s seat count, its foot line at box y 166 and every intern's
+  rect ending on it.
+- **GREEN — the re-laid half, the paint-order leg (§ 10.6's rule 2):** on every desk the probe reads, every fact
+  element is painted after every art element and after the character.
+- **GREEN — the re-laid half, the bare-text leg (rule 3's geometric half):** no bare text fact's rect meets an
+  art rect of its desk. Rule 3's contrast half reads the theme's surfaces and the fallback fill, which row 22
+  builds, so it is the theme half's surfaces leg.
+- **GREEN — the re-laid half, the screen:** the screen text is measured, cut by `fit()` and drawn in the screen
+  role; its ink holds 4.5:1 or more on both screens at full and desaturated light — § 10.6's contrast table's
+  floor-independent columns; and the bubble's anchor and the desk's anchor are the character rect's centre line,
+  read through one primitive.
+- **Build — the selection half:** run the server's layout reader and the console's save and restore, and both
+  runtimes' compositions over the fixture's theme cases, and replay
+  `fx-snapshot-4` on the shipped default under a floor entry naming no theme, naming the house theme, and naming
+  a theme the registry does not hold. **Reads:** **the harness**, the **theme registry**, the **layout theme
+  member**, the **scene**.
+- **GREEN — the selection half:** a floor with no `theme` and a floor naming the house theme resolve to the house
+  theme and draw no notice; a floor naming a theme the registry does not hold resolves to the house theme under
+  [§ 9](#9-failure-paths-and-their-observables) F23's notice naming the floor and the name; the server's
+  layout reader refuses a non-string `theme` at load and the console refuses an unheld name at its save and its
+  restore, each by name; and both runtimes' compositions carry the delivered name, over the fixture's theme
+  cases — the browser's reads what the server already judged and refuses nothing, as it does for `label`.
+- **Build — the theme half:** load the theme registry and every theme it names as the page loads them, and draw
+  every document each theme's `API` names over populations derived on the run and none stored — band widths from
+  1 px up to `TheFloorDrawsItsFrameTest`'s own bound; the shipped default's room, and the frame test's planned
+  floor of two abutting rooms **over a hallway**, the hallway's plane among them; side tables from no seat to
+  [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)'s cap; every kind at every tile size the shipped
+  tileset declares; every desk key of `fx-snapshot-4` and `fx-interns`. Then replay `fx-snapshot-4` and
+  `fx-interns`' cap leg on the shipped default through the scene and the painter over the fake DOM, under the
+  house theme; then with the theme's import rejected, and with one desk's furniture document throwing; and run
+  `tools/floor-themes/surfaces.mjs` and `tools/design/state-chip-colours.py --check` over its output.
+  **Reads:** **the harness**, the **theme registry**, the **house theme**, the **theme gates**, the **scene**,
+  the **painter**.
+- **GREEN — the theme half, totality and identity:** every document draws and none throws; one input draws
+  byte-identical markup twice, and again after a fresh module load.
+- **GREEN — the theme half, well-formed and self-contained:** every document is one standalone SVG document
+  that parses as strict XML with an `<svg>` root carrying `xmlns="http://www.w3.org/2000/svg"`, and carries no
+  `<image`, no `<script`, no `data:` URI and no reference that leaves the document; and no `<text>`, `<tspan>`
+  or `<foreignObject>`, so a theme cannot write a word, a name or a number; the module requests nothing.
+- **GREEN — the theme half, input closure:** every `API` function, called twice with its declared inputs equal and
+  a seat object passed as an extra trailing argument that differs in every state field — `render_state`,
+  `link_state`, `subagents`, `task` (never `seat_id`, which is part of the declared key and varies only with it) —
+  draws byte-identical documents, so no state reaches a theme but the rects, the seeds and the side table's seat
+  count; and the module holds no mutable state of its own — no module-level variable is assigned after load, which
+  the identity leg's fresh re-load and a scan of the module's top-level bindings hold;
+  and a plane document re-drawn after a map save that changes its grid, its slots or its runs under the same asset
+  id is new markup, because the painter's cache is keyed on the inputs.
+- **GREEN — the theme half, the API is the registry's:** the registry's `THEMES` and `resources/floor/themes/`
+  directories are one set; every theme exports every name in `API` and draws every kind in `KINDS`; every tile of
+  the shipped tileset declares a kind in `KINDS`.
+- **GREEN — the theme half, the drift leg:** every colour § 10.6's house table states is in the module's
+  `PALETTE` for that piece (the piece named in the table by its `PALETTE` key), and every colour in `PALETTE`
+  is in the table — both directions; and every colour the module writes is a `PALETTE` colour or one of the
+  paint rules' three (`RULES`), so a colour drawn and stated nowhere reds too.
+- **GREEN — the theme half, the band leg:** every window's surround rect is its glazing grown by § 12's surround
+  margin and the elevator's is its frame grown by its stated reach; no window surround and no elevator surround
+  meets the clock face, and the clock's case is drawn at the clock's own rect and nowhere else, over the band at
+  every width [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor)'s
+  clock clause sweeps; and every grid of the planned floor, the hallway's included, draws a plane.
+- **GREEN — the theme half, the surfaces leg:** `surfaces()` returns no colour of the exclusions § 10.6 item 1
+  names; `--scene-ink` holds 4.5:1 or more over every colour every shipped theme's `surfaces()` returns;
+  `--scene-ink` holds 4.5:1 or more over `--scene-floor`, the fallback fill; § 12's *State chip bound* equals
+  the tool's own constant, and its `REVIEWED` set and its opacity model (`OPACITY`, `SATURATE`,
+  `HOLLOW_OPACITY`) equal the values § 12's row states, so the bound cannot be sidestepped by shrinking the
+  reviewed set; `state-chip-colours.py --check` holds every reviewed
+  pair at or above that bound over those colours, read through `surfaces.mjs` and never transcribed; and the
+  screen ink's dimmed and dark columns of § 10.6's contrast table are printed for every theme over those colours,
+  gating nothing.
+- **GREEN — the theme half, a theme that fails keeps every fact:** with the import rejected, every desk draws
+  F14's placeholder, the band and every plane their flat fallback fills, every fact as on the intact desk, and
+  the strip reads *some art failed to load*, naming `theme:<name>` among the failed assets — and the same with
+  the theme registry's import rejected, the strip naming the registry; with one desk's furniture document
+  throwing, the painter draws none of that desk's set and reports its asset alone, and the next render draws
+  that desk alone as the placeholder; with one of the band's documents throwing, the band draws its flat fill
+  and none of its documents; the animation log gains no row from either.
+- **RED — art painted over a fact:** emit the chair after the screen's text, or the desk after it → the
+  paint-order leg names the desk and the pair; **and** keep today's order, the side table after the flag → it
+  names that pair.
+- **RED — a rect that is not the table's:** set the monitor's frame at x 98, 4 px further left, or centre the
+  creature again (x 81) → the table leg names the element and both values.
+- **RED — bare text over art:** lift the side table's rect into the gauge's row → the bare-text leg names the
+  gauge's percentage and the table.
+- **RED — the table's seats and feet:** draw the empty table with no seats, or end its foot line 4 px above the
+  interns' → the table leg names the desk and which.
+- **RED — the dimmed screen, today's defect:** draw the screen's text in `--scene-ink` on `--scene-monitor-dim`
+  → the screen leg fails at 2.25:1 at full light; it is watched red once, because it is the defect this test was
+  written after.
+- **RED — the screen text in the facts' role:** draw it in the fact role while `fit()` cuts it in the screen
+  role, or the reverse → the screen leg names the desk and the role.
+- **RED — the anchor left behind:** restore `ART_W / 2` at one of the sites `grep -n 'ART_W / 2'
+  server/public/js/floor/scene.js` finds today → the screen leg names the bubble or the walk anchor that no
+  longer meets the character's centre line.
+- **RED — the layout readers:** accept a non-string `theme` at load, an unheld name at the save, or one at the
+  restore → the selection half names the case; and drop the delivered name in the browser's composition → the
+  cross-runtime pin names the fixture case.
+- **RED — the silent substitute:** draw an unheld theme name as the house theme with no notice → the selection
+  half fails on the missing F23 line.
+- **RED — the registry against its tree:** add a theme directory `THEMES` does not name, or a name with no
+  directory → the API leg names it.
+- **RED — the theme that reaches out:** give one document an `<image href="https://…">` → the theme half names
+  the theme and the document.
+- **RED — a half-drawn set:** draw the documents of a furniture set or the band that did not throw when one did
+  → the painter's set and band legs name the desk and the band.
+- **RED — an undecodable document:** an unescaped `&`, an unclosed `<g>`, or a root without its `xmlns` → the
+  well-formedness leg names the defect.
+- **RED — the kind a theme forgot:** remove `armchair` from the house theme → the API leg names the theme and
+  the kind; **and** give one tile of the shipped tileset no `kind` → it names the tile.
+- **RED — the palette drifts:** set the house floor back to direction A's `#c99a6b` in the module and leave the
+  table → the drift leg names the piece and both values.
+- **RED — a surround too wide:** grow the surround margin until the narrowest window's surround reaches the clock
+  face → the band leg names the width and the window.
+- **RED — the dark fallback:** set `--scene-floor` to the drawing's `--ground` → the surfaces leg names the
+  fallback and its contrast.
+- **RED — text in a theme:** draw the seat's id as a `<text>` in the chair document → the well-formedness leg
+  names the document and the element.
+- **RED — state reaching a theme:** have the chair document read the seat's `render_state` → the input-closure
+  leg names the function and the field.
+- **RED — the stale plane:** key the painter's plane cache on the asset id → the input-closure leg's re-save
+  draws the old markup and the leg names the plane.
+- **RED — the reviewed set shrunk:** drop `offline` from the tool's `REVIEWED` → the surfaces leg names the set.
+- **RED — a surface that is not a floor:** return the landing's colour from `surfaces()` → the surfaces leg names
+  it as an exclusion.
+- **RED — the floor that breaks a chip:** darken the house floor's surfaces until a reviewed pair falls under the
+  bound → the surfaces leg fails on the chip tool's check, naming the pair and the surface.
+- **RED — the blank floor:** draw nothing for a plane whose theme failed → the facts' ink stands on the drawing's
+  dark ground, and the painter's fallback leg fails; **and** draw no plane for the hallway → the band leg's
+  planned-floor half (`TheFloorDrawsItsFrameTest`) names the hallway.
+- **RED — a draw that is not the key's:** take one seeded choice from `Math.random()` → the identity leg names
+  the document.
+- **Discriminating controls:** *(a)* the desk as § 10.6 lays it and the house theme as built pass every leg —
+  possible because no leg asks art and facts not to overlap, only that facts paint last and bare text stands on
+  the floor; *(b)* a genuinely complex document — the house floor, thousands of path commands — passes the
+  self-contained leg, so it is not satisfied by refusing every path; *(c)* a floor naming the house theme by
+  name draws exactly what a floor naming none draws, so the selection half is not satisfied by a notice on every
+  floor.
+- **Not mechanised:** whether the room looks like the approved picture — the boards, the curtains, the
+  lamplight, the desk's back; whether the screen's 8 px reads on a real laptop at fit, measured once in headless
+  Chromium ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)) and re-read by the operator; whether
+  scenery reads as well placed; whether a creature's pose stays readable under the desk and its props (the chip
+  carries the state either way, § 10.6's rule 4); and whether a large plane document stays vector and paints in time at the
+  camera's deepest zoom, which row 22's screenshot step reads ([§ 14](#14-open-questions-for-the-review-loop)
+  item 36).
 
 ---
 
@@ -5793,6 +7668,8 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | Stream tick | 250 ms | **Cited** — [D2 § 12](FLEET-STATE.md#12-every-number-and-where-it-comes-from)'s row of that name, below the ~300 ms at which a human notices latency. ⚠ It was *"the delta coalescing tick"* until card#9287, which withdrew coalescing as never legal under D2 § 8.5's plus-one rule; the **number** is unchanged and so is everything below derived from it, because what it bounds — the fastest rate at which the wire can inform this client — is the same either way | [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) |
 | **Loop frame rate** | **4 fps** | **Derived** — one frame per 250 ms stream tick, so no **claim-bearing** loop on the floor can appear more informative than the fastest rate at which the wire can inform it. It is fixed across every such loop and every seat, because a rate that varied would encode a quantity nothing sent. **Decorative motion is outside it** and is bounded by this table's *Decorative motion's minimum cycle* row instead | [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) |
 | **Gauge tween and glyph cross-fade** | **250 ms** | **Derived** — the stream tick again: a tween longer than the interval between two deltas would still be animating the previous value when the next arrives | [§ 6.2](#62-the-animation-table--the-closed-set) |
+| **Walk speed** | **48 px per frame** | **Chosen** — the distance a walker covers in one loop frame, so a walk of length `L` takes `⌈L ÷ 48⌉` frames, at least one, and every walk of one length takes the same frames whatever the seat: the speed carries no fact, which is [§ 6.1](#61-the-rule-and-what-a-loop-is-allowed-to-mean) rule 2's fixed rate applied to distance. It has been `server/public/js/floor/scene.js`'s `WALK_PX_PER_FRAME` since card#7341 step 11 (PR #231) with no row here, and takes one now because [A1](#62-the-animation-table--the-closed-set) and [A2](#62-the-animation-table--the-closed-set) cross the whole floor to the elevator (card#9566). **What re-derives it:** a walk across the shipped default measured against the characters' drawn stride once the walker is drawn. `server/tests/Feature/Floor/ASeatLeavesByTheElevatorAndReturnsByItTest.php`'s `test_green_section_12_is_the_scenes_constants` holds this cell and the constant equal ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 18) | [§ 6.2](#62-the-animation-table--the-closed-set)'s walk note |
+| **Elevator leaves: opening / step / closing** | **2 / 1 / 2 frames** | **Chosen** (card#9566) — at the loop rate, half a second to open, a quarter to step through, half a second to close: long enough to be read as the doors moving at floor zoom and short enough that the door adds little to the walk it ends or begins. **What re-derives it:** the operator's reading of the first drawn walk. Its code home is `server/public/js/floor/scene.js`'s `ELEVATOR_DOOR` ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 18), held equal to this cell by `server/tests/Feature/Floor/ASeatLeavesByTheElevatorAndReturnsByItTest.php`'s `test_green_section_12_is_the_scenes_constants` | [§ 6.2](#62-the-animation-table--the-closed-set)'s walk note |
 | **Age readout refresh** | **1 s** | **Chosen** — the unit the smallest rendered age uses. Slower shows a second that has passed; faster repaints for nothing | [§ 2.4](#24-the-clock-and-every-age-on-the-page) |
 | **Units in a rendered duration** | **2** | **Chosen** — the largest unit whose value is non-zero and the one below it ([§ 2.4](#24-the-clock-and-every-age-on-the-page) clause 3). One unit throws away the figure an operator reads a lag by (*2h* for anything from two hours to three); three renders *2h 06m 12s*, whose seconds are noise at that scale and whose width changes every second on a readout that repaints every 1 s. What moves it is a rendered duration whose second unit is not the one its reader needs | [§ 2.4](#24-the-clock-and-every-age-on-the-page) |
 | **The day boundary** | **24 h** | **Chosen**, and chosen to be **nothing**: there is no day unit and hours continue past it, so a seat dark for just over three days reads *73h 12m* ([decision 23](#13-decisions-taken-revisable-at-review)). What moves it is an operator who reads that string and wants days | [§ 2.4](#24-the-clock-and-every-age-on-the-page) |
@@ -5810,44 +7687,54 @@ and what would re-derive it. **Measured** = produced by evaluating a function th
 | `reporter.selftest_failed` bound | 8 | **Cited** — D2 § 8.2.1 | [§ 5.2](#52-the-drill-down) |
 | Subagent title bound | 120 B | **Cited** — [D1 § 4.4](EVENT-SCHEMA.md#44-size-caps-and-their-derivations), which derives it as "a dispatch description is 3–8 words" and sizes it to "the drill-down panel's one-line intern label" | [§ 8](#8-interns--subagent-rendering-and-the-cap) |
 | `install_id` / `seat_id` bounds | 32 B / 48 B | **Cited** — [D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)'s slug patterns | [§ 3.1](#31-the-keys-and-why-they-are-the-only-ones) |
-| Worst-case delta at the cap of 8 | **6,333 B** | **Cited** — D2 § 8.2.1, measured by serializing [D2 § 8.3.2](FLEET-STATE.md#832-worked-worst-case-delta) | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
+| Worst-case delta at the cap of 8 | **6,428 B** | **Cited** — D2 § 8.2.1, measured by serializing [D2 § 8.3.2](FLEET-STATE.md#832-worked-worst-case-delta) | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
 | Feed message bound | **8,192 B** | **Cited** — D2 § 8.3 | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
-| Spare under the bound | **1,859 B** | **Derived** — 8,192 − 6,333 | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
+| Spare under the bound | **1,764 B** | **Derived** — 8,192 − 6,428 | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
 | Each further subagent element | **263 B** | **Cited** — D2 § 14 item 9, measured there: a 262 B element plus its comma | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
-| Further elements that fit | **7** | **Derived** — ⌊1,859 ÷ 263⌋ | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
-| The cap could reach / its worst case | **15** / **8,174 B** | **Derived** — 8 + 7; 6,333 + 7 × 263 | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
-| A cap of 16 breaches by | **8,437 B**, 245 B over | **Derived** — 8,174 + 263 against 8,192 | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
+| Further elements that fit | **6** | **Derived** — ⌊1,764 ÷ 263⌋ | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
+| The cap could reach / its worst case | **14** / **8,006 B** | **Derived** — 8 + 6; 6,428 + 6 × 263 | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
+| A cap of 15 breaches by | **8,269 B**, 77 B over | **Derived** — 8,006 + 263 against 8,192 | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
 | **The chosen cap** | **8** | **Chosen** — the drill-down reads the uncapped detail response, so the array's only consumer is the floor's side table; the spare is worth more unspent. What moves it is measurement after P3 | [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) |
 | FNV-1a-32 constants | offset 2166136261, prime 16777619 | **Cited** — the published FNV-1a-32 parameters; chosen for being short enough to re-implement from this line alone | [§ 3.2](#32-the-desk-slot-function) |
-| Desk slots the shipped default map declares | **12** | **Measured** — the objects on the `desks` layer of `resources/floor/default.tmj`, counted by `tools/design/verify-floor.py` on every run, which reds if the file and this figure disagree. ⭐ **It was CHOSEN until the default was a file (card#9269, 2026-09-12), and the choice is still the reason the file draws that many**: 3× the `aimla` room's four seats (`docs/PLAN.md § 5`'s rollout order), which leaves room for the Windows validation seat and the next few without an edit; an authored room's `S` is whatever its author drew, read from the document and never from this row. **What re-derives it:** the map — a save that adds a desk moves this row, and the gate is what makes that mandatory rather than remembered | [§ 3.2](#32-the-desk-slot-function) |
-| The worked slot assignment | 0 · 2 · 3 · 7 | **Measured** — FNV-1a-32 of the four keys, mod 12, evaluated by `tools/design/verify-floor.py` on every run | [§ 3.2](#32-the-desk-slot-function) |
-| Collision chance per arrival | `N/S` = **1 in 3** on the shipped default, for the `aimla` room | **Derived** — 4 seats over 12 slots; a map author who wants it rarer raises `S` | [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) |
-| Gap between rooms on a floor with no plan | **64 px** | **Chosen**, and the weakest-based number in this table after the decorative-motion cycle, which is why it says so: two rooms' own perimeter walls must read as two rooms rather than as one double wall, and this figure is set to do that in the ratified reference's proportions — it is **not** a measured minimum, because no floor route exists to measure one on, and it is not derived from a tile grid, because the vendored tileset is an image collection with no grid. **What would re-derive it:** a measurement on a built floor of two adjacent rooms, the way the viewport floor's row waits on a rendered nameplate. A planned floor has no gap rule — its spacing is the plan's (card#9292) | [§ 4.6](#46-the-building-layout) |
-| **Desk sprite width** | **116 px** | **Measured** — the IHDR width of `resources/floor/tiles/furniture-kit/desk.png`, the sprite of the tileset [§ 10.3](#103-the-floor-map) vendors, read out of the file's own header by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence — **both the number and the path re-derived from that sentence**, so re-curating the tileset moves the check with it. ⚠ **It is the BRIDGE tileset's number** ([§ 10.3](#103-the-floor-map)): [§ 10.4](#104-the-art-direction-as-a-specification)'s art is resolution-independent and has no native pixel width at all, so this figure retires with the pack rather than surviving it | [§ 10.3](#103-the-floor-map) |
-| **Furniture box at the cap** | **440 × 228 px** | **Measured** — the one `FURNITURE_BOX` declaration line of `resources/floor/furniture-box.js`, the box's one source ([§ 10.3](#103-the-floor-map); the scene takes it as an input and `App\Floor\FurnitureBox` parses the same line), read out of the file by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence — both the numbers and the path re-derived from that sentence — and the number [§ 14](#14-open-questions-for-the-review-loop) item 28(1)'s console refusal reads and [§ 9](#9-failure-paths-and-their-observables) F21 compares every `desks` object against. It is what the scene draws for one desk at rest, except the bubble, at the worst case — the sprite and the character at their drawn size, [§ 8](#8-interns--subagent-rendering-and-the-cap)'s cap of stools with its tag, D2's bound of badges with its mark, and every string cut to fit — so it is the ART's own size: it moves when the art does, and [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) reds when what the scene draws at the cap no longer fits it. ⚠ It holds the BRIDGE tileset's sprite and the interim characters, so [§ 10.4](#104-the-art-direction-as-a-specification)'s art re-measures it (item 28(1)(iii)), and every stored map is validated against the figure of the day | [§ 10.3](#103-the-floor-map) |
-| **The shipped default's grid** | **3,024 × 496 px** | **Measured** — `width × tilewidth` by `height × tileheight` of `resources/floor/default.tmj` ([§ 10.3](#103-the-floor-map)'s grid row, the room's footprint on a planned floor), read out of the file by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence, which also holds every `desks` object at least the box above. **What it is made of** is the map's own composition (§ 10.3): the rows of boxes the viewport row below states and the gate re-derives, the margins holding the scenery and the doorway, and in height the rows of the box the viewport row states, the gap between them, the headroom and the pack's 8 px front-edge strip. **What re-derives it:** the map — a re-authoring moves this row, and the gate is what makes that mandatory rather than remembered. ⚠ **A building planned against the old footprint — 1,836 × 200 px until slice B — is not re-checked:** an unauthored room's footprint is this grid, measured from that room's `origin`, so any room — authored or not — that now shares a pixel with an unauthored room's 3,024 × 496 px overlaps it. While any two rooms overlap, the console refuses every room map save, restore or removal that leaves an overlap standing (`App\Floor\Floors` runs `App\Building\Layouts::refuseOverlaps` at each, over the pending map's own extent — so a save whose map clears the overlap is accepted), refuses re-saving the layout unchanged as a no-op, and the floor draws the rooms overlapping under [§ 9](#9-failure-paths-and-their-observables) F18's notice. The way out is either: move the rooms apart and save the layout, or save a smaller map for one of the overlapping rooms ([§ 4.6](#46-the-building-layout), [D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) | [§ 10.3](#103-the-floor-map) |
-| Floor viewport floor | **1,280 × 800 CSS px** | **Chosen** — below it the nameplates and badge clusters are unreadable at the map's scale, so the route serves the list view instead. ⭐ **The input it was waiting on arrived on 2026-09-12 and the number did not move — which is a verdict, not an omission.** A desk sprite is now a measured 116 px (the sprite row above), and since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice B a desk's slot is the measured furniture box and the room it stands in a measured grid (the two rows above) — and the first thing those measurements buy is a fact the old wording assumed away: the shipped default lays its slots in **2 rows of 6 furniture boxes: 6 × 440 px = 2,640 px** of desk across, on a grid **3,024 px wide** whose margins hold the scenery and the doorway — which is **wider than this viewport floor, not narrower** — so at the floor the camera's fit zoom is **1,280 ÷ 3,024 ≈ 0.42**, width-bound. ⚠ The bold figures are prose, and every one of them is RE-DERIVED: `tools/design/verify-floor.py` (G8) recomputes the rows, the boxes per row, the product, the grid width and the zoom from `resources/floor/default.tmj`, `resources/floor/furniture-box.js` and this row's own viewport floor on every run, so this cell can drift from the map only by that gate going red — a claim this cell made before it was true (PR #232 round 1, MAJOR-2), and `tools/design/verify-design-docs.selftest.py` plants each figure that leg re-derives. Before slice B this cell said **1,608 px**, on the sprite pitch and re-derived by no run — card#7341's review N-7. So the tileset does not settle the number by making the room fit — it shows the room does not, at 1:1, and the re-authoring made that plainer rather than repairing it. That is not a contradiction of this row and it is not an argument for raising it: [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera is navigation, so the floor is reached by zooming out or by panning, and **which of those is taken is exactly what decides whether a nameplate is legible** — the thing this row is actually about. ⭐ **Measured by [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15's camera (card#7341, 2026-09-26) — and the figure did not move, because the measurement shows it is not the kind of number the old wording expected.** Entered at this floor over the shipped default with `fx-snapshot-4`'s seats, the drawing surface at the viewport's full size, the camera's fit at this floor is **0.4233** — it frames the scene's whole extent, the band over the grid, width-bound — and at that fit it draws the scene's 10 px text — the nameplate and the badges' text at **4.2 CSS px**. **Method, re-run on every build:** `Tests\Feature\Floor\TheCameraMovesTheViewerAndNeverTheFleetTest` enters the route at the figure this row states, reads the camera's zoom on the first frame that draws the floor, multiplies it by the font size `server/public/js/floor/desk-layout.js`'s `FONT` declares, and reds when either bold figure here is not what the camera measures. **What it settles:** the floor at fit is not what this row makes legible. A 4.2 px glyph is far below the 10 px the scene's text is drawn at, and legibility at fit would need a drawing surface as wide as the scene, which no viewport floor can sensibly require. So a nameplate is read at this floor by ZOOMING IN, which [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s camera gives at any viewport: at zoom 1 the text is at its own 10 px and the view spans the viewport's own 1,280 × 800 px of the room. What this number actually buys is **how much of the floor a viewer sees at a legible zoom** — the old wording's legibility-at-the-map's-scale reading is what the measurement retires. **What still cannot be derived:** no document states the minimum type size, or the minimum span of desks at a legible zoom, this rule rests on, so the measurement cannot turn into a pass or a fail for the figure; it stays **Chosen** until that criterion is ruled (card#7341), and moving it is that ruling's. **And the sprite measured is the bridge's, not the ship's**: re-deriving a ratified floor off pre-rendered raster that § 10.4 has already superseded would pin a permanent number to a temporary asset. **What re-derives it:** a ruling on the criterion above, measured the way this cell's method measures; and [§ 10.4](#104-the-art-direction-as-a-specification)'s art, which re-measures the box, the scene's text size and so the fit | [§ 4.5](#45-the-viewport-rule-and-the-capability-floor) |
-| **Seeded appearance dimensions** | **10** | **Chosen** — the independent draw fields of the ratified art direction (silhouette, hue, size, pattern, ears, sprout, eye style, mouth, accessory, tilt). One dimension is a palette; ten is a space, and the operator's ruling was that colour alone is not variety. **What re-derives it:** the shipped generator's own field list | [§ 10.4](#104-the-art-direction-as-a-specification) |
-| **The full appearance tuple's space** | **8,064,000** | **Derived** — 7 × 16 × 5 × 3 × 4 × 5 × 4 × 4 × 5 × 3, the ten cardinalities above multiplied out | [§ 10.4](#104-the-art-direction-as-a-specification) |
-| **Expected full-tuple collisions at 50 seats** | **1 in 6,583** | **Derived**, and explicitly **not** the acceptance — a birthday estimate over the space above, resting on an assumption (ten independent, uniform draws) that a **searched** salt is precisely what perturbs. § 10.4 requires the real figure to be **measured** over the shipped generator and the real roster, and the measurement is what the acceptance reads | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| Desk slots the shipped default map declares | **6** | **Measured** — the objects on the `desks` layer of `resources/floor/default.tmj`, counted by `tools/design/verify-floor.py` on every run, which reds if the file and this figure disagree. ⭐ **It was CHOSEN until the default was a file (card#9269, 2026-09-12), and the choice is still the reason the file draws that many**: the operator's ruling of 2026-10-01 (card#11045) sized the default for six agents, because most floors hold six or fewer and a six-desk room is legible at fit in a laptop window — for the `aimla` room's four seats it leaves two desks free (`docs/PLAN.md § 5`'s rollout order), and a seventh agent sits on [§ 3.2](#32-the-desk-slot-function)'s overflow row under the *floor map is short N desks* notice until a map is authored. It was 12 until that ruling. An authored room's `S` is whatever its author drew, read from the document and never from this row. **What re-derives it:** the map — a save that adds a desk moves this row, and the gate is what makes that mandatory rather than remembered | [§ 3.2](#32-the-desk-slot-function) |
+| Reserved desk of the shipped default | `id 3`, `pm` | **Measured** — the one `desks` object of `resources/floor/default.tmj` carrying `reserved_for`, read by `tools/design/verify-floor.py` G8 on every run, which reds if the file, this row and [§ 10.3](#103-the-floor-map)'s sentence disagree. The operator's ruling of 2026-10-03 (card#11144) chose the back-row right corner. The floor seats the room's one seat relaying `pm` there, or nobody: a seat hashing to it probes past it ([§ 3.2](#32-the-desk-slot-function)) | [§ 10.3](#103-the-floor-map) |
+| The worked slot assignment | 0 · 1 · 2 · 3 | **Measured** — FNV-1a-32 of the four keys, mod 6, evaluated by `tools/design/verify-floor.py` on every run | [§ 3.2](#32-the-desk-slot-function) |
+| Collision chance per arrival | `N/S` = **2 in 3** on the shipped default, for the `aimla` room | **Derived** — `N` counts the held-or-reserved slots, and the reserved desk counts as held whether or not anyone holds it (card#11144): the `aimla` room's 4 seats hold 4 of 6 slots, the PM's the reserved desk (1 in 3 over the twelve the default declared until card#11045); a map author who wants it rarer raises `S` | [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event) |
+| Gap between rooms on a floor with no plan | **64 px** | **Chosen**, and the weakest-based number in this table after the decorative-motion cycle, which is why it says so: two rooms' own perimeter walls must read as two rooms rather than as one double wall, and this figure is set to do that in the ratified reference's proportions — it is **not** a measured minimum, because no floor route exists to measure one on, and it is not derived from a tile grid, because the vendored tileset is an image collection with no grid. **What would re-derive it:** a measurement on a built floor of two adjacent rooms, the way the reference-viewport row measured a rendered nameplate. A planned floor has no gap rule — its spacing is the plan's (card#9292) | [§ 4.6](#46-the-building-layout) |
+| Back-wall band height | **160 px** | **Chosen** (card#11045, the operator's ruling of 2026-10-01 that the room read as an office and not a jail) — a wall about 2.2 m tall at the floor's scale, where a 116 px desk is about 1.6 m, tall enough to hold the elevator and an office's tall glazing. **What re-derives it:** a measurement of the band against the characters' drawn height once the first-party art lands (card#11046). `server/public/js/floor/scene.js`'s `BAND_H` is its other home, held equal to this cell by `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` | [§ 4.2](#42-the-floor) |
+| Back wall's reserved zone | **272 px** | **Chosen** (card#11045) — the band's left, holding the two-door elevator and the wall clock with their margins, so no window is ever laid over the clock. **What re-derives it:** the elevator's and the clock's own widths, which move it with them. `scene.js`'s `ZONE_W` is its other home, held equal to this cell by the same test | [§ 4.2](#42-the-floor) |
+| Window pitch / glazing | **360 px** / **208 × 80 px** | **Chosen** — the pitch by card#11045, one window per 360 px of wall past the zone; the glazing by [decision 61](#13-decisions-taken-revisable-at-review) (card#11046, the seat's ruling of 2026-10-07): the approved A2+C picture's 208 by 80 px, 22 px below the band's top, short windows above a rail and a sage lower wall, kept from the jail card#11045 refused by their curtains and sills ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). Card#11045's 200 × 124 stood until row 22. **What re-derives it:** the operator's reading of the band as drawn. `scene.js`'s `WINDOW` is their other home, held equal to this cell by the same test | [§ 4.2](#42-the-floor) |
+| Wall strip width | **one cell, 8 px** | **Derived** — the map's `tilewidth`: every wall but the band shows only its top edge, a strip one grid cell wide ([§ 10.4](#104-the-art-direction-as-a-specification)'s projection rule, item 4), so the width moves with the grid and mints no number of its own. **What re-derives it:** the grid ([§ 10.3](#103-the-floor-map)'s `tilewidth` row) | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Furniture box at the cap** | **440 × 228 px** | **Measured** — the one `FURNITURE_BOX` declaration line of `resources/floor/furniture-box.js`, the box's one source ([§ 10.3](#103-the-floor-map); the scene takes it as an input and `App\Floor\FurnitureBox` parses the same line), read out of the file by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence — both the numbers and the path re-derived from that sentence — and the number [§ 14](#14-open-questions-for-the-review-loop) item 28(1)'s console refusal reads and [§ 9](#9-failure-paths-and-their-observables) F21 compares every `desks` object against. It is what the scene draws for one desk at rest, except the bubble, at the worst case — the art at its drawn size, [§ 8](#8-interns--subagent-rendering-and-the-cap)'s cap of interns with its tag, the badge row of two with the flag, and every string cut to fit. **The rects are `server/public/js/floor/desk-layout.js`'s exported table (`deskRects()`), derived from the box** (card#11058), and [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) reds when the box shrinks below the table at the cap. ⚠ It holds the BRIDGE tileset's sprite and the character rects (which the creatures keep, card#11046), so [§ 10.4](#104-the-art-direction-as-a-specification)'s art re-measures it (item 28(1)(iii)), and every stored map is validated against the figure of the day ⚠ **Row 22's furniture re-confirms the box and does not re-measure it** — every rect of [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid* lies inside it at the cap | [§ 10.3](#103-the-floor-map) |
+| **The shipped default's grid** | **1,576 × 544 px** | **Measured** — `width × tilewidth` by `height × tileheight` of `resources/floor/default.tmj` ([§ 10.3](#103-the-floor-map)'s grid row, the room's footprint on a planned floor), read out of the file by `tools/design/verify-floor.py` on every run and held against § 10.3's sentence, which also holds every `desks` object at least the box above. **What it is made of** is the map's own composition (§ 10.3): across, the boxes per row the viewport row below states and the gate re-derives, the 32 px aisles between them and a 96 px scenery strip at each side; in height, the rows of the box the viewport row states, the 40 px aisle between them and 24 px at the back and the front. **What re-derives it:** the map — a re-authoring moves this row, and the gate is what makes that mandatory rather than remembered. ⚠ **A building planned against an older footprint is not re-checked:** an unauthored room's footprint is this grid, measured from that room's `origin`, so any room — authored or not — that now shares a pixel with an unauthored room's 1,576 × 544 px overlaps it. The footprint was 1,836 × 200 px until slice B and 3,024 × 496 px until card#11045; the six-desk default is narrower than the second but 48 px taller, so a room placed 496 to 543 px below an unauthored room, and within 1,576 px of it across, overlaps it from that change on. While any two rooms overlap, the console refuses every room map save, restore or removal that leaves an overlap standing (`App\Floor\Floors` runs `App\Building\Layouts::refuseOverlaps` at each, over the pending map's own extent — so a save whose map clears the overlap is accepted), refuses re-saving the layout unchanged as a no-op, and the floor draws the rooms overlapping under [§ 9](#9-failure-paths-and-their-observables) F18's notice. The way out is either: move the rooms apart and save the layout, or save a smaller map for one of the overlapping rooms ([§ 4.6](#46-the-building-layout), [D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) | [§ 10.3](#103-the-floor-map) |
+| **Desk element rects** | the table `deskRects()` derives from the furniture box | **Measured** — `server/public/js/floor/desk-layout.js`'s exported table, derived from the box above, read by [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) on every run (card#11058) | [§ 5.1](#51-the-desk) |
+| **Character rect** | **54 × 96** px | **Chosen** — sized by card#11058 as 3 × the interim pixel character's 18 × 32 (`CHARACTER_SCALE`), and kept when the creatures replaced it: the operator's ruling of 2026-10-05 is that the desk box does not change (card#11046). The creature art draws into it with no native pixel size at all — vector, at two drawing units per floor pixel — so what re-derives this row is the box, never the art | [§ 5.1](#51-the-desk) |
+| **Intern head share** | **at least 1/2** of the chibi frame's drawn height | **Chosen** (card#11046) — the operator's *"A"*: an oversized head on a tiny body, so the face reads at 20 × 32. Half is the least at which the head is the larger part. **What re-derives it:** the operator's reading of the first drawn side table | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Monitor frame / screen / screen text** | **96 × 46** / **88 × 31** / **82** px wide | **Chosen** (card#11046) — the operator's *"I think the monitors need to be wider to show a little more text"* (2026-10-06), at the prototype's 96 × 46 in the picture the operator approved; the screen inset 4 px inside the frame and the text 3 px inside the screen. Built at row 20 into `deskRects()`, which [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s re-laid half holds to [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s table. **What re-derives it:** the operator's reading of the built monitors | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
+| **Screen type size** | **8 px**, a third measured type role | **Chosen** (card#11046) — the operator's *"The monitor screen text can be smaller so that more letters can fit"* (2026-10-07): the smallest size at which every fixture monitor read at 1:1 at the default fit on a device-scale-1 screen, measured in headless Chromium at the reference viewport; 7 px did not ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) gives the method and the glyph counts). Built at row 20 (`desk-layout.js`'s `FONT_SCREEN`, the screen role of `TYPE_ROLES`). **What re-derives it:** the same reading on a real laptop, which is row 22's screenshot step | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
+| **The creature's centre** | **a third** of the desk's width from its left edge | **Chosen** — the operator's ruling of 2026-10-06 (*"the character can be moved to 1/3 of the desk width"*); the chair follows it; the 3 px it shares with the monitor's frame is allowed by [§ 10.6](#106-themes--a-floors-design-and-the-house-theme). **What re-derives it:** the operator | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
+| **Side-table seats** | at least **4**, one more per intern past them | **Chosen** — the approved picture's table: an empty table shows its seats, and the table grows only to seat the interns drawn at it, so its width says nothing the row of interns does not. Built at row 20. **What re-derives it:** the operator's reading of the first drawn empty table | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
+| **Window surround margin** | **32** px each side, **16** above, **18** below | **Chosen** (card#11046) — the rect a theme draws a window's frame, curtains, rod and sill in, grown from the glazing; set so the approved picture's curtains and rod fit, and so a surround at the narrowest window still clears the clock face (measured on `scene.js`'s geometry: it starts inside the reserved zone and 24 px short of the face), which [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s band leg holds over every swept width. **What re-derives it:** a theme whose surround does not fit | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
+| **State chip bound** | **5.0** | **Chosen** (card#11218) — `tools/design/state-chip-colours.py`'s `BOUND`, the least CIEDE2000 difference a reviewed pair of chip fills may keep, as the tokens and as drawn; stated here so that a re-derivation over a theme's floor cannot meet it by moving it — nor by shrinking what it is measured over, so the tool's reviewed set (`stale`, `offline`, `disabled`) and its opacity model (dimmed 0.72, dark 0.45, saturate 0.3, the hollow chip at the dimmed opacity) are held with it: [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text)'s theme half holds this cell and the tool's constant equal (row 22). **What re-derives it:** a viewing test on the real floor, which is the tool's own stated re-derivation | [§ 10.6](#106-themes--a-floors-design-and-the-house-theme) |
+| **Badges drawn on the desk** / **badge chip** | **2** / **108** px | **Chosen** — the operator's ruling of 2026-10-02 (Q1 B: "up to two badges, treatment first"); an id fits a chip when its measured width is at most the chip's less its padding, and `SeatFurnitureNeverOverlapsTest` *(e)* holds every chip's text cut with the mark at the suite's measurer when it does not | [§ 5.1](#51-the-desk) |
+| **The flag** | **⚠ +N** | **Chosen** — the operator's ruling of 2026-10-02 (Q0 a); N is defined once, in [§ 5.1](#51-the-desk)'s *the glance set*, and re-derived by `TheNewDeskKeepsEveryLeafTest` | [§ 5.1](#51-the-desk) |
+| **Nameplate type size** | **13 px** bold, on a **16 px** line | **Chosen** — the operator's ruling of 2026-10-02 on card#11058 Q2, which accepted the nameplate at 13 px bold as a second measured type role: `server/public/js/floor/desk-layout.js`'s `FONT_NAME` / `LINE_NAME`, the name role of its `TYPE_ROLES`. The nameplate is the one string in it — measured, cut with the mark and centred on its plate in it by `fit()`, and drawn in it by the painter — and every other desk string is the fact role (`FONT`, 10 px). The page's measurer answers per role (`server/public/js/floor/painter.js`'s `measurer()`), and the suite's measurer measures each role at the glyph width its fixture states (`server/tests/Feature/Support/harness-measurer.mjs`). `TheCameraMovesTheViewerAndNeverTheFleetTest` re-derives the CSS size the viewport row below states from `FONT_NAME` ⚠ **Since row 20 a third role joins them**, the screen role at 8 px for the screen's text alone (§ 12's *Screen type size* row, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)), so *every other desk string is the fact role* becomes every string but the nameplate and the screen's text | [§ 5.1](#51-the-desk) |
+| Floor reference viewport | **1,280 × 800 CSS px** | **Chosen** — the window size the camera's fit is measured at, and **no minimum**: the floor is drawn at every viewport size and the viewer pans and zooms it ([§ 4.5](#45-the-viewport-rule-and-the-camera), the operator's ruling of 2026-10-01 on card#7341, which removed the capability floor this row stated until then — below this size the route served the list view instead of the map). The measurement below is what this row is for now: how small the room's text is at fit in a common laptop window, and so how far a viewer zooms in to read it. ⭐ **The input this row was waiting on:** since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice B a desk's slot is the measured furniture box and the room it stands in a measured grid (the two rows above); the desk sprite measured on 2026-09-12 retired with the bridge tileset at row 22. **Since card#11045 (the operator's ruling of 2026-10-01) the shipped default is sized so that this window shows its room legibly at fit:** it lays its slots in **2 rows of 3 furniture boxes: 3 × 440 px = 1,320 px** of desk across, on a grid **1,576 px wide** whose two 96 px side strips hold the scenery — still wider than this viewport, by less than a quarter — so at this viewport the camera's fit zoom is **1,280 ÷ 1,576 ≈ 0.81** over the bare grid, width-bound. ⚠ The bold figures are prose, and every one of them is RE-DERIVED: `tools/design/verify-floor.py` (G8) recomputes the rows, the boxes per row, the product, the grid width and the zoom from `resources/floor/default.tmj`, `resources/floor/furniture-box.js` and this row's own viewport on every run, so this cell can drift from the map only by that gate going red — a claim this cell made before it was true (PR #232 round 1, MAJOR-2), and `tools/design/verify-design-docs.selftest.py` plants each figure that leg re-derives. Until card#11045 the default laid two rows of six on a 3,024 px grid, fitted at 0.42 and drew its text at 4.2 CSS px, which no viewer reads without zooming in; before slice B this cell said 1,608 px, on the sprite pitch and re-derived by no run — card#7341's review N-7. ⭐ **Measured by [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15's camera, on the page's own surface (card#11045 PR-E).** The floor page gives the camera `#floor-drawing`'s own box (card#11045 PR-A; `server/public/js/floor/main.js`'s `surface()`): the window's width by the height the page chrome above and below the drawing leaves — the header, the status strip, the camera row, the hint's row and the reveal of the sections below, with no notice shown. So on the page at this viewport the drawing is **1,280 × 579 CSS px**, which `tools/design/floor-chrome.browser.mjs` measures on the rendered page and reds when it is not this figure. Entered at that surface over the shipped default with `fx-snapshot-4`'s seats, the camera's fit at this viewport is **0.8122** — it frames the scene's whole extent, the band over the grid, width-bound — and at that fit it draws the scene's 10 px text — the facts' text at **8.1 CSS px**: the chip, the facts column and the badges — and the nameplate's 13 px name role at **10.6 CSS px** (the operator's ruling of 2026-10-02 on card#11058 Q2: the nameplate is the one string in a second measured type role, the *Nameplate type size* row above). **Method, re-run on every build:** `Tests\Feature\Floor\TheCameraMovesTheViewerAndNeverTheFleetTest` enters the route with the camera's surface at the page surface this row states (its `camera_page` run, held to the figure above), reads the camera's zoom on the first frame that draws the floor, multiplies it by the font size of each type role `server/public/js/floor/desk-layout.js` declares — `FONT` for the facts, `FONT_NAME` for the nameplate — and reds when any bold figure here is not what the camera measures. ⚠ **The page surface is a browser's to measure, and no browser runs on the build host:** `floor-chrome.browser.mjs` is run by hand, so a change to the page chrome that moves the drawing's height reds there and not in CI, and this row is re-measured when it does. **What it settles:** at fit on a laptop window the room's text is drawn at four-fifths of the 10 px the scene draws it at — legible without zooming in, which is what the six-desk default is for. A wider room, or a smaller window, is read by ZOOMING IN, which [§ 4.5](#45-the-viewport-rule-and-the-camera)'s camera gives at any window size: at zoom 1 the text is at its own 10 px and the view spans the window's own size in scene px. That is why the ruling of 2026-10-01 on card#7341 left no minimum to set: a smaller window shows less of the room at a legible zoom, and the viewer pans to the rest. Row 22's theme draws into the box's own rects (card#11046), so it moved neither the box, the scene's text size nor the fit. **What re-derives it:** the method above, re-run on every build; moving the reference size itself carries no rule and only moves where the measurement is taken | [§ 4.5](#45-the-viewport-rule-and-the-camera) |
+| **Seeded appearance dimensions** | the rows of [§ 10.4](#104-the-art-direction-as-a-specification)'s table | **Derived** — the creature generator's own closed lists, its one home, held to that table by [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom). ⚠ **No figure for the space's size**: until card#11046 this table carried *10* dimensions, a space of *8,064,000* and a birthday estimate of *1 in 6,583* at 50 seats — the pixel reference's, retired with it. § 10.4 says why none replaces them | [§ 10.4](#104-the-art-direction-as-a-specification) |
+| **Full-drawing collisions** | **0** on the committed roster, **0** on the synthetic 50-seat roster | **Measured** — by [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom) on every run, two keys colliding when the frame document each is drawn in — a seat's standing frame, an intern's chibi frame — is byte-identical; the synthetic roster's seed is printed with its count. A threshold, not a tally: it is the acceptance § 10.4 states | [§ 10.4](#104-the-art-direction-as-a-specification) |
 | Gate 2's embedded-literal bound | **1,024 B** | **Chosen**, and **re-derived against the real tree rather than an intent**: the longest look-encoded run of base64's own alphabet anywhere under `resources/` is **107 B**, in the whitespace-stripped prose of `resources/floor/LINEAGE.md` and, at the same length, in the whitespace-stripped path data of the floor plane's `resources/floor/tiles/floor-plane/rug.svg` — its row of tassel strokes, `M6 37v2M14 37v2…`, once the spaces go (re-measured 2026-09-25, when the first-party floor plane was drawn — the lineage file alone held it on 2026-09-12, when the tileset was vendored, and it was 62 B in `index.js` on 2026-08-27; this row's own trigger is what moved it each time). Still an order of magnitude under the ceiling and far below the smallest useful sprite sheet, so clause 2 cannot fire on the tree and cannot miss a vendored asset. ⚠ **Note what the longest run now IS:** English prose with its spaces removed, and an SVG path's stroke list with the same treatment — drawing commands, not a picture's bytes — which is the residue [§ 10.1](#101-the-manifest-and-the-two-gates) clause 2 already names, observed rather than supposed. **What re-derives it:** the same measurement, whenever art is added. ⚠ **The bound is not what keeps clause 2 off legitimate SVG — the ALPHABET is** ([§ 10.1](#101-the-manifest-and-the-two-gates)): minified path data can exceed 1,024 B easily and is excluded because `.`, `-`, `,` and spaces are not base64 characters | [§ 10.1](#101-the-manifest-and-the-two-gates) |
-| D2 § 8.2.1's nullable members | **39** | **Cited** — the rows [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes`; the population `fx-nulls` must cover, and the reason it is two seats rather than one | [§ 11](#11-acceptance-tests) |
+| D2 § 8.2.1's nullable members | **40** | **Cited** — the rows [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table marks `Null? yes`; the population `fx-nulls` must cover, and the reason it is two seats rather than one | [§ 11](#11-acceptance-tests) |
 | Client event-log length | **200 lines** | **Chosen** — enough to hold a reconnect storm's worth of membership and resync lines; it is a narration of the client, not a record, and D2's own surfaces hold the durable history. **What re-derives it:** the line count one measured reconnect storm writes — every line has a named producer in [§ 5.5](#55-the-clients-own-narration), so it is measurable as soon as a client exists, and a storm that fills the log is the trigger | [§ 4.1](#41-the-lobby--the-building-summary), [§ 5.5](#55-the-clients-own-narration) |
 | Held coordination envelopes | **1,000 envelopes** | **Chosen** — five times the client event-log length's 200 lines, because a thread line consumes one envelope per post and a thread with 100+ posts is observed on this fleet's own roundtable, so a bound sized like the record's would evict a single busy thread's own history. Eviction is by whole threads, least recently received first ([§ 14](#14-open-questions-for-the-review-loop) item 25). **What re-derives it:** the envelope count a measured busy day delivers to one open page | [§ 5.7](#57-the-coordination-thread-line) |
 | A page's animation-log retention | **2,000 rows** | **Chosen** — a ceiling on what the page holds rather than a sizing for a reader, because no on-page reader of the log exists yet: the floor page writes an A14 and an A17 row on every `feed.heartbeat` ([§ 6.2](#62-the-animation-table--the-closed-set)) and the lobby an A17 row (its sky, card#7343), so an unbounded log grows at up to twice the heartbeat rate for as long as a page is open. One figure for both pages, applied by `wire/live-page.js`. It binds the pages alone — the harness and every acceptance test construct the log with no bound ([§ 14](#14-open-questions-for-the-review-loop) item 26). **What re-derives it:** the rows the drill-down ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) step 10), the first on-page reader of the log, actually needs to display | [§ 11](#11-acceptance-tests) |
 
-**One figure still rests on an intent rather than a measurement and says so at its definition:** the
-1,280 × 800 viewport floor. ⭐ **Its stated blocker cleared on 2026-09-12 and the figure did not
-move** — [§ 10.3](#103-the-floor-map)'s tileset landed and a desk sprite is a measured 116 px — **and
-that is a narrower result than the old wording expected.** A *native* sprite width was only ever half
-the input: this row's criterion is a legible nameplate and badge cluster, which is a property of the
-**rendered** desk. ⭐ **Row 15's camera took that measurement on 2026-09-26** ([Appendix
-B](#appendix-b--what-an-implementer-builds-from-this) row 15; the figures and the method are in the row)
-**and the figure still did not move**: at this floor the fit draws the desk text far under its own size,
-so the number is not a legibility threshold at fit, and what it does govern — how much of the floor is
-in view at a legible zoom — has no stated criterion to be measured against. The renderer and the camera
-the old wording named as missing now exist; what is missing is that criterion, which is a ruling
-rather than a build. Every other **Chosen** row states what would re-derive it.
+**The 1,280 × 800 reference viewport is Chosen and rests on no criterion, by design:** it is the size
+the camera's fit is measured at, and since the operator's ruling of 2026-10-01 (card#7341) it gates
+nothing — the room is drawn at every window size ([§ 4.5](#45-the-viewport-rule-and-the-camera)). Until
+that ruling it was a viewport FLOOR, the one figure here resting on an intent rather than a measurement:
+row 15's camera measured it on 2026-09-26 and showed it was no legibility threshold at fit, and the
+criterion it would have needed — a minimum type size, or a minimum span of desks at a legible zoom —
+was never stated. The ruling removed the need for one. Every other **Chosen** row states what would re-derive it.
 
 **Tool-checked versus hand-verified.** `tools/design/verify-floor.py` is **this document's** verifier and
 it ships with this change. It is a fourth, separate script: `verify-event-schema.py`,
@@ -5859,18 +7746,20 @@ belongs in its own round.
 |---|---|---|
 | **G1 animation totality** | every animation id named anywhere in this document against [§ 6.2](#62-the-animation-table--the-closed-set)'s rows, both directions; and every row's driving fact against the fields and message types D2 declares | **tool-checked** |
 | **G2 source-field closure** | **Two halves, and the row names the tables rather than the section numbers, because a section number is what let this row over-claim for two revisions.** *(a)* every field named in the source column of [§ 5.1](#51-the-desk), [§ 5.2](#52-the-drill-down), [§ 5.3](#53-the-fleet-on-both-screens), [§ 5.7](#57-the-coordination-thread-line), [§ 6.2](#62-the-animation-table--the-closed-set)'s driver column and [§ 4.3](#43-the-desk-drill-down-panel)'s panel table — **and that list is set-differenced against the tool's own table map in both directions on every run**, because it is one fact with two homes and the prose home is the one that over-claimed for two revisions — against [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s field table, § 8.2.4's fleet object, § 8.2.3's `detail`, § 8.3's message types and — since D2 gained the surface (card#9212) — [§ 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s two coordination objects, whose rows are read from **both** of that section's field tables, because a first-table-only read would admit one object and report clean over the other. *(b)* every backticked field-shaped token in the prose columns of **[§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s seven tables** — § 7.1's two, § 7.2's badges, § 7.3's currency table and § 7.6's three — classified against five re-derived vocabularies: a D2 field, the **leaf** of one, a member of any of the six enum sets this document publishes, a [D1 § 9.3](EVENT-SCHEMA.md#93-degradation-counters) counter name, or one of D1's 14 event kinds. A token in none of the five is a field this document invented. Half (b) exists because half (a)'s tables contain **no § 7 table**, so a fabricated D2 field planted in § 7.1, § 7.2 or § 7.6 left this gate green while the same fabrication in § 5.1 red it. Its control is a **capability test rather than a token count** — the classifier is fed a fabricated field on every run and must reject it — because three of the seven tables name no field at all today, which is a property of the document and would make a count floor either vacuous or wrong. Plus the **residue** — D2 fields this document renders nowhere — printed rather than counted as a pass | **tool-checked** |
-| **G3 cap arithmetic** | 6,333 / 8,192 / 263 / 1,859 / 7 / 15 / 8,174 / 8,437 / 245 re-computed from the **three** inputs (worst case, bound, per-element), and those three checked for **presence in D2** — anywhere in D2, not at a named statement, which is the narrower claim the tool can actually make and is why "is a Cited number true at its D2 home" stays on the hand-verified rows below | **tool-checked** |
+| **G3 cap arithmetic** | 6,428 / 8,192 / 263 / 1,764 / 6 / 14 / 8,006 / 8,269 / 77 re-computed from the **three** inputs (worst case, bound, per-element), and those three checked for **presence in D2** — anywhere in D2, not at a named statement, which is the narrower claim the tool can actually make and is why "is a Cited number true at its D2 home" stays on the hand-verified rows below | **tool-checked** |
 | **G4 § 12 ↔ definition site** | each row's number as a whole numeric token at the section it cites, then **perturbed** to prove the match can fail for that row; the residue — numbers some other value would also have matched — printed individually | **tool-checked**, with its residue printed |
 | **G5 acceptance-test closure** | every fixture named in a test against the fixture table, both directions; every test having a **RED**; the AT ids contiguous from 1 with no gaps or duplicates. **Plus the build-order half:** every test is gated by at least one [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row, every row gates a test that exists, and **every declared half of every test is gated at or after the step that builds every artifact that half declares it reads** ([§ 11](#11-acceptance-tests) owns the rule; this row describes the gate). **Three** populations re-derived, none stored: the artifact→step map from Appendix B's own bold Artifact names — which is why a landed step's marker has one form, `✅ landed YYYY-MM-DD (card#N …) — ` unbolded at the head of its Artifact cell, and a marker bold, later in the cell or in the Gate cell reds rather than parsing as an artifact — what each test reads from its `Reads:` clauses, and which half a gate gates from the Gate cell's own qualifier — so renumbering the build order, renaming an artifact or re-splitting a test all move the check with them rather than leaving a stored `10` behind. **An unqualified gate mention gates every half**, which is what stops a step-10 co-gating from discharging a step-3 mention on the same test — the hole a `max()` over the gate steps left open. Residue printed in full: an artifact a test's body emphasises and its `Reads:` clause does not declare. **Plus the harness half:** every `Build` bullet of a test that names a fixture from [§ 11](#11-acceptance-tests)'s table, or names the harness, declares **the harness** in its `Reads:` clause, whatever else it names; a test that names no fixture and not the harness may instead name an instrument, which is an Appendix B artifact named as a gate, when the Appendix B row that builds that instrument also gates the test; any other bullet reds, and a backticked name beginning `fx` that the fixture table does not declare is a control. The classification is checked before the instrument, because checked after it a bullet that replays a fixture could trade the harness for a gate and pass; and the instrument is anchored on Appendix B's own rows, because the classification is read by recognizers a test can fall outside — a test that names no fixture and swaps its harness for a gate, or a fixture name written outside backticks. ⚠ **Its declared hole:** it catches a test the harness drives that forgets the harness, and cannot prove a `Reads:` clause true, so a deliberately false declaration is a review question. Judged per test because a split test's later halves replay *the same fixture* by reference, which is where a per-bullet fixture match under-covered. **Plus the record's name:** the phrase *the lobby log* reds wherever it is **used** rather than quoted — the record is the client protocol's artifact ([§ 5.5](#55-the-clients-own-narration)) and the lobby is one renderer of it, so naming the renderer is what gates a test on a screen built six steps after the thing it reads; a wording this document must quote in order to forbid is marked with emphasis, and the recognizer is wrap-tolerant because a phrase broken over a line break is how the last one hid. **Plus the log-schema half:** [§ 11](#11-acceptance-tests)'s animation-log row tuple against the per-class field table beside it, and that table's row count against the number the prose states — one schema, two homes, three revisions so far, and the count read `four` against five rows for a whole revision. **Plus the episode-walk half:** the `fx-clear-trace` walk's own `(A_n, episode N)` pairs re-added into an episode count and a row count and checked against the sentence beneath it, in both directions, plus a `left` pair with no `entered` pair before it — the walk is indented under a list item, which is why nothing had read it while the sentence beside it said *six* and *eleven* over a table yielding five and nine | **tool-checked** |
 | **G6 Appendix A** | its stated counts against both row counts, and the **marker population of D2 and of D1** against the sections Appendix A cites from an upstream-attributed position. The recognizer is not the literal `D3` alone — it is `D3` **plus the render-directed phrasings upstream actually uses**: *rendered in the drill-down*, *the drill-down can say*, *visible in the drill-down*, *must render*, *renders as quiet*, *readable in its drill-down*. Grepping for `D3` alone is what let [D2 § 4.7](FLEET-STATE.md#47-which-clock-each-ceiling-is-measured-from) and [§ 4.8](FLEET-STATE.md#48-what-may-never-mint-a-state) place three render obligations this document neither listed nor discharged. **Each phrase is matched wrap-tolerantly, across line breaks**, and that is the load-bearing half rather than a nicety: the scan was line-scoped, [D1 § 12.2](EVENT-SCHEMA.md#122-error-responses) is typeset with its phrase broken over a wrap, and adding the phrase to a line-scoped list would have left the check clean over it exactly as before | **tool-checked**, with a stated limit: an obligation phrased in none of those forms is still not grep-derivable, so the tool prints the semantic remainder **row by row** rather than as a count |
 | **G7 state and badge render closure** | **six** member sets — `render_state`, `unknown_reason` and the 18 badges from D2, `link_state` and `activity_state` from [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s bounds cells, and `api_error_type`'s twelve from [D1 § 6.4](EVENT-SCHEMA.md#64-turnend), which is where D2 sources it — each re-derived upstream and set-differenced against this document's tables in **both** directions: a member with no render, and a render for a member no input can select. The `link_state` half is what makes `disabled`'s absence from [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim) impossible to leave in | **tool-checked** |
-| **G8 desk-slot worked example** | the four hashes, their moduli and the assignment, re-computed from [§ 3.2](#32-the-desk-slot-function)'s stated function; and the collision example of [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event). **Plus `S` against the MAP, added by card#9208 because the leg it replaces was a decoration:** `S` was read out of § 3.2's own prose and checked against nothing, over a sentence that called the map *shipped* while no `.tmj` existed in the repository — the gate asserting the document against itself. It now resolves the artifact from [§ 10.3](#103-the-floor-map)'s declared path in **either** Tiled spelling (the two re-derived from § 10.1 clause 1's allowlist, not stored in the tool), and takes one of two branches, each able to red: with the file present it counts the objects of the object layer § 10.3 names and reds if that count is not `S`; with it absent it requires § 10.3 to **declare** the absence and sweeps the tree for any map file that would falsify that declaration. § 10.3's own restatement of `S` is closed against § 3.2's in the same leg | **tool-checked**, and since card#9269 the branch in force is the one that measures: the default is a file, so `S` is held against **its `desks` objects** rather than against this document's own declaration that there is none. The stated limit that stood while no map was vendored — that the ABSENT branch asserts what the document says and is a different claim from *the map has 12 desks* — is the other branch's, and it is live the moment the file leaves the tree. **Plus, since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice B, the box and the grid against their files:** the furniture box read out of `resources/floor/furniture-box.js`'s one declaration line — the shape `App\Floor\FurnitureBox` admits, so the gate cannot read a box PHP would refuse — and the shipped default's grid read out of the map, each held against [§ 10.3](#103-the-floor-map)'s sentence with the path re-derived from it, and every `desks` object of the shipped default held at least the box on both axes; the box's declaration shape is read out of `App\Floor\FurnitureBox` rather than copied; and the viewport row's arithmetic — its rows, boxes per row, desk across, grid width and fit zoom — re-derived from the map, the box and the row's own viewport floor (PR #232 round 1); and the worked floors laid at the box — [§ 4.6](#46-the-building-layout)'s two worked rows and [D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s authored rooms and worked room map — re-derived from that box: each grid's pixel size from its tiles, the office pitch and the floor's extent, each room's desks against the box, the placed rooms pairwise disjoint, § 8.7's spacing against its worked layout's origins and its worked `desks` object against the box (PR #234 round 1). Each has its plant in `tools/design/verify-design-docs.selftest.py`, watched red — except, of the worked-floor sub-legs, the selftest plants only § 4.6's copy of the box, § 8.7's spacing and § 8.7's `desks` object; the grid sizes, pitch, extent, desks-against-box and disjointness sub-legs were watched red by hand in a scratch copy (PR #234 rounds 1 and 2) and carry no permanent plant |
+| **G8 desk-slot worked example** | the four hashes, their moduli and the assignment, re-computed from [§ 3.2](#32-the-desk-slot-function)'s stated function; and the collision example of [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event). **Plus `S` against the MAP, added by card#9208 because the leg it replaces was a decoration:** `S` was read out of § 3.2's own prose and checked against nothing, over a sentence that called the map *shipped* while no `.tmj` existed in the repository — the gate asserting the document against itself. It now resolves the artifact from [§ 10.3](#103-the-floor-map)'s declared path in **either** Tiled spelling (the two re-derived from § 10.1 clause 1's allowlist, not stored in the tool), and takes one of two branches, each able to red: with the file present it counts the objects of the object layer § 10.3 names and reds if that count is not `S`; with it absent it requires § 10.3 to **declare** the absence and sweeps the tree for any map file that would falsify that declaration. § 10.3's own restatement of `S` is closed against § 3.2's in the same leg | **tool-checked**, and since card#9269 the branch in force is the one that measures: the default is a file, so `S` is held against **its `desks` objects** rather than against this document's own declaration that there is none. The stated limit that stood while no map was vendored — that the ABSENT branch asserts what the document says and is a different claim from *the map has 12 desks* — is the other branch's, and it is live the moment the file leaves the tree. **Plus, since [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 14's slice B, the box and the grid against their files:** the furniture box read out of `resources/floor/furniture-box.js`'s one declaration line — the shape `App\Floor\FurnitureBox` admits, so the gate cannot read a box PHP would refuse — and the shipped default's grid read out of the map, each held against [§ 10.3](#103-the-floor-map)'s sentence with the path re-derived from it, and every `desks` object of the shipped default held at least the box on both axes; the box's declaration shape is read out of `App\Floor\FurnitureBox` rather than copied; and the viewport row's arithmetic — its rows, boxes per row, desk across, grid width and fit zoom — re-derived from the map, the box and the row's own viewport (PR #232 round 1); and the worked floors laid at the box — [§ 4.6](#46-the-building-layout)'s two worked rows and [D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s authored rooms and worked room map — re-derived from that box: each grid's pixel size from its tiles, the office pitch and the floor's extent, each room's desks against the box, the placed rooms pairwise disjoint, § 8.7's spacing against its worked layout's origins and its worked `desks` object against the box (PR #234 round 1); and, since card#11144, the shipped default's reserved desk — the one `desks` object carrying `reserved_for`, read out of the map, its id and role held equal to [§ 10.3](#103-the-floor-map)'s sentence and to this section's row by value, because G4's whole-token match is satisfied by any other `3` in § 10.3; and (card#11144 PR-3) the worked assignment and the collision re-derived OVER that reservation — the reserved index taken before the probe loop, the table's one `role` row its holder and seated there, § 3.3's arrival and displaced incumbent run through the same function with no other desk moving — with a CONTROL that the function without the reservation disagrees with the table, watched red by hand in a scratch copy. Each has its plant in `tools/design/verify-design-docs.selftest.py`, watched red — the reserved desk's three homes one plant each, and the reserved re-derivation three (the holder's slot, the probe count of the seat hashing to the reserved desk, § 3.3's displaced slot) — except, of the worked-floor sub-legs, the selftest plants only § 4.6's copy of the box, § 8.7's spacing and § 8.7's `desks` object; the grid sizes, pitch, extent, desks-against-box and disjointness sub-legs were watched red by hand in a scratch copy (PR #234 rounds 1 and 2) and carry no permanent plant |
 | **G9 the delivery contract** | [D2 § 6.5](FLEET-STATE.md#65-the-fold)'s **ten** non-version-bearing members, re-derived from that section's own table, against every render row that sources one — **per member, not per row**: each member must carry a marker **legal for that member**, where `dark-only` is granted to `delivery.last_receipt_at` alone (re-derived from § 6.5's own carve-out sentence, not written into the tool) and `fetch-fresh` governs the rest; a row carrying `dark-only` must source that member; and a row of a table that renders on the **desk** — [§ 5.1](#51-the-desk) and [§ 7.1](#71-the-render-per-state), the two the column map flags as desk surfaces — must carry `dark-only` specifically for it, because on the desk that is the marker in force. The row-scoped test this replaces could be satisfied by a marker belonging to a **different surface** — § 5.1's receipt-age row survived deleting `dark-only` because the same row mentions `fetch-fresh` for the drill-down. Also: this document must cite § 6.5 at all. A field-existence check cannot see a delivery contract — all ten exist in § 8.2.1, which is why G2 was clean over a receipt age that freezes on every live desk. **And the rule's own statement of its scope is closed against the gate, both directions:** [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s marker-rule sentence enumerates the tables the rule holds over, which is a second home for this gate's column map and is the home that went false twice — five tables named while § 5.6 sat outside the gate, seven named while § 7.1 rendered the receipt age on the desk. Neither side is stored: the map is the tool's, the list is read out of the document. **The table population is DERIVED, not listed:** every markdown table in this document is found structurally, a table under a § 5 heading that the gate has no source column for **reds** rather than being skipped, and membership in that population is keyed on a row's **line number** rather than on its text, so a row byte-identical to a checked one cannot be pasted into an unchecked table and test as already-checked. A table row anywhere else naming one of the ten **reds** unless it declares itself **`named-not-rendered`** ([§ 2.4](#24-the-clock-and-every-age-on-the-page)) — a marker in such a row exempts nothing, and the only two rows entitled to carry one without rendering are found by **role**: the marker table's own rows, whose key cell *is* the marker, and this table's rows, found by this table's header | **tool-checked**, with **one** stated limit: **prose**. The gate held a list of five table headers until § 5.6 was added with six ten-sourcing rows and no marker — the list did not contain it, nothing reddened, and § 2.4 went on claiming the rule held over every § 5 row. A stored population does not fail visibly; it under-reads. Both halves of that are now inverted — the population is re-derived every run and the rows that used to be *announced* as outside it are **failures** unless the document declares them — and the second finding of the same shape, § 7.1's two desk renders of the receipt age, is why the outside-the-map rule no longer accepts a bare marker token: a token-presence test admits a row naming the marker for a surface it does not render on. What remains outside is a bookkeeping member reintroduced in **prose**, and every prose mention is printed **in full**, leaf spellings included. Not a capped sample: the residue printer used to print the first twelve of nineteen beside the true count, which reads as a complete list and is how the seven it hid stayed hidden |
-| **G10 null-render closure** | [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s `Null? yes` column — all 39 members — set-differenced against [§ 5.6](#56-the-null-render-for-every-nullable-member)'s table in **both** directions: a nullable member with no stated null render, and a null render for a member D2 does not mark nullable. Plus § 12's own published count of that population against the column it counts | **tool-checked** |
+| **G10 null-render closure** | [D2 § 8.2.1](FLEET-STATE.md#821-the-seat-state-object)'s `Null? yes` column — all 40 members — set-differenced against [§ 5.6](#56-the-null-render-for-every-nullable-member)'s table in **both** directions: a nullable member with no stated null render, and a null render for a member D2 does not mark nullable. Plus § 12's own published count of that population against the column it counts | **tool-checked** |
 | **G11 a worked example against the rule statement that governs it** | **The class is [§ 7.1](#71-the-render-per-state)'s stated convention made checkable**, and it now holds **two** facts, each with its own owning table and its own instances. **(a) The composed `api_error_type` line:** [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s twelve member/phrase pairs, re-derived from that table, against the two sites that render one — [§ 7.1](#71-the-render-per-state)'s `stalled` **worked instance**, which must carry a member **verbatim** with that member's phrase **beside** it, and [§ 5.1](#51-the-desk)'s *rendered verbatim* row, whose illustration must be a **member** and never one of the phrases. The instance that shipped: the cell published *API error — rate limit* — the phrase with the raw value elided — against five statements including its own **Never** column, and nothing could difference the two sites because the **composition** was published at neither. **(b) WHERE the `activity_state` currency label is drawn:** the placement phrase is re-derived from [§ 7.6](#76-the-three-remaining-member-sets-published-so-membership-is-testable)'s five `activity_state` rows — which must **agree with each other**, or the rule is reported as disagreeing with itself and no instance is judged — and every worked instance elsewhere in the document must state that same placement. Its population is found **structurally**, not listed: any table cell carrying a *was:* span or naming the `activity state` in words. The instance that shipped: [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s `catching_up` and `disabled` rows read *in the label only* — a **one**-element reading under which a `catching_up` desk draws `activity.last_event_time` twice — and § 7.6's own `link_state` row had drifted with them. Every predicate is **fed its own defect on every run** and must reject it, because a comparison only ever shown agreeing is not evidence it can disagree; the placement predicate's defect arm builds its counter-example by substituting a preposition the rule does **not** use, chosen from the recognizer's own alternation, so the tool stores no answer | **tool-checked**, with **three** stated limits. *(1)* It holds each fact at the sites that **render** it in a table, and cannot see one minted in **prose**. *(2)* **This table's own rows are excluded by role**, and the exclusion is a finding rather than a convenience: a row documenting a guard necessarily **quotes the defect it guards** — the (b) row above quotes *in the label only* in order to say what was wrong — so a recognizer that read it would **fail on the correction and pass a silent fix**, getting redder the more honestly the defect is written up. It fired exactly that way on this row before the carve-out existed. § 12 renders nothing, so nothing is lost; G9 excludes the same rows by the same role. *(3)* **The placement leg asks whether a cell CONTRADICTS § 7.6, never whether it states the placement at all**, so a cell re-wording the placement out of the recognizer's vocabulary escapes by matching nothing. The stricter tier was written and **removed**: it red on § 7.1's own `catching_up` cell, which says the form is drawn *under this line* while pointing at § 7.3 and § 7.6 — correct, and a **mention** rather than a placement, which no structural test here can tell apart. Enforcing the literal would have made a style rule that reds on a careful paraphrase and passes a careless overwrite |
 | **G12 the duration format** | [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s seven clauses re-implemented as a function, and **every row of that section's boundary table reproduced** — the capability control, since a formatter that agreed with nothing would pass the two legs below by rejecting everything. Then the legs: every duration-shaped token inside a **rendered string** — § 2.4's own Verbatim column and [§ 7.1](#71-the-render-per-state)'s Label line cells, read as the published span rather than as cell prose — must be a **fixed point** of the function, so *11m 00s*, *2h 6m* and *0m 50s* red where *11m*, *2h 06m* and *50s* pass; and § 7.1's `stale` and `offline` cells are re-derived **arithmetically** from the timestamp in their own span and the corrected clock their own prose states, so a worked pair that stops describing one moment reds. What it does NOT reach is a duration in **prose**, which is the same residue G9 has and for the same reason | ✅ |
 | **G13 an empty-desk Never cell, scoped** | the comment block at G13 in `tools/design/verify-floor.py`, which states what it reads, what it reds on and what it cannot do | **tool-checked** |
 | **G14 the lobby label's one statement** | [§ 4.1](#41-the-lobby--the-building-summary)'s plate label, two legs: the label-contract vocabulary `verify-floor.py`'s G14 names, found anywhere in this document outside § 4.1's claim region (its lead-in through its last numbered claim) or in a `card#7343` bullet of the CHANGELOG, reds; and every numbered claim of § 4.1 must end with the check that holds it or a declaration that none does, each test method it names must exist in the file it names, and each contrast-tool control it names must exist in that tool | **tool-checked** — never whether a claim is true, or whether the check it names asserts it, which is a reviewer's; nor a paraphrase that uses no listed term, an unnumbered bullet inside the claim region, or code and test docblocks, `tools/design/README.md` and the tool headers |
+| **G-walls the PM office walls** | [§ 10.4](#104-the-art-direction-as-a-specification)'s projection rule, item 4, on the shipped default, two legs: every wall cell — a cell whose tile declares the kind `wall` — outside every `desks` object (half-open rects, G8's own test); and the wall-strip tile (tile 2 of `floor-plane.tsx`) declaring `kind: wall`, its marker parsed as well-formed XML. Until row 22 (card#11046) a leg held the bridge kit's elevation-only tiles off the map, which became G-scenery's first, and a leg held the strip's fill equal to `--house-trim`, which retired when the theme began drawing the walls. Each leg has a control that reds rather than reporting clean over an empty population. **Not checked:** an authored map, where a wall runs, the doorway's width, and how the walls look | **tool-checked** on the shipped default |
+| **G-scenery the shipped default's standing pieces** (card#11046, built at row 22) | on the shipped default: every tile names a tileset the repository ships and a tile that declares a kind in the theme registry's set; every standing kind's cell rect — bottom-aligned, as drawn — lies inside the grid and outside every `desks` object (half-open, G8's own test). **Not checked:** where an `accent` is painted, which is the author's. Each leg with a control that reds rather than reporting clean over an empty population; `tools/design/verify-design-docs.selftest.py` plants a standing piece inside a slot and watches it red | **tool-checked** on the shipped default |
 | Whether a rendering is *good* | — | **hand-verified**, and it is a review question this document cannot mechanise: the tool checks that every rendered fact has a field and every **claim-bearing** animation has an event, never that the floor is legible — and **never** that decorative motion ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)) stays inside its bound, which no gate reaches at all |
 | Whether a **Cited** number matches what D2 says | — | **hand-verified**: the tool checks the number's presence at its D3 home, not its truth at D2's |
 
@@ -5906,12 +7795,12 @@ review can reverse it deliberately rather than discover it later.
 | 8 | **An unknown seat in a delta is FETCHED, never patched** ([§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) | apply the patch as an insert; or ignore the delta until the next snapshot | A patch is a shallow merge over an object the client may not hold, so the insert would be a seat object with holes, and a hole renders as *nothing is happening*. Ignoring it leaves a live seat invisible until a reconnect | one HTTP request per newly-seen seat, ever. [§ 14](#14-open-questions-for-the-review-loop) item 2 is the membership message that would remove even that |
 | 9 | **Install membership is snapshot-only; the snapshot that discovers one is triggered by a rendered disagreement, never by a timer; and that snapshot ADMITS every install it discovers, its rows applied under the version rule, rather than merely rendering it** ([§ 4.1](#41-the-lobby--the-building-summary), [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold), [§ 2.2](#22-connect-snapshot-deltas)'s `ADMIT`) | poll the snapshot on a timer; or leave discovery to a reconnect and the manual refresh alone | A discovery poll invents a cadence D2 does not state and fetches the whole fleet on a schedule. But `fleet.seats_total` already rides every heartbeat, so the client can **prove** its population is short within 15 s — and a floor that renders *showing 3 of 4 desks* and then does nothing about it is a floor that reports a defect it could have fixed with one request. Rendering *membership as of HH:MM:SS* keeps the staleness visible in the meantime | one snapshot fetch per distinct disagreement — a failed one spends nothing and is retried at the next heartbeat — bounded by how often the fleet's own count moves and by how often an install is provisioned, not by a clock. An earlier draft of this row said a new install stays invisible until a reconnect or a manual refresh; that was contradicted by the discrepancy check two sections away, and the check is the half worth keeping. A later draft made the discrepancy fetch the discovery path and stopped there — **discovery without a subscription is a one-frame photograph**, and the per-distinct-`(N, M)` rule guaranteed there was no second chance at one, which is why the subscribe-then-fetch-then-drain ordering is now a named primitive every entry path cites rather than three steps living inside the connect sequence. ⚠ card#7341 step 3 removed the second fetch that primitive ran after a discovery: every row and delta carries its seat's `state_version`, so the discovery snapshot applied under [§ 2.2](#22-connect-snapshot-deltas)'s version rule is the admission, and the re-fetch ordered nothing the first fetch had not |
 | 10 | **A desk is removed on the ANNOUNCEMENT (`seat.retired`, or the delta that carries `render_state: "retired"`), or on a *full* snapshot apply — and on nothing else**: never on a delta's absence, never on a poll, never on a seat fetch's one object ([§ 3.5](#35-retirement-and-the-only-removal), [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold)) | remove on any signal, including an absence; or — the shape this row held until card#9078 — remove on the snapshot alone and let the announced retirement linger as a cleared desk | A removal driven by an **absence** is the inference this design refuses everywhere else, and that half is unchanged. A removal driven by an **announcement** is the opposite: an operator act, with an author and a reason, published by the one process that performs it. Only a fresh, complete population can honestly say a seat is no longer in it — which is what keeps the snapshot path as the backstop for a client that missed the message | two removal paths rather than one, and they must agree: the announcement removes at once, the snapshot removes what a disconnected client never heard about. ⚠ **operator ruling, card#9078**, which reversed the row this replaced — *"when an agent is removed, its seat and desk should go away immediately"* |
-| 11 | **The subagent array cap stays at 8** ([§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)) | raise it to 15, the largest value the 8 KiB bound admits | The drill-down reads the uncapped detail response, so the array's only consumer is the floor's side table, where 15 stools is D2's "a list, not a desk" at a smaller number; and the 1,859 B of spare is the margin the next field addition needs | a fleet that routinely runs more than 8 concurrent dispatches reads *+N more* on the floor and opens the panel for the detail. Both halves of what would change this are measurable after P3 |
+| 11 | **The subagent array cap stays at 8** ([§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason)) | raise it to 14, the largest value the 8 KiB bound admits | The drill-down reads the uncapped detail response, so the array's only consumer is the floor's side table, where 14 stools is D2's "a list, not a desk" at a smaller number; and the 1,764 B of spare is the margin the next field addition needs | a fleet that routinely runs more than 8 concurrent dispatches reads *+N more* on the floor and opens the panel for the detail. Both halves of what would change this are measurable after P3 |
 | 12 | **`prefers-reduced-motion` is a first-class rendering with its own column** | disable animation and accept that some states collapse | Two states distinguished only by motion are one state in a screenshot and one state to any viewer with motion disabled — and screenshots are how most of this floor will be reviewed | every animation row owes a static form, which is one more column to keep true — **and five of them are owed with no test behind them**. It is checked by [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion) for the rows a `render_state` selects, and by [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s)'s floor half for [A17](#62-the-animation-table--the-closed-set)'s room render and [A14](#62-the-animation-table--the-closed-set)'s readout, which no state selects and which no fixture of AT-D3-13 fires. **A5, A10, A11, A12 and A16 are reached by neither** — no fixture of either test applies the delta or the seat-set change that fires them under `reduce` — so their reduced forms are stated and unasserted, which [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation) names and [§ 14](#14-open-questions-for-the-review-loop) item 15 owns. **One test does not cover the column, and saying which covers what — including which rows nothing covers — is what stops an uncovered row from being assumed** |
-| 13 | **A null is rendered as *not reported*, never as a zero** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)), and **[§ 5.6](#56-the-null-render-for-every-nullable-member) states the behaviour per member for all 39** rather than leaving the rule to be applied by guess | coalesce nulls to sensible defaults so the layout never shifts; or state the rule and leave each member's rendering to the implementer | A zeroed gauge is a measurement the wire never made; a placeholder task title is a claim nobody sent. `docs/KANBAN.md § G-1`'s clean zero is the same defect one layer out | the layout must accommodate absent elements, which is a design constraint on the desk rather than a rendering convenience — and 39 stated null renders are 39 more cells a change must keep true, which is what G10 is for. **The per-member table is the half that was missing**: the headline rule was stated and certified from R1, while two dozen members it governs had no stated behaviour, so the implementer reaching for the obvious default would have written the very zero it forbids |
-| 14 | **The floor requires 1,280 × 800 and falls back to a list, not a scaled floor** | scale the map to the viewport | A floor whose nameplates and badges are unreadable shows state without letting anyone read it, which is worse than the honest list of the same facts | small viewports get no floor. The list carries every fact, and the number is re-derived once a desk has a measured width |
+| 13 | **A null is rendered as *not reported*, never as a zero** ([§ 7.5](#75-what-a-degraded-desk-may-never-look-like)), and **[§ 5.6](#56-the-null-render-for-every-nullable-member) states the behaviour per member for all 40** rather than leaving the rule to be applied by guess | coalesce nulls to sensible defaults so the layout never shifts; or state the rule and leave each member's rendering to the implementer | A zeroed gauge is a measurement the wire never made; a placeholder task title is a claim nobody sent. `docs/KANBAN.md § G-1`'s clean zero is the same defect one layer out | the layout must accommodate absent elements, which is a design constraint on the desk rather than a rendering convenience — and 40 stated null renders are 40 more cells a change must keep true, which is what G10 is for. **The per-member table is the half that was missing**: the headline rule was stated and certified from R1, while two dozen members it governs had no stated behaviour, so the implementer reaching for the obvious default would have written the very zero it forbids |
+| 14 | **The floor is drawn at every viewport size under the camera — no minimum and no substitute view** ([§ 4.5](#45-the-viewport-rule-and-the-camera)). **Decided 2026-10-01 — operator ruling on card#7341:** *"All screens should display with any browser size. If the resolution is less than browser window resolution, user should be able scroll in any direction within the browser window and zoom in/out."* It reversed this row's earlier decision, *the floor requires 1,280 × 800 and falls back to a list, not a scaled floor* | require a minimum viewport and serve a text list below it (this row until 2026-10-01); or scale the floor to fit the window with no camera | A substitute view gives a small window no floor at all, and the camera already makes the floor readable at any size: at fit the whole room is in view, and zooming in brings any desk's text to its own size. The text list keeps its job — every fact as text, in full — beside the drawing rather than in its place | at fit in a small window the desk text is too small to read until the viewer zooms in ([§ 12](#12-every-number-and-where-it-comes-from)'s reference-viewport row measures it at 1,280 × 800); the list view below the drawing carries every fact as text at every size |
 | 15 | **No framework, renderer or bundler is specified** | pin the stack so the implementer has one less decision | None of this document's properties depends on one, and a spec that pinned a stack would expire with it. What *is* pinned is the asset pipeline, because that is where a licence violation enters | two implementers could make different stack choices. Neither can make different **honesty** choices, which is what this document is for |
-| 16 | **A seat's appearance is a pure function of the seat key, and every asset declares its origin** ([§ 10.2](#102-characters-the-munder-difflin-port), [§ 10.4](#104-the-art-direction-as-a-specification)). **Amended 2026-08-27:** this row read *character art is generated from the seat key, never vendored*, and mechanised the second clause as Gate 2's absence. The ratified direction ships original high-resolution art as files, so the absence is gone; **the identity property is not, and it is the half that was always load-bearing** | vendor a sprite sheet and map seats onto it; or, at the amendment, keep the absence and let the art land outside the asset trees | D-07 permits the generator (MIT) and forbids the upstream's commercial tilesets, which is untouched. Deriving appearance from `(install_id, seat_id)` is what makes a seat look the same on every browser with **nothing stored** — the same property the desk slot has — and that is independent of whether the drawing is code or a file. Keeping the absence would have pushed the art to a tree no gate watches, which is strictly worse than admitting it under a provenance row | Gate 2 no longer proves an absence, so it no longer refuses the shortcut for free — [§ 10.1](#101-the-manifest-and-the-two-gates) names in full what that costs and what stands in its place. **And the identity clause is now the one that can be broken quietly**: a special-cased seat looks correct on the machine where the special case lives, which is why [§ 10.4](#104-the-art-direction-as-a-specification) forbids it by name rather than by implication |
+| 16 | **A seat's appearance is a pure function of the seat key, and every asset declares its origin** ([§ 10.2](#102-characters-original-creatures-drawn-by-code), [§ 10.4](#104-the-art-direction-as-a-specification)). **Amended 2026-08-27:** this row read *character art is generated from the seat key, never vendored*, and mechanised the second clause as Gate 2's absence. The ratified direction ships original high-resolution art as files, so the absence is gone; **the identity property is not, and it is the half that was always load-bearing** | vendor a sprite sheet and map seats onto it; or, at the amendment, keep the absence and let the art land outside the asset trees | D-07 permits the generator (MIT) and forbids the upstream's commercial tilesets, which is untouched. Deriving appearance from `(install_id, seat_id)` is what makes a seat look the same on every browser with **nothing stored** — the same property the desk slot has — and that is independent of whether the drawing is code or a file. Keeping the absence would have pushed the art to a tree no gate watches, which is strictly worse than admitting it under a provenance row | Gate 2 no longer proves an absence, so it no longer refuses the shortcut for free — [§ 10.1](#101-the-manifest-and-the-two-gates) names in full what that costs and what stands in its place. **And the identity clause is now the one that can be broken quietly**: a special-cased seat looks correct on the machine where the special case lives, which is why [§ 10.4](#104-the-art-direction-as-a-specification) forbids it by name rather than by implication |
 | 17 | **Provenance is a build gate, not a document** | keep `docs/ATTRIBUTION.md` current by discipline | An attribution file kept by discipline is one an asset can be added without. Gate 1 makes the missing row fail the build, which is the only moment it is free to fix | every asset addition costs a manifest row and a hash |
 | 18 | **The status strip claims *live* only with a fresh feed message AND a REST response newer than the last `401`** | trust the stream, since an authorized request opened it | ⚠ **The reason below is the pre-card#9287 one and is retired; the decision is kept on the ground in its last sentence.** D2 refused machine tokens on the socket because an open connection had no revocation story — it now has one ([D2 § 9](FLEET-STATE.md#9-read-side-authentication)'s 15 s re-check), and what is left is an unmade ruling ([D2 § 13](FLEET-STATE.md#13-decisions-taken-revisable-at-review) row 10) — and the browser's session had the same property, which D2 did not address — **amended card#9287: D2 § 9 now re-checks the session every 15 s, and this rule is kept as the second surface the claim rests on** ([§ 9](#9-failure-paths-and-their-observables) F7) | the claim is slightly conservative on a client that has made no REST call recently. Erring toward *not live* is the correct direction for this product |
 | 19 | **A verifier ships with this document** | leave it to the build phase | D1 and D2 both shipped one, and the classes it catches — an animation with no driver, a field this document renders that D2 does not send, a state member with no render, an arithmetic claim that drifted — are exactly the single-surface edits to multi-surface facts a set difference catches in milliseconds and a reader catches on the third pass, if ever | one more script to keep true, and every figure here is now a figure a change must move in all its homes at once |
@@ -5934,6 +7823,31 @@ review can reverse it deliberately rather than discover it later.
 | 36 | **F7 is closed at D2 and D2 § 9's enforcement window is accepted, not hedged client-side** ([§ 9](#9-failure-paths-and-their-observables)) — ⚠ **this row accepted it at a figure until the card#9287 maintainer round; the acceptance stands, the figure did not** — a decision recorded at a number ~4× short is a decision nobody actually took — so what it accepts now is D2 § 9's guarantee, and no number | keep F7 as a residual; guess expiry client-side from the session's known lifetime and dim the floor pre-emptively | D2 § 9's re-check is the rule item 5 asked for, and a client-side guess renders *not live* on a floor whose stream the server is still happily serving — a lie in the safe direction is still a lie, and this document's whole method is that the render follows a delivered fact | a viewer sees, for as long as [D2 § 9](FLEET-STATE.md#9-read-side-authentication)'s enforcement bound allows, a fleet its session is no longer entitled to — and for longer on a client whose slow drain holds the handler inside its write loop than on one that drains promptly. ⚠ **And D2 § 9 names a case it does not bound at all** — a write that overruns the stall bound is ended by the host rather than by the handler — so what this row accepts is that section's guarantee and not a flat number. The bound is D2's, that section owns it and this cell does not restate it, and shortening it is a D2 change |
 | 37 | **Decided 2026-09-27 — operator rulings on card#7343, the name at F1 and the status line at r2: the camera does not scale a plate's text in the lobby.** What a plate's label does now is [§ 4.1](#41-the-lobby--the-building-summary)'s, the one statement of it | **(A)** the plate's text is scene text and scales with the plate, and a viewer zooms to read it — [§ 12](#12-every-number-and-where-it-comes-from)'s rule for the floor, carried to the lobby; this is what row 16's slice A first built | The lobby exists to pick a floor, so a plate must be read before any zoom. Plates keep a storey's proportions, so at whole-building fit a plate's text shrinks as the stack grows — the name was measured at 19.2 px on two floors and 3.8 px on ten on a 1,280 × 800 surface (card#7343 comment 6974) — and a lobby whose floors can be told apart only after zooming into each is the floor list failing at the one thing it is for. Zoom-to-read is the floor's rule because a floor is read at desk scale; a lobby is read at building scale | the bounds a plate's label accepts are the claims [§ 4.1](#41-the-lobby--the-building-summary) declares unchecked; this cell records none of its own |
 | 38 | **Decided 2026-09-29 — the seat's ruling, card#7343 r3b (comment 7632): a label standing on its plate is anchored at the plate's top-left and grows down.** The operator's ruling of 2026-09-30 (option A) made that placement the fallback; what a plate's label does now is [§ 4.1](#41-the-lobby--the-building-summary)'s | **(A)** the label anchored at its plate's bottom-left, growing up — what row 16's slice A built through r3 | At the time, a label too tall for its plate had to lose the line that mattered least, and the name is the one the lobby exists to show. Anchored at the bottom, a label taller than its plate ran up past the building's top edge, where the surface's clip cut the top floor's name first; anchored at the top, what ran past was the building's bottom edge, where the clip cut trailing lines first | the bounds a label on its plate accepts are the claims [§ 4.1](#41-the-lobby--the-building-summary) declares unchecked; this cell records none of its own |
+| 39 | **Decided 2026-10-01 — operator rulings on card#11045: the plain wheel and a trackpad's two-finger scroll PAN the view in any direction; Ctrl+wheel and a trackpad's pinch (which browsers deliver as a Ctrl+wheel) zoom about the pointer; a touch screen's two-finger pinch zooms about the fingers' midpoint and one finger drags to pan; and at the drawing's edge the plain wheel scrolls the page on** ([§ 4.5](#45-the-viewport-rule-and-the-camera)), on the floor and in the lobby through one camera wire, said on the page by a one-line gesture hint. It supersedes [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 15's *wheel-zoom to the cursor* | the wheel zooms, as the ratified reference and this camera did until card#11045; or the wheel pans and the page never scrolls over the drawing | A page reads by scrolling: a wheel that zoomed turned every scroll that crossed the drawing into a zoom, and a drawing that took every wheel trapped a mouse user above the sections below it. Zoom stays one modifier or one gesture away | a viewer who expects the wheel to zoom zooms with Ctrl or a pinch, as the hint under the drawing says; the trackpad pinch's gain (`wire/camera.js`'s `PINCH_GAIN`) was not verified on a real device by this card. Safari, which delivers a trackpad pinch as its own `gesture*` events, is handled since card#11045 PR-C (the [§ 4.5](#45-the-viewport-rule-and-the-camera) bullet), verified with synthetic events only: a real Mac trackpad and a real iPhone or iPad remain unverified |
+| 40 | **Decided 2026-10-01 — operator ruling on card#11045 Q2: each room's floor plane takes one of four seeded themes (oak, walnut, sage, slate) by `fnv1a32(install_id) mod 4`, and the back wall stays in the house palette** ([§ 4.2](#42-the-floor)'s frame, [§ 10.4](#104-the-art-direction-as-a-specification)). ⚠ **Superseded at Appendix B row 22 (card#11046)**: the back wall by the operator's ruling of 2026-10-07 (a theme per building floor), and the seeded tints by [decision 58](#13-decisions-taken-revisable-at-review) | one palette for every room | Two rooms on one floor are told apart at a glance by their floors as well as by name, and the theme is keyed on the ROOM, whose key never moves, so it is stable for the room's life and agrees in every browser with nothing stored; keyed on the floor it would recolour a floor's rooms whenever a lower-sorting room joined it | a theme reads as a fact about the room (it is none — appearance, like a character's look), or a theme makes the desk text drawn over it harder to read; the second is checked, the first is the art direction's to keep plain ⚠ **2026-10-07: the band half REVERSED** by the operator's ruling that a theme is authored per building floor (card#11046); **the tints' half is OPEN** — retired at row 22 if [decision 58](#13-decisions-taken-revisable-at-review) is confirmed, kept as the house theme's plane variants if not |
+| 41 | **Decided 2026-10-01 — operator ruling on card#11045 Q1: an unused slot is plain floor; no spare desk stands at a slot no seat holds** ([§ 4.2](#42-the-floor)'s frame) | a spare, unoccupied desk at every unused slot, saying *room to grow* | [§ 3.5](#35-retirement-and-the-only-removal)'s ruling (card#9078) is that a retired seat's desk goes away immediately; with spare desks a retirement would leave a bare desk where the seat was, the render that ruling removed. The room's scenery carries an emptier room | a sparse room looks emptier than a furnished one; a map author who wants furniture there places it as scenery |
+| 42 | **Decided 2026-10-02 — operator ruling on card#11058 Q0 (a) and Q1 (B): the desk draws a fixed glance set, and ONE flag ⚠ +N for anything else unusual; no raw unrecognised string is drawn on the desk** ([§ 5.1](#51-the-desk)'s *the glance set*) | every fact the desk model emits, drawn on the desk at desk-adjacent size | a desk that carried every fact read as a spreadsheet at fit; the details are guaranteed in the drill-down and the desk list, which `TheNewDeskKeepsEveryLeafTest` holds of every leaf the desk drew before | a fact a viewer used to read at a glance is now a click away; the flag says *something else is unusual here* |
+| 43 | **Decided 2026-10-02 — operator ruling on card#11058 Q4 (a): the state chip shows the model's glyph** — *thinking*, *asleep*, *empty-chair* … — **and the fixed word *unrecognised* for a glyph carrying a raw string** ([§ 7.1](#71-the-render-per-state)) | the chip reads `render_state` | the glyph is the desk model's own word for what it draws, including the A4 think pose `render_state` does not name | the glyph strings become a visible vocabulary before they are ratified as display words |
+| 44 | **Decided 2026-10-02 — operator ruling on card#11058 Q1 (B): the badge row draws two, the treatment badges first, then recognised badges in the wire's order** ([§ 10.3](#103-the-floor-map)) | the whole cluster to D2's bound, unrecognised badges first | the two treatment badges are warning treatments the desk must show; the rest is counted into the flag and read in full in the drill-down | a recognised third badge is read as a count on the desk until the drill-down is opened |
+| 45 | **Decided 2026-10-02 — operator ruling on card#11058 Q5 (b): the quiet age (*nothing done for N*) stays on the desk; *running for N* moves to the drill-down and the list** ([§ 5.1](#51-the-desk)) | both ages on the desk, or neither | the quiet age is the one age a live desk may tick and the product's divergence signal; the action's elapsed time is detail | an action's duration is read in the drill-down |
+| 46 | **Decided 2026-10-02 — operator ruling on card#11058 Q2: the desk has two measured type roles — the facts at 10 px, and the nameplate alone at 13 px bold** ([§ 12](#12-every-number-and-where-it-comes-from)'s *Nameplate type size* row) | one 10 px role for every desk string, the nameplate included | at fit on a laptop window the facts read at about 8 CSS px; the name is what a viewer scans the room for, and a role of its own makes it the largest text on the desk without enlarging the facts column the box is sized for | a nameplate cut sooner — a 148 px plate holds fewer glyphs in the name role — and a seat told apart by its drill-down, its list line and its `aria-label`, which carry the name uncut ⚠ **Since row 20 the desk has three measured roles**: the screen's text joins as a third ([decision 60](#13-decisions-taken-revisable-at-review)) |
+| 47 | **Decided 2026-10-02 — operator ruling on card#11058 Q3: intern sprites are keyed by `call_id` — the character tree draws an intern under `seat~<call_id>`** ([§ 8](#8-interns--subagent-rendering-and-the-cap), [§ 10.4](#104-the-art-direction-as-a-specification)) | the reference's `seat~internN`, keyed by the intern's place in `subagents[]` | an intern keeps its look for its whole life: when the array reorders, a sibling ahead of it leaves, or the page reloads, the same intern is the same sprite, which is what makes a sprite something a viewer can follow | the per-field salt cannot be searched against intern keys — a `call_id` is minted per dispatch — so the interns' half of § 10.4's collision acceptance is an estimate (about 4.5 × 10⁻⁶ full-tuple collisions per desk at the cap) and not the measurement the seats' half is. ⚠ **card#11046 retired that estimate with the pixel space it was computed over**: the interns' half is now a measurement over a synthetic population of desks at the cap, and the body half is held by construction ([decision 54](#13-decisions-taken-revisable-at-review)) |
+| 48 | **Decided 2026-10-03 — operator rulings on card#11144: a map may reserve one desk for a role; the room's one seat relaying that role sits there; with nobody eligible the desk stays empty and reserved (Q3 A); with two or more, nobody sits there and § 9 F22 says so (Q4 A); the client compares roles as strings and knows none by name (Q2 A)** ([§ 3.2](#32-the-desk-slot-function), [§ 9](#9-failure-paths-and-their-observables) F22) | for two eligible seats, the lowest `(h, seat_id)` keeps the desk; for none, the desk opened to the hash | a reserved desk that changed hands by a hash order would put a seat in the PM's office with nothing on screen saying the install is misconfigured, and an opened desk would make the office's occupant depend on which seat happened to hash there; taking the desk before the probe loop keeps every other seat's hash unchanged | a PM install whose flusher reads no roster relays `null` and leaves the office empty with only § 5.5's line to say why (D1 § 3.1's documented failure), and a handover walks the outgoing PM out before the newcomer can walk in |
+| 49 | **Decided 2026-10-03 — operator ruling: the floor is drawn in the 3/4 top-down oblique; the back wall shows its face, every other wall its top edge; characters flat, furniture face-on; walls are tiles** ([§ 10.4](#104-the-art-direction-as-a-specification)'s projection bullet). The back corner's end posts are the frame's, by the operator's ruling of 2026-10-04 (option B, [§ 4.2](#42-the-floor)) | the dollhouse elevation with face-on interior walls (the kit's wall panels) | one viewer for every element ("Make sure all elements in a scene follow the same rules", slynyrd) — so the one place two projections would meet is resolved rather than left to judgement; walls as tiles are painted with the tools an author already has, a doorway is cells left unpainted, and no new map member is read | one tile file and one layer |
+| 50 | **Decided 2026-10-05 — card#9566, by this seat as the repository's maintainer: [A1](#62-the-animation-table--the-closed-set) and [A2](#62-the-animation-table--the-closed-set) fire on whether the render draws the desk staffed or empty, per § 7.1's *Desk* column, and § 2.3 row 5's empty chair fires neither** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note items 1–2) | keep the rows keyed on `offline`; or walk on every change of whether a character is drawn, row 5 included, as the card's text asks | staffed and empty are the request's own words, and they remove the walks out of an already-empty chair the `offline` key predicted; row 5's chair is the client's knowledge rather than the seat's act, which [§ 11](#11-acceptance-tests) already rules moves nothing, and an `edge` row needs a wire message the client applied | a quiet seat walks out at its `stale` edge rather than at `offline`; an unreadable desk empties with no walk |
+| 51 | **Decided 2026-10-05 — card#9566, by this seat as the repository's maintainer: at most one walk per seat — any render that touches the seat, as the walk note's item 6 defines it, cancels its walk in flight, and no walk starts from a cancelled one (cancel, never chain)** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 6, which defines what touches a seat) | supersede the walk with the next row's walk; or finish the walk, then apply | a walk is presentation and the desk must draw its current state the moment anything about it changes; a chain re-raises every ordering question the r1 and r2 reviews found — which walk owns the desk, which person is drawn where — while cancel has one answer for all of them, and finish-then-apply would hold an older state's motion beside a newer desk and queue walks behind a flapping seat's wire without bound | on a seat that leaves and returns inside one walk the second change is drawn without a walk: the person reappears seated, or the chair is simply empty, while the log still records both rows |
+| 52 | **Decided 2026-10-05 — card#9566: A1 and A2 walk [A16](#62-the-animation-table--the-closed-set)'s straight segment, desk anchor to elevator threshold, as the first cut; the decided fallback for an unroutable desk is the row's reduced-motion form** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note items 3 and 7) | a path over walkable tiles, with a fade at the desk where none exists | it is the shipped segment rule, it needs no map member, and a segment joins any two points, so the fallback is unreachable until a path rule lands; the reduced form is a stated rendering of the same fact where a fade would be new vocabulary | a walker crosses walls and furniture — the walled PM office of card#11144 included — until the follow-up [§ 14](#14-open-questions-for-the-review-loop) item 30 asks the operator about |
+| 53 | **Decided 2026-10-06 — on the operator's rulings of 2026-10-05 on card#11046: every character is an original animal or vegetable creature, drawn by first-party code as standalone SVG documents the painter shows as `data:image/svg+xml` images; the munder-difflin port retires whole, and the lineage check re-keys from the character tree to a `licensed` row in it** ([§ 10.2](#102-characters-original-creatures-drawn-by-code), [§ 10.4](#104-the-art-direction-as-a-specification)). The look and the chibi interns are the operator's (*"yes, I love them"*, *"A"*); the asset shape, the port's retirement and the re-key are this seat's, as the repository's maintainer | **(A)** creature art as image files under Gate 1's rows; **(B)** keep `resources/characters/LINEAGE.md` as a record of the retired port, so the lineage check passes unchanged | **(A)** cannot exist: the look is a seeded space and an intern's key is minted per dispatch, so no file set holds the drawings, and a raster would fail § 4.5's resolution independence besides. **(B)** keeps a check green by keeping a document whose subject is gone: a lineage file in a tree that took nothing tells the next reader the tree is a port, and the gate would go on asking every first-party file in it for an upstream commit. Nothing of the port ships, read file by file, so MIT's condition has no copy to attach to | if a ported line is missed and ships, it ships with no notice — which is why the retirement is read from the code file by file in § 10.2 and not asserted; and the re-key loses one catch, stated exactly: the old trigger asked a FIRST port into a fresh character tree for a lineage file whatever its row said, and the re-keyed one does not — **a port whose row is written `first-party` with an in-repo source URL passes with no lineage file at all**, and Gate 1's URL-against-origin check, which reds only when the URL is somebody else's, is the only machine catch left; review carries the rest |
+| 54 | **Decided 2026-10-06 — card#11046, by this seat as the repository's maintainer: an intern's species is drawn from its own key and re-drawn over the other species only where it lands on its seat's** ([§ 10.4](#104-the-art-direction-as-a-specification)'s interns bullet) | **(A)** the prototype's plain draw, under which an intern wears its seat's body at the chance of drawing one species from the list; **(B)** a draw over the other species for every intern | the operator's ruling is that an intern *differs from its seat*, and at the body that is the one claim a pure function can make true — the intern key carries the seat's. (A) leaves it to chance; (B) makes it true too, but re-draws every intern whose body already differed — most of them — away from the approved sheet | interns of one seat are slightly likelier to share a body with each other than under (A), because one body is removed from their draw — the measured sibling repeat rate is what shows it, and siblings were never kept apart by body under either rule |
+| 55 | **Decided 2026-10-07 — the operator's ruling on card#11046 (*"2. A"*): a THEME is authored per building floor; one optional `theme` member of the floor's layout entry names it; absent is the house theme, `studio`; an unshipped name is refused at the write and drawn in the house theme under F23 at read** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), [§ 4.6](#46-the-building-layout)). The storey is the operator's; the member, its default and its failure render are this seat's, as the repository's maintainer | a theme per ROOM, on decision 40's key — the seat's other reading, which the operator did not choose; a theme keyed by the floor's KEY | a storey reads as one place, so its band — which spans every room on it — its hallway and its rooms share one design; a member of the entry moves with the floor, so a re-key moves no theme, which is what keying on the derived key would have broken | two rooms on one storey cannot differ in design; an operator who wants that composes them onto two storeys; and a rollback past row 21 must first save the layout without the member (§ 4.6's row) |
+| 56 | **Decided 2026-10-07 — card#11046, by this seat as the repository's maintainer: a theme is CODE — one first-party module per theme emitting standalone SVG documents the painter shows as `data:image/svg+xml` images — and not image files** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 10) | a tileset of SVG pieces per theme, under Gate 1's rows | the pieces are parametric — a band of any width, a plane of any grid with a pool at each slot and an accent of any shape, a side table for its seats, seeded props — which no file set holds, and fixed pieces stretched to fit are the tile-grid look the operator rejected; it is decision 53's shape, so the painter, the cache and the failure path are the creatures' | no gate sees what a theme draws, only that its documents are well-formed, self-contained and total; review carries the look, as it does for the creatures; and a room-sized document's paint time at deep zoom is a screenshot's to read (row 22's, item 36(3)) |
+| 57 | **Decided 2026-10-07 — card#11046, by this seat: the MAP places scenery and paints the PM's oak, as tiles of a `kind` the floor's theme draws; every grid's floor — a room's and a hallway's — is the theme's plane, with no floor kind; the landing is derived from the elevator's threshold** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) items 6–7) | the theme placing scenery itself; the oak region derived from the reserved desk and the walls; a new map member for regions | a theme cannot know an authored room's free space; a flood fill leaks through the doorway, the reserved slot alone is a rug, and either hands the theme a fact about seating; a new member is a validation and a table row for what Tiled already paints — decision 49's argument for walls | every theme must draw every kind, and an author's map is valid only in the kinds the registry names |
+| 58 | **Decided 2026-10-07 — card#11046, a SEAT RULING recorded on the card ([§ 14](#14-open-questions-for-the-review-loop) item 36(1)): decision 40's seeded per-room tints RETIRE, and are not kept as plane variants inside a theme**. The operator was asked and had not answered; the ruling follows from the operator's own later rulings — one approved floor colour, a design per FLOOR — and is cheap to reverse: re-add the tints as palette variants, a palette change and a chip-gate re-run. Built at row 22 | keep oak, walnut, sage and slate as four plane variants of the house theme, seeded per room as today | the operator approved one floor, a pale oat chosen because direction A's floor was *"too dark and close to the desk color"*, and the tints are that mid-tone again; every variant is a surface the facts' ink and the state chip's colours must clear, multiplying a gate that already fails over the oat floor (decision 62); and the operator's *"each floor to have a different design"* is answered at the storey | two rooms on one storey share a floor; they are told apart by their walls, the gap between them and their names, as decision 40's own *cost if wrong* allowed |
+| 59 | **Decided 2026-10-06 and 2026-10-07 — the operator's rulings on card#11046: a desk is drawn from its far side; the monitor faces the viewer as the one exception; the monitor is wider; the creature sits at a third of the desk** ([§ 10.4](#104-the-art-direction-as-a-specification) item 2, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). The 3 px the creature shares with the monitor's frame is allowed rather than moving the creature to 48, by this seat | the creature centred; the creature at 48, clear of the frame | the rulings; and the overlap is the monitor standing on the desk in front of its sitter, which covers no fact (the screen begins clear of the character's rect, and AT-D3-25 holds the overlap to 3 px) | a creature whose drawing reaches its rect's right edge loses 3 px of it behind the monitor |
+| 60 | **Decided 2026-10-07 — card#11046, by this seat: the screen's text is a third measured type role at 8 px, its ink chosen per lit state, and the contrast it holds stated at every lighting that draws it** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)) | 9 px, legible with margin; one ink on every lit state, as today | 8 px is the smallest that read at fit on a device-scale-1 screen, and the operator asked for the smallest that fits more; the dimmed screen held today's ink at 2.25:1 at full light, a defect a smaller face makes worse | on a screen narrower or blurrier than the measured one, the monitor is read by zooming in, as the facts are; and a dimmed or dark desk's monitor holds less than 4.5:1, by § 7.3's design, with every string in the list and the drill-down |
+| 61 | **Decided 2026-10-07 — card#11046, a SEAT RULING recorded on the card (item 36(2)): the windows' glazing follows the approved picture, 208 by 80 px, rather than card#11045's 200 by 124** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), [§ 12](#12-every-number-and-where-it-comes-from)) — the picture the operator approved (*"1. A2+C"*), the operator having been asked and not yet answered; reversing it is one § 12 row and the band's geometry. Built at row 22 | keep the 124 px glazing and draw the sage lower wall under it | the operator chose the A2+C picture, whose short windows sit above a rail and a sage lower wall; 124 px of glass leaves the lower wall a strip and is not the picture approved. The curtains and the sills are what keep it from the jail card#11045's ruling refused | the operator meant card#11045's tall glazing to stand under any design: one constant and one § 12 row |
+| 62 | **Decided 2026-10-07 — card#11046, by this seat: the state chip's quiet colours are measured over every shipped theme's floor surfaces, read from the theme, at [§ 12](#12-every-number-and-where-it-comes-from)'s bound, and are re-derived IN row 22 — the first row that paints the oat floor, so no row lands red** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme), [§ 14](#14-open-questions-for-the-review-loop) item 35's closure) | measure the chip over a fixed plank colour as today; or take the chip off the floor's composite by changing how § 7.3 dims a desk | over the house theme's oat floor the sheet's quiet colours fail the tool's own bound in several reviewed pairs (measured 2026-10-07 by re-running `state-chip-colours.py --check` with its plank surfaces swapped for the oat floor's composites, and re-measured by card#11046's review), so the colours must move with the floor; binding the gate to every theme makes a theme that breaks the chip red, which is the right failure for a theme to meet; changing § 7.3's dimming is a § 7 change outside this card and would need the same re-check | a later theme (B) reopens the chip's colours if its floor differs enough; and the colour round may find no colours for the quiet states that clear every surface — surfaced to the operator with the measurement (item 36(4)), never by moving the bound. A scratch spike on 2026-10-07 found a set clearing the bound over the oat floor's computed surfaces (item 36(4)) |
+| 63 | **Decided 2026-10-07 — card#11046, by this seat: the unconfirmed seat has NO chair treatment; it is drawn on the hollow chip and its dimmed desk, as the product does today** ([§ 10.4](#104-the-art-direction-as-a-specification)'s art-contract bullet, [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)). It reverses the design review's round-1 direction that the painter draw a dashed outline over the chair, which rested on § 10.4's sentence *dashed when unconfirmed* — false of the code, which never drew it | the painter's dashed outline over the theme's chair; a dashed mark of its own beside the plate | from row 20 the chair stands behind the creature, the desk and the desk props, so an outline painted last crosses all three and one painted under them is mostly hidden — a fact whose form needs it to sit under art, which § 10.6's paint-order rule exists to forbid; and the fact is already carried twice, by the chip and the dimming. `desk-layout.js`'s `DRAWN_MEMBERS` is corrected in the same change to map `unconfirmed` to the chip | a viewer who reads an unconfirmed seat by its chair has nothing there; the chip, the dimmed desk and the drill-down say it |
 
 ---
 
@@ -6084,7 +7998,10 @@ reason to leave two readings live.
    (`https://github.com/chaitanyagiri/munder-difflin`), the **pinned commit**
    `eb3df9fa70b63b68495a965c45f158105e87b2e6`, the MIT licence and its reproduced notice are recorded
    in `resources/characters/LINEAGE.md` and `docs/ATTRIBUTION.md` — **in the repository, not in a
-   message**, which is what this item asked for. That lineage file also records what was deliberately
+   message**, which is what this item asked for. ⚠ **card#11046 retires the port, and that record with
+   it** ([§ 10.2](#102-characters-original-creatures-drawn-by-code)): once nothing of upstream's ships,
+   the record stays where history is kept — git, at card#7340's commits, and `docs/PLAN.md § 0`'s D-07
+   appends — and this item stays closed, because what it asked is still answered. That lineage file also records what was deliberately
    **not** taken and why: the LimeZu-bound sprite path, three ISC-derived files, and The Office's cast
    identities. ⚠ **The ISC half of that reason expired on 2026-08-31**, when the operator admitted
    `ISC` to [§ 10.1](#101-the-manifest-and-the-two-gates)'s allowlist (card#8301). The three files
@@ -6115,16 +8032,16 @@ reason to leave two readings live.
    (`resources/floor/default.tmj`, [§ 10.3](#103-the-floor-map)): the operator ruled that file's
    content an office interior, card#9269 drew it with this pack, and that is what discharges the
    deliverable this item left open. The
-   1,280 × 800 viewport floor now has its **measured desk width** (116 px,
-   [§ 12](#12-every-number-and-where-it-comes-from)) and **still does not re-derive**: a native
-   sprite width was half the input, and the other half — a rendered nameplate at a camera zoom — has
-   no artifact to measure. § 12's row states that in full and is not restated here.
+   1,280 × 800 viewport figure has its **measured desk width** (116 px,
+   [§ 12](#12-every-number-and-where-it-comes-from)), and since the operator's ruling of 2026-10-01
+   (card#7341) it is a reference size and no minimum, so nothing is left for it to re-derive.
+   § 12's row states that in full and is not restated here.
 
 8. **✅ CLOSED — the `subagents` cap is 8.**
    [D2 § 14](FLEET-STATE.md#14-open-questions-for-the-review-loop) item 9 handed this to D3.
    [§ 8.1](#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) decides it with the byte arithmetic
-   re-derived from D2's measured figures: seven more elements fit and the cap **could** reach 15 at
-   7,953 B, 16 breaches at 8,216 B, and the answer is still 8 because the drill-down reads the
+   re-derived from D2's measured figures: six more elements fit and the cap **could** reach 14 at
+   8,006 B, 15 breaches at 8,269 B, and the answer is still 8 because the drill-down reads the
    **uncapped** detail response, so the array's only consumer is the floor's side table. Nothing in D2
    changes; the item is answered, not amended.
 
@@ -6626,7 +8543,8 @@ reason to leave two readings live.
     this item first adopted that. **It was amended in the same change, and the reason is the rule's
     own column:** A16 is a displacement, so a `cause` naming an arrival that did not take the slot is a
     wrong attribution, and the log's `cause` column exists to attribute. In `fx-collision`'s two-arrival
-    run the old rule named `aimla-win-1`, a seat that displaced nobody. A wrong-but-specific answer is
+    run the old rule named `aimla-win-1` — the free-slotted arrival before the default went to six desks
+    (card#11045), `aimla-win-5` since — a seat that displaced nobody. A wrong-but-specific answer is
     worse than an honest general one, and "it only affects attribution" does not excuse it.
 
     **The rule.** The cause is the key of the arriving seat that now holds the displaced incumbent's
@@ -6650,8 +8568,8 @@ reason to leave two readings live.
     two arrivals is buildable the same way and was not built.
     **Reopens:** A16's departure cause, which [§ 3.5](#35-retirement-and-the-only-removal) says a
     retirement can have and which has no arriving key at all — owed by the step that builds the removal.
-28. **⇢ Review — the room is drawn and the camera built at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) rows 14–16, and what stays open
-    past them is recorded below, one part of it since ruled.** Doc-owner design, card#7341, raised by the step-8 builder (PR #226): rows 0–13 built every
+28. **✅ CLOSED 2026-10-07 — its last open part, (2), has rows: the operator chose the room (card#11046, A2+C) and [Appendix B](#appendix-b--what-an-implementer-builds-from-this) rows 20–22 build its furniture and walls ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)); (1) and (3) were ruled before, and an extension of (1)(iii) is proposed at item 36(5). The record below stands as written.** ⇢ Review — the room is drawn and the camera built at [Appendix B](#appendix-b--what-an-implementer-builds-from-this) rows 14–16, and what stays open
+    past them is recorded below, two parts of it since ruled.** Doc-owner design, card#7341, raised by the step-8 builder (PR #226): rows 0–13 built every
     model and no row painted a room or moved a camera, so the floor page drew each desk as a line of text,
     [§ 9](#9-failure-paths-and-their-observables) F14 was unreachable, and nothing in the plan delivered what the card's own title names. Rows 14–16
     now own the room drawing, the camera and the building cross-section, gated by [AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk), [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) and
@@ -6708,13 +8626,16 @@ reason to leave two readings live.
     commissioning the art, which the card's ratification note makes customization and not open design. ⭐ **One piece has a row since 2026-09-25: the floor plane** — `resources/floor/tiles/floor-plane.tsx` and
     the SVG tiles beside it, first-party vector art drawn to [§ 10.4](#104-the-art-direction-as-a-specification)'s bar for row 14's
     slice B under the operator's two-row ruling (comment 6517), the first in the tree; the characters, the
-    furniture and the walls are still the bridge's, and this item stays open for them.
+    furniture and the walls are still the bridge's, and this item stays open for them. ⭐ **The characters
+    have a row since 2026-10-06: [Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 19**,
+    the creatures (card#11046); the furniture and the walls are what this item still holds open.
 
-    *(3)* **[§ 12](#12-every-number-and-where-it-comes-from)'s viewport figure is still a Chosen number.** Row 15's slice B took the
-    measurement it owed (2026-09-26) and the figure did not move: § 12's row states the figures, the
-    method that re-derives them and what they leave open — the criterion the figure rests on (a minimum
-    type size, or a minimum span of desks at a legible zoom), which no document states. This item stays
-    open for that ruling (card#7341).
+    *(3)* ✅ **Ruled 2026-10-01 — there is no viewport floor** (operator, card#7341: *"All screens should
+    display with any browser size"*). Row 15's slice B took the measurement it owed (2026-09-26) and left
+    open the criterion a minimum would rest on (a minimum type size, or a minimum span of desks at a
+    legible zoom). The ruling removed the minimum instead: the room is drawn at every window size under
+    the camera ([§ 4.5](#45-the-viewport-rule-and-the-camera)), and § 12's figure is the reference size
+    the fit is measured at, owed no criterion.
 
 29. **✅ CLOSED — a hold that a condition the client holds itself ended, and no object did, is left with
     an ordinary `left` row of the episode it ends, whose `cause` is a literal naming that condition; it
@@ -6763,6 +8684,158 @@ reason to leave two readings live.
     list, as this item always named. **Reopens:** a hold that ends on something that is neither an applied object nor a condition
     the client holds itself. A new client-side condition is a row of § 11's table and does not reopen
     this item.
+
+30. **⇢ Operator — should walkers follow the floor rather than cross it? Pathing is a follow-up.**
+    card#9566 asked for a walk over walkable tiles. The build ships
+    [A16](#62-the-animation-table--the-closed-set)'s straight segment as the first cut
+    ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 3,
+    [decision 52](#13-decisions-taken-revisable-at-review)), and a straight segment reads no tile, so
+    a walker to the elevator crosses walls, furniture and other desks — card#11144's walled PM office
+    included. A path needs a walkability rule no map carries: [§ 10.3](#103-the-floor-map) reads no
+    collision layer and no tile property says *floor* or *wall*. Either an author-painted layer
+    becomes a new map member (the console, the preview and Gate 1 each learn it), or walkability is
+    derived from what the map already says (a cell with no tile above the floor plane is walkable,
+    desk objects are not), which a map with furniture painted on the floor layer defeats. Either way
+    the search runs per walk over the composed floor, rooms and hallway together, and the
+    [§ 3.2](#32-the-desk-slot-function) overflow strip below the floor stands on no room's or
+    hallway's cells, so every overflow desk — and any walled-off desk — makes the walk note's item 7
+    fallback reachable the day pathing lands. **Example of each answer:** the PM leaves its office —
+    straight, it walks through the office wall to the elevator; pathed, it walks out through the
+    office's doorway and along the hallway. **Recommendation:** look at the first drawn walk on the
+    sandbox; if crossing walls reads as wrong, the derived rule first, because it mints no map
+    member. **Blocks:** nothing — the straight segment is the first cut. **Closes it:** the operator's
+    answer.
+31. **⇢ Review — [A13](#62-the-animation-table--the-closed-set) and
+    [A16](#62-the-animation-table--the-closed-set) draw no walker; walking them is a follow-up.**
+    card#9566 scoped its walk to A1 and A2 ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note item 2), so a removed desk goes and a moved
+    desk jumps, as they do today: `floor/painter.js`'s `paintEffects()` draws no walk for either, and
+    `floor/scene.js`'s `buildEffects()` still aims A13's computed walk at the floor extent's bottom edge.
+    **What a follow-up must settle first**, because both rows reach desks nobody sits at:
+    `floor/floor-screen.js`'s `#displacements()` displaces a seat whatever it renders, an `offline` one
+    included, and a retirement can announce a seat that is already `offline`, so a walker drawn for
+    either needs a *was a character there* test, and A16 needs its destination desk drawn empty until
+    the walker arrives. **Recommendation:** A13 walks to the elevator, so the floor has one way out,
+    and A16 walks desk to desk on the same segment rule, each only from a desk that drew a character.
+    **Blocks:** nothing. **Closes it:** amendments to A13's and A16's rows and to the walk note.
+32. **✅ CLOSED — an unreadable desk does not walk out.** Decided by this seat as the repository's
+    maintainer, card#9566 ([decision 50](#13-decisions-taken-revisable-at-review)). The card's text
+    listed [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 5's rule among
+    [A2](#62-the-animation-table--the-closed-set)'s triggers; it is declined on
+    [§ 11](#11-acceptance-tests)'s existing ruling that an emptied desk is a claim about what the
+    client knows rather than anything the seat did, and that an `edge` row needs a wire message the
+    client applied. The chair empties with no walk. **Reopens:** a ruling that the client's own
+    knowledge may start a claim-bearing edge, which is an amendment to § 11 and not to this row.
+
+33. **⇢ Operator / Review — the creatures (card#11046): what the design cannot settle on its own.** The
+    look is ruled ([decision 53](#13-decisions-taken-revisable-at-review)); these are the parts of building
+    it that need an answer or a measurement first, each with what stands meanwhile.
+
+    *(1)* ✅ **CLOSED — all three are withheld: the operator's ruling of 2026-10-06, *"flagged items: Use your recommendations"* (card#11046 comment 10116), applied by the seat as withholding all three.** The
+    generator's `WITHHELD` list carries `hat:sprig`, `radish:#e9d6d2` and `turnip:#7d6aa8`, so none of
+    the three is drawn; the radish and the turnip each have one colourway fewer (§ 10.4's table), and
+    keys whose hat or colourway draw landed past a removed member moved, as stated below. ⚠ This
+    document's own recommendation, as first written, withheld the `sprig` hat only; the seat applied the
+    ruling to all three, and the record below stands as the question was put. The question as put: the
+    `sprig` hat is two small leaves and a berry tucked at the side of the head, beside *a leaf worn on
+    the head*; the radish's near-white colourway, beside *a white daikon spirit*; the turnip's lavender
+    colourway, beside *a blue bulb with leaves* ([§ 10.5](#105-the-ip-line--stated-and-unenforceable-by-gate)).
+    **Recommendation (as first written):** drop `sprig` from every hat list — it is a leaf worn on the head by construction,
+    and the one of the three whose resemblance needs no colour to carry it — and keep both colourways,
+    whose bodies are round bulbs and not the long white root or the bulb-backed creature the list names;
+    but the line is the operator's eye, not this document's. **What a removal costs:** a list member
+    removed moves every key whose draw landed past it, so seats' hats (or radishes' colourways) change
+    from the approved sheet, and the build's screenshot step is where that is seen.
+
+    *(2)* ✅ **CLOSED — the seat's ruling of 2026-10-06, option (b): the salt leg's two halves read two
+    populations.** The build measured that the committed fleet roster (`tools/characters/roster.json` —
+    aimla's four seats from the fixtures and `docs/PLAN.md § 5`, and the sandbox store's
+    `kanban/kanban-solo` and `mezzanine/mezzanine-solo`, read 2026-10-06) draws distinct bodies per room
+    under `:s1` — and under no salt at all, so it could not discriminate. The ruling: **the guarantee half
+    stays on the fleet roster**, and **the discrimination half reads `tools/characters/salt-control.json`**,
+    the prototype's search sample, committed as a CONTROL and never as fleet — over it `:s1` keeps every
+    room distinct and the unsalted draw repeats a body in aimla and sola, which is what the salt RED is
+    watched failing on. `:s1` stands as approved. If the fleet roster ever repeats a body under `:s1`, the
+    rule above stands: widen or re-pick, surfaced with the before and after, never a silent re-pick.
+
+    *(3)* ✅ **CLOSED — the silhouette's edge is eye-judged; no contrast bound holds it.** The seat's
+    ruling, 2026-10-06: the operator approved the look with the approved outline, seen on a tan floor
+    behind desks, so that outline stays, with the faint light rim the seat added, and the edge is judged by
+    the operator on the real-floor screenshots reviewed before the build merges (item (4)). An earlier
+    revision of this item proposed WCAG 2.1's 3:1 non-text bound, which the approved outline does not meet
+    on the mid-tone floor themes and which only a near-black outline would; the bound is not adopted, and
+    [§ 10.4](#104-the-art-direction-as-a-specification)'s rim bullet states the edge as eye-judged.
+
+    *(4)* **The operator has seen the catalogue and nothing else.** The walk, the chibi frames, the rim and
+    the hedgehog's softened spines are new drawing ([§ 10.4](#104-the-art-direction-as-a-specification)'s
+    frame contract) that no approval covers yet; the build sends screenshots of each at 1× and 4×, on the
+    real floor behind the desks — among them **one full side table at the cap**, because a repeated body among siblings is the common case there (§ 10.4) and is what the operator should see — before it merges, under the card's own *screenshots to the operator at each step*. **Closes it:** the operator's
+    answer on those screenshots.
+
+34. **⇢ Follow-up, unscheduled — pose art.** The desk model names a pose for every state it draws a
+    character in (`desk/desk-poses.js`'s `DESK`, `desk/desk-render.js`'s `THINKING`), and
+    [§ 6.2](#62-the-animation-table--the-closed-set)'s A3, A4, A6 and A7 describe loops over them — the
+    keyboard, the lean back, the sleeper slumped on the desk with its z's, the raised hand — and § 7.1's
+    *Desk* column and AT-D3-13 name the same poses; every one of those sentences describes art this item
+    owes, not art that is drawn (N7). **None of it has ever been drawn**: the shipped painter draws one standing frame for every pose, and card#11046 keeps
+    that parity rather than adding the art ([§ 10.4](#104-the-art-direction-as-a-specification)'s frame
+    contract; the seat's ruling of 2026-10-06). What a follow-up owes, so it is not re-derived: a drawing
+    per `(pose, glyph)` pair with its marker inside the character's rect ([§ 7.1](#71-the-render-per-state)'s
+    note — A15's replay marker is the monitor's); a held loop's frames, frame 0 the pose's static and
+    reduced-motion form, nothing lifting the character off its foot; poses that reach the desk meeting the
+    desk's top edge derived from `deskRects()`; every pose of a key a distinct drawing; operator screenshots.
+    **Blocks:** nothing — every state is legible without the character today (chip, label line, monitor;
+    [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion)). **Closes it:** a card that draws them.
+
+35. **✅ CLOSED 2026-10-07 — the plank tile retires instead of turning translucent: the floor's theme draws the floor ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme)), and the chip's colours are re-derived against the theme's surfaces in row 22 itself ([decision 62](#13-decisions-taken-revisable-at-review)). The open part — that no colours for the quiet states may clear every surface — moves to item 36(4). The record below stands as written.** ⇢ Review — the translucent plank tile (card#11046 comment 9325) waits on the state chip's colours.
+    `resources/floor/tiles/floor-plane/planks.svg` is an opaque tile, so a room's seeded theme
+    ([§ 10.4](#104-the-art-direction-as-a-specification), decision 40) is covered on every map that lays
+    it — the shipped default included. The card#11046 build drew the tile as a translucent overlay and
+    re-derived `tools/design/state-chip-colours.py`'s plank surfaces from it and the themes: the chip's
+    quiet states, whose desks are drawn at reduced opacity, then fall far under the tool's ΔE2000 bound
+    over the visible themes (measured 2026-10-06: dozens of reviewed pairs under 5.0, the worst on slate),
+    because card#11218 tuned them over the one oak plank colour. So landing the overlay means re-deriving
+    those colours, a card#11218-shaped review, and it was taken back out of row 19 rather than shipped
+    against a gate it reds. **Blocks:** nothing the creatures need — the edge is eye-judged on the floor
+    as drawn (§ 10.4's rim bullet). **Closes it:** a card that lands the overlay and the chip colours
+    together, each measured against the other.
+
+36. **✅ CLOSED 2026-10-07 — SEAT RULINGS, recorded as card#11046's comment of 2026-10-07, so row 22 could
+    start.** The operator was asked in chat and had not answered; each part follows from the operator's own later
+    rulings and is cheap to reverse. What each part asked, and how it closed:
+
+    *(1)* **[decision 58](#13-decisions-taken-revisable-at-review) — the seeded room tints retire.** RETIRED: the
+    operator approved one floor colour (pale oat, after calling direction A's floor *"too dark and close to the
+    desk color"*) and chose a design per FLOOR, and seeded per-room tints would put mid-tone floors back beside
+    the approved one. Reversal: re-add the tints as palette variants — a palette change and a chip-gate re-run.
+
+    *(2)* **[decision 61](#13-decisions-taken-revisable-at-review) — the windows are the picture's 208 by 80, not
+    card#11045's 200 by 124.** RULED: 208 × 80, as in the A2+C picture the operator approved (*"1. A2+C"*).
+    Reversal: one § 12 row and the band's geometry.
+
+    *(3)* **The screenshot step, before row 22 merges** — real Chromium, on fixtures and on the live sandbox: a
+    true-size room on every room form; one full side table at the cap; each lit state's monitor at 1× and 2×; the
+    deepest zoom with its paint time; each pose's legibility under the desk and its props; and the chip's quiet
+    colours before and after. They go to the operator before the merge. Taken by row 22's build
+    (`tools/design/floor-fixture.browser.mjs` on the fixtures; the build's report names each shot), each a
+    reading of the picture the operator has not yet seen drawn — among them an unused slot under its pool, an
+    empty side table with its seats, the narrowed aisle plants, the leaves in the building's door colours, the
+    windows with no hills and clouds and no daylight on the floor, and a planned floor's hallway in the theme's
+    floor.
+
+    *(4)* **The chip's quiet colours over the oat floor** ([decision 62](#13-decisions-taken-revisable-at-review)).
+    CLOSED BY THE COLOUR ROUND, in row 22 as decision 62 requires, the bound unmoved: `tools/design/state-chip-colours.py --search`
+    takes, over the surfaces the built theme returns (through `tools/floor-themes/surfaces.mjs`), every
+    candidate within 45° of each quiet state's token hue, chroma at most 32 and holding `--state-ink` at 4.5:1,
+    and of the sets whose every reviewed pair keeps the bound plus the tool's `MARGIN` in every condition and
+    vision, the one closest to the tokens they replace. Measured on 2026-10-07 (re-printed by the same command,
+    and by `--check` on the sheet): the tokens before the round held a least reviewed-pair ΔE2000 of **1.90**
+    over the oat floor — `catching_up`/`offline` over the lamplight pool — and the chosen set holds **5.67**.
+    The chosen fills are the sheet's `--state-stale`, `--state-offline` and `--state-disabled` and the tool's
+    `PROPOSED`, held equal by `--check`; the screenshots of (3) show both sets.
+
+    *(5)* **An extension of item 28(1)(iii)** ([§ 10.6](#106-themes--a-floors-design-and-the-house-theme) item 9).
+    ADOPTED (the maintainer's call) and built: the floors module lists every room whose current map names a
+    tileset or a tile the repository no longer ships (`App\Floor\RetiredArt`).
 
 ## Appendix A — every obligation addressed to this document
 
@@ -6884,22 +8957,28 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | Order | Artifact | Gate |
 |---|---|---|
 | 0 | ✅ landed 2026-08-25 (card#7340, with row 1 — PR #15) — `docs/ATTRIBUTION.md`, the asset manifest, and both **provenance gates**. ⭐ The gates as they landed asserted Gate 2's old absence; their present form is card#7898's and card#7913's (2026-08-27 — declared provenance, and Gate 2 over all of `resources/`) and card#8301's (2026-09-08 — the allowlist derived from the notice table), each recorded in [AT-D3-12](#at-d3-12-asset-provenance-gates-bite)'s RED set rather than here | **[AT-D3-12](#at-d3-12-asset-provenance-gates-bite)** **(manifest half)** RED on each of its planted defects, then GREEN — first, because an asset added before the gate exists is an asset nobody will go back and license |
-| 1 | ✅ landed 2026-08-25 (card#7340) — the **character generator port**, its **lineage file**, `resources/characters/LINEAGE.md`, and the **character tree** the port writes | Landing closed [§ 14](#14-open-questions-for-the-review-loop) item 7's generator half — the upstream repository and commit are recorded in the repository, the tree renders in a plain browser from the seat key alone, every clause of Gate 2 holds, and [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)** — the half of that test with a file to read — is green. *(This cell read BLOCKED until 2026-08-27, three days after the block cleared; a gate cell that outlives its block is a build order nobody can trust.)* **What landed is the seed machinery plus INTERIM pixel art** ([§ 10.2](#102-characters-the-munder-difflin-port)): the ratified art direction ([§ 10.4](#104-the-art-direction-as-a-specification)) supersedes the drawing, not the step |
+| 1 | ✅ landed 2026-08-25 (card#7340) — the **character generator port**, its **lineage file**, `resources/characters/LINEAGE.md`, and the **character tree** the port writes | Landing closed [§ 14](#14-open-questions-for-the-review-loop) item 7's generator half — the upstream repository and commit are recorded in the repository, the tree renders in a plain browser from the seat key alone, every clause of Gate 2 holds, and AT-D3-12's lineage half — the half of that test with a file to read — was green; that half is gated at row 19 since card#11046 re-keyed the check it runs, and this row records the step it first passed at. *(This cell read BLOCKED until 2026-08-27, three days after the block cleared; a gate cell that outlives its block is a build order nobody can trust.)* **What landed is the seed machinery plus INTERIM pixel art** ([§ 10.2](#102-characters-original-creatures-drawn-by-code)): the ratified art direction ([§ 10.4](#104-the-art-direction-as-a-specification)) supersedes the drawing, not the step — and row 19 retires the port whole (card#11046) |
 | 2 | ✅ landed 2026-09-14 (card#7341 step 2 — PR #157) — the **animation log** ([§ 11](#11-acceptance-tests)) | this row's own gate: `Tests\Feature\Floor\TheAnimationLogRecordsEveryClaimBearingEpisodeTest`, asserting the module's own enforcement bounds [§ 11](#11-acceptance-tests) states by name — (i) an unknown or already-left episode refused, (ii) refusal throws, and nothing in the module switches on where it runs, (iii) no validation against [§ 6.2](#62-the-animation-table--the-closed-set) on `animation_id` or `cause`, (iv) no `left.at`-ordering check, (vi) `at` is always caller-supplied — plus `Tests\Feature\Floor\AnimationLogClassPopulationMatchesTheDocumentTest`, asserting bound (v): the [§ 6.2](#62-the-animation-table--the-closed-set) id→class table re-derived from this document, never hand-copied |
 | 3 | ✅ landed 2026-09-16 (card#7341 step 3) — the **client protocol**: open the stream, buffer, snapshot, drain, apply, resync, insert, discover, and hold the clock offset ([§ 2.2](#22-connect-snapshot-deltas), [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold), [§ 2.4](#24-the-clock-and-every-age-on-the-page)) — **the harness** ([§ 11](#11-acceptance-tests)): a headless client on that same real path, driven by fixture scripts with the HTTP surfaces stubbed — and the **client's event record** ([§ 5.5](#55-the-clients-own-narration)), which the protocol writes as it acts and the lobby — step 9's artifact — renders | [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(protocol half)**, [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(protocol half)**, [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(protocol half)** |
 | 4 | ✅ landed 2026-09-22 (card#7341 step 4) — every **age readout**, over the clock offset the client protocol holds from step 3 ([§ 2.4](#24-the-clock-and-every-age-on-the-page)): the desk's quiet age, action elapsed, `dark-only` receipt age and gauge age, each seat-clock instant as its labelled claim, and the 1 s tick that re-renders them ([§ 2.5](#25-what-re-renders-and-when)) — `server/public/js/wire/age-readout.js`, whose wordings the drill-down draws from too. The fleet's sweep and ingest ages are not in it: they have no published wording ([§ 14](#14-open-questions-for-the-review-loop) item 17) and sit on step 8's status strip | [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(floor half)** |
 | 5 | ✅ landed 2026-09-22 (card#7341 step 5) — the **desk render**: the render map, the ten state renders, and the desk's **side table** ([§ 5.1](#51-the-desk), [§ 7.1](#71-the-render-per-state), [§ 8](#8-interns--subagent-rendering-and-the-cap)) — `server/public/js/desk/desk-render.js`, one desk from the held seat object and the ages step 4's tick renders, and `server/public/js/desk/desk-floor.js`, which runs it over every held seat, re-renders ages on step 4's 1 s tick, and hands each frame to step 6's animation set, which is what enters and leaves each desk's `held` render in the animation log — this row entered and left them itself until step 6 landed, and the path MOVED rather than gaining a second copy. The *as of* stamp on the lag line is the `server_time` that delivered the seat's `derivation` block, which the client protocol now holds per member ([§ 2.4](#24-the-clock-and-every-age-on-the-page)'s stamp rule). Its page is step 8's floor page, which runs it through the floor screen | [AT-D3-5](#at-d3-5-a-degraded-seat-is-visibly-degraded), [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(desk half)** |
 | 6 | ✅ landed 2026-09-23 (card#7341 step 6) — the **animation set** ([§ 6.2](#62-the-animation-table--the-closed-set)): A1 through A20 as the renderer's own artifact — each row's class, its [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation) form, whether it loops at all, and the one entry every row is started through — `server/public/js/wire/animation-set.js`, writing step 2's animation log. `desk/desk-floor.js` hands it the WIRE JOURNAL `wire/fleet-client.js` now keeps (what the protocol did with each message, and the `changed[]`, `before` and `after` every `edge` condition is written over) beside the frame step 5's desk render draws, and holds no episode state of its own: step 5's held-render path MOVED into the set rather than being copied, because a second way into the log is a second implementation of the one record [AT-D3-1](#at-d3-1-no-animation-without-its-event) reads. ⚠ **Four rows are declared here and fired by no caller in this step, each for a stated reason.** A16's trigger is [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)'s displacement, which is a fact about step 7's slot function, so the set exposes the entry that step calls and A16's own log row is fully specified. A18, A19 and A20's triggers are already built — `coord/coord-model.js`'s `threadAnimations()` and `roundAnimations()` (card#8300) — and what is missing is the LOG ROW rather than the trigger: [§ 11](#11-acceptance-tests)'s `cause` column named four causing messages at this step and a `coord.round` was none of them, so this step writes no row for them and § 11 states instead what the first consumer that applies one will write — **which is step 7, where all three rows are written and that set becomes six**. Its page is step 8's floor page, which constructs the log with § 12's retention bound | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** and **[AT-D3-2](#at-d3-2-the-clear-trace-shows-no-idle-anywhere)** — the two hard gates on trusting the floor at all — plus [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), whose whole claim is about motion and is unobservable before there is any, and the render halves of [AT-D3-9](#at-d3-9-the-client-half-of-snapshot-then-deltas) **(render half)** and [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) **(render half)** |
 | 7 | ✅ landed 2026-09-23 (card#7341 step 7) — the **floor layout**: the map, the slot function, overflow (card #7341). The map is what DEFINES the room interior the desks stand in — its drawing is row 14's — fetched from [D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s surface since card#9208's reversal, with the **shipped default** `resources/floor/default.tmj` as what every room renders until it is authored ([§ 10.3](#103-the-floor-map)); **the wall clock and the windows** are the FLOOR's one room render, drawn once for it rather than once per room's map ([§ 4.2](#42-the-floor), card#9267) — named here because a room element nobody schedules is a room element nobody builds. Step 6's set is what *moves* them ([§ 6.2](#62-the-animation-table--the-closed-set) A17); this step computes them — the clock's value and the windows' phase, carried in the frame and set on first render, which is not an animation ([§ 6.5](#65-a-snapshot-never-animates)) — and row 14 draws them; and the floor's composition — each room's grid at its `origin` over the floor's `hallway`, or the default arrangement at § 12's gap, the floor's extent as their union, and F18's named overlap ([§ 4.6](#46-the-building-layout), [§ 4.2](#42-the-floor), card#9292). **The coordination thread line** ([§ 5.7](#57-the-coordination-thread-line), [§ 14](#14-open-questions-for-the-review-loop) item 24 — Q8): drawn between two desks, so it needs this step's own artifact, the floor's desk positions, exactly as A17's clock and windows are computed here though step 6's set is what moves them and row 14 what draws them. **What landed is** `server/public/js/floor/floor-layout.js` — [§ 3.2](#32-the-desk-slot-function)'s hash, probe and overflow, [§ 10.3](#103-the-floor-map)'s `desks` layer read as `S` and as each slot's position, [§ 4.6](#46-the-building-layout)'s composition and F18's half-open footprints, [§ 4.2](#42-the-floor)'s one back-wall band and A17's minute-resolution value — `server/public/js/floor/coord-join.js`, the `protocol_agent_name` → `seat_id` join [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects) rules 1 and 2 specify and which nothing built until now, and `server/public/js/floor/floor-screen.js`, which runs them over the protocol: it owns § 2.5's drain for this screen and hands `desk/desk-floor.js` what it drained, calls step 6's `displaced()` for A16, writes A18/A19/A20 through that same set, applies the two layout acts through `wire/building.js`, and renders F16, F17, F18, the overflow row and every notice [§ 5.5](#55-the-clients-own-narration) publishes for them. The protocol now HOLDS [D2 § 8.3.3](FLEET-STATE.md#833-the-coordination-objects)'s two objects, because no REST surface carries them and a renderer that did not hold them could draw a thread only while one message was in flight. This is the floor route's renderer; its route is step 8's floor page | [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart), [AT-D3-18](#at-d3-18-the-coordination-thread-line-resolves-or-renders-unresolved-never-a-guessed-desk) |
-| 8 | ✅ landed 2026-09-24 (card#7341 step 8) — the **failure renders** and the **status strip** ([§ 9](#9-failure-paths-and-their-observables)), and the **stream recovery**: [§ 2.2](#22-connect-snapshot-deltas) steps 7–9 — dead-feed detection, the re-open on the 10 s cadence and on the backed-off one, the reload grace, and the re-run from step 1. ⛔ No page constructs the client protocol before this step: a page holding a real `EventSource` without the stream recovery inherits the browser's own reconnect ([§ 2.2](#22-connect-snapshot-deltas)), which re-runs none of steps 1–5, so a seat whose delta fell in the drop holds its old state for as long as it stays quiet. ⇒ **the floor page** is this step's artifact too, because recovery and the first real `EventSource` must arrive together (doc-owner ruling, card#7341 step 8): the `/floor/{floor}` web route inside the `auth`+`mfa` middleware group ([§ 4.4](#44-routes-and-what-each-one-fetches)), its Blade view, and a DOM entry that constructs `FleetClient` with a real `EventSource`, `startFloorScreen`, and the status strip. It is the first caller of everything steps 3 and 5–7 built with no page, and it is where two bounds the page needs and the harness must not have are applied: the page constructs the animation log with [§ 12](#12-every-number-and-where-it-comes-from)'s retention bound ([§ 11](#11-acceptance-tests), [§ 14](#14-open-questions-for-the-review-loop) item 26), and the client protocol holds its coordination envelopes to [§ 5.7](#57-the-coordination-thread-line)'s cap ([§ 14](#14-open-questions-for-the-review-loop) item 25). What landed is the stream recovery in `server/public/js/wire/fleet-client.js` — driven by a scheduler the constructing caller injects, so a client built without one (the harness's pre-recovery replay) recovers nothing and the page always passes one: § 9 F1's 45 s detection, the poll and re-open on the 10 s cadence as one re-run from step 1, F3's four `feed.close` reasons (`unavailable` on the backed-off cadence, `reload` inside the grace, `session` re-opening nothing), F4's snapshot retry, F6's *any read returns 401* at the one read primitive, F8 on an unknown `feed_version`, F19 and F20, and the ESTABLISHMENT the journal now carries so that § 6.5's room is set by a live feed and never by a poll; the failure renders in `server/public/js/wire/failure-render.js`, which the lobby's own refusal words moved into rather than being copied; the status strip in `server/public/js/floor/status-strip.js`, over the lobby's own `indicators()`; § 5.4's membership tests for every one of § 7.6's six sets, with § 7.2's badges and § 7.6's two remaining sets in `server/public/js/wire/member-sets.js`; the two bounds; and the floor page — `/floor/{floor}`, `resources/views/floor.blade.php` and `server/public/js/floor/main.js`, which draws each desk as a line of text: the drawing layer that paints a room, and so § 9 F14, was not built at this step (row 14 has since built it). ⭐ **Rows 14–16 build it** — the room drawing, the camera and the building cross-section (card#7341, the design round after this step) — and this page's text render is what row 15 has turned into [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s list view (slice A) — a headless model over every fact the desk model emits, which this page only paints, and paints only below the viewport floor once row 15's slice B lands | [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(floor half)**, [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised), and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(strip half)** — plus the floor page's own gate, asserted by `Tests\Feature\Floor\FloorPageWiringTest`, shaped like `Tests\Feature\Lobby\LobbyPageWiringTest`: every element the DOM entry addresses exists on the Blade view and every element the view declares is written into, the view serves the entry as a module whose every import resolves, and a control plants each defect the check exists to catch and watches it red. It reads the floor page alone, so it names no fixture and not the harness |
+| 8 | ✅ landed 2026-09-24 (card#7341 step 8) — the **failure renders** and the **status strip** ([§ 9](#9-failure-paths-and-their-observables)), and the **stream recovery**: [§ 2.2](#22-connect-snapshot-deltas) steps 7–9 — dead-feed detection, the re-open on the 10 s cadence and on the backed-off one, the reload grace, and the re-run from step 1. ⛔ No page constructs the client protocol before this step: a page holding a real `EventSource` without the stream recovery inherits the browser's own reconnect ([§ 2.2](#22-connect-snapshot-deltas)), which re-runs none of steps 1–5, so a seat whose delta fell in the drop holds its old state for as long as it stays quiet. ⇒ **the floor page** is this step's artifact too, because recovery and the first real `EventSource` must arrive together (doc-owner ruling, card#7341 step 8): the `/floor/{floor}` web route inside the `auth`+`mfa` middleware group ([§ 4.4](#44-routes-and-what-each-one-fetches)), its Blade view, and a DOM entry that constructs `FleetClient` with a real `EventSource`, `startFloorScreen`, and the status strip. It is the first caller of everything steps 3 and 5–7 built with no page, and it is where two bounds the page needs and the harness must not have are applied: the page constructs the animation log with [§ 12](#12-every-number-and-where-it-comes-from)'s retention bound ([§ 11](#11-acceptance-tests), [§ 14](#14-open-questions-for-the-review-loop) item 26), and the client protocol holds its coordination envelopes to [§ 5.7](#57-the-coordination-thread-line)'s cap ([§ 14](#14-open-questions-for-the-review-loop) item 25). What landed is the stream recovery in `server/public/js/wire/fleet-client.js` — driven by a scheduler the constructing caller injects, so a client built without one (the harness's pre-recovery replay) recovers nothing and the page always passes one: § 9 F1's 45 s detection, the poll and re-open on the 10 s cadence as one re-run from step 1, F3's four `feed.close` reasons (`unavailable` on the backed-off cadence, `reload` inside the grace, `session` re-opening nothing), F4's snapshot retry, F6's *any read returns 401* at the one read primitive, F8 on an unknown `feed_version`, F19 and F20, and the ESTABLISHMENT the journal now carries so that § 6.5's room is set by a live feed and never by a poll; the failure renders in `server/public/js/wire/failure-render.js`, which the lobby's own refusal words moved into rather than being copied; the status strip in `server/public/js/floor/status-strip.js`, over the lobby's own `indicators()`; § 5.4's membership tests for every one of § 7.6's six sets, with § 7.2's badges and § 7.6's two remaining sets in `server/public/js/wire/member-sets.js`; the two bounds; and the floor page — `/floor/{floor}`, `resources/views/floor.blade.php` and `server/public/js/floor/main.js`, which draws each desk as a line of text: the drawing layer that paints a room, and so § 9 F14, was not built at this step (row 14 has since built it). ⭐ **Rows 14–16 build it** — the room drawing, the camera and the building cross-section (card#7341, the design round after this step) — and this page's text render is what row 15 has turned into [§ 4.5](#45-the-viewport-rule-and-the-camera)'s list view (slice A) — a headless model over every fact the desk model emits, which this page only paints, below the drawing at every window size ([§ 4.5](#45-the-viewport-rule-and-the-camera), the operator's ruling of 2026-10-01 on card#7341) | [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(floor half)**, [AT-D3-8](#at-d3-8-a-refusal-is-never-an-empty-office), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised) **(desk-model half)**, and [AT-D3-7](#at-d3-7-a-delta-gap-resyncs-exactly-one-seat) **(strip half)** — plus the floor page's own gate, asserted by `Tests\Feature\Floor\FloorPageWiringTest`, shaped like `Tests\Feature\Lobby\LobbyPageWiringTest`: every element the DOM entry addresses exists on the Blade view and every element the view declares is written into, the view serves the entry as a module whose every import resolves, and a control plants each defect the check exists to catch and watches it red. It reads the floor page alone, so it names no fixture and not the harness |
 | 9 | ✅ landed 2026-09-25 (card#7341 step 9) — the **lobby** ([§ 4.1](#41-the-lobby--the-building-summary)) — which renders the record's *membership changes* lines ([§ 5.5](#55-the-clients-own-narration)) for a seat or an install a discovery fetch adds, written by the client protocol in `server/public/js/wire/fleet-client.js` at this step, and replaces `server/public/js/lobby/main.js`'s own discrepancy trigger with the protocol's. What landed is `server/public/js/lobby/lobby-screen.js`, the lobby as a model over the client protocol: the stacked floors and their per-floor summaries over the seats the protocol HOLDS, the fleet totals from the `fleet{}` it holds, [§ 4.1](#41-the-lobby--the-building-summary)'s two ratified sentences worded over the very `(N, M)` pair the protocol compares (`discrepancyState()`) and silent while the client has applied no full snapshot, the membership stamp from the last full snapshot the protocol applied, the feed status with its resync count from step 8's status strip, [§ 9](#9-failure-paths-and-their-observables)'s failure renders, and the record itself; `server/public/js/lobby/main.js`, which constructs the protocol with its stream recovery through `server/public/js/wire/live-page.js` — the floor page's own construction, hoisted at this second caller rather than copied — and draws each frame; and, in the protocol, the membership lines — *room added to the building* and *seat added to the floor* — written at the one insert every row passes through, so a seat or a room a discovery, a recovery poll or the lobby's Refresh adds has a written cause exactly as a seat fetch's always had. ⛔ One trigger: the lobby fetches no snapshot of its own: the one-fetch-per-distinct-`(N, M)` budget, the failed fetch that spends nothing and the one fetch in flight are the protocol's alone, so a lobby holding the protocol spends one request on a disagreement rather than one from each trigger. The lobby's other behaviours from its one-shot entry are kept, each now over the protocol: the layout is fetched after the snapshot ([§ 4.4](#44-routes-and-what-each-one-fetches)'s `/` row), on the first render that finds a full snapshot applied; the Refresh control is one full snapshot through the protocol (`FleetClient#refresh`), then the layout; and a snapshot whose `fleet{}` says `db: "down"` is [§ 9](#9-failure-paths-and-their-observables) F4's statement, which the protocol now holds off a snapshot as it always held it off a `fleet.health`. A `building.layout` on the lobby's stream re-fetches the layout ([§ 2.5](#25-what-re-renders-and-when)) | [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) — asserted by `Tests\Feature\Floor\TheLobbyNeverInventsACountTest`, which drives the lobby over the harness |
 | 10 | ✅ landed 2026-09-25 (card#7342 step 10) — the **drill-down**, and its **uncapped intern list** ([§ 8](#8-interns--subagent-rendering-and-the-cap)) (card #7342). What landed is the panel over the floor page ([§ 4.3](#43-the-desk-drill-down-panel)), opened by selecting a desk and served at `/floor/{floor}/{seat_id}` ([§ 4.4](#44-routes-and-what-each-one-fetches)): `server/public/js/drilldown/drilldown-panel.js` issues § 4.3's two requests through the client protocol's one read path, takes the version-bearing members from the protocol's held seat as deltas patch it, and holds each `fetch-fresh` block under the stamp of whatever last delivered it — the open fetch, a whole-object patch, and every full snapshot's row for the seat, a same-version poll included, which is what re-stamps the blocks on each poll; `drilldown-model.js` renders every section of § 4.3's table — the header, the task with its reference as plain text, the action, the context gauge, the interns, the recent activity paged with `before`, and the transport, derivation, reporter, badge, session, counter and raw blocks, the badges in § 7.2's lines with D1's *since reporter start* framing — and § 9 F10 and F11; `drilldown/main.js` writes them into the floor page's `data-panel-*` slots. In the client protocol `seat.retired` is applied: the announcement — the message or the retiring delta, whichever arrives first — removes the seat once, writes one record line naming the seat, the reason and the time and no operator, fires A13 once and closes a panel open on it, and a desk that shared its collision chain moves back as A16 with the departed seat's key as its cause ([§ 3.5](#35-retirement-and-the-only-removal)). [§ 2.3](#23-membership-a-seat-or-an-install-the-client-does-not-hold) row 4's backstop landed with it: a full snapshot removes a held seat it omits, with one line, unless the client inserted that seat after the snapshot was requested. § 5.3's fleet-counters render for the operator health view is decided in `lobby/lobby-model.js` (`healthCounters`); no row builds that view | [AT-D3-4](#at-d3-4-the-subagent-cap-boundary), [AT-D3-16](#at-d3-16-retirement-removes-the-desk-and-the-removal-is-explained), and the panel halves of [AT-D3-6](#at-d3-6-the-feed-dying-is-visible-within-45-s) **(panel half)**, [AT-D3-10](#at-d3-10-ages-come-from-the-server-clock) **(panel half)** and [AT-D3-14](#at-d3-14-a-null-is-never-drawn-as-a-zero) **(panel half)** ([§ 11](#11-acceptance-tests)'s ordering rule) — asserted by `Tests\Feature\Floor\TheInternListIsUncappedWhereTheSideTableIsCappedTest`, `Tests\Feature\Floor\RetirementRemovesTheDeskAndExplainsTheRemovalTest`, `Tests\Feature\Floor\TheDrillDownIsRestampedByEachPollTest`, `Tests\Feature\Floor\TheDrillDownReadsItsAgesFromTheServerClockTest` and `Tests\Feature\Floor\TheDrillDownNeverDrawsANullAsAZeroTest`, each driving the floor and the panel over the harness |
 | 11 | ✅ landed 2026-09-12 (card#9208 build slice 1) — the **authored building store** — `authored_revisions`, `building_layout`, `floors.map_version` — and the console's **revisions, diff, restore, export and layout modules** ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions), [§ 10.3](#103-the-floor-map), [§ 4.6](#46-the-building-layout)). Moves the layout out of `server/config/building.php` and retires that file's *deploy-time* docblock with it. ⚠ The console's **preview** is not in this slice: it draws with step 7's renderer and lands with or after it, so until then restore is the only thing between a bad save and every viewer. ⭐ **Step 7's renderer has landed** (`server/public/js/floor/floor-layout.js` and `floor/floor-screen.js`), so the *or after* arm is the one in force: the preview is now buildable and is not built, and restore is still the only thing standing there ([D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions) says so in its review row). ⚠ card#9292's plan lands in this slice too: the room record with `origin`, the floor's `hallway`, and the overlap check at the layout save and at a room map's save, restore and removal ([§ 4.6](#46-the-building-layout), [D2 § 6.11](FLEET-STATE.md#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)); the fixture's cases move to the record and each refusal § 4.6 states gains a case — and the fixture is a cross-runtime pin, so `Tests\Feature\Lobby\TheBuildingStacksTheComposedFloorsTest`'s projection over `install` / `form` / `reported` and `lobby-model.js`'s `floors()` must carry `origin` through, or a planned case reds the lobby suite rather than the store's | this row's own gate, asserted by `Tests\Feature\Building\TheAuthoredStoreKeepsEveryRevisionTest`: a save is one revision, a restore is a forward revision, a removal is retrievable, and a byte-identical save is refused |
 | 12 | ✅ landed 2026-09-14 (card#9208 build slice 2) — the **building surface** — `GET /api/building`, `GET /api/building/rooms/{install_id}/map`, `room.map` and `building.layout` on the feed ([D2 § 8.7](FLEET-STATE.md#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)). The two endpoints are `App\Http\Controllers\BuildingController` behind the read plane's gate, session-only as the timeline is; the two messages were already written by the store in the transaction of the revision they announce (card#9300), and this slice adds the test that a write failing at its last statement leaves neither. | this row's own gate, asserted by `Tests\Feature\Building\TheBuildingSurfaceTest`: a `503` on a store that cannot be read and never a default served in its place; a token refused as the timeline refuses one; the shipped default answered for an unauthored room with `source: "default"` |
 | 13 | ✅ landed 2026-09-14 (card#9208 build slice 3) — the **room map fetch** and the client's map cache by `map_version`; the lobby's layout fetch replacing the page-inlined document ([§ 2.2](#22-connect-snapshot-deltas) step 3b, [§ 4.4](#44-routes-and-what-each-one-fetches), [§ 2.5](#25-what-re-renders-and-when)) (the floor route's own build, step 7, is where the fetched map is first drawn). What landed is `server/public/js/wire/building.js` — the layout request, each room's map request, the cache by `map_version`, the `building.layout` and `room.map` applies, and the failure each request holds in place of a document — and `server/public/js/lobby/lobby-entry.js`, the lobby's snapshot-then-layout entry; the page carries no layout. ⚠ What did not land is other steps' artifacts, and the cache's room half has no caller until they do: nothing delivers `room.map` or `building.layout` to a page, because the stream is step 3's and the lobby opened none, and nothing enters a room or draws its map, because that is step 7 (both since discharged: step 7's floor screen applies the two messages, and since step 9 the lobby applies `building.layout` off its own stream) | this row's own gate, asserted by `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest` — the layout comes from the fetch and after the snapshot, and F17 composes no building on a cold start and keeps the last known layout after one — and `Tests\Feature\Building\TheClientHoldsRoomMapsByVersionTest` — a map held at the version `/api/building` reported is not fetched again, a `room.map` naming a new version re-fetches that room alone and returns one event-log line, and F16 holds no default. **⭐ T39's client halves that were owed to a later step are DISCHARGED at step 7** — *re-renders one room* and F16's drawn render (the placeholder grid under *room map could not be loaded — HTTP N*), *one event-log line written* (step 7 delivers a `room.map` to the apply and writes the line it returns into the record, [§ 5.5](#55-the-clients-own-narration), through a door the protocol exposes for it), and F17's statement on the floor route: all three are asserted by `Tests\Feature\Floor\TheFloorComposesItsRoomsTest`, each with its own planted RED. ⚠ **One defect that half found rather than inherited: the protocol journalled a `room.map` and a `building.layout` carrying neither `map_version` nor `layout_version`, so the apply this row built could not be told which version the message named** — a `building.layout` whose version equalled the held one was re-fetched for nothing and a `room.map` was not applied at all. Of T39's halves: *no [§ 6.2](#62-the-animation-table--the-closed-set) row fired* to step 6 alone (step 2's gate is the animation-log module's own contract and asserts nothing about a `room.map` apply), because a client with no animation log and no animations satisfies it for free — [§ 11](#11-acceptance-tests)'s reason for splitting AT-D3-9 — **and that half is discharged there** (card#7341 step 6): `Tests\Feature\Floor\ALayoutActFiresNoAnimationTest` replays a `room.map` AND a `building.layout` — [§ 2.5](#25-what-re-renders-and-when) gives the two one rule, so auditing one of them is how the other keeps the defect — reads the probe's own delivery outcome first so a dropped message cannot satisfy the claim, and requires the log to gain nothing beyond the held renders the snapshot itself delivered; its RED re-sets the room on the layout act, which is [§ 6.5](#65-a-snapshot-never-animates)'s own worked argument. **Nothing of T39's client side is still owed.** Named here rather than numbered, because an acceptance test in this document is bound to a fixture and a suite that do not exist until those steps do ([§ 11](#11-acceptance-tests)) |
-| 14 | ✅ landed 2026-09-25 (card#7341 step 11, slices A–C) — the **room drawing** — the layer that paints a room, which no row above builds (the step-8 builder's finding, PR #226): everything [§ 4.2](#42-the-floor) enumerates, drawn, over the floor page row 8 serves. It keeps the split every renderer in this table keeps — a model no browser is needed for, and a DOM half no check exercises — because there is no browser on the build host and a decision in a DOM file is a decision no gate can red. The model is the **scene**: from step 7's frame — each room's placement, the floor's extent, the back-wall band and every desk's slot position — and from the map document the client holds ([§ 10.3](#103-the-floor-map)'s read members, and nothing beyond them), it emits what is drawn where, as data. The hallway's and each room's tile layers in document order, bottom first, each cell resolved to a tileset image and a source rectangle through the **tileset reader** — Tiled's tileset in both spellings [§ 10.1](#101-the-manifest-and-the-two-gates) clause 1 admits, `.tsx` and `.tsj`, its `source` resolved to the URL the asset route below serves it at, which [§ 10.3](#103-the-floor-map) says the client decodes and which nothing decoded before this row; the band, with A17's clock face and windows at the value step 7's frame carries; per desk, every element step 5's model emits — [§ 5.1](#51-the-desk)'s rows, [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s marks and [§ 8](#8-interns--subagent-rendering-and-the-cap)'s side table, the population being the model's output and copied into no list here — laid out INSIDE the desk's slot rect: [§ 10.3](#103-the-floor-map)'s `desks` object is the furniture box, and everything drawn for a desk at rest except the bubble lies within it under that row's bounds — stools at § 8's cap and never hidden, the badge cluster at D2's bound with its *+N more* mark, and **every string truncated to the box with a visible mark through the scene's one truncation primitive**, which every drawing site takes its string from, its full value on row 15's list view below the viewport floor and in row 10's drill-down (the order note states that dependency) — which is what makes card#7341's ruling true by construction: [§ 3.2](#32-the-desk-slot-function) gives distinct seats distinct slots, the map's slots are disjoint, and a desk drawn inside its own slot cannot reach a neighbour's whatever the seat beside it carries and however long its strings run. The desk sprite sits at the box's anchor, the character the character tree draws from the key (rows 0–1 — [§ 10.2](#102-characters-the-munder-difflin-port)'s interim art until [§ 10.4](#104-the-art-direction-as-a-specification)'s lands), the side table's stools in whatever arrangement fits the box at the cap (⚠ not the reference's: its `deskSVG` hangs the tray outside the slot, a defect its own comment hands to this row), and the thought bubble — `desk/task-bubble.js`'s layout, with the measurer [§ 5.1](#51-the-desk) rule 4 requires supplied by the painter below and, in the harness, by the fixture — **and the character's drawn size reaches the scene the same way**: an input beside the measurer, supplied on the page by the painter from the tree's own exports (`resources/characters/index.js` exports `SCENE_W`, `SCENE_H`, `PORTRAIT_W`, `PORTRAIT_H`) and in the harness by the fixture, because the tree is served at the asset route's absolute URL, which resolves under no `node` harness (`DrivesAShippedClientModule`), and a scene that imported it would be a model no gate can load; the bubble is rule 5's pass and the one element that may leave the box. ⇒ **This row's build obligation on the map:** re-author `resources/floor/default.tmj`'s `desks` objects to the furniture box the scene defines, keeping `S` as [§ 3.2](#32-the-desk-slot-function) states it (its worked assignment and [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)'s collision chance are derived on it) and re-sizing the grid where the boxes need it, and publish the box's size at the cap in [§ 12](#12-every-number-and-where-it-comes-from) as a Measured row — the number [§ 14](#14-open-questions-for-the-review-loop) item 28's console refusal reads; every **Measured** § 12 figure that reads the map re-derives on the run — `S`, the worked assignment, the sprite width, the box at the cap — and the one figure that read it and was not Measured — the viewport row's one-row-of-desks arithmetic on the sprite pitch, prose no run re-derived — was re-stated on the re-authored box by this row's slice B and bound to the gate, which re-derives it from the map and the box on every run (PR #232 round 1), leaving the figure it illustrates to row 15's measurement; **F21's statement for the room drawn** ([§ 9](#9-failure-paths-and-their-observables)) — the scene compares the map's `desks` objects pairwise on step 7's half-open footprint test (`floor/floor-layout.js`'s own, F18's) and each against § 12's box at the cap, and emits [§ 5.5](#55-the-clients-own-narration)'s *desk objects intersect* and *desk object is smaller than the furniture box* lines naming the objects by Tiled `id`, the room and the seat at each, for **any** map the client holds — the shipped default, an authored save, a stored or restored revision — while still drawing every desk, because the console's refusal below reaches no revision stored before it and a viewer is told by the page or by nobody; **the console's refusals and its re-validation listing** — [§ 14](#14-open-questions-for-the-review-loop) item 28(1), operator-ruled 2026-09-25 (card#7341 comment 6488), built here: at a save AND at a restore, [§ 10.3](#103-the-floor-map)'s `desks` row refuses (i) two objects whose half-open rects intersect, naming both, and (ii) an object smaller than § 12's furniture box at the cap; and (iii) at every change of that box — this row's landing the first, any art that moves the box another — the console re-validates every room's current map against the new box and lists the failing rooms on its room index (`Admin\FloorController::index`), each room left on the floor under F21's notice until its author saves a passing one, and never refused after the fact, which would blank a room for a document the console accepted (F16's *Never*); the overflow row in its strip below the floor ([§ 3.2](#32-the-desk-slot-function)), each overflow desk at § 12's box at the cap, having no slot rect of its own; [§ 5.7](#57-the-coordination-thread-line)'s line and A18–A20's forms between the positions step 7 resolved — under the operator's QA rulings on them (card#7341 scope addition 3): A20's ring spans the whole floor before it fades, reach first and fade after, never dissipating mid-office; A19's envelope's nose points along its direction of travel; and the escalation flare the same ruling staged is not drawn, because no delivered field holds it ([§ 5.7](#57-the-coordination-thread-line)'s *what a reader will look for here and not find*); and, for every [§ 6.2](#62-the-animation-table--the-closed-set) row, the form step 6's set decided — its class, whether it loops and its [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation) form — as the frames to draw, at [§ 12](#12-every-number-and-where-it-comes-from)'s loop rate. ⛔ **The scene starts no claim-bearing motion.** Every claim-bearing animation enters through the set ([§ 11](#11-acceptance-tests)'s ruling) and what this row adds is the drawing of what the set already logged; decorative motion ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)) is emitted by the scene as data too — which element, where, and that it is decoration under § 6.3's bound — so the painter draws it without deciding it, it writes no row, and [§ 11](#11-acceptance-tests)'s review question has a list to read rather than a DOM to inspect. The **painter** is the DOM half: it turns the scene into a drawing surface the camera scales as ONE space — tiles, desks, nameplates, bubbles and the thread line together, which is the lesson `docs/design/floor-preview/README.md` records from four review rounds of a bubble no gate measured — and reports back which assets failed to load. Whether that surface is SVG, a transformed HTML layer or a canvas is the builder's ([§ 13](#13-decisions-taken-revisable-at-review) row 15); what it must keep is [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s property, resolution independence, and today's resampling is the bridge tileset's residue rather than the layer's, retiring with the pack ([§ 10.3](#103-the-floor-map)). The **asset route** is the one HTTP surface for the art: nothing serves `resources/floor/` or `resources/characters/` to a browser today — both sit outside `server/` (`App\Floor\FloorAssets`'s own ⚠), `server/public/` holds the entry, `js/`, the favicon and `robots.txt`, and no route in `server/routes/` names either tree — so the tileset reader's resolved `source` and the character tree's *renders in a plain browser* both named a URL that did not exist. It is a route inside the same `auth`+`mfa` group as `/floor/{floor}`, because the art is the floor's and earns the floor's gate rather than a second one to reason about, **mounted at `/art/floor/{path}` and `/art/characters/{path}`, with a `where()` constraint on `{path}` that admits `/`** — Laravel's parameter matches no `/` without one, and the tileset's images sit in subdirectories (`resources/floor/tiles/furniture-kit/desk.png`), so an unconstrained route would 404 the very images the gate's served leg reads; the constraint is the character class `[A-Za-z0-9._/-]+` and nothing wider, containment being `FloorAssets::resolve()`'s and not the pattern's — a prefix no route in `server/routes/web.php` claims, and deliberately not under `/floor/`, where `/floor/{floor}` would read `art` as a floor key — so the painter imports the character tree's entry by that absolute URL, `/art/characters/index.js`, the tree's own relative imports (`./seed.js`, `./portrait-art.js`) resolve under the same prefix, and the tileset reader resolves a `.tsx`/`.tsj` `source` and its image to `/art/floor/…`. ⚠ A relative import from `server/public/js/` to `resources/characters/` is not an option, and the reason is that two resolvers disagree on it: on disk it climbs out of `server/public/`, so `FloorPageWiringTest`'s *every relative import resolves* passes it, while in the browser `..` above the document root clamps and the same specifier 404s — a check that passes and a page that breaks; an absolute specifier is outside that test's population by construction, which is why the route's own gate below reads it instead. It answers through `App\Floor\FloorAssets::resolve()` alone, extended to name the character tree's root beside the floor's rather than sibling'd, because that class is the one place that knows where the repository's assets live and its `realpath` containment is the one path test — anything it answers `null` for is a 404; it admits only [§ 10.1](#101-the-manifest-and-the-two-gates) clause 1's extensions, which are the files Gate 1 has already judged, so a file the gate never saw cannot be served; and it is served by the application's own process — no deploy-time copy into `server/public/`, no web-server alias, nothing that needs root (operator ruling 2026-09-13: the web app runs without root). Cache headers are the builder's; what the gate holds is the containment and the allowlist. The **placeholder** is [§ 9](#9-failure-paths-and-their-observables) F14's render, and F16's plain grid is drawn from it: a desk whose art failed draws a plain rectangle carrying the nameplate, the state label and the badge cluster — every fact, no art — and the status strip gains F14's *some art failed to load* line, an edit to step 8's strip module rather than a second strip. What this row does not do, stated so a builder does not: it adds no [§ 6.2](#62-the-animation-table--the-closed-set) row, reads no field steps 5 and 7 do not already hold, and gives the painter no decision the scene has not made. ⭐ **Built in slices, the landing marker set at the last:** slice A (PR #231, 2026-09-25) built the scene, the painter, the tileset reader, the asset route and `resources/floor/furniture-box.js` as the box's one source; slice B (PR #232, 2026-09-25) re-authored the shipped default to the box — its `desks` objects each at least the box, in the two-row composition on the first-party floor plane [§ 10.3](#103-the-floor-map) states under the operator's ruling (comment 6517), the grid [§ 12](#12-every-number-and-where-it-comes-from)'s Measured row — with § 12's box and grid rows Measured and gated, the viewport row's arithmetic re-derived by the gate, and [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor)'s GREEN clauses on the shipped map under [§ 11](#11-acceptance-tests)'s positive control; and slice C (2026-09-25) built the console's refusals and its re-validation listing, item 28(1): `App\Floor\DeskSlots` refuses the two cases at `App\Floor\Floors`' save and restore — the half-open test is `App\Building\Footprint`'s, hoisted out of the floor plan's overlap check so the two share one, and the box is `App\Floor\FurnitureBox`'s reading of its one source — while `FloorMap::parse()`, every reader's parser, refuses neither, so no stored map is refused after the fact; each room-map revision records the box it was validated against ([D2 § 6.4](FLEET-STATE.md#64-ddl)'s `authored_revisions.furniture_box`, `FurnitureBox::signature()`), and the room index re-validates a room's current map whenever that record differs from the box in the tree and lists the room if it fails. **A revision stored before the column existed records NULL — validated against no recorded box — and is therefore re-validated and listed if it fails, never assumed passing**; no backfill writes today's box onto it, because that would record a validation that never happened. The gate is `Tests\Feature\Admin\TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest`. ⛔ **Release gate — operator ruling 2026-09-25 (card#7341 comment 6517): the room drawing stays as this row built it until row 15's camera lands, and `dev` is not promoted to `main` before row 15 lands** | **[AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk)** (F14, over the scene), **[AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor)** — the no-overlap check card#7341 asks the build to keep as a test — plus row 8's `Tests\Feature\Floor\FloorPageWiringTest` widened to the painter's elements: every element the painter addresses exists on the view and the reverse, as that row states it; plus the asset route's own gate, a feature test shaped like that one: a path outside the roots, a file whose extension clause 1 does not admit, a request with no session, and a session without the second factor (the redirect `FloorPageWiringTest` asserts for the page itself) are each refused; a shipped tileset image and the character tree's entry are each served with their media type; the painter's own import specifier for the character tree — read out of the painter's source, never spelled in the test — is served as JavaScript by the route; and a control plants each defect and watches it red; plus the console's own gate for item 28(1)'s three obligations, a feature test shaped like row 11's: a save and a restore of a map with two intersecting objects are each refused naming both, a save and a restore of a map with an object smaller than the box are each refused, a room whose stored map fails the box is listed on the room index after a change of the box and is not refused, and a control plants each defect and watches it red — `Tests\Feature\Admin\TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest` |
-| 15 | ✅ landed 2026-09-26 (card#7341 row 15, slices A–B and § 14 item 29's build list) — the **camera** — [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s viewport, built: wheel-zoom to the cursor, drag-pan, a fit-floor control and a whole-building control, one machinery for the floor here and for the building at row 16 (card#7341's scope addition, operator 2026-08-26: *same one zoom/pan machinery serves both scales*). It is a model too — a view transform over the scene's space: zoom and pan, the clamp that keeps the floor in view, and the fit that frames the floor's whole extent INCLUDING the overflow strip (the reference's own correction, card#7965: a fit that framed the floor alone cut off the seats the strip exists to show) — exposed as data, with the floor page wiring the wheel and the pointer to it. ⛔ **Navigation is never state** ([§ 4.5](#45-the-viewport-rule-and-the-capability-floor)): a camera move writes no animation-log row, starts nothing through the set, and survives every re-render — a delta, a full snapshot, a resync, a reconnect and a layout act all leave the viewer's head where it was; only the viewer moves it. The first render frames the floor at fit with no transition, which is [§ 6.5](#65-a-snapshot-never-animates)'s setting and not a move. A camera glide is the viewer's and not the fleet's, so it is permitted and takes no [§ 6.2](#62-the-animation-table--the-closed-set) row, and under `prefers-reduced-motion` the camera cuts rather than glides. The whole-building control on the floor is the way to `/`, [§ 4.4](#44-routes-and-what-each-one-fetches)'s lobby route, and not a second scale drawn on this page — [§ 4.1](#41-the-lobby--the-building-summary): a plate is a summary and never a drawn interior. Everything the camera scales is the scene's; the status strip, the failure statements and the sign-in prompt are page chrome outside it. The **capability floor** is [§ 4.5](#45-the-viewport-rule-and-the-capability-floor)'s first rule, built: at a viewport below [§ 12](#12-every-number-and-where-it-comes-from)'s viewport floor the route renders the **list view** — the same facts as text, one row per seat, no map, every fact the desk model emits — and at or above it the drawn floor under the camera; the size is read from the viewport the page supplies and, in the harness, from the fixture. ⚠ **The list view is a headless model and not a page function, and this row is where it moved.** Step 8's text render was `floor/main.js`'s `deskLine()`, which carried the nameplate, the glyph, the label line, the quiet age, the badges and the unrecognised values and nothing else — so a `fold_lag` seat on it was marked only by its raw badge id, [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s lag line and [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s note missing, which is [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s rule failing on the one render a small viewport gets — and it lived in a DOM entry (`const root = el('floor')` at module top level) that no harness can load and whose own header rules it the wrong home for a decision. This row builds the list as a module beside `desk/desk-render.js`: one function over `deskModel()`'s output returning the row's lines, each the model's own string, and deciding there the text form of every member that is not already a string — the gauge (`wire/context-gauge.js`'s statement, percentage, numerals, source and age), the side table (each stool's label, tag and start, and the *+N more* tag) and the bubble (its text with rule 4's mark, its source and its degraded note) are the three the page would otherwise have had to compose, and the members that carry their strings inside an object (the lag line, the monitor's text, the action's start and elapsed, the dark pair) are read out of it there — so nothing is composed in the page: `floor/main.js` paints the lines it is handed, and `deskLine()` is deleted rather than kept beside it. **No list of the facts is written in this document**: the population is `deskModel()`'s return, and this row's guard is what holds every member of it rendered or excluded by name, so a member added to the model lands on the row or reds the build. ⭐ **The list view is BUILT — slice A (card#7341 row 15, 2026-09-26)**: `server/public/js/desk/desk-list.js`, whose `deskListRow(desk)` returns one seat's lines and whose `NOT_LISTED` names, by path and with its reason, each leaf of the model the row does not print; `floor/main.js` paints those lines below the viewport floor and `deskLine()` is gone. The dark pair is read out differently from the sentence above: the desk model already splices it into the label line, so the row prints it once there, and the exclusion names the label line as its carrier, which the guard checks on every desk. The guard is `Tests\Feature\Floor\TheListViewRendersEveryDeskMemberTest`: its runs are every run of every checked-in fixture file that draws a desk, and its leaves are what `deskModel()` returned on them. Each leaf a desk carries at a non-default value is replaced in a copy of that desk and the row is derived again, so *printed* is measured on the row. ⭐ **This is the build [§ 12](#12-every-number-and-where-it-comes-from)'s viewport row waits on**: it is the first to draw a nameplate and a badge cluster on a desk at the camera's floor zoom, so it owed that row its measurement — recorded on the card and in that row, whether the figure moved or was confirmed — and slice B took it (below). This document publishes no zoom step, no zoom ceiling and no glide duration: they are the drawing's ([§ 10.4](#104-the-art-direction-as-a-specification)'s last bullet), carry no fact, and the ratified reference's are the worked example ⭐ **The camera and the capability floor are BUILT — slice B (card#7341, 2026-09-26)**: the camera is `server/public/js/wire/camera.js`, a frozen value and pure functions over it (fit, zoom about a point, pan, the clamp, resize, the glide's step and its length, a cut under reduced motion) that frame a rect and know nothing of a floor, so row 16 is its second caller; `floor/floor-screen.js` holds it and decides the capability floor against its `VIEWPORT_FLOOR`, frames it on the scene's whole extent on every render (the first framing alone fits) and exposes the viewer's acts, which render nothing; `floor/main.js` wires — the wheel and the drag through `wire/camera-gestures.js` since card#7343 r1 hoisted them at the lobby, their second caller — the wheel (zooming in proportion to its scroll, so a trackpad's or a pinch's stream of small events is one gesture and not a step each — a pinch, a wheel event with `ctrlKey`, scaled up by `camera.js`'s `PINCH_GAIN` because its deltas are far smaller, d3-zoom's figure and not yet felt in a browser), the drag (ended by a `pointercancel` or by a move with the primary button no longer held), the keyboard and the zoom buttons (about the drawing's centre), the fit-floor control and the whole-building link, and `floor/painter.js` sets the drawing's `viewBox` from the camera — the drawing a focusable group and never an image, so the desks inside it stay buttons, each opened by Enter or Space, and the desk the keyboard is on keeps focus across the painter's rebuild of the drawing — and took § 12's measurement, which confirmed the figure and left its criterion open (that row). Below the floor the page paints slice A's list view through `floor/main.js`'s `paintDesks()`, the one path it paints desks as text on. Both slices are built, and so is the build list below, which is what the landing marker waited on. ⭐ **This row owns [§ 14](#14-open-questions-for-the-review-loop) item 29's build list — the client, test, probe and fixture halves of that item's answer, whose rule is [§ 11](#11-acceptance-tests)'s precedence — and every other surface that names part of it points here.** (a) **The client** writes each exit (3) and (4) of § 11's precedence name with the literal each gives it, `unconfirmed` and `stilled`, where `held()` (`wire/animation-set.js`) wrote the held object's own `state_version`: `held()` asks `exitCause()` the precedence in its order, and `desk/desk-floor.js` hands it, per seat, the held rendering the object held now draws with row 5's condition and the stilled floor at their previous-render values, and whether each condition newly holds. (b) **The test:** `Tests\Feature\Floor\NoAnimationFiresWithoutItsEventTest`'s `assertHoldConditionsPointOppositeWays` read every held `cause` as a version, so on a literal `seatAtVersion` returned `null` and the `assertNotNull` beside it redded; its `left`-row half is replaced by one assertion, `assertEveryExitHasThePrecedencesCause`, implementing [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s one predicate, that every desk `left` row's `cause` is the one § 11's precedence gives for the render that wrote it, removal, version and literal causes alike, and the `stilled` re-entry check AT-D3-1's GREEN sets beside that predicate — both evaluated from (c)'s records, which it first holds to partitioning the log. Its `entered` half stands as `assertEveryEntryHoldsItsRow`. ⛔ **The ORDER of the precedence is checked by direct cases, not by the replay:** no replayed run has a render in which two steps apply together, so a client asking them in another order passes every run. `Tests\Feature\Floor\TheAnimationSetIsTheDocumentsClosedSetTest`'s `test_the_exit_precedence_is_asked_in_its_ruled_order` drives one render per adjacent pair of the ruled order through `server/tests/Feature/Floor/animation-set-probe.mjs`'s `held` op, with both steps applying, and asserts the higher step's cause; `test_each_adjacent_swap_of_the_precedence_reds_its_pair` plants each swap in `exitCause()` and watches its pair red. (1) and (2a) take no pair case, because (1) applies only where the client no longer holds the seat and every later step asks about the object it holds. (c) **The probe:** `server/tests/Feature/Floor/fleet-client-probe.mjs` writes the per-render records the predicate is evaluated from, which its `records[]` could not stand in for — they are snapped once per scenario event, age ticks included, rather than once per render, carry the stilled floor only as the failure render's `sign_in` and under no name of its own, and no animation-log row says which render wrote it. Each `desk_renders[]` entry an `apply` drew — the one path that drains the journal and writes to the animation log — carries the stilled floor, each held seat's object and row-5 state, the removals that render's journal applied, with their `cause`, and the log rows that render wrote; a `tick` entry carries none of them, because the age ticker drains nothing and writes no row. (d) **The fixture:** every refused read in `fx-confirm`'s `missing_persistent` run answers a `503` body carrying the `server_time` of the instant it answers, on the run's own clock — each entry is `clocked` (`server/tests/Feature/Support/scripted-fetch.mjs`). Each carried the snapshot's own `server_time` before, and since [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset is refreshed from each, every refusal pulled the corrected clock back to the snapshot's instant and dated the exit the instant its episode was entered, which AT-D3-1's `left.at > entered.at` redded on a correct client. (e) **The replay:** AT-D3-1's closed-set half replays `fx-refusals`' `refusal_401_warm` run — the one checked-in fixture run that stills a floor with a loop running, whose exits are (4)'s, resting on (a)'s fix for (4), (b) and (c) — and `fx-confirm`'s `missing_persistent` run — the unconfirmed desk's, whose exit is (3)'s, resting on (a)'s fix for (3), (b), (c) and (d) — and no assertion was loosened to admit either | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** — its closed-set half's runs are the ones [its Build bullet](#at-d3-1-no-animation-without-its-event) names, this row's (e) runs among them — plus **[AT-D3-21](#at-d3-21-the-camera-moves-the-viewer-and-never-the-fleet)** **(floor half)** — plus the list view's own guard, which holds a PROPERTY and nothing more; how it enumerates, where it runs and what it is shaped like are row 15's build, proven by running code and not by this cell. The property: **every leaf of `deskModel()`'s output is either rendered — the module's own text form of that value is on the row — or excluded by path with a reason; and every rendered leaf is seen at a value other than the model's default — not null, not false, not 0, not empty — on at least one run** over every checked-in fixture file that draws a desk, `fx-confirm`'s `missing_persistent` run among them, so that a leaf the row could drop without anyone noticing has no run to hide on. The control plants a boolean held false throughout and watches the guard red naming it |
-| 16 | ✅ landed 2026-09-29 (card#7343 row 16, slices A–B) — the **building cross-section**'s arrival — ⭐ the cross-section and the elevator are BUILT: PR #96 (card#7343 part 1, merged to `dev` 2026-09-11) landed `server/public/js/lobby/building-model.js` — `plates()` over `lobby-model.js`'s `floors()` with a stack position, `elevator()` with its `NO_STOPS` / `ONE_STOP` refusals — composed into the lobby's frame by `server/public/js/lobby/lobby-screen.js`, the lobby's model since step 9 (PR #228; its `building` member is `buildingModel()` over the viewer's cab position, once a full snapshot is applied), and drawn by `lobby/main.js`'s `renderBuilding()`: one plate per composed floor ([§ 4.6](#46-the-building-layout)) in the same ascending order, each the link and carrying [§ 4.1](#41-the-lobby--the-building-summary)'s summary, the room names and the floor's `label ?? key`, the cab standing at one plate and the ride control moving it, gated by `Tests\Feature\Lobby\TheBuildingStacksTheComposedFloorsTest`. This row is NOT a second cross-section; it builds what that module named as unbuilt until slice A (`building-model.js`: *where the ride arrives is not built*): the **elevator ride**'s arrival — the cab reaches the plate and the page arrives at `/floor/{floor}` with the key and never the label (card#9273, [§ 4.4](#44-routes-and-what-each-one-fetches)), which row 8 now serves and which must still deep-link on a cold start; row 15's camera at building scale over the same painter — whole-building being every plate in view, zoom-to-a-plate being the ride, one machinery at two scales (card#7341's scope addition, operator 2026-08-26/27), the ride still navigation ([§ 4.6](#46-the-building-layout)'s elevator row: no [§ 6.2](#62-the-animation-table--the-closed-set) row) and cut rather than glided under `prefers-reduced-motion`; and the plate drawn as the reference's section rather than a list row, the roof sign and ground lobby being scenery carrying no fact, and the sky behind the building A17's, on A17's driver — the lobby draws no clock ([§ 4.1](#41-the-lobby--the-building-summary)). `lobby-model.js` and `building-model.js` are unchanged in code, exactly as row 14 leaves step 7's frame: a plate reads no field the table does not and recounts nothing, so [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) stays at 9. ⭐ **The card split, settled:** card#7343 part 1 is the stack and the cab; this row is the destination half its comment 4524 left open, buildable since row 8 served the route (the lifting condition its comment 5366 states), and it is **card#7343's** — `docs/PLAN.md § 3` lists the elevator there and the title names it — while rows 14 and 15 are card#7341's. ⭐ **The ride's arrival and the camera at building scale are BUILT — slice A (card#7343, 2026-09-27)**: `server/public/js/lobby/lobby-screen.js` holds row 15's `server/public/js/wire/camera.js` as its second caller, framed on the plates `server/public/js/lobby/building-scene.js` places — a rect per plate at its stack position, the numbers the drawing's — so the first framing, and the whole-building control, is every plate in view; `ride()` names `elevator().next` as the stop — `lobby/main.js` moves the cab there, the cab being the viewer's and not the model's — zooms the camera to that plate with `focusOn()`, which `camera.js` gained for it (the primitive extended, not a sibling), and hands back the plate's own `href`, `/floor/{key}`; and `server/public/js/lobby/main.js` wires the whole-building control and the ride, whose glide steps through `server/public/js/wire/camera-view.js` — hoisted from `floor/main.js` at this second caller — and whose arrival is the page going to that route, and hands its drawing to `server/public/js/wire/camera-gestures.js`, the wheel and the drag both pages share (hoisted from `floor/main.js` at this second caller, card#7343 r1: one click policy, a drag that moved being no click — neither its handlers nor its default action, which the lobby's plate links need and the floor's drawing has none of; and, card#7343 r2-3, a press in a framed drawing starts no native drag and selects no text — a `dragstart` is refused, and the drawing is `user-select: none` from a primary press until it ends), and its drawing and two zoom buttons to `server/public/js/wire/camera-keys.js`, the keyboard and the zoom buttons both pages share (hoisted from `floor/main.js` at this second caller, card#7343 r2-2): `#lobby-building`, while a building is drawn, takes focus and names the floor drawing's keys — `+`/`-` zoom about the centre, the arrow keys pan — and shows the floor's *Zoom in* and *Zoom out* buttons, which are also how a touch screen zooms the building. ⛔ **Nothing framed, nothing taken** (card#7343 r3b for the wheel, widened to the whole wire by r4b, the seat's rulings): every camera handler in the two modules — the wheel, a `dragstart`, a press and its `user-select`, the move's pointer capture and pan, the click after a drag, and the arrow and `+`/`-` keys — acts only while the screen's camera frames something. Each asks `server/public/js/wire/camera.js`'s one `framesNothing()` of the page's `camera()` at its own event, and with no `bounds` leaves the event to the browser, so an uncomposed lobby's flowing list scrolls under the wheel and the arrow keys, its text selects, and a press on a room's link that moves and is released there follows the link, as before this row; a press that began framed pans nothing once nothing is framed, and its click is the browser's — a capture its pan took is released at its next move, so its release and its click land on what is under the pointer (card#7343 comment 7692 item 3; a press released still captured, with no move since the frame went, clicks the drawing). While nothing is framed nothing of the camera is offered (c7692 items 1–2, the seat's rulings): the zoom buttons and the page's framing control — the lobby's *Whole building*, the floor's *Fit the floor* — are hidden, and the drawing is no tab stop and names no `aria-keyshortcuts`. `camera-keys.js`'s `offerKeys()` restores all of it once something is framed and writes nothing while the offer is unchanged (item 4); the lobby calls it with the screen's camera on every camera it shows — never a glide's step, so a building that stops framing mid-glide withdraws it at once (item 4) — and the floor with every render's. Both pages' markup starts with none of it offered, which the unchanged-offer reading rests on; a drawing that held the keyboard's focus when its camera stopped framing loses it to the page (the edge c7692 accepts). Every drawn building and drawn floor behaves as before; the floor's camera frames nothing only before its first frame with an extent, under the list view and on a floor with nothing measurable on it, where these events moved nothing and are now the browser's too. `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest` reds each gate planted out — its event taken over a camera that frames nothing, on that gate's own step and no other — and each planted shut, a framed drawing's event left to the page; the one predicate read either way; and the buttons, the framing control, the tab stop or `aria-keyshortcuts` offered wrongly, naming a key no handler takes or missing one, a capture kept past the frame, and an unchanged offer written again. Both pages' wiring tests red a page that hands the gestures or the keys no camera, or one that frames nothing, or never offers the keys or its framing control, and markup that offers any of them — a tab stop, `aria-keyshortcuts`, a zoom button or the framing control — before any camera frames; `LobbyPageWiringTest` also reds the lobby offering from a glide's step. While it draws a building, `#lobby-building` is a fixed-height surface that clips the plates and its scroll is held at the origin, so focus never slides the plates out from under the camera; with no building to draw — no snapshot yet, [§ 9](#9-failure-paths-and-their-observables) F17's rooms with no floor claimed, or no install — it has no height or clip of its own and the list flows in the page as it did before this row (`server/public/js/lobby/building-scene.js`'s `surfaceStyle()`, which `lobby/main.js` applies on every render and then sizes the camera to the surface it leaves; card#7343 r3, the seat's ruling; `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest` reds an uncomposed lobby held in a clipping box, and `LobbyPageWiringTest` a size or clip in the page's markup, the style never applied, and a camera left sized to the old surface). With a building drawn, instead the keyboard's focus on a plate not wholly in view brings the camera to that plate — the lobby screen's `focusPlate()`, row 15's `focusOn()` again — and a plate already in view stays put, so tabbing through a building at fit moves nothing (card#7343 r2-2). ⛔ **The click commits the ride, and the hold protects the glide** ([§ 4.5](#45-the-viewport-rule-and-the-capability-floor); card#7343 r1 ruling, and the seat's r2-4 ruling, 2026-09-27): from the click until the glide has arrived and the page has asked for the route, the ride is in flight — the lobby screen's frame says so and the ride control is disabled on it, a second ride is refused, and the wheel, a key, a zoom button, the drag and the whole-building control leave the camera on the plate; the page's glide is committed, so any of them, or a resize, during it cuts it to the plate and the page arrives. The keyboard's focus moving to a plate during it moves nothing and leaves the glide running — `focusPlate()` answers nothing while a ride is in flight. A plate link clicked during it does not navigate — the committed ride wins (card#7343: the seat's r3 ruling, made true of the code at r3b): `server/public/js/lobby/ride-hold.js` puts a capture-phase `click` listener on `#lobby-building` that, while the lobby screen's `riding` says a ride is in flight, prevents the default action of a click inside a plate link, and keyboard Enter on a focused link arrives as that same `click` (`Tests\Feature\Lobby\TheCommittedRideWinsOverAPlateLinkTest` drives the module under `node` and reds a hold that is missing, in the bubble phase, prevents nothing, holds a link with no ride running, or holds a click that is on no plate link; `LobbyPageWiringTest` reds the page never wiring it, or wiring it over anything but the screen's `riding`). Arriving asks for the route and then ends the ride (the lobby screen's `returned()`), so a navigation the browser cancels leaves a lobby whose controls work — its plate links navigating again; a lobby the back-forward cache restores ends it too. Under `prefers-reduced-motion` the ride, the whole-building control and a focused plate's camera move cut. No ride, zoom or pan writes an animation-log row: the lobby reaches the log and the set by ONE path only — the page's bounded log from `wire/live-page.js`, handed to `lobby/lobby-screen.js`, which constructs the set drawing A17 alone for the sky (card#7343, 2026-09-30, below) — and no other module it loads can write a row or start anything through the set — held over the page's whole import graph from `lobby/main.js`: in each module's code, comments not read, every string-literal specifier after `from`, after a bare `import` and inside `import(` — single-quoted, double-quoted, or a backtick with no `${` — is followed when it starts `./` or `../`, and any other specifier (an absolute path, a URL, a bare name, a template with `${`, an `import(` of anything but one literal) is a defect the walk cannot follow, never one it skips (card#7343 r2-1). ⛔ **A plate's label is [§ 4.1](#41-the-lobby--the-building-summary)'s alone** (card#7343: one owner for the contract, replacing the copy this row used to carry). `server/public/js/lobby/building-scene.js`'s `buildingArt()` is the building as shapes — the roof with its sign; a storey under each plate, its wall, skirting, floorboards and slab and its elevator doors in the shaft at the plate's right — and the ground lobby, boxed on the scene's `extent`, which takes the roof (`ROOF_H`) above the top plate and the ground lobby (`GROUND_H`) under the bottom one, so the first framing and the whole-building control show both; `CAB` and `cabStyle()` stand the cab in its shaft at the plate the elevator is at, aligned from the column of plates the shaft and its doors serve (`shaftAt()`) rather than the extent's own edge, so the shaft never jogs off the storeys'. `server/public/js/lobby/main.js` paints them into one `<svg>`, the first row of `#lobby-floors` under the camera's one transform, hidden from assistive technology and never a pointer's target, and stands the plates' rows after it; a plate's label is [§ 4.1](#41-the-lobby--the-building-summary)'s. The roof sign's text carries no `textLength`/`lengthAdjust` and is sized to the reference's own proportions, scaled to this sign's own width; the outer frame stands inside the scene's `extent`, with the plates inset `PLATE_INSET` from it on both sides, so the whole-building fit never clips the frame and the frame itself peeks out as a margin around the plates. ⛔ **Scenery carrying no fact:** `buildingArt()` reads the scene's rects and no plate's key or fact, so two buildings of one height draw one building, and its only words are the roof sign's and the ground lobby's. ⛔ **The cab glides with the ride and only with it:** the ride sets the cab's glide to its own `glide_ms` before it draws the cab at its stop, and a CSS transition on the one cab element — kept across renders, which replace every other row of `#lobby-floors` — carries it there; arriving sets it back to none, so every other render cuts the cab, and under `prefers-reduced-motion` the ride's glide is none and the cab cuts. It is the ride's, and the ride is navigation: no [§ 6.2](#62-the-animation-table--the-closed-set) row, no animation-log row, nothing through the set, and the committed-ride hold above unchanged. `main.js` reads the viewer's `cab` through a THUNK (`livePage(() => screen.render(() => cab))`, called only after `lobby-screen.js`'s `render()` has finished its own awaits, right before `draw()`) so the drawn cab is never built from a stale read; `buildingModel()`'s `elevator.at` is computed from whatever `cab` is fed it, so a ride in flight or one that just arrived needs no special case. `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` drives `building-scene.js` under `node` and reds a storey drawn from its plate's key, a plate's name drawn in the scene, the roof or the ground lobby outside the extent, a plate off the building's left edge, a cab that always glides, one that never glides, one at the wrong plate, a shaft or door off its column, and a drawn `textLength`/`lengthAdjust`; `LobbyPageWiringTest` reds a cab gliding over a time of its own, a cab still gliding after the ride, and a page that does NOT read `cab` late through a thunk; `Tests\Feature\Lobby\TheBuildingDrawingKeepsItsElementTest` drives the drawing's construction, its keeping across a rebuild and its paint (`building-paint.js`) on a stand-in DOM, and `Tests\Feature\Lobby\TheDrawnCabNeverStalesTest` drives the thunk under `node` against the real `LobbyScreen`, `FleetClient` and `Building`, with a scripted layout fetch released either mid-ride or after `returned()` has already ended it. **The sky is drawn, and it is A17's** (the operator's ruling, card#7343, 2026-09-30, answer A, recorded at [§ 4.1](#41-the-lobby--the-building-summary)): `lobby/lobby-screen.js` holds the floor's own A17 driver (`floor/floor-layout.js`'s `RoomClock`) and constructs the animation set drawing A17 alone, over the page's log (`wire/live-page.js`, with [§ 12](#12-every-number-and-where-it-comes-from)'s retention); `lobby/building-scene.js`'s `surfaceStyle()` paints the drawing surface with the phase's sky, in the reference's dim treatment, stars at night, never with a transition, and each plate's WINDOWS carry the same time of day at full strength — the phase's gradient, stars and a moon at night, the sun at its height by day, dawn and dusk, the city's roofline lit by the phase — repainted when the phase steps, `unset` flat with none of it before the first heartbeat. ONE phase→paint table serves every sky on both pages: `floor/floor-layout.js`'s `SKY_PAINT`. `Tests\Feature\Floor\TheLobbySkyIsTheFloorsA17Test` holds it: the sky steps only on a heartbeat and freezes when the feed dies, one phase function, one A17 row per heartbeat and no other lobby row, A17 without motion under reduced motion, and the paint stepping between every phase the floor decides; `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`'s import-graph clause holds the lobby to that ONE path to the log and the set, and `LobbyPageWiringTest` holds `lobby/main.js` to naming it exactly twice. **The round-by-round record — every review finding, every rejected design and why, and how the present mechanism and contract were reached — is PR #252's**, not a design statement this row restates. | **[AT-D3-21](#at-d3-21-the-camera-moves-the-viewer-and-never-the-fleet)** **(building half)** |
+| 14 | ✅ landed 2026-09-25 (card#7341 step 11, slices A–C) — the **room drawing** — the layer that paints a room, which no row above builds (the step-8 builder's finding, PR #226): everything [§ 4.2](#42-the-floor) enumerates, drawn, over the floor page row 8 serves. It keeps the split every renderer in this table keeps — a model no browser is needed for, and a DOM half no check exercises — because there is no browser on the build host and a decision in a DOM file is a decision no gate can red. The model is the **scene**: from step 7's frame — each room's placement, the floor's extent, the back-wall band and every desk's slot position — and from the map document the client holds ([§ 10.3](#103-the-floor-map)'s read members, and nothing beyond them), it emits what is drawn where, as data. The hallway's and each room's tile layers in document order, bottom first, each cell resolved to a tileset image and a source rectangle through the **tileset reader** — Tiled's tileset in both spellings [§ 10.1](#101-the-manifest-and-the-two-gates) clause 1 admits, `.tsx` and `.tsj`, its `source` resolved to the URL the asset route below serves it at, which [§ 10.3](#103-the-floor-map) says the client decodes and which nothing decoded before this row; the band, with A17's clock face and windows at the value step 7's frame carries; per desk, every element step 5's model emits — [§ 5.1](#51-the-desk)'s rows, [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s marks and [§ 8](#8-interns--subagent-rendering-and-the-cap)'s side table, the population being the model's output and copied into no list here — laid out INSIDE the desk's slot rect: [§ 10.3](#103-the-floor-map)'s `desks` object is the furniture box, and everything drawn for a desk at rest except the bubble lies within it under that row's bounds — since card#11058 the desk draws [§ 5.1](#51-the-desk)'s ruled glance set: the interns' sprites at § 8's cap and never hidden, the badge row of two with the flag, the character at scale 3, and **every string truncated to the box with a visible mark through the scene's one truncation primitive**, which every drawing site takes its string from, its full value on row 15's list view below the drawing and in row 10's drill-down (the order note states that dependency) — which is what makes card#7341's ruling true by construction: [§ 3.2](#32-the-desk-slot-function) gives distinct seats distinct slots, the map's slots are disjoint, and a desk drawn inside its own slot cannot reach a neighbour's whatever the seat beside it carries and however long its strings run. The desk sprite sits at the box's anchor, the character the character tree draws from the key (rows 0–1 — the port's interim art, until row 19's creatures replace it: [§ 10.2](#102-characters-original-creatures-drawn-by-code)), the side table's stools in whatever arrangement fits the box at the cap (⚠ not the reference's: its `deskSVG` hangs the tray outside the slot, a defect its own comment hands to this row), and the thought bubble — `desk/task-bubble.js`'s layout, with the measurer [§ 5.1](#51-the-desk) rule 4 requires supplied by the painter below and, in the harness, by the fixture — **and the character's drawn size reaches the scene the same way**: an input beside the measurer, supplied on the page by the painter from the tree's own exports (`resources/characters/index.js` exports `SCENE_W`, `SCENE_H`, `PORTRAIT_W`, `PORTRAIT_H`) and in the harness by the fixture, because the tree is served at the asset route's absolute URL, which resolves under no `node` harness (`DrivesAShippedClientModule`), and a scene that imported it would be a model no gate can load; the bubble is rule 5's pass and the one element that may leave the box. ⇒ **This row's build obligation on the map:** re-author `resources/floor/default.tmj`'s `desks` objects to the furniture box the scene defines, keeping `S` as [§ 3.2](#32-the-desk-slot-function) states it (its worked assignment and [§ 3.3](#33-collision-displacement-and-why-a-desk-move-is-itself-an-event)'s collision chance are derived on it) and re-sizing the grid where the boxes need it, and publish the box's size at the cap in [§ 12](#12-every-number-and-where-it-comes-from) as a Measured row — the number [§ 14](#14-open-questions-for-the-review-loop) item 28's console refusal reads; every **Measured** § 12 figure that reads the map re-derives on the run — `S`, the worked assignment, the sprite width, the box at the cap — and the one figure that read it and was not Measured — the viewport row's one-row-of-desks arithmetic on the sprite pitch, prose no run re-derived — was re-stated on the re-authored box by this row's slice B and bound to the gate, which re-derives it from the map and the box on every run (PR #232 round 1), leaving the figure it illustrates to row 15's measurement; **F21's statement for the room drawn** ([§ 9](#9-failure-paths-and-their-observables)) — the scene compares the map's `desks` objects pairwise on step 7's half-open footprint test (`floor/floor-layout.js`'s own, F18's) and each against § 12's box at the cap, and emits [§ 5.5](#55-the-clients-own-narration)'s *desk objects intersect* and *desk object is smaller than the furniture box* lines naming the objects by Tiled `id`, the room and the seat at each, for **any** map the client holds — the shipped default, an authored save, a stored or restored revision — while still drawing every desk, because the console's refusal below reaches no revision stored before it and a viewer is told by the page or by nobody; **the console's refusals and its re-validation listing** — [§ 14](#14-open-questions-for-the-review-loop) item 28(1), operator-ruled 2026-09-25 (card#7341 comment 6488), built here: at a save AND at a restore, [§ 10.3](#103-the-floor-map)'s `desks` row refuses (i) two objects whose half-open rects intersect, naming both, and (ii) an object smaller than § 12's furniture box at the cap; and (iii) at every change of that box — this row's landing the first, any art that moves the box another — the console re-validates every room's current map against the new box and lists the failing rooms on its room index (`Admin\FloorController::index`), each room left on the floor under F21's notice until its author saves a passing one, and never refused after the fact, which would blank a room for a document the console accepted (F16's *Never*); the overflow row in its strip below the floor ([§ 3.2](#32-the-desk-slot-function)), each overflow desk at § 12's box at the cap, having no slot rect of its own; [§ 5.7](#57-the-coordination-thread-line)'s line and A18–A20's forms between the positions step 7 resolved — under the operator's QA rulings on them (card#7341 scope addition 3): A20's ring spans the whole floor before it fades, reach first and fade after, never dissipating mid-office; A19's envelope's nose points along its direction of travel; and the escalation flare the same ruling staged is not drawn, because no delivered field holds it ([§ 5.7](#57-the-coordination-thread-line)'s *what a reader will look for here and not find*); and, for every [§ 6.2](#62-the-animation-table--the-closed-set) row, the form step 6's set decided — its class, whether it loops and its [§ 6.4](#64-reduced-motion-is-a-first-class-rendering-not-a-degradation) form — as the frames to draw, at [§ 12](#12-every-number-and-where-it-comes-from)'s loop rate. ⛔ **The scene starts no claim-bearing motion.** Every claim-bearing animation enters through the set ([§ 11](#11-acceptance-tests)'s ruling) and what this row adds is the drawing of what the set already logged; decorative motion ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)) is emitted by the scene as data too — which element, where, and that it is decoration under § 6.3's bound — so the painter draws it without deciding it, it writes no row, and [§ 11](#11-acceptance-tests)'s review question has a list to read rather than a DOM to inspect. The **painter** is the DOM half: it turns the scene into a drawing surface the camera scales as ONE space — tiles, desks, nameplates, bubbles and the thread line together, which is the lesson `docs/design/floor-preview/README.md` records from four review rounds of a bubble no gate measured — and reports back which assets failed to load. Whether that surface is SVG, a transformed HTML layer or a canvas is the builder's ([§ 13](#13-decisions-taken-revisable-at-review) row 15); what it must keep is [§ 4.5](#45-the-viewport-rule-and-the-camera)'s property, resolution independence, and today's resampling is the bridge tileset's residue rather than the layer's, retiring with the pack ([§ 10.3](#103-the-floor-map)). The **asset route** is the one HTTP surface for the art: nothing serves `resources/floor/` or `resources/characters/` to a browser today — both sit outside `server/` (`App\Floor\FloorAssets`'s own ⚠), `server/public/` holds the entry, `js/`, the favicon and `robots.txt`, and no route in `server/routes/` names either tree — so the tileset reader's resolved `source` and the character tree's *renders in a plain browser* both named a URL that did not exist. It is a route inside the same `auth`+`mfa` group as `/floor/{floor}`, because the art is the floor's and earns the floor's gate rather than a second one to reason about, **mounted at `/art/floor/{path}` and `/art/characters/{path}`, with a `where()` constraint on `{path}` that admits `/`** — Laravel's parameter matches no `/` without one, and the tileset's images sit in subdirectories (`resources/floor/tiles/furniture-kit/desk.png`), so an unconstrained route would 404 the very images the gate's served leg reads; the constraint is the character class `[A-Za-z0-9._/-]+` and nothing wider, containment being `FloorAssets::resolve()`'s and not the pattern's — a prefix no route in `server/routes/web.php` claims, and deliberately not under `/floor/`, where `/floor/{floor}` would read `art` as a floor key — so the painter imports the character tree's entry by that absolute URL, `/art/characters/index.js`, the tree's own relative imports (`./seed.js`, `./portrait-art.js`) resolve under the same prefix, and the tileset reader resolves a `.tsx`/`.tsj` `source` and its image to `/art/floor/…`. ⚠ A relative import from `server/public/js/` to `resources/characters/` is not an option, and the reason is that two resolvers disagree on it: on disk it climbs out of `server/public/`, so `FloorPageWiringTest`'s *every relative import resolves* passes it, while in the browser `..` above the document root clamps and the same specifier 404s — a check that passes and a page that breaks; an absolute specifier is outside that test's population by construction, which is why the route's own gate below reads it instead. It answers through `App\Floor\FloorAssets::resolve()` alone, extended to name the character tree's root beside the floor's rather than sibling'd, because that class is the one place that knows where the repository's assets live and its `realpath` containment is the one path test — anything it answers `null` for is a 404; it admits only [§ 10.1](#101-the-manifest-and-the-two-gates) clause 1's extensions, which are the files Gate 1 has already judged, so a file the gate never saw cannot be served; and it is served by the application's own process — no deploy-time copy into `server/public/`, no web-server alias, nothing that needs root (operator ruling 2026-09-13: the web app runs without root). Cache headers are the builder's; what the gate holds is the containment and the allowlist. The **placeholder** is [§ 9](#9-failure-paths-and-their-observables) F14's render, and F16's plain grid is drawn from it: a desk whose art failed draws a plain rectangle carrying the nameplate, the state label and the badge cluster — every fact, no art — and the status strip gains F14's *some art failed to load* line, an edit to step 8's strip module rather than a second strip. What this row does not do, stated so a builder does not: it adds no [§ 6.2](#62-the-animation-table--the-closed-set) row, reads no field steps 5 and 7 do not already hold, and gives the painter no decision the scene has not made. ⭐ **Built in slices, the landing marker set at the last:** slice A (PR #231, 2026-09-25) built the scene, the painter, the tileset reader, the asset route and `resources/floor/furniture-box.js` as the box's one source; slice B (PR #232, 2026-09-25) re-authored the shipped default to the box — its `desks` objects each at least the box, in the two-row composition on the first-party floor plane [§ 10.3](#103-the-floor-map) states under the operator's ruling (comment 6517), the grid [§ 12](#12-every-number-and-where-it-comes-from)'s Measured row — with § 12's box and grid rows Measured and gated, the viewport row's arithmetic re-derived by the gate, and [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor)'s GREEN clauses on the shipped map under [§ 11](#11-acceptance-tests)'s positive control; and slice C (2026-09-25) built the console's refusals and its re-validation listing, item 28(1): `App\Floor\DeskSlots` refuses the two cases at `App\Floor\Floors`' save and restore — the half-open test is `App\Building\Footprint`'s, hoisted out of the floor plan's overlap check so the two share one, and the box is `App\Floor\FurnitureBox`'s reading of its one source — while `FloorMap::parse()`, every reader's parser, refuses neither, so no stored map is refused after the fact; each room-map revision records the box it was validated against ([D2 § 6.4](FLEET-STATE.md#64-ddl)'s `authored_revisions.furniture_box`, `FurnitureBox::signature()`), and the room index re-validates a room's current map whenever that record differs from the box in the tree and lists the room if it fails. **A revision stored before the column existed records NULL — validated against no recorded box — and is therefore re-validated and listed if it fails, never assumed passing**; no backfill writes today's box onto it, because that would record a validation that never happened. The gate is `Tests\Feature\Admin\TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest`. ⛔ **Release gate — operator ruling 2026-09-25 (card#7341 comment 6517): the room drawing stays as this row built it until row 15's camera lands, and `dev` is not promoted to `main` before row 15 lands** | **[AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk)** (F14, over the scene), [AT-D3-11](#at-d3-11-an-unrecognised-member-renders-as-unrecognised) **(scene half)** (card#11058), **[AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor)** — the no-overlap check card#7341 asks the build to keep as a test — plus row 8's `Tests\Feature\Floor\FloorPageWiringTest` widened to the painter's elements: every element the painter addresses exists on the view and the reverse, as that row states it; plus the asset route's own gate, a feature test shaped like that one: a path outside the roots, a file whose extension clause 1 does not admit, a request with no session, and a session without the second factor (the redirect `FloorPageWiringTest` asserts for the page itself) are each refused; a shipped tileset image and the character tree's entry are each served with their media type; the painter's own import specifier for the character tree — read out of the painter's source, never spelled in the test — is served as JavaScript by the route; and a control plants each defect and watches it red; plus the console's own gate for item 28(1)'s three obligations, a feature test shaped like row 11's: a save and a restore of a map with two intersecting objects are each refused naming both, a save and a restore of a map with an object smaller than the box are each refused, a room whose stored map fails the box is listed on the room index after a change of the box and is not refused, and a control plants each defect and watches it red — `Tests\Feature\Admin\TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest` |
+| 15 | ✅ landed 2026-09-26 (card#7341 row 15, slices A–B and § 14 item 29's build list) — the **camera** — [§ 4.5](#45-the-viewport-rule-and-the-camera)'s viewport, built: wheel-zoom to the cursor (⭐ **superseded 2026-10-01**, card#11045 PR-B, [§ 13](#13-decisions-taken-revisable-at-review) row 39: the plain wheel and a two-finger scroll PAN, Ctrl+wheel and a pinch zoom to the cursor, a touch screen's two-finger pinch zooms about its midpoint — `wire/camera.js`'s `wheel()` became `pan()` and `zoom()`, with `pinch()` beside them), drag-pan, a fit-floor control and a whole-building control, one machinery for the floor here and for the building at row 16 (card#7341's scope addition, operator 2026-08-26: *same one zoom/pan machinery serves both scales*). It is a model too — a view transform over the scene's space: zoom and pan, the clamp that keeps the floor in view, and the fit that frames the floor's whole extent INCLUDING the overflow strip (the reference's own correction, card#7965: a fit that framed the floor alone cut off the seats the strip exists to show) — exposed as data, with the floor page wiring the wheel and the pointer to it. ⛔ **Navigation is never state** ([§ 4.5](#45-the-viewport-rule-and-the-camera)): a camera move writes no animation-log row, starts nothing through the set, and survives every re-render — a delta, a full snapshot, a resync, a reconnect and a layout act all leave the viewer's head where it was; only the viewer moves it. The first render frames the floor at fit with no transition, which is [§ 6.5](#65-a-snapshot-never-animates)'s setting and not a move. A camera glide is the viewer's and not the fleet's, so it is permitted and takes no [§ 6.2](#62-the-animation-table--the-closed-set) row, and under `prefers-reduced-motion` the camera cuts rather than glides. The whole-building control on the floor is the way to `/`, [§ 4.4](#44-routes-and-what-each-one-fetches)'s lobby route, and not a second scale drawn on this page — [§ 4.1](#41-the-lobby--the-building-summary): a plate is a summary and never a drawn interior. Everything the camera scales is the scene's; the status strip, the failure statements and the sign-in prompt are page chrome outside it. The **list view** is [§ 4.5](#45-the-viewport-rule-and-the-camera)'s second rule, built: the same facts as text, one row per seat, every fact the desk model emits, painted below the drawing at every window size. ⭐ **Amended 2026-10-01 — the capability floor is removed** (the operator's ruling on card#7341, [§ 4.5](#45-the-viewport-rule-and-the-camera)'s first rule, [§ 13](#13-decisions-taken-revisable-at-review) row 14): slice B built one — below a 1,280 × 800 viewport the route rendered the list view INSTEAD of the drawing, `floor/floor-screen.js`'s `capabilityOf()` over its `VIEWPORT_FLOOR` — and the ruling's PR deleted both: every frame carries the scene whatever the drawing surface's size, the page paints the drawing and the list at every size, and [AT-D3-21](#at-d3-21-the-camera-moves-the-viewer-and-never-the-fleet)'s any-size clause holds it in a phone's window and a low one, its third RED planting the minimum back. ⚠ **The list view is a headless model and not a page function, and this row is where it moved.** Step 8's text render was `floor/main.js`'s `deskLine()`, which carried the nameplate, the glyph, the label line, the quiet age, the badges and the unrecognised values and nothing else — so a `fold_lag` seat on it was marked only by its raw badge id, [§ 7.4](#74-the-frozen-fold-is-the-one-that-could-look-healthy)'s lag line and [§ 7.3](#73-currency-labels-what-a-non-live-desk-may-claim)'s note missing, which is [§ 7](#7-degradation--how-a-degraded-seat-is-unmistakable)'s rule failing on the page's one text render — and it lived in a DOM entry (`const root = el('floor')` at module top level) that no harness can load and whose own header rules it the wrong home for a decision. This row builds the list as a module beside `desk/desk-render.js`: one function over `deskModel()`'s output returning the row's lines, each the model's own string, and deciding there the text form of every member that is not already a string — the gauge (`wire/context-gauge.js`'s statement, percentage, numerals, source and age), the side table (each stool's label, tag and start, and the *+N more* tag) and the bubble (its text with rule 4's mark, its source and its degraded note) are the three the page would otherwise have had to compose, and the members that carry their strings inside an object (the lag line, the monitor's text, the action's start and elapsed, the dark pair) are read out of it there — so nothing is composed in the page: `floor/main.js` paints the lines it is handed, and `deskLine()` is deleted rather than kept beside it. **No list of the facts is written in this document**: the population is `deskModel()`'s return, and this row's guard is what holds every member of it rendered or excluded by name, so a member added to the model lands on the row or reds the build. ⭐ **The list view is BUILT — slice A (card#7341 row 15, 2026-09-26)**: `server/public/js/desk/desk-list.js`, whose `deskListRow(desk)` returns one seat's lines and whose `NOT_LISTED` names, by path and with its reason, each leaf of the model the row does not print; `floor/main.js` paints those lines below the drawing and `deskLine()` is gone. The dark pair is read out differently from the sentence above: the desk model already splices it into the label line, so the row prints it once there, and the exclusion names the label line as its carrier, which the guard checks on every desk. The guard is `Tests\Feature\Floor\TheListViewRendersEveryDeskMemberTest`: its runs are every run of every checked-in fixture file that draws a desk, and its leaves are what `deskModel()` returned on them. Each leaf a desk carries at a non-default value is replaced in a copy of that desk and the row is derived again, so *printed* is measured on the row. ⭐ **This is the build [§ 12](#12-every-number-and-where-it-comes-from)'s viewport row waits on**: it is the first to draw a nameplate and a badge cluster on a desk at the camera's floor zoom, so it owed that row its measurement — recorded on the card and in that row, whether the figure moved or was confirmed — and slice B took it (below). This document publishes no zoom step, no zoom ceiling and no glide duration: they are the drawing's ([§ 10.4](#104-the-art-direction-as-a-specification)'s last bullet), carry no fact, and the ratified reference's are the worked example ⭐ **The camera is BUILT — slice B (card#7341, 2026-09-26)**: the camera is `server/public/js/wire/camera.js`, a frozen value and pure functions over it (fit, zoom about a point, pan, the clamp, resize, the glide's step and its length, a cut under reduced motion) that frame a rect and know nothing of a floor, so row 16 is its second caller; `floor/floor-screen.js` holds it, frames it on the scene's whole extent on every render (the first framing alone fits) and exposes the viewer's acts, which render nothing; `floor/main.js` wires — the wheel and the drag through `wire/camera-gestures.js` since card#7343 r1 hoisted them at the lobby, their second caller — the wheel (zooming in proportion to its scroll, so a trackpad's or a pinch's stream of small events is one gesture and not a step each — a pinch, a wheel event with `ctrlKey`, scaled up by `camera.js`'s `PINCH_GAIN` because its deltas are far smaller, d3-zoom's figure and not yet felt in a browser), the drag (ended by a `pointercancel` or by a move with the primary button no longer held), the keyboard and the zoom buttons (about the drawing's centre), the fit-floor control and the whole-building link, and `floor/painter.js` sets the drawing's `viewBox` from the camera — the drawing a focusable group and never an image, so the desks inside it stay buttons, each opened by Enter or Space, and the desk the keyboard is on keeps focus across the painter's rebuild of the drawing — and took § 12's measurement, which confirmed the figure and left its criterion open (that row). Below the drawing the page paints slice A's list view through `floor/main.js`'s `paintDesks()`, the one path it paints desks as text on. Both slices are built, and so is the build list below, which is what the landing marker waited on. ⭐ **This row owns [§ 14](#14-open-questions-for-the-review-loop) item 29's build list — the client, test, probe and fixture halves of that item's answer, whose rule is [§ 11](#11-acceptance-tests)'s precedence — and every other surface that names part of it points here.** (a) **The client** writes each exit (3) and (4) of § 11's precedence name with the literal each gives it, `unconfirmed` and `stilled`, where `held()` (`wire/animation-set.js`) wrote the held object's own `state_version`: `held()` asks `exitCause()` the precedence in its order, and `desk/desk-floor.js` hands it, per seat, the held rendering the object held now draws with row 5's condition and the stilled floor at their previous-render values, and whether each condition newly holds. (b) **The test:** `Tests\Feature\Floor\NoAnimationFiresWithoutItsEventTest`'s `assertHoldConditionsPointOppositeWays` read every held `cause` as a version, so on a literal `seatAtVersion` returned `null` and the `assertNotNull` beside it redded; its `left`-row half is replaced by one assertion, `assertEveryExitHasThePrecedencesCause`, implementing [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s one predicate, that every desk `left` row's `cause` is the one § 11's precedence gives for the render that wrote it, removal, version and literal causes alike, and the `stilled` re-entry check AT-D3-1's GREEN sets beside that predicate — both evaluated from (c)'s records, which it first holds to partitioning the log. Its `entered` half stands as `assertEveryEntryHoldsItsRow`. ⛔ **The ORDER of the precedence is checked by direct cases, not by the replay:** no replayed run has a render in which two steps apply together, so a client asking them in another order passes every run. `Tests\Feature\Floor\TheAnimationSetIsTheDocumentsClosedSetTest`'s `test_the_exit_precedence_is_asked_in_its_ruled_order` drives one render per adjacent pair of the ruled order through `server/tests/Feature/Floor/animation-set-probe.mjs`'s `held` op, with both steps applying, and asserts the higher step's cause; `test_each_adjacent_swap_of_the_precedence_reds_its_pair` plants each swap in `exitCause()` and watches its pair red. (1) and (2a) take no pair case, because (1) applies only where the client no longer holds the seat and every later step asks about the object it holds. (c) **The probe:** `server/tests/Feature/Floor/fleet-client-probe.mjs` writes the per-render records the predicate is evaluated from, which its `records[]` could not stand in for — they are snapped once per scenario event, age ticks included, rather than once per render, carry the stilled floor only as the failure render's `sign_in` and under no name of its own, and no animation-log row says which render wrote it. Each `desk_renders[]` entry an `apply` drew — the one path that drains the journal and writes to the animation log — carries the stilled floor, each held seat's object and row-5 state, the removals that render's journal applied, with their `cause`, and the log rows that render wrote; a `tick` entry carries none of them, because the age ticker drains nothing and writes no row. (d) **The fixture:** every refused read in `fx-confirm`'s `missing_persistent` run answers a `503` body carrying the `server_time` of the instant it answers, on the run's own clock — each entry is `clocked` (`server/tests/Feature/Support/scripted-fetch.mjs`). Each carried the snapshot's own `server_time` before, and since [§ 2.4](#24-the-clock-and-every-age-on-the-page)'s offset is refreshed from each, every refusal pulled the corrected clock back to the snapshot's instant and dated the exit the instant its episode was entered, which AT-D3-1's `left.at > entered.at` redded on a correct client. (e) **The replay:** AT-D3-1's closed-set half replays `fx-refusals`' `refusal_401_warm` run — the one checked-in fixture run that stills a floor with a loop running, whose exits are (4)'s, resting on (a)'s fix for (4), (b) and (c) — and `fx-confirm`'s `missing_persistent` run — the unconfirmed desk's, whose exit is (3)'s, resting on (a)'s fix for (3), (b), (c) and (d) — and no assertion was loosened to admit either | **[AT-D3-1](#at-d3-1-no-animation-without-its-event)** — its closed-set half's runs are the ones [its Build bullet](#at-d3-1-no-animation-without-its-event) names, this row's (e) runs among them — plus **[AT-D3-21](#at-d3-21-the-camera-moves-the-viewer-and-never-the-fleet)** **(floor half)** — plus the list view's own guard, which holds a PROPERTY and nothing more; how it enumerates, where it runs and what it is shaped like are row 15's build, proven by running code and not by this cell. The property: **every leaf of `deskModel()`'s output is either rendered — the module's own text form of that value is on the row — or excluded by path with a reason; and every rendered leaf is seen at a value other than the model's default — not null, not false, not 0, not empty — on at least one run** over every checked-in fixture file that draws a desk, `fx-confirm`'s `missing_persistent` run among them, so that a leaf the row could drop without anyone noticing has no run to hide on. The control plants a boolean held false throughout and watches the guard red naming it |
+| 16 | ✅ landed 2026-09-29 (card#7343 row 16, slices A–B) — the **building cross-section**'s arrival — ⭐ the cross-section and the elevator are BUILT: PR #96 (card#7343 part 1, merged to `dev` 2026-09-11) landed `server/public/js/lobby/building-model.js` — `plates()` over `lobby-model.js`'s `floors()` with a stack position, `elevator()` with its `NO_STOPS` / `ONE_STOP` refusals — composed into the lobby's frame by `server/public/js/lobby/lobby-screen.js`, the lobby's model since step 9 (PR #228; its `building` member is `buildingModel()` over the viewer's cab position, once a full snapshot is applied), and drawn by `lobby/main.js`'s `renderBuilding()`: one plate per composed floor ([§ 4.6](#46-the-building-layout)) in the same ascending order, each the link and carrying [§ 4.1](#41-the-lobby--the-building-summary)'s summary, the room names and the floor's `label ?? key`, the cab standing at one plate and the ride control moving it, gated by `Tests\Feature\Lobby\TheBuildingStacksTheComposedFloorsTest`. This row is NOT a second cross-section; it builds what that module named as unbuilt until slice A (`building-model.js`: *where the ride arrives is not built*): the **elevator ride**'s arrival — the cab reaches the plate and the page arrives at `/floor/{floor}` with the key and never the label (card#9273, [§ 4.4](#44-routes-and-what-each-one-fetches)), which row 8 now serves and which must still deep-link on a cold start; row 15's camera at building scale over the same painter — whole-building being every plate in view, zoom-to-a-plate being the ride, one machinery at two scales (card#7341's scope addition, operator 2026-08-26/27), the ride still navigation ([§ 4.6](#46-the-building-layout)'s elevator row: no [§ 6.2](#62-the-animation-table--the-closed-set) row) and cut rather than glided under `prefers-reduced-motion`; and the plate drawn as the reference's section rather than a list row, the roof sign and ground lobby being scenery carrying no fact, and the sky behind the building A17's, on A17's driver — the lobby draws no clock ([§ 4.1](#41-the-lobby--the-building-summary)). `lobby-model.js` and `building-model.js` are unchanged in code, exactly as row 14 leaves step 7's frame: a plate reads no field the table does not and recounts nothing, so [AT-D3-15](#at-d3-15-the-lobby-never-invents-a-count) stays at 9. ⭐ **The card split, settled:** card#7343 part 1 is the stack and the cab; this row is the destination half its comment 4524 left open, buildable since row 8 served the route (the lifting condition its comment 5366 states), and it is **card#7343's** — `docs/PLAN.md § 3` lists the elevator there and the title names it — while rows 14 and 15 are card#7341's. ⭐ **The ride's arrival and the camera at building scale are BUILT — slice A (card#7343, 2026-09-27)**: `server/public/js/lobby/lobby-screen.js` holds row 15's `server/public/js/wire/camera.js` as its second caller, framed on the plates `server/public/js/lobby/building-scene.js` places — a rect per plate at its stack position, the numbers the drawing's — so the first framing, and the whole-building control, is every plate in view; `ride()` names `elevator().next` as the stop — `lobby/main.js` moves the cab there, the cab being the viewer's and not the model's — zooms the camera to that plate with `focusOn()`, which `camera.js` gained for it (the primitive extended, not a sibling), and hands back the plate's own `href`, `/floor/{key}`; and `server/public/js/lobby/main.js` wires the whole-building control and the ride, whose glide steps through `server/public/js/wire/camera-view.js` — hoisted from `floor/main.js` at this second caller — and whose arrival is the page going to that route, and hands its drawing to `server/public/js/wire/camera-gestures.js`, the wheel and the drag both pages share (⭐ since card#11045 PR-B, 2026-10-01: the plain wheel pans, Ctrl+wheel zooms and a touch screen's two-finger pinch zooms about its midpoint, on both pages — [§ 13](#13-decisions-taken-revisable-at-review) row 39; hoisted from `floor/main.js` at this second caller, card#7343 r1: one click policy, a drag that moved being no click — neither its handlers nor its default action, which the lobby's plate links need and the floor's drawing has none of; and, card#7343 r2-3, a press in a framed drawing starts no native drag and selects no text — a `dragstart` is refused, and the drawing is `user-select: none` from a primary press until it ends), and its drawing and two zoom buttons to `server/public/js/wire/camera-keys.js`, the keyboard and the zoom buttons both pages share (hoisted from `floor/main.js` at this second caller, card#7343 r2-2): `#lobby-building`, while a building is drawn, takes focus and names the floor drawing's keys — `+`/`-` zoom about the centre, the arrow keys pan — and shows the floor's *Zoom in* and *Zoom out* buttons, which were how a touch screen zoomed the building until card#11045 gave it the two-finger pinch. ⛔ **Nothing framed, nothing taken** (card#7343 r3b for the wheel, widened to the whole wire by r4b, the seat's rulings): every camera handler in the two modules — the wheel, a `dragstart`, a press and its `user-select`, the move's pointer capture and pan, the click after a drag, and the arrow and `+`/`-` keys — acts only while the screen's camera frames something. Each asks `server/public/js/wire/camera.js`'s one `framesNothing()` of the page's `camera()` at its own event, and with no `bounds` leaves the event to the browser, so an uncomposed lobby's flowing list scrolls under the wheel and the arrow keys, its text selects, and a press on a room's link that moves and is released there follows the link, as before this row; a press that began framed pans nothing once nothing is framed, and its click is the browser's — a capture its pan took is released at its next move, so its release and its click land on what is under the pointer (card#7343 comment 7692 item 3; a press released still captured, with no move since the frame went, clicks the drawing). While nothing is framed nothing of the camera is offered (c7692 items 1–2, the seat's rulings): the zoom buttons and the page's framing control — the lobby's *Whole building*, the floor's *Fit the floor* — are hidden, and the drawing is no tab stop and names no `aria-keyshortcuts`. `camera-keys.js`'s `offerKeys()` restores all of it once something is framed and writes nothing while the offer is unchanged (item 4); the lobby calls it with the screen's camera on every camera it shows — never a glide's step, so a building that stops framing mid-glide withdraws it at once (item 4) — and the floor with every render's. Both pages' markup starts with none of it offered, which the unchanged-offer reading rests on; a drawing that held the keyboard's focus when its camera stopped framing loses it to the page (the edge c7692 accepts). Every drawn building and drawn floor behaves as before; the floor's camera frames nothing only before its first frame with an extent and on a floor with nothing measurable on it, where these events moved nothing and are now the browser's too. `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest` reds each gate planted out — its event taken over a camera that frames nothing, on that gate's own step and no other — and each planted shut, a framed drawing's event left to the page; the one predicate read either way; and the buttons, the framing control, the tab stop or `aria-keyshortcuts` offered wrongly, naming a key no handler takes or missing one, a capture kept past the frame, and an unchanged offer written again. Both pages' wiring tests red a page that hands the gestures or the keys no camera, or one that frames nothing, or never offers the keys or its framing control, and markup that offers any of them — a tab stop, `aria-keyshortcuts`, a zoom button or the framing control — before any camera frames; `LobbyPageWiringTest` also reds the lobby offering from a glide's step. While it draws a building, `#lobby-building` is a fixed-height surface that clips the plates and its scroll is held at the origin, so focus never slides the plates out from under the camera; with no building to draw — no snapshot yet, [§ 9](#9-failure-paths-and-their-observables) F17's rooms with no floor claimed, or no install — it has no height or clip of its own and the list flows in the page as it did before this row (`server/public/js/lobby/building-scene.js`'s `surfaceStyle()`, which `lobby/main.js` applies on every render and then sizes the camera to the surface it leaves; card#7343 r3, the seat's ruling; `Tests\Feature\Lobby\TheLobbyFetchesTheBuildingTest` reds an uncomposed lobby held in a clipping box, and `LobbyPageWiringTest` a size or clip in the page's markup, the style never applied, and a camera left sized to the old surface). With a building drawn, instead the keyboard's focus on a plate not wholly in view brings the camera to that plate — the lobby screen's `focusPlate()`, row 15's `focusOn()` again — and a plate already in view stays put, so tabbing through a building at fit moves nothing (card#7343 r2-2). ⛔ **The click commits the ride, and the hold protects the glide** ([§ 4.5](#45-the-viewport-rule-and-the-camera); card#7343 r1 ruling, and the seat's r2-4 ruling, 2026-09-27): from the click until the glide has arrived and the page has asked for the route, the ride is in flight — the lobby screen's frame says so and the ride control is disabled on it, a second ride is refused, and the wheel (its pan or its Ctrl+zoom, each still consuming its event), a touch pinch, a key, a zoom button, the drag and the whole-building control leave the camera on the plate; the page's glide is committed, so any of them, or a resize, during it cuts it to the plate and the page arrives. The keyboard's focus moving to a plate during it moves nothing and leaves the glide running — `focusPlate()` answers nothing while a ride is in flight. A plate link clicked during it does not navigate — the committed ride wins (card#7343: the seat's r3 ruling, made true of the code at r3b): `server/public/js/lobby/ride-hold.js` puts a capture-phase `click` listener on `#lobby-building` that, while the lobby screen's `riding` says a ride is in flight, prevents the default action of a click inside a plate link, and keyboard Enter on a focused link arrives as that same `click` (`Tests\Feature\Lobby\TheCommittedRideWinsOverAPlateLinkTest` drives the module under `node` and reds a hold that is missing, in the bubble phase, prevents nothing, holds a link with no ride running, or holds a click that is on no plate link; `LobbyPageWiringTest` reds the page never wiring it, or wiring it over anything but the screen's `riding`). Arriving asks for the route and then ends the ride (the lobby screen's `returned()`), so a navigation the browser cancels leaves a lobby whose controls work — its plate links navigating again; a lobby the back-forward cache restores ends it too. Under `prefers-reduced-motion` the ride, the whole-building control and a focused plate's camera move cut. No ride, zoom or pan writes an animation-log row: the lobby reaches the log and the set by ONE path only — the page's bounded log from `wire/live-page.js`, handed to `lobby/lobby-screen.js`, which constructs the set drawing A17 alone for the sky (card#7343, 2026-09-30, below) — and no other module it loads can write a row or start anything through the set — held over the page's whole import graph from `lobby/main.js`: in each module's code, comments not read, every string-literal specifier after `from`, after a bare `import` and inside `import(` — single-quoted, double-quoted, or a backtick with no `${` — is followed when it starts `./` or `../`, and any other specifier (an absolute path, a URL, a bare name, a template with `${`, an `import(` of anything but one literal) is a defect the walk cannot follow, never one it skips (card#7343 r2-1). ⛔ **A plate's label is [§ 4.1](#41-the-lobby--the-building-summary)'s alone** (card#7343: one owner for the contract, replacing the copy this row used to carry). `server/public/js/lobby/building-scene.js`'s `buildingArt()` is the building as shapes — the roof with its sign; a storey under each plate, its wall, skirting, floorboards and slab and its elevator doors in the shaft at the plate's right — and the ground lobby, boxed on the scene's `extent`, which takes the roof (`ROOF_H`) above the top plate and the ground lobby (`GROUND_H`) under the bottom one, so the first framing and the whole-building control show both; `CAB` and `cabStyle()` stand the cab in its shaft at the plate the elevator is at, aligned from the column of plates the shaft and its doors serve (`shaftAt()`) rather than the extent's own edge, so the shaft never jogs off the storeys'. `server/public/js/lobby/main.js` paints them into one `<svg>`, the first row of `#lobby-floors` under the camera's one transform, hidden from assistive technology and never a pointer's target, and stands the plates' rows after it; a plate's label is [§ 4.1](#41-the-lobby--the-building-summary)'s. The roof sign's text carries no `textLength`/`lengthAdjust` and is sized to the reference's own proportions, scaled to this sign's own width; the outer frame stands inside the scene's `extent`, with the plates inset `PLATE_INSET` from it on both sides, so the whole-building fit never clips the frame and the frame itself peeks out as a margin around the plates. ⛔ **Scenery carrying no fact:** `buildingArt()` reads the scene's rects and no plate's key or fact, so two buildings of one height draw one building, and its only words are the roof sign's and the ground lobby's. ⛔ **The cab glides with the ride and only with it:** the ride sets the cab's glide to its own `glide_ms` before it draws the cab at its stop, and a CSS transition on the one cab element — kept across renders, which replace every other row of `#lobby-floors` — carries it there; arriving sets it back to none, so every other render cuts the cab, and under `prefers-reduced-motion` the ride's glide is none and the cab cuts. It is the ride's, and the ride is navigation: no [§ 6.2](#62-the-animation-table--the-closed-set) row, no animation-log row, nothing through the set, and the committed-ride hold above unchanged. `main.js` reads the viewer's `cab` through a THUNK (`livePage(() => screen.render(() => cab))`, called only after `lobby-screen.js`'s `render()` has finished its own awaits, right before `draw()`) so the drawn cab is never built from a stale read; `buildingModel()`'s `elevator.at` is computed from whatever `cab` is fed it, so a ride in flight or one that just arrived needs no special case. `Tests\Feature\Lobby\TheBuildingIsDrawnAsTheReferencesSectionTest` drives `building-scene.js` under `node` and reds a storey drawn from its plate's key, a plate's name drawn in the scene, the roof or the ground lobby outside the extent, a plate off the building's left edge, a cab that always glides, one that never glides, one at the wrong plate, a shaft or door off its column, and a drawn `textLength`/`lengthAdjust`; `LobbyPageWiringTest` reds a cab gliding over a time of its own, a cab still gliding after the ride, and a page that does NOT read `cab` late through a thunk; `Tests\Feature\Lobby\TheBuildingDrawingKeepsItsElementTest` drives the drawing's construction, its keeping across a rebuild and its paint (`building-paint.js`) on a stand-in DOM, and `Tests\Feature\Lobby\TheDrawnCabNeverStalesTest` drives the thunk under `node` against the real `LobbyScreen`, `FleetClient` and `Building`, with a scripted layout fetch released either mid-ride or after `returned()` has already ended it. **The sky is drawn, and it is A17's** (the operator's ruling, card#7343, 2026-09-30, answer A, recorded at [§ 4.1](#41-the-lobby--the-building-summary)): `lobby/lobby-screen.js` holds the floor's own A17 driver (`floor/floor-layout.js`'s `RoomClock`) and constructs the animation set drawing A17 alone, over the page's log (`wire/live-page.js`, with [§ 12](#12-every-number-and-where-it-comes-from)'s retention); `lobby/building-scene.js`'s `surfaceStyle()` paints the drawing surface with the phase's sky, in the reference's dim treatment, stars at night, never with a transition, and each plate's WINDOWS carry the same time of day at full strength — the phase's gradient, stars and a moon at night, the sun at its height by day, dawn and dusk, the city's roofline lit by the phase — repainted when the phase steps, `unset` flat with none of it before the first heartbeat. ONE phase→paint table serves every sky on both pages: `floor/floor-layout.js`'s `SKY_PAINT`. `Tests\Feature\Floor\TheLobbySkyIsTheFloorsA17Test` holds it: the sky steps only on a heartbeat and freezes when the feed dies, one phase function, one A17 row per heartbeat and no other lobby row, A17 without motion under reduced motion, and the paint stepping between every phase the floor decides; `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`'s import-graph clause holds the lobby to that ONE path to the log and the set, and `LobbyPageWiringTest` holds `lobby/main.js` to naming it exactly twice. **The round-by-round record — every review finding, every rejected design and why, and how the present mechanism and contract were reached — is PR #252's**, not a design statement this row restates. | **[AT-D3-21](#at-d3-21-the-camera-moves-the-viewer-and-never-the-fleet)** **(building half)** |
+| 17 | ✅ landed 2026-10-04 (card#11144, PR #272 for the map's reservation, #273 for the client's read of it, #276 for the reporter's relayed role and #280 for the seating) — the **reserved desk**: a map reserves one desk for a role ([§ 10.3](#103-the-floor-map)), the reporter relays each seat's roster role ([D1 § 3.1](EVENT-SCHEMA.md#31-the-seat-config-file)), and [§ 3.2](#32-the-desk-slot-function)'s function seats the room's one seat relaying it there — empty and reserved with none, empty under [§ 9](#9-failure-paths-and-their-observables) F22's notice with two or more — with a change of the holder on a delta as [A16](#62-the-animation-table--the-closed-set) | [AT-D3-22](#at-d3-22-the-reserved-desk-seats-its-role-and-nobody-else), and [AT-D3-3](#at-d3-3-identity-is-stable-across-a-restart) re-cut on the reserved default (its worked table and the REDs on the probe loop it names) |
+| 18 | ✅ landed 2026-10-05 (card#9566, PR #290) — the **elevator walk** ([§ 6.2](#62-the-animation-table--the-closed-set)'s walk note): [A1](#62-the-animation-table--the-closed-set) and [A2](#62-the-animation-table--the-closed-set) re-keyed on § 7.1's *Desk* column as `desk/task-bubble.js`'s `NO_CHARACTER_STATES` ships it, each excluding A13's condition by construction — `retired` is neither staffed nor an empty chair, so each row's own predicate refuses it — rows and log at the apply as today; the scene's walk segment ended at the elevator's threshold for A1 and A2, and the door frames; one generic holder of `edge` effects in flight across repaints, with the geometry and start instant of the render that wrote each; at most one walk per seat, cancelled by any render that touches the seat as the walk note's item 6 defines it — its journal, its row-5 or stilled condition, its desk anchor against the walk's, or the elevator threshold — and by nothing the 1 s age tick or a paint-only refresh does; the desk drawn as the empty chair under a walk, and the paint-only refresh at a walk's last frame; the painter drawing the A1 and A2 walker and the elevator's leaves from the walks in flight; the guarded copy of A1's and A2's Animation cells in `wire/animation-set.js` re-synced; the docblock of `TheAnimationSetIsTheDocumentsClosedSetTest::test_a_retirement_is_not_also_an_arrival` (*A2 IS NOT IMPLICATED*), which A2's new exclusion of A13 makes stale, rewritten; the harness probe `server/tests/Feature/Floor/fleet-client-probe.mjs`'s timer loop changed so the walk-end timer is excluded from the post-event drain-and-render, as the age tick is, and its paint-only refresh recorded under a trigger of its own; the walk note's residual risk — a `catching_up` seat's back-to-back batches cancelling its A1 — measured on the sandbox rather than designed; [§ 12](#12-every-number-and-where-it-comes-from)'s *Walk speed* and *Elevator leaves* rows held equal to their code homes (`server/tests/Feature/Floor/ASeatLeavesByTheElevatorAndReturnsByItTest.php`'s `test_green_section_12_is_the_scenes_constants`); and the code comments that still call the elevator scenery (`floor/scene.js`, `floor/painter.js`) corrected | [AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it), and the animation set's closed-set guard over A1's and A2's re-keyed predicates |
+| 19 | ✅ landed 2026-10-06 (card#11046) — the **creature generator**: [§ 10.2](#102-characters-original-creatures-drawn-by-code)'s creatures, ported from the approved prototype and not redesigned, with the seat's rim and softened hedgehog spines, under `resources/characters/` — drawing every field through `seed.js`'s first-party `fnv1a32`, `mix32` and `draw`, which stay — and [§ 10.4](#104-the-art-direction-as-a-specification)'s frame contract at parity with today: one standing frame per key, drawn for every pose the desk model asks for, the 3-phase front walk and the intern's chibi frame (pose art is [§ 14](#14-open-questions-for-the-review-loop) item 34's, not this row's), with the intern's species re-drawn off its seat's ([decision 54](#13-decisions-taken-revisable-at-review)), and the three members [§ 14](#14-open-questions-for-the-review-loop) item 33(1)'s ruling withholds kept out through the generator's one `WITHHELD` list; the munder-difflin port removed whole — `portrait-art.js`, `seed.js`'s human recipe, `index.js`'s RGBA cache and canvas blit, the portrait and the back view, `resources/characters/LINEAGE.md`, and its `docs/ATTRIBUTION.md` rows and notice section, that section replaced by the repository's own MIT notice, and `docs/ATTRIBUTION.md`'s rules bullet that states the old lineage trigger (*as soon as a row under `resources/characters/` declares one*) restated as the re-keyed one; `bin/asset-provenance.py`'s lineage check re-keyed from the character tree to a `licensed` row under it, with its selftest's REDs and control; the painter showing each character frame as an `<image href="data:image/svg+xml;…">` in its clipping viewport, its frame URIs cached per asset in the painter's own Map — the tree holds no cache and has no `forget()` (§ 10.2) — and an intern's dropped when it is no longer drawn, drawing the standing frame for every pose and swapping `href` among the walk's frames where a held loop moves, as today, the canvas-and-PNG path for characters and its `pixel` class removed, and the character size the scene reads (`desk-layout.js`'s `CHARACTER_SCALE` over the tree's exported size) re-stated so the 54 × 96 and 20 × 32 rects do not move; the committed fleet roster and the salt check over it, with the search sample committed beside it as the salt leg's control (`tools/characters/salt-control.json`, § 14 item 33(2)); the **creature gates** — `tools/characters/selftest.mjs`, rebuilt over the creatures to run AT-D3-24, with its painter legs in `server/tests/Feature/Floor/painter-probe.mjs` — and the tree's browser harness rebuilt as the creature sheet beside it (the pixel tree's node render sheet retired with it); the translucent plank tile of card#11046 comment 9325 is NOT this row's — it is [§ 14](#14-open-questions-for-the-review-loop) item 35's, because the state chip's colours fail their gate over a visible theme; the D-07 append in `docs/PLAN.md § 0`; and `README.md`'s character-tree lines. The operator sees real-floor screenshots of the walk, the chibi frames, the rim and the spines before it merges ([§ 14](#14-open-questions-for-the-review-loop) item 33) | [AT-D3-24](#at-d3-24-a-character-is-its-keys-creature-in-every-frame-at-every-zoom), [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(lineage half)**, and [AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk)'s painter legs |
+| 20 | ✅ landed 2026-10-07 (card#11046 row 20) — the **desk re-layout** — [§ 10.6](#106-themes--a-floors-design-and-the-house-theme)'s *The desk, re-laid* (card#11046, the operator's rulings of 2026-10-06 and 2026-10-07), drawn with the painter's flat shapes and no theme: `deskRects()` re-laid (the character at a third, the monitor's frame, the screen and its text, the desk props' rect, the side table's rect at every desk with art with its seats); the screen type role at 8 px on its line and baseline, with `harness-measurer.mjs`'s glyph width for it; the screen text's ink per lit state; the chair drawn behind every creature (today only an empty desk draws one); the desk's elements emitted art first and facts after (§ 10.6's rule 2, read through `painter-probe.mjs`); the bubble's and the desk's anchor as one primitive on the character's centre line; the element kinds `monitor-frame` and `desk-props` added to `DRAWN_MEMBERS` under `monitor` and `lighting`; `desk-layout.js`'s comments that say the desk has two type roles re-stated for three, and every source string a `SeatFurnitureNeverOverlapsTest` RED plants in `desk-layout.js` or `painter.js` re-targeted where this row moves it; AT-D3-20's *(e)* clause and second RED rewritten as § 11 marks them; and § 12's re-laid rows built. **Rows 20 to 22 land on `dev` one by one and release to `main` together**: until row 22 draws the desk's back, row 20's wider monitor frame hangs past the kit's desk sprite, a look no release ships | [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text) **(re-laid half)**, [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) |
+| 21 | ✅ landed 2026-10-07 (card#11046 row 21) — the **theme registry** (`resources/floor/themes/index.js` — `THEMES`, `HOUSE_THEME`, `KINDS` and `API` — and its PHP reader) and the **layout theme member** — [§ 4.6](#46-the-building-layout)'s `theme` in both runtimes over `compose-cases.json`, the console's refusal at save and restore, F23 and § 5.5's line, and the CHANGELOG's note that a rollback past this row first saves the layout without the member. No theme draws yet: the registry names `studio`, whose directory row 22 adds — its registry-against-directories leg is the theme half's — and every floor resolves to a theme name and is drawn as today | [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text) **(selection half)** |
+| 22 | ✅ landed 2026-10-07 (card#11046 row 22) — the **house room** — the **house theme** (`resources/floor/themes/studio/theme.js`, A2+C ported from the approved prototype: its palette export, `surfaces()` and every document the registry's API names, the hallway's plane among them) and the **theme gates** (`tools/floor-themes/selftest.mjs`, the selftest that runs AT-D3-25's theme half's node legs, with its painter legs in `painter-probe.mjs` and `theme-painter-probe.mjs`); the scene and the painter showing each theme document as a `data:image/svg+xml` image in its clipping viewport at the scene's rect over the flat fallback fills, and F14's theme causes, the theme registry's own among them (row 21's review finding); `floor-plane.tsx`'s tiles each declaring a `kind`, with first-party marker SVGs; the shipped default re-authored; **the colour round in this same row** — the state chip's quiet colours re-derived over the house theme's surfaces and `state-chip-colours.py` reading every theme's `surfaces()` through `tools/floor-themes/surfaces.mjs`, so the first row that paints the oat floor lands green (decision 62); the retirements — the bridge kit and its rows, `resources/floor/LINEAGE.md`, the plank and rug tiles and `DESK_SPRITE` — and the seeded tints and the window glazing as decisions 58 and 61 decide (seat rulings recorded on card#11046, 2026-10-07: the tints retire, the glazing is 208 × 80); § 10.3's, § 10.4's and § 12's *row 22* sentences rewritten as built; G-walls amended and G-scenery added to `tools/design/verify-floor.py`; AT-D3-19's kit leg rewritten; D-07's third append in `docs/PLAN.md § 0`; D2 § 8.7's worked hallway re-pointed off the kit's tileset; every store the build can reach measured for maps naming retired art, and the console's listing extended (item 36(5), adopted). The operator sees the screenshots of [§ 14](#14-open-questions-for-the-review-loop) item 36(3) before it merges | [AT-D3-25](#at-d3-25-a-floor-is-drawn-in-its-theme-and-a-theme-takes-no-fact-and-writes-no-text) **(theme half)**, [AT-D3-12](#at-d3-12-asset-provenance-gates-bite) **(manifest half)**, [AT-D3-19](#at-d3-19-an-asset-that-fails-to-load-leaves-every-fact-on-the-desk), [AT-D3-20](#at-d3-20-seat-furniture-never-overlaps-and-the-overflow-row-stays-below-the-floor) |
 
 **Three of these are hard requirements before anything downstream may treat this floor as honest:**
 **AT-D3-1** (no animation without its event — the operator's principle, made into a test),
@@ -6935,8 +9014,8 @@ protocol half (3) and a strip half (8), because *resyncs: N* is a status-strip r
 [AT-D3-17](#at-d3-17-a-seat-the-client-does-not-hold-is-fetched-never-patched) split into protocol halves (3)
 and render halves (6), because *no `edge` row* and *without an arrival animation* are claims about the
 animation set and a floor with no animations satisfies both for free; and
-[AT-D3-12](#at-d3-12-asset-provenance-gates-bite) split into a manifest half (0) and a lineage half (1),
-because the lineage file is step 1's artifact.
+[AT-D3-12](#at-d3-12-asset-provenance-gates-bite) split into a manifest half (0) and a lineage half (19,
+where card#11046's re-keyed check and the trees it reads are built; it was step 1 until then).
 **Re-gated** rather than split, because no half of the test is observable before its artifact
 exists: [AT-D3-13](#at-d3-13-every-state-is-legible-without-motion), from 5 to 6,
 because its whole claim is that no state is carried by motion alone and there is no half of that
@@ -6970,4 +9049,4 @@ instrument of the renderer, not of the test suite. If it were built inside the h
 animation the harness never saw, and [AT-D3-1](#at-d3-1-no-animation-without-its-event)'s GREEN would
 be a statement about the harness rather than about the floor.
 
-**A third note on order — rows 14, 15 and 16, and why they carry those numbers.** They are the room drawing, the camera and the building cross-section (designed in card#7341's round after step 8; rows 14 and 15 build under card#7341 and row 16 under card#7343), and their dependency order is the one each row states, not the number: 14 draws over row 8's page and steps 5–7's models; 15 moves what 14 draws; 16 needs 15 and row 9's lobby. Relative to row 9, rows 14 and 15 are independent of it — they touch the floor page alone — and 16 comes after it. Relative to row 10, the BUILD order is free: the drill-down is a panel over the floor that opens on a selected desk and by its own route ([§ 4.4](#44-routes-and-what-each-one-fetches)), and row 10 is built ahead of rows 14 and 15, so the panel opens from the desk's text render and from the route; row 14 gives it a drawn desk to open on, and since row 15's slice A the list view's row — its nameplate line — opens it too. The Gate cells are the truth. ⚠ **The LANDING order is not free, and this is a rule the card owns rather than a gate this table enforces:** [§ 10.3](#103-the-floor-map) truncates every desk string to the furniture box and puts the full value on the list view and in the drill-down, and above the viewport floor the list view is not rendered, so on a desktop the drill-down is the only full-value surface — **row 10 lands with row 14 or before it** (card#7341), never after, so that no landed floor draws a truncated string whose full value has no surface. They are numbered 14–16 rather than 8a–8c because the number is what G5 compares — a gate at step N reading an artifact of step M holds iff N ≥ M — and an Order cell that is not an integer is a row the check reds rather than reads (`tools/design/verify-floor.py`, since this change); rows 11–13, which rows 7 and 9 read from, already sit after them for the same reason, so a row's number says when it was written and its cell says what it needs.
+**A third note on order — rows 14, 15 and 16, and why they carry those numbers.** They are the room drawing, the camera and the building cross-section (designed in card#7341's round after step 8; rows 14 and 15 build under card#7341 and row 16 under card#7343), and their dependency order is the one each row states, not the number: 14 draws over row 8's page and steps 5–7's models; 15 moves what 14 draws; 16 needs 15 and row 9's lobby. Relative to row 9, rows 14 and 15 are independent of it — they touch the floor page alone — and 16 comes after it. Relative to row 10, the BUILD order is free: the drill-down is a panel over the floor that opens on a selected desk and by its own route ([§ 4.4](#44-routes-and-what-each-one-fetches)), and row 10 is built ahead of rows 14 and 15, so the panel opens from the desk's text render and from the route; row 14 gives it a drawn desk to open on, and since row 15's slice A the list view's row — its nameplate line — opens it too. The Gate cells are the truth. ⚠ **The LANDING order is not free, and this is a rule the card owns rather than a gate this table enforces:** [§ 10.3](#103-the-floor-map) truncates every desk string to the furniture box and puts the full value on the list view and in the drill-down, and until 2026-10-01 the list view was not rendered above the viewport floor, so on a desktop the drill-down was the only full-value surface — **row 10 lands with row 14 or before it** (card#7341), never after, so that no landed floor draws a truncated string whose full value has no surface. Since the operator's ruling of 2026-10-01 the list view is painted below the drawing at every window size ([§ 4.5](#45-the-viewport-rule-and-the-camera)), so it is a full-value surface on a desktop too. They are numbered 14–16 rather than 8a–8c because the number is what G5 compares — a gate at step N reading an artifact of step M holds iff N ≥ M — and an Order cell that is not an integer is a row the check reds rather than reads (`tools/design/verify-floor.py`, since this change); rows 11–13, which rows 7 and 9 read from, already sit after them for the same reason, so a row's number says when it was written and its cell says what it needs.

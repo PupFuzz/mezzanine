@@ -60,10 +60,11 @@
 // anchor is asserted to occur exactly once, and the named check is REQUIRED to go red. Two of them
 // are the two defects this round fixes, re-minted from their own pre-fix constants.
 
-import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { findChrome } from './headless-chromium.mjs';
 import { tmpdir } from 'node:os';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -101,19 +102,7 @@ const hitsOf = (haystack, anchor) => haystack.split(anchor).length - 1;
  * instrument is missing is the false-clean shape this whole card is about: the run would be green
  * and the layer would be unmeasured, which is the state that shipped four times.
  */
-function findChrome() {
-  const named = argOf('--chrome') || process.env.CHROME;
-  if (named) return existsSync(named) ? named : null;
-  const cache = join(process.env.HOME || '', '.cache', 'ms-playwright');
-  if (!existsSync(cache)) return null;
-  for (const d of readdirSync(cache).filter((n) => n.startsWith('chromium'))) {
-    for (const sub of ['chrome-headless-shell-linux64/chrome-headless-shell', 'chrome-linux/chrome']) {
-      const p = join(cache, d, sub);
-      if (existsSync(p)) return p;
-    }
-  }
-  return null;
-}
+// `findChrome()` is `headless-chromium.mjs`'s, the one resolution every browser tool here shares.
 
 // The probe. It runs INSIDE the page, after `load`, so every number it reports is the browser's
 // own composed geometry. It reads the artifact's constants out of the page's scope rather than

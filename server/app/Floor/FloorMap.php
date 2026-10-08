@@ -2,6 +2,9 @@
 
 namespace App\Floor;
 
+use App\Support\Anchored;
+use App\Support\Slug;
+
 /**
  * A room's Tiled map, read for the facts the rest of the system needs from it: **`S`, the number
  * of desk slots it declares**, and — since card#9292 — **its GRID, which is the room's footprint
@@ -70,6 +73,12 @@ final class FloorMap
     /** § 10.3's object layer: "an object layer named `desks` whose objects are the slots". */
     public const SLOT_LAYER = 'desks';
 
+    /**
+     * § 10.3's allowlist for a `desks` object's `properties`: ONE name (card#11144). A desk may be
+     * reserved for a ROLE; it may never name a seat (card#9071).
+     */
+    public const RESERVED_FOR = 'reserved_for';
+
     /** § 10.3's grid members — the room's pixel size, and the whole of what states it. */
     private const GRID_MEMBERS = ['width', 'height', 'tilewidth', 'tileheight'];
 
@@ -86,7 +95,9 @@ final class FloorMap
         public readonly array $grid,
         /**
          * The `desks` layer's objects, in the order the layer lists them, each with the name a refusal
-         * calls it by (`id 3`, or `object #3 (it declares no `id`)`) and its geometry in pixels.
+         * calls it by (`id 3`, or `object #3 (it declares no `id`)`) and its geometry in pixels, at
+         * the position Tiled draws it — its own `x`/`y` plus the summed `offsetx`/`offsety` of the
+         * `desks` layer and every `group` above it (card#11252).
          * Read here, once, by the same walk that counts `S` and checks each object against the
          * grid, so `App\Floor\DeskSlots` — the console's item-28(1) refusals and its
          * re-validation listing — judges the very objects this parser admitted and parses nothing
@@ -95,6 +106,16 @@ final class FloorMap
          * @var list<array{name: string, x: float, y: float, w: float, h: float}>
          */
         public readonly array $desks,
+        /**
+         * card#11144: the ONE `desks` object carrying `reserved_for`, named as a refusal names it
+         * (`id 3`) — Tiled's object `id`, which is how every operator-facing surface names the
+         * reserved desk — with the role it is reserved for; `null` when the map reserves none.
+         * The server only reads and reports it: which seat sits there is the client's slot
+         * function (`docs/design/FLOOR.md § 3.2`).
+         *
+         * @var array{name: string, role: string}|null
+         */
+        public readonly ?array $reserved,
     ) {}
 
     /**
@@ -108,15 +129,38 @@ final class FloorMap
      */
     public static function slotsOf(?string $document): ?int
     {
+        return self::readable($document)?->slots;
+    }
+
+    /**
+     * A stored document, parsed — or `null` where there is none to read: a REMOVAL's
+     * `document NULL`, or a map from before a rule tightened. The one place a reader turns a
+     * refusal into *this revision can no longer be read*, so `S` (`slotsOf()`) and the
+     * reservation the console's revisions list shows beside it come from ONE parse.
+     */
+    public static function readable(?string $document): ?self
+    {
         if ($document === null) {
             return null;
         }
 
         try {
-            return self::parse($document)->slots;
+            return self::parse($document);
         } catch (InvalidFloorMap) {
             return null;
         }
+    }
+
+    /**
+     * card#11144: how the console states a map's reservation — `id 3 for pm`, or `none`. One
+     * spelling for the revisions list and the save result, so the two cannot describe one map two
+     * ways.
+     */
+    public function reservationLabel(): string
+    {
+        return $this->reserved === null
+            ? 'none'
+            : $this->reserved['name'].' for '.$this->reserved['role'];
     }
 
     /** § 4.6: the room's FOOTPRINT on a planned floor — `width × tilewidth` pixels. */
@@ -171,9 +215,9 @@ final class FloorMap
 
         $grid = self::structure($decoded, 'This map');
 
-        $desks = self::readSlots($decoded->layers, $grid);
+        [$desks, $reserved] = self::readSlots($decoded->layers, $grid);
 
-        return new self($document, count($desks), $grid, $desks);
+        return new self($document, count($desks), $grid, $desks, $reserved);
     }
 
     /**
@@ -292,9 +336,10 @@ final class FloorMap
      * the refusal has to be here rather than at the plan, because the plan is the document that
      * does NOT get to say how big a room is.
      *
-     * `orientation` is checked in the same pass for § 10.3's own reason: the floor is an
-     * ELEVATION drawn from the tileset's `Side/` renders, and no other projection is asked for or
-     * vendored, so a map in one is refused by name rather than drawn flat.
+     * `orientation` is checked in the same pass for § 10.3's own reason: the floor is drawn under
+     * § 10.4's one projection — the back wall's face, everything else from the one viewer — over an
+     * orthogonal grid the floor's theme draws into, and no other projection is drawn, so a map in one
+     * is refused by name rather than drawn flat.
      *
      * @return array{width: int, height: int, tilewidth: int, tileheight: int}
      */
@@ -305,8 +350,8 @@ final class FloorMap
         if ($orientation !== 'orthogonal') {
             throw new InvalidFloorMap(sprintf(
                 '%s declares the orientation %s. docs/design/FLOOR.md § 10.3 admits `orthogonal` '
-                .'and nothing else: the floor is an ELEVATION drawn from the tileset\'s `Side/` '
-                .'renders, and an isometric map recedes along two axes — a different projection, '
+                .'and nothing else: the floor is drawn under one projection over an orthogonal grid, '
+                .'and an isometric map recedes along two axes — a different projection, '
                 .'refused by name rather than drawn flat.',
                 $what,
                 is_scalar($orientation) ? '`'.$orientation.'`' : 'none',
@@ -454,7 +499,7 @@ final class FloorMap
                     .'resolve to a vendored tileset — one the two asset gates have a manifest row '
                     .'for (§ 10.1) — because a map whose tiles nothing serves draws as an empty '
                     .'room and says nothing about why. The tileset shipped today is '
-                    .'`tiles/furniture-kit.tsx`.',
+                    .'`tiles/floor-plane.tsx`.',
                     $what,
                     $source,
                 ));
@@ -554,15 +599,20 @@ final class FloorMap
     }
 
     /**
-     * § 3.2's `S`, the ways a map can fail to state it, and the two rulings the `desks` layer
-     * carries: **no object may declare a property** (card#9071 — "the property an author reaches
-     * for is a seat's name, and a slot that named a seat would be a stored position") and **no
-     * object may fall outside the grid** (card#9292 — the grid is the room's footprint, and a
-     * desk drawn past it would overhang a neighbour the footprint check had passed).
+     * § 3.2's `S`, the ways a map can fail to state it, and the rulings the `desks` layer
+     * carries: **no object may declare a property but `reserved_for`** (card#9071 — "the property
+     * an author reaches for is a seat's name, and a slot that named a seat would be a stored
+     * position"; card#11144 — one desk may be reserved for a ROLE, never for a seat), **at most
+     * one object may be reserved**, and it must declare an `id` no other object declares (the
+     * client resolves the reservation by `id`), and **no object may fall outside the grid** (card#9292 — the
+     * grid is the room's footprint, and a desk drawn past it would overhang a neighbour the
+     * footprint check had passed), judged at the position Tiled draws it, its layer's and its
+     * groups' offsets summed in (card#11252). Returns the slots, whose count is `S`, and the one
+     * reservation or `null`.
      *
      * @param  array<mixed>  $layers
      * @param  array{width: int, height: int, tilewidth: int, tileheight: int}  $grid
-     * @return list<array{name: string, x: float, y: float, w: float, h: float}> the slots, whose count is `S`
+     * @return array{0: list<array{name: string, x: float, y: float, w: float, h: float}>, 1: array{name: string, role: string}|null}
      */
     private static function readSlots(array $layers, array $grid): array
     {
@@ -588,7 +638,7 @@ final class FloorMap
             ));
         }
 
-        $objects = $desks[0]->objects ?? null;
+        $objects = $desks[0]['layer']->objects ?? null;
 
         if ($objects !== null && ! is_array($objects)) {
             throw new InvalidFloorMap(sprintf(
@@ -607,9 +657,15 @@ final class FloorMap
             ));
         }
 
+        $offset = self::offset($desks[0]);
         $pixelWidth = $grid['width'] * $grid['tilewidth'];
         $pixelHeight = $grid['height'] * $grid['tileheight'];
         $slots = [];
+        $reserved = null;
+        // card#11144: every object's `id`, by its string form, so the reserved desk's can be held
+        // unique — the client resolves the reservation by `id`, and a shared one names two desks.
+        $ids = [];
+        $reservedId = null;
 
         foreach (array_values($objects) as $index => $object) {
             $named = $object instanceof \stdClass && isset($object->id) && is_scalar($object->id)
@@ -620,23 +676,39 @@ final class FloorMap
                 throw new InvalidFloorMap(sprintf('The `%s` layer carries %s, which is not an object.', self::SLOT_LAYER, $named));
             }
 
-            // ⛔ card#9071, operator ruling 2026-09-12: the console may not pin a seat to a desk.
-            // § 10.3 makes it an allowlist of NONE — "because the property an author reaches for
-            // is a seat's name" — so the refusal is on `properties` existing at all rather than
-            // on any list of property names, which would be a list one edit behind the author.
-            if (property_exists($object, 'properties')) {
-                throw new InvalidFloorMap(sprintf(
-                    'Desk slot %s carries `properties`, and a desk slot may carry NONE '
-                    .'(docs/design/FLOOR.md § 10.3, card#9071). The property an author reaches '
-                    .'for is a seat\'s name, and a slot that named a seat would be a stored '
-                    .'position — § 3.2 puts a seat at a desk by a function of the seats '
-                    .'themselves, so that two browsers and two restarts agree without one.',
-                    $named,
-                ));
+            $role = self::reservedFor($object, $named);
+
+            if ($role !== null) {
+                if ($reserved !== null) {
+                    throw new InvalidFloorMap(sprintf(
+                        'Desk slots %s and %s are both reserved; a room has one reserved desk. '
+                        .'Unreserve one and save again.',
+                        $reserved['name'],
+                        $named,
+                    ));
+                }
+
+                if (! isset($object->id) || ! is_scalar($object->id)) {
+                    throw new InvalidFloorMap(sprintf(
+                        'Desk slot %s is reserved and declares no `id`; a reserved desk is found by '
+                        .'its Tiled id. Give it one and save again.',
+                        $named,
+                    ));
+                }
+
+                $reserved = ['name' => $named, 'role' => $role];
+                $reservedId = (string) $object->id;
             }
 
-            $x = self::objectNumber($object, 'x', $named);
-            $y = self::objectNumber($object, 'y', $named);
+            if (isset($object->id) && is_scalar($object->id)) {
+                $ids[(string) $object->id] = ($ids[(string) $object->id] ?? 0) + 1;
+            }
+
+            // card#11252: where Tiled SHOWS the desk — its own `x`/`y` plus the `desks` layer's and
+            // every enclosing group's `offsetx`/`offsety`, summed once by `offset()` — so every
+            // check below, and `App\Floor\DeskSlots` after it, judges the desk the author sees.
+            $x = $offset['x'] + self::objectNumber($object, 'x', $named);
+            $y = $offset['y'] + self::objectNumber($object, 'y', $named);
             $width = self::objectNumber($object, 'width', $named);
             $height = self::objectNumber($object, 'height', $named);
 
@@ -657,7 +729,98 @@ final class FloorMap
             $slots[] = ['name' => $named, 'x' => $x, 'y' => $y, 'w' => $width, 'h' => $height];
         }
 
-        return $slots;
+        if ($reservedId !== null && $ids[$reservedId] > 1) {
+            throw new InvalidFloorMap(sprintf(
+                'Desk slot %s is reserved, and another desk slot declares `id` %s too; a reserved '
+                .'desk is found by its Tiled id, so it must be the only one. Give each desk slot its '
+                .'own id and save again.',
+                $reserved['name'],
+                $reservedId,
+            ));
+        }
+
+        return [$slots, $reserved];
+    }
+
+    /**
+     * ⛔ § 10.3's ALLOWLIST OF ONE for a desk object's `properties` — card#9071's ruling (operator,
+     * 2026-09-12: the console may not pin a seat to a desk) as card#11144 narrows it: a desk may be
+     * reserved for a ROLE, by the one property `reserved_for`, a Tiled `string` (an absent `type` is
+     * Tiled's documented default, `string`) holding a role name
+     * of the protocol agent name's shape (`App\Support\Slug::AGENT_NAME`). Every other property is
+     * refused by its name — the one an author reaches for is a seat's, and a slot that named a seat
+     * would be a stored position (§ 3.2 puts a seat at a desk by a function of the seats themselves).
+     *
+     * The on-screen wording carries no design-doc citation (operator ruling 2026-09-25, card#7341
+     * comment 6585).
+     *
+     * @return string|null the role this desk is reserved for, or `null` when it carries no reservation
+     */
+    private static function reservedFor(\stdClass $object, string $named): ?string
+    {
+        if (! property_exists($object, 'properties')) {
+            return null;
+        }
+
+        // Tiled writes `properties` as a JSON ARRAY of `{name, type, value}` objects, and since
+        // card#9322's object-mode decode a `{}` in its place arrives as the object it is.
+        if (! is_array($object->properties)) {
+            throw new InvalidFloorMap(sprintf(
+                'Desk slot %s stores its `properties` as %s rather than as the list of '
+                .'properties Tiled writes.',
+                $named,
+                self::jsonShape($object->properties),
+            ));
+        }
+
+        $role = null;
+
+        foreach ($object->properties as $property) {
+            $name = $property instanceof \stdClass ? ($property->name ?? null) : null;
+
+            if ($name !== self::RESERVED_FOR) {
+                throw new InvalidFloorMap(sprintf(
+                    'Desk slot %s carries property %s; a desk slot may carry only `%s`.',
+                    $named,
+                    is_string($name) ? '`'.$name.'`' : 'with no name',
+                    self::RESERVED_FOR,
+                ));
+            }
+
+            if ($role !== null) {
+                throw new InvalidFloorMap(sprintf(
+                    'Desk slot %s carries `%s` twice; a desk is reserved for one role.',
+                    $named,
+                    self::RESERVED_FOR,
+                ));
+            }
+
+            // Tiled's JSON map format documents `type` as `string (default)`: absent is a string.
+            $type = property_exists($property, 'type') ? $property->type : 'string';
+            $value = $property->value ?? null;
+
+            if ($type !== 'string') {
+                throw new InvalidFloorMap(sprintf(
+                    'Desk slot %s\'s `%s` is a Tiled %s property; it must be a role name such as `pm`.',
+                    $named,
+                    self::RESERVED_FOR,
+                    is_string($type) ? '`'.$type.'`' : 'untyped',
+                ));
+            }
+
+            if (! is_string($value) || preg_match(Anchored::pattern(Slug::AGENT_NAME), $value) !== 1) {
+                throw new InvalidFloorMap(sprintf(
+                    'Desk slot %s\'s `%s` is %s; it must be a role name such as `pm`.',
+                    $named,
+                    self::RESERVED_FOR,
+                    is_string($value) ? '`'.$value.'`' : self::jsonShape($value),
+                ));
+            }
+
+            $role = $value;
+        }
+
+        return $role;
     }
 
     /**
@@ -695,10 +858,14 @@ final class FloorMap
     }
 
     /**
+     * Every object layer named `desks`, at any depth, each with the `group` layers it sits inside,
+     * outermost first — what `offset()` sums into where Tiled draws it.
+     *
      * @param  array<mixed>  $layers
-     * @return list<\stdClass>
+     * @param  list<\stdClass>  $groups  the groups enclosing `$layers`, outermost first
+     * @return list<array{layer: \stdClass, groups: list<\stdClass>}>
      */
-    private static function deskLayers(array $layers): array
+    private static function deskLayers(array $layers, array $groups = []): array
     {
         $found = [];
 
@@ -709,16 +876,57 @@ final class FloorMap
 
             if (($layer->type ?? null) === 'group') {
                 // `structure()` has already refused a group whose `layers` is not a list.
-                $found = array_merge($found, self::deskLayers($layer->layers ?? []));
+                $found = array_merge($found, self::deskLayers($layer->layers ?? [], [...$groups, $layer]));
 
                 continue;
             }
 
             if (($layer->type ?? null) === 'objectgroup' && ($layer->name ?? null) === self::SLOT_LAYER) {
-                $found[] = $layer;
+                $found[] = ['layer' => $layer, 'groups' => $groups];
             }
         }
 
         return $found;
+    }
+
+    /**
+     * Where Tiled draws a `desks` layer's objects relative to their own `x`/`y`: the summed
+     * `offsetx`/`offsety` of the layer and of every `group` above it (card#11252, operator ruling
+     * 2026-10-04 — a desk inside a moved group sits where Tiled shows it). An absent member is
+     * Tiled's default, `0`; one that is not a number is refused by name, because a desk whose
+     * position cannot be read cannot be checked against the grid. Only the layers a desk's
+     * position reads are judged — a group elsewhere in the tree is not the desks' to refuse.
+     *
+     * ⛔ THE SERVER'S FORM OF THE CLIENT'S `mapLayers()` SUM (`floor/floor-layout.js`), which adds
+     * the same members down the same tree for the tiles and the desks alike — so the position the
+     * console judges at the write is the one the floor draws.
+     *
+     * @param  array{layer: \stdClass, groups: list<\stdClass>}  $found  one `deskLayers()` entry
+     * @return array{x: float, y: float}
+     */
+    private static function offset(array $found): array
+    {
+        $offset = ['x' => 0.0, 'y' => 0.0];
+
+        foreach ([...$found['groups'], $found['layer']] as $layer) {
+            foreach (['x' => 'offsetx', 'y' => 'offsety'] as $axis => $member) {
+                $value = $layer->$member ?? 0;
+
+                if (! is_int($value) && ! is_float($value)) {
+                    throw new InvalidFloorMap(sprintf(
+                        'Layer %s declares `%s` as %s rather than a number, so where the `%s` '
+                        .'inside it are drawn cannot be read (docs/design/FLOOR.md § 10.3).',
+                        isset($layer->name) && is_string($layer->name) ? '`'.$layer->name.'`' : 'with no name',
+                        $member,
+                        is_scalar($value) ? '`'.$value.'`' : self::jsonShape($value),
+                        self::SLOT_LAYER,
+                    ));
+                }
+
+                $offset[$axis] += (float) $value;
+            }
+        }
+
+        return $offset;
     }
 }

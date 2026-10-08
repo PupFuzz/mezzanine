@@ -11,6 +11,14 @@
         <label for="email">Email</label>
         <input id="email" name="email" type="email" value="{{ old('email', $user->email) }}" required>
 
+        <label for="role">Role</label>
+        <select id="role" name="role" required>
+            @foreach ($roles as $role)
+                <option value="{{ $role }}" @selected(old('role', $user->role) === $role)>{{ $role }}</option>
+            @endforeach
+        </select>
+        <p>An observer sees the floor, the lobby and each desk&rsquo;s detail. An operator can also open this console.</p>
+
         <label for="password">New password (leave empty to keep the current one)</label>
         <input id="password" name="password" type="password" autocomplete="new-password">
 

@@ -29,6 +29,20 @@ class User extends Authenticatable
     use HasFactory, Notifiable, TwoFactorAuthenticatable;
 
     /**
+     * Card#9415's two tiers. An OBSERVER reads everything the floor, the lobby, the drill-down and the
+     * fleet REST endpoints show; an OPERATOR also reaches the admin console and the per-desk write
+     * controls. `role` is absent from `#[Fillable]` for the reason `retired_at` is: it is written by
+     * `App\Admin\UserProvisioning::create()` and `App\Admin\UserRoles::assign()` and by nothing else,
+     * so an edit form cannot change it as a side effect of saving a name.
+     */
+    public const OBSERVER = 'observer';
+
+    public const OPERATOR = 'operator';
+
+    /** @var list<string> */
+    public const ROLES = [self::OBSERVER, self::OPERATOR];
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -69,6 +83,16 @@ class User extends Authenticatable
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereNull('retired_at');
+    }
+
+    /**
+     * "May operate", for a loaded account. The `operate` gate (`App\Providers\AppServiceProvider`)
+     * reads it, and so do the last-operator refusals (`App\Admin\UserRoles::leavesNoOperator()`);
+     * `mezzanine:user:create` asks the same question of the store as `where('role', User::OPERATOR)`.
+     */
+    public function isOperator(): bool
+    {
+        return $this->role === self::OPERATOR;
     }
 
     /**

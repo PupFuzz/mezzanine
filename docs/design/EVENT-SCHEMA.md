@@ -29,7 +29,8 @@ almost nothing else — [§ 18.9](#189-why-this-does-not-ride-the-batch-contract
    spool, one record to the call-index journal, one line to the counter sink
    ([§ 11.1](#111-layout)), every one of them an `O_APPEND` `writeSync` — and exit 0. It never opens
    a socket, never blocks, never exits non-zero, and never rewrites a file another process may be
-   writing.
+   writing. The one other file a hook opens is read-only: on `UserPromptSubmit` it reads at most the
+   last 1 MiB of the session's own transcript for [§ 6.3](#63-turnstart)'s `console_url`.
 3. A separate long-lived **flusher** process on the same machine reads the spool and POSTs batches
    over **HTTPS** to the ingest — the server is on a different physical host, always ([§ 3.5](#35-transport-is-wan-always)).
 4. The payload is **minimized at the reporter** (D-06): tool name plus a 200-byte sanitized
@@ -103,13 +104,23 @@ Stated so an implementer cannot widen scope in good faith. Each is a decision, n
 | **Any server → reporter channel** | The wire is one-way. No config push, no remote disable, no "run this". An ingest that can command seats is a fleet-wide remote-execution surface, and the dashboard gains nothing from it. Reporter configuration changes by editing the seat's config file. |
 | **Any dependency on the webhook bridge** | D-10: Mezzanine is an observer and stands alone. The reporter POSTs to Mezzanine directly; the bridge is neither in the path nor a fallback. **This binds the second producer too, and card #7897 says otherwise** — [§ 18.1](#181-two-corrections-this-section-carries-and-the-boundary-it-keeps) carries the correction and the evidence, including the measured fact that the bridge has no surface to consume in the first place. The bridge stays what it is here: **prior art**, re-derived at source, never a runtime dependency. |
 | **Any body text from a coordination post** | [§ 18.10](#1810-sanitization-at-the-coordination-producer). A coordination thread's body is human-written prose with no allowlist behind it, so exactly one free-text field is carried — the issue title, redacted and bounded — and a body is read only to compute predicates whose *results* transit. |
-| **PII beyond `install_id` / `seat_id`** | No prompt text, no file contents, no OS usernames, no hostnames, no email addresses, no IP addresses. Usernames leak through absolute paths, which is why [§ 7.3 rule 6](#73-redaction-rules-applied-in-this-order) rewrites them. |
+| **PII beyond `install_id` / `seat_id`** | No prompt text, no file contents, no OS usernames, no hostnames, no email addresses, no IP addresses. Usernames leak through absolute paths, which is why [§ 7.3 rule 6](#73-redaction-rules-applied-in-this-order) rewrites them; host names and IP addresses in descriptor text are replaced by [rule 9](#73-redaction-rules-applied-in-this-order), within the gap that rule states. |
 | **The storage schema, retention, and state model** | D2 (`docs/design/FLEET-STATE.md`). This doc says what arrives and what it *means*; D2 says what is kept. **Where D1 constrains D2, the marker sits on the obligation sentence itself, never merely somewhere in its section:** **`D2-MUST`** for the five numbered hard constraints ([§ 12.6](#126-the-five-d2-must-constraints)), and a **`D2:`** prefix — or a *constraining D2* note — for every other consumer-addressed obligation. A section-level marker was the earlier convention and it is why an obligation phrased *"a consumer must not …"* ([§ 6.2](#62-sessionend)) was walked past three times by the grep that found its neighbours: the section carried a marker, the rule did not. The whole set is greppable now, and `tools/design/verify-fleet-state.py` re-derives D2's obligation table against it. **Where this doc merely *cites* D2 — stating what D2 already contains, as evidence, imposing nothing — the citing sentence carries `D2-CITED:` on the same line as the reference.** It is the one form that *subtracts* a line from that gate, so it is fenced: an **unmarked** mention of D2 still fails (silence is never read as a citation), an obligation marker on the same line wins over it, and a `D2-CITED:` line must name the place in D2 it cites and must not state a rule — a sentence doing both gets split, because the citation form excuses nothing that constrains D2. |
 | **Anything rendered** | D3 (`docs/design/FLOOR.md`). |
 | **Human authentication** | Seat tokens authenticate machines. MFA gates the browser plane and never touches this endpoint (`docs/PLAN.md § 3`: "seat-token ingest is separate and never browser-facing"). |
 | **Guaranteed delivery** | Best-effort, at-least-once, with bounded loss that is always counted and surfaced. A durable-queue guarantee would put a broker on every agent machine to protect a dashboard. |
 | **OpenTelemetry / a generic tracing pipeline** | Rejected deliberately: its defaults carry rich attributes — exactly what D-06 forbids — and it adds a collector to every seat to move ~500-byte events at ~6 requests/minute. |
 | **Log shipping** | The reporter's own log stays local. It is a diagnostic for the seat's owner, not a stream. |
+
+**One value is read out of a session's transcript, and it is admitted because it is not transcript
+content** (card#9416). [§ 6.3](#63-turnstart)'s `console_url` is the address of the session's console
+on claude.ai — a link into Anthropic's own product, reconstructed from the session's bridge identifier.
+It carries no prompt, no output, no tool argument and no file content, and it is admitted only in the
+one shape [§ 6.3](#63-turnstart)'s pattern allows: a value that fails the pattern is dropped at the
+reporter and counted, never sanitized into something sendable. What it costs is that the link opens the
+session's console to whoever holds it, so it reaches the store and goes no further than an operator
+([§ 6.3](#63-turnstart)'s `D2:` line), and a seat whose [`descriptors`](#31-the-seat-config-file) key is
+not `full` does not send it.
 
 ---
 
@@ -201,7 +212,10 @@ These are absolute. A violation of any of them is a defect even if telemetry is 
 **Budget derivation for P-5 (250 ms).** Node 18 cold start on a modern machine is 30–60 ms and
 dominates; the reporter's own work is one `JSON.parse` of a payload under 1 MiB, a few regexes over
 ≤ 2 KiB of text, a fold of the call index ([§ 8.2](#82-the-call-index-an-append-only-journal-and-matching-a-close-to-its-open))
-— a snapshot of ≤ 128 records plus at most one flush interval of journal tail — and its appends.
+— a snapshot of ≤ 128 records plus at most one flush interval of journal tail — and its appends. A
+`UserPromptSubmit` also reads its transcript's tail for [§ 6.3](#63-turnstart)'s `console_url`: one
+64 KiB read in the common case, where a deciding record sits within the last few KiB, and at most
+1 MiB in 64 KiB reads with a substring test per line before any `JSON.parse`.
 
 **The append count is dominated by the reap, not by the ordinary case, and the budget is derived
 against the reap.** An ordinary `PreToolUse` writes three to six small appends. A session-boundary
@@ -312,8 +326,23 @@ Written once, at install time, by the installer. It is the **only** source of th
 | `ca_file` | string | **yes** | absolute path or `null` | `null` (set only for a sandbox host with a private CA) |
 | `proxy_url` | string | **yes** | absolute `https://`/`http://` proxy URL or `null` | `null` |
 | `wrapped_statusline` | string | **yes** | the seat's previously configured statusLine command, ≤ 512 B, or `null` | `"/home/agent/bin/my-statusline.sh"` |
+| `descriptors` | string | no — **absent** means `"full"` | `"full"`, `"paths"` or `"none"`; any other value is a config error, and the events spooled under it are built as under `"none"` | `"full"` |
 | `protocol_agent_name` | slug | **yes** | the **protocol agent name this seat declares itself to be** — the `slug` pattern and the byte bound [§ 18.6](#186-coordthread) gives such a name on the wire, pointed at rather than restated: a name this file could hold and no `coord.*` field could carry would join nothing. Absent or `null` when the seat declares none | `"pm"` |
 | `enabled` | bool | no | — | `true` |
+
+**`descriptors` is how much of [§ 7.1](#71-layer-1--the-descriptor-allowlist)'s allowlist the seat
+sends**, for an installer who wants less on the wire than the sanitized label. `"full"` is § 7.1's
+table. `"paths"` keeps the descriptors whose source is a file path or a path glob (`Read`, `Write`,
+`Edit`, `Glob`) and sends `null` for every other tool. `"none"` sends `null` for every tool, so the
+wire carries tool names and timing only. Under `"paths"` and `"none"` [§ 6.7](#67-subagentspawn)'s
+`title` is `null` too, because it is the dispatch's free text. Under `"paths"` and `"none"`
+[§ 6.3](#63-turnstart)'s `console_url` is `null` too (card#9416): the key says how much a seat sends, and
+a seat that asked for less than the full label set did not ask for a link to its console either. Neither value changes
+`descriptor_allowlisted` ([§ 9.4](#94-the-predicate-constant-alarm)), which still reads whether the tool is
+on the allowlist. An unrecognised value is a config error: like every other, the flusher keeps
+spooling and sends nothing (`config_invalid`, [§ 9.3](#93-degradation-counters)), and the hooks build
+the events they spool meanwhile as under `"none"`. The key exists to send less, so the events spooled
+under a typo carry no more once it is fixed than the seat asked for.
 
 `enabled: false` is the **only** switch that stops emission, and it is explicit, local, and visible in
 the heartbeat's last transmission. There is no other kill switch and no environment variable that
@@ -432,7 +461,9 @@ framework's, in another repository, and it can move without a single check here 
 - **DECLARED, to the party who can falsify it.** The contract, stated for whoever provisions a seat
   and for the coordination framework's own owner: *the reporter reads the roster from
   `$COORD_CONFIG`, else, on Linux only, from `~/.config/coord/coordination.config.json`, and from
-  nowhere else. An
+  nowhere else; of each entry it reads `roster[].name` and `roster[].role` and no other member, and
+  it relays `role` verbatim as a slug it does not interpret, for a floor to seat a desk a map reserves
+  for `pm` with the seat whose relayed role is `pm` (card#11144). An
   install that keeps its coordination config elsewhere, or that does not export `$COORD_CONFIG` into
   the reporter's process, turns every `checked` on that box into `unchecked` — silently, with no act
   failing.* The variable reaches the reporter the way the framework delivers it: written into the
@@ -491,10 +522,17 @@ framework's, in another repository, and it can move without a single check here 
   when this document names any other location for a coordination config, or when the DECLARED leg
   above or AT-27 stops naming one of [§ 2.3](#23-the-flusher-must-be-alive-whenever-the-seat-is)'s
   flusher start paths — the omission that left the supervised start out of this contract.
+  **For the relayed role (card#11144)**, AT-27's relay cases run in the same suite's § 19b, each RED
+  seen to fail, and the same verifier's check 12 holds the role's byte bound equal to the name's at
+  every home that states one and reds when this document names a roster member other than
+  `roster[].name` and `roster[].role`.
 - **NAMED where it cannot be established.** That the roster is at a path this design reads is not
   checkable from this repository in either direction, so it is on
   [§ 18.13](#1813-what-this-section-does-not-establish) row 6's not-established list **by name**,
-  rather than left to be inferred from a gate that is green because nothing measured it.
+  rather than left to be inferred from a gate that is green because nothing measured it. So are the
+  three conditions the relayed role rests on (card#11144): that `role` stays a member of a roster
+  entry; that the role vocabulary stays open and `pm` keeps its meaning; and that a PM install's
+  roster holds one `pm`. Each is decided by the coordination framework, in another repository.
 
 | `protocol_agent_name_check` | The state it names | What the reporter emits | Counter |
 |---|---|---|---|
@@ -548,6 +586,34 @@ which seats count toward a duplicate — a question this section does not answer
 the reason it reports for a name it declines to resolve.
 And ⛔ **equality between a declared name and any `seat_id` remains a coincidence**: only a
 declaration joins, here and at every consumer downstream.
+
+#### `protocol_agent_role` — relayed from the roster, never declared
+
+⭐ **Operator ruling 2026-10-03 on `card#11144` (Q5 A).** On the roster read the name check above
+already makes, the reporter also reads `roster[].role` of the entry the declared name selects and
+relays it, **verbatim and uninterpreted**, as `protocol_agent_role` on every heartbeat
+([§ 6.14](#614-reporterheartbeat)). It exists so a floor can seat a desk a map reserves for a role with
+the seat that holds that role; the reporter knows no role by name, and the vocabulary is the roster's
+own — open, so `pm-helper` relays exactly as `pm` does. Nothing in the seat config changes: the role
+is **not** declared by the seat, it is read off the roster entry the seat's declaration selects, which
+is why it rides beside the name and inherits every rule of its read — at flusher start and on every
+`selftest` run, never per flush and never in a hook, from the same site in the same resolution order.
+
+**It is `null` whenever nothing selects it**, and each reason stays legible from the wire:
+
+| The wire reads | Why the role is `null` |
+|---|---|
+| `protocol_agent_name_check` is `unchecked`, `disagreed` or `undeclared` | no readable roster, a name the roster does not hold, or no name — nothing selects an entry |
+| `checked`, and `protocol_agent_role: null` | the entry carries no `role`, or one that is not a slug by the name's own pattern and bound ([§ 6.14](#614-reporterheartbeat)'s row) — **or the declared name matches more than one roster entry**: a duplicate name selects nothing, rather than whichever entry happens to come first |
+
+The `selftest` subcommand's `detail.protocol_agent_name_in_roster.roster_role` names which: the
+relayed role itself, *no role: the entry carries none*, *not a slug: …*, or *ambiguous: N entries
+named X*. ⛔ **The role adds no check, no `selftest` member, no counter and no `degraded` member**: a
+malformed or ambiguous roster value becomes `null` at the reporter, exactly as a malformed name does,
+so the heartbeat never carries a value the ingest would refuse ([§ 12.4](#124-batches-are-atomic)),
+and `protocol_agent_name_in_roster` is decided by the name alone. Reading it is the label case
+[§ 3.4](#34-why-identity-never-comes-from-the-environment) rule 1 permits: it gates no emission and
+enters no identity — not the token binding, not `config_fingerprint`, not a character seed.
 
 ### 3.2 Session identity
 
@@ -895,6 +961,12 @@ timestamp + 80 random bits, lexicographically sortable by mint time, generated i
 `crypto.randomBytes` (no dependency); `rfc3339_ms` = `YYYY-MM-DDTHH:MM:SS.sssZ`, UTC, always three
 fractional digits; `enum` = a closed set given per field; all string bounds are **bytes** of UTF-8,
 NFC-normalised; all integers fit in a JS safe integer.
+Every `^…$` regex in this document, and the `slug` and `ULID` types, match the **whole** value, as a
+JavaScript regex reads `^…$`: an ID or other pattern-checked value that ends in a line break does not
+match. Where the ingest checks one of these ([§ 12.1](#121-validation-order)), it refuses such a value
+as it refuses any other value that fails that pattern (card#11253, card#11263). `rfc3339_ms` is not
+checked this way: the ingest parses a timestamp tolerantly, so a parseable timestamp that ends in a
+line break is accepted.
 
 ⭐ **Every per-field byte bound in this section's tables is ENFORCED AT THE INGEST, and an event
 carrying a field over one is REFUSED** — `422 invalid_event` naming the field, the bound and what
@@ -1532,6 +1604,7 @@ session B is ever inferred from a hook belonging to session A.
 |---|---|---|---|---|---|
 | `prompt_chars` | int | UTF-16 code units | yes | 0…1,000,000 | `412` |
 | `project_label` | string | — | yes | ≤ 48 B; **same field, same rule as [§ 6.1](#61-sessionstart)** — `null` when cwd is the home directory | `"mezzanine"` |
+| `console_url` | string | — | **yes** | ≤ 95 B, and only a value matching `^https://claude\.ai/code/session_[A-Za-z0-9]{8,64}$` — the pattern's longest match is the bound. Read from the session's transcript, below; `null` when no record answers, when the bridge has ended, when the seat's [`descriptors`](#31-the-seat-config-file) key is not `full`, and from a reporter that predates it (card#9416) | `"https://claude.ai/code/session_01AbCdEfGhIjKlMnOpQrStUv"` |
 
 **The prompt text never transits** — only its length, which is a size, not content, and is what lets
 the floor distinguish a one-line nudge from a pasted brief. If review reads a character count as
@@ -1540,11 +1613,53 @@ content-adjacent, deleting the field is a compatible change.
 A `UserPromptSubmit` also resolves any attention request open in that session, because a human typing
 is a human present ([§ 6.13](#613-attentionresolved)).
 
+**`console_url` is the session's console on claude.ai, and it rides this event because it is a
+session fact that moves** (card#9416). The harness's bridge identifier changes within one session and
+ends with the bridge, so a carrier that fires once — [§ 6.1](#61-sessionstart) — would publish the
+first value forever, and fires before the transcript holds any; the heartbeat carries no session and
+is the flusher's, which never sees a `transcript_path`. Every turn re-reads it, so a changed or ended
+bridge reaches the desk with the next prompt.
+
+**Where it is read, and the basis for the shape.** No hook payload carries it. The reporter reads the
+file the payload's `transcript_path` names — the key every hook carries
+([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) — walking back from its end and taking the
+**newest** record that decides: a `{"type":"bridge-session","bridgeSessionId":"cse_<id>"}` record
+answers `https://claude.ai/code/session_<id>`, or `null` when its id is empty (the bridge ended); an
+`attachment` of type `remote_session_change` with a non-null `url` answers that url; one whose `url`
+is `null` decides nothing. ⚠ **This is a harness fact with no [§ 17](#17-appendix--the-captured-harness-payloads)
+capture behind it, so it is UNVERIFIED in that section's sense, and Anthropic documents the transcript
+as an internal format.** What it rests on is a read of this project's own seat's transcripts on
+2026-10-05, Claude Code 2.1.284 to 2.1.289: every transcript carried `bridge-session` records with a
+`cse_`-prefixed id, the id changed within a session, an empty id appeared where a bridge ended — most often as a
+transcript's last such record — and
+`remote_session_change.url` was `null` on the newest builds — while on every older record where both
+were present, the url was exactly the one the bridge id derives. **Cost if wrong:** the field is
+`null` and the desk offers no console link; a value of any other shape is dropped and counted
+(`console_url_malformed`, [§ 9.3](#93-degradation-counters)), so a harness that moved the record is
+visible on the heartbeat rather than a quiet absence. **Closed by** a capture of the record into
+[§ 17](#17-appendix--the-captured-harness-payloads) with ids replaced, under the same declined-raw-capture
+rule that section states.
+
+**The read is bounded, because a transcript runs to many MiB and this runs inside the 250 ms hook
+budget ([§ 2.2](#22-rules-that-protect-the-seat)).** It walks back 64 KiB at a time and stops after
+**1 MiB**; a tail that holds no deciding record is `null` and counted (`console_url_tail_exhausted`). 1 MiB
+is chosen above the largest gap between two `bridge-session` records the same 2026-10-05 read found
+(under 1 MiB), so a live bridge is always inside it; a gap that outgrows it costs one turn's link, and
+the counter says so. Every failure of the read — no transcript yet, an unreadable file, a torn last
+line — is `null`, never an error and never a non-zero exit.
+
+**D2:** store `console_url` against its session as of the session's newest `turn.start`, refuse at the
+fold a value the pattern above does not match, and publish it to an **operator** only — on the seat
+detail response, and never on the seat object, the snapshot or the stream, which every signed-in
+observer reads. The link opens a live session's console; who may follow it is the read plane's
+authorization question, and this document carries the value no further than the store.
+
 ```json
 { "event_id":"01K3TA2C3D4E5F6G7H8J9K0M1N","schema_version":1,"kind":"turn.start",
   "event_time":"2026-08-23T14:23:02.660Z","seq":48311,
   "install_id":"aimla","seat_id":"aimla-pm","session_id":"a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
-  "data":{"prompt_chars":412,"project_label":"mezzanine"} }
+  "data":{"prompt_chars":412,"project_label":"mezzanine",
+          "console_url":"https://claude.ai/code/session_01AbCdEfGhIjKlMnOpQrStUv"} }
 ```
 
 ### 6.4 `turn.end`
@@ -1719,7 +1834,7 @@ sharing the same `call_id`.
 |---|---|---|---|---|---|
 | `call_id` | ULID | — | no | 26 chars, minted by the reporter | `"01K3TA4E5F6G7H8J9K0M1N2P3Q"` |
 | `tool_name` | string | — | no | ≤ 64 B, `^[A-Za-z0-9_.-]{1,64}$`, else the literal `"INVALID_TOOL_NAME"` and `invalid_tool_name` is incremented | `"Bash"` |
-| `descriptor` | string | — | **yes** | ≤ 200 B, sanitized ([§ 7](#7-sanitization-at-the-reporter)); `null` when the tool is not on the descriptor allowlist | `"Bash: composer test"` |
+| `descriptor` | string | — | **yes** | ≤ 200 B, sanitized ([§ 7](#7-sanitization-at-the-reporter)); `null` when the tool is not on the descriptor allowlist, or when the seat's [`descriptors`](#31-the-seat-config-file) key leaves it out | `"Bash: composer test"` |
 | `descriptor_truncated` | bool | — | no | — | `false` |
 | `agent_scope` | enum | — | **yes** | `main` \| `subagent` \| `null` | `"main"` |
 | `parent_call_id` | ULID | — | **yes** | the `call_id` of the dispatch call this call runs inside; `null` in the main agent or when the binding is unresolved | `null` |
@@ -1955,7 +2070,7 @@ sending instead of this document guessing again.
 | `data` field | Type | Units | Null? | Bounds | Example |
 |---|---|---|---|---|---|
 | `call_id` | ULID | — | no | 26 chars, equals the Task `tool.start`'s | `"01K3TA6G7H8J9K0M1N2P3Q4R5T"` |
-| `title` | string | — | **yes** | ≤ 120 B, sanitized, from `tool_input.description`; `null` if the payload has no description | `"draft the D1 event schema"` |
+| `title` | string | — | **yes** | ≤ 120 B, sanitized, from `tool_input.description`; `null` if the payload has no description, or when the seat's [`descriptors`](#31-the-seat-config-file) key is `"paths"` or `"none"` | `"draft the D1 event schema"` |
 | `title_truncated` | bool | — | no | — | `false` |
 | `subagent_type` | string | — | yes | ≤ 32 B, `^[A-Za-z0-9_-]+$` | `"coder"` |
 
@@ -2435,6 +2550,7 @@ predicate rather than folding it in here.
 | `enabled` | bool | — | no | `config.enabled` ([§ 3.1](#31-the-seat-config-file)) | `true` |
 | `protocol_agent_name` | slug | — | **yes** | `config.protocol_agent_name` ([§ 3.1](#31-the-seat-config-file)) verbatim; ≤ 48 B — the bound [§ 18.6](#186-coordthread) gives a protocol agent name, which that row points at. It is a **figure** here and not a pointer because [§ 12.1](#121-validation-order) step 10 refuses only a bound this table states: left as a pointer, an over-long name would pass the ingest and fail at the fold against [D2 § 6.4](FLEET-STATE.md#64-ddl)'s 48 B column instead. `tools/design/verify-event-schema.py` holds this figure — and D2's column, D2 § 8.2.1's row and the store's migration — equal to § 18.6's; `null` on a seat that declares none, and absent from a reporter that predates this field — the paragraph below this table separates what the ingest accepts from what a current reporter owes | `"pm"` |
 | `protocol_agent_name_check` | enum | — | **yes** | `checked` \| `unchecked` \| `disagreed` \| `undeclared` — [§ 3.1](#31-the-seat-config-file)'s state table owns the set and the rule that produces each member; null or absent means a reporter that predates this field — the paragraph below this table separates what the ingest accepts from what a current reporter owes | `"checked"` |
+| `protocol_agent_role` | slug | — | **yes** | the coordination roster entry's `role`, relayed verbatim beside the name ([§ 3.1](#31-the-seat-config-file)'s *`protocol_agent_role`*); ≤ 48 B — the name's own pattern and bound, a **figure** here for the same reason as the row above, and held equal to it, with D2's column, D2 § 8.2.1's row, the store's migration and the ingest's registry, by `tools/design/verify-event-schema.py`; `null` unless `protocol_agent_name_check` is `checked` and the declared name selects exactly one entry carrying a slug-shaped `role`, and absent from a reporter that predates this field (card#11144) | `"pm"` |
 | `degraded` | array\<enum\> | — | no | 0…12 elements, one per member of the set [§ 9.3](#93-degradation-counters) declares; no duplicates, ordered as [§ 9.3](#93-degradation-counters) lists them | `["batches_rejected"]` |
 | `counters` | object | — | no | ≤ 1.5 KiB serialized, all monotonic since flusher start; reduction rule below | see below |
 | `counters_omitted` | int | — | no | ≥ 0, counters dropped to fit the cap | `0` |
@@ -2451,11 +2567,14 @@ and neither one implies the other.**
   is valid, and each absent member is `null` like any missing key
   ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) *Missing vs null*). The ingest refuses
   no heartbeat for omitting either member, and none for a pair that breaks the obligation below.
+  `protocol_agent_role` (card#11144) joined the kind the same way, at the same schema version and
+  under the same rule, so a heartbeat omitting it is valid too.
 - **What a current reporter owes.** A reporter that implements [§ 3.1](#31-the-seat-config-file)
   emits one row of § 3.1's state table on **every** heartbeat, as that table's *What the reporter
   emits* column states it. So it never omits `protocol_agent_name_check`, and it sends
-  `protocol_agent_name` as `null` **exactly when** the check is `undeclared`. The worst-case
-  composition below rests on this obligation, not on the rows above.
+  `protocol_agent_name` as `null` **exactly when** the check is `undeclared`. It sends
+  `protocol_agent_role` on every heartbeat too, `null` whenever the check is not `checked`. The
+  worst-case composition below rests on this obligation, not on the rows above.
 
 **`enabled` rides the heartbeat so a deliberately-disabled seat is distinguishable from a dead one.**
 [§ 3.1](#31-the-seat-config-file) calls `enabled: false` "explicit, local, and visible in the
@@ -2506,7 +2625,8 @@ ride it. It is rejected on two costs, and they are costs rather than impossibili
   rather than one event per interval that `uptime_s` dates.
 
 **D2:** store both members against `(install_id, seat_id)` and publish them on the seat object — the
-surface a consumer already reads to learn a desk exists. `protocol_agent_name_check` is what a
+surface a consumer already reads to learn a desk exists — and `protocol_agent_role` beside them, by the
+same rules (card#11144). `protocol_agent_name_check` is what a
 consumer reads to tell a checked declaration from an unchecked one, and ⛔ **a `disagreed` or
 `undeclared` name resolves to no desk**: only a declaration joins, and equality with a `seat_id` is
 never one ([§ 3.1](#31-the-seat-config-file)).
@@ -2578,7 +2698,7 @@ against `degraded` — a member set stated nowhere is not implementable — one 
 | `sanitizer_fixtures` | every RED fixture redacts to its stated output | [§ 7.5](#75-red-fixtures--required-tests) |
 | `predicate_discrimination` | every predicate in [§ 9.4](#94-the-predicate-constant-alarm)'s table is present in `predicates` and has a criterion its own volume can reach | [§ 9.4](#94-the-predicate-constant-alarm) |
 | `harness_payload_keys` | every payload key this reporter reads is present in that hook's vendored fixture, and every enum value it recognises is a member of the declared set | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s `SELFTEST-MUST` |
-| `protocol_agent_name_in_roster` | the declared protocol agent name is a member of the coordination roster **where one is readable on this box** — `fail` on `disagreed` and on a **malformed** declaration ([§ 3.1](#31-the-seat-config-file)'s state table: `undeclared`, with the value named in the subcommand's `detail` and never on the wire), and on nothing else, so this is the act a disagreement between the two identity surfaces fails. ⚠ A `pass` states that no disagreement was found, which on an `unchecked` seat is not a verification; `protocol_agent_name_check` is the field that says which | [§ 3.1](#31-the-seat-config-file) |
+| `protocol_agent_name_in_roster` | the declared protocol agent name is a member of the coordination roster **where one is readable on this box** — `fail` on `disagreed` and on a **malformed** declaration ([§ 3.1](#31-the-seat-config-file)'s state table: `undeclared`, with the value named in the subcommand's `detail` and never on the wire), and on nothing else, so this is the act a disagreement between the two identity surfaces fails. ⚠ A `pass` states that no disagreement was found, which on an `unchecked` seat is not a verification; `protocol_agent_name_check` is the field that says which. The relayed role ([§ 3.1](#31-the-seat-config-file), card#11144) never moves this verdict; the subcommand's `detail.roster_role` says what the role read found | [§ 3.1](#31-the-seat-config-file) |
 
 **A check the subcommand could not measure is `not_measured`, and it is neither a pass nor a fail.**
 `tls_verify` and `schema_version_accepted` are measured by one `GET /api/ingest/health`
@@ -2634,13 +2754,14 @@ members, and every integer at **its own** stated bound — 16 digits for the fou
 ceiling, and the row's own maximum for the five [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)
 rule 5 clamps, which therefore cannot reach 16 digits. Composing as if they could overstates the total
 by 63 B, which is the drift a maintainer re-deriving from a looser sentence would file as a bug. The
-composition serializes to **2,852 B of the 3 KiB `data` cap**
-([§ 4.3](#43-common-per-event-fields)), 220 B spare, so the counters rule reducing to 1.5 KiB is what
-keeps the event valid and nothing else has to. ⚠ **One pair is taken at its REACHABLE JOINT maximum,
-not at each member's own:** a current reporter never sends a name beside `undeclared` — the
-reporter's obligation stated under the field table above — so the 48 B name never sits beside the
-longest check value, and the pair's worst case is that name beside `"disagreed"`. Taking the two maxima
-independently gives **2,853 B** — the figure a hand re-derivation reaches if this sentence is missed,
+composition serializes to **2,923 B of the 3 KiB `data` cap**
+([§ 4.3](#43-common-per-event-fields)), 149 B spare, so the counters rule reducing to 1.5 KiB is what
+keeps the event valid and nothing else has to. ⚠ **One triple is taken at its REACHABLE JOINT maximum,
+not at each member's own:** a current reporter never sends a name beside `undeclared`, and never a
+role beside anything but `checked` — the reporter's obligation stated under the field table above —
+so the 48 B name beside a 48 B role (`"checked"`) outweighs it beside `"disagreed"` and a `null`
+role, and the triple's worst case is name, `"checked"` and role at 48 B each. Taking the three maxima
+independently gives **2,926 B** — the figure a hand re-derivation reaches if this sentence is missed,
 and not a correction to the one above; no cap or threshold moves either way.
 `D2-CITED:` [D2 § 8.3.2](FLEET-STATE.md#832-worked-worst-case-delta) composes the same pair
 independently, and rightly: its block is declared an unreachable size bound, while this total bounds
@@ -2660,7 +2781,7 @@ case, which is what makes this exemption checkable rather than asserted.
     "uptime_s":401150,"spool_bytes":18422,"spool_files":2,"spool_lag_events":0,
     "oldest_unsent_age_s":null,"last_hook_at":"2026-08-23T14:44:12.007Z",
     "open_calls":1,"open_sessions":1,"open_attention":0,"enabled":true,"degraded":[],
-    "protocol_agent_name":"pm","protocol_agent_name_check":"checked",
+    "protocol_agent_name":"pm","protocol_agent_name_check":"checked","protocol_agent_role":"pm",
     "counters":{"events_emitted":48374,"events_sent":48373,"spool_dropped_events":0,
                 "spool_corrupt_lines":0,"batches_ok":1611,"batches_retried":4,
                 "batches_rejected":0,"events_rejected_dropped":0,"statusline_suppressed":51882,
@@ -2719,7 +2840,7 @@ tool. A tool not in this table contributes **no descriptor at all** (`descriptor
 | `Glob` | `tool_input.pattern` | `Glob: <pattern>` | `Glob: **/*.php` |
 | `Grep` | `tool_input.pattern` | `Grep: <pattern>` | `Grep: schema_version` |
 | `Agent`, `Task` | `tool_input.description` | `<tool_name>: <description>` | `Agent: draft the D1 event schema` |
-| `WebFetch` | `tool_input.url`, **scheme + host only** | `WebFetch: <scheme>://<host>` | `WebFetch: https://docs.anthropic.com` |
+| `WebFetch` | `tool_input.url`, **scheme + host only** | `WebFetch: <scheme>://<host>`, the host then replaced by [rule 9](#73-redaction-rules-applied-in-this-order) | `WebFetch: https://‹redacted:host›` |
 | `WebSearch` | `tool_input.query` | `WebSearch: <query>` | `WebSearch: laravel reverb auth` |
 | `TodoWrite` | *(none)* | `TodoWrite` | `TodoWrite` |
 | anything else, **including every `mcp__*` tool** | *(none)* | `null` | `null` |
@@ -2737,6 +2858,11 @@ to keep them that way.
 **This is the property to test.** AT-2 fixture 8 feeds an unknown tool an input named `password` and
 asserts `descriptor == null`, proving the allowlist and not the regexes is what stops it.
 
+**A seat can send less than this table.** The [`descriptors`](#31-the-seat-config-file) config key
+narrows it to the path-valued rows (`"paths"`) or to nothing (`"none"`). Under `"full"`, the free-text
+rows (`Agent`/`Task` descriptions, `Grep` patterns, `WebSearch` queries, a `git commit -m` message on
+a `Bash` first line) keep flowing, and every rule of § 7.3 runs over them as over a command.
+
 ### 7.2 Layer 2 — redaction of the allowlisted text
 
 The allowlisted fields can themselves contain secrets — `curl -H "Authorization: Bearer sk-…"` is an
@@ -2746,7 +2872,9 @@ allowlisted `Bash` command. So the candidate descriptor passes a redaction pass 
 or across that marker; a candidate match overlapping a locked span is discarded. Without this the
 output depends on rule interaction order in ways nobody can predict, and the fixtures below would not
 be deterministic. The rule is load-bearing in fixtures 1 and 3, where it is the only reason a
-credential keyword next to an already-redacted value does not redact the marker itself.
+credential keyword next to an already-redacted value does not redact the marker itself, and in fixture
+4, where the email span it locks is the only reason rule 9 does not also read the address's domain as
+a host.
 
 ### 7.3 Redaction rules, applied in this order
 
@@ -2758,13 +2886,13 @@ before it could be shortened to something a human can read.
 |---|---|---|---|
 | 1 | URL userinfo | `(\w+://)[^/\s:@]+:[^/\s@]+@` | `$1‹redacted›@` |
 | 2 | Env-expansion **defaults** | `\$\{(\w+):([-=?+])([^}]*)\}` | `${$1:$2‹redacted›}` — the operator is **kept verbatim**, so `${V:=x}` and `${V:?x}` are not relabelled as `${V:-…}` |
-| 3 | Known-prefix credentials | `\b(gh[pousr]_\|github_pat_\|sk-\|sk_live_\|sk_test_\|xox[abposr]-\|AKIA\|ASIA\|glpat-\|AIza\|mzn_\|mzr_)[A-Za-z0-9_\-]{8,}` | `‹redacted:token›` |
-| 4 | Credential **keyword** + its value, separated by `=`, `:` **or whitespace** | `(?i)(?<![\w-])((?:-{1,2}\|[A-Za-z0-9]{0,24}[_-])?(?:pass(?:word)?\|secret\|token\|api[_-]?key\|auth\|bearer\|credential))(?![A-Za-z])(\s*[:=]\s*\|\s+)(\S+)` | `$1$2‹redacted›` — keyword and separator kept verbatim |
+| 3 | Known-prefix credentials, **JWTs included** | `\b(?:(?:gh[pousr]_\|github_pat_\|sk-\|sk_live_\|sk_test_\|rk_live_\|rk_test_\|whsec_\|xox[abposr]-\|AKIA\|ASIA\|glpat-\|AIza\|hv[sb]\.\|ya29\.\|dop_v1_\|shpat_\|pypi-AgEIcHlwaS5vcmc\|mzn_\|mzr_)[A-Za-z0-9_\-]{8,}\|npm_[A-Za-z0-9]{30,}\|SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}\|eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]*)` — one list, which the reporter's log sink also runs | `‹redacted:token›` |
+| 4 | Credential **keyword** + its value, in three passes. **4a** — the value of an `Authorization:`, `Proxy-Authorization:`, `Cookie:` or `Set-Cookie:` header, to the next quote or the end of the line, keeping a scheme word (`Basic`, `Bearer`, `Token`, `Digest`, `Negotiate`, `NTLM`). **4b** — the value of a name that is a bare keyword word, separated by `=`, `:` **or whitespace** (`password hunter2`); of a **flag** whose name **contains** `pass`, `pwd`, `pw`, `secret`, `token`, `key`, `auth`, `credential` or `cookie`, separated by `=` or whitespace (`--db-pass x`, `-storepass x`); and of an **assignment** whose name contains one, separated by `=` or `:` only (`PGPASSWORD=x`, `X-Api-Key: x`). A quoted value is taken whole. **4d** — a **quoted key** carrying one of those name parts, closed by its own quote (optionally backslash-escaped) before `:` — a JSON or Python-dict body, `{"password":"x"}`, `{'token': 'x'}` — has its value replaced, the value's quotes kept. **4c** — every `name=` value after `vault write` / `vault kv put` / `vault kv patch` | 4a: `(?i)\b((?:proxy-)?authorization\s*:\s*(?:(?:basic\|bearer\|token\|digest\|negotiate\|ntlm)\s+)?\|(?:set-)?cookie\s*:\s*)([^"'\r\n]+)`. 4b: the legacy keyword-word pattern `(?:-{1,2}\|[A-Za-z0-9]{0,24}[_-])?(?:pass(?:word)?\|secret\|token\|api[_-]?key\|auth\|bearer\|credential)(?![A-Za-z])`, or a name `[A-Za-z0-9_.-]*?(?:pass\|pwd\|pw\|secret\|token\|key\|auth\|credential\|cookie)[A-Za-z0-9_.-]*` with or without a leading `-`/`--`, never at a 4a header name | the name, separator and any 4a scheme word kept verbatim, then `‹redacted›` |
 | 5 | Credential **flags**, glued or separated: `--user` `--password` `--token` `--secret`, and `-u` / `-p` (case-insensitively, so `-P` too) | `(?i)(?<![\w-])(--(?:user\|password\|token\|secret)(\s*[:=]\s*\|\s+)\|-[up](\s*[:=]?\s*))(\S+)` | flag + separator verbatim, then `‹redacted›` |
 | 6 | Home and long paths | `/home/<u>/`, `/Users/<u>/`, `C:\Users\<u>\` → `~/`; then a **path token** (one starting at a whitespace or quote boundary with `/`, `~/`, `./` or `X:\`) with > 4 segments keeps its **root prefix** + `…` + the last 2 segments. The root prefix is `~`, `.`, `X:` or — for an absolute non-home path — the **empty string before the leading `/`**, never the first named directory | `~/…/design/EVENT-SCHEMA.md`; `/var/www/app/Http/X.php` → `/…/Http/X.php` |
-| 7 | Long opaque blobs | `[A-Za-z0-9+/]{32,}={0,2}` and `\b[0-9a-f]{24,}\b` | `‹redacted:blob›` |
+| 7 | Long opaque blobs | `[A-Za-z0-9+/]{32,}={0,2}` and `\b[0-9a-f]{24,}\b`; then a run `[A-Za-z0-9_-]{32,}` that holds an upper-case letter, a lower-case letter **and** a digit | `‹redacted:blob›` |
 | 8 | Email addresses | `[\w.+-]+@[\w-]+\.[\w.-]+` | `‹redacted:email›` |
-| 9 | IPv4 literals | `\b(\d{1,3}\.){3}\d{1,3}\b` (valid octets) | `‹redacted:ip›` |
+| 9 | Network addresses: IPv4 literals, IPv6 literals, then host names | IPv4: `\b(\d{1,3}\.){3}\d{1,3}\b` (valid octets). IPv6: a bracketed literal (brackets kept), a bare eight-group form, and a bare compressed `::` form of at least three groups. Hosts: the host of a URL, whatever its shape (after `://`, after a password-less user's `@`, which keeps the user, or after rule 1's `‹redacted›@`); and, anywhere, a dotted name whose last label is in the reporter's curated TLD set (`HOST_TLDS`: common generic and country TLDs plus `internal`, `local`, `lan`, `corp`…, minus every TLD that is also a common file extension or code member — `.sh`, `.py`, `.md`, `.info`, `.app`…), starting at the head of a dotted run and not followed by another label | `‹redacted:ip›`; `‹redacted:host›` |
 | 10 | ANSI escape sequences | `\x1b\[[0-9;]*[A-Za-z]` and `\x1b][^\x07\x1b]*(\x07\|\x1b\\)` | removed entirely |
 | 11 | Control characters | `[\x00-\x1F\x7F]` including newline, tab, and any surviving ESC | single space |
 | 12 | Whitespace collapse | ` {2,}` | single space, then trim |
@@ -2797,7 +2925,7 @@ would delete the control that redacts `deploy --password hunter2 --host db1`, wh
 | Profile | Caller | Difference from the table above |
 |---|---|---|
 | `descriptor` | [§ 7.1](#71-layer-1--the-descriptor-allowlist)'s allowlisted tool inputs | none — it **is** the table above |
-| `coord.subject` | [§ 18.10](#1810-sanitization-at-the-coordination-producer)'s issue-title subject | **rule 4 requires an explicit `:` or `=` separator**; its bare-whitespace alternative does not run. Every other rule, and the order, are identical |
+| `coord.subject` | [§ 18.10](#1810-sanitization-at-the-coordination-producer)'s issue-title subject | **rule 4 requires an explicit `:` or `=` separator**; its bare-whitespace alternatives (4b's keyword words and flags) do not run. Every other rule, and the order, are identical |
 
 **One rule, because one rule is what the measurement supports.** Re-run over the same 728 titles with
 rule 4 so narrowed: **5 titles (0.7%) still take a redaction — a 10× reduction from one change** — and
@@ -2829,13 +2957,17 @@ readings disagree and whose fixtures exercise only one is an unstated default
 
 **A stated gap in rule 7, with its backstop.** The blob class `[A-Za-z0-9+/]` excludes `-` and `_`, so
 a **base64url** secret (which uses exactly those two characters) is split into runs shorter than 32
-and can survive rule 7. Rule 3's known prefixes are the backstop for the credentials that matter most
+and can survive the first two patterns. The third pattern (card#11292) takes a 32-character
+base64url run when it mixes upper case, lower case and digits, which is what a generated token does
+and a hyphenated identifier does not; a base64url secret of one case, or with no digit, still
+survives it. Rule 3's known prefixes are the backstop for the credentials that matter most
 — including this project's own `mzn_` seat tokens and the `mzr_` fleet-read tokens minted by
 [`FLEET-STATE.md § 9`](FLEET-STATE.md#9-read-side-authentication) — and rules 4 and 5 catch the
 shapes where such a
-value sits next to a credential keyword or flag. Widening rule 7's class to include `-` and `_` was
+value sits next to a credential keyword or flag. Widening rule 7's class to include `-` and `_` **unconditionally** was
 considered and rejected: it would eat ordinary long flag strings and hyphenated identifiers, and a
-descriptor made of `‹redacted:blob›` answers nothing. The residual is named here rather than papered
+descriptor made of `‹redacted:blob›` answers nothing. The mixed-class condition is what lets the
+third pattern take those characters without that cost. The residual is named here rather than papered
 over.
 
 **Rule 2 is here because of a measured incident in this fleet:** `${VAR:-fallback}` prints the
@@ -2845,6 +2977,47 @@ The reporter never expands a variable — it is reading text, not running a shel
 
 **Rule 6 is a PII rule as much as a length rule** — an absolute path carries the OS username, which
 [§ 1](#1-non-goals) excludes from the wire.
+
+**Rule 4 matches a keyword INSIDE a name since card#11292, and its false positives are the same
+trade as rule 5's.** The shapes it was widened for were each measured passing whole: `PGPASSWORD=`,
+`MYSQL_PWD=`, `SECRET_KEY=`, `STRIPE_KEY=`, `--db-pass x`, an `Authorization: Basic …` header, a
+`Cookie:` header, and `vault write secret/x value=…`. A name merely containing a keyword now loses its
+value too — `git log --author=alice` reads `--author=‹redacted›` and `max_tokens = 4096` reads
+`max_tokens = ‹redacted›` — and that is accepted for the reason rule 5 states. The **whitespace**
+separator is kept to the bare keyword words and to flags: a name that only contains `key` or `pass`
+and is followed by a space is English (`keyboard handler`), not argv.
+
+**Rule 9 is a PII rule: [§ 1](#1-non-goals) excludes host names from the wire, and descriptors carried
+them until card#11292.** It decides what a host is by shape, because a host name and a file name are
+both dotted words and the last label is the only thing that separates `db01.internal.example.com` from
+`setup.py`. So the TLD set is curated, and two gaps are stated rather than closed: a **single-label**
+host outside a URL (`ssh db1`, `psql -h db`) is indistinguishable from any other word and passes, and
+so does a host under a TLD the set excludes or does not list. A dotted word under a listed TLD that is
+not a host is replaced anyway (`socket.io`), the same direction of error as rules 5, 7 and 9's
+others. **Rule 9 replaces the host a `WebFetch` descriptor exists to carry**, so under § 7.1 that
+descriptor now says that the agent fetched over `https`, and not from where: the host is exactly the
+datum § 1 excludes, and a public documentation site and an internal one cannot be told apart by
+shape.
+
+**Shapes rules 1–9 do not catch, stated rather than implied covered** (card#11292's review). Each is
+a credential with no keyword, prefix or entropy signal the rules key on, or a split the one-token
+value cannot follow:
+- **a single-letter flag with no keyword**: `-a <secret>` (`redis-cli`), `-k <secret>`, `htpasswd -b <file>
+  <user> <secret>` — rule 5 covers only `-u` and `-p`;
+- **a quoted secret containing a space or an escaped quote** after `-p`, `-u` or `=`: the value is one
+  token, or a quoted string ended at its first matching quote, so the tail after the space or the
+  escaped quote passes (`--password="two words"` is taken whole; `-p"two words"` is not);
+- **a query parameter whose name has no keyword**: `?sig=…`, `?X-Amz-Signature=…`;
+- **prose that separates the keyword from the secret**: `set the password to <secret>`;
+- **a secret on stdin or in a file**: `echo <secret> | docker login --password-stdin` passes the
+  echoed value unless another rule takes it by shape;
+- **a two-group compressed IPv6** (`fe80::1`) and a **single-label host outside a URL** (`ssh db1`).
+
+**A pre-existing slow path, found by card#11292 and not fixed by it.** Rules 1 and 8 backtrack on
+long runs of dotted or alphanumeric tokens: one 16 KB first line of `a.a.a…` takes about 1 s to
+sanitize on the sandbox host (the same on the code before card#11292), which is past P-5's 250 ms
+budget for that one hook. A Bash first line of that shape and length is not an ordinary command;
+the figure is recorded so the next change to rule 1 or 8 can measure against it.
 
 **Rule 10 is not cosmetic.** A descriptor is written to a local log, a quarantine file and an
 operator's terminal; an ESC sequence that survives into any of them is a terminal-control injection,
@@ -2876,10 +3049,14 @@ spool and batch arithmetic in [§ 14](#14-every-number-and-where-it-comes-from) 
 
 These are unit tests over the sanitizer function, run in CI on both platforms. **They must be seen to
 fail before they are trusted** ([`docs/PLAN.md § 2`](../PLAN.md#2-design-first-gates--the-order-is-the-plan)):
-replace the sanitizer body with `s => s` and the table must go RED — **every fixture but 14**, whose
-required output on this profile *is* its input, so identity is the one substitution it cannot
+replace the sanitizer body with `s => s` and the table must go RED — **every fixture but 8, 14, 33,
+40 and 46**. 8 is stopped by the allowlist before the sanitizer runs, and its RED removes the allowlist. 14's
+required output on its profile *is* its input, so identity is the one substitution it cannot
 discriminate; [AT-2](#at-2-sanitizer-red-fixtures)'s fourth RED is the one that goes red on it, and
-that is why the profile has a RED of its own rather than riding this one. A fixture set that only
+that is why the profile has a RED of its own rather than riding this one. 33, 40 and 46 are the same shape on
+the descriptor profile: over-redaction pins whose required output is their input, each red under its
+own loosening (rule 9's TLD set, rule 4b's separators, rule 9's IPv6 group floor) rather than under
+identity. A fixture set that only
 ever passes proves nothing about the sanitizer; it proves the harness runs.
 
 **Every fixture is produced by tracing [§ 7.3](#73-redaction-rules-applied-in-this-order) in order**,
@@ -2892,8 +3069,8 @@ a re-read.
 
 | # | Input (**caller**, raw allowlisted value) | Rules that fire, in order | Required output |
 |---|---|---|---|
-| 1 | `Bash`, `curl -H "Authorization: Bearer ghp_ABCDEF1234567890abcdef1234" https://api.github.com/user` | 3 (rule 4's candidate `Bearer ‹…›` overlaps the lock and is discarded) | `Bash: curl -H "Authorization: Bearer ‹redacted:token›" https://api.github.com/user` |
-| 2 | `Bash`, `psql "postgres://mez:s3cr3t-pw@db.example.com:5432/mezz" -c '\dt'` | 1 | `Bash: psql "postgres://‹redacted›@db.example.com:5432/mezz" -c '\dt'` |
+| 1 | `Bash`, `curl -H "Authorization: Bearer ghp_ABCDEF1234567890abcdef1234" https://api.github.com/user` | 3, 9 (rule 4a's header candidate and 4b's `Bearer ‹…›` both overlap the lock and are discarded; rule 9 takes the URL's host) | `Bash: curl -H "Authorization: Bearer ‹redacted:token›" https://‹redacted:host›/user` |
+| 2 | `Bash`, `psql "postgres://mez:s3cr3t-pw@db.example.com:5432/mezz" -c '\dt'` | 1, 9 (the host after rule 1's marker) | `Bash: psql "postgres://‹redacted›@‹redacted:host›:5432/mezz" -c '\dt'` |
 | 3 | `Bash`, `echo "${STRIPE_SECRET:-sk_live_51H8xYzAbCdEfGhIj}" > /tmp/k` | 2 (rules 3 and 4 then overlap the lock and are discarded) | `Bash: echo "${STRIPE_SECRET:-‹redacted›}" > /tmp/k` |
 | 4 | `Bash`, `deploy --host 203.0.113.47 --notify ops@example.org` | 8, 9 | `Bash: deploy --host ‹redacted:ip› --notify ‹redacted:email›` |
 | 5 | `Read`, `/home/aimlapm/projects/mezzanine/app/Http/Controllers/IngestController.php` | 6 (then rule 7 finds no run ≥ 32: `Controllers/IngestController` is 28) | `Read: ~/…/Controllers/IngestController.php` |
@@ -2901,7 +3078,7 @@ a re-read.
 | 7 | `Bash`, the literal string `echo ` followed by `"` then the 2-byte `é` repeated 300 times then `"` — 611 bytes, no other rule's pattern present, and a character boundary that straddles byte 197 | 14 | exactly 200 bytes; valid UTF-8; ends with `…` (U+2026); the final `é` is whole, never a lone `0xC3`; `descriptor_truncated == true` |
 | 8 | `mcp__vault__read`, `{"password":"hunter2","path":"/prod/db"}` | *(none — layer 1 refuses the tool)* | `descriptor == null`, `tool_name == "mcp__vault__read"`, and the string `hunter2` appears nowhere in the emitted event |
 | 9 | `Bash`, `deploy --password hunter2 --host db1` | 4 | `Bash: deploy --password ‹redacted› --host db1` |
-| 10 | `Bash`, `curl -u admin:s3cr3t https://api.example.org/v1/ping` | 5 | `Bash: curl -u ‹redacted› https://api.example.org/v1/ping` |
+| 10 | `Bash`, `curl -u admin:s3cr3t https://api.example.org/v1/ping` | 5, 9 | `Bash: curl -u ‹redacted› https://‹redacted:host›/v1/ping` |
 | 11 | `Bash`, `mysql -pS3cr3tP@ss -h db1 mezz` | 5 (glued, empty separator; rule 8's `@` then overlaps the lock) | `Bash: mysql -p‹redacted› -h db1 mezz` |
 | 12 | `Read`, `/var/www/app/Http/Controllers/HealthController.php` — an absolute path **outside** any home directory, 6 segments | 6 (then rule 7 finds no run ≥ 32: `Controllers/HealthController` is 28) | `Read: /…/Controllers/HealthController.php` — the retained head is the empty root, **not** `/var` |
 | 13 | `Read`, `/opt/verylongdirectoryname/application.php` — 3 segments, so rule 6 does not shorten it | 7 (the 37-character run `opt/verylongdirectoryname/application`) | `Read: /‹redacted:blob›.php` — the acknowledged rule-7 false positive, pinned |
@@ -2909,6 +3086,35 @@ a re-read.
 | 15 | `coord.subject`, `rotate password: hunter2 before the cutover` | 4 (the explicit `:` separator, which this profile keeps) | `rotate password: ‹redacted› before the cutover` — narrowing rule 4 gives up the prose false positives and **not** the credential shape |
 | 16 | `coord.subject`, `the ghp_ABCDEF1234567890abcdef token is live in env` | 3 | `the ‹redacted:token› token is live in env` — rule 3 is unchanged by the profile and is the backstop for a pasted literal |
 | 17 | `coord.subject`, `CustomerProvisionRedriveSweepTest reads the arming flag from ambient env` — a span taken **verbatim** from a real title in the measured corpus | 7 (the 33-character run `CustomerProvisionRedriveSweepTest`) | `‹redacted:blob› reads the arming flag from ambient env` — the rule-7 false positive is **retained** on titles and pinned here, so a later decision to drop it has to change a test rather than a sentence |
+| 18 | `Bash`, `PGPASSWORD=hunter2 psql -h db mezz` | 4 (4b, an assignment whose name contains `pass`) | `Bash: PGPASSWORD=‹redacted› psql -h db mezz` — and `db`, a single-label host outside a URL, passes: rule 9's stated gap |
+| 19 | `Bash`, `MYSQL_PWD=hunter2 mysql mezz` | 4 (4b, `pwd`) | `Bash: MYSQL_PWD=‹redacted› mysql mezz` |
+| 20 | `Bash`, `export SECRET_KEY=abc123def456` | 4 (4b — a keyword followed by `_`, which the old rule required to be the separator) | `Bash: export SECRET_KEY=‹redacted›` |
+| 21 | `Bash`, `APP_SECRET_KEY=short123 php artisan serve` | 4 (4b) | `Bash: APP_SECRET_KEY=‹redacted› php artisan serve` |
+| 22 | `Bash`, `export STRIPE_KEY=rk_live_51H8xYzAbCdEfGhIj` | 3 (the `rk_live_` prefix; 4b's candidate then overlaps the lock and is discarded) | `Bash: export STRIPE_KEY=‹redacted:token›` |
+| 23 | `Bash`, `curl -H "Authorization: Basic dXNlcjpwYXNzd29yZA==" "$URL"` | 4 (4a, scheme kept) | `Bash: curl -H "Authorization: Basic ‹redacted›" "$URL"` |
+| 24 | `Bash`, `curl -H 'Set-Cookie: sid=hunter2; Path=/' -H "Authorization: hunter2xyz" "$URL"` | 4 (4a twice: a single-quoted header, and an `Authorization:` with no scheme word) | `Bash: curl -H 'Set-Cookie: ‹redacted›' -H "Authorization: ‹redacted›" "$URL"` |
+| 25 | `Bash`, `curl -H "Cookie: sid=abcd1234efgh" "$URL"` | 4 (4a) | `Bash: curl -H "Cookie: ‹redacted›" "$URL"` |
+| 26 | `Bash`, `jwt decode eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJodW50ZXIyIn0.c2lnbmF0dXJlLW5vdC1yZWFs` — a synthetic JWT whose three parts are each under rule 7's 32 | 3 (the JWT alternative) | `Bash: jwt decode ‹redacted:token›` |
+| 27 | `Bash`, `vault write secret/x value=hunter2` | 4 (4c) | `Bash: vault write secret/x value=‹redacted›` |
+| 28 | `Bash`, `deploy --api-token=abc123 --db-pass hunter2` | 4 (4b, two flags whose names contain a keyword, `=` and whitespace) | `Bash: deploy --api-token=‹redacted› --db-pass ‹redacted›` |
+| 29 | `Bash`, `ssh db01.internal.example.com uptime` | 9 (a dotted name under a listed TLD) | `Bash: ssh ‹redacted:host› uptime` |
+| 30 | `Bash`, `curl http://buildbox:8080/health` | 9 (a URL's host, single-label) | `Bash: curl http://‹redacted:host›:8080/health` |
+| 31 | `Agent`, `check PGPASSWORD=hunter2 on db01.internal.example.com` — free text, the dispatch description | 4, 9 | `Agent: check PGPASSWORD=‹redacted› on ‹redacted:host›` — every rule runs over prose as over a command |
+| 32 | `Bash`, `echo Zx9-Ab3dEf6hIj9kLm2n_Op5qRs8tUv1wXy4z-Q7r \| base64 -d` — a 42-character base64url token whose `-`/`_`-separated runs are each under 32 | 7 (the mixed-class pattern) | `Bash: echo ‹redacted:blob› \| base64 -d` |
+| 33 | `Bash`, `python3 setup.py && ./run.sh README.md && node app.js` — file names whose extensions are TLDs (`.py`, `.sh`, `.md`) or look like one | *(none)* | the input **unchanged**: rule 9's TLD set is curated so a file name is not a host, and this fixture is what reds if it is loosened |
+| 34 | `Bash`, `curl -d '{"password":"zq9w8kabc"}' "$URL"` | 4 (4d, a quoted JSON key) | `Bash: curl -d '{"password":"‹redacted›"}' "$URL"` — the value's quotes kept |
+| 35 | `Bash`, `curl -d '{"token": "zq9w8kabc", "user": "bob"}' "$URL"` | 4 (4d, spaced separator) | `Bash: curl -d '{"token": "‹redacted›", "user": "bob"}' "$URL"` |
+| 36 | `Bash`, `curl -d "{'secret': 'zq9w8kabc'}" "$URL"` | 4 (4d, single-quoted key) | `Bash: curl -d "{'secret': '‹redacted›'}" "$URL"` |
+| 37 | `Bash`, `MY_PW=zq9w8kabc PW=zq9w8kabc deploy --pw zq9w8kabc` | 4 (4b, `pw`) | `Bash: MY_PW=‹redacted› PW=‹redacted› deploy --pw ‹redacted›` |
+| 38 | `Bash`, `terraform apply -var 'db_pw=zq9w8kabc'` | 4 (4b) | `Bash: terraform apply -var 'db_pw=‹redacted›` — the closing quote goes with the one-token value |
+| 39 | `Bash`, `kubectl create configmap x --from-literal=pw=zq9w8kabc` | 4 (4b, an assignment inside a flag's value) | `Bash: kubectl create configmap x --from-literal=pw=‹redacted›` |
+| 40 | `Bash`, `git commit -m "fix the upward scroll"` | *(none)* | the input **unchanged**: `upward` holds `pw`, and a keyword-containing name takes no bare-space separator. Red when it does |
+| 41 | `Bash`, `echo npm_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789 SG.AbCdEfGhIjKlMnOp12.QrStUvWxYz0123456789ab` | 3 | `Bash: echo ‹redacted:token› ‹redacted:token›` |
+| 42 | `Bash`, `echo ya29.AbCdEfGh12 dop_v1_abcdef1234 shpat_abcdef1234 pypi-AgEIcHlwaS5vcmcAbCd1234` | 3 | `Bash: echo ‹redacted:token› ‹redacted:token› ‹redacted:token› ‹redacted:token›` |
+| 43 | `Bash`, `DATABASE_URL=postgres://root@dbhost/db` — a URL user with no password | 9 (the user kept, the host after `@` replaced) | `Bash: DATABASE_URL=postgres://root@‹redacted:host›/db` |
+| 44 | `Bash`, `curl http://[2001:db8::1]/x && curl [::1]:8080` | 9 (bracketed IPv6) | `Bash: curl http://[‹redacted:ip›]/x && curl [‹redacted:ip›]:8080` |
+| 45 | `Bash`, `ssh 2001:db8:0:0:0:0:0:1 && ping6 2001:db8::1` | 9 (bare IPv6, full and compressed) | `Bash: ssh ‹redacted:ip› && ping6 ‹redacted:ip›` |
+| 46 | `Bash`, `grep -rn std::vector src && echo cafe::babe 12:30:45` | *(none)* | the input **unchanged**: a two-group `::` and a time are not addresses. Red when compressed IPv6 has no group floor |
 
 Fixtures **9, 10 and 11 are the credential-on-argv shapes rule 4 alone did not cover**: a
 space-separated `--password`, a `curl -u user:pass` with no `scheme://`, and a glued single-letter
@@ -2921,7 +3127,15 @@ the rule table being checked against each other rather than maintained twice: th
 purpose is the email and IP rules must not hand its input to an earlier rule.
 
 Fixture 8 is the one that matters most: it tests the allowlist, which is the control that holds when
-an input shape nobody anticipated arrives. Fixtures 1–4 and 9–11 test the second layer.
+an input shape nobody anticipated arrives. Fixtures 1–4, 9–11, 18–32 and 34–45 test the second layer.
+
+**Fixtures 18–46 are card#11292's** (34–46 from its review's first round, each of 34–45 seen
+leaking or mis-redacting on the change's previous head first). A pre-install audit by another seat drove `buildDescriptor` on
+synthetic strings and found each shape in 18–28 passing whole, and host names passing against § 1;
+each of 18–32 was run against the reporter before the change and seen to leak its planted value.
+Fixtures 1, 2 and 10 were **re-traced** in the same change, as this section requires: their hosts are
+now replaced, so their required outputs are stricter than before, never looser. 33 is the
+other direction, the readable-file-name side of rule 9's shape test.
 
 **Fixtures 12 and 13 exist because two rules had a stated behaviour with no test.** 12 pins rule 6's
 retained head for an absolute non-home path — the reading that produces `/var/…/Http/X.php` and the
@@ -3535,6 +3749,8 @@ statusLine processes reach the flusher through the counter sink
 | `protocol_agent_name_unchecked` | the seat declares a protocol agent name and **no coordination roster was readable on this box** to check it against ([§ 3.1](#31-the-seat-config-file)) | informational, and the fleet-wide measurement of how much of the join rests on an unchecked declaration. **It raises no `degraded` member on purpose**: the state rides every heartbeat as `protocol_agent_name_check`, dated by `uptime_s` beside it, which is strictly more than a badge carries |
 | `protocol_agent_name_disagreed` | a roster **was** readable here and the declared name is not a member of it — the two identity surfaces disagree ([§ 3.1](#31-the-seat-config-file)) | the `selftest` check `protocol_agent_name_in_roster` **fails**, so the act fails visibly and `selftest` carries the failure on every heartbeat; the name is emitted exactly as declared and **resolves to no desk**. **It raises no `degraded` member, deliberately**: the reporter is not degraded — it is reporting a coordination-config defect correctly — and badging the seat's own health would name the wrong subject |
 | `project_label_home_suppressed` | a `cwd` equal to the home directory, whose basename is the OS username, so `project_label` was sent as `null` ([§ 6.1](#61-sessionstart)) | informational, and the record that the § 1 non-goal is enforced rather than merely stated. It also distinguishes this `null` from a `null` caused by an absent `cwd` |
+| `console_url_malformed` | a transcript record that decides [§ 6.3](#63-turnstart)'s `console_url` carried an id or url that fails the field's pattern, so `null` was sent | informational, and the observable for that row's UNVERIFIED basis: a non-zero here on real seats means the harness moved the record's shape and § 6.3 owes an edit |
+| `console_url_tail_exhausted` | [§ 6.3](#63-turnstart)'s read walked its whole 1 MiB tail of a larger transcript without finding a deciding record, so `null` was sent | informational; a rising share of turns means the bridge records have drifted further apart than the bound, which § 6.3 re-derives |
 | `statusline_suppressed` | sampling suppressions | informational; a *zero* here on an active seat means sampling is broken |
 | `negative_duration` | clock stepped mid-call | informational |
 | `wrapped_statusline_failures` | the wrapped status-line command failed | `degraded`; the seat's own UI is affected |
@@ -3769,8 +3985,8 @@ batch. Retrying is correct; the duplicates it creates must be free.
 > days, but a **quiet** seat — one emitting little more than its 1,440 daily heartbeats — takes far
 > longer. A heartbeat is not a ~500 B typical event: its `data` alone allows 1.5 KiB of counters plus
 > 512 B of predicates plus 256 B of selftest, and the worked example in
-> [§ 6.14](#614-reporterheartbeat) serializes to **1,591 B**. At 1,591 B, 1,440/day is
-> **~2.29 MB/day**, so a heartbeat-only seat fills 32 MiB in **~14.65 days**. Two earlier readings of
+> [§ 6.14](#614-reporterheartbeat) serializes to **1,618 B**. At 1,618 B, 1,440/day is
+> **~2.33 MB/day**, so a heartbeat-only seat fills 32 MiB in **~14.40 days**. Two earlier readings of
 > this same paragraph were wrong in the same direction — 50+ days from a 500 B assumption, then
 > ~25 days from a "~900 B" measurement of the worked example **taken with its 524 B `counters` object
 > left out**, which is why the third one is *measured by the gate* rather than read off:
@@ -3780,11 +3996,11 @@ batch. Retrying is correct; the duplicates it creates must be free.
 > and [§ 15](#15-decisions-taken-revisable-at-review) were still carrying the "50+ days" it had
 > replaced, so the fill time now has **one home — this paragraph** — and those three state the
 > property they actually rest on (the fill time exceeds the dedup window) rather than a copy of the
-> number. **The conclusion survives and its margin has narrowed three times** — most recently by the two
-> members `card#9296` added to this event ([§ 6.14](#614-reporterheartbeat)), which is the gate
-> re-measuring rather than a reader re-reading —
-> which argues for holding the age cap rather than relaxing it: 14.65 days still leaves the oldest
-> event 4.65 days past a 10-day dedup window while it is still queued, and a spool *line* carries the
+> number. **The conclusion survives and its margin has narrowed four times** — most recently by the member
+> `card#11144` added to this event ([§ 6.14](#614-reporterheartbeat)), after the two `card#9296`
+> added, which is the gate re-measuring rather than a reader re-reading —
+> which argues for holding the age cap rather than relaxing it: 14.40 days still leaves the oldest
+> event 4.40 days past a 10-day dedup window while it is still queued, and a spool *line* carries the
 > event plus its `v`/`t` wrapper ([§ 11.2](#112-spool-line-format)), so the real fill is marginally
 > faster than the event bytes alone. Residency has to be bounded by age, and the age bound is the
 > one the coupling is stated against.
@@ -4502,17 +4718,25 @@ recorded here because they are what a re-run will hit first:
 
 ### AT-2 sanitizer red fixtures
 
-- **Build:** the 17 fixtures of [§ 7.5](#75-red-fixtures--required-tests) plus the two whole-event
+- **Build:** every fixture of [§ 7.5](#75-red-fixtures--required-tests) plus the two whole-event
   assertions, as unit tests, run on Linux **and** Windows. Each fixture asserts the exact output
-  string, not a substring — which is buildable for all 17 because all 17 inputs are literals. Each
-  declares its **caller**, and 14–17 run the `coord.subject` profile.
-- **RED:** replace the sanitizer with the identity function → **all 17 fail except fixture 14**, whose
-  required output under the `coord.subject` profile *is* the input unchanged, so it passes under the
-  identity function and is covered by the fourth RED below instead. Then restore it and remove
+  string, not a substring — which is buildable for every one because every input is a literal. Each
+  declares its **caller**, and 14–17 run the `coord.subject` profile. The fixture set is read from
+  the table, never counted: a producer's executable copy is checked against the table's rows for its
+  caller.
+- **RED:** replace the sanitizer with the identity function → **every fixture fails except 8, 14, 33,
+  40 and 46**: 8 is refused by the allowlist (the next RED is its), and the others are pins whose
+  required output *is* the input unchanged, covered by the fourth RED below and by card#11292's REDs. Then restore it and remove
   only the allowlist → fixture 8 fails alone (proving the layers are independently load-bearing).
   Then restore the allowlist and revert rule 5 to the pre-extension rule 4 → fixtures 9, 10 and 11
-  fail alone, and the credential in each appears verbatim in the output (proving the credential-on-
-  argv extension is load-bearing and not decoration).
+  fail, with 28 and 37 (the same credential-on-argv shape under a keyword-containing flag name), and the
+  credential in each appears verbatim in the output (proving the credential-on-argv extension is
+  load-bearing and not decoration).
+- **card#11292's REDs:** disable each mechanism that change added, one at a time — rule 3's new
+  prefixes and JWT alternative, 4a, 4b's flag and assignment shapes, 4c, 4d, rule 7's mixed-class
+  pattern, rule 9's IPv6, URL-host and dotted-name passes — and exactly the fixtures that pin it fail.
+  Loosen rule 9's TLD set to any letters and fixture 33 fails; give 4b's keyword-containing names a
+  bare-space separator and 40 fails; drop the compressed-IPv6 group floor and 46 fails.
 - **Fourth RED — the profile, which is the one this table could not previously go red on.** Point the
   `coord.subject` caller at the `descriptor` profile — the one-line change that undoes
   [§ 7.3](#73-redaction-rules-applied-in-this-order)'s narrowing — and **fixture 14 fails alone**, its
@@ -4520,7 +4744,7 @@ recorded here because they are what a re-run will hit first:
   profiles instead, which is the other way to make the difference vanish, and **fixture 9 fails
   alone**, `deploy --password hunter2` surviving unredacted. Both directions, because a profile that
   can only be tested in one of them is a profile a refactor can collapse in the other.
-- **GREEN:** all 17 exact-match; no planted credential appears in any serialized event.
+- **GREEN:** every fixture exact-matches; no planted credential appears in any serialized event.
 - **Third RED — the two rules fixtures 12 and 13 pin:** change rule 6's retained head to the first
   *named* segment → fixture 12 fails alone (`/var/…/Http/X.php`) while fixture 5 still passes, which
   is what proves the two fixtures disagree about the reading rather than duplicating each other.
@@ -5246,6 +5470,24 @@ indistinguishable.*
 - **Discriminating control:** re-run case A with the roster present and the declared name misspelled
   by one byte → case C's outcome exactly. Without it, a case A GREEN is also what a reporter that
   never opens the roster produces.
+- **The relayed role (card#11144) — [§ 3.1](#31-the-seat-config-file)'s *`protocol_agent_role`*,
+  re-read on the boxes above plus one roster per case below.** `selftest`'s exit and verdict are
+  unchanged in every one, because the role adds no check. **GREEN:** cases A and E carry the selected
+  entry's `role` verbatim and `detail.roster_role` names it; cases B, C, D and the control carry the
+  member **PRESENT and `null`**. Under `checked`: an entry with no `role`, or a `null` one, relays
+  `null` with *no role* in the detail; a role that is not a slug — upper case, a space, one byte past
+  [§ 6.14](#614-reporterheartbeat)'s bound, empty, a number, an array — relays `null` with *not a
+  slug* in the detail; a role **at** the bound and an unknown slug (`pm-helper`) relay verbatim; and a
+  declared name matching **two** entries relays `null`, stays `checked`, and reads *ambiguous: 2
+  entries named …*.
+  - **⛔ RED — the pick.** A reporter that takes the first entry on a duplicate name relays its role
+    — a choice nothing on the wire says was made.
+  - **⛔ RED — the unvalidated role.** A reporter that relays any string puts `Impl` on the wire, and
+    a value past the bound would cost the whole batch at the ingest ([§ 12.4](#124-batches-are-atomic)).
+  - **⛔ RED — the omitted null.** A reporter that drops a `null` role leaves the member ABSENT,
+    byte-identical to a reporter that predates it.
+  - **⛔ RED — the role beside a failed check.** A reporter that relays a roster role beside
+    `disagreed` sends a role for a name the roster does not hold.
 
 ---
 
@@ -5276,6 +5518,8 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | Typical event size | ~500 B | Derived from the field tables in [§ 6](#6-event-kinds) — the sizing input for spool, batch and rate limits | [§ 4.4](#44-size-caps-and-their-derivations) |
 | Descriptor cap | 200 B | Derived — three constraints agree: ~160 chars renderable, 5× the longest realistic command, keeps events ~500 B | [§ 7.4](#74-truncation) |
 | Title cap | 120 B | Chosen — ~18 English words; a dispatch description is 3–8 | [§ 7.4](#74-truncation) |
+| `console_url` bound | 95 B | Derived — the longest string § 6.3's pattern matches: the 31 B prefix `https://claude.ai/code/session_` plus 64 id characters | [§ 6.3](#63-turnstart) |
+| `console_url` transcript tail | 1 MiB, read back in 64 KiB steps | Chosen — above the largest gap between two bridge records a read of this seat's transcripts found on 2026-10-05; the step keeps the common case (a record in the last few KiB) to one small read inside the 250 ms hook budget | [§ 6.3](#63-turnstart) |
 | Busy-seat volume | ceiling **10,420 events/day ≈ 5.2 MB/day**; midpoint ~7,100/day ≈ 3.6 MB/day | **Estimate, not a measurement** — the sum of the kind table's per-kind ranges (1,440 heartbeats + ≤ 1,440 context samples + ≤ 6,000 tool events + ≤ 1,200 turn events + the rest). Sizing uses the ceiling. Re-derived from the first week of live data | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | statusLine sample cadence | 60 s | Derived — matches the heartbeat. Bounds the class at **≤ 1,440 cadence samples/session-day plus one per 5-point crossing**; deliberately *not* expressed as a multiple of the render rate, which is event-driven and burst-shaped, not a rate | [§ 6.11](#611-contextsample) |
 | statusLine bucket | 5 percentage points | Chosen — the resolution a human reads a gauge at | [§ 6.11](#611-contextsample) |
@@ -5288,7 +5532,7 @@ events/seat/day, and every row below that says "the ceiling" means that sum.
 | `reporter.heartbeat.counters` cap | 1.5 KiB | **Chosen** — above [§ 9.3](#93-degradation-counters)'s ~30 named counters at ~32 B an entry, and below what its open-ended counter families can reach. It is the one heartbeat object a seat can grow past its cap, which is why it is the one that states a reduction rule | [§ 6.14](#614-reporterheartbeat) |
 | `reporter.heartbeat.predicates` cap | 512 B; worst case **396 B** | **Derived** — one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate: `2 + 5×(21 + 32) + 125 + 4`, both branch counts at the 16-digit JS-safe-integer ceiling. 116 B spare, so the cap is a guard rather than a path and the field owes no reduction rule ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5). Re-derived by `tools/design/verify-event-schema.py`, never trusted as written | [§ 6.14](#614-reporterheartbeat) |
 | `reporter.heartbeat.selftest` cap | 256 B; worst case **210 B** | **Derived** — one member per check [§ 6.14](#614-reporterheartbeat)'s member table declares: `2 + 7×9 + 139 + 6`. 46 B spare, same exemption, re-derived by the same tool | [§ 6.14](#614-reporterheartbeat) |
-| Worst-case heartbeat `data` | 2,852 B of the 3 KiB cap | **Derived** — every field at its worst at once, each integer at its own stated bound; [§ 6.14](#614-reporterheartbeat) owns that composition and it is deliberately not restated here. 220 B spare, so the counters reduction rule alone is what keeps a maximally-degraded heartbeat inside [§ 4.3](#43-common-per-event-fields)'s cap. Unlike the two rows above, this figure is **hand-verified**: `tools/design/verify-event-schema.py` does not re-derive it | [§ 6.14](#614-reporterheartbeat) |
+| Worst-case heartbeat `data` | 2,923 B of the 3 KiB cap | **Derived** — every field at its worst at once, each integer at its own stated bound; [§ 6.14](#614-reporterheartbeat) owns that composition and it is deliberately not restated here. 149 B spare, so the counters reduction rule alone is what keeps a maximally-degraded heartbeat inside [§ 4.3](#43-common-per-event-fields)'s cap. Unlike the two rows above, this figure is **hand-verified**: `tools/design/verify-event-schema.py` does not re-derive it | [§ 6.14](#614-reporterheartbeat) |
 | Wire enum fields, and how many are classified | all of them — the figure is deliberately not written here: `python3 tools/design/verify-event-schema.py` prints it on every run, as `enum fields re-derived: N, M classified` | **Derived** — re-derived from [§ 6](#6-event-kinds)'s field tables by `tools/design/verify-event-schema.py` on every run, which fails on any row absent from [§ 6.0](#60-conventions-and-how-harness-payloads-are-read)'s classification table. Stated as a population, never as a maintained list | [§ 6.0](#60-conventions-and-how-harness-payloads-are-read) |
 | Session `inferred_silence` | 90 min | Derived — 1.5× the 60 min `Task` orphan ceiling, the longest legitimate silence inside a live session. Cheap to be wrong now that an early close is reversible (`session_reopened` re-derives it) | [§ 6.2](#62-sessionend) |
 | Compaction close timeout | 10 min | Derived — ~10× a typical one-minute compaction | [§ 6.10](#610-compactionend) |
@@ -5447,6 +5691,8 @@ values no published rule derived.
 | 47 | **One declared `install_facts` input — `roster[]` and `shared_identity` — provisioned with the hook registration, with a drift GUARD on the copy** | let each field read `coordination.config.json` at runtime (a live cross-repo coupling and a second credential); or hardcode the roster (a restatement with neither pointer nor guard); or leave it unstated, which is what the draft did | Four fields reached past [§ 18.3](#183-the-bridge-as-prior-art-what-the-source-read-found)'s derivability test for one input nobody declared, in four separate places — one input consolidated, not four patches. Two of the four dissolved on inspection: `carrier` reads the bracketed token syntactically and `participants` stops expanding anything, so **only the roster genuinely varies**. The input is a copy, so it carries the config revision it was copied at, and the copy is **guarded**: a body-derived name absent from it increments `coord_roster_unknown_name` on that seat's first post | the guard is **one-directional** — it sees an addition, never a removal — and a stale roster under-expands a broadcast until the next provisioning. Both are stated at [§ 18.3.1](#1831-the-install-facts-input-declared-once) rather than discovered. If a runtime read is ever affordable, [decision 40](#15-decisions-taken-revisable-at-review) is the decision to reopen, not this row |
 | 48 | **[§ 7.3](#73-redaction-rules-applied-in-this-order) gains a `coord.subject` PROFILE differing in exactly one rule, and [§ 7.5](#75-red-fixtures--required-tests) gains real title fixtures** | reuse the pass unchanged, which is what the draft claimed to do; or narrow rule 4 for every caller; or write a second redactor for titles | Reuse was measured and it corrupts **7.0%** of 728 real titles, 49 of the 51 hits being rule 4's bare-whitespace separator firing on English (`token that` → `token ‹redacted›`). Narrowing rule 4 to an explicit `:`/`=` cuts that to **0.7%** and still catches every credential shape planted in a title. Narrowing it for **all** callers was rejected outright: it deletes the control [fixture 9](#75-red-fixtures--required-tests) holds, and a widened guard is one weaker path for both callers rather than a second path. A second redactor was rejected because two redactors disagree about what a secret looks like | a title with `password hunter2` — whitespace, no separator — survives on this profile where a descriptor would not. That is the accepted residual, and rule 3 remains the backstop for every prefixed credential. Rule 7's title false positive is **kept** and pinned as [fixture 17](#75-red-fixtures--required-tests) rather than narrowed away, because dropping it buys 1 title in 728 and gives up the unprefixed-blob backstop |
 | 49 | **`targets`' whole derivation is stated on the field — `to`, with the literal `all` replaced by [§ 18.3.1](#1831-the-install-facts-input-declared-once)'s `roster[]` and the author removed — and a named addressee is never filtered against that roster** | **(a)** keep the author, so `targets` is `to` with `all` expanded and nothing removed; **(b)** intersect `to` with the roster, dropping a name the copy does not know; **(c)** leave the field stating the `all` expansion and the `null` case only, with sender exclusion shown by [§ 18.7](#187-coordround)'s worked example and stated nowhere — which is what this document did | Option (c) is the one that was in force and it is the defect: the example expanded a broadcast to fewer names than the roster it read, so the document carried two answers — one in the field spec and one in the example — and the example was the only place the difference was visible. That is the failure this document already names about itself one field over, *"a worked example becomes a second, disagreeing specification"*. Option (a) contradicts that example rather than the spec, and it makes `targets` mean something else: the field is **who the post reaches**, and an author is not reached by their own post. Option (b) drops a name with nothing counting it: [§ 18.12](#1812-the-anti-requirements-checked-against-the-derivation)'s no-silent-cap anti-requirement enumerates the two paths that may drop a fan-out — the counted truncation at 32 members, and `targets: null` — and both are reported, while a roster-filtered name would be a third reported by nothing. On a body-derived name it also deletes the evidence `coord_roster_unknown_name` exists to raise, and on a label-derived one that counter is not even in scope — so a roster copy gone stale would under-report every fan-out with no counter moving | The field now carries a five-clause rule (order, expansion, author removal, first-occurrence-only, and the `null` case) where it carried two sentences, and **the first-occurrence clause is asserted by no test in this document** — it is reachable only by a `TO:` line naming `all` and a roster member together, which no fixture writes. And `[]` is now an ordinary derived value rather than an oddity, so the two empty answers have to be read apart by every consumer: `null` is the alarmed one (`coord_targets_unresolved`) and `[]` is not alarmed at all |
+| 50 | **card#11292: rule 4 matches a keyword inside a name and reads credential headers whole, rule 3 takes JWTs and more prefixes, rule 7 takes mixed-class base64url runs, rule 9 replaces host names, and a `descriptors` config key lets a seat send less** | a per-seat local narrowing of the allowlist, the option the auditing seat's operator was weighing; or an entropy scorer beside the regexes; or host scrubbing by an allowlist of public hosts | Every shape was measured passing whole by an outside audit, and the descriptor is stored on the server and shown on the floor to every signed-in user. A local narrowing fixes one seat and leaves the sanitizer that every seat runs as it was. An entropy scorer is a second mechanism with its own false-positive profile; rule 7's mixed-class condition is the entropy test the existing rule could carry. A public-host allowlist is a list of the world, and § 1 excludes host names without exception | `--author=` and `max_tokens =` lose their values; `socket.io` reads as a host; `WebFetch` descriptors no longer say where. Single-label hosts outside a URL still pass (fixture 18 pins one). The `coord.subject` profile shares rule 4, so row 48's measured title rates describe the rule before this change and were **not** re-measured |
+| 51 | **card#9416: the seat's console URL rides `turn.start` as `console_url`, read from the transcript's newest deciding record within a 1 MiB tail, pattern-checked at the reporter and again at the fold, and sent only under `descriptors: "full"`** | carry it on `session.start`; or on the heartbeat; or read the whole transcript; or send it under every `descriptors` value | `session.start` fires once and before the transcript holds a bridge record, while the bridge id changes within a session and ends with it; the heartbeat carries no session and its flusher never sees a `transcript_path`; a whole-file read of a many-MiB transcript breaks P-5's budget; and `descriptors` is the seat's one statement of how much it sends, so a seat that asked for less is not sent a link to its live console | a link lags a changed bridge by one prompt; a bridge record more than 1 MiB back is a `null` for that turn, counted; a harness that moves the record makes every value `null`, counted as `console_url_malformed` rather than silent |
 
 **One thing this document deliberately does not contain:** the accepted schema-version set. That set
 lives in exactly one machine-readable place in the ingest's code and is reported by the health
@@ -6859,7 +7105,7 @@ read it is a row somebody can close.
 | **What GitHub does with a 4xx or a 5xx from this endpoint** — UNVERIFIED, and it is why [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) mints no rate limit **on the deliveries that pass step 3**. It says nothing about the step-3 refusal path, whose caller is by construction not GitHub — which is the scope the round that added that limit had to correct, and this cell carried the unqualified claim across it | if refusals are never redelivered, every refused delivery is permanent loss of a fact with no other source | read GitHub's documented redelivery behaviour, then decide whether a limit is affordable; until then the design assumes the worst and refuses almost nothing |
 | **GitHub's maximum delivery size** — still UNVERIFIED, and **half of the closing act is now done**: the largest bodies a live coordination repository actually produces are **21,963 B** for a comment and **31,087 B** for an issue, measured over its whole population 2026-08-28, so the 1 MiB cap has ~30× headroom against real traffic even before the rest of the payload is counted. What stays open is the **sender's** documented maximum, which is a vendor fact no read on this box reaches ⚠ a figure for it was offered in review and is deliberately **not** recorded here, because relaying an unsourced number is the defect this table exists to prevent | a real delivery over the cap takes a `413` and is lost — now bounded by the measurement, not eliminated by it | read GitHub's own published maximum and cite it, or capture a delivery and measure the envelope overhead the body figures above exclude |
 | **Whether a `[CLOSE]` token is added to a body this producer will not see** — a post edited to add it fires `issue_comment.edited`, which [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) step 8 does not derive from | a close act declared by an edit is missed, and its thread draws `lifecycle: closed` with no spark and no closer — the same render an undeclared close produces, so the two are indistinguishable. **The deferral IS backfillable, and that is a consequence of two things [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) now states rather than a hope**: the hook subscribes the whole `issue_comment` event, so those deliveries **were** sent and are in GitHub's delivery list; and step 8 commits **no digest** for a delivery it ignored, so a Redeliver after step 8 widens is derived rather than absorbed as a duplicate. ⚠ **What bounds the backfill is not this design**: GitHub's retention of redeliverable deliveries is a vendor fact no read on this box reaches, and anything older than it — or older than the hook registration itself — stays missed | add `issue_comment.edited` to step 8's derive set. That is **one action in the derive set and no re-registration**, which is what the subscription above was written wide to buy; the earlier draft of this row priced it as a subscription change and then, in the same cell, as a step-8 edit — the two were incompatible and the subscription set is what had gone unstated |
-| **That a protocol agent name identifies the same thing a `seat_id` does** — **SPECIFIED FOR A DECLARING SEAT SINCE `card#9296`, and for no other seat; built on the server's side on `card#9296`, and on the reporter's on `card#9375`.** The artifact that owns the mapping is the seat's own config: [§ 3.1](#31-the-seat-config-file)'s `protocol_agent_name`, which [§ 6.14](#614-reporterheartbeat)'s heartbeat is specified to carry with `protocol_agent_name_check` beside it, checked against the coordination roster where one is on the same box and reported *unchecked* where it is not. **What is still not established, by name:** that any seat in a fleet declares anything (the field is optional and the first provisioning act is where the convention gets set); that a roster the declaring box reads is itself correct; on an `unchecked` seat, that the declared name is a roster member at all — the wire says which of those it is rather than implying a check that never ran; and — **added on `card#9296` round 2, because the row named three residuals and this was not one of them** — **that the roster is at a path this design reads**. [§ 3.1](#31-the-seat-config-file) resolves `$COORD_CONFIG` first and `~/.config/coord/coordination.config.json` second, on Linux only; **where a coordination install actually keeps its config is decided in another repository**, by code no check here can read, so a move there turns every `checked` in a fleet into `unchecked` with nothing going red at either end. The contract is DECLARED at § 3.1 and has **not** been published to the party that owns it. And — **added on `card#9296` round 3** — **that the supervised start's launch delivers `$COORD_CONFIG`**: § 3.1's delivery contract requires it, because the OS-started flusher inherits nothing from the harness and is the one that heartbeats on a healthy seat, but nothing here checks that a start definition delivers the value. On Linux, since `card#9368`, the start definition is a crontab entry that `fleet-reporter/INSTALL-LINUX.md` writes with the assignment on its own command line. Since `card#9375` the acceptance suite reads that runbook's start line and runs it outside cron (AT-27 case F), and no check reads the entry an install actually wrote. On Windows the route is owed when the Windows agent seat onboards ([§ 3.1](#31-the-seat-config-file)). A start definition without the value reports `unchecked` on every heartbeat of a box whose hooks can read the roster. And — **added on `card#9296` round 4** — **that the value it delivers is still current**: the install resolves `$COORD_CONFIG` once, so a coordination config that later moves leaves the flusher reading the path as it stood — `unchecked` where nothing remains, or a check against a roster nothing else on the box reads where a copy does — until the start definition is rewritten and the flusher restarted, which [§ 3.1](#31-the-seat-config-file) requires of whoever installed the seat and nothing here can see. ⚠ Unchanged: the two **still** cannot be compared on a live seat. Since `card#9368` one seat reports, `mezzanine` / `mezzanine-solo` on the sandbox, and its config declares a name. `fleet-reporter/fleet-reporter.js` reads that key since `card#9375`. That seat was installed from a build before it (`fleet-reporter/INSTALL-LINUX.md` Step 1), so it sends a name only once its artifact is replaced and its flusher restarted, and `card#9375` did not read which build it runs now. **`"seat_id": "aimla-pm"` wherever it appears in this document is a documentary example rather than a measured value** | **Was:** every coordination fact derived correctly and **joining to no desk** — total for the join and invisible in the derivation. **Now, and narrower:** for a seat that declares nothing the same total failure, but it is a RENDERED state rather than an invisible one (`undeclared`, an unresolved participant, no line drawn); for a declaring seat the residual is that a name checked against a **wrong roster** resolves to a wrong desk, and that an `unchecked` name rests on the declaration alone. ⚠ The tier-2 title used to sit in this cell and no longer does — it was retired on `card#9234`, so the thread line is the whole of what this mapping blocks | **RULED on `card#7957` — *(d)* the seat declares its own protocol agent name, *(2)* an unresolved participant is a first-class rendering — and *(d)*'s SERVER half is BUILT on `card#9296`:** the ingest accepts and the store folds the two heartbeat members, and the consumer-side rule that only a declaration joins is applied ([§ 3.1](#31-the-seat-config-file)). **Its REPORTER half is BUILT on `card#9375`:** `fleet-reporter/fleet-reporter.js` reads the declaration and resolves the roster at flusher start and on `selftest`, emits both heartbeat members on every heartbeat, and **fails the act** — `protocol_agent_name_in_roster` — on a disagreement. AT-27's cases and REDs run in `fleet-reporter/fleet-reporter.selftest.py` § 19. What remains, and what would close it: a fleet whose seats actually declare — which is a provisioning act and not a design one — a roster whose correctness is checkable from the declaring box, which no artifact offers in either direction today; and, for the path residual, **carrying § 3.1's resolution-order contract to the coordination framework's owner** — an issue or a coordination post against the repository that decides where a coord config lives — so that the two ends read one published statement instead of each holding its own; and, for the start-path residual, [AT-27](#at-27-a-declared-agent-name-is-checked-and-a-disagreement-fails-an-act) case F and its moved variant, run against a real supervised start. On Linux that is the crontab entry `fleet-reporter/INSTALL-LINUX.md` writes, run by cron on a real seat; the suite runs the runbook's line outside cron, which checks the line and not an installed entry. ⛔ Until then this row stays, because a row somebody can close is worse than useless if it is closed while half of it is still true |
+| **That a protocol agent name identifies the same thing a `seat_id` does** — **SPECIFIED FOR A DECLARING SEAT SINCE `card#9296`, and for no other seat; built on the server's side on `card#9296`, and on the reporter's on `card#9375`.** The artifact that owns the mapping is the seat's own config: [§ 3.1](#31-the-seat-config-file)'s `protocol_agent_name`, which [§ 6.14](#614-reporterheartbeat)'s heartbeat is specified to carry with `protocol_agent_name_check` beside it, checked against the coordination roster where one is on the same box and reported *unchecked* where it is not. **What is still not established, by name:** that any seat in a fleet declares anything (the field is optional and the first provisioning act is where the convention gets set); that a roster the declaring box reads is itself correct; on an `unchecked` seat, that the declared name is a roster member at all — the wire says which of those it is rather than implying a check that never ran; and — **added on `card#9296` round 2, because the row named three residuals and this was not one of them** — **that the roster is at a path this design reads**. [§ 3.1](#31-the-seat-config-file) resolves `$COORD_CONFIG` first and `~/.config/coord/coordination.config.json` second, on Linux only; **where a coordination install actually keeps its config is decided in another repository**, by code no check here can read, so a move there turns every `checked` in a fleet into `unchecked` with nothing going red at either end. The contract is DECLARED at § 3.1 and has **not** been published to the party that owns it. And — **added on `card#9296` round 3** — **that the supervised start's launch delivers `$COORD_CONFIG`**: § 3.1's delivery contract requires it, because the OS-started flusher inherits nothing from the harness and is the one that heartbeats on a healthy seat, but nothing here checks that a start definition delivers the value. On Linux, since `card#9368`, the start definition is a crontab entry that `fleet-reporter/INSTALL-LINUX.md` writes with the assignment on its own command line. Since `card#9375` the acceptance suite reads that runbook's start line and runs it outside cron (AT-27 case F), and no check reads the entry an install actually wrote. On Windows the route is owed when the Windows agent seat onboards ([§ 3.1](#31-the-seat-config-file)). A start definition without the value reports `unchecked` on every heartbeat of a box whose hooks can read the roster. And — **added on `card#9296` round 4** — **that the value it delivers is still current**: the install resolves `$COORD_CONFIG` once, so a coordination config that later moves leaves the flusher reading the path as it stood — `unchecked` where nothing remains, or a check against a roster nothing else on the box reads where a copy does — until the start definition is rewritten and the flusher restarted, which [§ 3.1](#31-the-seat-config-file) requires of whoever installed the seat and nothing here can see. ⚠ Unchanged: the two **still** cannot be compared on a live seat. Since `card#9368` one seat reports, `mezzanine` / `mezzanine-solo` on the sandbox, and its config declares a name. `fleet-reporter/fleet-reporter.js` reads that key since `card#9375`. That seat was installed from a build before it (`fleet-reporter/INSTALL-LINUX.md` Step 1), so it sends a name only once its artifact is replaced and its flusher restarted, and `card#9375` did not read which build it runs now. **`"seat_id": "aimla-pm"` wherever it appears in this document is a documentary example rather than a measured value**. And — **added on `card#11144`** — the relayed role rests on three conditions the coordination framework decides and nothing here can read: **that `role` stays a member of a roster entry**, **that the role vocabulary stays open and `pm` keeps its meaning**, and **that a PM install's roster holds one `pm`**. § 3.1's DECLARED leg now carries the role in the same contract (`roster[].name` and `roster[].role`, relayed verbatim), and like the resolution order it has **not** been published to the party that owns it. A seat sends a role only once its reporter is replaced with a build that includes `card#11144` and its flusher restarted | **Was:** every coordination fact derived correctly and **joining to no desk** — total for the join and invisible in the derivation. **Now, and narrower:** for a seat that declares nothing the same total failure, but it is a RENDERED state rather than an invisible one (`undeclared`, an unresolved participant, no line drawn); for a declaring seat the residual is that a name checked against a **wrong roster** resolves to a wrong desk, and that an `unchecked` name rests on the declaration alone. ⚠ The tier-2 title used to sit in this cell and no longer does — it was retired on `card#9234`, so the thread line is the whole of what this mapping blocks | **RULED on `card#7957` — *(d)* the seat declares its own protocol agent name, *(2)* an unresolved participant is a first-class rendering — and *(d)*'s SERVER half is BUILT on `card#9296`:** the ingest accepts and the store folds the two heartbeat members, and the consumer-side rule that only a declaration joins is applied ([§ 3.1](#31-the-seat-config-file)). **Its REPORTER half is BUILT on `card#9375`:** `fleet-reporter/fleet-reporter.js` reads the declaration and resolves the roster at flusher start and on `selftest`, emits both heartbeat members on every heartbeat, and **fails the act** — `protocol_agent_name_in_roster` — on a disagreement. AT-27's cases and REDs run in `fleet-reporter/fleet-reporter.selftest.py` § 19. What remains, and what would close it: a fleet whose seats actually declare — which is a provisioning act and not a design one — a roster whose correctness is checkable from the declaring box, which no artifact offers in either direction today; and, for the path residual, **carrying § 3.1's resolution-order contract to the coordination framework's owner** — an issue or a coordination post against the repository that decides where a coord config lives, and since `card#11144` the roster-role contract with it — so that the two ends read one published statement instead of each holding its own; and, for the start-path residual, [AT-27](#at-27-a-declared-agent-name-is-checked-and-a-disagreement-fails-an-act) case F and its moved variant, run against a real supervised start. On Linux that is the crontab entry `fleet-reporter/INSTALL-LINUX.md` writes, run by cron on a real seat; the suite runs the runbook's line outside cron, which checks the line and not an installed entry. ⛔ Until then this row stays, because a row somebody can close is worse than useless if it is closed while half of it is still true |
 | **That a thread CONVERGED, as the protocol defines convergence** — the protocol's convergence is a **quorum**: *"An issue closes when every required participant has posted `zero open questions`. Required participants are those on `to:` labels who are not observer-CC'd"*. Neither object carries an observer-CC flag, a required-participant set, or a per-participant ACK ledger, and `participants` includes observers with nothing to exclude them by. **The quorum is not computable from anything emitted here** | a consumer that reads `lifecycle: closed` or `declares_close: true` as *"the thread converged"* is making a claim the wire does not carry — and it would be right about many threads and wrong about every stale-close, with no way to tell which. What this design offers instead is two weaker facts that are true: the thread ended, and somebody declared the close act | the protocol names required participants **on the wire** — an observer-CC marker in the body or a distinct label — at which point the quorum is a count. Until then this row is the answer, and [§ 18.5](#185-the-three-findings-the-audit-turns-on) states in terms that `declares_close` is not it |
 | **That the coordination route's counters have anywhere to live** — [§ 18.8.1](#1881-the-counters-this-route-mints) declares eleven, and [§ 12.7](#127-server-side-counters)'s table is the surface that would give them storage and a badge. Membership there is an **obligation on the store's counter plane**, so this section declares the counters and does not enrol them | an implementer builds the receipt path, increments ten counters, and no operator can read any of them — the alarms `coord_targets_unresolved` and `coord_roster_unknown_name` exist for are the two that matter most, and both would be write-only | the slice that designs the coordination store adopts the ten into [§ 12.7](#127-server-side-counters) and gives each a row on the counter plane, in one change with the plane's own document. **The evidence that this is a real obligation and not bookkeeping is mechanical**: enrolling them early makes `tools/design/verify-fleet-state.py` red with one failure per counter, which is how this row was found |
 | **That the idempotency key cannot expire into a double-derivation** — a uniqueness constraint has no window, but the store that holds it has a retention, and **nothing bounds how old a redelivered coordination delivery can be**. The reporter's equivalent is bounded by [§ 11.3](#113-rotation-and-the-overflow-policy)'s 8-day spool residency; GitHub's Redeliver button has no such floor | an operator redelivering a delivery older than the store's retention re-derives it: one thread line or round bead drawn twice, from one real post. Bounded and recoverable, and invisible while it happens | either state the digest store's retention as unbounded and price it — the key is 64 B and this repository's whole history is under 12,000 deliveries — or bound the redelivery age at receipt by refusing a payload timestamp older than the retention. Both are decisions for the slice that builds the store, and each is cheap; what is not affordable is the sentence an earlier draft carried, which asserted the problem away |

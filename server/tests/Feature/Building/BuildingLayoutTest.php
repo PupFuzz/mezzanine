@@ -176,6 +176,39 @@ class BuildingLayoutTest extends TestCase
         );
     }
 
+    /**
+     * § 4.6's `theme` (card#11046, docs/design/FLOOR.md § 10.6 item 5): a NAME or nothing, refused at load
+     * by type and never coerced — `3` is the third theme nobody has, and `["studio"]` a list where a name
+     * belongs (AT-D3-25's selection half).
+     */
+    public function test_a_theme_that_is_not_a_string_is_refused_by_type_and_never_coerced(): void
+    {
+        foreach ([3, ['studio'], ['name' => 'studio'], true] as $theme) {
+            $this->refuses(
+                ['floors' => [['theme' => $theme, 'rooms' => ['sola' => ['form' => 'office']]]]],
+                'declares a `theme` of type',
+            );
+        }
+    }
+
+    /**
+     * A name the build does not ship is READ and carried as authored: refusing it here would take the
+     * building down for an appearance, so the write refuses it (`Layouts::refuseUnshippedThemes()`) and the
+     * floor draws a stored one in the house theme under § 9 F23. Absent and `null` are both the house theme.
+     */
+    public function test_the_reader_carries_a_theme_as_authored_and_absent_or_null_is_the_house_theme(): void
+    {
+        $theme = fn (array $floor): mixed => LayoutFixture::read(['floors' => [$floor + ['rooms' => ['sola' => ['form' => 'office']]]]])->floors[0]['theme'] ?? null;
+
+        $this->assertSame('nowhere', $theme(['theme' => 'nowhere']));
+        $this->assertSame('studio', $theme(['theme' => 'studio']));
+        // Absent and null are both the house theme, and the normalised floor carries no member for either —
+        // as `origin` and `hallway`, it is carried only where it is authored.
+        $this->assertNull($theme(['theme' => null]));
+        $this->assertNull($theme([]));
+        $this->assertArrayNotHasKey('theme', LayoutFixture::read(['floors' => [['theme' => null, 'rooms' => ['sola' => ['form' => 'office']]]]])->floors[0]);
+    }
+
     public function test_an_explicit_null_label_is_an_absent_label_and_not_a_type_refusal(): void
     {
         // § 4.6: "The SHAPE is the contract; the store is the caller's" — the whole point of which
@@ -616,7 +649,7 @@ class BuildingLayoutTest extends TestCase
         $this->refuses(
             ['floors' => [[
                 'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]],
-                'hallway' => 'tiles/furniture-kit.tsx',
+                'hallway' => 'tiles/floor-plane.tsx',
             ]]],
             'declares a `hallway` that is not a Tiled document',
         );

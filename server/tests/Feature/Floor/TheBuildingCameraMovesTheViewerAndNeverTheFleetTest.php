@@ -28,8 +28,9 @@ use Tests\TestCase;
  * ruling; row 16), held over `building_ride_in_flight`: from a ride's click until its glide arrives and
  * the page asks for the route (`arrive`) — or the page comes back from the back-forward cache (`return`)
  * — every frame says the ride is in flight (the page disables the control on it), a second ride is
- * refused, and the wheel, a key's zoom, the drag, the keyboard's focus on a plate and the whole-building
- * control leave the camera on the plate; after it the camera moves and the viewer rides again, whether
+ * refused, and the wheel (its pan and its Ctrl+zoom, each still consuming the event — card#11045), the
+ * touch pinch, a key's zoom, the drag, the keyboard's focus on a plate and the whole-building control
+ * leave the camera on the plate; after it the camera moves and the viewer rides again, whether
  * or not the navigation completed. The page's half — an interrupted glide cutting to the plate and
  * arriving — is `wire/camera-view.js`'s committed glide, held by `TheCameraWireIsOneForBothPagesTest`.
  *
@@ -315,14 +316,35 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a second ride in flight) did not bite');
     }
 
-    /** A wheel during a ride moves the camera off the plate it is arriving at. */
-    public function test_red_a_wheel_that_moves_the_camera_during_a_ride(): void
+    /**
+     * The wheel's two acts and the touch pinch during a ride (card#11045): each planted to move the camera
+     * off the plate it is arriving at, and the wheel's two planted to leave the event to the page while the
+     * camera is held.
+     *
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function rideHoldPlants(): array
     {
-        $dir = $this->mutatedModules([self::SCREEN,
-            'this.#camera = this.#riding === null ? wheel(this.#camera, point, delta) : this.#camera;',
-            'this.#camera = wheel(this.#camera, point, delta);']);
+        $hold = "        if (this.#riding !== null) {\n            return { camera: this.#camera, consumed: true };\n        }\n\n";
 
-        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (a wheel moving the camera in flight) did not bite');
+        return [
+            'a plain wheel (a pan) that moves the camera during a ride' => [$hold.'        const { camera, consumed } = pan(', '        const { camera, consumed } = pan('],
+            'a Ctrl+wheel (a zoom) that moves the camera during a ride' => [$hold.'        const { camera, consumed } = zoom(', '        const { camera, consumed } = zoom('],
+            'a touch pinch that moves the camera during a ride' => ['this.#camera = this.#riding === null ? pinch(this.#camera, from, to, factor) : this.#camera;',
+                'this.#camera = pinch(this.#camera, from, to, factor);'],
+            'a plain wheel held during a ride that scrolls the page instead' => [$hold.'        const { camera, consumed } = pan(',
+                str_replace('consumed: true', 'consumed: false', $hold).'        const { camera, consumed } = pan('],
+            'a Ctrl+wheel held during a ride that zooms the page instead' => [$hold.'        const { camera, consumed } = zoom(',
+                str_replace('consumed: true', 'consumed: false', $hold).'        const { camera, consumed } = zoom('],
+        ];
+    }
+
+    #[DataProvider('rideHoldPlants')]
+    public function test_red_a_wheel_or_pinch_during_a_ride_that_breaks_the_hold(string $anchor, string $replacement): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, $anchor, $replacement]);
+
+        $this->assertNotSame([], $this->inFlightDefects($this->replay(self::IN_FLIGHT, $dir)), 'CONTROL (the planted ride-hold defect) did not bite');
     }
 
     /** A frame that never says a ride is in flight — the ride control stays enabled under it. */
@@ -717,8 +739,9 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     /**
      * The rulings over `building_ride_in_flight`: a ride's click commits it — a second ride is refused, and
-     * the wheel, a key's zoom, the drag, the keyboard's focus on a plate and the whole-building control
-     * leave the camera on the plate while its glide is in flight (card#7343 r1) — and the hold protects the
+     * the wheel (a pan or a Ctrl+wheel zoom, each consuming the event — card#11045), the touch pinch, a key's
+     * zoom, the drag, the keyboard's focus on a plate and the whole-building control leave the camera on the
+     * plate while its glide is in flight (card#7343 r1) — and the hold protects the
      * glide only: once the glide has arrived and the page has asked for the route, the controls work again
      * and the viewer rides again (r2-4), whether or not the navigation completed.
      *
@@ -756,6 +779,11 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             } elseif ($inFlight !== null) {
                 $interrupted[] = $act;
 
+                // The wheel's two acts take the event from the page while they hold the camera (card#11045).
+                if (in_array($act, ['scroll', 'ctrl_wheel'], true) && ($a['consumed'] ?? null) !== true) {
+                    $defects[] = "the {$act} at {$a['at']} ms during the ride was not consumed — the page would scroll or zoom under the held building";
+                }
+
                 foreach (['zoom', 'x', 'y'] as $k) {
                     if (abs($a['after'][$k] - $inFlight['after'][$k]) > self::EPSILON) {
                         $defects[] = "the {$act} at {$a['at']} ms moved the camera off the plate the ride at {$inFlight['at']} ms is arriving at";
@@ -773,7 +801,7 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             }
         }
 
-        foreach (['wheel', 'zoom', 'drag', 'focus', 'building'] as $act) {
+        foreach (['scroll', 'ctrl_wheel', 'pinch', 'zoom', 'drag', 'focus', 'building'] as $act) {
             if (! in_array($act, $interrupted, true)) {
                 $defects[] = "the run never interrupts a ride with the {$act} — the clause measured nothing for it";
             }

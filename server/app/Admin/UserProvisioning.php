@@ -10,8 +10,9 @@ use Illuminate\Validation\Rule;
 /**
  * The one writer of a user account — card#9070 D1's `mezzanine:user:create` and the console's
  * create form both land here to CREATE one, and the console's edit form lands in `update()` to
- * change one. Being the one writer is what lets D2's "a retired record does not change" be a rule
- * held in a single place instead of a check every caller has to remember.
+ * change one's identity (its role is `App\Admin\UserRoles`'s, card#9415). Being the one writer is
+ * what lets D2's "a retired record does not change" be a rule held in a single place instead of a
+ * check every caller has to remember.
  *
  * ⛔ WHY THE EMAIL IS LOWERCASED ON WRITE, AND WHY THAT IS A CORRECTNESS FIX RATHER THAN TIDINESS.
  * `config/fortify.php` sets `lowercase_usernames => true`, so `Laravel\Fortify\Actions\
@@ -41,14 +42,30 @@ final class UserProvisioning
      * ⚠ TAKES THE PLAINTEXT AND RETURNS THE MODEL, AND IS THE ONLY THING THAT SEES IT. The
      * caller's job is to obtain the value in a way that keeps it out of argv, a log and a
      * rendered page; this method's job is to make sure the only place it lands is the hasher.
+     *
+     * ⛔ THE ROLE IS A REQUIRED ARGUMENT, NOT A DEFAULT (card#9415). The column's database default is
+     * `observer`, but a default is chosen by nobody; requiring the role here makes the choice visible
+     * at every caller. Each caller shows its own default — `observer`, the safer tier — where the
+     * person creating the account can see it.
+     *
+     * @throws \InvalidArgumentException if the role is not one of `User::ROLES`
      */
-    public static function create(string $name, string $email, #[\SensitiveParameter] string $password): User
+    public static function create(string $name, string $email, #[\SensitiveParameter] string $password, string $role): User
     {
-        return User::create([
+        if (! in_array($role, User::ROLES, true)) {
+            throw new \InvalidArgumentException('not a role: '.$role);
+        }
+
+        $user = new User([
             'name' => trim($name),
             'email' => self::canonicalEmail($email),
             'password' => $password,
         ]);
+        // Assigned rather than filled: `role` is not mass-assignable (`App\Models\User`).
+        $user->role = $role;
+        $user->save();
+
+        return $user;
     }
 
     /**
@@ -187,6 +204,16 @@ final class UserProvisioning
 
             return $user;
         });
+    }
+
+    /**
+     * The validation rule for a role, read by the console's two forms and by both user commands.
+     *
+     * @return list<mixed>
+     */
+    public static function roleRules(): array
+    {
+        return ['required', 'string', Rule::in(User::ROLES)];
     }
 
     /**

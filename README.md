@@ -7,10 +7,10 @@ they are actually doing right now — with a drill-down into their tasks and sub
 > Status: **early build.** The Laravel host exists in [`server/`](server/) — an MFA-gated
 > shell with no floor behind it yet, plus the **admin console** at `/admin` (users, agent
 > manage/remove, and floors + their maps) and `php artisan mezzanine:user:create`, which is what makes a fresh deploy
-> reachable at all — see [The first account](#the-first-account-and-the-way-back-from-a-lockout). The **procedural character generator** exists in
-> [`resources/characters/`](resources/characters/) — dependency-free ES modules that draw a
-> seat's character from its identity alone; open `tools/characters/harness.html` over a local
-> static server to see it. The kanban automation in `.github/workflows/` also runs; see
+> reachable at all — see [The first account](#the-first-account-and-the-way-back-from-a-lockout). The **creature generator** exists in
+> [`resources/characters/`](resources/characters/) — dependency-free ES modules that draw each
+> seat's animal or vegetable creature, as vector SVG, from its identity alone; open
+> `tools/characters/harness.html` (the creature sheet) over a local static server to see it. The kanban automation in `.github/workflows/` also runs; see
 > [Kanban](#kanban) below.
 
 ## What it is
@@ -42,8 +42,8 @@ posts the JSON. No model is asked to describe itself.
 ```
 server/                     the Laravel host + MFA-gated shell   ← exists
 server/public/js/            the pages' ES modules — floor/, lobby/, desk/, wire/ (the camera: wire/camera.js)
-resources/characters/       the procedural character generator + LINEAGE.md ← exists
-resources/floor/            the CC0 tileset (interim) + LINEAGE.md ← exists; Tiled map: card #7341
+resources/characters/       the creature generator (first-party, vector) ← exists
+resources/floor/            the floor's themes (first-party, vector), its tileset of kinds and the shipped default map ← exists
 fleet-reporter/             cross-platform hook bundle + by-hand Linux install runbook
 docs/                       design notes, feed schema, CHANGELOG, ATTRIBUTION
 docs/changelog/             archived releases, one file per tag (v0.2.0.md, …)
@@ -124,7 +124,7 @@ cd server
 composer install                                    # ← local only; a HOST installs --no-dev (below)
 cp .env.example .env && php artisan key:generate    # .env is never committed; then set DB_PASSWORD in it
 php artisan migrate
-php artisan mezzanine:user:create                   # ← the first account; nothing else creates one
+php artisan mezzanine:user:create --role=operator   # ← the first account; nothing else creates one
 php artisan test                                    # ← rebuilds mezzanine_test, never DB_DATABASE
 ```
 
@@ -167,9 +167,15 @@ first-run web page — so on a fresh deployment *nobody can sign in until this c
 the host*, and running it is part of standing the host up, not an optional extra.
 
 ```
-php artisan mezzanine:user:create                             # prompts for the password
-php artisan mezzanine:user:create --name=… --email=… --generate   # mints one, prints it ONCE
+php artisan mezzanine:user:create --role=operator             # prompts for the password
+php artisan mezzanine:user:create --role=operator --name=… --email=… --generate   # mints one, prints it ONCE
 ```
+
+**`--role` is `observer` unless you say otherwise** (card#9415). An observer signs in and sees the
+floor, the lobby and each desk's detail; an operator also opens the admin console, and a desk's detail
+offers an operator an **Open console on claude.ai** link to that agent's session (card#9416). The first account
+must be an operator, and the command refuses to create an observer on an install with no active
+operator, naming `--role=operator`, because nobody could administer such an install.
 
 It takes **no `--password` option, deliberately**: an argument lands in argv, which is
 world-readable in `/proc` for the life of the process and is written verbatim into shell history.
@@ -177,14 +183,22 @@ Give the password at the prompt (never echoed), or use `--generate` and hand the
 over out of band — it is shown once and stored only as a hash.
 
 ⛔ **It is also the ONLY way back from a locked-out install**, which is why the console refuses to
-retire the last account that can still sign in. Retiring accounts is deliberately not a deletion
+retire or demote the last active operator. Retiring accounts is deliberately not a deletion
 — the whole row is kept: who the account was (its name and address), who retired it and why —
 and a retired account can no longer authenticate on any path. **A retired account is also no
 longer editable**, so its address can never be freed and handed to somebody else; if the person
 needs an account again, create one under a different address. If an install somehow reaches a
-state with no account that can sign in, there is no
+state with no operator that can sign in, there is no
 password reset and no registration page: shell access on the host
-and this command are the recovery.
+and these commands are the recovery. `mezzanine:user:create --role=operator` makes a new operator;
+`mezzanine:user:role` changes the role of an account that already exists:
+
+```
+php artisan mezzanine:user:role --email=… --role=operator   # or --role=observer
+```
+
+It refuses a retired account and an unknown address, and, like the console, it refuses to demote the
+last active operator.
 
 ### The authenticator entry's name
 
@@ -243,15 +257,19 @@ who does not want that property leaves `MAIL_MAILER` unconfigured and the path s
 
 ### The admin console
 
-`/admin`, behind the same session + second factor as the dashboard. It carries **users** (create,
+`/admin`, behind the same session + second factor as the dashboard, **for operators only** — an
+observer is refused it with a `403` and the dashboard does not link it (card#9415). It carries **users** (create,
 edit, retire), **agents** (read seat state, the `mezzanine:retire` operator act, and the
 **retired seats** record — a removed seat's desk goes from the floor immediately, so the console is
 where *who retired it, when and why* lives, `card#9078`), **floors** (each room's Tiled map: how
 many desks it has and where they sit, `card#9085`) and the **building layout** (which rooms share a
 floor, what each floor is called, and where each room is drawn on a planned one, `card#9208`).
 Pinning a named seat to a chosen desk was ruled out on `card#9071` (2026-09-12) because it would
-store a fact `docs/design/FLOOR.md § 3.2` derives — and a desk object carrying **any** property is
-refused at the write so that a seat's name cannot arrive as one.
+store a fact `docs/design/FLOOR.md § 3.2` derives — and a desk object carrying any property but
+`reserved_for` is refused at the write so that a seat's name cannot arrive as one. `reserved_for`
+reserves one desk for a ROLE, such as `pm`, never for a seat (`card#11144`); the shipped default
+reserves its back-row right corner for `pm`, and the floor seats the room's one seat relaying
+`pm` there, or nobody.
 
 **A room's map is authored in Tiled and installed through the console** — export it as a JSON map
 (`.tmj`) with the tile layer format set to CSV, referencing a tileset this repository ships under
@@ -267,41 +285,69 @@ tile layers that differ and the desk count before and after — restores any one
 rather than by rewriting history, and exports any one as a file, which is the operator's own copy
 against a lost store. A removal is a revision too, so the map it removed is still there to restore,
 and a save that changes nothing is refused rather than recorded. ⚠ **What that does not give back is
-a review**: every authenticated user is an operator, so no second person stands between a save and
+a review**: any operator can save, and no second person stands between a save and
 every viewer, and until the floor's renderer can preview a document before it is saved the restore
 is what stands in its place.
 
-**Every account that can reach the console is an operator** — there are no roles, because this
-application has one class of user. ▶ **The trigger that reopens that decision, stated so it is a
-decision and not drift: the first time an account must exist that may NOT administer other
-accounts.** At that point the console's route group needs a real authorization layer;
-`server/routes/admin.php` carries the same trigger beside the middleware it would change.
+**An account is an observer or an operator** (card#9415). An observer reads everything the floor,
+the lobby, the drill-down and the fleet REST endpoints show, for every install; an operator also
+opens this console and, once they exist, the per-desk write controls. The console's **users** module
+shows each account's role and changes it. It refuses to make the last active operator an observer,
+and to retire it, because an install with no operator cannot be administered from the web; make
+another account an operator first. Every account that existed before this change is an operator.
+▶ This replaced card#9070's D3, "every authenticated user is an operator", whose stated trigger —
+the first time an account must exist that may NOT administer other accounts — fired on 2026-09-13
+with the operator's ruling on card#9415. `server/routes/admin.php` carries the same account beside
+the middleware.
 
 ⛔ **There is no "add an agent" and no "delete a user", and both absences are deliberate.** A seat
 exists because it *reported* (`docs/design/FLOOR.md § 3.4`); an account stops working by being
 retired, and its record survives so that everything it did still resolves.
 
+### The board card on a desk
+
+A desk's task title comes from the seat's own telemetry until the board integration is configured;
+then a kanban card assigned to the seat's board user takes precedence, with its `card#N` reference
+(`docs/design/BOARD-TASK.md`, which owns every rule below). Three steps turn it on, and each is the
+operator's:
+
+1. **Issue a read-scoped token** at the kanban board for this server — its own token, not any agent's.
+2. **Set the three keys in `server/.env`** and refresh the config cache: `BOARD_API_BASE` (https, no
+   trailing slash, e.g. `https://<kanban-host>/api/v3`), `BOARD_API_TOKEN`, and `BOARD_IDS` (a
+   comma-separated list of board ids). With `BOARD_IDS` empty the poller does nothing.
+3. **Map each seat to its board user:**
+
+```sh
+php artisan mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<board user id>
+php artisan mezzanine:seat-board-user --seat=<install>/<seat> --clear
+```
+
+`mezzanine:board-poll` then runs every five minutes from the existing `schedule:run` crontab entry,
+so `bin/supervision.sh` needs no change. A desk shows the most recently updated card assigned to its
+board user; a board user can be mapped to one seat at a time, and retiring a seat frees its board
+user. If the board stops answering, each board title keeps showing for 30 minutes and then gives way
+to the telemetry title, marked degraded. `GET /api/fleet/health` counts polls in `board_poll_ok` and
+`board_poll_failed`, and the server log names the failure class of each failed poll.
+
 ## Licensing and attribution
 
 MIT (see `LICENSE`). Mezzanine's floor derives from prior open-source work and ships
-`docs/ATTRIBUTION.md` naming every upstream. Office tiles are CC0. **No commercially-licensed
-assets are vendored here.**
+`docs/ATTRIBUTION.md` naming every upstream and every asset. **No commercially-licensed assets are
+vendored here.**
 
-The office tiles are Kenney's **Furniture Kit** (CC0), and they are a **bridge, not the
-destination**: the operator chose them on 2026-09-12 explicitly as a stand-in for first-party
-vector art, and being pre-rendered raster they do not meet the resolution-independence the ratified
-art direction requires (`docs/design/FLOOR.md § 10.4`). `resources/floor/LINEAGE.md` records the
-terms as read at the source, the downloaded archive's hash, what was curated and what was
-deliberately not taken — including the pack's 3D sources, which the asset allowlist refuses
-outright.
+The room is **first-party**: each floor is drawn in a THEME, a module in `resources/floor/themes/` that
+draws the wall, the windows, the floor, the scenery and every desk's furniture as vector SVG
+(`docs/design/FLOOR.md § 10.6`, card#11046), and the house theme is the room the operator chose. The CC0
+tiles that stood in for it from 2026-09-12 (Kenney's Furniture Kit, a bridge chosen explicitly as a
+stand-in) left the tree when it landed; their record stays in git and in `docs/PLAN.md § 0`'s D-07
+appends.
 
-The character generator is a **port** of munder-difflin's (MIT), at a pinned commit:
-`resources/characters/LINEAGE.md` records the upstream, the commit, the reproduced MIT notice,
-and — the part that makes it a port rather than a fork — what was deliberately not taken and
-why. **Its pixel art is interim** — the operator ratified a high-resolution, whimsical, modern
-art direction on 2026-08-26/27 (`docs/design/FLOOR.md § 10.4`); what the port bought and keeps
-is the **seed machinery**, so a seat's appearance is a pure function of `(install_id, seat_id)`
-and looks the same on every browser with nothing stored.
+The characters are **first-party**: original animal and vegetable creatures drawn by the code in
+`resources/characters/` as vector SVG (`docs/design/FLOOR.md § 10.2`, card#11046), replacing the
+interim pixel people that came with an earlier port of munder-difflin's generator — that port left the
+tree whole, and its record stays in git and in `docs/PLAN.md § 0`'s D-07 appends. A seat's appearance
+is a pure function of `(install_id, seat_id)`, so it looks the same on every browser with nothing
+stored.
 
 Two CI gates enforce the licence claim rather than leaving it to discipline: **every asset
 needs a provenance row** — hash, SPDX from a closed allowlist, and an `origin` of `first-party`

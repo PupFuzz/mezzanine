@@ -207,7 +207,7 @@ class EveryStateIsLegibleWithoutMotionTest extends TestCase
     {
         // `idle` given `working`'s own pose, glyph and monitor — every static field — so the only thing
         // left between them is A3's loop against A6's.
-        $collapsing = $this->plantedDesk(
+        $collapsing = $this->plantedPoses(
             "    idle: { pose: 'asleep', glyph: 'asleep', lighting: 'full', monitor: 'dimmed' },",
             "    idle: { pose: 'at-keyboard', glyph: 'working', lighting: 'full', monitor: 'on' },",
         );

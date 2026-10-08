@@ -1,6 +1,6 @@
 /**
  * The probe the PHP suite drives the camera's PAGE WIRE through — `wire/camera-view.js` (how a page
- * shows the camera: at once, or as a glide), `wire/camera-gestures.js` (the wheel and the drag) and
+ * shows the camera: at once, or as a glide), `wire/camera-gestures.js` (the wheel, the drag, the pinch and Safari's `gesture*` pinch) and
  * `wire/camera-keys.js` (the keyboard and the zoom buttons) — under `node`, with a stubbed frame clock
  * and stand-in elements. No DOM, no network.
  *
@@ -16,7 +16,11 @@
  *    `{ "op": "frame", "ms" }` — the clock moves `ms` and every frame requested so far runs;
  *    `{ "op": "show" }` — `show(OTHER)`; `{ "op": "glide_other", "ms" }` — `glideTo(FROM, OTHER, …)`.
  *  · `{ "gestures": [event, …], "framed"? }` — `cameraGestures()` on a stand-in element whose box is
- *    at (10, 20), with acts that record their arguments and a camera that frames a scene — or, with
+ *    at (10, 20), with acts that record their arguments — the wheel's two, `pan` and `zoom`, answering
+ *    that they consumed the event, as a framed camera's do off the edge; with `"pan_consumed": false`
+ *    the pan answers that it did not, as at an edge (card#11045 Q3); with `"riding": true` the wheel's acts and
+ *    the pinch answer the camera a lobby mid-ride holds, `{ "act": "held" }`, the wheel's consuming the event
+ *    (card#11045 PR-C) — and a camera that frames a scene — or, with
  *    `"framed": false`, frames nothing (`bounds: null`, the uncomposed lobby's). Each event is
  *    `{ "type", …the event's own members }`, dispatched cancelable — except `{ "type": "reframe",
  *    "framed": bool }`, which dispatches nothing: the camera frames a scene, or nothing, from then on
@@ -25,10 +29,10 @@
  *    buttons, with acts that record their arguments and the same camera. Each event is `{ "type",
  *    …members }`, dispatched cancelable on the drawing — or, with `"on": "zoom_in"` / `"zoom_out"`, on
  *    that button; `reframe` as above.
- *  · `{ "offer": [bool, …] }` — `offerKeys()` on a stand-in drawing and three stand-in buttons (the zoom
- *    buttons and the page's framing control), each starting withdrawn as both pages' markup does, once per
- *    entry with a camera that frames a scene (`true`) or nothing (`false`), logging after each whether
- *    each button is hidden, the drawing's `aria-keyshortcuts` and `tabindex` (`null` when it has none), and
+ *  · `{ "offer": [bool, …] }` — `offerKeys()` on a stand-in drawing and four stand-ins (the zoom buttons,
+ *    the page's framing control and its gesture hint), each starting withdrawn as both pages' markup does,
+ *    once per entry with a camera that frames a scene (`true`) or nothing (`false`), logging after each
+ *    whether each is hidden, the drawing's `aria-keyshortcuts` and `tabindex` (`null` when it has none), and
  *    `writes` — how many writes `offerKeys()` has made to the drawing and the buttons so far.
  * stdout — JSON: `{ "log": [ … ] }` — for `view`, each camera applied, named `from` / `to` / `other`
  * or `between`, and each `done` run, in order; for `gestures` and `keys`, each act, show, pointer
@@ -140,7 +144,7 @@ if (payload.view !== undefined) {
             },
         };
     };
-    const buttons = { zoomIn: button(), zoomOut: button(), fit: button() };
+    const buttons = { zoomIn: button(), zoomOut: button(), fit: button(), hint: button() };
 
     for (const framed of payload.offer) {
         offerKeys(element, buttons, { bounds: framed ? { x: 0, y: 0, w: 1600, h: 2000 } : null });
@@ -149,6 +153,7 @@ if (payload.view !== undefined) {
             zoom_in_hidden: buttons.zoomIn.hidden,
             zoom_out_hidden: buttons.zoomOut.hidden,
             fit_hidden: buttons.fit.hidden,
+            hint_hidden: buttons.hint.hidden,
             keyshortcuts: attributes.get('aria-keyshortcuts') ?? null,
             tabindex: attributes.get('tabindex') ?? null,
             writes,
@@ -163,8 +168,14 @@ if (payload.view !== undefined) {
     element.setPointerCapture = (id) => log.push({ capture: id });
     element.releasePointerCapture = (id) => log.push({ release: id });
 
+    // A lobby mid-ride (`"riding": true`) holds its camera: the wheel's acts and the pinch answer the camera
+    // they hold, `{ act: 'held' }`, the wheel's consuming the event (`lobby/lobby-screen.js`'s ride-hold).
+    const held = { act: 'held' };
+    const riding = payload.riding === true;
     const acts = {
-        wheel: (point, delta) => ({ act: 'wheel', point, delta }),
+        pan: (delta) => ({ camera: riding ? held : { act: 'pan', delta }, consumed: riding || payload.pan_consumed !== false }),
+        zoom: (point, delta) => ({ camera: riding ? held : { act: 'zoom', point, delta }, consumed: true }),
+        pinch: (from, to, factor) => (riding ? held : { act: 'pinch', from, to, factor }),
         zoomStep: (notches) => ({ act: 'zoomStep', notches }),
         drag: (dx, dy) => ({ act: 'drag', dx, dy }),
     };
@@ -174,7 +185,7 @@ if (payload.view !== undefined) {
     const camera = () => ({ bounds });
 
     if (payload.gestures !== undefined) {
-        cameraGestures(element, { wheel: acts.wheel, drag: acts.drag, camera }, show);
+        cameraGestures(element, { pan: acts.pan, zoom: acts.zoom, pinch: acts.pinch, drag: acts.drag, camera }, show);
     } else {
         cameraKeys(element, { zoomIn: targets.zoom_in, zoomOut: targets.zoom_out }, { zoomStep: acts.zoomStep, drag: acts.drag, camera }, show);
     }

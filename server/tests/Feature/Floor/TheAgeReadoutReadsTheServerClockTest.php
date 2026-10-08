@@ -111,7 +111,7 @@ class TheAgeReadoutReadsTheServerClockTest extends TestCase
         }
     }
 
-    /** GREEN — every seat-clock timestamp is a labelled claim in the seat's own digits, never an age. */
+    /** GREEN — every seat-clock timestamp is a labelled claim, never an age. */
     public function test_every_seat_clock_instant_renders_as_a_labelled_claim(): void
     {
         foreach (self::RUNS as $run) {

@@ -51,6 +51,16 @@ trait DrivesAShippedClientModule
         parent::tearDown();
     }
 
+    /**
+     * The viewer's zone the probe runs in — `node`'s `TZ`, which is what `public/js/wire/clock.js` shows
+     * every instant in, as a browser's own zone is on a page. `null` keeps the suite's UTC
+     * (`tests/bootstrap.php`); a test that is about a viewer elsewhere names the zone (card#9446).
+     */
+    protected function probeZone(): ?string
+    {
+        return null;
+    }
+
     /** The shipped client tree — every screen's modules, and the `wire/` they share. */
     protected function jsRoot(): string
     {
@@ -106,10 +116,14 @@ trait DrivesAShippedClientModule
     {
         $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
 
+        $zone = $this->probeZone();
+
         $process = proc_open(
             ['node', $script ?? $this->probeScript(), $moduleDir ?? $this->moduleDir()],
             $descriptors,
             $pipes,
+            null,
+            $zone === null ? null : ['TZ' => $zone] + getenv(),
         );
 
         if (! is_resource($process)) {

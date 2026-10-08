@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Fleet;
 
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\Sweep\SweepTestCase;
 
@@ -31,11 +30,10 @@ use Tests\Feature\Sweep\SweepTestCase;
  * columns directly, because the command *is* the mechanism under test". `retire()` is
  * `SweepTestCase`'s helper and runs `mezzanine:retire` with its three real arguments.
  *
- * ⚠ THE MAPPING IS SEEDED BY AN UPDATE AND THAT IS NOT THE SAME COMPROMISE. `mezzanine:seat-board-user`
- * is DESIGN ONLY — the ruling says building the poller and its mapping command is a separate pull
- * — so there is no producer to drive here. What is under test is the RETIREMENT act; its input is
- * a store state, and seeding a store state is what a fixture is. The moment that command exists,
- * this seeding is what should reach for it.
+ * THE MAPPING IS MADE BY `mezzanine:seat-board-user`, the column's only writer (card#11289), and
+ * the input row is then seeded as a fixture: what is under test is the RETIREMENT act, its input is
+ * a store state, and a row the poller would write is that state. `Tests\Feature\Board\
+ * AtD4_8EveryWayAMappingLeavesClearsTheRowTest` drives the same act from a real poll.
  */
 class RetirementClearsTheBoardUserMappingTest extends SweepTestCase
 {
@@ -74,16 +72,12 @@ class RetirementClearsTheBoardUserMappingTest extends SweepTestCase
         // The control: while the retired-to-be seat holds the mapping, the replacement CANNOT
         // have it. Without this the assertion below would pass against a store with no unique
         // key at all, which is a check that cannot fail.
-        try {
-            $this->map($replacement, self::BOARD_USER);
-            $this->fail('uq_seat_board_user did not refuse a second seat for one board user');
-        } catch (QueryException) {
-            // expected: § 6.4's UNIQUE key, doing its job
-        }
+        $this->assertFalse($this->map($replacement, self::BOARD_USER),
+            'uq_seat_board_user did not refuse a second seat for one board user');
 
         $this->retire();
 
-        $this->map($replacement, self::BOARD_USER);
+        $this->assertTrue($this->map($replacement, self::BOARD_USER));
 
         $this->assertSame(self::BOARD_USER, (int) DB::table('seats')->where('id', $replacement)->value('board_user_id'));
     }
@@ -108,12 +102,22 @@ class RetirementClearsTheBoardUserMappingTest extends SweepTestCase
     }
 
     /**
-     * Seed what `mezzanine:seat-board-user` and `mezzanine:board-poll` will write when they are
-     * built: the mapping, and one input row for it.
+     * The mapping, by its command, and one input row for it in the shape `mezzanine:board-poll`
+     * writes.
+     * Answers whether the command accepted the mapping; a refused one writes no row.
      */
-    private function map(int $seatRef, int $boardUser): void
+    private function map(int $seatRef, int $boardUser): bool
     {
-        DB::table('seats')->where('id', $seatRef)->update(['board_user_id' => $boardUser]);
+        $seat = DB::table('seats')->join('installs', 'installs.id', '=', 'seats.install_ref')
+            ->where('seats.id', $seatRef)->first(['installs.install_id', 'seats.seat_id']);
+
+        $code = $this->artisan('mezzanine:seat-board-user', [
+            '--seat' => $seat->install_id.'/'.$seat->seat_id, '--board-user' => (string) $boardUser,
+        ])->run();
+
+        if ($code !== 0) {
+            return false;
+        }
 
         DB::table('seat_board_task')->insert([
             'seat_ref' => $seatRef,
@@ -123,5 +127,7 @@ class RetirementClearsTheBoardUserMappingTest extends SweepTestCase
             'card_updated_at' => '2026-08-26 11:00:00.000',
             'observed_at' => '2026-08-26 11:59:00.000',
         ]);
+
+        return true;
     }
 }

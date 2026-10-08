@@ -41,43 +41,47 @@
  * someone else's floor needs the very document that failed".
  *
  * ⛔ THE ROOM DRAWING IS THIS FRAME's `scene` (Appendix B row 14, card#7341 step 11). Once the page
- * has handed this screen the scene's inputs (`sceneInputs()` — the furniture box, the desk sprite,
- * its measurer and the character's size) every frame carries `floor/scene.js`'s model of what is
+ * has handed this screen the scene's inputs (`sceneInputs()` — the furniture box, its measurer, the
+ * character's size and the themes the page holds) every frame carries `floor/scene.js`'s model of what is
  * drawn where, built from this frame, the maps and tilesets the client holds, the assets the painter
  * reported failed (`assetsFailed()`) and the § 6.2 rows this very render wrote. The scene's F21
  * notices join the frame's, and its F14 verdict is the status strip's `art` line — one strip, the
  * step-8 module's, told one more thing.
  *
- * ⛔ THE CAPABILITY FLOOR AND THE CAMERA ARE THIS SCREEN's TOO (Appendix B row 15, § 4.5). Below § 12's
- * viewport floor — the size read from the viewport the page supplies (`resize()`), and in the harness
- * from the fixture — a frame is the LIST VIEW (`capability: 'list'`): no scene, no camera, every desk
- * as text. At or above it the frame carries the scene and the camera (`wire/camera.js`) framed on the
- * scene's whole extent, which is the floor AND the overflow strip (card#7965). The camera is held
+ * ⛔ THE CAMERA IS THIS SCREEN's TOO (Appendix B row 15, § 4.5), AND THE ROOM IS DRAWN AT EVERY SIZE.
+ * There is no minimum viewport and no substitute view (§ 4.5's first rule, the operator's ruling of
+ * 2026-10-01 on card#7341): whatever the drawing surface the page supplies (`resize()`), and in the
+ * harness the fixture's, every frame carries the scene and the camera (`wire/camera.js`) framed on the
+ * scene's whole extent, which is the floor AND the overflow strip (card#7965), and a surface smaller
+ * than the room is one the viewer pans and zooms across. The camera is held
  * HERE, beside the episode state, because the render that must leave it alone is this module's: every
  * `draw()` hands the camera the scene's extent and the camera keeps the viewer's zoom and pan (the
- * first framing alone fits), and the viewer's acts — `wheel()`, `zoomStep()`, `drag()`, `fitFloor()`
+ * first framing alone fits), and the viewer's acts — `pan()`, `zoom()`, `pinch()`, `zoomStep()`, `drag()`, `fitFloor()`
  * — move the camera and nothing else: they drain nothing, draw nothing and write no animation-log
  * row. A navigation act is never state (§ 4.5), and AT-D3-21 reds the day one of them reaches the log.
  */
 
 import { Building } from '../wire/building.js';
 import { DeskFloor } from '../desk/desk-floor.js';
-import { heldRendering } from '../wire/animation-set.js';
+import { LOOP_FPS, heldRendering } from '../wire/animation-set.js';
 import { DrillDownPanel } from '../drilldown/drilldown-panel.js';
 import { coordModel } from '../coord/coord-model.js';
 import { correctedNowMs } from '../wire/duration.js';
+import { floorAgeReadouts } from '../wire/age-readout.js';
 import { floors, heldBody, roomsOf } from '../lobby/lobby-model.js';
 import { buildJoin } from './coord-join.js';
 import { statusStrip } from './status-strip.js';
 import { failureRender } from '../wire/failure-render.js';
-import { buildScene } from './scene.js';
-import { createCamera, fit, frameOn, glideMs, panBy, resize, sizeOf, unframe, wheel, zoomStep } from '../wire/camera.js';
+import { buildScene, threshold } from './scene.js';
+import { EffectsInFlight, inboundDesk } from './in-flight.js';
+import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, zoomStep } from '../wire/camera.js';
 import { TilesetLoader, tilesetUrl } from './tileset.js';
 import {
     assignSlots,
     backWallBand,
     mapDesks,
     mapGrid,
+    mapReservation,
     placeRooms,
     RoomClock,
 } from './floor-layout.js';
@@ -89,6 +93,31 @@ import {
  */
 export function shortNotice(count, installId, roomsOnFloor) {
     const bare = `floor map is short ${count} desks`;
+
+    return roomsOnFloor > 1 ? `${bare} — ${installId}` : bare;
+}
+
+/**
+ * § 5.5's reserved-desk line and § 9 F22 (card#11144): the room's reserved desk seats nobody, either
+ * because no seat relays its role or because two or more do — named by its Tiled `id`, never by
+ * § 3.2's slot index, and the seats by their `seat_id` in § 3.2's `order`. `null` when the desk seats
+ * its one holder, which is the case with nothing to say. Bare on a one-room floor and suffixed with
+ * the room on a floor of several, as `shortNotice()` is and for its reason: *which room's desk* is
+ * the question.
+ *
+ * @param {{reserved: {id: number|null, role: string}|null, eligible: list<string>}} assignment `assignSlots()`'s answer for the room
+ */
+export function reservationNotice(assignment, installId, roomsOnFloor) {
+    const { reserved, eligible } = assignment;
+
+    if (reserved === null || eligible.length === 1) {
+        return null;
+    }
+
+    const head = `reserved for \`${reserved.role}\` (id ${reserved.id})`;
+    const bare = eligible.length === 0
+        ? `${head} — no seat holds that role`
+        : `${head} — ${eligible.length} seats hold that role: ${eligible.map((key) => `\`${splitKey(key)[1]}\``).join(', ')}`;
 
     return roomsOnFloor > 1 ? `${bare} — ${installId}` : bare;
 }
@@ -114,19 +143,6 @@ export function layoutFailureStatement(status) {
     return status === null
         ? 'the building layout could not be loaded — no response'
         : `the building layout could not be loaded — HTTP ${status}`;
-}
-
-/**
- * § 12's *Floor viewport floor*: below it in either dimension the route renders the list view, at or
- * above it the drawn floor under the camera (§ 4.5's first rule). `TheCameraMovesTheViewerAndNeverTheFleetTest`
- * enters the route at the figure § 12 states and one pixel under it in each dimension, so this copy
- * reds there the day it and the document part.
- */
-export const VIEWPORT_FLOOR = Object.freeze({ width: 1280, height: 800 });
-
-/** § 4.5's capability floor over a viewport in CSS px: `'floor'` at or above it, else `'list'`. */
-export function capabilityOf(viewport) {
-    return viewport.width >= VIEWPORT_FLOOR.width && viewport.height >= VIEWPORT_FLOOR.height ? 'floor' : 'list';
 }
 
 /** § 9 F17: what the floors a screen still holds are labelled while the last request failed. */
@@ -226,13 +242,13 @@ export class FloorScreen {
     /** The tapped log — the one AT-D3-1 reads, with this render's rows kept for the scene. */
     #tap;
 
-    /** The tilesets the held maps name, and the desk sprite's (`floor/tileset.js`). */
+    /** The tilesets the held maps name (`floor/tileset.js`). */
     #tilesets;
 
     /**
-     * The scene's inputs no module may import (Appendix B row 14) — `{ box, desk_sprite, measure,
-     * character }` — or `null` until the page (or the harness) supplies them. With none, a frame
-     * carries no scene.
+     * The scene's inputs no module may import (Appendix B row 14) — `{ box, measure, character,
+     * themes }` — or `null` until the page (or the harness) supplies them. With none, a frame carries no
+     * scene.
      */
     #sceneInput = null;
 
@@ -245,8 +261,17 @@ export class FloorScreen {
     /** The last frame a scene was built over — what the 1 s tick re-reads (`sceneView`). */
     #lastFrame = null;
 
-    /** The viewer's viewport in CSS px — what § 4.5's capability floor reads (Appendix B row 15). */
-    #viewport;
+    /** The last frame `draw()` returned — what a walk's paint-only refresh re-paints (`walkEnded()`). */
+    #lastDrawn = null;
+
+    /** § 6.2's walk note items 6 and 8: every multi-frame edge drawing still running, and the walks. */
+    #inFlight = new EffectsInFlight(1000 / LOOP_FPS);
+
+    /** The timer that ends the next walk in flight with a paint-only refresh, or `null`. */
+    #walkTimer = null;
+
+    /** Who is handed a walk's paint-only refresh — the page's paint, the harness's record. */
+    #onRefresh = null;
 
     /** The camera (`wire/camera.js`) — the viewer's head, never the fleet's; framed while the floor is drawn. */
     #camera;
@@ -256,11 +281,10 @@ export class FloorScreen {
      * @param {object} building a `wire/building.js` `Building` — the layout and each room's map
      * @param {{now: function(): number}} clock the browser's own clock
      * @param {object} log `wire/animation-log.js`'s `createAnimationLog()`
-     * @param {object} [options] `{ floor, seat, reduce, local_time, viewport, surface }` —
+     * @param {object} [options] `{ floor, seat, reduce, local_time, surface }` —
      *        `local_time` reads the VIEWER's civil time and exists because a build host has one time
-     *        zone and § 4.2's sky has four phases; the viewer's own `Date` is the default. `viewport`
-     *        (required) is the viewer's viewport in CSS px, `surface` the drawing's (the viewport's
-     *        own size when not stated).
+     *        zone and § 4.2's sky has four phases; the viewer's own `Date` is the default. `surface`
+     *        (required) is the drawing's size in CSS px, any positive size (§ 4.5).
      * @param {TilesetLoader} [tilesets] the tilesets' loader, over the page's own `fetch`
      */
     constructor(client, building, clock, log, options = {}, tilesets = null) {
@@ -275,17 +299,15 @@ export class FloorScreen {
         this.#segment = options.floor ?? null;
         this.#seatSegment = options.seat ?? null;
         this.#panel = new DrillDownPanel(client);
-        this.#viewport = sizeOf(options.viewport);
-        this.#camera = createCamera(options.surface ?? this.#viewport);
+        this.#camera = createCamera(options.surface);
         this.#room = new RoomClock(clock, options.local_time);
     }
 
     /**
-     * The viewer's viewport, and the drawing surface inside it, changed size (Appendix B row 15). The
-     * next render decides the capability floor again; a camera still at fit stays at fit.
+     * The drawing surface changed size (Appendix B row 15). A camera still at fit stays at fit; one the
+     * viewer moved keeps its zoom and its centre, clamped to the floor (`wire/camera.js`'s `resize()`).
      */
-    resize(viewport, surface = viewport) {
-        this.#viewport = sizeOf(viewport);
+    resize(surface) {
         this.#camera = resize(this.#camera, surface);
     }
 
@@ -295,14 +317,43 @@ export class FloorScreen {
     }
 
     /**
-     * A wheel event — a notch, a trackpad's scroll or a pinch — at a point on the drawing surface: a
-     * zoom about that point in proportion to the scroll (§ 4.5; `wire/camera.js`'s `wheel()`).
+     * A plain wheel event — a mouse's notch or a trackpad's two-finger scroll: a pan, the view moving the
+     * way the page would scroll, and whether it consumed the event — not at an edge the view can pass no
+     * further the wheel's way, where the page scrolls on (§ 4.5; `wire/camera.js`'s `pan()`).
+     *
+     * @param {{deltaX?: number, deltaY?: number, deltaMode?: number}} delta
+     * @returns {{camera: object, consumed: boolean}}
+     */
+    pan(delta) {
+        const { camera, consumed } = pan(this.#camera, delta);
+
+        this.#camera = camera;
+
+        return { camera, consumed };
+    }
+
+    /**
+     * A Ctrl+wheel event — a mouse's Ctrl+notch or a trackpad's pinch — at a point on the drawing surface:
+     * a zoom about that point in proportion to the scroll (§ 4.5; `wire/camera.js`'s `zoom()`).
      *
      * @param {{x: number, y: number}} point
-     * @param {{deltaY: number, deltaMode?: number, ctrlKey?: boolean}} delta `ctrlKey` marks a pinch
+     * @param {{deltaY: number, deltaMode?: number}} delta
+     * @returns {{camera: object, consumed: boolean}}
      */
-    wheel(point, delta) {
-        this.#camera = wheel(this.#camera, point, delta);
+    zoom(point, delta) {
+        const { camera, consumed } = zoom(this.#camera, point, delta);
+
+        this.#camera = camera;
+
+        return { camera, consumed };
+    }
+
+    /**
+     * One step of a touch screen's two-finger pinch: a zoom by `factor` about the fingers' midpoint, which
+     * moved from `from` to `to` (§ 4.5; `wire/camera.js`'s `pinch()`).
+     */
+    pinch(from, to, factor) {
+        this.#camera = pinch(this.#camera, from, to, factor);
 
         return this.#camera;
     }
@@ -385,7 +436,16 @@ export class FloorScreen {
      * readout, and nothing else"), read from what the last render left and draining nothing.
      */
     panelView(floorName = null) {
-        return this.#panel.view(this.#clock.now(), { floor: floorName });
+        return this.#panel.view(this.#clock.now(), this.#panelFacts(floorName));
+    }
+
+    /**
+     * What the panel's model reads beside the seat: the room its header names, and the two facts the
+     * desk floor draws every desk's motion under — § 9 F6's stilled floor and § 6.4's reduced motion —
+     * read from the desk floor and its animation set, so the panel's *moving* / *still* is the desk's.
+     */
+    #panelFacts(floorName) {
+        return { floor: floorName, stilled: this.#desks.stilled, reduce: this.#set.reduce };
     }
 
     /** The desk floor this screen runs — the age ticker's population, and the frame's source. */
@@ -394,7 +454,7 @@ export class FloorScreen {
     }
 
     /**
-     * The scene's inputs (Appendix B row 14): `{ box, desk_sprite, measure, character }`. The page
+     * The scene's inputs (Appendix B row 14): `{ box, measure, character, themes }`. The page
      * supplies them once its imports of the asset route's modules have answered; the harness from
      * its fixture. The next render draws the scene.
      */
@@ -403,8 +463,9 @@ export class FloorScreen {
     }
 
     /**
-     * § 9 F14: the painter reports each asset it could not draw — a tile's image, the desk sprite,
-     * a seat's character (`character:<install>/<seat>`), a tileset. Held for the page's life, because
+     * § 9 F14: the painter reports each asset it could not draw — a theme document's unit
+     * (`theme:<name>/…`, FLOOR.md § 10.6 item 8), a seat's character (`character:<install>/<seat>`), a
+     * tileset; and the page each art module whose import was rejected. Held for the page's life, because
      * F14's recovery is *retry on reload*. An asset failure is not a state change: it moves no desk's
      * `render_state` and writes no animation row (AT-D3-19).
      */
@@ -495,7 +556,7 @@ export class FloorScreen {
 
     /**
      * Appendix B row 14's tileset reader, fed: every tileset a held map or the floor's hallway names
-     * by `source`, and the desk sprite's — each fetched once (`floor/tileset.js`'s loader).
+     * by `source` — each fetched once (`floor/tileset.js`'s loader).
      */
     async #loadTilesets() {
         const target = this.#target();
@@ -512,7 +573,7 @@ export class FloorScreen {
             .filter((entry) => typeof entry?.source === 'string')
             .map((entry) => tilesetUrl(entry.source)));
 
-        await this.#tilesets.load([tilesetUrl(this.#sceneInput.desk_sprite.tileset), ...urls]);
+        await this.#tilesets.load(urls);
     }
 
     /**
@@ -584,19 +645,16 @@ export class FloorScreen {
         this.#tap.take();
 
         const frame = this.#drawFrame(journal);
-        const capability = capabilityOf(this.#viewport);
         const rows = this.#tap.take();
-        // § 4.5: below the viewport floor the route renders the list view — no map, so no scene and
-        // nothing framed, and the floor that comes back comes back at fit.
-        const scene = capability === 'floor' ? this.#scene(frame, rows) : null;
+        // § 4.5: the room is drawn at every surface size — there is no size below which a frame
+        // carries no scene.
+        const scene = this.#scene(frame, rows, journal);
 
         // A frame with nothing to draw — no floor composed yet, the art not yet answered, or a floor
         // with nothing measurable on it (no map held and no desk, where the scene's extent is `null`,
         // as `floor-layout.js`'s own extent is: § 4.6 mints no zero-sized box) — leaves the camera as
-        // it stands: only the list view unframes it.
-        if (capability === 'list') {
-            this.#camera = unframe(this.#camera);
-        } else if (scene !== null && scene.extent !== null) {
+        // it stands.
+        if (scene !== null && scene.extent !== null) {
             this.#camera = frameOn(this.#camera, scene.extent);
         }
 
@@ -611,30 +669,152 @@ export class FloorScreen {
                 art_failed: scene?.art_failed === true || (this.#sceneInput === null && this.#failed.size > 0),
             }),
             scene,
-            capability,
             camera: this.#camera,
             // § 9 F21's notices — the scene's, from the maps it drew — beside the floor's own.
             notices: Object.freeze([...frame.notices, ...(scene?.notices ?? [])]),
         };
 
-        return Object.freeze({ ...drawn, ...this.#drillDown(drawn) });
+        this.#lastDrawn = Object.freeze({ ...drawn, ...this.#drillDown(drawn) });
+
+        return this.#lastDrawn;
     }
 
-    /** Appendix B row 14's scene over one frame, or `null` with no inputs or no floor to draw. */
-    #scene(frame, rows) {
-        if (this.#sceneInput === null || frame.floor === null) {
+    /**
+     * Appendix B row 14's scene over one frame, or `null` with no inputs or no floor to draw — with
+     * § 6.2's effects in flight laid over it (`#overlay()`). This is a RENDER, so it is the one place a
+     * walk is cancelled: the holder asks the walk note's item 6 of it, over this render's journal.
+     */
+    #scene(frame, rows, journal = []) {
+        const drawable = this.#sceneInput !== null && frame.floor !== null;
+        const plain = drawable ? buildScene(frame, this.#sceneDocs(frame, rows)) : null;
+
+        if (drawable) {
+            this.#lastFrame = frame;
+        }
+
+        const now = this.#clock.now();
+
+        // Every render reaches the holder, a render that draws no scene included: it drained its journal
+        // once, so a touch it carries is tested now or never. With no scene there is no anchor for any
+        // seat, so item 6's anchor clause cancels every walk in flight — there is no floor to finish it on.
+        this.#inFlight.render(plain?.effects ?? [], now, {
+            journal,
+            anchors: new Map(Object.entries(plain?.anchors ?? {})),
+            threshold: threshold(plain?.band),
+            unconfirmed: (key) => frame.desks?.desks?.[key]?.unconfirmed ?? null,
+            stilled: (frame.failure?.sign_in ?? null) !== null,
+        });
+        this.#armWalkEnd(now);
+
+        if (plain === null) {
             return null;
         }
 
-        const scene = buildScene(frame, this.#sceneDocs(frame, rows));
+        this.#anchors = new Map(Object.entries(plain.anchors));
 
-        if (scene !== null) {
-            this.#anchors = new Map(Object.entries(scene.anchors));
+        return this.#overlay(frame, plain, now);
+    }
+
+    /**
+     * A scene with the effects in flight on it: every one at its elapsed frame (item 8), the elevator's
+     * leaves from the walks' door frames (item 10), and each desk an A1 walker is still on its way to
+     * drawn as `in-flight.js`'s `inboundDesk()` draws it (item 4).
+     */
+    #overlay(frame, plain, now) {
+        const inbound = this.#inFlight.inbound(now);
+        let scene = plain;
+
+        if (inbound.size > 0) {
+            const desks = { ...frame.desks.desks };
+
+            for (const key of inbound) {
+                if (desks[key] !== undefined) {
+                    desks[key] = inboundDesk(desks[key]);
+                }
+            }
+
+            scene = buildScene({ ...frame, desks: { ...frame.desks, desks } }, this.#sceneDocs(frame, []));
         }
 
-        this.#lastFrame = frame;
+        return Object.freeze({
+            ...scene,
+            // The static forms this render's own rows drew (§ 6.4: frames 0 — a bead, a broadcast
+            // marker) are this paint's alone, as they always were; everything with frames to run is the
+            // holder's, this render's new ones included.
+            effects: Object.freeze([...plain.effects.filter((e) => !(e.frames > 0)), ...this.#inFlight.current(now)]),
+            doors: Object.freeze(this.#inFlight.doors(now)),
+        });
+    }
 
-        return scene;
+    /** One timer at a time, for the next walk in flight to end — a paint-only refresh, never a render. */
+    #armWalkEnd(now) {
+        const timers = this.#options.timers ?? null;
+
+        if (timers === null) {
+            return;
+        }
+
+        if (this.#walkTimer !== null) {
+            timers.cancel(this.#walkTimer);
+            this.#walkTimer = null;
+        }
+
+        const ms = this.#inFlight.nextWalkEnd(now);
+
+        if (ms !== null) {
+            this.#walkTimer = timers.after(ms, () => {
+                this.#walkTimer = null;
+
+                const frame = this.walkEnded();
+
+                if (frame !== null) {
+                    this.#onRefresh?.(frame);
+                }
+            });
+        }
+    }
+
+    /**
+     * A walk's last frame (§ 6.2's walk note item 4): the PAINT-ONLY refresh. It re-paints the frame the
+     * last render drew with the walks that have ended taken off it — an A1's desk drawing its current
+     * state — and it drains nothing, applies nothing, writes no animation-log row and fires no edge, so
+     * it is not a render (§ 2.5) and cancels no walk.
+     *
+     * What the last render drew is the FLEET's half of the frame only. The viewer's half has moved since
+     * without a render — the camera (§ 4.5: a pan, a zoom, a fit or a resize paints nothing), the route's
+     * seat and the drill-down a user closed — and so have the ages, which the 1 s tick re-reads without
+     * one. The refresh takes each of those as it stands now, as the tick does, so a walk's end never
+     * moves the viewer back to where the applying render left them and never winds an age back.
+     *
+     * @returns {object|null} the frame to paint, or `null` with nothing drawn yet
+     */
+    walkEnded() {
+        if (this.#lastDrawn === null || this.#lastFrame === null || this.#lastDrawn.scene === null) {
+            return null;
+        }
+
+        const now = this.#clock.now();
+        const desks = this.#desks.view(floorAgeReadouts(this.#desks.seats, this.#desks.clockOffsetMs, now));
+        const frame = { ...this.#lastFrame, desks };
+        const plain = buildScene(frame, this.#sceneDocs(frame, []));
+
+        this.#armWalkEnd(now);
+
+        this.#lastDrawn = Object.freeze({
+            ...this.#lastDrawn,
+            desks,
+            scene: plain === null ? null : this.#overlay(frame, plain, now),
+            camera: this.#camera,
+            seat: this.#seatSegment,
+            panel: this.panelView(this.#lastDrawn.floor?.name ?? null),
+        });
+
+        return this.#lastDrawn;
+    }
+
+    /** Who a walk's paint-only refresh is handed to (`startFloorScreen()`'s `draw`). */
+    onRefresh(fn) {
+        this.#onRefresh = fn;
     }
 
     /**
@@ -647,7 +827,10 @@ export class FloorScreen {
             return null;
         }
 
-        return buildScene({ ...this.#lastFrame, desks }, this.#sceneDocs(this.#lastFrame, []));
+        const frame = { ...this.#lastFrame, desks };
+        const plain = buildScene(frame, this.#sceneDocs(frame, []));
+
+        return plain === null ? null : this.#overlay(frame, plain, this.#clock.now());
     }
 
     /** What the scene reads beside a frame: the inputs, the documents held, and what failed. */
@@ -707,7 +890,7 @@ export class FloorScreen {
 
         return {
             seat: this.#seatSegment,
-            panel: this.#panel.view(this.#clock.now(), { floor: frame.floor?.name ?? null }),
+            panel: this.#panel.view(this.#clock.now(), this.#panelFacts(frame.floor?.name ?? null)),
             notices: Object.freeze(notices),
         };
     }
@@ -830,12 +1013,12 @@ export class FloorScreen {
             const seats = seatsByRoom.get(placed.install_id) ?? [];
             const mapless = state.state === null || state.state.failure !== null;
             const slots = mapless ? [] : mapDesks(state.map);
-            const assignment = assignSlots(seats, slots.length);
+            const assignment = assignSlots(seats, slots.length, mapReservation(slots));
 
             assignments.set(placed.install_id, assignment);
 
             // § 9 F16: with no map to draw, every desk is F14's placeholder "in a plain grid —
-            // nameplate, state label and badge cluster; every fact, no room". The ORDER is still
+            // every fact as F14 draws it, no room". The ORDER is still
             // § 3.2's own `(h, seat_id)` order, so a mapless room's desks are as stable across a
             // reload as a mapped room's — F16 costs the room, never the identity.
             const drawn = mapless
@@ -867,6 +1050,12 @@ export class FloorScreen {
                 roomNotices.push(mapFailureNotice(placed.install_id, state.state?.failure?.status ?? null));
             } else if (assignment.overflow.length > 0) {
                 roomNotices.push(shortNotice(assignment.overflow.length, placed.install_id, floor.rooms.length));
+            }
+
+            const reservation = reservationNotice(assignment, placed.install_id, floor.rooms.length);
+
+            if (reservation !== null) {
+                roomNotices.push(reservation);
             }
 
             // § 4.6: a room the fleet reports no seat for is drawn and LABELLED, never omitted — and
@@ -922,6 +1111,9 @@ export class FloorScreen {
                 // § 4.6's one rendering rule: `label ?? key`, decided once by `floors()` and read
                 // here rather than restated.
                 name: floor.name,
+                // § 4.6's `theme` (card#11046): the name the layout entry carries, or null — the scene
+                // resolves it against the theme registry (FLOOR.md § 10.6 item 5, § 9 F23).
+                theme: floor.theme ?? null,
             }),
             redirect: null,
             planned: placement.planned,
@@ -984,23 +1176,38 @@ export class FloorScreen {
      * some OTHER mover left) the departure that held the lowest slot: the stated approximation § 11
      * makes for an arrival's cascade, read from the other side. ⚠ The departure half of `cause` is
      * this step's reading — § 11's cell names the ARRIVING seat's key, and a departure has none.
+     *
+     * ⛔ AND A DELTA THAT CHANGES THE RESERVED DESK'S HOLDER IS THE THIRD DRIVER (§ 3.2, card#11144).
+     * A held seat's relayed `protocol_agent_role` changing on an applied delta can seat it at the
+     * reserved desk, walk it out of the desk, or make a second seat eligible so that the incumbent
+     * walks out (§ 9 F22); the seats whose chain the move reaches re-probe with it. Each of those
+     * moves is A16, and its `cause` is that delta's `state_version` — the wire message that made the
+     * change. The same change by a snapshot, a resync or an insert moves the desks with no row, as
+     * every snapshot apply does (§ 6.5). An arrival or a departure in the same render keeps its own
+     * cause for the desks it moved; the seat whose role changed names its own delta.
      */
     #displacements(assignments, journal, at) {
-        const arrived = new Set(journal
-            .filter((entry) => entry.t === 'seat.delta' && entry.outcome === 'applied')
-            .map((entry) => `${entry.install_id}/${entry.seat_id}`));
+        const applied = journal.filter((entry) => entry.t === 'seat.delta' && entry.outcome === 'applied');
+        const arrived = new Set(applied.map((entry) => `${entry.install_id}/${entry.seat_id}`));
+        // The last applied delta per key that changed the seat's relayed role — the only member the
+        // reserved desk's holder is a function of, besides the seat set.
+        const relayed = new Map(applied
+            .filter((entry) => entry.before?.protocol_agent_role !== entry.after?.protocol_agent_role)
+            .map((entry) => [`${entry.install_id}/${entry.seat_id}`, entry.state_version]));
         const announced = new Set(journal
             .filter((entry) => entry.t === 'seat.removed' && entry.cause !== 'snapshot')
             .map((entry) => `${entry.install_id}/${entry.seat_id}`));
 
         for (const [installId, assignment] of assignments) {
-            const before = this.#placed.get(installId) ?? null;
+            const placed = this.#placed.get(installId) ?? null;
 
-            this.#placed.set(installId, assignment.slots);
+            this.#placed.set(installId, { slots: assignment.slots, holder: assignment.holder, eligible: assignment.eligible });
 
-            if (before === null) {
+            if (placed === null) {
                 continue;
             }
+
+            const before = placed.slots;
 
             // The seats that arrived with a delta this journal carries, in § 3.2's order, and the
             // seats an announcement took off the floor, in the order they were placed.
@@ -1009,7 +1216,14 @@ export class FloorScreen {
                 .filter((key) => !assignment.slots.has(key) && announced.has(key))
                 .sort((a, b) => before.get(a) - before.get(b));
 
-            if (arrivals.length === 0 && departures.length === 0) {
+            // The held seats whose eligibility for the reserved desk an applied delta changed, in
+            // § 3.2's order — when the change moved the desk's holder.
+            const relays = placed.holder === assignment.holder
+                ? []
+                : assignment.order.filter((key) => before.has(key) && relayed.has(key)
+                    && placed.eligible.includes(key) !== assignment.eligible.includes(key));
+
+            if (arrivals.length === 0 && departures.length === 0 && relays.length === 0) {
                 continue;
             }
 
@@ -1022,9 +1236,13 @@ export class FloorScreen {
             for (const [key, slot] of assignment.slots) {
                 if (before.has(key) && before.get(key) !== slot) {
                     const [install_id, seat_id] = splitKey(key);
-                    const cause = arrivals.length > 0
-                        ? displacementCause(before.get(key), holder, arrivals)
-                        : departureCause(slot, formerHolder, departures);
+                    const cause = relays.includes(key)
+                        ? relayed.get(key)
+                        : arrivals.length > 0
+                            ? displacementCause(before.get(key), holder, arrivals)
+                            : departures.length > 0
+                                ? departureCause(slot, formerHolder, departures)
+                                : relayed.get(relays[0]);
 
                     this.#set.displaced(install_id, seat_id, cause, at);
                 }
@@ -1212,10 +1430,13 @@ function splitKey(key) {
  * @param {{now: function(): number}} clock
  * @param {object} log the animation log every § 6.2 row is recorded in
  * @param {function(object): void} draw receives each floor frame
- * @param {object} [options] `{ floor, seat, reduce, local_time, viewport, surface }`
+ * @param {object} [options] `{ floor, seat, reduce, local_time, surface }`
  */
 export function startFloorScreen(client, fetchImpl, clock, log, draw, options = {}) {
     const screen = new FloorScreen(client, new Building(fetchImpl), clock, log, options, new TilesetLoader(fetchImpl));
+
+    // § 6.2's walk note item 4: a walk's last frame re-paints, through the same `draw`, under its own trigger.
+    screen.onRefresh((frame) => draw(frame, 'walk end'));
 
     return {
         // The desk floor the screen runs — the 1 s age tick's population (§ 2.5), for a page.
@@ -1239,11 +1460,13 @@ export function startFloorScreen(client, fetchImpl, clock, log, draw, options = 
         assetsFailed: (ids) => screen.assetsFailed(ids),
         tilesets: () => screen.tilesets,
         sceneView: (desks) => screen.sceneView(desks),
-        // Appendix B row 15: the viewport, and the viewer's camera acts. None renders; the page
-        // repaints the drawing's view from the camera each returns.
-        resize: (viewport, surface) => screen.resize(viewport, surface),
+        // Appendix B row 15: the drawing surface's size, and the viewer's camera acts. None renders; the
+        // page repaints the drawing's view from the camera each returns.
+        resize: (surface) => screen.resize(surface),
         camera: () => screen.camera,
-        wheel: (point, delta) => screen.wheel(point, delta),
+        pan: (delta) => screen.pan(delta),
+        zoom: (point, delta) => screen.zoom(point, delta),
+        pinch: (from, to, factor) => screen.pinch(from, to, factor),
         zoomStep: (notches) => screen.zoomStep(notches),
         drag: (dx, dy) => screen.drag(dx, dy),
         fitFloor: () => screen.fitFloor(),

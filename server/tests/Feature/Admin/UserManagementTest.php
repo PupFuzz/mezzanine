@@ -21,6 +21,7 @@ use Tests\TestCase;
 class UserManagementTest extends TestCase
 {
     use RefreshDatabase;
+    use SeesAConvertedInstant;
 
     private const PASSWORD = 'a perfectly serviceable passphrase';
 
@@ -39,6 +40,7 @@ class UserManagementTest extends TestCase
                 'email' => 'New.Operator@Example.com',
                 'password' => self::PASSWORD,
                 'password_confirmation' => self::PASSWORD,
+                'role' => 'operator',
             ])
             ->assertRedirect(route('admin.users.index'))
             ->assertSessionHasNoErrors();
@@ -65,6 +67,7 @@ class UserManagementTest extends TestCase
                 'email' => 'OPS@example.com',
                 'password' => self::PASSWORD,
                 'password_confirmation' => self::PASSWORD,
+                'role' => 'operator',
             ])
             ->assertSessionHasErrors('email');
 
@@ -83,6 +86,7 @@ class UserManagementTest extends TestCase
                 'email' => 'new@example.com',
                 'password' => 'short',
                 'password_confirmation' => 'short',
+                'role' => 'operator',
             ])
             ->assertSessionHasErrors('password');
 
@@ -102,6 +106,7 @@ class UserManagementTest extends TestCase
                 'email' => $target->email,
                 'password' => '',
                 'password_confirmation' => '',
+                'role' => 'operator',
             ])
             ->assertRedirect(route('admin.users.index'))
             ->assertSessionHasNoErrors();
@@ -122,6 +127,7 @@ class UserManagementTest extends TestCase
                 'email' => $target->email,
                 'password' => self::PASSWORD,
                 'password_confirmation' => self::PASSWORD,
+                'role' => 'operator',
             ])
             ->assertSessionHasNoErrors();
 
@@ -181,6 +187,7 @@ class UserManagementTest extends TestCase
                 'email' => $target->email,
                 'password' => self::PASSWORD,
                 'password_confirmation' => self::PASSWORD,
+                'role' => 'operator',
             ])
             ->assertSessionHasNoErrors();
 
@@ -225,6 +232,7 @@ class UserManagementTest extends TestCase
                 'email' => $target->email,
                 'password' => '',
                 'password_confirmation' => '',
+                'role' => 'operator',
             ])
             ->assertSessionHasNoErrors();
 
@@ -263,11 +271,14 @@ class UserManagementTest extends TestCase
 
         // And the console still SHOWS it — a console that hid the row would give the operator the
         // same view a deletion would.
-        $this->actingAs($operator)
+        $page = $this->actingAs($operator)
             ->get(route('admin.users.index'))
             ->assertOk()
             ->assertSee($target->email)
             ->assertSee('left the project');
+
+        // card#9446: when, through the one converter.
+        $this->assertSeesConvertedInstant($page, $target->retired_at);
     }
 
     public function test_a_reason_is_required(): void
@@ -358,7 +369,7 @@ class UserManagementTest extends TestCase
         $only = User::factory()->create();
 
         $this->assertSame(
-            UserRetirement::REFUSED_LAST_ACTIVE,
+            UserRetirement::REFUSED_LAST_OPERATOR,
             UserRetirement::retire($only, 'someone@example.com', 'because'),
         );
 
@@ -396,6 +407,7 @@ class UserManagementTest extends TestCase
                 'email' => ['a@b.com'],
                 'password' => self::PASSWORD,
                 'password_confirmation' => self::PASSWORD,
+                'role' => 'operator',
             ])
             ->assertRedirect()
             ->assertSessionHasErrors('email');
@@ -406,6 +418,7 @@ class UserManagementTest extends TestCase
                 'email' => ['a@b.com'],
                 'password' => '',
                 'password_confirmation' => '',
+                'role' => 'operator',
             ])
             ->assertRedirect()
             ->assertSessionHasErrors('email');
@@ -472,6 +485,7 @@ class UserManagementTest extends TestCase
                 'email' => 'freed-slot@example.invalid',
                 'password' => '',
                 'password_confirmation' => '',
+                'role' => 'operator',
             ])
             ->assertRedirect(route('admin.users.index'))
             ->assertSessionHasErrors('edit');
@@ -491,6 +505,7 @@ class UserManagementTest extends TestCase
                 'email' => 'alice@example.com',
                 'password' => self::PASSWORD,
                 'password_confirmation' => self::PASSWORD,
+                'role' => 'operator',
             ])
             ->assertSessionHasErrors('email');
 

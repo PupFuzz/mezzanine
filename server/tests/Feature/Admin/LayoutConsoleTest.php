@@ -30,6 +30,7 @@ use Tests\TestCase;
 class LayoutConsoleTest extends TestCase
 {
     use RefreshDatabase;
+    use SeesAConvertedInstant;
 
     private const OPERATOR = 'ops@example.com';
 
@@ -90,11 +91,14 @@ class LayoutConsoleTest extends TestCase
         $this->assertSame(1, Layouts::version());
         $this->assertSame('sola', Layouts::layout()->floors[0]['floor']);
 
-        $this->actingAs($this->operator())
+        $page = $this->actingAs($this->operator())
             ->get(route('admin.layout.edit'))
             ->assertOk()
             ->assertSee('revision 1')
             ->assertSee(self::OPERATOR);
+
+        // card#9446: when it was saved, through the one converter.
+        $this->assertSeesConvertedInstant($page, Layouts::current()->updated_at);
     }
 
     public function test_a_document_this_reader_refuses_comes_back_on_the_form_with_the_reason(): void
@@ -153,11 +157,16 @@ class LayoutConsoleTest extends TestCase
         $this->save($this->document([['rooms' => ['sola' => ['form' => 'office']]]]))->assertSessionHasNoErrors();
         $this->save($this->document([['rooms' => ['sola' => ['form' => 'open']]]]))->assertSessionHasNoErrors();
 
-        $this->actingAs($this->operator())
+        $page = $this->actingAs($this->operator())
             ->get(route('admin.layout.revisions'))
             ->assertOk()
             ->assertSee('current')
             ->assertSee(self::OPERATOR);
+
+        // card#9446: every revision's save, through the one converter.
+        foreach ([1, 2] as $revision) {
+            $this->assertSeesConvertedInstant($page, Revisions::get(Revisions::LAYOUT, Revisions::LAYOUT_SUBJECT, $revision)->authored_at);
+        }
 
         $this->actingAs($this->operator())
             ->post(route('admin.layout.restore', 1))
@@ -222,6 +231,47 @@ class LayoutConsoleTest extends TestCase
         $this->assertStringContainsString('would share pixels', $refusal);
         $this->assertStringContainsString('`sola`', $refusal);
         $this->assertStringContainsString('`zeta`', $refusal);
+    }
+
+    /**
+     * § 4.6's `theme` at the WRITE (card#11046, docs/design/FLOOR.md § 10.6 item 5, AT-D3-25's selection
+     * half): a floor naming a theme the build does not ship is refused at the save by name, the themes it
+     * does ship named beside it, and nothing is stored; a shipped name saves.
+     */
+    public function test_an_unshipped_theme_is_refused_at_the_save_and_a_shipped_one_saves(): void
+    {
+        $this->save($this->document([['theme' => 'nowhere', 'rooms' => ['sola' => ['form' => 'office']]]]))
+            ->assertSessionHasErrors('layout');
+
+        $this->assertStringContainsString('names the theme `nowhere`, which this build does not ship', (string) session('errors')->first('layout'));
+        $this->assertSame(0, Layouts::version());
+
+        $this->save($this->document([['theme' => 'studio', 'rooms' => ['sola' => ['form' => 'office']]]]))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('studio', Layouts::layout()->floors[0]['theme']);
+    }
+
+    /**
+     * And at the RESTORE — § 6.11's second write site — of a revision written while a theme shipped that
+     * this build no longer does: refused by name, and the current revision unchanged.
+     */
+    public function test_an_unshipped_theme_is_refused_at_the_restore(): void
+    {
+        $this->save($this->document([['rooms' => ['sola' => ['form' => 'office']]]]))->assertSessionHasNoErrors();
+
+        // A revision a build that shipped `gone` accepted — written past the save, as that build wrote it.
+        $revision = Revisions::insert(Revisions::LAYOUT, Revisions::LAYOUT_SUBJECT,
+            $this->document([['theme' => 'gone', 'rooms' => ['sola' => ['form' => 'open']]]]), null, self::OPERATOR, '2026-10-07 00:00:00');
+        // …and a later save, so that revision is history and its restore is no no-op.
+        $this->save($this->document([['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]))->assertSessionHasNoErrors();
+
+        $this->actingAs($this->operator())
+            ->post(route('admin.layout.restore', $revision))
+            ->assertSessionHasErrors();
+
+        $this->assertStringContainsString('names the theme `gone`, which this build does not ship', (string) collect(session('errors')->all())->implode(' '));
+        $this->assertSame(['sola', 'zeta'], array_column(Layouts::layout()->floors[0]['rooms'], 'install'));
     }
 
     public function test_no_route_in_this_module_takes_a_floor_id_because_a_floor_has_none(): void

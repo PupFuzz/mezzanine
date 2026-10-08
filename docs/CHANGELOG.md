@@ -27,6 +27,361 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-10-07
+
+- **card#10493** — **The PR-body check runs the fleet linter re-vendored from coord 0.63.0, which adds the `ai-attribution` rule.** `bin/pr-body-lint.py`, its selftest and its fixtures are upstream's 0.63.0 files under mezzanine's provenance header, and `bin/vendor-pin-check.sh` pins the new bodies. Every PR body is held to the same rules as before (the allowed section set, the scope line, the banned openers, the live-state readings, `Built:`, `**Coordinated in:**` and the `FROM:` / `TO:` rule), and now also to `ai-attribution`: no AI model name, session link or AI co-author trailer. The `pr-body-lint` job in `.github/workflows/card-token-lint.yml` passes the PR title to the linter as upstream's workflow does, and on a PR whose title does not open `release:` it judges the body a second time with no title, which keeps the allowed section set and scope line on mezzanine's change PRs. A PR opened by a bot account is not asked for `Built:` or `**Coordinated in:**`. The job's selftest step runs `bin/pr-body-lint.selftest.py --workflow .github/workflows/card-token-lint.yml`, so the selftest checks this repository's own workflow. Judge a body locally with `python3 bin/pr-body-lint.py --body-file <file>`; with no title it gives the strict verdict.
+
+- **card#11046** — **The house room: every floor is drawn in its theme, the cozy studio the operator chose.** The band's wall, its windows' frames and curtains, the elevator's frame, the clock's case, the floor's oat boards and lamplight, the PM office's oak, the walls, the lit landing at the lift, the bookcases, plants, lamps and armchair, and every desk's chair, desk, monitor frame, lamp and mug and side table with its cushion seats are now drawn as vector art by the house theme (`resources/floor/themes/studio/theme.js`), sharp at every zoom; no state, name or number is drawn by it. The windows are 208 × 80, and two rooms on one floor share its floor colour — the per-room floor tints are gone. The shipped default room is re-laid with the scenery and no rug. The interim Kenney furniture kit, its rows and `resources/floor/LINEAGE.md` are removed, and so are the floor tileset's plank and rug tiles: every tile of `resources/floor/tiles/floor-plane.tsx` now declares a `kind` the theme draws, its image only a marker for Tiled. The state chip's quiet colours — `stale`, `offline`, `disabled` — are re-chosen so they stay told apart over the new floor. If the theme or its registry fails to load, every desk shows its placeholder with every fact, the room keeps a plain floor, and the status strip names what failed. ⚠ **A room map stored before this release** that names the removed kit tileset is refused at its next save and drawn without those tiles until then, and the floor's status strip reports *some art failed to load*, naming the tileset; if that room is placed on a planned floor, every building-layout save that places it is refused, naming the room, until its map is re-saved. One that places the plank or rug tile draws those cells as nothing. The floors page now lists every room whose current map names art that is no longer shipped, so its author can re-save it.
+- **card#11046** — **A floor can name the design it is drawn in: the layout's `theme` member.** A floor entry in the console's building layout may carry `"theme": "<name>"`; the build ships one theme, `studio` (`resources/floor/themes/index.js`), and a floor that names none is drawn in it. The console refuses a name the build does not ship, at a save and at a restore, naming the themes it does ship; a layout already stored that names one draws the floor in the house theme under a notice, *floor theme `<name>` is not installed — drawn in the house theme — `<floor>`*. No floor looks different yet: the house theme's art lands with a later change. ⚠ **Rolling back below this change:** an older build refuses a layout whose floors carry `theme`, so the lobby reads *the building layout could not be loaded — HTTP 500* and the console's floors page fails to load as well — so before rolling back, save the layout without any `theme` member.
+- **card#11046** — **The desk is re-laid for the new room: the monitor is wider, its text smaller, and the creature sits at a third of the desk.** The monitor's frame is 96 × 46 with a screen of 88 × 31, and its text is drawn in its own 8 px type role, so a status line shows about twice the letters it did; the dimmed screen's text is drawn in a light ink that holds 5.35:1 (it was 2.25:1). The creature sits at a third of the desk's width with its chair behind it at every desk, the side table stands at every desk with its seats showing (a desk whose art failed to load draws its placeholder, with no side table), and the bubble, the thread line and the walks meet the desk at the creature's centre. Every fact on a desk is now painted after the desk's furniture, so no furniture can cover one. The floor design for the room's themes (`docs/design/FLOOR.md` § 10.6) lands with it; the house theme's art follows in the same release.
+
+- **card#11461** — **The unused `concurrently` dev dependency is removed, and with it `shell-quote` 1.9.0 (GHSA-pqg4-j6r4-53mv, critical).** Nothing in the repository ran `concurrently`; `composer dev` runs `php artisan dev`. The deploy's `npm ci` no longer installs either package, and `npm run build` is unchanged.
+
+- **card#11046** — **Every character on the floor is now an original animal or vegetable creature, drawn at full resolution.** The bodies — a fox-ish, bear-ish, rabbit-ish, owl-ish, frog-ish, mole-ish, hedgehog-ish and otter-ish creature, and a radish, turnip, mushroom, pea-pod, carrot, eggplant, pumpkin and potato — each seat's chosen from its identity alone, so it looks the same in every browser with nothing stored; interns are chibi versions at the side table and never wear their seat's body. They are vector drawings, sharp at every zoom: each frame is an SVG document the page shows as an image, replacing the pixel people and the canvas that rasterised them. Every pose still draws the one standing frame, as before; the walk to and from the elevator steps through three frames. The munder-difflin port leaves the tree whole — nothing of it ships — so its lineage file and attribution rows go too, and the asset gate's lineage check now fires only on a port in the character tree (a `licensed` row), not on the tree existing. `docs/design/FLOOR.md` § 10.2 and § 10.4 own the creatures, the frame contract and the measurements; AT-D3-24 (`tools/characters/selftest.mjs`, `painter-probe.mjs`), AT-D3-12's lineage half and AT-D3-19's painter legs hold them.
+
+- **card#11363** — **The deploy self-test's `bash-floor` job fetches bash from the kernel.org mirror when ftp.gnu.org is unreachable.** It tries ftp.gnu.org first, then `mirrors.kernel.org`, and checks whatever it fetched against the same pinned sha256 checksums, so the mirror only carries the bytes. An outage of ftp.gnu.org (2026-10-06) had made this required check fail on every pull request.
+
+- **card#9566** — **A seat that leaves walks to the floor's elevator; one that returns walks back to its desk.** When a desk goes from staffed to an empty chair (`stale` or `offline`), the character walks to the elevator on the back wall, the leaves open, it steps in and the leaves close; when a seat comes back, the leaves open and it walks to its desk and sits. Under reduced motion the chair simply empties or the character is simply present. `docs/design/FLOOR.md § 6.2`'s walk note owns the rules: a walk is drawn only, the rows and the log are written at the apply as before, and anything that touches the seat mid-walk cancels the walk and draws its current state. The two rows used to be keyed on `offline` alone, which predicted a walk out of an already-empty chair when a `stale` seat turned `offline`; they now read § 7.1's staffed and empty sides. Every multi-frame floor effect — the coordination envelope and ring included — now survives the renders that land while it runs instead of being cut by the next one. AT-D3-23 (`ASeatLeavesByTheElevatorAndReturnsByItTest`, `fx-elevator`).
+
+- **card#11331** — **A reporter token carried to a seat by hand has one name, and Step 2 consumes it.**
+  When the Mezzanine server is on another host, `fleet-reporter/INSTALL-LINUX.md` Step 2 issues the
+  token on that host into a `0600` file holding the token alone, the operator carries it to the seat
+  as `~/.config/fleet-reporter/mezzanine-reporter-token`, and the seat writes its config from that
+  file and then shreds it on both hosts. Step 2's writer does both hops: `FR_TOKEN_OUT` writes the
+  token file from the issue output, and `FR_TOKEN_FILE` writes the config from the carried file,
+  refusing a file that is not a regular `0600` file of the seat account's, in a `0700` directory of
+  its own, holding exactly one well-formed token. Both issuing pipelines refuse to run without `node`
+  on `PATH`, so a token is never issued into a pipe nothing reads, and the clean-up shreds only a
+  regular file, removing a symlink alone and leaving its target for the operator. This replaces typing the token into the config with an editor (raised on
+  PupFuzz/agent-roundtable#597).
+
+- **card#9416** — **An operator opens an agent's console from its desk.** The drill-down shows
+  **Open console on claude.ai**, opening in a new tab, to operators only. `fleet-reporter` reads the
+  session's console address from the tail of its transcript (at most 1 MiB back) and sends it as
+  `console_url` on every `turn.start` (D1 § 6.3), `null` when the bridge has ended or the seat's
+  `descriptors` key is not `full`; a value of any other shape is dropped and counted
+  `console_url_malformed`. The fold stores only a value matching D1's pattern, in the new
+  `sessions.console_url` column, and counts `console_url_refused` for the rest. The seat detail
+  response carries `detail.console_url` for a signed-in operator only — the member is absent for an
+  observer and for a machine token, and no seat object, snapshot or stream message carries it.
+  Seats send the link once their reporter is re-copied (`fleet-reporter/INSTALL-LINUX.md` Step 1).
+
+- **card#9446** — **Every time shows in the viewer's browser timezone.** The floor, the lobby and the
+  console show each instant in the zone the viewer's own browser reports, through one converter
+  (`public/js/wire/clock.js`). The floor's header now agrees with itself: the sweep and ingest stamps sit in
+  the same zone as the wall clock. The floor and the lobby say the zone once, as *times: your local time
+  (GMT+5:30)*. Console pages print each time as `YYYY-MM-DD HH:MM:SS GMT±H[:MM]` (`UTC` at a zero offset); with
+  JavaScript off they print labelled UTC. Storage and the wire stay UTC, and there is no per-user zone setting. The seat
+  retirement message no longer carries a time; the retired-seats record below it does.
+  `EveryTimeGoesThroughTheConverterTest` reds when the client, a view or a controller prints a time in one
+  of the raw-print shapes it names.
+
+- **card#9415** — **An account is an observer or an operator.** An observer signs in and sees the floor,
+  the lobby, each desk's detail and the fleet REST endpoints; an operator also opens the admin console,
+  which now refuses an observer with a `403`, and the dashboard links it for operators only. Every
+  account that existed before this change is an operator. The console's users module shows and edits
+  the role, and a new account is an observer unless its creator picks operator.
+  `mezzanine:user:create` takes `--role` (default `observer`) and refuses to create an observer on an
+  install with no active operator; the new `mezzanine:user:role --email=… --role=…` changes an
+  existing account's role and is the CLI way back from a lockout. The console and both commands
+  refuse to demote the last active operator, and retirement now refuses the last active operator
+  rather than the last active account, so an install cannot be left with only observers. This replaces card#9070's D3, whose trigger fired
+  on 2026-09-13 (`docs/PLAN.md § 0`).
+
+- **card#11314** — **`web-auth/cose-lib` moves from 4.6.0 to 4.7.3, past three advisories.** The lockfile
+  update clears GHSA-9v8c-2mgr-qvx3, GHSA-h7p4-6f74-7w4g and GHSA-rh56-4rc8-hj58 (each patched in 4.7.2). The
+  library arrives through Fortify's passkey support, which stays disabled.
+
+- **card#11292** — **The reporter removes secrets and host names from tool descriptors, and a seat can choose
+  to send less.** The descriptor sanitizer (D1 § 7.3) now replaces the value of any assignment or flag whose
+  name contains `pass`, `pwd`, `pw`, `secret`, `token`, `key`, `auth`, `credential` or `cookie` (`PGPASSWORD=`,
+  `MYSQL_PWD=`, `SECRET_KEY=`, `--db-pass`), the value of `Authorization:`, `Proxy-Authorization:`, `Cookie:`
+  and `Set-Cookie:` headers, every `name=` value of `vault write` / `vault kv put|patch`, JWTs, the
+  `rk_live_`/`rk_test_`/`whsec_`/`hvs.`/`hvb.`/`ya29.`/`dop_v1_`/`shpat_`/`npm_`/`SG.`/`pypi-` prefixes, long
+  mixed-case base64url tokens, the value of a quoted JSON or dict key such as `{"password":"…"}`, IPv6
+  literals, and host names (a URL's host, including after a password-less user, and dotted names under a
+  curated TLD set) with `‹redacted:host›`. A `WebFetch` descriptor
+  therefore shows the scheme only. Free text (dispatch descriptions, `Grep` patterns, `WebSearch` queries,
+  commit messages) passes through every rule. A new optional config key, `descriptors`, takes `"full"`
+  (the default), `"paths"` (file paths for `Read`/`Write`/`Edit`/`Glob` only) or `"none"` (tool names and
+  timing only); `"paths"` and `"none"` also drop the subagent title, and any other value is a config error.
+  Before the change, all of these shapes passed whole, as a pre-install audit by another seat found. An installed seat takes the change by re-copying the artifact
+  (`INSTALL-LINUX.md` Step 1).
+- **card#11144** — **The PM office has walls, drawn from above.** The floor now follows one projection, a 3/4
+  top-down oblique (`docs/design/FLOOR.md` § 10.4's new projection bullet, the operator's ruling of
+  2026-10-03): the back wall shows its face and every other wall shows only its top edge, a strip one map
+  cell wide in the wall colour. The shipped room draws its two side edges and an office around the reserved
+  desk — a partition, a front return and a 96 px doorway facing the room — as a `walls` tile layer of the new
+  first-party wall-strip tile (`resources/floor/tiles/floor-plane/wall-strip.svg`, tile id 2 of
+  `floor-plane.tsx`), placed by script from the reserved desk's box, every cell outside every desk slot. The
+  back wall's band gains an end post up each end, so the corner where a side wall meets it closes (the
+  operator's ruling of 2026-10-04, option B). An authored room keeps its own look until its author paints the
+  tile. `tools/design/verify-floor.py` G-walls holds the shipped room's walls outside every slot, keeps the
+  kit's elevation-only tiles off it, and reds when the tile's fill and `--house-trim` differ;
+  `TheFloorDrawsItsFrameTest` holds the end posts inside the band and clear of every grid and the clock.
+  `design-11144-design.md`'s walls question is superseded by this rule.
+
+- **card#11289** — **A desk shows the board card its seat is working on.** `php artisan mezzanine:board-poll`
+  runs every five minutes from the scheduler, reads each board in `BOARD_IDS` over HTTPS with the read-scoped
+  `BOARD_API_TOKEN`, and writes, for every seat mapped to a board user, the most recently updated card assigned
+  to that user (greatest `id` on a tie) into `seat_board_task` — or a row saying the board has no card for it.
+  The fold and the sweeper render that card as the desk's task title with `task.source: "board_card"` and
+  `task.ref: "card#N"`, and fall through to the telemetry title with `task.degraded: true` once a row is 30
+  minutes old. A poll that fails on any page of any board writes nothing, counts `board_poll_failed`, logs a
+  failure class with a status and a userinfo-redacted URL, and exits non-zero; a clean poll counts
+  `board_poll_ok`; with `BOARD_IDS` empty the job does nothing. `php artisan mezzanine:seat-board-user
+  --seat=<install>/<seat> --board-user=<id> | --clear` sets or clears a seat's board user and deletes its
+  board row in the same transaction, refuses a board user another seat holds, and refuses a retired seat.
+  Both counters are on `GET /api/fleet/health`. The three keys are in `server/.env.example`, empty.
+  `docs/design/BOARD-TASK.md` § 0, § 5, § 12, § 13 and § 14, `docs/PLAN.md` D4, D2 § 4.9, § 13 and § 14,
+  D3 § 1.2 and the README record the build.
+- **card#11144** — **The PM sits at the desk reserved for it.** `assignSlots()` in
+  `server/public/js/floor/floor-layout.js` seats a room's one seat whose relayed `protocol_agent_role` equals
+  the map's `reserved_for` at the reserved desk, and takes that desk before the probe loop whether or not
+  anyone holds it, so every other seat hashes over all of the room's `S` desks, as before, and probes past it. With nobody relaying
+  the role the desk stays empty and the floor reads *reserved for `pm` (id 3) — no seat holds that role*; with
+  two or more, neither sits there and § 9 F22's notice names them (the operator's rulings Q3 A and Q4 A). On
+  the shipped default the PM sits at the back-row right corner, desk id 3, and a seat relaying any other role,
+  or none, sits where it hashes with the corner empty. A delta that changes which seat the desk seats is
+  animation A16, its cause that delta's `state_version`. `docs/design/FLOOR.md` § 3.2–§ 3.5, § 5.5, § 6.2,
+  § 9 F22, § 11 (AT-D3-1, AT-D3-3, the new AT-D3-22, the `fx-collision` and `fx-office` rows), § 12, § 13
+  decision 48 and Appendix B row 17 are re-worked over the reservation; `tools/design/verify-floor.py` G8
+  re-derives § 3.2's and § 3.3's worked tables over it with a control, and `tools/design/floor-fixture.browser.mjs`
+  draws a fixture run on the real floor page in headless Chromium, with a selftest.
+- **card#11252** — **A desk inside a moved Tiled group sits where Tiled shows it.** A room map's desk slot is at
+  its object's own `x`/`y` plus the summed `offsetx`/`offsety` of the `desks` layer and every group above it, on
+  the floor page and in the console alike, so a group an author drags carries its desks with its furniture. The
+  console judges *wholly inside the grid* and two overlapping slots at that position, names the shifted spans in
+  its refusals, and refuses an `offsetx` or `offsety` on the desks' path that is not a
+  number. Before, the room's tiles moved with the group and its desks stayed where they were. The server sums
+  the offsets in `App\Floor\FloorMap`'s one walk of the layer tree, and the client in `mapLayers()`, the walk
+  its tiles already read. A map with no offsets places every desk exactly as before.
+- **card#11263** — **The ingest refuses IDs that end in a line break.** `POST /api/ingest/events` answers
+  `422 invalid_batch` for a `batch_id` or `seq_epoch`, and `422 invalid_event` for an `event_id`, `kind` or
+  `session_id`, that ends in a line break, and stores nothing from that batch. Before, such a value passed its
+  pattern, and a `session_id` such as `"abc-sess\n"` was stored verbatim as a session no other event could
+  match. The anchoring card#11253 fixed for install and seat IDs moved from `App\Support\Slug::pattern()` to
+  `App\Support\Anchored::pattern()`, and the patterns in `App\Ingest\Wire` now match through it too. The
+  ingest and the read endpoints now share one `Authorization: Bearer` parse, `App\Ingest\TokenResolver::bearer()`,
+  and a header whose token is followed by a line break is unauthenticated on both.
+- **card#11253** — **Install and seat IDs that end in a line break are refused.** `mezzanine:ingest-token:issue`
+  refuses an `install_id` or `seat_id` such as `"aimla\n"` before it writes an install, a seat or a token, and
+  its refusal now prints the refused ID as a JSON string, so a trailing line break shows as `\n`. Before, the
+  command accepted such an ID and issued a token bound to an ID no reporter sends. `App\Support\Slug::pattern()`,
+  which the command and `FloorMap`'s `reserved_for` check both use, now ends the match at the end of the value,
+  and `FloorMap`'s own copy of that rule is gone. The building surface's room-map route already answered `404`
+  for such an install ID, and a test now holds it to that.
+- **card#11144** — **The floor reads which desk a room map reserves.** `mapDesks()` in
+  `server/public/js/floor/floor-layout.js` now returns each desk with its `reserved_for` role, or `null` when
+  the desk is not reserved, read as the console accepts the property: a Tiled `string`, or a property with no
+  `type`. It reads the `desks` layer through the same `mapLayers()` walk as before, so a reservation inside a
+  grouped `desks` layer is read too, and the reserved desk sits at its index after the `id` sort. `docs/design/FLOOR.md`
+  § 10.3's `desks` row says where the client reads it, and `TheFloorReadsWhichDeskAMapReservesTest` holds
+  the client's answer to the server's `FloorMap` over a reserved map written out of `id` order, an
+  unreserved map, a grouped `desks` layer and an untyped property, each with a planted defect it reds on.
+- **card#11218** — **The three quiet-state chips stay apart as drawn.** The state chip's `stale`, `offline` and
+  `disabled` fills are now a cold family against the warm planks — frost `#b8d1d1`, dusk `#5398c3`, slate
+  `#8188a4` — replacing `#b0aa9c`, `#828a9a` and `#93a3b3`, which collapsed toward `idle`, `working` and each
+  other once a desk's dimmed or dark lighting washed them over the plank, most of all to a colour-blind
+  viewer. Each still holds the chip's word at 4.5:1 or better at full light. `tools/design/state-chip-colours.py`
+  reads the tokens from the sheet and prints each fill's contrast and every pair's CIEDE2000 distance as the
+  tokens, as the hollow chip's edge and as drawn over either plank course, in normal vision and the three
+  dichromacies; its `--selftest` plants its own defects. `TheFloorDrawsItsFrameTest` now also reds on any
+  `--state-<member>` that holds `--state-ink` under 4.5:1. CI runs `state-chip-colours.py --selftest --check`
+  on every pull request, and `--check` reds, naming each pair, when any pair involving `stale`, `offline` or
+  `disabled` falls under the tool's bound on the sheet. FLOOR.md § 7.3 now gives `offline` desks the dark
+  treatment the floor draws, apart from `stale`'s dimmed one.
+
+- **card#11144** — **Each seat carries its agent's roster role.** On the roster read the protocol agent
+  name check already makes, `fleet-reporter` now relays the `role` of the coordination roster entry the
+  declared name selects, verbatim, as `protocol_agent_role` on every heartbeat. It relays `null` when the
+  name check is not `checked`, when the entry carries no slug-shaped `role`, or when two roster entries
+  share the declared name; `selftest`'s `detail.protocol_agent_name_in_roster.roster_role` says which,
+  and no check, counter or badge is added. The ingest accepts the member (≤ 48 B, optional, so an older
+  reporter's heartbeat is still valid), the fold stores it in a new nullable `seat_state` column, and the
+  seat object and its `seat.delta` carry it; `mezzanine:rebuild` resets it with the name pair. A seat box
+  shows its role once its reporter is replaced with this build and its flusher restarted.
+  `docs/design/EVENT-SCHEMA.md` § 3.1, § 6.14, § 18.13 row 6 and AT-27, `docs/design/FLEET-STATE.md`
+  § 6.4, § 6.5, § 8.2.1 and its re-measured sizes, and `docs/design/FLOOR.md` § 5.6 follow; the subagent
+  cap's arithmetic in FLOOR.md § 8.1 is re-measured on the larger worst-case delta (the cap stays 8).
+
+- **card#11144** — **A room map can reserve one desk for a role, and the shipped room reserves its
+  back-row right corner for the PM.** A `desks` object may now carry one property, `reserved_for` — a
+  Tiled `string` naming a role in the protocol agent name's shape (lowercase `[a-z0-9-]`, at most 48
+  bytes), such as `pm` — and at most one desk in a room may carry it. The console refuses, by the desk's
+  Tiled id, any other property on a desk, a `reserved_for` that is not a string role name (a property with no
+  `type` is a string, as Tiled documents) or appears twice on one desk, a reserved desk with no `id` or with
+  an `id` another desk also declares, and a second reserved desk, at a save and at a restore alike; a reserved desk is still held
+  to the furniture box. The revisions page lists each revision's reserved desk beside its slot count, and a
+  save's result names the reserved desk before and after. `resources/floor/default.tmj` reserves `id 3` for
+  `pm`, and the floor seats the room's one seat relaying `pm` there, or nobody.
+  `tools/design/verify-floor.py` G8 holds the default's reserved desk equal to `FLOOR.md § 10.3`'s sentence
+  and § 12's new Measured row. This replaces card#9071's allowlist of none for a desk object's properties.
+- **card#11187** — **A room map whose desks sit inside a Tiled group is seated.** The console already
+  accepted a map with its `desks` object layer inside a `group` layer and counted its desks; the floor
+  now reads that layer at any depth too, so such a room places its seats at the map's desks instead of sending
+  every seat to the overflow row under *floor map is short N desks*. The floor client walks a map's
+  layer tree in one place, `mapLayers()` in `server/public/js/floor/floor-layout.js`, which the desk
+  slots and the tile drawing both read. `docs/design/FLOOR.md` § 10.3's `desks` row says so, and
+  `ADeskLayerInsideAGroupIsSeatedTest` holds the floor's `S` to the server's for a grouped map and the
+  tile walk to a group's offset, opacity and visibility.
+
+- **card#11058** — **Interns are drawn as sprites, each keyed by its own call.** Each open subagent at a
+  desk's side table is now drawn as a small character of its own — static, 20 × 32, clipped to its rect —
+  from the same character tree the seats use, under the key `seat~<call_id>` (the operator's ruling of
+  2026-10-02, Q3), so an intern keeps its look when the list reorders, a sibling leaves or the page
+  reloads. An untitled intern is drawn inside a dashed edge, and its fallback glyph is dashed too. An
+  intern whose art fails to load falls back to the small glyph in its own rect, that intern alone: the
+  seat keeps its art, the other interns keep theirs, and the status strip reads *some art failed to load*.
+  The page forgets an intern's sprite once it is no longer drawn (the character tree gains `forget()`; its
+  hash is updated in `docs/ATTRIBUTION.md`), so a floor left open holds only the interns on screen.
+  `painter-probe.mjs` holds each intern node to its element (its viewport, its class, the tree key it was
+  drawn under, static), holds the badge and flag text classes, and paints every planted seat of two or
+  more interns in both orders on fresh painters to show each intern keeps its sprite; AT-D3-19 gains the
+  per-stool leg and AT-D3-20 (e) the stool rects. FLOOR.md § 5.4, § 8, § 9 F14, § 10.4 (the key, and the
+  interns' collision figure stated as an estimate), § 13 (decision 47), AT-D3-19 and AT-D3-20 record it.
+
+- **card#11058** — **The desk's look: the nameplate in its own type, the state in its colour, and the art
+  held in its rect.** The nameplate is drawn at 13 px bold — the desk's second measured type role, after
+  the operator's ruling of 2026-10-02 — and measured, cut and centred in that role, so at fit on a
+  1,280 × 800 window it reads at about 10.6 CSS px beside the facts' 8.1. The state chip is filled with
+  its state's colour (hollow and edged in it for a seat the floor cannot confirm, hollow red for an
+  unrecognised one), the flag **⚠ +N** is drawn as a chip of its own, and the plate has its own paper;
+  the colours are new tokens on `server/public/css/mezzanine.css` (`--state-*`, `--scene-plate*`,
+  `--scene-flag*`). The character and the desk are drawn inside clipping viewports at their rects, so no
+  art reaches past the rect it is given. `painter-probe.mjs` now holds every node the painter draws for a
+  desk equal to its layout element, not only inside the desk's box, and
+  `ThePageChromeIsOneLinkedStylesheetTest` reads the painter's style as built, so a token in a generated
+  rule is checked too. FLOOR.md § 5.1, § 10.4, § 12, § 13 (decision 46) and AT-D3-20 record it.
+
+- **card#11058** — **The desk reads at a glance: it draws the ruled set, and every other fact is in the
+  drill-down and the desk list.** Following the operator's ruling of 2026-10-02, each desk draws its
+  character (or the empty chair), the nameplate on a plate, a state chip with the state's word, the
+  label line, the currency label, the lag line, the context bar and its percentage, a badge row of two
+  (`config_invalid` and `fold_lag` first, then recognised badges in the wire's order), one flag
+  **⚠ +N** for every other unusual item, the interns, the quiet age, the hatch, the dimming and the task
+  bubble. No raw unrecognised string is drawn on the desk: the chip and the label line read
+  *unrecognised*, *unknown — unrecognised reason* or *API error — unrecognised*, and the currency label
+  *was: unrecognised (…)*; the raw values are in the drill-down and on the desk list. The action's start
+  and running time, the open-call count, the model label, the last event, the gauge's numerals and
+  source, the oldest-badge line, *sending nothing* and the interns' labels move off the desk to the
+  drill-down and the list. The desk list's second line now says whether the desk is *moving* or
+  *still*. The art is drawn in proportion (`xMidYMax meet`) and the art column is wider, so the
+  character stands at three times its pixel size. `TheNewDeskKeepsEveryLeafTest` holds every fact the
+  desk drew before this change to the drill-down and the list, and holds the desk to exactly the ruled
+  set, against a committed record of the desk as it was. FLOOR.md § 5.1 (*the glance set*), § 5.4,
+  § 7.1–§ 7.4, § 7.6, § 8, § 9, § 10.3, § 11, § 12 and § 13 record it.
+
+- **card#11058** — **The drill-down panel carries every fact the desk draws.** Opening a desk now shows
+  the desk's own render on one line (its glyph, pose, lighting, whether it is moving or still, and
+  *unconfirmed* for a seat the floor can no longer confirm), *sending nothing* on a `config_invalid` seat,
+  *N open calls* when more than one call is open, the monitor's light with *a subagent's call* when the
+  monitor shows one, every unrecognised value as its raw `field: value` line under *unrecognised*, and
+  each badge's id as the opening text of its row (an unrecognised badge's row reads its id, then
+  *unrecognised*). Every one is read off the seat object, so each draws when the seat detail could not be
+  read. This is the first step of the desk redesign: the panel holds these facts before the desk narrows
+  to the glance set the operator ruled on 2026-10-02, and the desk itself is unchanged here. FLOOR.md
+  § 4.3, § 5.4, § 9 F9 and AT-D3-11 record it. `DrillDownRendersTheSeatTest` holds each new slot with a
+  control that removes its write, and `TheDrillDownDrawsTheDesksOwnMotionTest` holds the panel's *moving*
+  / *still* to the motion of the desk the same frame draws, under both reduced-motion readings and on a
+  floor stilled by a refused session.
+
+- **card#11045** — **A Safari trackpad pinch zooms the floor and the lobby.** Safari reports a trackpad
+  pinch as its own gesture events, which the camera now reads directly: the pinch zooms the drawing about
+  the pointer, on the floor and in the lobby, through the same camera wire as every other gesture, and the
+  gesture is kept from the page. Before, those events were left to the browser, and only the Ctrl+wheel
+  that Safari 15 and later send after them reached the camera. One pinch zooms once: taking Safari's gesture
+  events keeps it from sending that Ctrl+wheel, and on an iPhone or iPad a two-finger pinch zooms by its
+  touches only. Over a lobby with no building
+  drawn the pinch stays the browser's, as the wheel does, and during a lobby ride it is taken as the wheel
+  is. FLOOR.md § 4.5 (and its ride-hold bullet) and § 13 row 39 record it. The new Safari steps in
+  `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest` fail on the previous code. A real Mac trackpad
+  and a real iPhone or iPad were not exercised; synthetic gesture events in a headless browser were.
+
+- **card#11045** — **The shipped default floor map is a six-desk office that reads at fit in a laptop
+  window.** Operator rulings of 2026-10-01. Every room with no authored map now renders two rows of three
+  desks on a plank floor, with a narrow strip of scenery at each side — a bookcase and two plants on the
+  left, a floor lamp, a plant and a bin on the right — and a rug between the rows; there is no conference
+  room or lounge, and a desk slot no seat holds is plain floor. The map paints no wall of its own, so the
+  floor's tall back wall is the room's only wall. At 1,280 × 800 the floor page fits the whole room at
+  0.81 and draws the desks' 10 px text at 8.1 px, where the twelve-desk default drew it at 4.2 px. The
+  default now declares 6 desk slots instead of 12: a seventh seat in an unauthored room sits on the
+  overflow bench under the *floor map is short N desks* notice until an operator authors a bigger map in
+  the console, and a fifth seat in a four-seat room is more likely to land on a held slot and move one
+  desk. A lamp's glow is drawn inside the lamp's own tile, at its head, instead of twice its size around
+  its foot, so a lamp at a room's edge no longer glows below the floor. The default's grid is 1,576 × 544
+  px (it was 3,024 × 496): on a planned floor, a room placed 496 to 543 px below an unauthored room and
+  within its width overlaps it after the upgrade, the floor names both under its overlap notice, and one
+  layout save that moves a room clears it. FLOOR.md § 3.2, § 3.3, § 4.6, § 6.3, § 10.3, § 12 and
+  AT-D3-3 record it; `tools/design/verify-floor.py` G8,
+  `Tests\Feature\Floor\IdentityIsStableAcrossARestartTest`, the new page-surface run of
+  `TheCameraMovesTheViewerAndNeverTheFleetTest`, the glow check in `TheSceneDrawsOnlyWhatTheSetLoggedTest`
+  and the page-surface check in `tools/design/floor-chrome.browser.mjs` each fail on the previous state.
+
+- **card#11045** — **The floor's room now stands in an office: a tall back wall with a two-door elevator, a
+  clock and wide windows, and each room on its own toned floor.** Operator rulings of 2026-10-01. The back
+  wall over the floor is taller (160 px of the scene, about 2.2 m at the floor's scale) and holds, at its
+  left, a two-door elevator drawn in the lobby cab's form and door colours and the wall clock, with tall,
+  wide windows — two mullions, a transom and a sill — along the rest of the wall. The elevator is scenery:
+  it never opens, and the floor's *whole building* control is still the way to the lobby's elevator. No
+  window is ever laid over the clock: a wall too narrow for one past the elevator and the clock draws
+  none, and a wall narrower than those two is widened to hold them. Each room's floor is filled under its
+  own map in one of four tones — oak, walnut, sage or slate — chosen from the room's id, so it never
+  changes and agrees in every browser; the wall keeps one house colour on every floor. A slab runs under
+  the rooms. Nothing the frame draws covers a map author's grid. Slots no seat holds stay plain floor.
+  Seats past a map's desks now wrap onto further bench rows at the floor's width instead of running past
+  it. A touch whose pointer capture the browser revokes without a release no longer leaves a press held
+  that turns the next touch into a pinch. FLOOR.md § 4.2 (the frame), § 9 F13, § 10.4, § 12's band,
+  zone and window rows, § 13 rows 40–41 and AT-D3-20's clock clause record it;
+  `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` and the new lost-capture steps in
+  `TheCameraWireIsOneForBothPagesTest` fail on the previous code. The lobby is unchanged.
+
+- **card#11045** — **The wheel now pans the floor and the lobby; Ctrl+wheel and a pinch zoom.** Operator
+  rulings of 2026-10-01. A plain mouse wheel or a trackpad's two-finger scroll pans the drawing in any
+  direction, where it used to zoom; Ctrl+wheel and a trackpad's pinch zoom about the pointer; on a touch
+  screen two fingers pinch to zoom about their midpoint and one finger drags to pan. When the drawing can
+  pan no further the wheel's way, the wheel scrolls the page on, so the sections below the drawing are
+  always one scroll away. A one-line hint under each drawing names the gestures (*scroll to pan ·
+  ctrl+scroll or pinch to zoom · drag to pan · arrows · + −*, shortened on a phone), shown while the
+  camera frames something. Both pages share the change through one camera wire, and a ride in the lobby
+  still always arrives: a wheel or a pinch during its glide cuts it to the floor. FLOOR.md § 4.2, § 4.5,
+  AT-D3-21, § 13 row 39 and Appendix B rows 15–16 record it. The rewritten checks in
+  `Tests\Feature\Floor\TheCameraMovesTheViewerAndNeverTheFleetTest`,
+  `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest` and `TheCameraWireIsOneForBothPagesTest` fail on
+  the previous code. Real trackpads, real touch screens and Safari were not exercised; Safari may deliver a
+  trackpad pinch as events this change does not read.
+
+- **card#11045** — **Every page now has a stylesheet: a dark page chrome around the warm room.** The app
+  linked no CSS until now, so every page rendered in the browser's default black-on-white. One plain
+  stylesheet, `server/public/css/mezzanine.css`, is linked from the shared layout with a `?v=` version
+  taken from the file's own modification time, so a deploy that changes it reaches browsers without a
+  cache flush; there is no build step. Every page keeps its title as the header's heading. On the floor
+  page the header carries the building's seat counts and the way back to the lobby; the status strip is
+  one row of chips in groups (this page's connection, the fleet, the room's clock and sky); notices
+  are amber bars under it; the floor's name and the camera's controls sit on a row above the drawing, never
+  over it. The drawing's height is now the window's height less the chrome shown above it, where it was
+  the whole window's, and the camera fits the drawing's own box — re-measured whenever a banner, a
+  statement or a notice appears or goes — so a pointer lands where it points at every window size. The
+  desk list, the overflow, the coordination threads and the event log are each a collapsible section,
+  closed when the page opens; the drill-down opens as a card over the floor. The floor's drawing takes
+  its colours from the same stylesheet, so the palette has one home. FLOOR.md § 4.2 (the chrome, top to
+  bottom), § 4.5 (the list view's section), § 10.4 (the palette's home) and § 12's reference-viewport
+  row (which surface its figure is measured on) record it.
+  `Tests\Feature\ThePageChromeIsOneLinkedStylesheetTest` and new checks in
+  `Tests\Feature\Floor\FloorPageWiringTest` fail on the previous code.
+
+- **card#7341** — **The office floor page draws its room at every window size.** Until now a window smaller
+  than 1,280 × 800 CSS px got no drawing at all: the page replaced the room with a text list of the desks.
+  The operator ruled on 2026-10-01 that every screen displays at any browser size, so the room is now drawn
+  in a window of any size, at fit on entry, and the viewer pans it (drag, arrow keys) and zooms it (wheel,
+  trackpad pinch, `+`/`-`, the *Zoom in* and *Zoom out* buttons), with *Fit the floor* bringing the whole
+  floor back into view. The desk list stays on the page, below the drawing, at every window size — so on a
+  large screen it now appears below the room as well — and it carries every desk fact in full where the
+  drawing shortens a string to fit its desk. FLOOR.md § 4.5, § 12's reference-viewport row (renamed from
+  *Floor viewport floor*), § 13 row 14 and Appendix B row 15 record the ruling.
+  `Tests\Feature\Floor\TheCameraMovesTheViewerAndNeverTheFleetTest` enters the floor in a 390 × 700 and
+  a 1,280 × 240 window and requires the room drawn, panned and zoomed there; it fails on the previous code.
+
 ## [0.7.0] — 2026-10-01
 
 - **`laravel/framework` moves from 13.26.1 to 13.34.0** (#253), past Dependabot alert #1, an XSS in the
@@ -111,1694 +466,5 @@ size; `docs/PLAN.md § 4` says why the archive files need no gate of their own b
   `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`, the shared wiring is driven
   under `node` by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`, and the plates' text size is
   held by `Tests\Feature\Floor\ThePlateNameIsReadAtTheBodyTextSizeTest`.
-
-## [0.6.0] — 2026-09-29
-
-- **card#7341** — **Appendix B row 15 has landed, so the release gate on the room drawing is met.** Every
-  exit of a held desk render in the animation log now records the cause FLOOR.md § 11's precedence
-  gives it: a desk that turns into the empty chair because its reads keep being refused records
-  `unconfirmed`, and a desk whose loop stops because the session ended and the floor went still records
-  `stilled`, where each used to record the version of the seat it was already showing. AT-D3-1 checks
-  every desk exit against the precedence, from a per-render record the test harness now writes, and
-  now also replays the signed-out floor run and the unconfirmed desk run, and every run of
-  `fx-snapshot-4` and `fx-degraded`. A direct case for each pair of adjacent steps that can apply in
-  one render checks that the client asks the steps in the ruled order. The unconfirmed desk's fixture
-  answers each refused read with the server time it was answered at. The floor page's focus test also
-  checks that a repaint moves the keyboard's focus only when it was inside the drawing. § 14 item 29's
-  build half is done. Promoting `dev` to `main` is the operator's act.
-
-- **card#7341** — **FLOOR.md § 14 item 29 is answered: every exit of a held desk render in the
-  animation log records one named cause.** The rule is a precedence in § 11, under the animation-log
-  schema table, and the order of its steps is an operator ruling. It also names the two causes the
-  client holds itself, the literals `unconfirmed` (§ 2.3 row 5's empty chair) and `stilled` (§ 9
-  F6/F7's signed-out floor), and says how *for how long* is read from the log. § 6.2's `held` class,
-  the `cause` column, AT-D3-1's GREEN, § 7.3's F9 paragraph and item 29 point at § 11 instead of
-  restating it. § 6.4 now states that `prefers-reduced-motion` is read once when the floor page loads
-  and is fixed for its life, § 9 F6 states that recovery from a signed-out floor is a new page load,
-  and § 2.3 row 5 states which refused reads count toward the empty chair and what clears the count.
-  The coordination thread line (A18) is outside the precedence, and two behaviours of it, a line on a
-  stilled floor logging motion and a line ended by a seat's removal naming its thread, are named and
-  routed to Appendix B row 14. AT-D3-1's GREEN holds every exit of a desk episode to the one predicate
-  and the `stilled` re-entry check it states. The design only is done here: the client, test, probe
-  and fixture work it needs is FLOOR.md Appendix B row 15's build list, and row 15 (e) names what
-  each replayed run rests on.
-
-- **card#7341** — **The floor page has a camera, and a viewport floor (Appendix B row 15, slice B).** At a
-  browser viewport of at least 1,280 × 800 CSS px the room drawing fills the page's width and the viewport's
-  height and opens framed on the whole floor, the overflow row below it included: the mouse wheel, a
-  trackpad scroll or a pinch zooms about the cursor in proportion to how far it scrolls (a pinch's much
-  smaller movements scaled up to match, as d3-zoom does), dragging with the primary button pans (the floor
-  always stays in view, and a drag ends when the button is released, even outside the drawing), *Zoom in*
-  and *Zoom out* — or `+` and `-` with the drawing focused — zoom about its centre, the arrow keys pan,
-  *Fit the floor* frames it again — gliding there, or cutting straight to it when the system asks for
-  reduced motion — and *Whole building* goes to the lobby. The desks inside the drawing are exposed to
-  screen readers as buttons, open with Enter or Space, and keep the keyboard's focus when the drawing
-  updates. Known limit: the keyboard's focus is put back onto a freshly drawn desk at every repaint, so a
-  screen reader may announce the focused desk again after each update; this is untested with a screen
-  reader. A floor with nothing on it yet to measure (no room map and no seat) still draws, status line
-  included. Zooming and panning are the viewer's own and survive every update, resync and reconnect. The
-  desk list below the drawing is no longer shown at that size; below it, in either dimension, the drawing
-  and its controls are hidden and the page shows the desks as that text list instead — the list view
-  described in the slice A entry below. No configuration, migration or deploy step is needed.
-
-- **card#7341** — **Every desk in the floor page's list below the drawing now shows every fact the desk
-  model carries (Appendix B row 15, slice A).** Before, each desk was one line with the nameplate, the state
-  glyph, the label, the quiet age and the badge ids. Each desk is now a short block of lines: the room it is
-  in, its pose and light, the currency label, the *this state is N behind — as of …* line on a lagged seat,
-  *sending nothing* on a seat whose reporter config is invalid, the monitor, the action's start and running
-  time, the open-call count, the last event, the context gauge, the model, the badges, *oldest badge since*,
-  each intern's stool and *+N more*, and the thought bubble with its tier and degraded note. A seat the page
-  can no longer confirm reads *unconfirmed*. The nameplate line still opens the drill-down. With slice B's
-  camera (the entry above) this list is shown only below the viewport floor. ⚠ These words on the rows are
-  not yet ratified: *unconfirmed*, *monitor*, and *a subagent's call*.
-
-- **card#7341** — **The revisions page's *no preview* notice says a revision whose desk slots *overlap* is
-  refused (operator ruling 2026-09-26),** matching the word the refusal itself uses; it said *intersect*.
-- **card#7341** — **The console's desk-slot refusals and notices are ratified, and name no design document
-  on screen (operator ruling 2026-09-25, card#7341 comment 6585).** A refused save or restore of two
-  overlapping slots now reads, for example, *Desk slots id 3 and id 7 overlap: id 3 spans 64–504 × 96–324
-  and id 7 spans 480–920 × 96–324. Every desk is drawn inside its own slot, so two slots that share a
-  pixel draw one desk over another; two desks may share an edge but never a pixel. Move one of them and
-  save again.* The
-  undersized-slot refusal, the `/admin/floors` paragraph over the rooms whose map fails the furniture box,
-  the revisions page's *no preview* notice and the layout editor's revision notice keep their wording
-  with the `docs/design/` references removed (the *no preview* notice's word *intersect* later became
-  *overlap*, above); those references now live in the code's comments.
-
-- **card#7341** — **The console refuses desk slots that overlap or are smaller than the furniture box,
-  and lists the rooms whose stored map fails it (Appendix B row 14, slice C).** Saving a room map, and
-  restoring a revision of one, is now refused when two of its `desks` objects share a pixel (sharing an
-  edge is fine) — the refusal names both by their Tiled `id` — or when an object is smaller than the
-  furniture box, 440 × 228 px. The room index at `/admin/floors` lists every room whose current map fails
-  the box it is held to today, with each failing slot named; such a room is **not** refused or blanked: it
-  stays on the floor, drawn with the floor's notice, until its author saves a map that passes. A migration
-  adds `authored_revisions.furniture_box`, recording the box each revision was checked against, so a later
-  change of the box re-checks every room. Art served from `/art/…` as SVG or XML now carries a sandboxing
-  `Content-Security-Policy`, so a file opened directly in the browser runs no script; JavaScript and PNG
-  art is served as before. **Upgrade effect:** every map authored before this release was checked against
-  no box, so it is re-checked on the room index — a map with a slot smaller than 440 × 228 px (a slot
-  sized to the desk sprite, as the old shipped default's were, is one) is listed there, keeps drawing, and
-  cannot be saved again or restored until its slots are at least the box and disjoint. Run
-  `php artisan migrate` as part of the deploy (`bin/deploy.sh` does).
-
-- **card#7342** — **The drill-down's intern list is the seat's dispatch calls, and the floor's on-screen
-  wordings are ratified (operator rulings 2026-09-25).** `docs/design/FLOOR.md` § 5.2's selection sentence
-  and § 8's *the full list* row now select the intern list on D2 § 6.4's `calls.is_dispatch` — the rule the
-  panel already rendered; `agent_scope` / `parent_call_id` attribute an intern's own calls back to it (§ 5.1,
-  § 5.6, § 14 item 1 and Appendix A T35 follow). D3 publishes each wording the operator ratified at the
-  section that required it: the overflow row's label (§ 3.2), the seat segment's two notices (§ 4.4), *N open
-  calls* (§ 5.1), the clock-skew note (§ 5.2), the retirement and room-map record lines (§ 5.5, § 2.5), the
-  drill-down's *waiting for the seat detail* lines (§ 5.5), the `epoch_reset` observer lines (§ 7.2) and F11's
-  intern-list fallback (§ 9). **One visible change:** when the seat detail cannot be read, the intern list now
-  reads *unavailable — seat detail could not be read; showing the first 8 interns only*, the 8 taken from the
-  seat object's cap. `DrillDownRendersTheInternsTest` reads that line out of F11's row and no longer carries
-  the superseded selection.
-
-- **card#7341** — **The shipped default map is re-authored to the furniture box, in two rows on a drawn
-  floor plane (Appendix B row 14, slice B).** `resources/floor/default.tmj`, the room every unauthored
-  install renders, now lays its desk slots in two rows of six, each slot at least the furniture box (440 ×
-  228 px), on a grid of 3,024 × 496 px (it was 1,836 × 200 px with sprite-sized slots in one row). The floor
-  plane the Kenney bridge kit lacks is first-party vector art — `resources/floor/tiles/floor-plane.tsx` with
-  a seamless plank tile and a rug, drawn to FLOOR.md § 10.4's direction and under § 10.1's two asset gates —
-  by the operator's ruling of 2026-09-25 (card#7341 comment 6517). Every desk of an unauthored room is drawn
-  inside its own slot — the side table at § 8's cap of stools, the badge cluster, and every string cut to
-  fit — and the floor no longer carries § 9 F21's *desk object is smaller than the furniture box* line for
-  the default. `docs/design/FLOOR.md` § 12 gains two Measured rows, the furniture box at the cap and the
-  shipped default's grid, each read out of its file by `tools/design/verify-floor.py` on every run and held
-  against § 10.3's sentence, with every slot held at least the box; the viewport row's arithmetic — rows,
-  boxes per row, desk across, grid width and fit zoom 1,280 ÷ 3,024 ≈ 0.42 — is recomputed by the same gate.
-  AT-D3-20 (`Tests\Feature\Floor\SeatFurnitureNeverOverlapsTest`) runs its GREEN clauses on the shipped map
-  and carries § 11's positive control — the shipped map passes every clause with no F21 line, each drawn
-  desk's slot held equal to the file's own object — in place of the sprite-sized control that was designed
-  to red here. **Upgrade effect on a building planned against the old footprint:** an unauthored room's
-  footprint is now 3,024 × 496 px from its origin, so any room — authored or not — that shares a pixel with
-  it overlaps it. While any two rooms overlap, the console refuses every room map save, restore or removal
-  that leaves an overlap standing (`App\Floor\Floors` → `App\Building\Layouts::refuseOverlaps`, over the map
-  being written — a save whose map clears the overlap is accepted), refuses re-saving the layout unchanged,
-  and the floor draws the rooms overlapping under F18's notice. To recover, either move the rooms apart in
-  the layout editor and save the layout, or save a smaller map for one of the overlapping rooms. **Release
-  gate:** the room drawing stays as built until Appendix B row 15's camera lands, and `dev` is not promoted
-  to `main` before row 15 lands (operator ruling 2026-09-25). The console's refusals of intersecting or
-  undersized slots and its re-validation listing (slice C) follow.
-
-- **card#7341** — **The floor page draws the room (Appendix B row 14, slice A).** The floor page now paints
-  one SVG drawing of the room from its tilesets: each desk inside its furniture box with up to eight stools
-  and a `+N more` count, badges, placeholders for art that failed to load, the overflow strip below the floor,
-  speech bubbles, and the communication band, lines and rings drawn only from what the page's log recorded.
-  Art that fails to load leaves every fact on the desk in place and adds "some art failed to load" to the
-  status strip. The floor and character art is served from `/art/floor/…` and `/art/characters/…`, behind
-  the floor's own login and second factor, limited to FLOOR.md § 10.1's file types and to files inside those
-  two trees. `resources/floor/furniture-box.js` is the one source of the furniture box, and the server reads
-  the same file. The text desk list stays until row 15; the default map's re-authoring to the box (slice B)
-  and the console's refusals (slice C) follow.
-
-- **card#7342** — **The drill-down opens from the floor, and a retired seat's desk goes (Appendix B step
-  10).** Selecting a desk on the floor page opens its panel in place and puts `/floor/{floor}/{seat_id}` in
-  the address bar; that URL is served (the same floor page, behind the same login and second factor) and
-  opens the panel on arrival, and closing it returns to the floor without re-opening the stream. The panel
-  fetches the seat detail and its recent activity through the page's one live client, patches the seat's
-  state live from the stream, and shows every section of FLOOR.md § 4.3: the header with the desk's own
-  state line, the task with its reference as plain text (the link resolver for a configured base is gone,
-  per the operator's 2026-09-13 ruling), the action, the context gauge, the uncapped intern list, the
-  activity window with an *Older activity* control, and the transport, derivation, reporter, badge,
-  session, counter and raw blocks, each `fetch-fresh` block under its own *as of* stamp that each poll
-  renews. A failed detail request shows the seat's capped intern array and says it is capped; a failed
-  activity request says *could not load recent activity — HTTP N*; both offer a retry. The client now
-  applies `seat.retired`: the desk is removed on the first of the two announcements, once, with one event
-  log line naming the seat, the reason and the time and no operator, and a desk that had been displaced
-  by it moves back. A full snapshot that no longer lists a held seat removes it too, with a line, unless
-  the seat arrived after that snapshot was requested. The seat-detail response's `detail.counters` is a
-  JSON object for every seat, including one with no counter rows, which it had served as `[]`
-  (`Tests\Feature\Feed\FeedSurfaceTest`). Gated by AT-D3-4
-  (`Tests\Feature\Floor\TheInternListIsUncappedWhereTheSideTableIsCappedTest`), AT-D3-16
-  (`RetirementRemovesTheDeskAndExplainsTheRemovalTest`) and the panel halves of AT-D3-6
-  (`TheDrillDownIsRestampedByEachPollTest`), AT-D3-10 (`TheDrillDownReadsItsAgesFromTheServerClockTest`)
-  and AT-D3-14 (`TheDrillDownNeverDrawsANullAsAZeroTest`), each RED watched to fail.
-- **card#7341** — **`docs/design/FLOOR.md` Appendix B gains the rows that paint a room and move the camera
-  (rows 14–16), ahead of their build.** Rows 0–13 built every model and no row drew a room or a camera, so the
-  step-8 floor page draws each desk as a line of text, § 9 F14 was unreachable, and the card's own title had
-  no row delivering it. **Row 14, the room drawing**: the scene — a headless model emitting what is drawn
-  where, from step 7's frame and the held map, every desk laid out INSIDE its slot rect, which § 10.3 now
-  defines as the desk's furniture box — everything drawn for a desk at rest except the bubble: stools at § 8's
-  cap and never hidden, the badge cluster at D2's bound with a *+N more* mark, and every string truncated to
-  the box with a visible mark through one truncation primitive, its full value on the list view and in the
-  drill-down — so that the operator's no-overlap ruling holds by construction at the slot function however
-  long a seat's strings run (the shipped default's objects are
-  re-authored to that box as this row's build obligation) — the tileset reader (`.tsx` and `.tsj`, both
-  spellings § 10.1 admits), the painter (the DOM half, one scaled space for tiles, desks, nameplates, bubbles
-  and the thread line, importing the character tree by the asset route's absolute URL), the asset route (the
-  one HTTP surface for `resources/floor/` and `resources/characters/`, mounted at `/art/floor/` and
-  `/art/characters/`, through `FloorAssets`, § 10.1 clause 1's extensions only, behind the floor route's own
-  gate including its second factor, without root), § 9 F21 with its § 5.5 line (the scene names a room's
-  intersecting or undersized desk slots on the floor, for any map the client holds — stored and restored
-  revisions included — while still drawing every desk, which is what stands until § 14 item 28(1)'s console
-  refusal is ruled), and F14's placeholder, with the strip's *some art failed to load* line. **Row 15, the
-  camera**: wheel-zoom to the cursor, drag-pan, fit-floor including the overflow strip, whole-building;
-  navigation that writes no animation-log row and survives every re-render; and the capability floor, below
-  which § 4.5's list view is served — a headless model over every fact the desk model emits, guarded so that
-  every model member is rendered or excluded by name, which `floor/main.js` only paints — so a degraded seat
-  below the floor carries § 7's marks and not its raw badge id alone. **Row 16, the ride's arrival**: the
-  cross-section and the cab are PR #96's (card#7343 part 1), so this row builds only what that PR named as
-  unbuilt — the ride ending at `/floor/{key}`, row 15's camera at building scale and the reduced-motion cut —
-  and the document settles the split: row 16 is card#7343's destination half. New acceptance tests gate them
-  — AT-D3-19 (F14), AT-D3-20 (the no-overlap check the card asks the build to keep: cap-width seats carrying
-  the fixture's bounded strings, truncated with a mark and inside the box, a RED planted at the one
-  truncation primitive, and F21's notice on a stubbed crowded map and a stubbed undersized one) and AT-D3-21
-  (the camera: a floor half with an `fx-degraded` leg read from the list view's model, and a building half;
-  the list view's guard holds one property — every leaf of the desk model's output rendered or excluded by
-  path, every rendered leaf seen off its default on some run — which is why `fx-degraded` gains a
-  `config_invalid` seat and the fixture table declares step 3's `fx-confirm`, whose unconfirmed run AT-D3-1
-  does not replay). Rows 0 and 2 now carry the landed
-  markers they lacked (PR #15, 2026-08-25; PR #157, 2026-09-14). § 4.1, § 4.4, § 4.5, § 9 F14, § 10.3's
-  `desks` row and § 12's viewport row point at the rows; § 14 item 28 records what stays open (the
-  unscheduled vector art; the viewport measurement row 15 owes) and what the operator ruled on 2026-09-25
-  (card#7341 comment 6488): the console refuses intersecting or undersized `desks` objects at a save and at a
-  restore, and re-validates every stored map at each change of § 12's box, listing the failing rooms — all
-  three now row 14's build obligations, with F21's notice as what stands for every revision the refusals
-  never saw. § 14 item 29 records the gap the round found and does not answer: an exit caused by a failed
-  read has no object that ended the hold, so § 6.2 and § 11 owe what its `cause` records (row 15's build). `tools/design/verify-floor.py` G5 now reds
-  on an Appendix B Order cell that is not an integer instead of skipping the row, which is why the rows are
-  numbered rather than suffixed, and G8 holds the shipped default's `desks` objects pairwise disjoint on
-  half-open rects; each leg carries a plant in `verify-design-docs.selftest.py`, G8's moving the second object
-  onto the first's span so that it reds whatever gutter the default carries. § 11's fixture count in words is
-  replaced by the derivation the gate already runs.
-- **card#7341** — **The lobby's wording is ratified.** The discrepancy line spells its count in words up to nine and in digits past it, every *desk* agrees with its number, and the event log's membership lines read *room added to the building: X* and *seat added to the floor: k*; `docs/design/FLOOR.md` § 4.1 and § 5.5 state them as the operator's wording.
-- **card#7341** — **The lobby runs the client protocol (Appendix B step 9).** The lobby page now opens the
-  live stream through the same construction the floor page uses (`public/js/wire/live-page.js`, hoisted
-  out of `public/js/floor/main.js`), and draws the population the protocol holds
-  (`public/js/lobby/lobby-screen.js`). § 4.1's discrepancy check has one trigger, the protocol's: the lobby
-  no longer fetches a snapshot of its own for a disagreement between the desks it holds and the building's
-  `seats_total`, so that disagreement costs the one request the protocol makes. The disagreement is worded in the operator's ratified sentences — *showing 4 of 5
-  desks — one desk could not be read*, the ending's count agreeing with the shortfall (*two desks could not
-  be read*), and *showing 5 desks — the building lists 4* — and says nothing while the page has no snapshot
-  to compare. The lobby also shows the feed status with its resync count, the page's own event log, and
-  the failure renders the floor carries (the store statement, the sign-in prompt, the reload banner). The
-  protocol now writes *room added to the building* and *seat added to the floor* for every seat or room a
-  discovery, a recovery poll or the Refresh control adds, where only a seat fetch wrote one before, and it
-  holds a snapshot whose `fleet{}` says `db: "down"` as the store statement on both pages. Refresh reads one
-  snapshot through the protocol and then the layout; a `building.layout` on the lobby's stream re-fetches
-  the layout. `public/js/lobby/lobby-entry.js` is removed. Gated by AT-D3-15
-  (`Tests\Feature\Floor\TheLobbyNeverInventsACountTest`), each RED watched to fail.
-- **card#10423** — **the deploy selftest names a fixture object git packed as NOT VERIFIED HERE and
-  carries on.** `bin/deploy.selftest.sh`'s `blind_object` makes one loose object of a fixture's store
-  unreadable for the cases that need a failed git read; when git's own housekeeping has stored that
-  object in a pack, or a root runner still reads it at mode 000, it now prints `⚠ NOT VERIFIED HERE`
-  naming the object, the cause and the cases that did not run, and each caller skips exactly those
-  cases while every other assertion runs. The object it blinds comes from a checked
-  `rev-parse --verify`, so a rev that does not resolve is a FAIL of its own rather than a missing loose
-  file, and F1's control reads the blinded path from `blind_object` instead of computing it a second
-  time. Watched both ways with the fixture repacked before blinding: the previous script FAILs, this one
-  reports each affected case as not verified and exits 0, and a planted real failure alongside still
-  exits 1.
-- **card#7341** — **The floor page and its stream recovery (Appendix B step 8).** `/floor/{floor}` is served
-  behind login and the second factor (`resources/views/floor.blade.php`, `public/js/floor/main.js`), and it
-  constructs the client protocol with its **stream recovery** (`public/js/wire/fleet-client.js`, § 2.2 steps
-  7–9): after 45 s with no message the floor says **feed down — polling** and polls and re-opens every 10 s;
-  a store outage retries on 10, 20, 40, 80 s; a deploy that keeps the `feed_version` reconnects silently
-  inside a 60 s grace, and one that changes it raises **a new version was deployed — reload to continue**
-  and stops applying deltas; any read answered `401` closes the stream and draws the sign-in prompt over the
-  dimmed floor labelled *not live since HH:MM:SS*; an errored stream is closed by the client, never left to
-  the browser's own reconnect. The **failure renders** (`public/js/wire/failure-render.js`, the lobby's
-  refusal words moved in rather than copied), the **status strip** (`public/js/floor/status-strip.js`) and
-  § 5.4's membership tests for all six published sets (`public/js/wire/member-sets.js`) land with it, and
-  the wall clock is set by a live feed and never by a poll. The page applies the two bounds the rulings
-  above set: 1,000 held coordination envelopes, evicted by whole threads with an *N+* bead count on the one
-  oversize thread, and 2,000 animation-log rows. Gated by AT-D3-6 (floor half), AT-D3-8, AT-D3-11, AT-D3-7
-  (strip half) and `FloorPageWiringTest`, each RED watched to fail; A11 (badge-raise) is exercised for the
-  first time. The lobby's refusal statement now reads the same words, and on a cold start whose request never
-  reached the server it now also says it has no earlier floor to keep.
-- **card#7341** — **`docs/design/FLOOR.md` records the maintainer's rulings for Appendix B step 8, ahead
-  of that step's build.** (1) **The floor page is step 8's artifact**: row 8 bolds it — the `/floor/{floor}`
-  web route inside the `auth`+`mfa` middleware group, its Blade view, and a DOM entry that constructs
-  `FleetClient` with a real `EventSource`, `startFloorScreen` and the status strip — and gates it with
-  `Tests\Feature\Floor\FloorPageWiringTest`, shaped like `LobbyPageWiringTest`; § 4.4, § 4.6 and § 12's
-  viewport row now say the route is row 8's artifact. (2) **The held coordination envelopes are bounded**
-  (§ 14 item 25): at most 1,000 `coord.thread` + `coord.round` envelopes, evicted by whole threads, least
-  recently received first, so an evicted thread renders as one a just-connected client has not seen; a
-  single thread that alone exceeds the cap keeps its `coord.thread`, drops its oldest rounds and renders
-  its bead count as *N+*; the floor screen's set of animated `post_ref`s is trimmed to those still held.
-  (3) **The page's animation log is bounded and the harness's is not** (§ 14 item 26): the module takes
-  an optional retention bound from the caller that constructs it, the floor page passes § 12's 2,000
-  rows, and the harness and every acceptance test pass none, so AT-D3-1 and AT-D3-2 still read a
-  complete log. `DiscrepancyBudget#spent` is recorded as the audited sibling, accepted unbounded because
-  it grows with membership churn rather than with time. (4) **A16's animation-log cause now names the seat
-  that actually displaced the moved desk** (§ 14 item 27): the arriving seat that holds the displaced
-  seat's former slot. In a cascade, where that slot's new holder did not arrive, the cause is the
-  render's lowest-order arrival in § 3.2's `order`, a stated approximation. `floor/floor-screen.js`
-  implements this and replaces step 7's rule, which named the lowest-order arrival for every displaced
-  desk and so could name a seat that displaced nobody. § 11 states the rule. AT-D3-3 gains a GREEN for
-  each clause and a Third and Fourth RED in `IdentityIsStableAcrossARestartTest`, over two new
-  `fx-collision` runs, `two_arrivals` and `cascade`. The comment in `wire/fleet-client.js` that said
-  the document published no cap for (2) now points at the ruling. `tools/design/verify-floor.py` and its selftest are green.
-
-- **card#10368** — **the deploy-gate-inputs selftest no longer fails a pull request because git packed
-  a fixture object.** Its failed-read case makes the loose object behind the fixture's
-  `server/composer.json` unreadable, and git's own housekeeping (`gc --auto`, a clone arriving as a
-  pack) sometimes stores that blob packed instead, leaving no per-object file to change. That runner
-  now prints `⚠ NOT VERIFIED HERE` naming the packed blob, exactly as a runner where root reads every
-  mode already did, and the run continues with every other assertion; the summary repeats how many
-  cases could not be built. The lane's exit status reflects the assertions that ran, so the same commit
-  gets the same verdict on every re-run. `bin/deploy-gate-inputs.selftest.sh` was watched both ways
-  with the blob repacked in the fixture: the previous script FAILs, this one reports the case as not
-  verified and passes, and a planted real failure alongside it still exits 1.
-- **card#7341** — **a room whose map could not be loaded is now inside the building it is on.** The
-  floor's extent is the union of EVERY room the layout places on it, the room whose map request failed
-  included, so the back-wall band that carries the wall clock and the windows spans that room too and
-  its placeholder desks are drawn against the building's backdrop like every other desk. Before this
-  change the extent was the union of the rooms that carry a footprint alone: a room whose map fetch
-  failed has none, so during a room-map outage that room's desks were drawn outside the backdrop and
-  read as a rendering defect rather than as the map failure they are — the moment a viewer most needs
-  the floor to still read as one place. A room with no map enters the union as the point its origin is,
-  which is the corner its placeholder grid is drawn at, and it takes no size from anywhere: the room is
-  placed where the layout says it is rather than relocated inside the old extent, it still has no
-  footprint of its own, and the read-time overlap notice still leaves it out. A floor whose every map
-  arrived composes exactly as it did, which the suite asserts as an equality against the previous
-  arithmetic over the default, planned and overlapping floors. `docs/design/FLOOR.md` § 4.6 carries the
-  rule as its fifth, with the operator's reasoning and with the one case it leaves to a drawing layer
-  named in place; § 4.2 and § 9 F16 state it where they state the extent, and F16's row says which half
-  of its old wording is reversed. `Tests\Feature\Floor\TheFloorComposesItsRoomsTest` gates it with a
-  green, a planted red that reverts the union and watches the mapless room fall outside the band, and a
-  control that ties the two together.
-- **card#7341** — **the floor renders: every desk is in a slot that is a function of its identity, the
-  rooms of a floor are composed where the operator put them, and a coordination thread is drawn between
-  the two desks it resolves to.** `docs/design/FLOOR.md` Appendix B step 7. A floor is now drawn from the
-  documents a client already holds: `server/public/js/floor/floor-layout.js` assigns each seat to a desk
-  slot by § 3.2's published hash of `(install_id, seat_id)`, so two browsers, two reloads and two server
-  restarts agree without any stored position and without a new wire field, and seats past a map's slot
-  count are rendered in a labelled overflow row instead of disappearing. It composes a floor's rooms at
-  the origins the building layout authored, over that floor's hallway, or side by side at § 12's published
-  gap where no plan exists, takes the floor's extent as their union, and draws one wall clock and one band
-  of windows across the whole of it at minute resolution from the viewer's own clock. Two rooms whose
-  footprints share a pixel are both drawn and named rather than one being hidden, a room whose map request
-  failed renders every desk it holds under *room map could not be loaded — HTTP N*, a layout request that
-  failed composes no building at all and says so, and an applied `room.map` re-renders that one room and
-  writes one line into the client's event record. `floor/coord-join.js` builds the
-  `protocol_agent_name` → `seat_id` join `docs/design/FLEET-STATE.md` § 8.3.3 specifies and which nothing
-  had built: a name exactly one seat of the room declares resolves to that desk, a name two seats declare
-  resolves to nothing and renders *declared by more than one seat*, a resolved endpoint whose declaration
-  no roster checked carries the word *unchecked*, and a name that merely equals a `seat_id` resolves to
-  nothing at all. `floor/floor-screen.js` runs all of it over the client protocol and writes § 6.2's A16,
-  A18, A19 and A20 rows into the animation log through step 6's animation set. ⚠ Nothing on a page calls
-  it yet: no page constructs the client protocol before Appendix B step 8, so this is the floor route's
-  renderer and not yet a route a viewer can open. Gated by
-  `Tests\Feature\Floor\IdentityIsStableAcrossARestartTest` (AT-D3-3),
-  `Tests\Feature\Floor\TheCoordinationLineResolvesOrRendersUnresolvedTest` (AT-D3-18) and
-  `Tests\Feature\Floor\TheFloorComposesItsRoomsTest`, each leg with a planted defect seen to fail it.
-- **card#7341** — **a broadcast ring was drawn from a desk the post never resolved to.**
-  `server/public/js/coord/coord-model.js` fired § 6.2's A20 on a post whose address carried the literal
-  `all`, without also requiring that the post's origin resolve to a desk — which is the clause that row's
-  trigger cell gained when the amendment landed, and which the code half never took. A `coord.round` whose
-  author resolved to nothing therefore expanded a ring an operator reads as *this desk broadcast* from
-  whichever desk the renderer could reach. The condition is now read from both members, and AT-D3-18's
-  third planted defect re-mints exactly the line that shipped.
-- **card#7341** — **a layout act carried no version into the apply that needed one.**
-  `server/public/js/wire/fleet-client.js` journalled a `room.map` and a `building.layout` with the message
-  type and its `server_time` alone, so the surface that applies them was left comparing a version it had
-  never been told: a `building.layout` announcing the version already held was re-fetched for nothing, and
-  a `room.map` was not applied at all. Both journal lines now carry `install_id`, `map_version` and
-  `layout_version`.
-- **card#7341** — **a held animation that moves was logged as one drawn static.** Whether a § 6.2 row
-  carries motion was derived from whether its Animation cell names a frame loop, which answers a different
-  question: A18's thread line moves along its length without running frames at a fixed rate, so it was
-  recorded with `motion: false` — a claim that one of the three reasons `docs/design/FLOOR.md` § 11 gives
-  for a still render applied, when none did. `server/public/js/wire/animation-set.js` now derives it from
-  the row's own reduced-motion form, which is *identical* for exactly the rows that have no motion to
-  replace.
-
-- **card#10227** — **`coord.round.targets` had its derivation SHOWN by a worked example and stated in no
-  field spec, so `docs/design/FLOOR.md` § 11's `fx-coord` asserted four fan-out values no reader could
-  reproduce. D1 states the rule now, and the fixture re-derives from it.** `docs/design/EVENT-SCHEMA.md`
-  § 18.7's `targets` Bounds cell carries the whole derivation — `to` in its own order, the literal `all`
-  replaced by § 18.3.1's `roster[]`, the author removed, the first occurrence of each name kept — and the
-  prose beneath it states the three clauses that were implied: the roster is consulted **only** to expand
-  `all`, which is why `null` belongs to the broadcast case alone and a `to` naming seats always resolves; a
-  named addressee is never filtered against that roster, because `coord_roster_unknown_name` already alarms
-  a name the copy does not know and filtering it would delete the guard's own evidence; and the author is
-  removed, so `[]` is the ordinary result of a post addressed only to its own author. § 18.7's first worked
-  example is re-derivable from the field spec as a result, rather than a second specification standing
-  beside it — the defect that example's own `participants` note names one field over — and § 15 row 49
-  records the decision with the two readings it rejects. `fx-coord` states the install-facts roster it runs
-  under, `["pm", "coder", "helper"]`, and every round's fan-out follows from it: R1's `null` (the input
-  unreadable there) and R4's `[]` are unchanged, R2 is `["pm", "coder"]` and R3 is `["pm", "helper"]` —
-  one address from two authors, and different fan-outs because the rule removes each post's own author.
-  AT-D3-18's GREEN moves with them and gains an assertion this document had nowhere else: R3's `targets`
-  names one desk that resolves and one that does not, so § 6.2's A19 clause *a destination that does not
-  resolve gets no envelope and no line, and the ones that do still get theirs* is gated on a rendered
-  floor, by this test alone.
-- **card#10227** — **D2's `coord_round.targets` row stops half-restating D1 § 18.7's derivation and points at it instead, and § 18.7's removal clause now names every occurrence of `from` rather than one.** The clarifications close ambiguities: the author is removed from the fan-out in EVERY mention, not at the implementer's discretion, and the derivation is stated once in the field spec where an agent can reach it.
-- **card#7341** — **the ANIMATION SET lands (`docs/design/FLOOR.md` Appendix B step 6): § 6.2's closed
-  set A1–A20 as the renderer's own artifact, and the two hard gates on trusting the floor at all are
-  green.** `server/public/js/wire/animation-set.js` holds each row's class, its § 6.4 reduced-motion form
-  and whether it loops — the last derived from the row's own Animation cell rather than from a second
-  list — and is the one entry every § 6.2 row is started through, writing step 2's animation log.
-  `wire/fleet-client.js` gains a WIRE JOURNAL: what the protocol did with each message it handled, with
-  the `changed[]`, `before` and `after` every `edge` condition is written over, drained by the renderer at
-  each apply. § 6.5's rule that a snapshot, a resync and a per-seat fetch animate nothing therefore lives
-  in the renderer, which is what lets AT-D3-9's own RED reach it. `desk/desk-floor.js`'s held-render path
-  MOVED into the set rather than being copied, and `desk/desk-render.js`'s unguarded
-  `STATIC_BY_DESIGN = ['A8', 'A9']` is gone: which rows carry motion by design is now re-derived from the
-  document. Gated by **AT-D3-1** (both halves, unqualified), **AT-D3-2**, **AT-D3-13**, and the render
-  halves of **AT-D3-9** and **AT-D3-17**, each with the plant its RED names observed to fail first; and by
-  Appendix B row 13's half that was owed to step 6 alone — a `room.map` apply fires no § 6.2 row, asserted
-  over a `building.layout` too, because § 2.5 gives the two one rule. Four new fixtures: `fx-clear-trace`
-  (every figure re-derived from § 14 item 21's closure and from `fx-snapshot-4`'s own published snapshot,
-  and the replay reproduces § 11's *five held episodes, nine held rows* walk exactly), `fx-interns`, and
-  two carrying seats and messages § 11's nine do not.
-- **card#7341** — **one wrong render on a real wire transition, found while building the set and fixed
-  with it: an `offline → retired` delta played an arrival at a desk being removed.** A1 fires on a delta
-  that LEAVES `offline` and A13 on one whose new `render_state` is `retired`, and § 6.2 stated no
-  exclusion between them, so a retirement was also an arrival. A1's condition now states *and not A13's
-  condition* — hosted on the row that yields, exactly as A3 states its exclusion of A4 — and the shipped
-  predicate reads A13's own definition rather than a copy of it. A2 is unaffected and no exclusion is
-  stated on it: `offline → retired` never makes the new value `offline`.
-- **card#7341** — **three § 11 claims this build made false, corrected in the same change.** AT-D3-2's
-  *the animation log contains no `idle` row* read as total over the log while its own base fixture
-  delivers an `idle` seat, so as written it would have reddened a correct client; it is now scoped to the
-  seat the trace is about, with the reason. Bound (v) said a table is never hand-copied into *the module*
-  when there was one module, and is now stated over the property — a copy a renderer cannot avoid is
-  GUARDED, in both directions. Appendix B row 5's cell said `desk-floor.js` enters and leaves each held
-  render, which step 6 moved. § 11 also gains a FORWARD CONTRACT for A18/A19/A20's log rows: they belong
-  to no seat, `cause` is the message's own `post_ref` or `thread_ref`, and AT-D3-1's causing-message set
-  stays FOUR until the first consumer that applies a `coord.*` message arrives with a test that fires one.
-- **card#7341** — **`docs/design/FLOOR.md` § 14 item 21 (`fx-clear-trace`'s base, patches and
-  hook-order difference) and Q8 (no Appendix B row built § 5.7's coordination line) are both closed.**
-  Design and documentation only; no code changed. Item 21: the fixture's version base is
-  `fx-snapshot-4`'s own `state_version` (48219), continued; `aimla-pm`'s still-open `Bash: composer
-  test` call and its `coder` subagent close in the same delta that opens D2 § 10's trace, named rather
-  than inferred; the clock advances 1 s per delta; and the fixture ships one hook order, because D2 § 10
-  states the wire is identical either way. `§ 11`'s `fx-clear-trace` row and the AT-D3-1 episode walk
-  are amended to state it, and `fx-clear-trace` is now fully determined — step 6's build (Appendix B
-  order 6 → 7) can proceed. Q8: Appendix B step 7 builds the coordination thread line, gated by a new
-  acceptance test, AT-D3-18, and a new fixture, `fx-coord`, covering the join's resolve, no-declarer,
-  duplicate-declaration and cross-install cases. The fixture resolves **two** names, so the line has the
-  two endpoints it is drawn between, and carries the duplicate case on a third name that is nobody's
-  endpoint — a duplicated name resolves to nothing, so a fixture duplicating an endpoint name cannot
-  draw the render it gates. Its two endpoints are in **different check states**, so § 5.7's *a resolved
-  endpoint whose declaration was never checked is rendered as one* row is gated by a resolving
-  `unchecked` declaration with the `checked` endpoint beside it as the control, rather than by the
-  duplicate arm where the check state changes no outcome; and the fixture's `targets: null` sits on a
-  broadcast address, the one wire state D1 § 18.7 assigns `null` to, rather than beside a `to` naming a
-  single seat, which the producer cannot emit. A20's trigger now states the origin precondition its
-  render always assumed: a broadcast whose origin resolves to no desk draws no ring, rather than one on
-  a guessed desk.
-  `tools/design/verify-floor.py` and its selftest are green on both closures.
-
-- **card#9815** — **The deploy names a PHP-FPM pool file it cannot read as `cannot read <file>`, and
-  prints FPM's own stderr when `php-fpm -i` fails.** A pool file the FPM config includes and the deploy
-  user cannot read (a `pool.d` file at 640 root:root is the ordinary shape) was dropped as if absent:
-  the deploy then refused on a false cause — `no PHP-FPM pool runs as <user>`, or `no pool of that name
-  is defined` for the stream pool — or, when another pool of that user's was still readable, passed A14
-  having judged opcache without reading the app's own pool. `bin/deploy.sh`'s `fpm_code_reload_ready`
-  now reads every matched pool file or refuses by name through one primitive, `fpm_readable`, which
-  `php-fpm.conf` and the `.user.ini` files use too; a pool directory the include points into and the
-  user cannot list or search is refused the same way, and an include glob that matches nothing keeps its own report.
-  Phase B fails the window on it, as for an unreadable `php-fpm.conf`. On the `did not print an FPM
-  phpinfo` refusal, FPM's stderr is now printed beneath it and stays out of a healthy run.
-  `bin/deploy.selftest.sh` covers each case with a fixture whose permissions are asserted first — mode 000,
-  and a `pool.d` at 644 that can be listed and not searched, behind a glob and behind a literal include —
-  beside its readable twin, and pins a file literally named `*.conf` as the pool file it is.
-
-- **card#7341** — **Every desk on the floor now has its render: the ten states, the degraded
-  treatments, the null renders and the side table** (`docs/design/FLOOR.md` Appendix B step 5, gated
-  by AT-D3-5 and AT-D3-14's desk half). New `server/public/js/desk/desk-render.js` turns one held
-  seat into one desk, switched on `render_state` alone: the pose and glyph per § 7.1, the state's
-  label line, the *was: … (last event …, seat clock)* currency label on `catching_up` and
-  `disabled`, the empty chair with *no data since HH:MM:SS — no data for …* on `stale` and
-  `offline` (*no data yet* for a seat that never reported), the hatched overlay and *this state is
-  1m 57s behind — as of HH:MM:SS* on a `fold_lag` seat with its loop stopped, the monitor, the
-  gauge, the thought bubble and the side table's stools with *+N more* from `subagents_open`. New
-  `server/public/js/desk/desk-floor.js` runs it over every held seat, re-renders the ages on step
-  4's 1 s tick (`startAgeTicker`'s first shipped caller) and enters and leaves each desk's `held`
-  render in the animation log. The client protocol now holds, per seat member, the `server_time`
-  that delivered it, which is what the lag line's *as of* stamp reads. Every seat-clock claim reads
-  `HH:MM:SS (seat clock)`, the one precision FLOOR publishes as a rule for a timestamp. Shared
-  pieces moved to `wire/` at their next caller: the gauge and its *not reported* null render
-  (`context-gauge.js`, from the drill-down) and the words *not reported*, *untitled* and *no data
-  yet* (`null-render.js`, from the drill-down and the lobby). `fx-degraded` and `fx-nulls` ship.
-  `Tests\Feature\Floor\TheDeskRenderShowsADegradedSeatAsDegradedTest` replays `fx-degraded` for
-  60 s: every desk is distinct from every other by picture and by label line, each dark age moves while
-  its timestamp does not, the lag line and its stamp do not move across a later heartbeat, the
-  lagged desk's held episode is entered with `motion: false`, and the dark desks are the empty chair
-  beside a live sleeper. Planted and seen red: the desk switched on `activity_state` (both dark
-  desks drawn asleep), the `fold_lag` treatment dropped, the sleeping pose on the dark desks with
-  every label kept, and the stamp taken from the newest message; the control is `fx-snapshot-4`'s
-  live working desk, full colour and entered with motion.
-  `Tests\Feature\Floor\TheDeskRenderNeverDrawsANullAsAZeroTest` walks every member `fx-nulls`'s
-  `nulls-b` sets null, read from the fixture, against its § 5.6 cell; planted and seen red: a null
-  gauge drawn at 0 % and a null quiet age drawn *nothing done for 0s*, with a measured 0.0 % as the
-  control. `Tests\Feature\Desk\TheDeskSpeaksTheDocumentsWordsTest` holds every string the desk
-  restates to § 7.1, § 7.6, § 7.2 and § 7.3.
-  **§ 14 item 23 is closed**: `derivation.fold_lag_ms` = 117,000 lives on `fx-degraded`'s `fold_lag`
-  seat and no longer on AT-D3-16's retirement announcement, and the item records that D2's worked
-  `117` is 117 ms, a different, healthy seat. `fx-degraded` also carries a `live` `idle` seat, the
-  sleeper AT-D3-5 compares the dark desks against, which is the desk AT-D3-5's *all six desks* counts.
-
-- **card#7341** — **Every age on the floor is measured from the server's clock, re-rendered every
-  second, and a seat's own clock is shown as its labelled claim and never subtracted into an age**
-  (`docs/design/FLOOR.md` Appendix B step 4, gated by AT-D3-10's floor half). New
-  `server/public/js/wire/age-readout.js`: each desk's quiet age (*nothing done for …*), action
-  elapsed (*running for …*), `dark-only` receipt age (*no data for …*, on a `stale` or `offline`
-  desk only) and gauge age, computed from `browser_now + clock_offset_ms` over the offset the
-  client protocol holds, plus every seat-clock instant as `HH:MM:SS (seat clock)`; and
-  `startAgeTicker`, the 1 s re-render, on a timer and clock it is handed. A viewer whose machine
-  clock is hours off reads the same ages as one whose clock is right. The drill-down now takes
-  those two wordings, the seat-clock label and the corrected clock from `wire/` instead of its own
-  copies, and with no server clock it draws no quiet age rather than *nothing done yet*, which
-  claims the seat never reported. `Tests\Feature\Floor\TheAgeReadoutReadsTheServerClockTest`
-  replays `fx-snapshot-4` through the harness with the browser three hours fast, over three runs:
-  the fixture itself, one with a +10-minute seat clock, and one with a `stale` and an `offline`
-  desk and gauge samples received before `server_time`. On each, all four ages (quiet, action
-  elapsed, receipt, gauge) equal the server clock minus their own instant, with each wording
-  re-read from § 2.4's table, and a `live` desk draws no receipt age; a correct browser clock
-  renders identical output. Planted and seen red: ages from `Date.now()` (every desk reads
-  *nothing done for 3h…*), an elapsed time from a +10-minute seat's `started_at` (*running for
-  0s*), the gauge age dropped, the receipt age corrupted, and the `dark-only` gate removed. The harness's probe gains a browser clock and
-  runs the shipped ticker on its scenario timer.
-  **Appendix B's landed marker has one form** (Q9): `✅ landed YYYY-MM-DD (card#N …) — `, unbolded,
-  at the head of the Artifact cell. `tools/design/verify-floor.py`'s G5 read every bold span in an
-  Artifact cell as an artifact, so rows 11 to 13's bold markers each registered as a phantom
-  artifact (G5's summary line prints the artifact count it derives), row 3 was written plain to
-  avoid another, and row 1 carried its marker in the Gate cell. All five rows now use the one form, and G5 reds on a bold marker, a
-  marker anywhere else in the cell and a marker in a Gate cell; `verify-design-docs.selftest.py`
-  plants a bold marker (`embolden`) and requires the red.
-- **card#9745** — **the `deploy-gate-inputs` check now RUNS the deploy's own target-tree gates over
-  the PR, so it rejects a commit a real deploy would refuse at phase A, not only one missing a file.**
-  What a PR author meets that the check did not reject before — each depends on the commit alone,
-  so `bin/deploy.sh --ref <that commit>` refuses it at phase A whatever host runs it, before
-  anything is touched:
-  a migration that alters `events` without declaring `ALGORITHM=INSTANT`/`INPLACE` (A10);
-  `trustProxies('*')` in `server/bootstrap/app.php` (A11); a `require.php` in `server/composer.json`
-  that A6 cannot evaluate, or none (A6); a `server/package-lock.json` whose `lockfileVersion` A12
-  cannot map (A12); a `BASH_FLOOR` in `bin/deploy.sh` that is not a version (A6b). Missing or empty
-  files, and a symlink where a file belongs, are rejected as before. A red names the gate function
-  that refused and prints the deploy's own reason; fix what it names, or change the gate
-  deliberately. The check runs the gates of the `bin/deploy.sh` in the commit under test, so a PR
-  that changes a gate is judged by the changed gate. Operator ruling, card#9745 comment 5701.
-  **How it knows what the gates read:** `git_at` — the one function through which `bin/deploy.sh`
-  starts git — appends each call to a read ledger when `MEZZ_GIT_READ_LEDGER` names a file and the
-  script has been SOURCED by a checker. **A deploy ignores that variable:** `bin/deploy.sh --ref …`
-  run with it set in your shell prints one `⚠ MEZZ_GIT_READ_LEDGER is set in this shell and was
-  IGNORED` line, unsets it and writes no ledger; `bin/deploy.selftest.sh` holds a `--dry-run` to the
-  same exit status and the same output either way, with the variable naming a writable path and an
-  unwritable one. `bin/deploy.sh` declares in `GATE_TREE_READERS` the functions phase A reads a path
-  of the release through, and which of them need no host. The check runs those,
-  and its report of what was read comes from the ledger. It replaces the parsing of
-  `bin/deploy.sh`'s source text that card#9637, card#9693 and card#9644 each had to repair; the
-  hand-typed classification table and its disposition digests are gone. A git process a gate starts
-  without `git_at` stops the check (exit 2): a `git` shim counts them against the ledger on every
-  run. `bin/deploy.selftest.sh` holds the declaration to a full `--dry-run` (the functions it reads
-  through are exactly the declared ones) and runs each host-free one on its own, over the same
-  commit, against what it read inside phase A. What a green does not establish is printed by the
-  check itself, under `NOT PROVED BY A GREEN`.
-  **For an installer, a deploy decides what it decided before.** A6, A6b, A10b, A12 and A13 are each
-  split into a target-tree half (`gate_<id>_target_…`) and the comparison with the host, and phase A
-  calls them in the same order. One order moved: a release with no `bin/supervision.sh` is now
-  refused before A13 makes its scratch directory, so on a host where that directory cannot be made
-  either, the missing file is the refusal you see first. ⚠ **A correction to card#9644's entry below:**
-  it calls `gate_a13_target_plan` A13's host-free half. It is not host-free — the release's install
-  plan it runs calls `crontab -l`, so it reads the crontab of the user running it — and it is now
-  labelled so; A13's host-free half is `gate_a13_target_source`.
-
-- **card#9932** — **a scratch file on a filesystem out of free BLOCKS is now refused as unwritable,
-  never read as the tool's silence.** `mktemp` creates an EMPTY file, which costs an inode and no
-  block, so on a filesystem with no space left it still succeeds — measured on a real block-full
-  tmpfs: `mktemp` exit 0, a real path, and the first byte written into it lost to ENOSPC. Every
-  reader of such a file (`_scratch`, used by A7's `git_ref_oid` and by `git_commit_of`'s tag peel;
-  the `.env` loader's own `env_read_err_open`) took that empty read for "the tool printed nothing" —
-  git's silence, or bash's — rather than for a write that never landed, so a rev whose walk git
-  genuinely reported FAILING could be told apart from one that does not exist only by a message that
-  a full `$TMPDIR` had just lost.
-  **The fix is a probe, not a guess:** `scratch_writable` writes a byte into a scratch file or
-  directory and reads it back before the caller is handed it; one that fails is refused as *"created
-  and could not be written,"* naming free BLOCKS (`df`) as the number to read, distinct from a
-  `mktemp` that failed outright (free INODES, card#9816) and from a scratch file `mktemp` made that
-  this shell could not open (the open-file limit, `ulimit -n`, card#9933). `env_read_err_open` gains
-  this as a third, distinct failure return, and the `.env` loader's refusal (at A5) and its phase-B
-  warning both name it under their own reason rather than `mktemp`'s.
-  **git's own stderr is read back with its status checked too:** a `cat` of the scratch file that
-  captured `git rev-parse --verify`'s diagnostic can itself fail after git has written a real answer
-  into it, and `git_ref_oid` and `git_commit_of` now refuse *"git's error output could not be read
-  back"* rather than treating that failed read as git's silence.
-  **A13's OWN write into its scratch directory is checked too, not left to the directory's one-byte
-  probe:** that probe proves a byte lands, not that a whole release's `bin/supervision.sh` — kilobytes,
-  several blocks — does; on a filesystem down to a handful of free blocks the probe passed and the
-  larger write died under `set -e` with no ⛔ banner, before phase A installs any ERR trap. It is now
-  checked on its own status and refused by name.
-  **This new check is verified by reproduction, not by a dedicated fixture in the shipped suite** —
-  named rather than left implied. tmpfs allocates a full page even for a one-byte file (no `inline_data`
-  the way ext4 can have), so the existing block-full fixture drives free space to literally zero and the
-  DIRECTORY's own one-byte probe catches A13's case first, the same way it already did before this
-  change; the new write-status check sits behind a probe that a fully-full filesystem never gets past.
-  Reproduced directly instead (a tmpfs left with a handful of pages free, not zero: the probe passes, the
-  12 KB write does not, `printf` exits non-zero with `write error: No space left on device`) and
-  confirmed against the real code by disabling `_scratch`'s directory probe under mutation, which lets
-  a fully-full run reach this check and refuse through it, banner and all. A fixture that leaves the
-  filesystem at a handful of free pages rather than zero would exercise it directly; building one is
-  future work, not done here.
-  `bin/deploy.selftest.sh` gains a § card#9932 section built on a REAL block-full filesystem — a
-  private tmpfs in an unprivileged user + mount namespace (`unshare -Ur -m`, `unshare --map-user`,
-  no root), filled with `dd` immediately before the scratch call under test — covering the `.env`
-  loader, `git_ref_oid` over a healthy and a broken store, A13's work directory, and
-  `git_commit_of`'s annotated-tag peel, plus TWO `cat`-can't-read-git's-stderr cases (a `git` stub
-  that makes the diagnostic file unreadable the instant the real `git` has written it): one on
-  `git_ref_oid`'s own candidate resolution, over a broken store, and one on `git_commit_of`'s own tag
-  peel, over a healthy one. A runner that cannot make the namespaces this needs, or cannot make an
-  unreadable file as root, reports NOT VERIFIED by name rather than passing silently.
-  Mutation-tested: reverting the write probe reds each of the block-full cases on its own headline;
-  a separate mutation reds each `cat`-status case on its own.
-  **Found in review and fixed in the same change:** `bin/env-mirror-diff.mirror.sh` sources only the
-  `# ── .env reading` block of `bin/deploy.sh`, and `scratch_writable` was defined outside it — inside
-  the mirror it was an undefined command, status 127, silenced by `|| return 3` into "not writable" for
-  every fixture, so the differential that holds this reader against Laravel's own parser measured
-  nothing (CI: `env-mirror-differential`, 9 FAILURES). It is now defined inside that block, and named
-  in the mirror's own required-function list so a future move dies loudly instead of refusing
-  silently.
-  **CI could not run the block-full section at all** (`unshare: write failed /proc/self/uid_map:
-  Operation not permitted` — Ubuntu 24.04 restricts unprivileged user namespaces by AppArmor by
-  default): `deploy-selftest.yml`'s `deploy-selftest` and `bash-floor` jobs now attempt
-  `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` before the suite and fail the job
-  outright if the section still reports NOT VERIFIED afterward, so a later revert of the probe cannot
-  stay green by way of a section that silently never runs. **The sysctl is a candidate lever for this
-  restriction, recalled rather than sourced, and it is UNVERIFIED in this change** — reproducing an
-  AppArmor-restricted runner was not possible in the environment this was built in, so whether it
-  actually lifts the restriction on GitHub's runner is what this PR's own CI run establishes, not this
-  text; if it does not, the new failure names exactly that rather than the section going quiet.
-- **card#9801** — **A PR body that does not meet the fleet PR-body standard now fails the
-  `pr-body-lint` check**, so on a branch that requires that check the red blocks the merge until the
-  body is fixed. Which branches require it is a repository setting; `docs/VERSIONING.md § Branch model`
-  carries the command that reads it. **To clear the red, edit the PR body**: the check re-runs on the
-  edit, with no new push. The failed step's log lists each finding, where it is and which rule it
-  breaks, then a closing block whose first line names the outcome. **Re-running the failed job
-  does not clear it**: a re-run judges the body the original event carried, so edit the body
-  instead. To check a body before you open the PR, run
-  `python3 bin/pr-body-lint.py --body-file=<file>` and look for exit 0; `bin/change-pr-body.py`
-  writes a skeleton that passes it (`CLAUDE.md § PR bodies are judged against the fleet standard`).
-  **A red that says the linter could not judge the body is a wiring defect, not a finding**, and
-  editing the body does not clear it; it fails the check so that a verdict that never happened does
-  not read as a pass. The job's other steps, which check this repository's own files, are
-  unchanged, and the generator's selftest now also runs after a red body verdict, so one run shows
-  both results. A merged PR is not re-checked, so the bodies of PRs merged before this change stay
-  as they were written.
-- **card#9991** — **`bin/deploy.sh` refuses a `MEZZ_REMOTE` that names a remote whose NAME contains
-  `:`, and no A3c refusal prints such a name any more.** `git config` will write a remote whose NAME
-  is a URL (`git config 'remote.https://user:token@host/o/r.git.url' <url>` exits 0), `git remote`
-  then lists it, and card#9832's membership test passes it because it IS a configured remote.
-  Measured against the previous tree with an obviously fake credential: setting `MEZZ_REMOTE` to
-  such a name printed the credential three times in one run — the *"Fetching …"* step line and two
-  lines of the refusal that followed a successful fetch — and on a checkout carrying such a remote,
-  the refusal for a `MEZZ_REMOTE` that names no remote printed it in its list of remote names.
-  **The rule is the colon, never a pattern match for `://` or `@`:** `git remote add` and `git
-  remote rename` both refuse a name containing `:` (measured, git 2.53.0: `'a:b' is not a valid
-  remote name`), and every URL form with a place for a credential carries one, so the rule turns
-  away no remote those two commands created. One predicate does both jobs: it refuses the value, and it marks
-  a matching entry in the printed list as ``[name N of `git remote`'s list — NOT PRINTED …]``, by its
-  position, instead of printing it.
-  **What to do if a deploy refuses with *"whose NAME contains ':'"*:** rename the marked remote
-  without printing it, with the command the refusal prints —
-  `git -C <deploy root> remote rename "$(git -C <deploy root> remote | sed -n '<N>p')" <a name>` —
-  and, if `git -C <deploy root> config --get remote.<a name>.fetch` prints nothing, add the refspec
-  `git remote add` writes: `git -C <deploy root> config remote.<a name>.fetch
-  '+refs/heads/*:refs/remotes/<a name>/*'`. Then set `MEZZ_REMOTE` to the new name. A checkout that
-  deliberately named a remote with a URL stops deploying until it does this; that cost was accepted
-  when the rule was decided. Hosts whose `MEZZ_REMOTE` is unset, or is a name with no `:`, deploy as
-  before, including a checkout that carries a colon-named remote it does not deploy from.
-  `bin/deploy.selftest.sh` gains a § card#9991 section: the colon-named `MEZZ_REMOTE` refused with
-  the credential absent from the output and from every file of the checkout outside `.git/`, the
-  printed rename advice run and the renamed remote deploying, a refusal on such a checkout with the
-  entry marked, a twin in which the same token as a legal name IS listed (so the absences are
-  measurements), a legal name carrying `/`, `@`, `.` and `-` deploying, and a checkout carrying a
-  colon-named remote deploying from `origin`.
-
-- **card#10074** — **README's install step now keeps the new database password out of the
-  `mariadb` client's own history file, and warns at the `CREATE USER` that a typo can print it.**
-  § Running the server locally told an installer to use `sudo mariadb` "so the password never lands
-  in argv or shell history". That held for argv and for the shell's history, and not for the
-  client's: without `MYSQL_HISTFILE=/dev/null` the `CREATE USER` statement, password included, was
-  written in plaintext to `~/.mariadb_history`, or to `~/.mysql_history` when that file already
-  existed and `~/.mariadb_history` did not, under the `HOME` the client ran with; neither of the
-  rotation document's sweeps can find either file. The step now runs
-  `sudo env MYSQL_HISTFILE=/dev/null mariadb`, the same command `docs/CREDENTIAL-ROTATION.md` step 1
-  uses, and tells an installer who created the account without it to delete both files, as
-  that document's step 7 does. A mistyped
-  `CREATE USER` can return the password inside its syntax-error text; README now says so beside
-  the statement and points at the rotation document's top matter, which states that mechanism once.
-  The README's pointer to that document was scoped to changing the password and now covers choosing
-  it too. Measured on a throwaway 11.8.6 server with fixture values: slips at several points ahead
-  of the value printed it, the one slip measured after the value printed none of it, and the
-  correct statement and a mistyped statement carrying no value printed no value; without the variable
-  the value went to `.mariadb_history` in a fresh `HOME` and to `.mysql_history` in a `HOME` that
-  already held only that file, and with the variable neither file received it.
-
-- **card#9684** — **`python3 bin/release-facts.py` prints what a seat cutting a release of this
-  repository needs to know, in one read, and names what it could not verify.** From the tree it
-  lists every CI lane and marks each one whose `pull_request` trigger is filtered, or absent, as
-  never requirable, and it quotes the bash, npm and PHP floors as the readers that enforce them
-  print them. It carries no number of its own. From the GitHub API, with GET requests only, it
-  prints every rule instance on `dev` and `main` verbatim, the bypass actors of each ruleset they
-  come from, and a per-lane `gates` column. A failed read, a non-200 or an empty `[]` prints `NOT VERIFIED`, and
-  that branch's column reads `UNKNOWN`. It then names the facts no script here can establish: the
-  ask-first policy for opening a release PR (cited from `CLAUDE.md` as it reads it), organisation
-  rulesets, whether a target host meets the floors, and bypass actors this credential cannot see.
-  It names the credential it read with and never prints its value. It exits 1 when a job declares
-  a key that makes its status context differ from its job id, which turns "context equals job id"
-  into a checked fact, and it blocks nothing else. The new `release-facts` lane runs its hermetic
-  selftest, in which every case is re-run against a mutated script and must red there, and then
-  the reporter itself, with the report in the step summary. `docs/VERSIONING.md § Release flow`
-  step 7 now says opening the release PR is ask-first and points at the declaration, and step 8
-  points at the reporter.
-- **card#9660** — **The database password now has a rotation procedure that names every consumer
-  of it, because the last rotation killed a consumer nobody had written down.** On a host that runs
-  this application beside the agent webhook bridge, both authenticate as the **same** MariaDB login
-  — separate schemas, one account — and neither checkout declared it. On 2026-09-14 the password
-  was rotated, `server/.env` was updated, the bridge's was not, and **the bridge returned HTTP 500
-  to every GitHub webhook delivery for 38 hours**: cards stopped advancing on PR events, a merge
-  event was dropped, and the cards stranded in the window were then skipped by the next release
-  promote. Separating the identities is the fix nobody can apply here — there is one login on that
-  host and no route to a second (operator ruling) — so the coupling stays and is made **loud**.
-  **`docs/CREDENTIAL-ROTATION.md` is the new home**, pointed at from `README.md` § Running the
-  server locally (where `DB_PASSWORD` is introduced) and from `docs/KANBAN.md` § Gotchas (the
-  bridge end), because the consumer set spans this repository and one that is not in it, and half
-  a checklist in each end's doc is worse than none.
-  **The consumer list is derived rather than remembered, and it derives by CONTENT.** A sweep for
-  `.env*` is the pattern anyone writes and it is not enough: writing this found a file named
-  `env.bak` holding a non-empty password that no name-based pattern would have reached. The
-  document carries a `DB_PASSWORD=` content population and a classifier that answers `LIVE` or
-  `OTHER` per path — **and prints no value, because the comparison's pattern arrives on a file
-  descriptor rather than in `argv`**. Seen to discriminate before it was written down: the
-  application's, the bridge's and a worktree's `.env` answer `LIVE`, and a retired `.bak` beside
-  the bridge's answers `OTHER`.
-  ⛔ **It walks the tree with `find`, and the reason is a trap worth knowing outside this
-  document: a recursive `grep` may honour `.gitignore`, and `.env` is gitignored in every one of
-  these checkouts.** Measured 2026-09-20 — `grep -rl` from an agent session returns none of the
-  `.env` files on this host, because that session's `grep` is `ugrep` invoked with
-  `--ignore-files`, while `/usr/bin/grep` is GNU grep and does not do it. A credential sweep built
-  on `grep -r` therefore reports a clean host by skipping exactly the files that hold the
-  credential. The document's classifier also refuses rather than running when its reference file
-  holds no password, because an empty pattern file matches every line under one of those two
-  greps — which would answer `LIVE` for every path in a sweep that measured nothing.
-  **The order is reasoned for this install rather than asserted.** The server-side change needs an
-  administrative credential this account does not have; the `.env` writes need nothing. So the
-  server side is the part that can be refused, and it goes **first**: the other order takes every
-  consumer down for the duration of a gate that has not been passed yet, and if that gate is then
-  refused, the only route back is a backup whose sufficiency has never been tested. Going
-  server-first proves you hold the access a rollback needs before anything is overwritten.
-  **And the outage that order implies turns out to be avoidable, which is measured rather than
-  hoped.** MariaDB accepts more than one authentication rule per account, each with its own
-  password — documented in the MariaDB Knowledge Base and then exercised on a throwaway server at
-  the version this fleet pins, `11.8.6`: two `mysql_native_password` rules are accepted, **both**
-  values authenticate, a third is refused, and this stack's own PHP PDO client reaches the second
-  rule as readily as the `mariadb` CLI. So the procedure adds the new password beside the old, moves
-  every consumer across while both work, and retires the old one afterwards — the same
-  add-before-retire shape `docs/design/EVENT-SCHEMA.md § 3.3` already prescribes for the fleet token,
-  which now points at this document and is pointed back at, so the two statements of one doctrine can
-  be read against each other rather than drifting apart unnoticed. Mutual pointers make a divergence
-  **findable**; nothing checks that the two still agree. The single-value path with its real outage
-  stays documented for the case the overlap is unavailable — a hosting panel offers one password box,
-  not a SQL prompt.
-  ⚠ **The overlap is not free, and the document says so rather than selling it.** It keeps the old
-  value **accepted by the server** until the retire step, so the procedure asks first *why* you are
-  rotating: a scheduled rotation can take as long as it likes, a rotation triggered by exposure
-  cannot, because until the retire step the possibly-compromised value still works. The retire step is
-  therefore gated on positive evidence rather than on an absence of complaints — every daemon started
-  after the file edits, and the Laravel config cache cleared in both checkouts — because a daemon's
-  in-memory copy and a `bootstrap/cache/config.php` are the two consumers no file sweep can see, and
-  both survive the whole overlap and break at the retire. **And the statement that carries both
-  plaintexts now runs with the `mariadb` client's own history turned off**: measured 2026-09-20 both
-  ways, that client filters nothing, and the file it writes is not a `DB_PASSWORD=` line — and, under
-  `sudo`'s usual `env_reset`, lands in root's home rather than this account's — so neither of the
-  document's own sweeps could ever have found it, on the line shape alone.
-  **What is NOT checked is named rather than omitted**, which is the failure this card is really
-  about: a declaration with nothing asserting it is a comment, and the next reader gets confidence
-  where they should get a question. The application's own store reachability is watched by nothing;
-  the bridge watcher's verdict reaches a human only when someone runs the reader; all copies can
-  agree and all be wrong. The document proposes a scheduled sync check with those limits stated,
-  and deliberately does not build it here.
-  **Four of its own claims are narrowed to what was measured, one of them about a secret**
-  (2026-09-21, the same card's follow-up). The hash shortcut is described as removing the retyping
-  of the old value rather than as a form that cannot be mistyped: rule 1 written
-  `USING PASSWORD('<hash>')` — one token from the `USING PASSWORD('<the new password>')` that rule 2
-  legitimately carries, on the line below it — is **accepted by the server**, and afterwards every
-  consumer's stored value is refused `ERROR 1045` while `SHOW CREATE USER` still prints two rules.
-  The mandatory check below the form catches exactly that, and the form and the check now both say
-  so. ⚠ **The `ERROR 1064` the document presents as the harmless outcome quotes your new password
-  back in plaintext** — the server composes that message, so it appears at an interactive prompt and
-  not only in batch output, though it does not reach the server's error log. The document's own rule
-  about failure text now covers a secret value rather than the database user and host alone, and the
-  warning sits where the refusal is met. **An account already carrying more than one authentication
-  rule gets told to write its own statement**: the published one silently drops every rule it does
-  not restate — socket authentication refused `ERROR 1045` after it — and the "two rules are present"
-  confirmation passes either way, because it was already two. And § Verifying's daemon-log check
-  resolves its filenames through `bin/supervision.sh`'s own `supervision_daemon_name`, where it had
-  asked for a name that subcommand prints and so named three files that do not exist. Every engine
-  claim above was measured on a throwaway server at the pinned version, each with a control run
-  alongside it; the filename rows were run on this host, the broken form first and failing.
-  `docs/design/EVENT-SCHEMA.md` stops glossing that procedure's retire gate as two of its
-  conditions in the same act, a partial gloss of a gate being a way to read a gate as met.
-  **The rule about failure text is now a rule about the MECHANISM rather than a note at the sites
-  somebody remembered** (2026-09-21, the same card, after a review found the warning covering one
-  site and silent at the others — the same shape each previous round of this document produced, an
-  instance fixed and the class re-minted one site along). The document had said it warned "where
-  it is used", and it did not: the statement on the **default** path, the one every operator runs,
-  can quote the **old** password — the value every consumer is holding, that step 0 backs up and
-  step 7 exists to delete — while the document warned about the new one where it happened to warn
-  at all. What replaces it is the server's actual behaviour, stated once near the top and needing
-  no per-site upkeep: a failing statement is quoted back **from the point of the error**, so
-  whichever value sits in that span is printed, and any statement here carrying a value can
-  therefore print it. A failure text that has been redirected or pasted is now named as an
-  **exposure**, a trigger § "The outage window is avoidable" already has a rule for. The second
-  leg is named too: **feed these statements to the client through a redirect and the client echoes
-  the whole statement first**, every value in it, ahead of the server's message. The commands that
-  merely *connect* are stated as their own class — account and host, no value, holding for both
-  things this document connects with and withheld from a stack trace by the driver's own
-  sensitive-parameter marking — and the classifier that reads the live value was measured across
-  its failure modes and reproduces no value in any of them. The population was derived over the
-  merged document rather than taken from the review, and every candidate inspection could not
-  clear was measured on a throwaway server at the pinned version under a pty, each against a
-  control seen to produce no value — the correctly-spelled statement returns no message at all,
-  and the detector fires on a stream that does carry one, so an empty result is a measurement.
-  Step 1's fence also carries a pointer to the caveats below it, so the operator who pastes first
-  meets the silent multi-rule failure before running it rather than after.
-- **card#9933** — **a `server/.env` the deploy never read, because it could not open the scratch
-  file it reads with, is refused as that — instead of as a read that stopped short, under advice
-  pointing at your disks.** Point `TMPDIR` at a directory `mktemp` cannot make a file in — one that is
-  missing, one this deploy cannot write to, or one whose filesystem is out of inodes — and run
-  `bin/deploy.sh`: A5 used to stop with *"`<path>` was opened but could not be read to its end"*, and
-  the lines under it said the open had succeeded so this was neither a permission nor an ownership fault,
-  that a read failing on an already-open file is usually a disk or filesystem one — failing media, a
-  filesystem remounted read-only, a network mount that stopped answering — and that `dmesg` and the mount
-  the file sits on are where that family is visible. **None of that advice applied to your host** — and
-  the one sentence of it that was TRUE, that the open had succeeded, is true on every path that reaches
-  this refusal and so told you nothing. The file had been opened and closed again without a byte being
-  read: what failed was `mktemp`, for a scratch file the loader needs because bash's `read` reports an
-  end-of-file and a read ERROR with the same status and
-  tells them apart only by its diagnostic. The cause was already in the refusal, one line further down,
-  contradicted by everything around it. **What you see now:** *"`<path>` could not be read: no scratch
-  file could be opened for bash's read diagnostic"*, and a body that says the finding is about neither the
-  file nor the disk it sits on and sends you to the directory `mktemp` writes into — `$TMPDIR`, or `/tmp`
-  when that is unset. **What to do about it is unchanged**: give this deploy a temporary directory it can
-  create a file in. (The advice now sends you to free INODES, `df -i`, and says that a `df` at 100% is not
-  on its own the finding: `mktemp` creates an EMPTY file, and a filesystem out of free blocks can still
-  give it one — measured on a 100%-full tmpfs. The old *"…and that it is not full"* pointed at free space, and
-  it was pointing at the wrong number before this change too, here and on every other scratch file the
-  deploy makes; both messages are corrected in this change. The denial of `df` is made for a scratch
-  FILE only: the one scratch DIRECTORY this deploy makes — A13's, for reading your crontab block — is
-  sent to both numbers instead, because a directory can need a data block where an empty file needs
-  none, and that case was not measured.) A read that really does stop short — failing
-  media, a mount that went away — keeps the old headline, the errno bash reported, and the
-  disk-and-`dmesg` advice, which is correct for it.
-  **The same failure in PHASE B is now named too, and that one reached you on a deploy that SUCCEEDED.**
-  Phase B re-executes, so it makes a scratch file of its own — after `php artisan up` has closed the
-  maintenance window and the release is already serving — and when that one failed you were told, on an
-  `✔ DEPLOYED` run that exited 0, that `server/.env`'s open or read had failed, that the file had stopped
-  being readable inside the window, and that bash's reason
-  was printed above. The file was readable throughout, no read was ever made, and there was no such
-  diagnostic; the offered remedy (re-run `--dry-run`, which names the cause at A5) only works while the
-  cause is still there, so a `$TMPDIR` that was missing, unwritable or out of inodes during the deploy and
-  was put right before you re-ran left you a clean
-  dry run and nothing else. That warning now names the scratch file, says `server/.env` may be perfectly
-  readable, says the release IS deployed and serving so that what is missing is the CHECK on it, and says
-  what the `--dry-run` remedy is and is not worth. The deploy still finishes and is still reported
-  UNVERIFIED — this is a warning, not a new failure, and no deploy that used to succeed now stops.
-  **The warning beside it — for a `server/.env` whose open or read really did fail — now names the span
-  it can establish**: the file was readable in phase A and stopped being so *between phase A and this
-  check*, rather than *inside the window*. That load runs after `php artisan up` has closed the window,
-  so a file that went unreadable once the window had closed reached you under a message that sent you
-  looking inside it; the cause it names and the run it sends you to are unchanged.
-  **And the scratch failure that is NOT about `$TMPDIR` is told apart from the one that is**: a scratch
-  file `mktemp` created and this deploy could not OPEN (the realistic cause is how many files it may have
-  open at once) no longer reports `mktemp` as having failed and no longer sends you to check a `$TMPDIR`
-  that is working. Every other reader is unchanged: both failures still set one flag, `env_get` still
-  answers **3** for either, and A10b still acts on the one fact it needs, that the file was not read.
-  The suite is why this survived as long as it did, and that is fixed in the same change: the case for
-  this failure asserted the exit code, the banner and the reason, and the case beside it pinned the shared
-  headline — so the wrong headline was asserted CORRECT and a fully green run reported nothing. The
-  headline is now asserted for this case, the read's is asserted absent from it, and so are the three
-  sentences of disk-and-`dmesg` advice; the in-window failure and the unopenable scratch file each gain a
-  case of their own, the in-window one driven through a whole deploy at the very scratch file phase B
-  makes; and the mutation that reds each of them is named in the case, and was run.
-- **card#9684** — **`docs/VERSIONING.md § Branch model` no longer keeps a copy of this
-  repository's settings, so the copy can no longer be wrong.** The section carried a stack of
-  dated re-readings — which contexts each branch required on which day, which merge method each
-  branch allowed, what classic branch protection held — every one of them added because the
-  reading before it had gone stale, and every one stale again before the next reader arrived.
-  **Nothing re-derived them, so they were prose ageing into false statements about what would
-  block your merge.** They are deleted. What stays is the part no API call can tell you — why
-  `dev` carries an admin bypass and what it exists for, why the tag ruleset must never gain a
-  `creation` rule, why the review ruleset does not close the actor gap, and the pending trap that
-  makes a filtered workflow unsafe to require — and, where the readings were, **the commands that
-  print the live answer**. A pointer cannot drift.
-  **Statements that had already gone false are corrected in the same act.** The section said that
-  no ruleset had replaced `main`'s `strict: true`; a ruleset has, and the published command prints
-  it for either branch. It said the required status checks also lived in classic protection with
-  `enforce_admins` on, and reasoned from *"Classic protection on `dev` does not require linear
-  history"* — classic protection has been retired from both branches since card#9746, and
-  `gh api repos/PupFuzz/mezzanine/branches/dev/protection` answers `404 Branch not protected` for
-  `dev` and for `main`. And `§ Release flow` step 8 said *"Nothing enforces this mechanically
-  here"*, which stopped being true with the first required context.
-  **`§ Release flow` steps 5 and 8 now carry commands rather than facts**, and the procedure is
-  written down once, there. Step 5 derives the host floors by RUNNING the gates that enforce them
-  instead of asking you to copy a number, so a release note quotes a floor it has just read; step
-  8 derives which contexts GitHub will actually hold the merge on, because the lanes outside that
-  set run and block nothing and a wall of green ticks is evidence only where a red was possible.
-  ⚠ **If you write release notes, read `§ Release flow` step 5 before the next one** — how to run
-  it, which rev each line speaks for, why the npm floor is the one A12 prints rather than the
-  `lockfileVersion` beside it, and how to tell the block failed. **This entry deliberately does
-  not repeat the procedure**: the same instructions in two places is the defect this card is
-  about, and one round of review was enough to make the copies disagree.
-- **card#9801** — **A PR into `dev` now has a body generator, and the shape it emits is the fleet
-  standard's.** `bin/change-pr-body.py` writes the scope line, `## Highlights`, optionally
-  `## Upgrade warnings`, the `Built:` / `**Coordinated in:**` machine lines and the attribution
-  trailer, and leaves the judgement sections as `<!-- AUTHOR: … -->` markers. Until it existed the
-  author of a non-release PR had two options and both broke a rule: hand-write the body against the
-  standing "generate it" rule, or force `--version` onto `release-pr-body` — which exits 2 with
-  `could not resolve version` on a `dev` PR because it is structurally a RELEASE generator — and
-  emit a body asserting a release that is not happening. The fleet helper is unchanged: it is
-  owned outside this repository and a `--change` mode there is a fleet proposal, not a local edit.
-  **The shape question the generator answers is now written down too.** `skills/release-pr/SKILL.md
-  § PR body` governs *every* PR body an agent writes, not only a release one — two of the four
-  sections it admits carry `Release PRs only` in its own IN table, and the set is an allowlist
-  rather than a required list — so `CLAUDE.md § PR bodies are judged against the fleet standard`
-  now carries what a change PR looks like and a `change-pr-body:house-map` block saying where each
-  of this repository's former house sections goes instead. **That map is graded, not asserted:**
-  `bin/change-pr-body.selftest.py` drives every left-hand heading through `bin/pr-body-lint.py` and
-  requires it to still red, requires every `## X` destination to be one that linter admits AND
-  passes, and pipes the generator's real output into it — then mutates that output once per rule
-  so the green is shown to discriminate. **Once per rule is itself derived, not counted:** the
-  rule ids are read out of the linter's own source and the mutation set is required to cover
-  them, so re-vendoring a linter that adds a rule reds the suite for under-coverage instead of
-  leaving a coverage sentence that has quietly stopped being true. The suite runs in the
-  `pr-body-lint` job and can fail it.
-  **This change left what the repository rejects as it was.** The lane's verdict on a PR body
-  stayed report-only here; the flip to blocking came later in this release, in the card#9801 bullet
-  at the top of this section.
-  **A false claim about that lane is corrected, and the sweep that finds it is written down
-  instead of being asserted complete.** Every surface describing the `pr-body-lint` job said the
-  JOB prints its verdict and exits 0 — in the words "nothing in this job can fail a pull request",
-  and in "the contract this job makes is that it exits 0". That was never true: the job's
-  vendored-byte pin and the vendored linter's own selftest shipped in its first commit and both
-  red on a bad checkout. ⚠ "Corrected everywhere" is exactly the claim that goes stale at the next
-  copy and that nothing re-checks, so the SWEEP is recorded rather than the verdict. Re-run it
-  before adding a sentence about this lane; each round of this change found a copy the previous
-  round's narrower sweep had not:
-
-  ```
-  for f in $(git grep -l "pr-body-lint" \
-             | grep -v -e '^bin/pr-body-lint-fixtures/.*\.md\.txt$' -e '^docs/changelog/v0'); do
-    git grep -n -i -E "exits? 0|can fail|cannot fail|never block|never fails|report-only" -- "$f"
-  done
-  ```
-
-  ⛔ **SELECT THE FILES, THEN READ EVERY MATCH IN THEM — DO NOT ADD A SECOND LINE-FILTER.** The
-  obvious tightening (`| grep -i "body\|this job"`) is what this command replaced, and it was
-  measured to MISS its own known positive: these sentences are hard-wrapped, so the predicate and
-  the subject word land on different lines and a line-oriented second stage drops the pair. At
-  the base commit it silently omitted `docs/VERSIONING.md:256`, which carried the claim verbatim.
-  Dropping `bin/` from the pathspec hid the last copy of all, inside `bin/pr-body-lint.py`'s own
-  header. The selector now carries no pathspec at all and excludes the captured PR bodies by file
-  name rather than the fixtures directory by path (card#9801's blocking change): a listed pathspec
-  stays complete only until somebody adds a directory, and excluding the whole directory also hid
-  the directory's README, which is prose about this lane's fixtures and belongs in the sweep.
-  `report-only` joined the predicate in the same change, because once the verdict blocks, a copy
-  still calling it report-only is the claim that goes stale.
-  ⇒ The cost of the version above is NOISE — it returns every "exit 0" in the changelog's
-  history, and you discard those by eye. That is the right trade: a reader who skims a screenful of
-  irrelevant lines still finds the wrong sentence, and a filtered sweep that returns a clean-looking
-  set hands the next author CONFIDENCE instead of a question, which is worse than the universal it
-  replaced. The promise was about the BODY: under this change no PR body could fail this job,
-  until the blocking change at the top of this section. The generator's selftest now runs in the
-  same job and can red it too, and it is ordered AFTER the body step so that a broken generator
-  does not suppress the body verdict the author reads.
-- **card#9984** — **`bin/deploy.sh`'s version comparison refuses operands it cannot read, so a
-  `BASH_FLOOR` that is not a version is refused by name instead of certified.** Until this change
-  the comparison behind every one of phase A's version floors — A1's bash floor, A6's PHP floor,
-  A6b's floor for the release being deployed, A12's npm floor — fell through to zeros on an operand
-  that was not a version: every field read 0, 0 is neither greater nor less than 0, and the answer
-  was *"at least"*. None of them asks it under `set -e`, so nothing stopped. **What that cost:
-  edit `BASH_FLOOR=` at the top of your serving copy of `bin/deploy.sh` to anything that is not a
-  `<major>.<minor>` — blank it, or write `v4.4` — and the next `bin/deploy.sh` run printed no
-  complaint about it, enforced no bash floor at all, and went on to open the maintenance
-  window.** It now stops in phase A, before anything is touched.
-  **A mistyped SEPARATOR is caught too, and it is the likelier typo.** `BASH_FLOOR=4,4`, `4.x`,
-  `4-4`, `4x`, `4` and `"4 4"` all begin with a digit, so the comparison used to run, read as far
-  as it parsed, take the floor to be `4.0` and report it met — a host running bash 4.0 deploying
-  past a floor of 4.4. What a floor IS is now one test — `<digits>.<digits>`, exactly two fields —
-  and A1 holds your copy's declaration to it, A6b holds the release's to it, and the `bash-floor`
-  CI job holds the tree it measures to it. **That test is stricter than the one A6b used to
-  apply:** a release declaring `BASH_FLOOR=4.x.5` or `4.4x` used to pass, and the first was
-  enforced as the floor `4.0.5`, which is not the floor that release declared. Both are refused
-  now. **And a copy whose `BASH_FLOOR=` line has been DELETED is refused as that** — it used to
-  end the run with `BASH_FLOOR: unbound variable` and exit 1, with none of the `⛔ REFUSED`
-  banner or the *"Nothing was changed. The previous release is still serving."* promise that
-  tells you a deploy stopped on purpose rather than broke. A blank `BASH_FLOOR=` takes the same
-  refusal.
-  **The same tightening reaches the host's own `npm --version`.** A1c validated it with the
-  same loose pattern, so an npm reporting something like `9.x.5` was compared as `9.0.5` — a
-  number your host never reported. It is refused now. **A prerelease npm still deploys**:
-  `9.2.0-pre.1` is read as its release, which is long-standing deliberate behaviour and is
-  covered by a case so it stays that way. What is refused is a version with any dot-field that
-  does not start with a digit. Among the first three fields — the ones the comparison reads —
-  that is the shape that was being silently read as `0`; beyond them the check is deliberately
-  stricter than the comparison needs — npm's published versions were swept for this, and none
-  of them is affected.
-  **Every comparison between two well-formed versions answers exactly as it did before** —
-  measured field by field against the previous implementation. What changed is only what
-  happens to an operand that is not one.
-  **If a deploy of yours starts refusing with *"declares BASH_FLOOR='…', which is not a
-  version"*, the fix is the line at the top of `bin/deploy.sh`:** it reads
-  `BASH_FLOOR=<major>.<minor>`, alone on its line, at column 0, unquoted or quoted, and the
-  comment above it says how the number is arrived at and that it moves by re-running the
-  measurement rather than by being retyped.
-  **If instead it refuses with *"a version comparison this deploy cannot perform"*, read the two
-  operands it prints** — one is this host's own version (`$BASH_VERSINFO`, `php -r 'echo
-  PHP_VERSION;'`, `npm --version`) and the other is a floor declared by a release (`require.php`
-  in `server/composer.json`, `lockfileVersion` in `server/package-lock.json`), and whichever of
-  them is not a version is what to fix. The commonest way to reach it is a host `php` that answers
-  `php -r 'echo PHP_VERSION;'` with something other than a version: each floor gate validates the
-  FLOOR it read out of the release, and the HOST value it is handed is not validated anywhere
-  else.
-  The same change drops the here-strings that split those operands. A here-string is a temporary
-  file on every bash below 5.1, which is above the floor `BASH_FLOOR` declares, so on a supported
-  host a temp-file failure reached that same fall-through with no bad input at all; the split is
-  now parameter expansion, which needs no file, no pipe and no subshell.
-
-- **card#9803** — **`docs/design/FLEET-STATE.md` § 6.2 owns the suite's store-isolation pin values
-  and carries them as a verbatim XML block; the suite now checks that block against
-  `server/phpunit.xml`.** Nothing compared the two, so the document that OWNS the pins could
-  disagree with the file that implements them, in either direction, with every check green. The cost
-  is in the correction rather than in the disagreement: someone who finds the file contradicting the
-  section that owns the values edits the FILE to match it, and those pins decide which database the
-  suite rebuilds destructively on every run and which Redis index it flushes — on a shared host,
-  someone else's.
-  **`Tests\Feature\DatabasePinTest` reads § 6.2's block through the same reader it already used for
-  `phpunit.xml`** — one implementation of what a pin is, rather than a second parser inside a check
-  whose whole subject is two copies disagreeing — and reds naming the key and what each side
-  declares.
-  **It compares every pin, and its population is the pin set rather than a list anyone maintains** —
-  the key sets are read from the two files and compared in both directions, and then, over
-  `phpunit.xml`'s own set read at run time, each pin's `<env>` value, its `force="true"` and its
-  `<server>` value are compared. A pin added to `phpunit.xml` is compared on the run that adds it,
-  with no second decision for anyone to remember. `force` is compared because § 6.2 finding 1 makes
-  it as load-bearing as the value: a block whose `force="true"` has been dropped isolates nothing
-  once copied into the file, and an exported variable then beats the pin.
-  **What the check is worth differs by key, and that was established key by key.** A drifted
-  `DB_DATABASE`, `REDIS_DB` or `REDIS_CACHE_DB` copied into `phpunit.xml` also moves a resolved value
-  `Tests\TestCase` asserts by name and ABORTS the run on, so for those the new check is the earlier
-  and clearer red rather than the only one. `REDIS_URL` is asserted by nothing else:
-  Laravel's `RedisManager` takes the index from the URL's path when it BUILDS a connection, so
-  `config('database.redis.default.database')` goes on reporting the pinned index and no check sees
-  the difference. And `DB_URL`'s existing guard compares the database NAME alone, while the URL also
-  replaces the driver, host, port, username and password — measured with a `DB_URL` of
-  `mysql://127.0.0.1:3399/mezzanine_test` pinned in `phpunit.xml`, where every `config()` pin passed,
-  the connection-name guard passed, and the run went on to open a connection to that port.
-  **The bootstrap guard's abort message was corrected in the same change.** It named an exported
-  environment variable as the usual cause, and in this card's sequence that sends the reader to
-  update the guard's own expected values — making the drift green and the store somebody else's. It
-  now names the drifted-pin cause beside the export and says to check both copies before editing
-  either.
-  **Which red you get depends on which copy moved, and it is worth knowing before you read one.** A
-  drift in § 6.2 — of any pin, in a value or in `force` — reaches this check and nothing else, and
-  you get its message naming the key and both copies. A drift in `phpunit.xml` reaches this check
-  for `DB_URL` and `REDIS_URL`, whose values no other check reads. For `DB_DATABASE`, `REDIS_DB` and
-  `REDIS_CACHE_DB` a file-side drift moves a resolved value, so every test errors in the bootstrap
-  guard before this check runs and you get that abort instead — safe, and pointed at the right copy
-  by the clause below.
-  The check was watched failing in each of those shapes before it was trusted, and each red was read
-  rather than counted.
-  **There is nothing to do on any host.** No application code, no configuration and no deploy path
-  changes, and the check runs with the rest of the PHP suite. It matters when you EDIT either copy:
-  move the pins in `server/phpunit.xml` and § 6.2's block in the same commit, and read that section's
-  guard bullets before deciding which copy drifted.
-
-- **card#9832** — **`bin/deploy.sh` refuses a `MEZZ_REMOTE` that is not the NAME of a remote of the
-  checkout, in phase A, before anything is touched — and without printing the value.** The variable
-  has always been documented as a git remote NAME, but `git fetch` takes a URL just as readily, and
-  a URL can carry a credential: `MEZZ_REMOTE=https://user:token@host/org/repo` is an ordinary thing
-  for an operator deploying a private checkout to set, and git accepts it. Every later mention of
-  the value then put that credential on the operator's screen and in the deploy log — measured on
-  the previous tree, five times over in one refused run, in the *"Fetching …"* step line and in four
-  lines of the fetch refusal that followed. **git's own redaction is not a backstop:** measured, git
-  2.53.0, an `https://` URL is reported with the credential stripped and a `git://` one verbatim, so
-  it is per-transport, it is not this script's to rely on, and either message is on screen before the
-  script sees it. Refusing the value at the boundary is therefore the fix and redaction is the weaker
-  half.
-  **The test is MEMBERSHIP in `git remote`, never a pattern match for `://` or `@`.** `backup@nas`
-  and a bare `@` are legal remote names — a remote name is a refname component — so a pattern would
-  refuse a host that is configured exactly right.
-  **What membership does NOT close, said at the size it was measured.** No name `git remote add`
-  will CREATE can be a URL: a refname may not contain `:`, and every URL form with a place for a
-  credential carries one. But `git config` writes a section name straight into `.git/config` with no
-  such check — measured, git 2.53.0, `git config 'remote.https://user:secret@host/o/r.git.url' <url>`
-  exits 0, `git remote` then lists that URL as a NAME, and membership passes it. That is a configured
-  remote of the checkout, so the claim is the narrow one and not "no URL can be a remote's name".
-  **card#9991 closes that leg** — such a `MEZZ_REMOTE` is refused, and the list this gate prints
-  marks such a name instead of printing it; its bullet says what to do.
-  A multi-line `MEZZ_REMOTE` equal to two or more ADJACENT names joined by newlines is refused
-  before the list test, since that test is applied to the value and the value is not a name.
-  **The refusal does not echo what it rejected**, which is the whole of its point: it names the
-  VARIABLE, says outright that the value is withheld, and lists the remotes this checkout HAS, which
-  are names — `git remote` with no options prints no `remote.<name>.url` (a name containing `:` is
-  marked rather than printed, card#9991). The cost is paid
-  knowingly: an operator who
-  merely mistyped a name does not get the typo echoed back, and the list of names that would have
-  worked is what makes it findable. `git remote`'s own status is read too, so a `git remote` that
-  FAILED is refused as *"whether `MEZZ_REMOTE` names a remote is NOT established"* rather than as a
-  value that names nothing.
-  **What to do if you set `MEZZ_REMOTE` to a URL:** add the remote to the deploy checkout once
-  (`git -C <deploy root> remote add <name> <url>`) and set `MEZZ_REMOTE` to that NAME. Hosts that
-  leave `MEZZ_REMOTE` unset are unaffected — `origin` is a remote of any checkout this deploy runs
-  on — and a host that had set it to a configured remote's name is unaffected as well.
-  `bin/deploy.selftest.sh` gains the credential-bearing URL refused with the value absent from the
-  output, a positive twin that observes the same string PRESENT so the absence is a measurement
-  rather than a needle that could never appear, `backup@nas` deploying (which is what reds the
-  pattern match), a configured non-default remote deploying, the default `origin` path unchanged, a
-  checkout with no remotes at all, a value joining two adjacent remote names with a newline beside
-  each half deploying alone, and a `git remote` made to fail by the suite's git shim — a
-  status nothing can make a fixture produce, since a config git cannot read fails A3 first.
-
-- **card#9616** — **`bin/deploy.sh` refuses a host whose `bash`, `git` or `npm` is too old — by name,
-  in phase A, before anything is touched.** Until now A1 asked only whether those binaries were
-  PRESENT; PHP alone had a version gate. So a host that was too old got partway in: `npm ci` failed in
-  phase B with the site already down, a git without `:(literal)` pathspec magic failed every read of
-  the release and was reported as a release missing its files, and a bash below the floor did not
-  refuse at all — it DIED, at A7's refusal, on an empty array expanded under `set -u`, exiting 1 with
-  no `⛔ REFUSED` banner and no *"Nothing was changed"* promise, which is exactly the code the exit
-  table reserves for "refused, nothing was touched".
-  **The bash floor is MEASURED, and `BASH_FLOOR` at the top of `bin/deploy.sh` is its one home.** A
-  construct scan cannot find it — it sees `mapfile` (4.0) and `exec {fd}<` (4.1) and stops a full minor
-  short of the truth — so nothing scans: `.github/workflows/deploy-selftest.yml` gains a `bash-floor`
-  job that builds GNU bash at the declared floor and at the minor below it, from the release tarballs
-  pinned by sha256, and runs the whole self-test under each. The floor must PASS **and the minor below
-  must FAIL**; the below-floor run lowers `BASH_FLOOR` in its own copy of the tree so that the gate is
-  not what stops it, and the job reds if that run passes, because a floor whose control cannot fail is
-  a version that works rather than a floor. It reads the floor through `bin/deploy.sh`'s own reader, so
-  CI cannot measure a floor the gate would not see.
-  **Both copies of the script are held to a floor.** After `artisan down` the deploy re-execs the
-  TARGET release's `bin/deploy.sh`, which never runs A1 — so A6b reads that release's own `BASH_FLOOR`
-  out of git and holds this host's bash to it, beside the gates that already read the release (A6,
-  A10–A13). A release that declares none predates this card: that is said out loud and is not a
-  refusal, since refusing would make every rollback undeployable for want of a line it could not have
-  carried.
-  **git is PROBED, never version-parsed** (A3b, after A3 has established that git can open the
-  repository): `git ls-tree HEAD -- VERSION` first, so that a failure of the magic form differs from it
-  by one thing, then the same read with `:(literal)`, which must print exactly `VERSION`. The OUTPUT is
-  required and not the status, because a magic-less git can also exit 0 having listed nothing — which
-  downstream is indistinguishable from a release that does not carry the file.
-  **npm is compared against the TARGET tree's `lockfileVersion`** (A12), the release that moves to a
-  newer lockfile format being exactly the one the serving checkout says nothing about. The mapping is
-  npm's own documentation, quoted at the gate and marked documented-not-measured; a lockfile version
-  the gate cannot map is refused rather than guessed at.
-  `bin/deploy.selftest.sh` carries a case for each refusal, every one asserting the banner and the
-  promise as well as the exit code — in this class an exit-code assertion catches nothing, because the
-  death being refused already exits 1 — plus the controls one variable away: the release's floor set to
-  this host's bash, npm exactly at the lockfile's floor, and a git that fails the PLAIN probe, which
-  must not be blamed on the pathspec magic it never reached. `BASH_VERSINFO` cannot be faked inside a
-  running bash, so the comparison is a predicate of its own, driven at the floor and at the floor minus
-  one.
-  `bin/deploy-gate-inputs.sh`'s classification table moves with the gates, as it is built to: A12's
-  read of `server/package-lock.json` becomes a CONTENT read rather than a presence one, and
-  `bin/deploy.sh` joins the table as A6b's input — each row's function and disposition digest DERIVED
-  by that check and pasted from its own output, never hand-computed. `bin/shell-lint.baseline.tsv`
-  grows by a typed `--accept-new`, in two classes this file already carries as debt: SC2317 on the
-  new fixture mutators, which ShellCheck cannot see `mkfix` invoke, and one SC2016 on a
-  single-quoted `$BASH_FLOOR` that must reach the sourced shell unexpanded. Annotating only the new
-  ones while their siblings stay unannotated would put two conventions in one file; discharging the
-  whole class is its own round.
-  **Review round 2 found the backstop had a denominator of one, and that is the substantive fix in
-  it.** Only ONE empty-array site — A7's `ref_note` — was reached by any fixture, so guarding that
-  one site would have turned the below-floor control green and had the job report that the floor
-  could be lowered, while a first deploy on an older host still met `checkout_lock_holders` in the
-  window. The suite gains two scenarios it had never covered: a **FIRST deploy** (D-08 — the prod
-  host has never been deployed to, so it is the one run certain to happen), which is where that
-  array is empty, and a **`server/.env` with no lines**. A `no_shell_death` tripwire rides on those
-  and on the widest existing runs, because the first-deploy site does not change what the deploy
-  DECIDES — its expansion is inside a `$( )`, so on an old bash the subshell dies and the parent
-  reads an empty answer — and no verdict-shaped assertion can see that. The declared population of
-  such sites is now stated as a HAND AUDIT that nothing re-derives, with both of its past errors
-  recorded: one direction called three guarded sites hazards, the other added `ENV_LINES`, which
-  measurement removed (`env_lines_load` splits with `<<<`, so a zero-byte `.env` is one empty line
-  and the array is never `()` where the loops read it). The control's own assertions were two
-  decorations: it now asserts that the `sed` lowering `BASH_FLOOR` in the below-tree actually
-  applied — without it both gates refuse every fixture and the suite reds for the gate's reason,
-  which is what lowering the floor exists to prevent — and it requires the suite's own
-  `N assertions, M FAILED` line rather than accepting any non-zero exit, so a run that broke for an
-  unrelated reason cannot pass for a measurement. **The maintenance window now runs the interpreter
-  the gates measured**: the re-exec hands over `$BASH` rather than going through the deployed
-  release's `#!/usr/bin/env bash`, which closes the gap where `somebash bin/deploy.sh` passed both
-  floors and then died in the window on PATH's older shell.
-  **Review round 3 gave that behaviour change the control it was missing, and found its sibling.**
-  Every ordinary case starts the deploy through its shebang, so the invoking shell and PATH's shell
-  are one process and reverting the hand-over reds nothing — the claim was wider than anything in
-  the suite could support, which is a lower bar than this change applies everywhere else in itself.
-  The self-test now starts one deploy through an EXPLICIT interpreter with a recording pass-through
-  standing in for PATH's `bash`, and requires that neither the maintenance window nor A13 appears in
-  its log; a positive twin asserts the recorder was really on PATH first, so the two absence
-  assertions cannot pass having observed nothing. The sibling: `gate_a13_target_plan` ran the target
-  release's `bin/supervision.sh` under a bare `bash -c` — PATH's shell again, the one no gate reads —
-  and its refusal says the crontab block *"could not be installed here"*, blaming the RELEASE for
-  this host's PATH `bash`. That is the misattribution class this card exists to end, being committed
-  by one of its own gates; it now uses `$BASH` too, and has its own assertion in the same case.
-
-- **card#9814** — **`release-pr-guard` R7 refuses a release PR that skipped archiving the previous
-  release (release flow step 13), so the red lands on the release that owes the step.** Before it,
-  a skipped step 13 surfaced only as R5's size red on some later feature PR by an author who could
-  not fix it, and not at all in the fortnight after an archive, when R5's threshold is the whole
-  cliff. On a PR into `main`, `docs/CHANGELOG.md` at the head may carry at most two released
-  sections — the one the release mints and the previous latest — and the refusal names the
-  `docs/changelog/<tag>.md` file each excess section belongs in, with the fix routed through `dev`
-  as step 13 says. The same rule refuses any `docs/changelog/*.md` past R5's own contents-API cliff,
-  the backstop for a post-hoc edit to a released section. Off the release path both clauses warn
-  and never refuse, and R7 opens no authority file there, so the archive file is named from the
-  version instead of composed from `tag_format`, and the one state that can still stop a feature
-  PR through R7 is git failing to list `docs/changelog/` — which the guard's earlier read of
-  `docs/CHANGELOG.md` already exits 2 on, and which stays the only one after this round's decode
-  fix. The archive listing recurses and asks git not to quote the paths, so a file in a
-  `docs/changelog/` subdirectory, or one named outside plain ASCII, is counted rather than
-  reported as none; an archive filename that is not valid UTF-8 at all is read and printed
-  lossily rather than refused, because a filename is not this repo's to validate and every git
-  read now survives undecodable bytes. R7 counts released sections with R3's own reading of the
-  headings, so a `###` heading is not one. The self-test adds a control, the third-section plant,
-  the demoted-heading control, an archive plant with its at-the-cliff control, and the controls
-  that a feature PR meets no authority file in R7, that a nested archive is seen, that a
-  non-ASCII archive name is seen, and that a version-less heading is named with an instruction
-  that can be followed; each red was seen to fail before the code that answers it, and raising
-  the limit to three or doubling the archive limit reds the plants.
-
-- **card#9816** — **`bin/deploy.sh`'s three phase-A scratch-file failures are now refused as
-  themselves, with the `⛔ REFUSED` banner and the "Nothing was changed. The previous release is
-  still serving." promise.** Three places this script creates a temporary file inside phase A had no
-  unified error path: A13's work directory for its isolation check, and git_ref_oid's and
-  git_commit_of's stderr files for capturing git's diagnostics on a failed read. When `mktemp`
-  failed — measured with TMPDIR pointing at a directory that does not exist, the one condition the
-  fixtures produce; a filesystem out of BLOCKS is UNTESTED and is a DIFFERENT failure, because `mktemp`
-  can SUCCEED on one and what then fails is the write of git's stderr into the file it made, while a
-  filesystem out of INODES fails `mktemp` and is this failure rather than that one — two of
-  them refused with a WRONG CAUSE because the failure went undetected: git_ref_oid and git_commit_of
-  are called from inside an `if` or `||`, where `set -e` does not apply, so the script carried on
-  with an empty path and refused on a cause it never established ("'main' does not resolve to a
-  commit on origin" for a ref that is in the checkout, "git could not resolve the tag …" for a tag
-  git never got to peel). A13's failure was worse: `mktemp`'s failure exits the phase with status 1
-  — the code the exit table reserves for a REFUSED — but no banner fired, so the operator saw only
-  the exit code with no description. All three now route through `not_established`, the one exit
-  that reads the phase (A REFUSES with the banner and promise, B takes the in-window failure path
-  and warns with the cause named); `scratch_file` and `scratch_dir` wrap `mktemp` and call
-  `not_established` on failure, naming the scratch file and its purpose rather than the git step
-  that would have run with an empty path. `not_established` and the scratch helpers join
-  `git_read_call_site`'s family, so `failed_line:` in the in-window marker still names the caller.
-  **Each change was seen to red on the old code** — the three fixtures exercise a real-mktemp
-  pass-through that fails after N calls, and the whole run with TMPDIR gone to a missing directory,
-  generating the three refused headlines and the empty-path false causes that the old code carried
-  through.
-
-- **card#9831** — **`bin/deploy-gate-inputs.sh` answers a mistyped command line with exit 2 and its
-  `⛔` banner, which is its word for "this check could not run".** `--ref` with no value, or with an
-  empty one, used to fail inside bash's own `${2:?}` expansion: a shell error that the script's ERR
-  trap never sees, so the shell printed one line of its own and exited 1 — the code the script's exit
-  table reserves for "a required input is MISSING", a verdict about the release. The option's value is
-  now tested before it is used and the failure leaves through `die`, and an unknown argument leaves the
-  same way instead of through a banner-less `printf`. The exit table names the command line among the
-  causes of exit 2, and `bin/deploy-gate-inputs.selftest.sh` asserts the banner as well as the code for
-  each case, because the shell's message carries the same words as the banner's.
-
-- **card#9610** — **a `server/.env` that OPENS and cannot be read to its end is now refused as itself,
-  and after the maintenance window it leaves the deploy UNVERIFIED by name rather than reported as an
-  unset key.** bash's `read` returns the same status at end-of-file and on a read ERROR, so the loader
-  could not tell a file the kernel refused mid-read from an empty one: `env_file_scan` certified a file
-  nothing had read, and A5 refused on `APP_ENV is 'unset'` — a deploy stopped on a cause nothing
-  established, with a `.env` that was right there and correct. What discriminates is bash's own
-  DIAGNOSTIC, not its status and not the file's size: a read error prints and an end-of-file is silent,
-  which is the rule the git reads in this script already use. A size or length test was measured and
-  rejected — it counts characters against bytes under a UTF-8 locale, asks the filesystem a second
-  question whose answer can have changed since the first, and reads every `/proc`-style file as empty.
-  The read's stderr is captured to be READ rather than hidden: every byte of it is printed back before
-  anything is decided, and it is safe to print by construction — `read`'s diagnostic names a file
-  descriptor and an errno and carries no byte of what the file holds. Nothing read partway is used.
-  The shape no userland reader can see is stated in the script instead of assumed away: an I/O error the
-  kernel reports AS an end-of-file. **The status is what crosses the subshell.** Both readers that want a
-  value call `env_get` inside a `$(…)`, so a flag set by the loader dies with that subshell — `env_get`
-  answers **3** for a file that was not read, printing nothing, and 3 is never "unset". `env_read`
-  refuses on it, which is what stops A5's `env_read … || true` from swallowing it back into `APP_ENV is
-  'unset'`; A10b refuses on it rather than listing 53 keys the host "does not set"; and phase B, where
-  no refusal is allowed because the new release is already serving, **warns with the cause named** and
-  says the deploy is UNVERIFIED. The suite gains the fixtures that discriminate: an EIO on a regular
-  file with no root (`/proc/self/mem` — the only one that reds on all three wrong fixes, including the
-  `[ -d ]` one a directory fixture would pass and the size one that reads it as empty), the directory
-  beside it, `env_get`'s status read through a subshell, a `.env` made unreadable after A5's scan, and
-  one made unreadable inside the window. Each was seen to red against the previous `bin/deploy.sh`
-  first. One condition is named rather than fixtured: a phase-A or phase-B READ failure on a real
-  `server/.env` needs a filesystem that answers EIO on demand, which this runner cannot produce — a
-  symlink to `/proc/self/mem` is refused earlier by A5's mode check, which reads the LINK's mode.
-- **card#9646** — **every exit `bin/deploy.sh` takes in its precondition phase is now a refusal that
-  says so, and names only the cause the run established.** Four commands ran without their status
-  being read, so the script died on them instead of refusing: `--ref` with no value (bash's own
-  `${2:?}`), `git fetch`, `git status --porcelain`, and — for its cause rather than its status —
-  `git rev-parse --git-dir`. Under `set -Eeuo pipefail` a death exits with THAT command's status,
-  which is exit 1 for a ref this checkout cannot read and 128 for a remote it cannot reach: 1 is the
-  code the script's own exit table says means *refused, nothing was touched*, and 128 is a code the
-  table does not list at all. The operator's only discriminator was the absence of the `⛔ REFUSED`
-  banner and the `Nothing was changed. The previous release is still serving.` promise — two lines
-  nothing told them to look for, and the exit table now says so. A3's refusal also asserted one cause
-  for a status that carries several: `rev-parse --git-dir` exits 128 for every way it cannot open a
-  repository, and `$DEPLOY_ROOT is not a git checkout` was stated for all of them with git's own
-  message thrown away, so a prod checkout restored from backup or rsynced — `detected dubious
-  ownership`, which git prints its own `safe.directory` repair line for — sent its operator looking
-  for a checkout that was right there. git's wording is the discriminator now, git's message is
-  printed, and an unrecognised wording gets an honest generic refusal rather than a false specific
-  one. **The suite could not see any of it, which is the finding under the finding**:
-  `bin/deploy.selftest.sh`'s `run_refusal` asserted an exit code and a needle, and a banner-less
-  death satisfies both, so it now asserts the banner and the promise as well — one edit that upgrades
-  every call site it has rather than one case at a time. The new cases each name the mutant they
-  catch, and the two asymmetric ones are marked: a fetch fix that handles git's exit 1 and lets its
-  128 escape passes every fetch case but the one run with the remote gone, and an A3 fix that matches
-  `dubious ownership` and defaults everything else back to *not a git checkout* passes all five
-  preserved shapes and reds only on a `.git/config` git cannot parse. `git status`'s status is read
-  because the precondition is live and was measured to be: on a checkout whose `.git/index` is mode
-  000, A3 exits 0 — it never opens the index — and A4 exits 128, and the empty result a failed
-  `status` hands back reads exactly like a clean tree. **And a condition the runner cannot produce is
-  now named rather than skipped**: every fixture that manufactures a state — a file this user cannot
-  open, an object at mode 000, a checkout git treats as another user's — asserts that state before it
-  asserts anything about the refusal, and where the state depends on the runner's own git build or
-  configuration the suite prints `⚠ NOT VERIFIED HERE` with what that runner answered and what would
-  have to be true, repeats the count in its summary, and does not fail. That is not hypothetical: the
-  dubious-ownership fixture was green locally and red in CI, because `GIT_TEST_ASSUME_DIFFERENT_OWNER`
-  only forces git past the uid check and `ensure_valid_ownership` then consults `safe.directory` — so
-  a `safe.directory = *` in the system or global gitconfig turns its 128 back into a 0. The fixture is
-  hermetic against both now, and it reported the absence by name rather than certifying a refusal that
-  never happened.
-
-- **card#9813** — **every released section but the latest now lives in its own file, so the
-  changelog the contents API returns stays a fraction of the truncation cliff.** `[0.2.0]`,
-  `[0.3.0]` and `[0.4.0]` moved verbatim to `docs/changelog/v0.2.0.md`, `v0.3.0.md` and
-  `v0.4.0.md`; this file keeps `[Unreleased]` and `[0.5.0]`. Archiving is release flow **step
-  13** (`docs/VERSIONING.md`) rather than a periodic act, and the archive files carry no size
-  gate of their own because R5 already bounded every byte in them before it was archived —
-  `docs/PLAN.md § 4` states that invariant and the immutability of a released section that
-  rests on it.
-
-- **card#9707** — **`release-pr-guard` R6 refuses a release that ships less than `dev` holds unless
-  the PR body says exactly what it leaves out.** Nothing compared a release head to the integration
-  branch, and the cost was measured rather than imagined: PR #176 (v0.5.0) sat open for roughly a day
-  at head `e5c1d9e` while four PRs merged to `dev` behind it, every check green the whole time, and
-  merging it in that state would have shipped a release omitting four cards with no automated surface
-  saying so — the tag, the changelog section and the green wall all describe the BRANCH, while the harm
-  is the gap between the branch and `dev`. A human reading the branch caught it, which is not a
-  mechanism. **Two measurements compose into one verdict.** R6a is content: every path where the head
-  differs from `origin/dev` outside the release's own two edits (`VERSION`, `docs/CHANGELOG.md`) is
-  residue — symmetric on purpose, since a non-artifact difference is either `dev` moving after the cut
-  or a feature edit riding the release branch, and neither is a release. R6b is cards: R6a excuses the
-  changelog, which is precisely where "four fewer cards than `dev` held" hides, so every card bulleted
-  under `dev`'s `## [Unreleased]` must appear bulleted somewhere in the head's changelog — not scoped to
-  `[Unreleased]` at the head, because release flow step 4 has just retitled that section and a scoped
-  rule would red every correct release. **The hatch is a declaration, not an opt-out:** a line-initial
-  `Release-excludes: <paths and/or card#NNNN> — <reason>` in the PR body, read through a new
-  `--body`/`--body-file` pair, and it must EQUAL the measured residue — a hatch satisfied by any
-  non-empty acknowledgement would be a checkbox, and a declaration written for yesterday's exclusion
-  must not silently cover drift that arrived after it, so a partial declaration reds naming both sides.
-  **⛔ It is a TREE comparison and may never become an ancestry test.** `git merge-base --is-ancestor`
-  answers FALSE on this repo's correctly back-merged v0.5.0 — PR #180 was squashed, so the release line
-  is not an ancestor of `dev` and never will be, while `git diff --stat origin/main origin/dev` is
-  empty. An ancestry R6 would have been born false here, and the natural response to a false red is to
-  weaken the rule. **Ancestry is wrong in BOTH directions and the selftest pins both**: a head that
-  reaches `dev`'s content through unrelated history must PASS (the false-RED direction), and a head
-  that is a true DESCENDANT of `dev` — which is what the normal release path produces, since the
-  branch is cut FROM `dev` — must still RED when it carries a feature edit of its own (the false-PASS
-  direction, and R6a's second half). Only the first was pinned when this was first written, and a
-  hybrid that short-circuited on ancestry everywhere except the unrelated-history case passed the
-  whole suite while asserting nothing on the common path; the descendant fixture is what closed it.
-  **Fail-closed where it
-  cannot measure:** an unresolvable `origin/dev` is exit 2 rather than a green (the workflow gained the
-  integration-branch fetch, with no `--depth` for the measured reason the base fetch carries, and the
-  selftest now asserts that of EVERY fetch line rather than the first), and a run never given the PR
-  body exits 2 rather than refusing a PR for a declaration it was not shown — an empty body is a real
-  state and reds. **Every arm was seen to fail first**, each mutation below producing a targeted red
-  with none uncaught: R6 replaced by an ancestry test, R6 *short-circuited* on ancestry with the tree
-  diff kept only for unrelated history (the one that reached review passing, and the reason the
-  descendant fixture exists), the hatch reduced to non-empty, R6b dropped, R6a's residue emptied, an
-  unresolvable `dev` passing, the integration fetch deleted, the body no longer passed, and a
-  `--depth` restored on a fetch line.
-  **The same card's second finding, fixed in the same PR: `.release-pr.json` now declares
-  `card_token_regex`, so `release-pr-body`'s shipped-cards manifest is no longer empty.** With the key
-  absent the generic helper could correlate nothing and
-  emitted a `## Correlation gaps` section on every release body; card promotion was unaffected (the
-  mover carries its own `CARD_RE`), but the one cross-check on the mover could never run. Measured over
-  `v0.4.0..v0.5.0`: absent, `--card-manifest` printed nothing; declared, it prints exactly the id set
-  the mover's own sweep of that range prints, and the gaps section is gone. The value is the mover's
-  `CARD_RE` verbatim rather than the obvious `card#[0-9]+`, which would silently drop the `card-NNNN`
-  and glued `cardNN` spellings the correlators accept — and because the helper reads JSON and cannot
-  extract the mover's bash, the copy is GUARDED: `bin/card-token-lint.selftest.py` now asserts the two
-  are byte-identical and reds if either moves. `ref_token_regex` stays undeclared deliberately: its
-  numeric part correlates against a card's `payload.dl_number` and this repo has no decision-log id
-  space.
-- **card#9742** — **`DatabasePinTest` asserts the key set it guards against the key set `phpunit.xml`
-  declares, so a pin the file gains and the test does not is reported as UNGUARDED instead of skipped.**
-  The test iterates a hand-written constant, and nothing asserted that constant still described the file:
-  a forced pin added to `phpunit.xml` and not to `PAIRED_KEYS` was simply never visited, and the
-  suite stayed green reporting on a subset it no longer defined — with the NEWEST pin, the one most
-  likely to be wrong, the one it could silently omit. The sets agreed when this landed, so this closes a
-  LATENT gap rather than a live divergence; what it protects is store isolation on a shared host, where
-  `mezzanine_test` is rebuilt destructively by `RefreshDatabase` on every run and a neighbouring tenant's
-  data is what a silent shrink eventually costs. The shape is kanban-solo's, published on rt#506 after
-  they hit the identical defect in their own copy of this guard, and taken as offered rather than
-  re-derived. **Set equality, in both directions**: a key the file pins and `PAIRED_KEYS` does not name
-  reds as `UNGUARDED`, a key `PAIRED_KEYS` names and the file no longer pins reds as `GUARDED BUT
-  ABSENT` — the second is the same defect pointed the other way, a pairing asserted for a pin that
-  isolates nothing. A key claimed by EITHER half of the pair — a forced `<env>` or a `<server>` — enters
-  the file's set, because a half-written pin is exactly what the pairing assertion exists to catch and
-  must be judged rather than fall out of the population; the unforced `<env>` entries (`DB_CONNECTION`
-  and the defaults above it) claim nothing, since an exported value beats them. **Seen to fail in both
-  directions on a FIXTURE COPY of `phpunit.xml`** — staging the control in the real file would change
-  the isolation of the run performing it — reporting `UNGUARDED: phpunit.xml pins REDIS_SESSION_DB,
-  which PAIRED_KEYS does not name` and `GUARDED BUT ABSENT: PAIRED_KEYS names REDIS_URL, which
-  phpunit.xml no longer pins`. `docs/design/FLEET-STATE.md` § 6.2 records the leg and AT-D2-14 carries
-  the fixture control as its fourth RED.
-- **card#9767** — **this repository now runs the FLEET's PR-body linter on every open PR, and its
-  verdict on a body REPORTS rather than blocks.** ⚠ Later in this release the verdict was made to
-  block: see the card#9801 bullet at the top of this section. `bin/pr-body-lint.py` is upstream's
-  own program — the one every coord
-  install's CI runs and the review path spawns — vendored byte-for-byte under a `#` provenance header
-  that records the source commit and plugin version, because the upstream repository is private and a
-  public runner cannot clone it. The new **`pr-body-lint` job** in
-  `.github/workflows/card-token-lint.yml` prints its whole verdict and **the step that judges the
-  body exits 0 whatever it finds**. ⚠ The JOB is not thereby incapable of failing — its pin and
-  selftest steps judge the CHECKOUT and do red — and it never was: those steps shipped with it.
-  ⛔ **THE REPORT-ONLY WIRING IS THE DECISION, NOT AN UNFINISHED STAGING STEP.** Run over this
-  repository's recent merged bodies, most of them FAIL the standard — and **those reds are correct**:
-  the standard governs every PR body an agent writes and is ratified twice, and this repo is genuinely
-  non-compliant with it, principally because its house sections (`## What is in it`, `## What you must
-  do`, `## What you will see change`, `## Evidence`) are none of them in the standard's closed allowed
-  set. A gate that reds ordinary correct-looking work on its first day teaches the people it governs
-  to route around it, so this lane makes the findings visible without minting that habit. ⚠ **It is a
-  WINDOW, not a destination** — adopting the body shape, and then a dated flip to blocking, are
-  tracked on card#9767 and are the operator's calls; requiring the job as a ruleset context is
-  likewise the operator's, and **would not by itself make the BODY VERDICT block**, because that step
-  exits 0 — though it would make the job's pin and selftest steps blocking, which is the intent.
-  **The lane existing is not the class being handled.** ⭐ **WHAT IT REPLACED, AND WHY THAT IS THE POINT**
-  — `bin/pr-body-fields.py` and `bin/coord_audit_field.py`, a mezzanine-local two-field presence guard
-  built around `review-prep.py`'s `_audit_field`, are **deleted**. That function has MOVED upstream and
-  now lives inside this very linter, so the local pair was a copy of something that was no longer
-  where it had been copied from, and keeping it would have shipped a second divergent implementation
-  of a capability the framework already owns. Upstream's is a strict superset of it: the same two
-  presence rules, plus the installer-POV narration rules, plus `attribution-line` — the rule that
-  refuses the `FROM:` line the 2026-09-17 operator directive removed from PR bodies fleet-wide.
-  **BOTH VENDORED FILES ARE PINNED** in `bin/vendor-pin-check.sh`, whose `--selftest` control arm
-  needed the `#` provenance header to exist at all (it requires line 2 of a manifest file to be a
-  comment and upstream's line 2 is the docstring; a comment before a module's first string statement
-  does not displace `__doc__`). The vendored fixtures carry no manifest row and need none —
-  **upstream's own selftest pins each of them by sha256**, which checks the copy against the SOURCE
-  rather than against this repo's last declaration, and that selftest runs in the job.
-- **card#9754** — **the suite refuses by name unless it can READ `server/.env`, and `php-tests` runs it
-  with no `.env` on every PR.** No CI lane had ever run the suite without a `.env`: `php-tests.yml` copies
-  `.env.example` to `.env` before the only step that executes it, and `server/.env` is gitignored — so the
-  tree CI tested always had one and the tree every fresh worktree and every first contributor has never
-  did. A defect that manifests only in that configuration was therefore invisible to the green wall BY
-  CONSTRUCTION, and card#9687 is the instance already paid for: the suite errored with
-  `ReflectionException: Method ...::test_dummy() does not exist`, naming whichever class the directory
-  iterator reached first, while CI stayed green throughout. THE BEHAVIOUR WAS DECIDED BEFORE THE LANE WAS
-  BUILT, because a lane built first would only have pinned whatever happened to occur: the suite cannot run
-  without an `.env` — `phpunit.xml` pins the test database and deliberately no credentials, since
-  credentials are per-host and a committed file must never carry them — so with no file
-  `config/database.php` falls back to `env('DB_USERNAME', 'root')` with an empty password, and the run
-  reports a cause that is TRUE AND NOT ACTIONABLE. Measured on this host at `dev` `90f9663`: 612 of 977
-  tests error with `Access denied for user 'root'@'localhost' (using password: NO)`, which sends a first
-  contributor to fix MariaDB grants when the remedy is to copy `.env.example`. `server/tests/bootstrap.php`
-  now refuses on READABILITY, with a named message on STDERR and `exit(1)` — **two states, two messages**,
-  because one sentence cannot honestly say both *there is no file* and *there is a file you cannot open*,
-  and their remedies differ. **The second is the one a presence check would have waved through, and waving
-  it through would have re-minted the class this card exists to close:** `file_exists()` is true for a
-  `.env` this process cannot open, phpdotenv reads it through `@file_get_contents()`, and
-  `Dotenv::safeLoad()` SWALLOWS the `InvalidPathException` that follows — so an unreadable file reaches the
-  suite exactly as an absent one does, on the same fall-back credentials, having raised the suppressed
-  bootstrap warning that is card#9687's whole mechanism. Measured on this host as a non-root user: on a
-  mode-000 `.env`, `file_exists()` is true while `is_readable()`, `fopen()` and `@file_get_contents()` are
-  all false, and the pre-guard tree RAN the suite against it and errored with the access-denied. `bin/deploy.sh`
-  already refuses both states one layer up, in two refusals with two messages — A5's `does not exist` and
-  `env_file_scan`'s `exists but cannot be read by the user this deploy runs as`, which card#9605 named
-  "the I/O sibling of the two cases above, and the one that was missing" — and the suite's guard is now
-  that same shape. It EXTENDS the card#9499 autoload guard already in that file rather than siblinging it,
-  and it is there rather than in `Tests\TestCase` because that guard runs per test and after the framework
-  has booted — and booting is what raises the diagnostic card#9687 traced. There is deliberately NO *unless
-  the credentials are exported* branch: nothing in this repository runs the suite that way, and in the new
-  lane, where the job exports `DB_*`, such a branch would make the lane pass on variables the configuration
-  under test does not have. **What no bootstrap-time guard covers is named in the guard's own comment
-  rather than left to be inferred:** a readable `.env` carrying a WRONG credential — the template copied
-  with `DB_PASSWORD` left unset — reaches the same access-denied, and seeing that requires opening a
-  connection, which is not bootstrap's job. **The lane asserts the MESSAGE, never the exit code**, in the genuine no-`.env` window between
-  `Install dependencies` and `Create .env` — no extra runner, no second `composer install`. Both states of
-  that window exit non-zero (pre-guard 2, post-guard 1) and it has no `APP_KEY` either, so an exit-code
-  assertion would pass on all of them and discriminate between none. **Seen to fail, so the green is
-  evidence:** the lane's own command, re-extracted from the workflow file and run on this tree with
-  `bootstrap.php` restored to its `90f9663` content, exits 1 and prints the access-denied output it got
-  instead; with the guard it exits 0 on the refusal. The unreadable state was watched both ways too, on a
-  mode-000 `.env` asserted to be genuinely unopenable by this non-root user: the pre-guard tree ran the
-  test and errored on access-denied (exit 2), and this one refuses by name before any test runs (exit 1).
-  The lane pins the first line of the no-file refusal — the guard's label and the clause naming the state,
-  and no path, so the pin does not silently depend on the server directory being named `server`; rewording
-  that line reds the lane by design. `README.md` § Running the server locally states both refusals and the
-  state neither covers. The full suite passes 977 of 977 with 11268 assertions on PHP 8.5 against the host
-  MariaDB with a readable `.env` in place, which is the run this guard leaves untouched.
-
-- **card#9687** — **the full-suite gate no longer errors on a checkout that has no `server/.env`, naming a
-  class that has nothing to do with it.** `FixedWindowPinCoverageTest` probes each class that asserts a
-  `429` by constructing it and invoking its `setUp()`, and it passed the constructor a placeholder name
-  rather than the name of a test method that exists. PHPUnit's constructor argument is not a label: the
-  runner's global error handler resolves it by REFLECTION, at a moment the probe does not choose. Any PHP
-  diagnostic raised while the probe's instance is on the call stack reaches
-  `Event\Code\TestMethodBuilder::fromCallStack()`, which takes the nearest `TestCase` — the probe's, not
-  the running one — and prettifies its name through `new ReflectionMethod($class, $case->name())`. A
-  placeholder therefore throws `ReflectionException: Method ...::<placeholder>() does not exist`, and it
-  names whichever class the directory iterator reached first, so the message points nowhere near the line
-  that caused it. THE DIAGNOSTIC THAT FIRES IS THE MISSING `.env`: the probed class's `setUp()` boots the
-  application, phpdotenv reads the absent file through `@file_get_contents()`, and a SUPPRESSED warning
-  still reaches PHPUnit's handler. `.github/workflows/php-tests.yml` copies `.env.example` to `.env`
-  before it runs the suite, which is why the wall stayed green while a fresh worktree — which has no
-  `.env` — reddened, and why the PHP version the lane pins is not the discriminator it was first read as:
-  measured on this host on PHP 8.5, the same tree errors without an `.env` and passes with one. The probe
-  now derives the name by reflection from the class's own public test-prefixed methods, and a covered
-  class with none fails LOUDLY by name instead of re-minting a placeholder.
-
-- **card#9644** — **`bin/deploy.sh`'s phase-A gates that judge the RELEASE are callable one at a time, and
-  the file can be sourced without running a deploy.** A6, A10, A10b, A11, A12 and A13 were written inline in
-  `phase_a` — one straight-line function with no per-gate entry point — and the bottom of the file read
-  `main "$@"` unguarded, so the only way to reach a gate's CONTENT predicate was to run a whole deploy, and
-  that refuses at A5 without a production `server/.env`. Three of the refusals behind that wall are
-  unconditional properties of the target tree and fire on every deploy: a `server/composer.json` with no
-  `require.php`, a PHP constraint the floor check will not evaluate, and a target `bin/supervision.sh` that
-  defines no `supervision_install_plan`. That is the shape which let a missing `server/package-lock.json`
-  refuse every deploy for days while the suite stayed green against fixtures that carried one (card#9631,
-  card#9637). Each gate is now a top-level function taking the commit being deployed —
-  `gate_a6_php_floor`, `gate_a10_migration_algorithm`, `gate_a10b_config_drift`,
-  `gate_a11_trusted_proxies`, `gate_a12_asset_lockfile`, `gate_a13_target_plan` and
-  `gate_a13_supervision` — called by `phase_a` in the order they refuse in, and callable one at a time by
-  anything else. Each header states what the gate touches besides git: four read the object database and
-  the arguments they are handed and nothing else, and the two whose whole job is a comparison with THIS
-  host say so — A10b against its `.env`, A13 against its crontab and the serving release's lock paths —
-  which is why A13's host-free half, reading the target's `bin/supervision.sh` and running that release's
-  own install plan in a bash process of its own, is `gate_a13_target_plan`. `main "$@"` runs when the file
-  is RUN; sourcing it defines the functions and returns, and what sourcing DOES do is named at the guard
-  (`set -Eeuo pipefail` in the caller's shell, `bin/supervision.sh` sourced beside it, `php` run for the
-  host version, and the caller's `$@` cleared so it is never parsed as this deploy's arguments).
-
-  **The behaviour is unchanged, and that is the whole of the claim.** `bin/deploy.selftest.sh` passes every
-  assertion before and after, and the two runs' output agrees line for line except for the fixture COMMIT
-  IDS the harness prints when it blinds an object: those fixture trees carry `bin/deploy.sh` itself and
-  their commits pin no date, so those ids move between any two runs of any tree — measured against a second
-  run of the unchanged one.
-
-  **`bin/deploy-gate-inputs.sh` derives three of its classification fields out of `bin/deploy.sh`'s source
-  text, so moving the reads moved them.** Its `fn` column now names each gate instead of `phase_a`, and
-  A13's disposition digest changed because that read no longer sits last in `phase_a`, where its region ran
-  on through A14's refusal and the `Ready:` block; every other digest is unchanged. Both rows are the ones
-  that check derived and printed for pasting. Its own selftest passes unchanged.
-
-  **The seam is the half that landed.** The reads are still DERIVED from `bin/deploy.sh`'s source text
-  rather than enumerated by it, so every escape shape in that lane's `NOT PROVED BY A GREEN` block is as
-  wide as it was, and the lane calls no gate yet. Both are stated where those claims are made.
-
-- **card#9732** — **`release-pr-guard` judges a pull request only while it is still OPEN, so a release
-  that shipped correctly no longer collects a permanent red check.** `edited` fires on a pull request
-  that has already MERGED: editing PR #176's body after v0.5.0 went out re-ran the gate and failed it on
-  R2 — *"VERSION is '0.5.0' at the head and '0.5.0' on main — UNCHANGED"* (run 35186872206). The rule
-  was right and the context was wrong. R2 asks whether a release is about to merge WITHOUT a bump, so
-  head == base is a missing bump while that release is pending and the CORRECT terminal state once it
-  has landed — `main` carries 0.5.0 precisely because the release went out — and nothing in the two
-  trees the rule reads tells those apart. The difference is whether the PR is still open, so the test
-  lives where that difference is: the job now carries `if: github.event.pull_request.state == 'open'`
-  and **no rule changed**. R2 still refuses an open release PR whose `VERSION` has not moved, which is
-  the 2026-08-30 defect — the merge lands, `auto-tag-version` then finds the tag on another commit, and
-  the only remedy is a second release PR — that this gate was built to stop. Being a required status
-  check is unaffected, and that is why the test is a job condition rather than a `branches:` or `types:`
-  narrowing: every PR that can still merge is open, so an open PR produces the same completed run under
-  the same job id, where a filtered-away run would read as pending forever
-  (`docs/VERSIONING.md § Branch model`). What is removed is only the run on a PR whose merge button is
-  already gone. `bin/release-pr-guard.selftest.py § 12` holds both halves — the condition read
-  structurally off the JOB, so a condition on a step, on another job, or on a field that does not exist
-  all read as absent, and the very tree run 35186872206 judged still going red on R2 and on R2 alone
-  when the PR is open. What that section cannot exercise is named in it: GitHub evaluates the `if:` and
-  produces the skip, so the end-to-end behaviour was measured on the real surface instead.
-
-- **card#9611** — **`bin/deploy.sh`'s ref resolve (A7) and release check (A8) name the cause they
-  actually established.** Both refused correctly and then stated a cause that had never been
-  established, which is canon #10's wrong-but-specific cause and costs an operator the debugging
-  path rather than the deploy: A7 said *"'<ref>' does not resolve to a commit on origin"* and A8
-  *"<sha> is not contained in origin/main"* on a checkout whose OBJECT STORE was what had failed.
-  **The status of the call A7 was making cannot discriminate**, and that is measured rather than
-  argued (git 2.53.0, packed and loose): `rev-parse --verify --quiet <ref>^{commit}` exits **1** for
-  a ref that is not there AND for every object-store failure tried — pack chmod 000, idx chmod 000,
-  pack deleted, one byte flipped mid-pack, loose object chmod 000 — and dropping `--quiet` gives
-  both **128** with the same `fatal: Needed a single revision`. So the fix is not a status threshold
-  on that call: resolving a NAME reads the refs alone and never opens the object store (measured on
-  a broken checkout, `rev-parse --verify --quiet refs/remotes/origin/main` still answers), and
-  whether the object it names is a readable commit is a SECOND question, asked of `cat-file -t`,
-  where a non-zero status can only be a failed read. `git_commit_of` asks them apart, peels an
-  annotated tag in a third step, and hands a failed read to card#9608's existing refusal helper
-  (`git_read_unusable`), which is the one place the PHASE decides whether a refusal may say
-  *"nothing was changed"*. A8 keeps `--is-ancestor`'s statuses apart the same way — 1 is *"it is not
-  an ancestor"* — and drops the `2>/dev/null` that hid git's own error. **And neither the status 1
-  nor the status 128 is ONE condition**, which is the second half of the same defect: `--ref` is the
-  operator's own string, so rev syntax (`main~2`) or an abbreviated id makes the resolve walk into
-  the object store, where a failed read also comes back as 1 — told apart now by git's own SILENCE,
-  which an absent name answers with (and the shapes that silence CANNOT see are named to the
-  operator rather than assumed away: on a checkout whose pack is unreadable, every candidate that
-  needs the pack answers silently); and
-  `--is-ancestor` exits 128 for a `origin/main` THAT IS NOT THERE on a completely healthy store,
-  exactly as for a graph it could not read, so the release branch is resolved by NAME first.
-  **Three behaviour changes beyond the wording**: a git failure at either site now prints git's
-  error above the refusal; `--allow-unreleased` no longer carries a deploy past an ancestry that
-  could not be read — it waives the FINDING that a commit is unreleased, and this run has no finding
-  to waive — while it DOES still waive a `origin/main` that does not exist, where the question is
-  answered (nothing is released, so neither is this commit) and where the old reading had left the
-  in-window recovery deploy (`--ref <sha> --allow-unreleased`) with no override and no next step;
-  and an ancestry that genuinely could not be read is refused with the repair named. Every assertion
-  this card adds to `bin/deploy.selftest.sh` was seen to fail against the commit before it and pass
-  with the fix, each paired with the other direction over the SAME broken store (a ref that is
-  genuinely absent still refuses as absent) and with a control one variable away on a readable one.
-  **The `NEXT STEP` an unreadable ancestry prints is a repair INSIDE the deploy root's own `.git`,
-  and it is one that WORKS** (r4): `fsck` names the object and says whether it is unreadable or gone;
-  an unreadable one is restored in place with `chmod`; one that is GONE is replaced by swapping
-  `.git` alone out of a `git clone --no-checkout` and running `checkout --force`; `repack -a -d`
-  CONFIRMS afterwards, because it refuses outright if anything reachable cannot be read. ⛔ **It also
-  says what does NOT work, because the advice it replaces looked like it had**: `git fetch`
-  negotiates from REFS, and this refusal is only reached after the refs resolved and `$SHA` was read,
-  so the object that cannot be read is an INTERIOR one this checkout's refs already claim and the
-  remote is never asked for it — measured, git 2.53.0: with the object unreadable `fetch --prune`
-  exits 0 having transferred nothing and the object is still unreadable, and with it DELETED it exits
-  0 too and the object is still gone. The prescribed step therefore returned exit 0 and no output to
-  an operator with the app down, who read that as the repair having run and met the identical
-  refusal. It still says outright not to re-clone the deploy root: `server/.env` is created on the
-  host and is in no commit, so its `APP_KEY` and `DB_PASSWORD` exist nowhere else, and a fresh clone
-  also takes `server/storage/` and the `.deploy-failed` marker — the logs and the marker the failure
-  banner sends that same operator to. The `.git`-only swap reaches the same place with no
-  preservation list to get wrong under pressure, which is why it is the last resort named.
-  **And a status that is neither 0 nor 1 is split by that same silence**: `rev-parse`
-  exits 128 having printed NOTHING for `@{…}` reflog syntax on a completely healthy store, and
-  `refs/remotes/origin/HEAD` exists in every clone with a reflog that gets one entry and never grows
-  on a deploy root — so `--ref HEAD@{1}` refused with *"the REFS could not be read"*, under a line
-  saying git's error was above it, on a host where nothing was wrong. That refusal now states the
-  status, claims no failed read where git printed none, and says what to deploy from instead; a LOUD
-  non-zero is still named as the failed read it is. The coverage that missed it is fixed at the
-  contract rather than at the case: `bin/deploy.selftest.sh` carries one case per ANSWER
-  `git_ref_oid` declares — `0`, `1`-silent, `1`-loud, other-silent, other-loud — four of them DRIVEN
-  through the script, and the fifth (`other-loud`) named UNREACHABLE through it, with both halves of
-  that asserted rather than skipped: git really does answer that way with `packed-refs` unreadable,
-  and A7's own `git fetch` really does meet it first. The branch no case exercised was the branch
-  still over-reading. Also: a `--ref` beginning with `-` is
-  classified as the NAME it is (`check-ref-format` parsed it as an option and the note then called
-  it rev syntax; that command accepts neither `--end-of-options` nor `--`, measured, so the leading
-  dashes are stripped for the classification instead). **And the rev-syntax test is POSITIVE now,
-  because a `check-ref-format` failure was never evidence of rev syntax** (r4, the class the dash
-  fix was one input of): `--allow-onelevel` exits 1 for around a dozen rules, measured exit 1 and NOT
-  rev syntax for `a b`, `main..dev`, `foo.lock`, `ab[c`, `.foo`, `foo//bar`, `ab*c`. So an ordinary
-  typo — `--ref 'release 1.2'` — was told *"it carries rev syntax, so resolving it walked the commit
-  graph"* and pointed at a possibly-damaged object store: three false statements in one note, on a
-  completely healthy host, where the fault is a space. Measured for that same input, resolving the
-  name exits 1 with EMPTY stderr — a lookup in the refs that never opens an object. Rev syntax is
-  detected now by the metacharacters that ARE it (`~`, `^`, `:`, `@{`), and a name git simply refuses
-  gets the note that is TRUE of it, which is the more useful answer anyway. **And `1`-loud is not one
-  condition either**: a peel to a type the object is not is LOUD at status 1 on a COMPLETELY HEALTHY
-  store — `--ref 'main^{blob}'` gives `error: …: expected blob type, but the object dereferences to
-  tree type` — so that branch told an operator git's error named what it could not read while every
-  read had succeeded. **And the same claim was live at a SECOND site, found by grepping the tree for
-  this round's own false claim rather than by the review that named the first one**:
-  `git_commit_of`'s tag branch has said since r2 that one of its two cases is git peeling the tag
-  perfectly well and arriving somewhere this deploy cannot use — and it still refused through the
-  wrapper whose fixed line states that git's error names what it could not read, so an annotated tag
-  over a TREE was called a failed read on a store where `git fsck` exits 0 (measured, git 2.53.0:
-  128, `error: …: expected commit type, but the object dereferences to tree type`). Both sites now
-  ask ONE function, `git_peel_mismatch`, and it keys on git's MESSAGE and not on its status, because
-  the same wording arrives at 1 from the `--quiet` call site and at 128 from the one without it — a
-  status rule would have had to be re-derived per caller and would have been wrong at the next one.
-  That call site captures git's stderr now instead of letting it go straight past, because the
-  message IS the discriminator.
-- **card#9693** — **`bin/deploy-gate-inputs.sh` rules on each name in `bin/deploy.sh`'s reader family by
-  what that function's own body does, instead of reading the family list as the population.** The lane
-  stopped at exit 2 over a healthy `bin/deploy.sh` and blocked PR #178, and it was RIGHT to stop: it
-  refuses to report green over a read it cannot classify, which is the defect card#9637 built it to end.
-  What it could not classify was the deploy's own family DEFINITION. `git_read_call_site`'s `case` list
-  is the deploy's frame-walking family — a different population from "functions that read a path out of
-  the release" — and card#9611 grew it past one line, where this derivation only ever read a case label
-  written on one. From that single cause the lane failed in both directions at once: the reader names it
-  lost stopped being exempt, so the readers' own plumbing and the case list that defines them read as
-  calls to a reader; and `git_ls_at` fell out of the LOOSE half of the derivation while the STRICT half
-  went on matching it, so a read written exactly as the lane's own remedy prescribes — `git_ls_at <var>
-  "$SHA" <path>`, on one line — was reported as a shape the derivation does not match, over advice
-  telling its author to write it the way it already was. A gate whose advice does not apply to the lines
-  it fires on trains people to ignore it, so that text is fixed in the same change: it names both shapes
-  `READ_RE` matches and prints `READ_RE` itself beside them, and `bin/deploy-gate-inputs.selftest.sh`
-  matches the shapes it prints against that pattern, so the advice cannot drift from what is accepted.
-  A case label is now joined across its `\` continuations and is never read as a call site; the family is
-  derived from that list, from every function whose body reads a path, and from every function that
-  DELEGATES to one (`git_ls_at`'s whole body is a call to `_git_ls_at`, so it was in the family only
-  because the list happened to name it). **Being in that family is no longer being a reader of the
-  release tree.** Each candidate is ruled from its own body and the ruling is PRINTED on every run beside
-  the name: a git invocation naming a path (a `--` pathspec or a `rev:path` argument — how git's CLI
-  names a path inside a tree, which is a property of git rather than a restatement of the deploy) is a
-  read the gate is about; `cat-file -t "$oid"` reads an object by bare id and `rev-parse` resolves a ref,
-  neither of which can hand a caller a file out of the tree; a refusal helper runs no git at all.
-  Ambiguity resolves toward READER, so the error the rule can make is a stop and never a pass — and a
-  family member running a subcommand this check has no reading for (`archive` puts paths on disk), or a
-  name in the list this file defines no function for, stops the check rather than being assumed
-  harmless. Both of those exited 0 before this change. What a green here still does not prove is
-  enumerated, as it has been since card#9637, in the `NOT PROVED BY A GREEN` block the check PRINTS on
-  every run — including the one shape this ruling adds, a reader whose path arrives already assembled
-  inside a variable — rather than in a copy here that would go stale.
 
 Older releases: `docs/changelog/<tag>.md`, one per tag.

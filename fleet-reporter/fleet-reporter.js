@@ -111,6 +111,8 @@ const K = {
   REJECTED_TXT_CAP: 65536,       // § 11.1 64 KiB
   LOG_DAY_CAP: 1048576,          // § 11.1 1 MiB/day
   LOG_RETAIN_DAYS: 2,            // § 11.1
+  CONSOLE_TAIL_BYTES: 1048576,   // § 6.3 1 MiB — the most of a transcript's tail one hook reads
+  CONSOLE_CHUNK_BYTES: 65536,    // § 6.3 the step that walk takes back from the end
 };
 
 /* ── Harness-sourced enum value sets (§ 6.0). ─────────────────────────────────────────────────
@@ -290,6 +292,9 @@ function loadConfig(p) {
   for (const k of ['ca_file', 'proxy_url', 'wrapped_statusline']) {
     if (c[k] !== undefined && c[k] !== null && typeof c[k] !== 'string') errors.push(`${k} must be a string or null`);
   }
+  if (c.descriptors !== undefined && !DESCRIPTOR_MODES.includes(c.descriptors)) {
+    errors.push('descriptors must be "full", "paths" or "none" (absent means "full")');
+  }
   // § 3.5: a `ca_file` that is not an absolute path (the empty string included), or that the seat
   // cannot read, is REFUSED at install and at runtime, like an http:// ingest_url — never replaced by
   // the default trust store (card#9500).
@@ -363,17 +368,36 @@ function rosterSite() {
   return { path: path.join(home, '.config', 'coord', 'coordination.config.json'), via: 'home' };
 }
 
-/* The roster's member names, or null when NO ROSTER IS READABLE — a missing file, an unreadable
+/* The roster's members, or null when NO ROSTER IS READABLE — a missing file, an unreadable
  * one, invalid JSON, or a document with no `roster` array all map to § 3.1's `unchecked`. D1 names
  * the roster and not its member key: `roster[].name` is the coordination framework's own spelling
  * (its orientation templates: "`COORD_AGENT` … must match a `roster[].name`"), and
- * `fleet-reporter/INSTALL-LINUX.md` Step 2 lists a roster the same way. Never throws. */
+ * `fleet-reporter/INSTALL-LINUX.md` Step 2 lists a roster the same way. `roles` is each named
+ * entry's `role` member as the file holds it (`undefined` when the entry has none), index-aligned
+ * with `names`; `roleOf` below is the only reader of it. Never throws. */
 function readRosterNames(file) {
   let doc;
   try { doc = JSON.parse(fs.readFileSync(file, 'utf8')); }
-  catch (e) { return { names: null, error: e.code || 'not valid JSON' }; }
-  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.roster)) return { names: null, error: 'no roster[] array' };
-  return { names: doc.roster.filter((r) => r && typeof r.name === 'string').map((r) => r.name), error: null };
+  catch (e) { return { names: null, roles: null, error: e.code || 'not valid JSON' }; }
+  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.roster)) return { names: null, roles: null, error: 'no roster[] array' };
+  const named = doc.roster.filter((r) => r && typeof r.name === 'string');
+  return { names: named.map((r) => r.name), roles: named.map((r) => r.role), error: null };
+}
+
+/* § 3.1's relayed ROLE (card#11144): `roster[].role` of the ONE roster entry the declared name
+ * selects, carried verbatim and never interpreted — this reporter knows no role by name. Called only
+ * on a `checked` declaration, so `name` is a member of `names`. It relays `null`, with the reason in
+ * `selftest`'s `detail.roster_role`, when the name matches MORE THAN ONE entry (a duplicate name
+ * selects nothing, rather than whichever entry happens to come first) or when the entry's `role` is
+ * absent or is not a slug by the name's own pattern and bound (`AGENT_NAME_RE`) — the same rule a
+ * malformed declared name gets, so the heartbeat never carries a value the ingest would refuse. */
+function roleOf(roster, name) {
+  const at = roster.names.flatMap((n, i) => (n === name ? [i] : []));
+  if (at.length !== 1) return { role: null, detail: `ambiguous: ${at.length} entries named ${name}` };
+  const v = roster.roles[at[0]];
+  if (v === undefined || v === null) return { role: null, detail: 'no role: the entry carries none' };
+  if (typeof v === 'string' && AGENT_NAME_RE.test(v)) return { role: v, detail: v };
+  return { role: null, detail: `not a slug: ${typeof v === 'string' ? JSON.stringify(v) : `<${Array.isArray(v) ? 'array' : typeof v}>`}` };
 }
 
 /* One row of § 3.1's state table, and its § 9.3 counter. The counter is counted once per resolution:
@@ -382,16 +406,19 @@ function readRosterNames(file) {
  * the `selftest` subcommand nothing flushes the counters, so it costs no count on the seat. */
 function resolveDeclaration(cfg) {
   const name = declaredAgentName(cfg);
-  if (name === null) return { name: null, check: 'undeclared', roster: null, via: null, error: null, malformed: malformedAgentName(cfg) };
+  if (name === null) return { name: null, check: 'undeclared', role: null, roster_role: null, roster: null, via: null, error: null, malformed: malformedAgentName(cfg) };
   const site = rosterSite();
   const roster = site.path === null ? { names: null, error: site.error || 'no roster site on this platform' } : readRosterNames(site.path);
   if (roster.names === null) {
     count('protocol_agent_name_unchecked');
-    return { name, check: 'unchecked', roster: site.path, via: site.via, error: roster.error, malformed: null };
+    return { name, check: 'unchecked', role: null, roster_role: null, roster: site.path, via: site.via, error: roster.error, malformed: null };
   }
-  if (roster.names.includes(name)) return { name, check: 'checked', roster: site.path, via: site.via, error: null, malformed: null };
+  if (roster.names.includes(name)) {
+    const r = roleOf(roster, name);
+    return { name, check: 'checked', role: r.role, roster_role: r.detail, roster: site.path, via: site.via, error: null, malformed: null };
+  }
   count('protocol_agent_name_disagreed');
-  return { name, check: 'disagreed', roster: site.path, via: site.via, error: null, roster_names: roster.names, malformed: null };
+  return { name, check: 'disagreed', role: null, roster_role: null, roster: site.path, via: site.via, error: null, roster_names: roster.names, malformed: null };
 }
 
 /* ── P-6: a secret VALUE must never reach an output stream, a log, a traceback or an argv ────
@@ -429,7 +456,15 @@ function registerConfigSecrets(cfg) {
     } catch (e) { /* not a parseable URL: config validation reports it on its own surface */ }
   }
 }
-const CRED_PREFIX_RE = /\b(gh[pousr]_|github_pat_|sk-|sk_live_|sk_test_|xox[abposr]-|AKIA|ASIA|glpat-|AIza|mzn_|mzr_)[A-Za-z0-9_-]{8,}/g;
+/* § 7.3 RULE 3's SHAPE LIST, and the ONE copy of it: the sanitizer runs this regex as rule 3 and the
+ * log sink below runs it as `redactSecrets`' shape leg, so a prefix added for one is added for both.
+ * A JWT is a shape with a known prefix too — a base64url `{"…` header and payload, `eyJ` each — so it
+ * is an alternative here rather than a second mechanism (card#11292). Three prefixes carry a tighter
+ * body than the shared `[A-Za-z0-9_-]{8,}`, because the bare prefix is also ordinary text: `npm_`
+ * takes only an unbroken alphanumeric body, so the `npm_config_*` environment names stay; `SG.` needs
+ * SendGrid's two dotted parts; and PyPI's is matched with the base64 of `pypi.org` every token starts
+ * with, so a `pypi-server` package name stays. */
+const CRED_PREFIX_RE = /\b(?:(?:gh[pousr]_|github_pat_|sk-|sk_live_|sk_test_|rk_live_|rk_test_|whsec_|xox[abposr]-|AKIA|ASIA|glpat-|AIza|hv[sb]\.|ya29\.|dop_v1_|shpat_|pypi-AgEIcHlwaS5vcmc|mzn_|mzr_)[A-Za-z0-9_-]{8,}|npm_[A-Za-z0-9]{30,}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*)/g;
 function redactSecrets(s) {
   let out = String(s);
   for (const v of SECRET_VALUES) if (v) out = out.split(v).join('‹redacted:token›');
@@ -558,9 +593,9 @@ const C = Object.create(null);   // counter deltas for THIS process
 const P = Object.create(null);   // predicate branch deltas for THIS process
 const FOLDED_UNSAVED = { c: Object.create(null), p: Object.create(null) };   // the flusher's folds not yet saved: see foldLocalCounters
 
-/* A DIAGNOSTIC MUST NOT MOVE AN OPERATIONAL COUNTER. `selftest` runs § 7.5's thirteen fixtures
+/* A DIAGNOSTIC MUST NOT MOVE AN OPERATIONAL COUNTER. `selftest` runs § 7.5's descriptor fixtures
  * through the real sanitizer, and the flusher runs `selftest` at startup — so without this the
- * fixtures' own 12 redactions were folded into the seat's `sanitizer_redactions` on every
+ * fixtures' own redactions were folded into the seat's `sanitizer_redactions` on every
  * flusher start. That is a fleet-visible number rendered on the floor, and inflating it by a
  * self-check makes it a wrong number that no operator could account for. */
 let COUNTING_SUSPENDED = false;
@@ -675,6 +710,16 @@ function mark(prefix, marker, suffix) {
 }
 
 const IPV4_RE = /\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b/g;
+/* § 7.3 rule 9's host-name test, outside a URL. A host name and a file name are both dotted
+ * words, and the last label is the only thing that tells them apart, so the TLD set is CURATED:
+ * the common generic and country TLDs plus the private ones (`internal`, `local`, `lan`, `corp`…),
+ * MINUS every TLD that is also a common file extension or code member (`.sh`, `.py`, `.md`, `.pl`,
+ * `.so`, `.cc`, `.rs`, `.in`, `.am`, `.ml`, `.pm`, `.ps`, `.mk`, `.zip`, `.mov`, `.app`, `.info`,
+ * `.name`, `.int`), so `setup.py`, `README.md`, `logger.info` and `this.app` stay as they are.
+ * A host under an excluded or unlisted TLD, or with one label (`db1`), passes outside a URL: that
+ * is the stated gap, and § 7.5 fixture 33 pins the side of it that keeps file names readable. */
+const HOST_TLDS = 'com|net|org|edu|gov|mil|io|co|ai|dev|cloud|tech|online|site|xyz|me|tv|us|uk|ca|au|nz|de|fr|nl|be|ch|at|eu|es|it|se|no|dk|fi|ie|pt|cz|jp|cn|kr|tw|hk|sg|ru|br|mx|za|internal|local|localdomain|lan|corp|intranet|private|test';
+const HOST_NAME_RE = new RegExp(`(?<![\\w.@-])(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+(?:${HOST_TLDS})(?![\\w-]|\\.[A-Za-z0-9])`, 'gi');
 
 /* § 7.4 — truncate to `cap` bytes of UTF-8 without ever splitting a multi-byte character: cut
  * at the last character boundary at or before byte cap-3 and append '…' (U+2026, 3 bytes). */
@@ -731,14 +776,50 @@ function sanitize(input, cap) {
   // operator is kept VERBATIM, so `${V:=x}` is never relabelled as `${V:-…}`.
   run(2, /\$\{(\w+):([-=?+])([^}]*)\}/g, (m) => mark(`\${${m[1]}:${m[2]}`, '‹redacted›', '}'));
 
-  // 3 — known-prefix credentials.
-  run(3, /\b(gh[pousr]_|github_pat_|sk-|sk_live_|sk_test_|xox[abposr]-|AKIA|ASIA|glpat-|AIza|mzn_|mzr_)[A-Za-z0-9_-]{8,}/g,
-    () => mark('', '‹redacted:token›', ''));
+  // 3 — known-prefix credentials, JWTs included (CRED_PREFIX_RE is the one copy of the list).
+  run(3, CRED_PREFIX_RE, () => mark('', '‹redacted:token›', ''));
 
-  // 4 — credential KEYWORD + its value, separated by '=', ':' or whitespace. Keyword and
-  // separator are kept verbatim so the descriptor still says what was being done.
-  run(4, /(?<![\w-])((?:-{1,2}|[A-Za-z0-9]{0,24}[_-])?(?:pass(?:word)?|secret|token|api[_-]?key|auth|bearer|credential))(?![A-Za-z])(\s*[:=]\s*|\s+)(\S+)/gi,
-    (m) => mark(m[1] + m[2], '‹redacted›', ''));
+  // 4 — credential KEYWORD + its value. Name and separator are kept verbatim so the descriptor
+  // still says what was being done; only the value is replaced. Three passes, one rule:
+  //
+  // 4a — HTTP credential headers. The value of `Authorization:`, `Proxy-Authorization:`, `Cookie:`
+  // and `Set-Cookie:` is everything to the next quote or the end of the line, because a header
+  // value has spaces in it (`Basic dXNl…`, `sid=…; theme=…`) and 4b's one-token value would leave
+  // the credential after the scheme. A known scheme word is kept. Runs after rule 3, so fixture 1's
+  // header, whose value holds a locked token, is discarded here and stays `Bearer ‹redacted:token›`.
+  run(4, /\b((?:proxy-)?authorization\s*:\s*(?:(?:basic|bearer|token|digest|negotiate|ntlm)\s+)?|(?:set-)?cookie\s*:\s*)([^"'\r\n]+)/gi,
+    (m) => mark(m[1], '‹redacted›', ''));
+  // 4b — any assignment or flag whose NAME CONTAINS a credential keyword (card#11292: the old rule
+  // needed the keyword at the end of the name, so `PGPASSWORD=`, `MYSQL_PWD=`, `SECRET_KEY=` and
+  // `--db-pass` went out whole). Three shapes, each with the separators it may use:
+  //   · the bare keyword words (`password hunter2`, `token: x`, `DB_PASSWORD=x`) — `=`, `:` or
+  //     whitespace, exactly as before, so its argv reading of `--password hunter2` is unchanged;
+  //   · a FLAG whose name contains a keyword (`--api-token`, `--db-pass`, `-storepass`) — `=` or
+  //     whitespace;
+  //   · an ASSIGNMENT whose name contains a keyword (`PGPASSWORD=`, `X-Api-Key:`) — `=` or `:` only,
+  //     because a name merely containing `key` or `pass` followed by a space is prose, not argv.
+  // The header names 4a owns are excluded, or this pass would redact a scheme word and leave the
+  // credential after it. A quoted value is taken whole. The name parts include `pw` (`MY_PW=`,
+  // `--pw`), which no flag or assignment shape reaches in an ordinary word (`upward` is prose).
+  run(4, /(?<![\w-])(?!(?:proxy-)?authorization\s*:|(?:set-)?cookie\s*:)(?:((?:-{1,2}|[A-Za-z0-9]{0,24}[_-])?(?:pass(?:word)?|secret|token|api[_-]?key|auth|bearer|credential)(?![A-Za-z])(?:\s*[:=]\s*|\s+))|(-{1,2}[A-Za-z0-9_.-]*?(?:pass|pwd|pw|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*(?:\s*=\s*|\s+))|([A-Za-z0-9_.-]*?(?:pass|pwd|pw|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*\s*[:=]\s*))("[^"]*"|'[^']*'|\S+)/gi,
+    (m) => mark(m[1] || m[2] || m[3], '‹redacted›', ''));
+  // 4d — a QUOTED KEY: a JSON or Python-dict body (`{"password":"x"}`, `{'token': 'x'}`), where the
+  // closing quote of the name stands between it and the separator, so 4b never sees `name:`. The
+  // key's quote (optionally backslash-escaped, as inside a double-quoted shell string) must close the
+  // name; the value is a quoted string — its quotes kept, its content replaced — or a bare token.
+  run(4, /((\\?["'])[A-Za-z0-9_.-]*?(?:pass|pwd|pw|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*\2\s*:\s*)(?:(\\?["'])(?:(?!\3)[^\r\n])*\3|[^\s,}\]"'\\]+)/gi,
+    (m) => mark(m[1] + (m[3] || ''), '‹redacted›', m[3] || ''));
+  // 4c — a secrets-store WRITE, whose credential sits under a name the writer chose: in
+  // `vault write secret/x value=hunter2` nothing in `value` says it is secret, the command does.
+  // Every `name=` argument after `vault write` / `vault kv put|patch` has its value replaced. The
+  // command is found first and the assignments matched after it, rather than with a lookbehind
+  // back to the command: a variable-length lookbehind rescans the line at every position, which
+  // measured 1.6 s on a 16 KB line.
+  const vault = /\bvault\s+(?:write|kv\s+(?:put|patch))\s/i.exec(st.s);
+  if (vault) {
+    run(4, /(?<![\w-])([A-Za-z0-9_.-]+=)("[^"]*"|'[^']*'|\S+)/g,
+      (m) => (m.index > vault.index ? mark(m[1], '‹redacted›', '') : { text: m[0], lock: null }));
+  }
 
   // 5 — credential FLAGS, glued or separated. Fixtures 9-11 are the credential-on-argv shapes
   // rule 4 alone did not cover; each was an unredacted survivor before this rule existed.
@@ -758,21 +839,51 @@ function sanitize(input, cap) {
 
   // 7 — long opaque blobs. `\b` anchors the run to its first alphanumeric, which is what makes
   // fixture 13's stated 37-character run `opt/verylongdirectoryname/application` the match and
-  // leaves the leading '/' in the output. STATED GAP (§ 7.3): the class excludes '-' and '_',
-  // so a base64URL secret is split into runs under 32 and can survive this rule — rule 3's
-  // prefixes and rules 4-5's keyword/flag shapes are the backstop for the ones that matter.
+  // leaves the leading '/' in the output. STATED GAP (§ 7.3): the first two patterns' classes
+  // exclude '-' and '_', so a base64URL secret is split into runs under 32 and survives them; 7c
+  // below takes such a run when it mixes upper case, lower case and digits, and a one-case or
+  // digitless one still survives — rule 3's prefixes and rules 4-5's keyword/flag shapes are the
+  // backstop for the ones that matter.
   run(7, /\b[A-Za-z0-9+/]{32,}={0,2}/g, () => mark('', '‹redacted:blob›', ''));
   run(7, /\b[0-9a-f]{24,}\b/g, () => mark('', '‹redacted:blob›', ''));
+  // 7c — a long base64url run (the class the two above exclude, `-` and `_` included) that mixes
+  // upper case, lower case AND digits. The mix is the entropy test: a hyphenated identifier or a
+  // branch name is one case, and a generated token is all three (card#11292).
+  run(7, /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g, (m) => (/[A-Z]/.test(m[0]) && /[a-z]/.test(m[0]) && /[0-9]/.test(m[0])
+    ? mark('', '‹redacted:blob›', '') : { text: m[0], lock: null }));
 
   // 8 — email addresses.
   run(8, /[\w.+-]+@[\w-]+\.[\w.-]+/g, () => mark('', '‹redacted:email›', ''));
 
-  // 9 — IPv4 literals, valid octets only (so a four-part version string that is not a valid
-  // dotted quad survives; one that is, does not, and that false positive is the correct trade).
+  // 9 — network addresses: IPv4 literals, then host names (§ 1: no IP addresses, no hostnames).
+  // IPv4: valid octets only (so a four-part version string that is not a valid dotted quad
+  // survives; one that is, does not, and that false positive is the correct trade).
   run(9, IPV4_RE, (m) => {
     for (let i = 1; i <= 4; i++) if (+m[i] > 255) return { text: m[0], lock: null };
     return mark('', '‹redacted:ip›', '');
   });
+  // IPv6, three shapes: a bracketed literal (`[2001:db8::1]`, `[::1]`, brackets kept); a bare full
+  // form of eight groups; and a bare compressed form with `::` and at least three groups, so
+  // `std::vector`, `a::b` and a `12:30:45` time are not addresses. A bare compressed address of two
+  // groups (`fe80::1`) passes: the stated gap. Each match starts only where no hex, `:` or `.`
+  // precedes it, so the scan stays linear.
+  run(9, /\[[0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*\]|(?<![\w:.])(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}(?![\w:])|(?<![\w:.])(?:[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,6})?::(?:[0-9A-Fa-f]{1,4}(?::[0-9A-Fa-f]{1,4}){0,6})?(?![\w:])/g, (m) => {
+    if (m[0][0] === '[') return mark('[', '‹redacted:ip›', ']');
+    if (m[0].includes('::') && m[0].split(/:+/).filter(Boolean).length < 3) return { text: m[0], lock: null };
+    return mark('', '‹redacted:ip›', '');
+  });
+  // 9b — the host of a URL, whatever its shape (`http://buildbox:8080`), and the host after rule
+  // 1's userinfo marker. A user with no password (`postgres://root@dbhost`) is not rule 1's, so it
+  // is matched here and KEPT, and the name after its `@` is the host replaced. The user part
+  // excludes the marker characters, so a URL whose userinfo rule 1 already locked falls through to
+  // the `›@` alternative instead of being discarded whole. The lookbehinds are fixed-length, so the
+  // scan stays linear.
+  run(9, /(?<=[A-Za-z0-9+.-]:\/\/)(?:([^\/\s@:'"\u2039\u203a]+)@)?([A-Za-z0-9_-](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)|(?<=\u203a@)[A-Za-z0-9_-](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?/g,
+    (m) => mark(m[1] ? `${m[1]}@` : '', '‹redacted:host›', ''));
+  // 9c — a dotted name ending in a top-level domain from HOST_TLDS, wherever it stands
+  // (`ssh db01.internal.example.com`). A match starts only at the head of a dotted run and may
+  // not be followed by another label, so `example.com.conf` and `README.md` are not hosts.
+  run(9, HOST_NAME_RE, () => mark('', '‹redacted:host›', ''));
 
   // 10 — ANSI escape sequences, removed ENTIRELY. Not cosmetic: a descriptor is written to a
   // local log, a quarantine file and an operator's terminal, and an ESC sequence that survives
@@ -816,6 +927,19 @@ const ALLOWLIST = {
   TodoWrite: () => '',            // rendered as the bare tool name — a label, no argument
 };
 const firstLine = (s) => (typeof s === 'string' ? s.split(/\r?\n/, 1)[0] : null);
+
+/* § 3.1's `descriptors` key: how much of layer 1's allowlist a seat sends. `full` is the table
+ * above; `paths` keeps only the tools whose descriptor is a file path or a path glob; `none` sends
+ * no descriptor and no `subagent.spawn.title`, so the wire carries tool names and timing only.
+ * ABSENT means `full`. ANY OTHER VALUE is a config error, so the flusher sends nothing at all
+ * (`config_invalid`, § 9.3), and the hooks meanwhile build what `none` builds: the key exists to
+ * send less, so the events spooled under a typo (`"path"`) carry nothing more once it is fixed. */
+const DESCRIPTOR_MODES = ['full', 'paths', 'none'];
+const PATH_DESCRIPTOR_TOOLS = ['Read', 'Write', 'Edit', 'Glob'];
+function descriptorMode(cfg) {
+  if (!cfg || cfg.descriptors === undefined) return 'full';
+  return DESCRIPTOR_MODES.includes(cfg.descriptors) ? cfg.descriptors : 'none';
+}
 /* D1-SILENT: an unparseable WebFetch url. Minimization decides it — no descriptor rather than
  * a raw url through the redactor, since scheme+host is the whole allowlisted surface. */
 function schemeAndHost(u) {
@@ -826,10 +950,15 @@ function schemeAndHost(u) {
 
 /* Returns {descriptor, truncated, allowlisted}. `allowlisted` drives § 9.4's
  * `descriptor_allowlisted` predicate, whose constant-false branch means the allowlist no
- * longer matches any tool name the harness sends. */
-function buildDescriptor(toolName, toolInput) {
+ * longer matches any tool name the harness sends. It is computed BEFORE `mode` is applied, so a
+ * seat on `descriptors: "none"` still reports the allowlist matching rather than tripping that
+ * alarm with a constant-false branch it chose. */
+function buildDescriptor(toolName, toolInput, mode = 'full') {
   const fn = ALLOWLIST[toolName];
   if (!fn) return { descriptor: null, truncated: false, allowlisted: false, rules: [] };
+  if (mode !== 'full' && !(mode === 'paths' && PATH_DESCRIPTOR_TOOLS.includes(toolName))) {
+    return { descriptor: null, truncated: false, allowlisted: true, rules: [], redactions: 0 };
+  }
   let value = null;
   try { value = fn(toolInput && typeof toolInput === 'object' ? toolInput : {}); }
   catch (e) { value = null; }
@@ -1226,6 +1355,90 @@ function harnessLabel(cfg) {
   return /^[A-Za-z0-9._/-]{1,32}$/.test(v) ? v : null;
 }
 
+/* § 6.3's `console_url` (card#9416): the claude.ai address of this session's console, READ FROM
+ * THE SESSION'S OWN TRANSCRIPT — the file the payload's `transcript_path` names. No hook payload
+ * carries it, and Anthropic documents the transcript as an internal, unstable format, so this read
+ * is version-tolerant by construction: every way it can fail answers `null`, and none of them throws.
+ *
+ * WHICH RECORD ANSWERS. The transcript carries `{"type":"bridge-session","bridgeSessionId":
+ * "cse_<id>"}` records throughout a session, and the id CHANGES within one session; an empty id is
+ * the bridge ending. An `attachment` of type `remote_session_change` carried the URL itself on
+ * older builds and carries `url: null` on current ones; where both were present the URL was always
+ * `https://claude.ai/code/session_<id>` with `<id>` the bridge id minus `cse_` (D1 § 6.3 states
+ * the observation and its basis). So the NEWEST deciding record wins, scanning back from the end:
+ * a `remote_session_change` with a non-null `url` answers that url, one with a null `url` decides
+ * nothing, and a `bridge-session` answers the URL its id derives — or `null` for an empty id.
+ *
+ * BOUNDED: the read walks back from the end in CONSOLE_CHUNK_BYTES steps and stops at
+ * CONSOLE_TAIL_BYTES, because a transcript runs to many MiB and this runs inside P-5's 250 ms. A
+ * tail with no deciding record is `null` and counted (`console_url_tail_exhausted`); a value that
+ * fails the pattern is dropped and counted (`console_url_malformed`), so a harness that moved the
+ * shape is visible on the heartbeat rather than a quiet null.
+ *
+ * `descriptors` other than `full` sends `null` (§ 3.1): the key is how much a seat sends, and a seat
+ * that asked for less than the full label set did not ask for this either. */
+const CONSOLE_URL_RE = /^https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{8,64}$/;
+const BRIDGE_ID_RE = /^cse_([A-Za-z0-9]{8,64})$/;
+
+function consoleUrlOfRecord(line) {
+  if (!line.includes('"bridge-session"') && !line.includes('"remote_session_change"')) return undefined;
+  let o = null;
+  try { o = JSON.parse(line); } catch (e) { return undefined; }
+  if (!o || typeof o !== 'object') return undefined;
+  const a = o.attachment;
+  if (a && typeof a === 'object' && a.type === 'remote_session_change') {
+    if (a.url === null || a.url === undefined) return undefined;
+    if (typeof a.url === 'string' && CONSOLE_URL_RE.test(a.url)) return a.url;
+    count('console_url_malformed');
+    return null;
+  }
+  if (o.type !== 'bridge-session') return undefined;
+  const id = o.bridgeSessionId;
+  if (id === '' || id === null || id === undefined) return null;
+  const m = typeof id === 'string' ? BRIDGE_ID_RE.exec(id) : null;
+  if (m) return `https://claude.ai/code/session_${m[1]}`;
+  count('console_url_malformed');
+  return null;
+}
+
+function consoleUrl(payload, cfg) {
+  if (descriptorMode(cfg) !== 'full') return null;
+  const tp = key(payload, 'transcript_path');
+  if (typeof tp !== 'string' || !tp) return null;
+  const file = tp === '~' || tp.startsWith('~/') ? path.join(os.homedir(), tp.slice(1)) : tp;
+  let fd = null;
+  try {
+    fd = fs.openSync(file, 'r');
+    const size = fs.fstatSync(fd).size;
+    const floor = Math.max(0, size - K.CONSOLE_TAIL_BYTES);
+    let end = size;
+    let carry = Buffer.alloc(0);       // the head of a line whose start is further back
+    while (end > floor) {
+      const start = Math.max(floor, end - K.CONSOLE_CHUNK_BYTES);
+      const chunk = Buffer.alloc(end - start);
+      fs.readSync(fd, chunk, 0, chunk.length, start);
+      const buf = Buffer.concat([chunk, carry]);
+      end = start;
+      // Bytes before the first newline may belong to a line that starts in an earlier chunk, so
+      // they are carried — except at byte 0, where they are a whole line.
+      const cut = start === 0 ? -1 : buf.indexOf(0x0a);
+      if (start > 0 && cut === -1) { carry = buf; continue; }
+      carry = cut === -1 ? Buffer.alloc(0) : buf.subarray(0, cut);
+      const lines = buf.subarray(cut + 1).toString('utf8').split('\n');
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const v = consoleUrlOfRecord(lines[i]);
+        if (v !== undefined) return v;
+      }
+    }
+    if (floor > 0) count('console_url_tail_exhausted');
+    return null;
+  } catch (e) {
+    return null;                       // no transcript yet, or unreadable: absence, never an error
+  } finally {
+    if (fd !== null) { try { fs.closeSync(fd); } catch (e) { /* closing a read fd cannot lose data */ } }
+  }
+}
+
 function durationFor(entry, payload, atMs) {
   // § 6.6 — the harness's own duration_ms is STRICTLY BETTER than end-minus-start across two
   // processes and is immune to an NTP step. duration_source says which was used, so the two
@@ -1421,6 +1634,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         // Only the LENGTH transits — a size, not content (§ 6.3). The prompt text never does.
         prompt_chars: prompt === null ? null : clampInt(prompt.length, 0, 1000000, 'turn.start.prompt_chars'),
         project_label: projectLabel(payload),
+        console_url: consoleUrl(payload, ctx.config),
       }, atMs);
       break;
     }
@@ -1449,7 +1663,8 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       let toolName = key(payload, 'tool_name');
       if (typeof toolName !== 'string' || !TOOL_NAME_RE.test(toolName)) { count('invalid_tool_name'); toolName = 'INVALID_TOOL_NAME'; }
       const ti = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
-      const d = buildDescriptor(toolName, ti);
+      const mode = descriptorMode(ctx.config);
+      const d = buildDescriptor(toolName, ti, mode);
       predicate('descriptor_allowlisted', d.allowlisted);
       // § 6.5 — agent_scope is labelled from the harness's own agent_id PAYLOAD FIELD and from
       // nothing else. Both branches ride the heartbeat as the `agent_scope_subagent` predicate,
@@ -1484,7 +1699,8 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         // emit no subagent.spawn on any seat running this build — a whole feature reading zero
         // forever, from one transcribed string. Which one fired is counted.
         count(`dispatch_tool_name.${toolName}`);
-        const title = typeof ti.description === 'string' ? sanitize(`${ti.description}`, K.TITLE_CAP) : null;
+        // The title is the dispatch's free-text description, so only `descriptors: "full"` sends it.
+        const title = mode === 'full' && typeof ti.description === 'string' ? sanitize(`${ti.description}`, K.TITLE_CAP) : null;
         if (title) countSanitizer(title);
         const st = typeof ti.subagent_type === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(ti.subagent_type) ? ti.subagent_type : null;
         emit('subagent.spawn', sid, {
@@ -2626,6 +2842,10 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, declaration, atMs) {
     // flusher start — never per flush.
     protocol_agent_name: declaration.name,
     protocol_agent_name_check: declaration.check,
+    // § 6.14's relayed role (card#11144): the selected roster entry's `role`, and `null` whenever
+    // the check is not `checked`, the name selects more than one entry, or the entry carries no
+    // slug-shaped role. Resolved with the name, at flusher start.
+    protocol_agent_role: declaration.role,
     degraded: buildDegraded(all).slice(0, K.DEGRADED_MAX),
     counters, counters_omitted, predicates, selftest: st,
     config_fingerprint: configFingerprint(cfg),
@@ -3027,13 +3247,15 @@ function refreshHealth(config) {
  * and D1 shipped that transcription wrong twice.
  * ════════════════════════════════════════════════════════════════════════════════════════════ */
 
-/* § 7.5's thirteen RED fixtures, verbatim, with the "Rules that fire" trace column. The trace
- * is asserted too: a fixture whose documented trace and actual trace disagree FAILS EVEN IF its
- * output string matches, because that disagreement is drift between two tables that are one
- * behaviour written twice. */
+/* § 7.5's RED fixtures for the `descriptor` profile, verbatim, with the "Rules that fire" trace
+ * column. The trace is asserted too: a fixture whose documented trace and actual trace disagree
+ * FAILS EVEN IF its output string matches, because that disagreement is drift between two tables
+ * that are one behaviour written twice. The acceptance suite reads the fixture NUMBERS out of
+ * § 7.5's descriptor rows and asserts this array holds exactly those, so a row added to one table
+ * and not the other reds. 14-17 are the `coord.subject` profile's and are not this producer's. */
 const SANITIZER_FIXTURES = [
-  { n: 1, tool: 'Bash', input: { command: 'curl -H "Authorization: Bearer ghp_ABCDEF1234567890abcdef1234" https://api.github.com/user' }, rules: [3], out: 'Bash: curl -H "Authorization: Bearer \u2039redacted:token\u203a" https://api.github.com/user' },
-  { n: 2, tool: 'Bash', input: { command: 'psql "postgres://mez:s3cr3t-pw@db.example.com:5432/mezz" -c \'\\dt\'' }, rules: [1], out: 'Bash: psql "postgres://\u2039redacted\u203a@db.example.com:5432/mezz" -c \'\\dt\'' },
+  { n: 1, tool: 'Bash', input: { command: 'curl -H "Authorization: Bearer ghp_ABCDEF1234567890abcdef1234" https://api.github.com/user' }, rules: [3, 9], out: 'Bash: curl -H "Authorization: Bearer \u2039redacted:token\u203a" https://\u2039redacted:host\u203a/user' },
+  { n: 2, tool: 'Bash', input: { command: 'psql "postgres://mez:s3cr3t-pw@db.example.com:5432/mezz" -c \'\\dt\'' }, rules: [1, 9], out: 'Bash: psql "postgres://\u2039redacted\u203a@\u2039redacted:host\u203a:5432/mezz" -c \'\\dt\'' },
   { n: 3, tool: 'Bash', input: { command: 'echo "${STRIPE_SECRET:-sk_live_51H8xYzAbCdEfGhIj}" > /tmp/k' }, rules: [2], out: 'Bash: echo "${STRIPE_SECRET:-\u2039redacted\u203a}" > /tmp/k' },
   { n: 4, tool: 'Bash', input: { command: 'deploy --host 203.0.113.47 --notify ops@example.org' }, rules: [8, 9], out: 'Bash: deploy --host \u2039redacted:ip\u203a --notify \u2039redacted:email\u203a' },
   { n: 5, tool: 'Read', input: { file_path: '/home/aimlapm/projects/mezzanine/app/Http/Controllers/IngestController.php' }, rules: [6], out: 'Read: ~/\u2026/Controllers/IngestController.php' },
@@ -3041,16 +3263,54 @@ const SANITIZER_FIXTURES = [
   { n: 7, tool: 'Bash', input: { command: `echo "${'\u00e9'.repeat(300)}"` }, rules: [14], out: null /* asserted by property below */ },
   { n: 8, tool: 'mcp__vault__read', input: { password: 'hunter2', path: '/prod/db' }, rules: [], out: null, expectNull: true },
   { n: 9, tool: 'Bash', input: { command: 'deploy --password hunter2 --host db1' }, rules: [4], out: 'Bash: deploy --password \u2039redacted\u203a --host db1' },
-  { n: 10, tool: 'Bash', input: { command: 'curl -u admin:s3cr3t https://api.example.org/v1/ping' }, rules: [5], out: 'Bash: curl -u \u2039redacted\u203a https://api.example.org/v1/ping' },
+  { n: 10, tool: 'Bash', input: { command: 'curl -u admin:s3cr3t https://api.example.org/v1/ping' }, rules: [5, 9], out: 'Bash: curl -u \u2039redacted\u203a https://\u2039redacted:host\u203a/v1/ping' },
   { n: 11, tool: 'Bash', input: { command: 'mysql -pS3cr3tP@ss -h db1 mezz' }, rules: [5], out: 'Bash: mysql -p\u2039redacted\u203a -h db1 mezz' },
   { n: 12, tool: 'Read', input: { file_path: '/var/www/app/Http/Controllers/HealthController.php' }, rules: [6], out: 'Read: /\u2026/Controllers/HealthController.php' },
   { n: 13, tool: 'Read', input: { file_path: '/opt/verylongdirectoryname/application.php' }, rules: [7], out: 'Read: /\u2039redacted:blob\u203a.php' },
+  // card#11292 — the secret and hostname shapes the pre-install audit found passing through.
+  { n: 18, tool: 'Bash', input: { command: 'PGPASSWORD=hunter2 psql -h db mezz' }, rules: [4], out: 'Bash: PGPASSWORD=\u2039redacted\u203a psql -h db mezz' },
+  { n: 19, tool: 'Bash', input: { command: 'MYSQL_PWD=hunter2 mysql mezz' }, rules: [4], out: 'Bash: MYSQL_PWD=\u2039redacted\u203a mysql mezz' },
+  { n: 20, tool: 'Bash', input: { command: 'export SECRET_KEY=abc123def456' }, rules: [4], out: 'Bash: export SECRET_KEY=\u2039redacted\u203a' },
+  { n: 21, tool: 'Bash', input: { command: 'APP_SECRET_KEY=short123 php artisan serve' }, rules: [4], out: 'Bash: APP_SECRET_KEY=\u2039redacted\u203a php artisan serve' },
+  { n: 22, tool: 'Bash', input: { command: 'export STRIPE_KEY=rk_live_51H8xYzAbCdEfGhIj' }, rules: [3], out: 'Bash: export STRIPE_KEY=\u2039redacted:token\u203a' },
+  { n: 23, tool: 'Bash', input: { command: 'curl -H "Authorization: Basic dXNlcjpwYXNzd29yZA==" "$URL"' }, rules: [4], out: 'Bash: curl -H "Authorization: Basic \u2039redacted\u203a" "$URL"' },
+  { n: 24, tool: 'Bash', input: { command: 'curl -H \'Set-Cookie: sid=hunter2; Path=/\' -H "Authorization: hunter2xyz" "$URL"' }, rules: [4], out: 'Bash: curl -H \'Set-Cookie: \u2039redacted\u203a\' -H "Authorization: \u2039redacted\u203a" "$URL"' },
+  { n: 25, tool: 'Bash', input: { command: 'curl -H "Cookie: sid=abcd1234efgh" "$URL"' }, rules: [4], out: 'Bash: curl -H "Cookie: \u2039redacted\u203a" "$URL"' },
+  { n: 26, tool: 'Bash', input: { command: 'jwt decode eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJodW50ZXIyIn0.c2lnbmF0dXJlLW5vdC1yZWFs' }, rules: [3], out: 'Bash: jwt decode \u2039redacted:token\u203a' },
+  { n: 27, tool: 'Bash', input: { command: 'vault write secret/x value=hunter2' }, rules: [4], out: 'Bash: vault write secret/x value=\u2039redacted\u203a' },
+  { n: 28, tool: 'Bash', input: { command: 'deploy --api-token=abc123 --db-pass hunter2' }, rules: [4], out: 'Bash: deploy --api-token=\u2039redacted\u203a --db-pass \u2039redacted\u203a' },
+  { n: 29, tool: 'Bash', input: { command: 'ssh db01.internal.example.com uptime' }, rules: [9], out: 'Bash: ssh \u2039redacted:host\u203a uptime' },
+  { n: 30, tool: 'Bash', input: { command: 'curl http://buildbox:8080/health' }, rules: [9], out: 'Bash: curl http://\u2039redacted:host\u203a:8080/health' },
+  { n: 31, tool: 'Agent', input: { description: 'check PGPASSWORD=hunter2 on db01.internal.example.com' }, rules: [4, 9], out: 'Agent: check PGPASSWORD=\u2039redacted\u203a on \u2039redacted:host\u203a' },
+  { n: 32, tool: 'Bash', input: { command: 'echo Zx9-Ab3dEf6hIj9kLm2n_Op5qRs8tUv1wXy4z-Q7r | base64 -d' }, rules: [7], out: 'Bash: echo \u2039redacted:blob\u203a | base64 -d' },
+  { n: 33, tool: 'Bash', input: { command: 'python3 setup.py && ./run.sh README.md && node app.js' }, rules: [], out: 'Bash: python3 setup.py && ./run.sh README.md && node app.js' },
+  // card#11292 review round 1 — JSON-body keys, `pw`, more provider prefixes, user-only URLs, IPv6.
+  { n: 34, tool: 'Bash', input: { command: `curl -d '{"password":"zq9w8kabc"}' "$URL"` }, rules: [4], out: `Bash: curl -d '{"password":"\u2039redacted\u203a"}' "$URL"` },
+  { n: 35, tool: 'Bash', input: { command: `curl -d '{"token": "zq9w8kabc", "user": "bob"}' "$URL"` }, rules: [4], out: `Bash: curl -d '{"token": "\u2039redacted\u203a", "user": "bob"}' "$URL"` },
+  { n: 36, tool: 'Bash', input: { command: `curl -d "{'secret': 'zq9w8kabc'}" "$URL"` }, rules: [4], out: `Bash: curl -d "{'secret': '\u2039redacted\u203a'}" "$URL"` },
+  { n: 37, tool: 'Bash', input: { command: 'MY_PW=zq9w8kabc PW=zq9w8kabc deploy --pw zq9w8kabc' }, rules: [4], out: 'Bash: MY_PW=\u2039redacted\u203a PW=\u2039redacted\u203a deploy --pw \u2039redacted\u203a' },
+  { n: 38, tool: 'Bash', input: { command: "terraform apply -var 'db_pw=zq9w8kabc'" }, rules: [4], out: "Bash: terraform apply -var 'db_pw=\u2039redacted\u203a" },
+  { n: 39, tool: 'Bash', input: { command: 'kubectl create configmap x --from-literal=pw=zq9w8kabc' }, rules: [4], out: 'Bash: kubectl create configmap x --from-literal=pw=\u2039redacted\u203a' },
+  { n: 40, tool: 'Bash', input: { command: 'git commit -m "fix the upward scroll"' }, rules: [], out: 'Bash: git commit -m "fix the upward scroll"' },
+  { n: 41, tool: 'Bash', input: { command: 'echo npm_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789 SG.AbCdEfGhIjKlMnOp12.QrStUvWxYz0123456789ab' }, rules: [3], out: 'Bash: echo \u2039redacted:token\u203a \u2039redacted:token\u203a' },
+  { n: 42, tool: 'Bash', input: { command: 'echo ya29.AbCdEfGh12 dop_v1_abcdef1234 shpat_abcdef1234 pypi-AgEIcHlwaS5vcmcAbCd1234' }, rules: [3], out: 'Bash: echo \u2039redacted:token\u203a \u2039redacted:token\u203a \u2039redacted:token\u203a \u2039redacted:token\u203a' },
+  { n: 43, tool: 'Bash', input: { command: 'DATABASE_URL=postgres://root@dbhost/db' }, rules: [9], out: 'Bash: DATABASE_URL=postgres://root@\u2039redacted:host\u203a/db' },
+  { n: 44, tool: 'Bash', input: { command: 'curl http://[2001:db8::1]/x && curl [::1]:8080' }, rules: [9], out: 'Bash: curl http://[\u2039redacted:ip\u203a]/x && curl [\u2039redacted:ip\u203a]:8080' },
+  { n: 45, tool: 'Bash', input: { command: 'ssh 2001:db8:0:0:0:0:0:1 && ping6 2001:db8::1' }, rules: [9], out: 'Bash: ssh \u2039redacted:ip\u203a && ping6 \u2039redacted:ip\u203a' },
+  { n: 46, tool: 'Bash', input: { command: 'grep -rn std::vector src && echo cafe::babe 12:30:45' }, rules: [], out: 'Bash: grep -rn std::vector src && echo cafe::babe 12:30:45' },
 ];
 /* The planted secrets each fixture must never leak, for the whole-event assertion (§ 7.5). */
 const FIXTURE_SECRETS = {
-  1: ['ghp_ABCDEF1234567890abcdef1234'], 2: ['s3cr3t-pw'], 3: ['sk_live_51H8xYzAbCdEfGhIj'],
+  1: ['ghp_ABCDEF1234567890abcdef1234', 'api.github.com'], 2: ['s3cr3t-pw', 'db.example.com'], 3: ['sk_live_51H8xYzAbCdEfGhIj'],
   4: ['ops@example.org', '203.0.113.47'], 5: ['aimlapm'], 8: ['hunter2'],
-  9: ['hunter2'], 10: ['admin:s3cr3t'], 11: ['S3cr3tP@ss'],
+  9: ['hunter2'], 10: ['admin:s3cr3t', 'api.example.org'], 11: ['S3cr3tP@ss'],
+  18: ['hunter2'], 19: ['hunter2'], 20: ['abc123def456'], 21: ['short123'], 22: ['rk_live_51H8xYzAbCdEfGhIj'],
+  23: ['dXNlcjpwYXNzd29yZA=='], 24: ['hunter2'], 25: ['abcd1234efgh'],
+  26: ['eyJzdWIiOiJodW50ZXIyIn0', 'c2lnbmF0dXJlLW5vdC1yZWFs'], 27: ['hunter2'], 28: ['abc123', 'hunter2'],
+  29: ['db01', 'example.com'], 30: ['buildbox'], 31: ['hunter2', 'db01'], 32: ['Ab3dEf6hIj9kLm2n'],
+  34: ['zq9w8kabc'], 35: ['zq9w8kabc'], 36: ['zq9w8kabc'], 37: ['zq9w8kabc'], 38: ['zq9w8kabc'], 39: ['zq9w8kabc'],
+  41: ['npm_AbCd', 'SG.AbCd'], 42: ['ya29.', 'dop_v1_', 'shpat_', 'pypi-'], 43: ['dbhost'],
+  44: ['2001:db8', '::1'], 45: ['2001:db8'],
 };
 
 function checkSanitizerFixtures() {
@@ -3091,7 +3351,7 @@ function checkSanitizerFixtures() {
 const READS = {
   SessionStart: { keys: ['session_id', 'hook_event_name', 'source', 'cwd'], enums: { source: ENUM.session_start_source } },
   SessionEnd: { keys: ['session_id', 'hook_event_name', 'reason'], enums: { reason: ENUM.session_end_reason } },
-  UserPromptSubmit: { keys: ['session_id', 'hook_event_name', 'prompt_id', 'prompt', 'cwd'], enums: {} },
+  UserPromptSubmit: { keys: ['session_id', 'hook_event_name', 'prompt_id', 'prompt', 'cwd', 'transcript_path'], enums: {} },
   Stop: { keys: ['session_id', 'hook_event_name', 'prompt_id', 'stop_hook_active', 'background_tasks'], enums: {} },
   StopFailure: { keys: ['session_id', 'hook_event_name', 'error'], enums: { error: ENUM.stopfailure_error } },
   PreToolUse: { keys: ['session_id', 'hook_event_name', 'tool_name', 'tool_input', 'tool_use_id', 'prompt_id', 'agent_id'], enums: {} },
@@ -3203,7 +3463,7 @@ function runSelftestChecks(config, cp) {
   detail.protocol_agent_name_in_roster = declaration
     ? { declared: declaration.name, protocol_agent_name_check: declaration.check, roster: declaration.roster,
       read_via: declaration.via, roster_error: declaration.error, roster_names: declaration.roster_names,
-      malformed_declaration: declaration.malformed }
+      roster_role: declaration.roster_role, malformed_declaration: declaration.malformed }
     : { declared: null, protocol_agent_name_check: null, reason: 'no readable config' };
   return { results, detail, declaration };
 }
@@ -3272,4 +3532,4 @@ if (require.main === module) main();
  * reproduces only by luck. A RED that reproduces by luck is not evidence. The stress harness
  * calls the primitive directly, in a tight loop, from concurrent processes. */
 module.exports = { sanitize, buildDescriptor, truncateBytes, ulid, buildCounters, buildDegraded,
-  appendLine, K, ENUM, SANITIZER_FIXTURES, SELFTEST_CHECKS };
+  appendLine, K, ENUM, SANITIZER_FIXTURES, SELFTEST_CHECKS, CRED_PREFIX_RE };

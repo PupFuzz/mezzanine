@@ -65,8 +65,9 @@
  * for the ride's route — `returned()`, which the page also calls when the back-forward cache restores
  * it — a ride is IN FLIGHT: the frame says so (`riding`, which disables the ride control), a second
  * `ride()` is refused, a plate link clicked is held (the page's `ride-hold.js`, over `riding`), and the
- * wheel, the keys, the zoom buttons, the drag and the whole-building control leave the camera on the
- * plate. The page's glide is committed (`wire/camera-view.js`), so any of them cuts it to the plate and
+ * wheel (a pan or a Ctrl+wheel zoom), a touch pinch, the keys, the zoom buttons, the drag and the
+ * whole-building control leave the camera on the plate — the wheel's two acts answering that they
+ * consumed the event all the same. The page's glide is committed (`wire/camera-view.js`), so any of them cuts it to the plate and
  * it arrives. The keyboard's focus on a plate does neither: `focusPlate()` moves nothing while a ride
  * is in flight, so the glide runs on. Once it has arrived the hold is over: a
  * navigation the browser then cancels or never completes leaves a lobby whose controls work, never one
@@ -93,7 +94,7 @@ import { Building } from '../wire/building.js';
 import { AnimationSet } from '../wire/animation-set.js';
 import { correctedNowMs } from '../wire/duration.js';
 import { RoomClock } from '../floor/floor-layout.js';
-import { createCamera, fit, focusOn, frameOn, glideMs, panBy, resize, unframe, wheel, zoomStep } from '../wire/camera.js';
+import { createCamera, fit, focusOn, frameOn, glideMs, pan, panBy, pinch, resize, unframe, zoom, zoomStep } from '../wire/camera.js';
 import { failureRender } from '../wire/failure-render.js';
 import { statusStrip } from '../floor/status-strip.js';
 import { buildingModel } from './building-model.js';
@@ -343,11 +344,48 @@ export class LobbyScreen {
     }
 
     /**
-     * One wheel event at a point on the surface — `wire/camera.js`'s `wheel()`. Renders nothing, and
+     * A plain wheel event — a pan, `wire/camera.js`'s `pan()`, which leaves a wheel at the building's edge to
+     * the page's scroll. Renders nothing, and moves nothing while a ride is in flight, when it consumes the
+     * event whatever the edge: the wheel over a riding building scrolls nothing.
+     *
+     * @returns {{camera: object, consumed: boolean}}
+     */
+    pan(delta) {
+        if (this.#riding !== null) {
+            return { camera: this.#camera, consumed: true };
+        }
+
+        const { camera, consumed } = pan(this.#camera, delta);
+
+        this.#camera = camera;
+
+        return { camera, consumed };
+    }
+
+    /**
+     * A Ctrl+wheel event at a point on the surface — a zoom, `wire/camera.js`'s `zoom()`. Renders nothing,
+     * and moves nothing while a ride is in flight, when it still consumes the event.
+     *
+     * @returns {{camera: object, consumed: boolean}}
+     */
+    zoom(point, delta) {
+        if (this.#riding !== null) {
+            return { camera: this.#camera, consumed: true };
+        }
+
+        const { camera, consumed } = zoom(this.#camera, point, delta);
+
+        this.#camera = camera;
+
+        return { camera, consumed };
+    }
+
+    /**
+     * One step of a touch screen's two-finger pinch — `wire/camera.js`'s `pinch()`. Renders nothing, and
      * moves nothing while a ride is in flight.
      */
-    wheel(point, delta) {
-        this.#camera = this.#riding === null ? wheel(this.#camera, point, delta) : this.#camera;
+    pinch(from, to, factor) {
+        this.#camera = this.#riding === null ? pinch(this.#camera, from, to, factor) : this.#camera;
 
         return this.#camera;
     }
@@ -399,7 +437,8 @@ function within(outer, inner) {
  * @param {{surface: {width: number, height: number}, reduce?: boolean, local_time?: Function}} options `LobbyScreen`'s
  * @returns {{render: function(function(): (string|null)): Promise<void>, refresh: function(): Promise<void>, draw: function(string|null): void,
  *            ride: function(): object|null, returned: function(): void, riding: function(): boolean, wholeBuilding: function(): object,
- *            focusPlate: function(string): object|null, wheel: Function, zoomStep: Function, drag: Function,
+ *            focusPlate: function(string): object|null, pan: Function, zoom: Function, pinch: Function,
+ *            zoomStep: Function, drag: Function,
  *            resize: Function, camera: function(): object}}
  */
 export function startLobbyScreen(client, fetchImpl, clock, log, draw, options) {
@@ -424,7 +463,9 @@ export function startLobbyScreen(client, fetchImpl, clock, log, draw, options) {
         riding: () => screen.riding,
         wholeBuilding: () => screen.wholeBuilding(),
         focusPlate: (floor) => screen.focusPlate(floor),
-        wheel: (point, delta) => screen.wheel(point, delta),
+        pan: (delta) => screen.pan(delta),
+        zoom: (point, delta) => screen.zoom(point, delta),
+        pinch: (from, to, factor) => screen.pinch(from, to, factor),
         zoomStep: (notches) => screen.zoomStep(notches),
         drag: (dx, dy) => screen.drag(dx, dy),
         resize: (surface) => screen.resize(surface),

@@ -4,10 +4,23 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>@yield('title', config('app.name'))</title>
+    {{--
+        THE PAGE CHROME — card#11045 PR-A: one stylesheet for every page, plain CSS served static (no
+        bundler), versioned by the file's own mtime so a deploy that changes it is never served from a
+        browser's cache. `Tests\Feature\ThePageChromeIsOneLinkedStylesheetTest` holds this link.
+    --}}
+    <link rel="stylesheet" href="{{ asset('css/mezzanine.css') }}?v={{ filemtime(public_path('css/mezzanine.css')) }}">
 </head>
-<body>
+<body class="@yield('page-class')">
     <main>
-        <h1>@yield('title', config('app.name'))</h1>
+        {{--
+            The page's one <h1>, on every page — most views have no heading of their own — styled as the
+            header's title. A view adds to the header's right-hand side with `@section('header')`.
+        --}}
+        <header class="app-header">
+            <h1>@yield('title', config('app.name'))</h1>
+            @yield('header')
+        </header>
 
         @if (session('status'))
             <p role="status">{{ session('status') }}</p>
@@ -30,5 +43,10 @@
 
         @yield('content')
     </main>
+    {{--
+        THE ONE TIME CONVERTER's page half (card#9446): every `<x-utc-time>` this page printed is labelled
+        UTC, and this rewrites it to the viewer's browser zone. With JavaScript off the UTC text stays.
+    --}}
+    <script type="module" src="{{ asset('js/local-times.js') }}"></script>
 </body>
 </html>

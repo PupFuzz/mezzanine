@@ -10,16 +10,18 @@
 //   node tools/design/lobby-label-contrast.browser.mjs --selftest   # …and see each check red on its own planted defect
 //   node tools/design/lobby-label-contrast.browser.mjs --chrome <path>   # or $CHROME
 //
-// ⛔ THE PAGE IS NOT THE SERVED ONE, BUT ITS LAYOUT-RELEVANT SHAPE IS: the served page ships NO
-// stylesheet, so the ONLY thing narrowing `#lobby-building`'s width below the viewport's is the
-// BROWSER'S OWN DEFAULT `<body>` margin. This harness's page keeps that default (never `body { margin:
-// 0 }`) and nests the drawing exactly as the served page does, so the surface it measures is the ACTUAL
-// rendered `clientWidth`/`clientHeight` a real browser gives that element at a given viewport, never a
-// formula applied in this file.
+// ⛔ THE PAGE IS NOT THE SERVED ONE, BUT ITS LAYOUT-RELEVANT SHAPE IS: it links the served page's own
+// stylesheet (`server/public/css/mezzanine.css`, card#11045 — the shipped bytes, served from the tree)
+// and nests the drawing in the elements that sheet sizes it by (`<main><section class="lobby">`), so the
+// only thing narrowing `#lobby-building`'s width below the viewport's is that sheet's own margin and the
+// face its labels are drawn in is the sheet's, and the surface it measures is the ACTUAL rendered
+// `clientWidth`/`clientHeight` a real browser gives that element at a given viewport, never a formula
+// applied in this file. ⚠ The served page's header and headings above the drawing are NOT in this page,
+// so the y of every sample (and `RESIDUALS`' y-bands) is this page's, never the served page's.
 //
 // ⛔ WHAT IS RENDERED — every viewport and framing this file judges, so this sentence is never a claim
 // wider than `RUNS` below actually covers: several viewport sizes, several floor counts at fit, every sky
-// phase, a 4-room plate, a long summary, a wheel-between-renders case (`showLabels()` called again with
+// phase, a 4-room plate, a long summary, a Ctrl+wheel-between-renders case (`showLabels()` called again with
 // NO row rebuilt), zoomed to one plate, and phone width.
 //
 // ⛔ WHAT IS MEASURED, PER RUN. The shipped `server/public/js/lobby/building-scene.js`,
@@ -71,11 +73,11 @@
 // same time it overlaps — proper per-line attribution (which of the neighbour's own, budget-limited lines
 // could legitimately paint at that exact y) would close it, and is future work.
 
-import { spawn } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { browser, findChrome } from './headless-chromium.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const JS_ROOT = join(HERE, '..', '..', 'server', 'public', 'js');
@@ -108,24 +110,11 @@ const PLANTS = {
   phoneResidual: ['export const LABEL_BACKING = rgba(INK.wall, 0.985);', 'export const LABEL_BACKING = rgba(INK.wall, 0.4);'],
 };
 
-function findChrome() {
-  const named = argOf('--chrome') || process.env.CHROME;
-  if (named) return existsSync(named) ? named : null;
-  const cache = join(process.env.HOME || '', '.cache', 'ms-playwright');
-  if (!existsSync(cache)) return null;
-  for (const d of readdirSync(cache).filter((n) => n.startsWith('chromium'))) {
-    for (const sub of ['chrome-headless-shell-linux64/chrome-headless-shell', 'chrome-linux/chrome']) {
-      const p = join(cache, d, sub);
-      if (existsSync(p)) return p;
-    }
-  }
-  return null;
-}
 
-// The page: the lobby's building drawn by the shipped modules as `lobby/main.js` draws it, nested
-// EXACTLY as the served page nests it (`<body><main><section><div id="lobby-building">`, no `body`
-// margin reset) so the surface's own rendered size is the browser's real answer, never a formula.
-const PAGE = `<!doctype html><html><head><meta charset="utf-8"></head><body><main><section>
+// The page: the lobby's building drawn by the shipped modules as `lobby/main.js` draws it, nested in the
+// elements the served stylesheet sizes it by (`<body><main><section class="lobby"><div id="lobby-building">`),
+// so the surface's own rendered size is the browser's real answer, never a formula.
+const PAGE = `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/css/mezzanine.css"></head><body><main><section class="lobby">
 <div id="lobby-building"><ul id="lobby-floors" style="margin:0;padding:0;transform-origin:0 0"></ul></div>
 </section></main>
 <script type="module">
@@ -133,7 +122,7 @@ import { buildingScene, surfaceStyle } from './js/lobby/building-scene.js';
 import { buildingDrawing, keepDrawing, paintBuilding } from './js/lobby/building-paint.js';
 import { showLabels } from './js/lobby/label-paint.js';
 import { plateRow } from './js/lobby/plate-row.js';
-import { createCamera, frameOn, focusOn, wheel } from './js/wire/camera.js';
+import { createCamera, frameOn, focusOn, zoom } from './js/wire/camera.js';
 const q = new URLSearchParams(location.search);
 const n = Number(q.get('floors'));
 const phase = q.get('phase') === 'unset' ? null : q.get('phase');
@@ -163,9 +152,10 @@ function paintCamera(camera) {
 }
 paintCamera(cam);
 // The wheel-between-renders case: a camera move with NO row rebuilt at all — showLabels() alone must
-// carry the new geometry, which is the whole point of the round's redesign.
+// carry the new geometry, which is the whole point of the round's redesign. The move is a Ctrl+wheel's
+// zoom (the plain wheel pans since card#11045), one notch in about the surface's centre.
 if (q.get('zoom') === 'wheel') {
-  cam = wheel(cam, { x: surface.clientWidth / 2, y: surface.clientHeight / 2 }, { deltaY: -400 });
+  cam = zoom(cam, { x: surface.clientWidth / 2, y: surface.clientHeight / 2 }, { deltaY: -400 }).camera;
   paintCamera(cam);
 }
 window.__labelSide = rows.dataset.labelSide ?? null;
@@ -177,6 +167,7 @@ function serve(plant) {
   const server = createServer((req, res) => {
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (path === '/index.html') { res.writeHead(200, { 'content-type': 'text/html' }); res.end(PAGE); return; }
+    if (path === '/css/mezzanine.css') { res.writeHead(200, { 'content-type': 'text/css' }); res.end(readFileSync(join(JS_ROOT, '..', 'css', 'mezzanine.css'))); return; }
     if (!path.startsWith('/js/')) { res.writeHead(404); res.end(); return; }
     const file = normalize(join(JS_ROOT, path.slice(4)));
     if (!file.startsWith(JS_ROOT) || !existsSync(file)) { res.writeHead(404); res.end(); return; }
@@ -191,61 +182,6 @@ function serve(plant) {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
-/** Headless Chromium over the DevTools protocol, one page, at a given VIEWPORT (never the surface's own size). */
-async function browser(chrome, width, height) {
-  const proc = spawn(chrome, ['--headless', '--disable-gpu', '--no-sandbox', '--hide-scrollbars',
-    '--remote-debugging-port=0', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
-  const wsUrl = await new Promise((resolve, reject) => {
-    let err = '';
-    const timer = setTimeout(() => reject(new Error('Chromium printed no DevTools endpoint')), 30000);
-    proc.stderr.on('data', (d) => {
-      err += d;
-      const m = err.match(/DevTools listening on (ws:\/\/\S+)/);
-      if (m) { clearTimeout(timer); resolve(m[1]); }
-    });
-    proc.on('exit', () => reject(new Error('Chromium exited before listening')));
-  });
-  const ws = new WebSocket(wsUrl);
-  await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
-  let seq = 0;
-  const pending = new Map();
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    if (msg.id !== undefined && pending.has(msg.id)) {
-      const { resolve, reject } = pending.get(msg.id);
-      pending.delete(msg.id);
-      if (msg.error) reject(new Error(`${msg.error.message}`)); else resolve(msg.result);
-    }
-  };
-  const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
-    const id = ++seq;
-    pending.set(id, { resolve, reject });
-    ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
-  });
-  const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
-  const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
-  const page = (method, params) => send(method, params, sessionId);
-  await page('Page.enable');
-  await page('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
-  const evaluate = async (expression) => {
-    const r = await page('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-    if (r.exceptionDetails) throw new Error(`in page: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);
-    return r.result.value;
-  };
-  return {
-    async load(url) {
-      await page('Page.navigate', { url });
-      for (let i = 0; i < 200; i += 1) {
-        if ((await evaluate('document.title')) === 'drawn') return;
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      throw new Error(`the page never drew: ${url}`);
-    },
-    evaluate,
-    shot: async () => `data:image/png;base64,${(await page('Page.captureScreenshot', { format: 'png' })).data}`,
-    close() { ws.close(); proc.kill(); },
-  };
-}
 
 // In the page: each plate's own outer label box, the building's own drawn box, every VISIBLE line's own
 // rect AND colour (for contrast, the no-sliced-line and the cue-reachable checks), and which of them
@@ -400,7 +336,7 @@ const MEASURE = (a, b, spans, surface, labels) => `(async () => {
           for (const [dx, dy] of RING) {
             const rx = x + dx, ry = y + dy;
             // r5's fix round (r4 review m7): bounded to the SURFACE, not the full image — a ring sample
-            // landing in the page's own white body margin (outside the #lobby-building element) read as
+            // landing in the page's own body margin (outside the #lobby-building element) read as
             // an artificially light "background", producing the roughly 1.1:1 wheel artefact at the
             // surface's own top-left corner. A sample the surface does not cover answers nothing about
             // what a glyph here stands on and is skipped, exactly as the primary pixel's own
@@ -486,25 +422,28 @@ async function runOverlapScenario(chrome, plant) {
  * pixel outside the band, or a count past the cap — reds, whatever run it is in. `cap` is the MEASURED
  * count (R3: "the cap equal to the measured count"), not a round number guessed to leave headroom.
  */
+// ⚠ The y-bands are this page's coordinates: card#11045's stylesheet set `body { margin: 0 }`, which
+// moved every sample 8 px up from where they were first measured, and the bands moved with it — the
+// same lines, the same counts, the same caps.
 const RESIDUALS = [
   {
     what: 'a night-sky star pixel directly behind "Floor 9"\'s own glyph',
     reason: 'real (the star IS brighter than the sky around it), negligible — confined to this one glyph',
     match: (run) => run.floors === 10 && run.phase === 'night' && run.w === 1440 && run.h === 900,
     text: 'Floor 9',
-    yBand: [496, 499],
+    yBand: [488, 491],
     cap: 3,
   },
   {
     what: 'the phone-width fallback\'s rooms line: a ring sample past its backing\'s bottom edge',
-    reason: 'measured, not inferred: the glyph pixels (x 172-174, y 264) stand on the backing (bare capture '
-      + '≈ rgb(249,240,226)); the ring\'s 3px sample straight below them, y 267, lies past the line box\'s '
-      + 'bottom edge (y ≈ 267.09 — `plate-row.js`\'s LINE_PAD is \'0 5px\', no vertical room) on the '
+    reason: 'measured, not inferred: the glyph pixels (x 172-174, y 256) stand on the backing (bare capture '
+      + '≈ rgb(249,240,226)); the ring\'s 3px sample straight below them, y 259, lies past the line box\'s '
+      + 'bottom edge (y ≈ 259.09 — `plate-row.js`\'s LINE_PAD is \'0 5px\', no vertical room) on the '
       + 'night scene (≈ rgb(24,34,67)), and the dark ink reads ≈ 1.1:1 against THAT pixel, not against '
       + 'anything the glyph stands on',
     match: (run) => run.w === 375 && run.h === 812,
     text: '— rooms: alpha (office), beta (office — no seats reported for this room)',
-    yBand: [263, 265],
+    yBand: [255, 257],
     cap: 3,
   },
 ];

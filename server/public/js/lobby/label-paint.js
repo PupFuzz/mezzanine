@@ -176,7 +176,7 @@ function linesFor(camera) {
 
 /**
  * ⭐ THE ONE PRIMITIVE — every plate's label geometry and paint, written on `#lobby-floors` for every
- * plate to inherit, called by `lobby/main.js`'s `view()` on EVERY camera it shows (fit, wheel, key, drag,
+ * plate to inherit, called by `lobby/main.js`'s `view()` on EVERY camera it shows (fit, wheel, pinch, key, drag,
  * every glide step, resize). `renderBuilding()`/`paint()` call this NEVER — they write no label geometry
  * at all, so a plate's label can never go stale between a render and the camera moves that follow it.
  *

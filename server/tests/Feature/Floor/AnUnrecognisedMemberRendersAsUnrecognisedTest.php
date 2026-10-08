@@ -14,6 +14,12 @@ use Tests\TestCase;
  * one desk left alone. Every assertion reads the desk frames the shipped renderer drew and the
  * client's own event record — § 5.5's record, not the lobby's rendering of it.
  *
+ * ⛔ THE SCENE LEG (card#11058, the operator's ruling of 2026-10-02, Q0): on the DESK no raw
+ * unrecognised string is drawn — the chip and the label line read the fixed word, and every
+ * unrecognised value is counted into the flag `⚠ +N`; the raw `field: value` lines are the drill-down's
+ * rows (and the desk list's). It lays out the run's last desk models through the shipped
+ * `floor/desk-layout.js` and renders the panel through the shipped `drilldown/main.js`.
+ *
  * ⛔ THE MEMBER SETS THE TEST IS AGAINST ARE THE DOCUMENT's. `wire/member-sets.js` carries the three
  * sets no other module did (§ 7.2's badges, § 7.6's `link_state` and `activity_state`); this file
  * re-derives each from its table and set-differences both directions, so a member the document gains
@@ -60,6 +66,29 @@ class AnUnrecognisedMemberRendersAsUnrecognisedTest extends TestCase
     }
 
     /**
+     * The scene leg: every touched desk's flag counts its unrecognised values, no element derived from
+     * the state or the badges carries a raw string, and the panel lists each `field: value` line.
+     */
+    public function test_green_the_desk_flags_each_unrecognised_value_draws_none_raw_and_the_panel_lists_each(): void
+    {
+        $this->assertSame([], $this->sceneDefects());
+    }
+
+    /** ⛔ THE CONTROLS — each clause of the scene leg planted in the module it would live in. */
+    public function test_red_each_clause_of_the_scene_leg_is_caught(): void
+    {
+        foreach ([
+            'flag' => ['../floor/desk-layout.js', 'const n = flagCount(desk, row);', 'const n = flagCount(desk, row) + 1;'],
+            'raw' => ['../floor/desk-layout.js', 'fit(desk.render_state.recognised ? desk.glyph : UNRECOGNISED,', 'fit(desk.glyph,'],
+            'panel' => ['../drilldown/main.js', "putRows(root, '[data-panel-unrecognised]', desk.unrecognised.map((line) => ({ text: line })));",
+                "putRows(root, '[data-panel-unrecognised]', []);"],
+        ] as $clause => $edit) {
+            $this->assertArrayHasKey($clause, $this->sceneDefects($this->mutatedModules($edit)),
+                "the scene leg's RED did not bite on {$clause}");
+        }
+    }
+
+    /**
      * § 7.2's 18 badges and § 7.6's two five-member sets, from the document, against the module.
      */
     public function test_the_three_member_sets_are_the_documents_in_both_directions(): void
@@ -74,6 +103,109 @@ class AnUnrecognisedMemberRendersAsUnrecognisedTest extends TestCase
 
         $this->assertNotSame($this->documentSets()['BADGES'], $planted['BADGES'],
             'CONTROL did not bite: a badge removed from the module still matched the document');
+    }
+
+    /**
+     * The scene leg's defects over the run's touched seats, keyed by clause: `flag`, `raw`, `panel`.
+     *
+     * @return array<string, string>
+     */
+    private function sceneDefects(?string $dir = null): array
+    {
+        $result = $this->deskRun(self::RUN, $dir);
+        $last = $this->lastFrame($result)['desks'];
+        $seats = [];
+
+        foreach ($this->fixture(self::RUN)['http']['/api/fleet/snapshot'][0]['body']['installs'] as $install) {
+            foreach ($install['seats'] as $seat) {
+                $seats["{$seat['install_id']}/{$seat['seat_id']}"] = $seat;
+            }
+        }
+
+        $touched = [];
+
+        foreach ($this->fixture(self::RUN)['messages'] as $message) {
+            $key = "{$message['envelope']['install_id']}/{$message['envelope']['seat_id']}";
+            $seats[$key] = array_replace($seats[$key], $message['envelope']['patch']);
+            $touched[$key] = true;
+        }
+
+        $drawn = $this->sceneOfDesks(array_map(fn (string $key): array => ['model' => $last[$key], 'seat' => $seats[$key]], array_keys($touched)),
+            $dir === null ? $this->jsRoot() : dirname($dir));
+        $defects = [];
+
+        foreach (array_keys($touched) as $i => $key) {
+            $model = $last[$key];
+            $raw = array_map(static fn (string $u): string => substr($u, strpos($u, ': ') + 2), $model['unrecognised']);
+            $elements = $drawn[$i]['elements'];
+            $flag = array_values(array_filter($elements, static fn (array $e): bool => $e['kind'] === 'flag'));
+
+            // This run's badges are all unrecognised, so N is the unrecognised list's length (§ 5.1's definition).
+            if (array_column($flag, 'text') !== ['⚠ +'.count($model['unrecognised'])]) {
+                $defects['flag'] = "[{$key}] the flag reads ".json_encode(array_column($flag, 'text')).' for '.json_encode($model['unrecognised']);
+            }
+
+            foreach ($elements as $e) {
+                if (! in_array($e['kind'], ['chip', 'label', 'currency', 'monitor-text', 'badge', 'flag'], true) || ! isset($e['text'])) {
+                    continue;
+                }
+
+                foreach ($raw as $value) {
+                    if (preg_match('/(?<![\p{L}\p{N}_])'.preg_quote($value, '/').'(?![\p{L}\p{N}_])/u', $e['text']) === 1) {
+                        $defects['raw'] = "[{$key}] the desk's {$e['kind']} draws the raw string «{$value}»: «{$e['text']}»";
+                    }
+                }
+            }
+
+            if (array_diff($model['unrecognised'], $drawn[$i]['panel_rows']) !== []) {
+                $defects['panel'] = "[{$key}] the panel's unrecognised rows ".json_encode($drawn[$i]['panel_rows'])
+                    .' do not list '.json_encode($model['unrecognised']);
+            }
+        }
+
+        return $defects;
+    }
+
+    /**
+     * Each desk model laid out by `floor/desk-layout.js`, and its seat's panel rendered by
+     * `drilldown/main.js` into a stub holding the `[data-panel-unrecognised]` list — the shipped tree or a copy.
+     *
+     * @param  list<array{model: array<string, mixed>, seat: array<string, mixed>}>  $desks
+     * @return list<array{elements: list<array<string, mixed>>, panel_rows: list<string>}>
+     */
+    private function sceneOfDesks(array $desks, string $jsRoot): array
+    {
+        $url = fn (string $p): string => json_encode('file://'.$jsRoot.'/'.$p);
+        $script = 'const { deskLayout } = await import('.$url('floor/desk-layout.js').');'
+            .'const { drillDownModel } = await import('.$url('drilldown/drilldown-model.js').');'
+            .'const { renderDrillDown } = await import('.$url('drilldown/main.js').');'
+            .'const desks = JSON.parse(require("fs").readFileSync(0, "utf8"));'
+            .'const measure = (t) => ({ w: [...String(t)].length * 6, h: 12 });'
+            .'console.log(JSON.stringify(desks.map(({ model, seat }) => {'
+            .'  const list = { children: [], hidden: false, replaceChildren(...c) { this.children = c; } };'
+            .'  const root = { querySelector: (s) => (s === "[data-panel-unrecognised]" ? list : null),'
+            .'    ownerDocument: { createElement: () => ({ dataset: {}, textContent: "" }) } };'
+            .'  renderDrillDown(root, drillDownModel({ ...seat, server_time: "2026-08-23T14:23:14.900Z" }, null, { now_ms: Date.parse("2026-08-23T14:23:15Z") }));'
+            .'  return { elements: deskLayout(model, { box: { width: 440, height: 228 }, measure, character: { w: 18, h: 32 }, sprite: null, placeholder: false, failed: new Set() }).elements,'
+            .'    panel_rows: list.hidden ? [] : list.children.map((li) => li.textContent) };'
+            .'})));';
+
+        $process = proc_open(['node', '--input-type=module', '-e', 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);'.$script],
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        $this->assertTrue(is_resource($process), 'node could not be started');
+        fwrite($pipes[0], (string) json_encode($desks));
+        fclose($pipes[0]);
+        $stdout = (string) stream_get_contents($pipes[1]);
+        $stderr = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $this->assertSame(0, proc_close($process), "the scene leg's node run failed:\n".$stderr);
+
+        $decoded = json_decode($stdout, true);
+        $this->assertIsArray($decoded, "the scene leg's node run printed something that is not JSON:\n".$stdout);
+        $this->assertCount(count($desks), $decoded);
+
+        return $decoded;
     }
 
     /** @return array<string, string> */

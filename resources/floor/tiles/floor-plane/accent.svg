@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A TILE MARKER — FIRST-PARTY, and an authoring aid for Tiled and nothing else (docs/design/FLOOR.md
+     § 10.6 item 6): the tile it marks declares the kind `accent`, and the floor draws a placed tile BY ITS
+     KIND in the floor's theme, never this image. A plain labelled outline, so a reader who mistook it for
+     the art is told so by the marker itself. No raster, no embedded data (§ 10.1 Gate 2). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8">
+  <rect x="0.5" y="0.5" width="7" height="7" fill="#f4eefa" fill-opacity="0.5" stroke="#8a6fae" stroke-dasharray="3 2"/>
+</svg>

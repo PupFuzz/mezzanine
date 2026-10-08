@@ -4,10 +4,12 @@ namespace Tests\Feature\Admin;
 
 use App\Admin\ConsoleModules;
 use App\Building\Layouts;
+use App\Building\Revisions;
 use App\Floor\FloorInventory;
 use App\Floor\FloorMap;
 use App\Floor\Floors;
 use App\Floor\InvalidFloorMap;
+use App\Fold\Clock;
 use App\Models\User;
 use App\Sweep\Purge;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -40,6 +42,7 @@ use Tests\TestCase;
 class FloorConsoleTest extends TestCase
 {
     use RefreshDatabase;
+    use SeesAConvertedInstant;
 
     private const INSTALL = 'aimla';
 
@@ -146,6 +149,12 @@ class FloorConsoleTest extends TestCase
         // Stored VERBATIM: the bytes an operator authored are the bytes the store holds, so the
         // desk slots the renderer reads are the ones Tiled exported and not a re-encoding of them.
         $this->assertSame(FloorMapFixture::valid(12), $row->map);
+
+        // card#9446: the floors list says when, through the one converter.
+        $this->assertSeesConvertedInstant(
+            $this->actingAs($this->operator())->get(route('admin.floors.index'))->assertOk(),
+            $row->updated_at,
+        );
     }
 
     public function test_authoring_is_refused_for_an_install_the_snapshot_does_not_render(): void
@@ -217,7 +226,15 @@ class FloorConsoleTest extends TestCase
             'a grid with no tile width' => [FloorMapFixture::noTileWidth(), 'tilewidth'],
             'a projection the floor does not draw' => [FloorMapFixture::isometric(), 'isometric'],
             'a desk slot past the grid' => [FloorMapFixture::deskOutsideTheGrid(), 'wholly inside'],
-            'a desk slot carrying a property' => [FloorMapFixture::deskWithProperties(), 'properties'],
+            'a desk slot carrying a property' => [FloorMapFixture::deskWithProperties(), 'may carry only `reserved_for`'],
+
+            // card#11144: `reserved_for`, the allowlist's one name, and the ways to misuse it.
+            // The control they mutate is `test_a_map_reserving_one_desk_for_a_role_is_saved_and_listed`.
+            'two reserved desks' => [FloorMapFixture::twoReservedDesks(), 'id 3 and id 6 are both reserved'],
+            'a reservation that is not a string' => [FloorMapFixture::reservedForAsABool(), 'is a Tiled `bool` property'],
+            'a reservation that is not a role name' => [FloorMapFixture::reservedForNotARoleName(), 'it must be a role name such as `pm`'],
+            'a reserved desk with no id' => [FloorMapFixture::reservedDeskWithNoId(), 'is reserved and declares no `id`'],
+            'a reserved desk whose id is not its own' => [FloorMapFixture::reservedDeskWithADuplicateId(), 'another desk slot declares `id` 3 too'],
             'a tileset the repository does not ship' => [FloorMapFixture::unshippedTileset(), 'does not ship'],
         ];
     }
@@ -244,6 +261,84 @@ class FloorConsoleTest extends TestCase
         } catch (InvalidFloorMap $e) {
             $this->assertStringContainsStringIgnoringCase($phrase, $e->getMessage());
         }
+    }
+
+    /**
+     * card#11144: THE CONTROL for the three reservation refusals above — the valid map with `id 3`
+     * reserved for `pm`, saved through the form, then named on the revisions page and in the save
+     * result beside `S`, before and after.
+     */
+    public function test_a_map_reserving_one_desk_for_a_role_is_saved_and_listed(): void
+    {
+        $this->provisionSeat('aimla-pm');
+
+        $this->author(self::INSTALL, FloorMapFixture::valid())->assertSessionHasNoErrors();
+        $this->assertStringContainsString('Reserved desk: none.', (string) session('status'));
+
+        $this->author(self::INSTALL, FloorMapFixture::reservedDesk())
+            ->assertRedirect(route('admin.floors.index'))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(FloorMapFixture::reservedDesk(), Floors::forInstall(self::INSTALL)->map);
+        $this->assertStringContainsString('Reserved desk: id 3 for pm; it was none before.', (string) session('status'));
+
+        $moved = FloorMapFixture::encode(FloorMapFixture::decodedReserved(index: 5));
+        $this->author(self::INSTALL, $moved)->assertSessionHasNoErrors();
+        $this->assertStringContainsString('Reserved desk: id 6 for pm; it was id 3 for pm before.', (string) session('status'));
+
+        $repainted = FloorMapFixture::decodedReserved(index: 5);
+        $repainted['layers'][0]['data'][0] = 7;
+        $this->author(self::INSTALL, FloorMapFixture::encode($repainted))->assertSessionHasNoErrors();
+        $this->assertStringContainsString('Reserved desk: id 6 for pm, unchanged.', (string) session('status'));
+
+        $this->actingAs($this->operator())
+            ->get(route('admin.floors.revisions', self::INSTALL))
+            ->assertOk()
+            ->assertSee('Reserved desk')
+            ->assertSee('reserved: id 6 for pm')
+            ->assertSee('reserved: id 3 for pm')
+            ->assertSee('reserved: none');
+    }
+
+    /** card#11144: a restore runs the reservation refusals a save does. */
+    public function test_restoring_a_revision_with_two_reserved_desks_is_refused_naming_both(): void
+    {
+        $this->provisionSeat('aimla-pm');
+
+        // A revision the console would now refuse can only exist one way — written before the
+        // rule — so it is planted in the log as the store holds one, beside a passing one of the
+        // same shape, and then the room is given a current map.
+        $plant = fn (int $revision, string $document) => DB::table('authored_revisions')->insert([
+            'kind' => Revisions::ROOM_MAP,
+            'subject' => self::INSTALL,
+            'revision' => $revision,
+            'document' => $document,
+            'restored_from' => null,
+            'authored_by' => 'an operator before card#11144',
+            'authored_at' => Clock::sql(now()),
+            'furniture_box' => null,
+        ]);
+        $plant(1, FloorMapFixture::twoReservedDesks());
+        $plant(2, FloorMapFixture::reservedDesk());
+        $this->author(self::INSTALL, FloorMapFixture::valid(8))->assertSessionHasNoErrors();
+        $this->assertSame(3, (int) Floors::forInstall(self::INSTALL)->map_version);
+
+        $this->actingAs($this->operator())
+            ->post(route('admin.floors.restore', [self::INSTALL, 1]))
+            ->assertRedirect(route('admin.floors.revisions', self::INSTALL))
+            ->assertSessionHasErrors('revision');
+
+        $this->assertStringContainsString(
+            'Desk slots id 3 and id 6 are both reserved; a room has one reserved desk.',
+            (string) session('errors')->first('revision'),
+        );
+        $this->assertSame(3, (int) Floors::forInstall(self::INSTALL)->map_version);
+
+        // THE CONTROL: the planted revision with ONE reservation restores.
+        $this->actingAs($this->operator())
+            ->post(route('admin.floors.restore', [self::INSTALL, 2]))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(4, (int) Floors::forInstall(self::INSTALL)->map_version);
+        $this->assertSame(['name' => 'id 3', 'role' => 'pm'], FloorMap::parse(Floors::forInstall(self::INSTALL)->map)->reserved);
     }
 
     public function test_a_map_over_the_size_cap_is_refused_by_its_measured_size(): void
@@ -495,7 +590,7 @@ class FloorConsoleTest extends TestCase
         $this->author(self::INSTALL, FloorMapFixture::valid(12))->assertSessionHasNoErrors();
         $this->author(self::INSTALL, FloorMapFixture::valid(8))->assertSessionHasNoErrors();
 
-        $this->actingAs($this->operator())
+        $page = $this->actingAs($this->operator())
             ->get(route('admin.floors.revisions', self::INSTALL))
             ->assertOk()
             ->assertSee('ops@example.com')
@@ -503,6 +598,13 @@ class FloorConsoleTest extends TestCase
             // `S` before and after, which is what re-slots every desk in the room (§ 10.3).
             ->assertSee('12')
             ->assertSee('8');
+
+        // card#9446: the current map's save and every revision's, through the one converter.
+        $this->assertSeesConvertedInstant($page, DB::table('floors')->where('install_id', self::INSTALL)->value('updated_at'));
+
+        foreach ([1, 2] as $revision) {
+            $this->assertSeesConvertedInstant($page, Revisions::get(Revisions::ROOM_MAP, self::INSTALL, $revision)->authored_at);
+        }
     }
 
     public function test_the_diff_page_names_the_layer_that_moved_and_the_slot_count_on_both_sides(): void

@@ -32,7 +32,7 @@
         feed status, the resync count and the client's event record below are live, and § 4.1's
         discrepancy check is the protocol's — this page fetches no snapshot of its own.
     --}}
-    <section aria-labelledby="lobby-heading">
+    <section class="lobby" aria-labelledby="lobby-heading">
         <h2 id="lobby-heading">The building</h2>
 
         {{-- § 9 F8: "a full-width banner", above everything else on the page. --}}
@@ -82,7 +82,8 @@
             puts them, over the building it draws — the roof and its sign, a storey under each plate, the
             ground lobby and the cab (slice B, which `public/js/lobby/main.js` paints) — and the camera (`public/js/wire/camera.js`, held by `lobby-screen.js`) is one
             transform on `#lobby-floors` — every plate in view on entry and on the whole-building
-            control, one plate in view on a ride. Wheel to zoom, drag to pan; while it frames a building it takes focus, so `+`/`-`
+            control, one plate in view on a ride. The wheel or a two-finger scroll pans, Ctrl+wheel or a pinch zooms about the pointer,
+            and one finger or the mouse drags to pan (card#11045), as `#lobby-hint` says; while it frames a building it takes focus, so `+`/`-`
             or `#lobby-zoom-in`/`#lobby-zoom-out` zoom about its centre and the arrow keys pan — the floor
             drawing's keys and buttons, in its words (`public/js/wire/camera-keys.js` wires both pages) —
             and a plate the keyboard's focus lands on outside the view is brought into it. Nothing it
@@ -92,13 +93,14 @@
             rooms with no floor claimed — the list flows in the page, and the wheel, the keys and a press
             are the browser's; the zoom buttons and *Whole building* are hidden, and the building is no
             tab stop and names no `aria-keyshortcuts`, until a camera frames it (`camera-keys.js`'s
-            `offerKeys()`, card#7343 r4b and comment 7692), so the markup offers none of them.
+            `offerKeys()`, card#7343 r4b and comment 7692) — the hint with them — so the markup offers none of them.
         --}}
         <div id="lobby-building" role="group" aria-label="the building drawing">
             <ul id="lobby-floors" aria-labelledby="lobby-floors-heading" style="margin: 0; transform-origin: 0 0">
                 <li>waiting for the fleet snapshot</li>
             </ul>
         </div>
+        @include('partials.camera-hint', ['id' => 'lobby-hint'])
         <nav aria-label="the camera">
             <button type="button" id="lobby-zoom-in" hidden>Zoom in</button>
             <button type="button" id="lobby-zoom-out" hidden>Zoom out</button>
@@ -143,6 +145,7 @@
 
         {{-- § 4.1 row 5 / § 2.3: the membership picture's own age, separate from the state's. --}}
         <p id="lobby-stamp">waiting for the fleet snapshot</p>
+        @include('partials.zone-note')
 
         {{--
             § 4.1 row 6 / § 5.3: THREE SEPARATE INDICATORS, NEVER ONE AGGREGATE, plus § 5.3's
@@ -185,8 +188,11 @@
 
     <p>Signed in as {{ auth()->user()->email }}, with a confirmed second factor.</p>
 
-    {{-- The console is reachable from here rather than by knowing its URL (card#9070). --}}
-    <p><a href="{{ route('admin.index') }}">Admin console</a></p>
+    {{-- The console is reachable from here rather than by knowing its URL (card#9070), for the
+         accounts that may open it (card#9415): an observer would only be shown a 403. --}}
+    @can('operate')
+        <p><a href="{{ route('admin.index') }}">Admin console</a></p>
+    @endcan
 
     {{-- And the recovery codes from here, for the same reason (card#9077): a page nobody can find
          is the same defect as a page that does not exist, which is how the codes came to be stored,

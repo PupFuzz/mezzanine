@@ -99,6 +99,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -178,6 +179,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -249,6 +251,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -320,6 +323,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -363,12 +367,6 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
-          }
-        ],
         "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
@@ -384,8 +382,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -475,6 +473,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -546,6 +545,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -625,6 +625,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -713,6 +714,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -756,12 +758,6 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
-          }
-        ],
         "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
@@ -777,8 +773,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -788,7 +784,7 @@
       }
     },
     "scene_default_tileset_fails": {
-      "note": "AT-D3-19: at t=50 the painter reports every image of both of the room's tilesets failed to load — the bridge kit's and the first-party floor plane's.",
+      "note": "AT-D3-19: the room's tileset is answered 404 — every tile's kind is unknown, so no wall, accent or standing piece is drawn; the plane and every desk's art stay, and the strip names the tileset.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -885,6 +881,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -964,6 +961,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1035,6 +1033,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1106,6 +1105,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1149,15 +1149,9 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
-          }
-        ],
         "/art/floor/tiles/floor-plane.tsx": [
           {
-            "status": 200,
+            "status": 404,
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ]
@@ -1170,28 +1164,18 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
             "h": 32
           }
-        },
-        "asset_failures": [
-          {
-            "at_ms": 50,
-            "tileset_images": "/art/floor/tiles/furniture-kit.tsx"
-          },
-          {
-            "at_ms": 50,
-            "tileset_images": "/art/floor/tiles/floor-plane.tsx"
-          }
-        ]
+        }
       }
     },
-    "scene_default_kit_fails": {
-      "note": "AT-D3-19: at t=50 the painter reports every image of the bridge kit's tileset failed to load, while the first-party floor plane's loaded — every desk loses its art (the desk sprite is the kit's) and the plane's tiles are still drawn.",
+    "scene_default_theme_fails": {
+      "note": "AT-D3-19 and AT-D3-25's failure leg: at t=50 the floor's theme, `studio`, is reported failed — every desk draws F14's placeholder with every fact, the band and every plane their flat fallback fills, and the strip names `theme:studio`.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -1288,6 +1272,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1367,6 +1352,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1438,6 +1424,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1509,6 +1496,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1552,12 +1540,6 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
-          }
-        ],
         "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
@@ -1573,8 +1555,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -1584,7 +1566,9 @@
         "asset_failures": [
           {
             "at_ms": 50,
-            "tileset_images": "/art/floor/tiles/furniture-kit.tsx"
+            "assets": [
+              "theme:studio"
+            ]
           }
         ]
       }
@@ -1687,6 +1671,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1766,6 +1751,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1837,6 +1823,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1908,6 +1895,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1951,10 +1939,403 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
+          }
+        ]
+      },
+      "messages": [],
+      "until_ms": 100,
+      "floor": {
+        "key": "aimla",
+        "local_hours": 9,
+        "local_minutes": 45,
+        "scene": {
+          "measurer": {
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+          },
+          "character": {
+            "w": 18,
+            "h": 32
+          }
+        },
+        "asset_failures": [
+          {
+            "at_ms": 50,
+            "assets": [
+              "character:aimla/aimla-pm"
+            ]
+          }
+        ]
+      }
+    },
+    "scene_default_desk_set_fails": {
+      "note": "AT-D3-25's failure leg: at t=50 one desk's furniture set — the theme's documents of `aimla-pm`'s chair, desk, monitor frame, props and side table — is reported failed; that desk alone draws the placeholder, and its asset alone is named.",
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-pm",
+                      "state_version": 48219,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "descriptor": "Bash: composer test",
+                        "started_at": "2026-08-23T14:23:09.882Z",
+                        "started_received_at": "2026-08-23T14:23:14.201Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [
+                        {
+                          "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                          "title": "draft the D1 event schema",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:23:31.004Z"
+                        }
+                      ],
+                      "subagents_open": 1,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:23:09.882Z",
+                        "last_received_at": "2026-08-23T14:23:14.201Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [
+                        "lossy"
+                      ],
+                      "badges_since": "2026-08-23T09:14:02.118Z",
+                      "enabled": true,
+                      "protocol_agent_name": "pm",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-1",
+                      "state_version": 31107,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "descriptor": "Edit: server/app/Feed/SeatDelta.php",
+                        "started_at": "2026-08-23T14:22:58.120Z",
+                        "started_received_at": "2026-08-23T14:23:02.530Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:22:58.120Z",
+                        "last_received_at": "2026-08-23T14:23:02.530Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-1",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-2",
+                      "state_version": 20544,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-2",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-review",
+                      "state_version": 15032,
+                      "render_state": "blocked",
+                      "link_state": "live",
+                      "activity_state": "blocked",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": "2026-08-23T14:19:40.006Z",
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:19:40.006Z",
+                        "last_received_at": "2026-08-23T14:19:44.120Z",
+                        "last_kind": "attention.request"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "review",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "delay_ms": 0
+          }
+        ],
+        "/api/building": [
+          {
+            "status": 200,
+            "body": {
+              "layout": {
+                "layout_version": 0,
+                "floors": []
+              },
+              "rooms": []
+            }
+          }
+        ],
+        "/api/building/rooms/aimla/map": [
+          {
+            "status": 200,
+            "body": {
+              "install_id": "aimla",
+              "source": "default",
+              "map_version": null,
+              "map": "@json:resources/floor/default.tmj"
+            }
           }
         ],
         "/art/floor/tiles/floor-plane.tsx": [
@@ -1972,8 +2353,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -1984,10 +2365,404 @@
           {
             "at_ms": 50,
             "assets": [
-              "character:aimla/aimla-pm"
+              "theme:studio/desk:aimla/aimla-pm"
             ]
           }
         ]
+      }
+    },
+    "scene_default_registry_fails": {
+      "note": "§ 9 F14: the theme registry's import is rejected — no theme can be resolved, so every desk draws the placeholder, the band and every plane their fallback fills, and the strip names the registry.",
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-pm",
+                      "state_version": 48219,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "descriptor": "Bash: composer test",
+                        "started_at": "2026-08-23T14:23:09.882Z",
+                        "started_received_at": "2026-08-23T14:23:14.201Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [
+                        {
+                          "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                          "title": "draft the D1 event schema",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:23:31.004Z"
+                        }
+                      ],
+                      "subagents_open": 1,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:23:09.882Z",
+                        "last_received_at": "2026-08-23T14:23:14.201Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [
+                        "lossy"
+                      ],
+                      "badges_since": "2026-08-23T09:14:02.118Z",
+                      "enabled": true,
+                      "protocol_agent_name": "pm",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-1",
+                      "state_version": 31107,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "descriptor": "Edit: server/app/Feed/SeatDelta.php",
+                        "started_at": "2026-08-23T14:22:58.120Z",
+                        "started_received_at": "2026-08-23T14:23:02.530Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:22:58.120Z",
+                        "last_received_at": "2026-08-23T14:23:02.530Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-1",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-2",
+                      "state_version": 20544,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-2",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-review",
+                      "state_version": 15032,
+                      "render_state": "blocked",
+                      "link_state": "live",
+                      "activity_state": "blocked",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": "2026-08-23T14:19:40.006Z",
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:19:40.006Z",
+                        "last_received_at": "2026-08-23T14:19:44.120Z",
+                        "last_kind": "attention.request"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "review",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "delay_ms": 0
+          }
+        ],
+        "/api/building": [
+          {
+            "status": 200,
+            "body": {
+              "layout": {
+                "layout_version": 0,
+                "floors": []
+              },
+              "rooms": []
+            }
+          }
+        ],
+        "/api/building/rooms/aimla/map": [
+          {
+            "status": 200,
+            "body": {
+              "install_id": "aimla",
+              "source": "default",
+              "map_version": null,
+              "map": "@json:resources/floor/default.tmj"
+            }
+          }
+        ],
+        "/art/floor/tiles/floor-plane.tsx": [
+          {
+            "status": 200,
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
+          }
+        ]
+      },
+      "messages": [],
+      "until_ms": 100,
+      "floor": {
+        "key": "aimla",
+        "local_hours": 9,
+        "local_minutes": 45,
+        "scene": {
+          "measurer": {
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+          },
+          "themes": {
+            "registry": false
+          },
+          "character": {
+            "w": 18,
+            "h": 32
+          }
+        }
       }
     },
     "scene_overflow": {
@@ -2088,6 +2863,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2167,6 +2943,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2238,6 +3015,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2309,6 +3087,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2402,10 +3181,10 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ]
       },
@@ -2417,8 +3196,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -2428,7 +3207,7 @@
       }
     },
     "scene_crowded": {
-      "note": "AT-D3-20 (f): the crowded map — the slots of `aimla-review` (slot 2) and `aimla-impl-2` (slot 3) overlap: object 4 is drawn 100 px right of object 3.",
+      "note": "AT-D3-20 (f): the crowded map — the slots of `aimla-impl-2` (slot 2) and `aimla-impl-1` (slot 3) overlap (§ 3.2 over this stub map's own objects, not the shipped default's): object 4 is drawn 100 px right of object 3.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -2525,6 +3304,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2604,6 +3384,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2675,6 +3456,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2746,6 +3528,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2949,10 +3732,10 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ]
       },
@@ -2964,8 +3747,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -3055,6 +3838,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3126,6 +3910,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3205,6 +3990,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3293,6 +4079,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3496,10 +4283,10 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ]
       },
@@ -3511,8 +4298,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -3619,6 +4406,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3698,6 +4486,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3769,6 +4558,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3840,6 +4630,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4043,10 +4834,10 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ]
       },
@@ -4058,8 +4849,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -4166,6 +4957,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4294,6 +5086,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4434,6 +5227,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4505,6 +5299,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4548,10 +5343,513 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
+          }
+        ]
+      },
+      "messages": [],
+      "until_ms": 100,
+      "floor": {
+        "key": "aimla",
+        "local_hours": 9,
+        "local_minutes": 45,
+        "scene": {
+          "measurer": {
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+          },
+          "character": {
+            "w": 18,
+            "h": 32
+          }
+        }
+      }
+    },
+    "interns_cap_one_intern_fails": {
+      "note": "§ 9 F14's per-stool fallback (card#11058 PR-C): the `interns_cap` leg, and at t=50 the painter reports one intern's art failed — `aimla-impl-1`'s third, by its asset id `intern:<install>/<seat>~<call_id>`.",
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-pm",
+                      "state_version": 48219,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "descriptor": "Bash: composer test",
+                        "started_at": "2026-08-23T14:23:09.882Z",
+                        "started_received_at": "2026-08-23T14:23:14.201Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [
+                        {
+                          "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                          "title": "draft the D1 event schema",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:23:31.004Z"
+                        }
+                      ],
+                      "subagents_open": 1,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:23:09.882Z",
+                        "last_received_at": "2026-08-23T14:23:14.201Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [
+                        "lossy"
+                      ],
+                      "badges_since": "2026-08-23T09:14:02.118Z",
+                      "enabled": true,
+                      "protocol_agent_name": "pm",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-1",
+                      "state_version": 31107,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "descriptor": "Bash: php vendor/bin/phpunit --filter SeatFurnitureNeverOverlapsTest --stop-on-failure php vendor/bin/phpunit --filter SeatFurnitureNeverOverlapsTest --stop-on-failure php vendor/bin/phpunit --filter ",
+                        "started_at": "2026-08-23T14:22:58.120Z",
+                        "started_received_at": "2026-08-23T14:23:02.530Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [
+                        {
+                          "call_id": "01K3TB00000000000000000100",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:20:10.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000101",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "general-purpose",
+                          "started_at": "2026-08-23T14:21:11.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000102",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:22:12.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000103",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "general-purpose",
+                          "started_at": "2026-08-23T14:20:13.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000104",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:21:14.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000105",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "general-purpose",
+                          "started_at": "2026-08-23T14:22:15.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000106",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:20:16.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000107",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "general-purpose",
+                          "started_at": "2026-08-23T14:21:17.004Z"
+                        }
+                      ],
+                      "subagents_open": 9,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:22:58.120Z",
+                        "last_received_at": "2026-08-23T14:23:02.530Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-1",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-2",
+                      "state_version": 20544,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [
+                        {
+                          "call_id": "01K3TB00000000000000000200",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:20:10.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000201",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "general-purpose",
+                          "started_at": "2026-08-23T14:21:11.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000202",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:22:12.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000203",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "general-purpose",
+                          "started_at": "2026-08-23T14:20:13.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000204",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:21:14.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000205",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "general-purpose",
+                          "started_at": "2026-08-23T14:22:15.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000206",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:20:16.004Z"
+                        },
+                        {
+                          "call_id": "01K3TB00000000000000000207",
+                          "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
+                          "subagent_type": "general-purpose",
+                          "started_at": "2026-08-23T14:21:17.004Z"
+                        }
+                      ],
+                      "subagents_open": 9,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [
+                        "lossy",
+                        "batches_rejected",
+                        "harness_contract_moved",
+                        "reporter_behind",
+                        "value_clamped",
+                        "counters_omitted",
+                        "index_overflow",
+                        "invalid_tool_name",
+                        "bad_session_id",
+                        "config_invalid",
+                        "statusline_degraded",
+                        "epoch_reset",
+                        "seq_gap",
+                        "seq_collision",
+                        "clock_skew",
+                        "reporter_ahead",
+                        "fold_lag",
+                        "derivation_error",
+                        "not_a_published_badge"
+                      ],
+                      "badges_since": "2026-08-23T09:14:02.118Z",
+                      "enabled": true,
+                      "protocol_agent_name": "impl-2",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117000,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-review",
+                      "state_version": 15032,
+                      "render_state": "blocked",
+                      "link_state": "live",
+                      "activity_state": "blocked",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": "2026-08-23T14:19:40.006Z",
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:19:40.006Z",
+                        "last_received_at": "2026-08-23T14:19:44.120Z",
+                        "last_kind": "attention.request"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "review",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "delay_ms": 0
+          }
+        ],
+        "/api/building": [
+          {
+            "status": 200,
+            "body": {
+              "layout": {
+                "layout_version": 0,
+                "floors": []
+              },
+              "rooms": []
+            }
+          }
+        ],
+        "/api/building/rooms/aimla/map": [
+          {
+            "status": 200,
+            "body": {
+              "install_id": "aimla",
+              "source": "default",
+              "map_version": null,
+              "map": "@json:resources/floor/default.tmj"
+            }
           }
         ],
         "/art/floor/tiles/floor-plane.tsx": [
@@ -4569,14 +5867,22 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
             "h": 32
           }
-        }
+        },
+        "asset_failures": [
+          {
+            "at_ms": 50,
+            "assets": [
+              "intern:aimla/aimla-impl-1~01K3TB00000000000000000102"
+            ]
+          }
+        ]
       }
     },
     "interns_bound": {
@@ -4717,6 +6023,7 @@
                       "enabled": true,
                       "protocol_agent_name": "interns",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4760,12 +6067,6 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
-          }
-        ],
         "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
@@ -4781,8 +6082,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,

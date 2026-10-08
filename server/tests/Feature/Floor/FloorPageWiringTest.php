@@ -30,8 +30,9 @@ use Tests\TestCase;
  * addresses join the entry's in the both-directions check, and the entry must construct the painter
  * from that module — a painter nobody constructs addresses nothing and would pass vacuously.
  *
- * ⛔ AND TO THE CAMERA's (Appendix B row 15): the entry hands the screen the viewer's viewport and
- * wires the wheel and the drag through `wire/camera-gestures.js` (the lobby's too since card#7343 r1)
+ * ⛔ AND TO THE CAMERA's (Appendix B row 15): the entry hands the screen the drawing surface's size and
+ * wires the wheel (a plain wheel's pan, a Ctrl+wheel's zoom), the touch pinch and the drag through
+ * `wire/camera-gestures.js` (the lobby's too since card#7343 r1; the pan and the pinch card#11045's)
  * and the keyboard and the zoom buttons through `wire/camera-keys.js` (the lobby's too since card#7343
  * r2-2) — the rules of both — `deltaMode` and `ctrlKey`, the primary button only, the end on a
  * `pointercancel` or a buttonless move, which key zooms and which way an arrow pans — are held and
@@ -74,8 +75,8 @@ class FloorPageWiringTest extends TestCase
         $this->assertSame([], $this->painterDefects($this->mainJs()));
     }
 
-    /** Appendix B row 15: the viewport reaches the screen and every viewer act reaches the camera. */
-    public function test_the_entry_wires_the_viewport_and_the_viewers_acts_to_the_screens_camera(): void
+    /** Appendix B row 15: the surface's size reaches the screen and every viewer act reaches the camera. */
+    public function test_the_entry_wires_the_surface_and_the_viewers_acts_to_the_screens_camera(): void
     {
         $this->assertSame([], $this->cameraDefects($this->mainJs()));
     }
@@ -84,6 +85,26 @@ class FloorPageWiringTest extends TestCase
     public function test_the_drawing_is_focusable_and_never_an_image_so_its_desks_are_exposed(): void
     {
         $this->assertSame([], $this->exposureDefects($this->floorPage(), $this->painterJs()));
+    }
+
+    /**
+     * card#11045 PR-A (the operator's ruling; design review r3 MINOR-6): the sections below the room
+     * are `<details>`, closed by default, each holding its list root with the root's heading in its
+     * `<summary>`; the drill-down panel and the drawing are inside none of them.
+     */
+    public function test_the_sections_below_the_room_are_closed_details_and_the_panel_is_outside_them(): void
+    {
+        $this->assertSame([], $this->sectionDefects($this->floorPage()));
+    }
+
+    /**
+     * card#11045 PR-A: the header's building counts are the lobby's `fleetTotals()` — `fleet.seats_total`
+     * and `fleet.seats_live` read from the wire, never recounted (§ 4.1 row 3, AT-D3-15) — carried on the
+     * status strip the page already paints, and painted into `#floor-fleet-counts`.
+     */
+    public function test_the_header_counts_are_the_lobbys_totals_never_recounted(): void
+    {
+        $this->assertSame([], $this->countDefects($this->mainJs()));
     }
 
     public function test_the_page_serves_the_entry_as_a_module_and_every_import_resolves(): void
@@ -168,15 +189,18 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('undeclared', $this->wiringDefects($undrawn, $js),
             'CONTROL (the view without the painter\'s drawing element) did not bite');
 
-        $unpainted = str_replace("import { createPainter, loadArt, measurer } from './painter.js';", '', $js);
+        $unpainted = str_replace("import { createPainter, loadArt, measurer, themeInputs } from './painter.js';", '', $js);
         $this->assertNotSame($unpainted, $js);
         $this->assertArrayHasKey('painter', $this->painterDefects($unpainted),
             'CONTROL (an entry that never constructs the painter) did not bite');
 
-        $unwheeled = str_replace('wheel: screen.wheel', 'wheel: screen.camera', $js);
-        $this->assertNotSame($unwheeled, $js);
-        $this->assertArrayHasKey('wheel', $this->cameraDefects($unwheeled),
-            'CONTROL (a wheel that never reaches the camera) did not bite');
+        // card#11045: the plain wheel's pan, the Ctrl+wheel's zoom and the touch pinch each reach the screen.
+        foreach (['pan' => 'wheel', 'zoom' => 'wheel', 'pinch' => 'pinch'] as $act => $key) {
+            $unwired = str_replace("{$act}: screen.{$act},", "{$act}: screen.camera,", $js);
+            $this->assertNotSame($unwired, $js);
+            $this->assertArrayHasKey($key, $this->cameraDefects($unwired),
+                "CONTROL (a {$act} that never reaches the camera) did not bite");
+        }
 
         $undragged = str_replace('drag: screen.drag, camera: screen.camera }', 'drag: screen.camera, camera: screen.camera }', $js);
         $this->assertNotSame($undragged, $js);
@@ -185,8 +209,8 @@ class FloorPageWiringTest extends TestCase
 
         // card#7343 r3b: the gestures ask the screen's camera whether it frames the floor; one that never
         // does leaves every wheel over the drawn floor to the page's scroll.
-        $unframed = str_replace('cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);',
-            'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: () => ({ bounds: null }) }, show);', $js);
+        $unframed = str_replace('cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);',
+            'cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: () => ({ bounds: null }) }, show);', $js);
         $this->assertNotSame($unframed, $js);
         $this->assertArrayHasKey('wheel', $this->cameraDefects($unframed),
             'CONTROL (a wheel handed a camera that frames nothing) did not bite');
@@ -210,7 +234,7 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('gestures', $this->cameraDefects($copied),
             'CONTROL (the page wiring a pointer gesture of its own beside the shared module) did not bite');
 
-        $stale = str_replace("    screen.resize(viewport(), surface());\n    show(screen.camera());\n", "    screen.resize(viewport(), surface());\n", $js);
+        $stale = str_replace("    screen.resize(surface());\n    show(screen.camera());\n", "    screen.resize(surface());\n", $js);
         $this->assertNotSame($stale, $js);
         $this->assertArrayHasKey('resize', $this->cameraDefects($stale),
             'CONTROL (a resize that leaves a glide running over the old surface) did not bite');
@@ -277,15 +301,63 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('fit', $this->exposureDefects($fitShown, $painter),
             'CONTROL (Fit the floor shown before any camera frames the floor) did not bite');
 
-        $fitless = str_replace("fit: el('floor-fit') }", "fit: el('floor-zoom-out') }", $js);
+        $fitless = str_replace("fit: el('floor-fit'),", "fit: el('floor-zoom-out'),", $js);
         $this->assertNotSame($fitless, $js);
         $this->assertArrayHasKey('buttons', $this->cameraDefects($fitless),
             'CONTROL (Fit the floor never offered or withdrawn with the camera) did not bite');
 
-        $blind = str_replace('    viewport: viewport(),', '', $js);
+        // card#11045: the gesture hint is offered with the camera, and the markup starts with it withdrawn.
+        $hintless = str_replace("hint: el('floor-hint') }", "hint: el('floor-fit') }", $js);
+        $this->assertNotSame($hintless, $js);
+        $this->assertArrayHasKey('buttons', $this->cameraDefects($hintless),
+            'CONTROL (the gesture hint never offered or withdrawn with the camera) did not bite');
+
+        $hintShown = str_replace('id="floor-hint" class="camera-hint" hidden>', 'id="floor-hint" class="camera-hint">', $html);
+        $this->assertNotSame($hintShown, $html);
+        $this->assertArrayHasKey('hint', $this->exposureDefects($hintShown, $painter),
+            'CONTROL (the gesture hint shown before any camera frames the floor) did not bite');
+
+        $blind = str_replace('    surface: surface(),', '', $js);
         $this->assertNotSame($blind, $js);
-        $this->assertArrayHasKey('viewport', $this->cameraDefects($blind),
-            'CONTROL (a screen handed no viewport) did not bite');
+        $this->assertArrayHasKey('surface', $this->cameraDefects($blind),
+            'CONTROL (a screen handed no surface) did not bite');
+
+        // card#11045 PR-A, design review r3 MAJOR-A: the camera's surface is the drawing's own box, re-read
+        // whenever that box changes — a surface read off the window fits a drawing the chrome has shortened.
+        $windowed = str_replace('return { width: box.clientWidth, height: box.clientHeight };', 'return { width: box.clientWidth, height: window.innerHeight };', $js);
+        $this->assertNotSame($windowed, $js);
+        $this->assertArrayHasKey('surface', $this->cameraDefects($windowed),
+            'CONTROL (a surface whose height is the window\'s, not the drawing\'s) did not bite');
+
+        $unobserved = str_replace('}).observe(drawing);', '});', $js);
+        $this->assertNotSame($unobserved, $js);
+        $this->assertArrayHasKey('surface', $this->cameraDefects($unobserved),
+            'CONTROL (a drawing whose size changes reach no camera) did not bite');
+
+        foreach ([
+            'a section left open' => ['<details class="floor-section">', '<details class="floor-section" open>'],
+            'a list root outside its section' => ['<ul id="floor-coord" aria-labelledby="floor-coord-heading" hidden></ul>', ''],
+            'a heading outside its summary' => ['<summary><h2 id="floor-log-heading">', '<summary><h2>'],
+        ] as $what => [$from, $to]) {
+            $planted = str_replace($from, $to, $html);
+            $this->assertNotSame($planted, $html, "the {$what} control's anchor is gone — it mutated nothing");
+            $this->assertNotSame([], $this->sectionDefects($planted), "CONTROL ({$what}) did not bite");
+        }
+
+        // Unclosed on purpose: the parser closes it at its parent's end, so the panel is inside it.
+        $panelled = str_replace('<section id="floor-panel"', '<details><summary>the panel</summary><section id="floor-panel"', $html);
+        $this->assertNotSame($panelled, $html);
+        $this->assertArrayHasKey('panel', $this->sectionDefects($panelled),
+            'CONTROL (the drill-down panel inside a section) did not bite');
+
+        $recounted = $this->mutatedModules(['status-strip.js', 'totals: fleetTotals(fleet),', "totals: '4 seats · 4 live',"]);
+        $this->assertArrayHasKey('totals', $this->countDefects($js, $recounted),
+            'CONTROL (header counts that are not the lobby\'s totals) did not bite');
+
+        $unpaintedCounts = str_replace("say('floor-fleet-counts', `building: \${strip.totals}`);", '', $js);
+        $this->assertNotSame($unpaintedCounts, $js);
+        $this->assertArrayHasKey('paint', $this->countDefects($unpaintedCounts),
+            'CONTROL (header counts never painted) did not bite');
 
         $drifted = (string) preg_replace('/export const ANIMATION_LOG_RETENTION = \d+;/', 'export const ANIMATION_LOG_RETENTION = 5000;', $livePage);
         $this->assertNotSame($drifted, $livePage);
@@ -332,16 +404,20 @@ class FloorPageWiringTest extends TestCase
     {
         $defects = [];
         $wired = [
-            'viewport' => ['viewport: viewport(),', 'screen.resize(viewport(), surface())'],
+            // … read off the drawing's own box and re-read on every change of it (card#11045 PR-A, MAJOR-A).
+            'surface' => ['surface: surface(),', 'screen.resize(surface())', "const box = el('floor-drawing');",
+                'return { width: box.clientWidth, height: box.clientHeight };', 'new ResizeObserver(() => {', '}).observe(drawing);'],
             // … and the camera as it stands, so the wheel is the page's scroll while it frames nothing (card#7343 r3b).
-            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel,', 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
-            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { wheel: screen.wheel, drag: screen.drag, camera: screen.camera }, show);'],
-            'resize' => ["    screen.resize(viewport(), surface());\n    show(screen.camera());\n"],
+            // card#11045: the wheel's two acts (a plain wheel's pan, a Ctrl+wheel's zoom) and the touch pinch.
+            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
+            'pinch' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
+            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
+            'resize' => ["    screen.resize(surface());\n    show(screen.camera());\n"],
             // … and the camera as it stands, so every key is the browser's while it frames nothing (card#7343 r4b).
             'keyboard' => ["import { cameraKeys, offerKeys } from '../wire/camera-keys.js';", 'cameraKeys(drawing, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);'],
-            // … and the zoom buttons, *Fit the floor* and the drawing's keys and tab stop offered from each
-            // frame's camera (card#7343 r4b, comment 7692).
-            'buttons' => ["const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit') };",
+            // … and the zoom buttons, *Fit the floor*, the gesture hint (card#11045) and the drawing's keys and
+            // tab stop offered from each frame's camera (card#7343 r4b, comment 7692).
+            'buttons' => ["const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit'), hint: el('floor-hint') };",
                 "    offerKeys(el('floor-drawing'), zoomButtons, frame.camera);"],
             'fit' => ["el('floor-fit').addEventListener('click'", 'screen.fitFloor()'],
         ];
@@ -386,6 +462,11 @@ class FloorPageWiringTest extends TestCase
             $defects['fit'] = 'Fit the floor is shown in the markup, before any camera frames the floor — `offerKeys()` offers it';
         }
 
+        // card#11045: the gesture hint names the camera's gestures, untrue until a camera frames the floor.
+        if (preg_match('/<p id="floor-hint"([^>]*)>/', $html, $hint) !== 1 || preg_match('/(^|\s)hidden(\s|$)/', $hint[1]) !== 1) {
+            $defects['hint'] = 'the gesture hint is shown in the markup, before any camera frames the floor — `offerKeys()` offers it';
+        }
+
         if (str_contains($m[1], 'role="img"')) {
             $defects['drawing'] = 'the drawing is an image — its desks are presentational';
         }
@@ -410,6 +491,110 @@ class FloorPageWiringTest extends TestCase
         if ($noted === false || $rebuilt === false || $guarded === false || $restored === false
             || ! ($noted < $rebuilt && $rebuilt < $guarded && $guarded < $restored)) {
             $defects['refocus'] = 'the painter does not put focus back on the desk it rebuilt — noted before `host.replaceChildren(svg)`, and `.focus(` called on the rebuilt desk (or the drawing) after it, under `if (focusedKey !== null)`';
+        }
+
+        return $defects;
+    }
+
+    /** @return array<string, string> */
+    private function sectionDefects(string $html): array
+    {
+        $dom = new \DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        $dom->loadHTML($html);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        $defects = [];
+        $sections = ['floor-desks', 'floor-overflow', 'floor-coord', 'floor-log'];
+
+        foreach ($sections as $id) {
+            $root = $dom->getElementById($id);
+            $details = $root === null ? null : $this->ancestor($root, 'details');
+
+            if ($details === null) {
+                $defects[$id] = "#{$id} is not inside a <details>";
+
+                continue;
+            }
+
+            if ($details->hasAttribute('open')) {
+                $defects[$id] = "#{$id}'s <details> is open by default";
+            }
+
+            $summary = null;
+
+            foreach ($details->childNodes as $child) {
+                if ($child instanceof \DOMElement && $child->tagName === 'summary') {
+                    $summary = $child;
+
+                    break;
+                }
+            }
+
+            $heading = $root->getAttribute('aria-labelledby');
+
+            if ($summary === null || $heading === '' || ! $this->contains($summary, $heading)) {
+                $defects[$id] = "#{$id}'s heading (#{$heading}) is not in its <details>' <summary>";
+            }
+        }
+
+        foreach (['floor-panel', 'floor-drawing', 'floor-camera'] as $id) {
+            $node = $dom->getElementById($id);
+
+            if ($node === null || $this->ancestor($node, 'details') !== null) {
+                $defects[$id === 'floor-panel' ? 'panel' : $id] = "#{$id} is missing or inside a <details>";
+            }
+        }
+
+        return $defects;
+    }
+
+    private function ancestor(\DOMNode $node, string $tag): ?\DOMElement
+    {
+        for ($at = $node->parentNode; $at !== null; $at = $at->parentNode) {
+            if ($at instanceof \DOMElement && $at->tagName === $tag) {
+                return $at;
+            }
+        }
+
+        return null;
+    }
+
+    private function contains(\DOMElement $node, string $id): bool
+    {
+        foreach ($node->getElementsByTagName('*') as $child) {
+            if ($child->getAttribute('id') === $id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @return array<string, string> */
+    private function countDefects(string $js, ?string $jsRoot = null): array
+    {
+        $defects = [];
+
+        if (! str_contains($js, "say('floor-fleet-counts', `building: \${strip.totals}`);")) {
+            $defects['paint'] = 'the entry does not paint the strip\'s totals into #floor-fleet-counts';
+        }
+
+        $dir = $jsRoot ?? $this->moduleDir();
+        $script = 'const s = await import('.json_encode('file://'.$dir.'/status-strip.js').');'
+            .'const l = await import('.json_encode('file://'.dirname($dir).'/lobby/lobby-model.js').');'
+            .'const feed = { reload_required: false, signed_out: null, mode: "open", silent: false, last_message: null, connected: false, resyncs: 0 };'
+            .'const fleets = [{ seats_total: 9, seats_live: 8 }, { seats_total: 2, seats_live: 0 }, { db: "down" }, null];'
+            .'console.log(JSON.stringify(fleets.map((f) => [s.statusStrip(feed, f).totals, l.fleetTotals(f)])));';
+        $out = shell_exec('node --input-type=module -e '.escapeshellarg($script));
+
+        $this->assertIsString($out, 'node could not read the status strip');
+
+        foreach (json_decode($out, true) as [$strip, $lobby]) {
+            if ($strip !== $lobby) {
+                $defects['totals'] = "the strip's totals read `{$strip}` where the lobby's read `{$lobby}`";
+            }
         }
 
         return $defects;
@@ -450,7 +635,7 @@ class FloorPageWiringTest extends TestCase
     /** @return array<string, string> */
     private function painterDefects(string $js): array
     {
-        return str_contains($js, "import { createPainter, loadArt, measurer } from './painter.js';")
+        return str_contains($js, "import { createPainter, loadArt, measurer, themeInputs } from './painter.js';")
             && preg_match('/=\s*createPainter\(/', $js) === 1
             ? []
             : ['painter' => 'the entry does not construct the room drawing\'s painter from floor/painter.js'];

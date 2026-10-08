@@ -52,9 +52,16 @@ import { ACTIVITY_STATES, BADGES, LINK_STATES } from '../wire/member-sets.js';
 import { NO_DATA_YET, UNTITLED } from '../wire/null-render.js';
 import { SEAT_CLOCK, derivationLagLine, seatClock } from '../wire/age-readout.js';
 import { deskDrawsCharacter, taskBubble } from './task-bubble.js';
+import { DESK } from './desk-poses.js';
 
 /** § 5.4 / AT-D3-11: an unrecognised member renders as unrecognised, carrying the raw string. */
 export const UNRECOGNISED = 'unrecognised';
+
+/**
+ * The desk's non-raw form of an unrecognised `unknown_reason` (§ 7.1's `unknown` row, operator ruling
+ * 2026-10-02 Q0: no raw unrecognised string is drawn on the desk). ⚠ NOT RATIFIED — a display form.
+ */
+export const UNRECOGNISED_REASON = 'unrecognised reason';
 
 /** The separator § 7.1's cells put between a state's sentence and the value that completes it. */
 export const DASH = ' — ';
@@ -108,27 +115,6 @@ export const SENDING_NOTHING = 'sending nothing';
 
 /** § 7.2's cluster line for `badges_since` — one line for the whole cluster, never per badge. */
 export const OLDEST_BADGE_SINCE = 'oldest badge since';
-
-/**
- * § 7.1's **Desk** column, as a picture per member: who is at the desk, in what pose, under what
- * light, and what the monitor shows. `glyph` is the state's own mark; `lighting` is § 7.3's
- * treatment column for the states it dims.
- *
- * ⛔ `stale` AND `offline` ARE THE EMPTY CHAIR, WITH NOBODY IN IT — never `idle`'s sleeper
- * (§ 7.5's *Asleep* bullet, AT-D3-5's third RED). "A sleeper is a *character*, an empty chair is
- * an *absence*, and neither needs the z's to be told from the other."
- */
-export const DESK = Object.freeze({
-    working: { pose: 'at-keyboard', glyph: 'working', lighting: 'full', monitor: 'on' },
-    idle: { pose: 'asleep', glyph: 'asleep', lighting: 'full', monitor: 'dimmed' },
-    blocked: { pose: 'raised-hand', glyph: 'attention', lighting: 'full', monitor: 'on' },
-    stalled: { pose: 'head-in-hands', glyph: 'stalled', lighting: 'full', monitor: 'on' },
-    unknown: { pose: 'present', glyph: 'question', lighting: 'full', monitor: 'on' },
-    catching_up: { pose: 'present', glyph: 'replay', lighting: 'desaturated', monitor: 'on' },
-    stale: { pose: 'empty-chair', glyph: 'empty-chair', lighting: 'dimmed', monitor: 'on' },
-    offline: { pose: 'empty-chair', glyph: 'empty-chair', lighting: 'dark', monitor: 'on' },
-    disabled: { pose: 'present', glyph: 'monitor-off', lighting: 'dimmed', monitor: 'off' },
-});
 
 /** § 7.1's A4 condition over a `working` seat: a turn open with no call is the THINK pose. */
 const THINKING = { pose: 'leaning-back', glyph: 'thinking', lighting: 'full', monitor: 'on' };
@@ -236,11 +222,47 @@ function darkPair(seat, ages) {
  * clock)*. The parenthetical is `activity.last_event_time` as a labelled seat-clock TIMESTAMP and
  * never an elapsed time; with no last event it is not drawn (§ 5.6).
  */
-export function wasLabel(seat) {
+export function wasLabel(seat, activity = seat.activity_state ?? null) {
     const at = clockTime(seat.activity?.last_event_time ?? null);
-    const activity = seat.activity_state ?? null;
 
     return at === null ? `was: ${activity}` : `was: ${activity} (last event ${at}, ${SEAT_CLOCK})`;
+}
+
+/**
+ * THE DESK's STATE TEXT — the label line in the form the desk DRAWS it (operator ruling 2026-10-02,
+ * Q0 read literally: "no raw unrecognised string is drawn on the desk"). Equal to the label line
+ * except where the line would carry a raw string: an unrecognised `render_state` reads the fixed word
+ * *unrecognised*, an unrecognised `unknown_reason` *unknown — unrecognised reason*, an unrecognised
+ * `api_error_type` *API error — unrecognised*. The raw string stays on the label line, which the
+ * drill-down and the desk list print (§ 5.4).
+ */
+function deskLabel(state, recognised, seat, label) {
+    if (!recognised) {
+        return UNRECOGNISED;
+    }
+
+    const raw = (value, known) => value !== null && value !== undefined && !Object.hasOwn(known, value);
+
+    if (state === 'stalled' && raw(seat.api_error_type, API_ERROR_PHRASE)) {
+        return `${LABEL.stalled}${DASH}${UNRECOGNISED}`;
+    }
+
+    if (state === 'unknown' && raw(seat.unknown_reason, UNKNOWN_REASON)) {
+        return `unknown${DASH}${UNRECOGNISED_REASON}`;
+    }
+
+    return label;
+}
+
+/**
+ * The desk's CURRENCY LABEL — § 7.3's *was:* label in the form the desk draws it (Q0): an
+ * unrecognised `activity_state` reads *was: unrecognised (…)*; the raw member is the drill-down's and
+ * the list's, on the currency label itself.
+ */
+function deskCurrency(currency, seat) {
+    const activity = seat.activity_state ?? null;
+
+    return currency === null || activity === null || ACTIVITY_STATES.has(activity) ? currency : wasLabel(seat, UNRECOGNISED);
 }
 
 /**
@@ -385,7 +407,8 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
     }
 
     if (desk === null) {
-        // § 5.4: an unrecognised glyph carrying the raw string, and the desk treated as not-current.
+        // § 5.4: the model's glyph carries the raw string (the drill-down and the desk list print it;
+        // the desk's chip draws the fixed word, `floor/desk-layout.js`), and the desk is not-current.
         desk = { pose: 'empty-chair', glyph: UNRECOGNISED, lighting: 'dimmed', monitor: 'on' };
     }
 
@@ -394,6 +417,7 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
     }
 
     const character = recognised && !unconfirmed && deskDrawsCharacter(state);
+    const currency = state === 'catching_up' || state === 'disabled' ? wasLabel(seat) : null;
     const dark = state === 'stale' || state === 'offline' ? darkPair(seat, ages) : null;
     const label = recognised ? labelLine(state, seat, ages, dark) : `${state} (${UNRECOGNISED})`;
 
@@ -418,9 +442,13 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
         glyph: recognised ? desk.glyph : `${UNRECOGNISED}: ${state}`,
         lighting: desk.lighting,
         label_line: label,
+        // Q0: the label line as the desk draws it — no raw unrecognised string (`deskLabel`).
+        desk_label: deskLabel(state, recognised, seat, label),
         // § 7.3: the activity state UNDER the label, on `catching_up` and `disabled`; on a dark
         // desk it is "in the drill-down only, under *when it went dark*", so the desk draws none.
-        currency_label: state === 'catching_up' || state === 'disabled' ? wasLabel(seat) : null,
+        currency_label: currency,
+        // Q0: the currency label as the desk draws it (`deskCurrency`).
+        desk_currency: deskCurrency(currency, seat),
         dark,
         lag: lagged
             ? { overlay: 'hatched', line: lagLine(seat, facts.derivation_stamp ?? null) }
@@ -442,8 +470,9 @@ export function deskModel(seat, ages, facts = {}, options = {}) {
         // § 5.6: a null model label is omitted — no label, no *(unknown model)*.
         model_label: seat.model_label ?? null,
         badges: [...badges],
-        // § 5.4 / F9: every value outside its published set, raw, as `field: value` — the badge
-        // cluster draws a badge listed here with the unrecognised marker rather than as a known one.
+        // § 5.4 / F9: every value outside its published set, raw, as `field: value` — the drill-down
+        // and the desk list print each line; the desk counts each into its flag and draws none raw,
+        // and its badge row never draws a badge listed here (`floor/desk-layout.js`).
         unrecognised: unrecognised.map((u) => `${u.field}: ${u.value}`),
         oldest_badge_since: (seat.badges_since ?? null) === null
             ? null

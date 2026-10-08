@@ -119,6 +119,12 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
         $this->assertNotSame([], $this->decorativeDefects($this->sceneOf(self::ROOM, $onTheDesk)),
             'CONTROL (decoration drawn on a desk) did not bite');
 
+        $spilling = $this->mutatedModules(['../floor/scene.js',
+            'return Object.freeze({ cx: cell.x + cell.w / 2, cy: cell.y + ry, rx: cell.w / 2, ry });',
+            'return Object.freeze({ cx: cell.x + cell.w / 2, cy: cell.y + cell.h, rx: cell.w, ry: cell.h });']);
+        $this->assertNotSame([], $this->decorativeDefects($this->sceneOf(self::ROOM, $spilling)),
+            'CONTROL (a glow drawn twice its tile, centred on its foot) did not bite');
+
         $restless = $this->mutatedModules(['../floor/scene.js',
             'export const DECORATIVE_CYCLE_MS = 2400;', 'export const DECORATIVE_CYCLE_MS = 500;']);
         $this->assertNotSame([], $this->decorativeDefects($this->sceneOf(self::ROOM, $restless)),
@@ -208,7 +214,10 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
                     [$e['x'], $e['y'] + $e['height']], [$e['x'] + $e['width'], $e['y'] + $e['height']],
                 ]));
 
-                if ($fx['radius'] < $far) {
+                // A floating-point hair, not a short ring: `Math.hypot` and PHP's `hypot()` may differ in the last
+                // place for one corner (measured: 1217.9343167839552 against …554 once the anchor moved to the
+                // character's centre line, card#11046 row 20), so the reach is compared to 1e-9 of the corner.
+                if ($fx['radius'] < $far * (1 - 1e-9)) {
                     $defects[] = 'the ring fades before it reaches the floor\'s far corner';
                 }
 
@@ -244,15 +253,26 @@ class TheSceneDrawsOnlyWhatTheSetLoggedTest extends TestCase
             }
 
             // § 6.3's third test is about the ELEMENT: motion on anything a § 6.2 row draws is
-            // claim-bearing. So every decoration must be a map tile that declares itself one — never
-            // a desk element, whose every kind a row or the desk model draws. (A rect test against
-            // the desk's box would be a proxy, and a wrong one: a wall lamp behind a desk drawn past
-            // an undersized slot is still a lamp.)
-            $tile = collect($scene['tiles'])->first(fn ($t) => [$t['x'], $t['y'], $t['w'], $t['h']] === [$d['x'], $d['y'], $d['w'], $d['h']]
-                && ($t['properties']['decoration'] ?? null) === $d['decoration']);
+            // claim-bearing. So every decoration must be a map tile that declares itself one — a standing
+            // scenery piece placed by the map (FLOOR.md § 10.6 item 6), never a desk element, whose every
+            // kind a row or the desk model draws. (A rect test against the desk's box would be a proxy, and
+            // a wrong one: a lamp behind a desk drawn past an undersized slot is still a lamp.)
+            $tile = collect($scene['scenery'])->first(fn ($t) => [$t['x'], $t['y'], $t['w'], $t['h']] === [$d['x'], $d['y'], $d['w'], $d['h']]
+                && ($t['decoration'] ?? null) === $d['decoration']);
 
             if ($tile === null) {
                 $defects[] = 'a decoration is on no map tile that declares it one: '.json_encode($d);
+            }
+
+            // The glow the painter fills is INSIDE its tile (card#11045): a glow larger than its tile
+            // reaches past the room's grid wherever an author lays a lamp at its edge — under the floor,
+            // over the band, or onto a neighbour's room.
+            $g = $d['glow'] ?? null;
+
+            if (! is_array($g) || $g['rx'] <= 0 || $g['ry'] <= 0
+                || $g['cx'] - $g['rx'] < $d['x'] || $g['cx'] + $g['rx'] > $d['x'] + $d['w']
+                || $g['cy'] - $g['ry'] < $d['y'] || $g['cy'] + $g['ry'] > $d['y'] + $d['h']) {
+                $defects[] = 'a decoration\'s glow is not drawn inside its own tile: '.json_encode($d);
             }
         }
 

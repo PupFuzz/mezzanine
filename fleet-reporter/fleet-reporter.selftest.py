@@ -1324,10 +1324,23 @@ PROXY.stop()
 SILENT_PROXY.stop()
 
 
-print("\n== 2. SANITIZER — § 7.5's thirteen fixtures, and the four REDs AT-2 names ==")
-eq("GREEN: all 13 fixtures match their exact output AND their documented rule trace",
+print("\n== 2. SANITIZER — § 7.5's descriptor fixtures, the four REDs AT-2 names, and card#11292's ==")
+# THE FIXTURE SET IS DERIVED, NEVER COUNTED. § 7.5's table is the contract and the reporter's
+# SANITIZER_FIXTURES is its executable copy; a row added to one and not the other is the drift the
+# trace column exists to stop, so the numbers are read out of both and compared. The doc's
+# `coord.subject` rows are another producer's (§ 18.10) and are not this reporter's to run.
+_d75 = (HERE.parent / "docs/design/EVENT-SCHEMA.md").read_text(encoding="utf-8")
+_d75 = _d75.split("### 7.5 RED fixtures", 1)[1].split("\n## ", 1)[0]
+DOC_FIXTURES = [int(m.group(1)) for m in re.finditer(r"^\| (\d+) \| `([^`]+)`,", _d75, re.M)
+                if m.group(2) != "coord.subject"]
+JS_FIXTURES = json.loads(subprocess.run(
+    ["node", "-e", "process.stdout.write(JSON.stringify(require(process.argv[1]).SANITIZER_FIXTURES"
+     ".map((f) => ({ n: f.n, rules: f.rules }))))", str(REPORTER)],
+    capture_output=True, text=True, check=True).stdout)
+eq("the reporter's fixtures are exactly § 7.5's descriptor rows", DOC_FIXTURES, [f["n"] for f in JS_FIXTURES])
+eq("GREEN: every fixture matches its exact output AND its documented rule trace",
    [], [d for d in rep["detail"]["sanitizer_fixtures"] if not d["pass"]])
-eq("  … and 13 is the whole table", 13, len(rep["detail"]["sanitizer_fixtures"]))
+eq("  … and the selftest ran every one of them", DOC_FIXTURES, [d["fixture"] for d in rep["detail"]["sanitizer_fixtures"]])
 
 # RED 1 — the identity sanitizer. "Replace the sanitizer body with s => s and the whole table
 # must go RED." A fixture set that only ever passes proves the harness runs, nothing else.
@@ -1335,17 +1348,26 @@ p_id = plant(("function sanitize(input, cap) {",
               "function sanitize(input, cap) { return { text: String(input == null ? '' : input), truncated: false, rules: [], redactions: 0 };"))
 _, rep_id = selftest(s1, reporter=p_id)
 failed_id = [d["fixture"] for d in rep_id["detail"]["sanitizer_fixtures"] if not d["pass"]]
+# Every fixture whose documented trace is non-empty must go RED. Those with an empty trace are
+# the ones identity cannot discriminate, each for a stated reason: 8 is stopped by the allowlist
+# (RED 2 below is its RED), and the rest are over-redaction pins whose required output IS their
+# input (each has its own RED in RED 5 below).
 eq("RED: the identity sanitizer fails every fixture that redacts or truncates",
-   [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13], failed_id)
+   [f["n"] for f in JS_FIXTURES if f["rules"]], failed_id)
 eq("  … and fixture 8 still passes, because the ALLOWLIST is what stops it, not the regexes",
    False, 8 in failed_id)
 leaks = [d["leaked"] for d in rep_id["detail"]["sanitizer_fixtures"] if d["leaked"]]
 eq("  … and the whole-event assertion sees the raw credentials appear", True, len(leaks) >= 3)
 
 # RED 2 — remove only the allowlist: fixture 8 must fail ALONE, proving the two layers are
-# independently load-bearing.
+# independently load-bearing. The planted fallback renders an unknown tool's argument VALUES, the
+# way a generic "show the input" fallback would. It used to render the whole input as JSON, and
+# since card#11292's rule 4d a JSON `"password":` key is redacted by layer 2 — which would make this
+# RED show layer 2 catching one key name rather than what layer 1 is for: an MCP tool's input is
+# whatever its server defines, and a secret under a key no rule knows reaches the wire unless the
+# tool is refused outright.
 p_allow = plant(("  const fn = ALLOWLIST[toolName];\n  if (!fn) return",
-                 "  const fn = ALLOWLIST[toolName] || ((ti) => JSON.stringify(ti));\n  if (!fn) return"))
+                 "  const fn = ALLOWLIST[toolName] || ((ti) => Object.values(ti).join(' '));\n  if (!fn) return"))
 _, rep_allow = selftest(s1, reporter=p_allow)
 eq("RED: with the allowlist removed, fixture 8 fails ALONE",
    [8], [d["fixture"] for d in rep_allow["detail"]["sanitizer_fixtures"] if not d["pass"]])
@@ -1356,13 +1378,17 @@ redgreen("sanitizer layer 1 — the allowlist (§ 7.1)",
          'allowlist intact  -> fixture 8 descriptor=None, leaked=None')
 
 # RED 3 — revert rule 5 to the pre-extension rule 4: fixtures 9, 10 and 11 fail alone and each
-# credential appears VERBATIM, proving the credential-on-argv extension is load-bearing.
+# credential appears VERBATIM, proving the credential-on-argv extension is load-bearing. Rule 4's
+# whitespace separator is stripped from BOTH of the shapes that take one — the bare keyword and,
+# since card#11292, a flag whose name contains a keyword — so fixture 28's `--db-pass hunter2` and
+# fixture 37's `--pw zq9w8kabc`, the same credential-on-argv shape, fail with them.
 p_r5 = plant_src(
     (r"  run\(5, /[^\n]*\n[^\n]*\n", "  // rule 5 removed by plant\n"),
-    (r"\(\?!\[A-Za-z\]\)\(\\s\*\[:=\]\\s\*\|\\s\+\)", "(?![A-Za-z])(\\s*[:=]\\s*)"))
+    (r"\(\?!\[A-Za-z\]\)\(\?:\\s\*\[:=\]\\s\*\|\\s\+\)", "(?![A-Za-z])(?:\\s*[:=]\\s*)"),
+    (r"\(\?:\\s\*=\\s\*\|\\s\+\)", "(?:\\s*=\\s*)"))
 _, rep_r5 = selftest(s1, reporter=p_r5)
-eq("RED: reverting to the pre-extension rule 4 with no rule 5 fails fixtures 9, 10 and 11 ALONE",
-   [9, 10, 11], [d["fixture"] for d in rep_r5["detail"]["sanitizer_fixtures"] if not d["pass"]])
+eq("RED: reverting to the pre-extension rule 4 with no rule 5 fails fixtures 9, 10, 11, 28 and 37 ALONE",
+   [9, 10, 11, 28, 37], [d["fixture"] for d in rep_r5["detail"]["sanitizer_fixtures"] if not d["pass"]])
 survivors = {d["fixture"]: d["got"] for d in rep_r5["detail"]["sanitizer_fixtures"] if not d["pass"]}
 eq("  … and every credential-on-argv appears VERBATIM in the descriptor", True,
    "hunter2" in survivors[9] and "admin:s3cr3t" in survivors[10] and "S3cr3tP@ss" in survivors[11])
@@ -1381,7 +1407,128 @@ eq("RED: raising rule 7's threshold from 32 to 64 fails fixture 13 ALONE",
    [13], [d["fixture"] for d in rep_r7["detail"]["sanitizer_fixtures"] if not d["pass"]])
 redgreen("sanitizer traces (AT-2 consistency check)",
          "rule 7 threshold 32->64 -> fixture 13 alone RED (trace [] != documented [7])",
-         "all 13 fixtures: output AND documented rule trace both exact")
+         f"all {len(JS_FIXTURES)} descriptor fixtures (§ 7.5's rows, read from the doc): output AND "
+         f"documented rule trace both exact")
+
+# RED 5 — card#11292. Each mechanism the card added is disabled on its own, and exactly the
+# fixtures that pin it go RED; the secret each one guards then appears in the descriptor. A
+# mechanism no fixture notices being removed would be decoration, and this is where that shows.
+CARD_11292_REDS = [
+    ("rule 3's shape list back to its pre-card#11292 prefixes, no JWT", [22, 26, 41, 42], plant_src(
+        (r"const CRED_PREFIX_RE = /[^\n]*/g;",
+         r"const CRED_PREFIX_RE = /\b(gh[pousr]_|github_pat_|sk-|sk_live_|sk_test_|xox[abposr]-|AKIA|ASIA|glpat-|AIza|mzn_|mzr_)[A-Za-z0-9_-]{8,}/g;"))),
+    ("rule 4a (credential headers) removed", [23, 24, 25], plant(
+        ("  run(4, /\\b((?:proxy-)?authorization", "  if (0) run(4, /\\b((?:proxy-)?authorization"))),
+    ("rule 4b narrowed to the bare keyword words (no flag or assignment NAME containing one)",
+     [18, 19, 20, 21, 28, 31, 37, 38, 39], plant(
+        (r"|(-{1,2}[A-Za-z0-9_.-]*?(?:pass|pwd|pw|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*(?:\s*=\s*|\s+))"
+         r"|([A-Za-z0-9_.-]*?(?:pass|pwd|pw|secret|token|key|auth|credential|cookie)[A-Za-z0-9_.-]*\s*[:=]\s*))", ")"))),
+    ("rule 4d (quoted JSON / dict keys) removed", [34, 35, 36], plant(
+        ("  run(4, /((\\\\?[\"'])", "  if (0) run(4, /((\\\\?[\"'])"))),
+    ("rule 4c (secrets-store writes) removed", [27], plant(("  if (vault) {", "  if (0) {"))),
+    ("rule 7c (mixed-case base64url runs) removed", [32], plant(
+        ("  run(7, /(?<![A-Za-z0-9_-])", "  if (0) run(7, /(?<![A-Za-z0-9_-])"))),
+    ("rule 9's IPv6 pass removed", [44, 45], plant(
+        ("  run(9, /\\[[0-9A-Fa-f:.]*", "  if (0) run(9, /\\[[0-9A-Fa-f:.]*"))),
+    ("rule 9b (the host of a URL) removed", [2, 30, 43], plant(
+        ("  run(9, /(?<=[A-Za-z0-9+.-]", "  if (0) run(9, /(?<=[A-Za-z0-9+.-]"))),
+    ("rule 9c (dotted host names) removed", [29, 31], plant(
+        ("  run(9, HOST_NAME_RE,", "  if (0) run(9, HOST_NAME_RE,"))),
+]
+_reds = []
+for label, want, planted in CARD_11292_REDS:
+    _, rep_c = selftest(s1, reporter=planted)
+    got = [d for d in rep_c["detail"]["sanitizer_fixtures"] if not d["pass"]]
+    eq(f"RED: {label} fails fixtures {want} ALONE", want, [d["fixture"] for d in got])
+    _reds.append(f"{label} -> {[d['fixture'] for d in got]}")
+# The over-redaction side: rule 9c's TLD set is curated so file names survive. Any two-letter-or-
+# longer last label as a "TLD" eats `setup.py` and `README.md`, and fixture 33 exists to say so.
+# Two more over-redaction pins, each with its own RED: fixture 40 (`upward` holds `pw`, and only an
+# assignment or flag shape may take it) and fixture 46 (`cafe::babe` is two hex groups around `::`).
+p_pw = plant(("[A-Za-z0-9_.-]*\\s*[:=]\\s*))(\"", "[A-Za-z0-9_.-]*(?:\\s*[:=]\\s*|\\s+)))(\""))
+_, rep_pw = selftest(s1, reporter=p_pw)
+eq("RED: a keyword-containing NAME taking a bare-space separator fails fixture 40 (prose read as argv)",
+   False, [d for d in rep_pw["detail"]["sanitizer_fixtures"] if d["fixture"] == 40][0]["pass"])
+p_v6 = plant(("filter(Boolean).length < 3)", "filter(Boolean).length < 0)"))
+_, rep_v6 = selftest(s1, reporter=p_v6)
+eq("RED: compressed IPv6 with no group floor fails fixture 46 (`cafe::babe` read as an address)",
+   False, [d for d in rep_v6["detail"]["sanitizer_fixtures"] if d["fixture"] == 46][0]["pass"])
+p_tld = plant(("(?:${HOST_TLDS})", "(?:[A-Za-z]{2,})"))
+_, rep_tld = selftest(s1, reporter=p_tld)
+f33 = [d for d in rep_tld["detail"]["sanitizer_fixtures"] if d["fixture"] == 33][0]
+eq("RED: rule 9c with an uncurated TLD set fails fixture 33 (file names read as hosts)", False, f33["pass"])
+redgreen("sanitizer — card#11292's secret and host shapes (§ 7.3 rules 3, 4, 7, 9)",
+         "; ".join(_reds) + f"; uncurated TLDs -> fixture 33 = {f33['got']!r}",
+         "every mechanism present -> fixtures 18-46 pass with output and trace exact")
+
+
+print("\n== 2b. `descriptors` — HOW MUCH OF THE ALLOWLIST A SEAT SENDS (D1 § 3.1, card#11292) ==")
+# Driven through real hooks, because the key is read from the config a hook loads and acts at
+# two emit sites — tool.start's descriptor and subagent.spawn's title — and a function-level
+# test of buildDescriptor alone could not see the second one.
+DISPATCH = {"description": "check PGPASSWORD=hunter2 on db01.internal.example.com", "subagent_type": "coder"}
+ABSENT = object()
+
+
+def drive_descriptors(name: str, mode, reporter: Path = REPORTER) -> dict:
+    s = seat(name)
+    if mode is not ABSENT:
+        s.cfg["descriptors"] = mode
+        s.write_cfg()
+    hook(s, "PreToolUse", pre(tool="Bash", ti={"command": "make deploy"}, tuid="d_bash"), reporter=reporter)
+    hook(s, "PreToolUse", pre(tool="Read", ti={"file_path": "/var/www/app/Http/Controllers/HealthController.php"},
+                              tuid="d_read"), reporter=reporter)
+    hook(s, "PreToolUse", pre(tool="Agent", ti=DISPATCH, tuid="d_agent"), reporter=reporter)
+    ev = s.events()
+    spawns = [e["data"]["title"] for e in ev if e["kind"] == "subagent.spawn"]
+    return {
+        "descriptors": {e["data"]["tool_name"]: e["data"]["descriptor"] for e in ev if e["kind"] == "tool.start"},
+        "title": spawns[0] if len(spawns) == 1 else f"<{len(spawns)} spawns>",
+        "config_invalid": s.counters().get("config_invalid", 0),
+        "allowlisted": s.predicates().get("descriptor_allowlisted"),
+        "leaked": [x for x in ("hunter2", "db01") if any(x in json.dumps(e) for e in ev)],
+    }
+
+
+FULL = {"Bash": "Bash: make deploy", "Read": "Read: /\u2026/Controllers/HealthController.php",
+        "Agent": "Agent: check PGPASSWORD=\u2039redacted\u203a on \u2039redacted:host\u203a"}
+NOTHING = {"Bash": None, "Read": None, "Agent": None}
+d_absent = drive_descriptors("desc-absent", ABSENT)
+d_full = drive_descriptors("desc-full", "full")
+d_paths = drive_descriptors("desc-paths", "paths")
+d_none = drive_descriptors("desc-none", "none")
+d_typo = drive_descriptors("desc-typo", "path")
+eq("absent: every allowlisted descriptor, sanitized (today's behaviour)", FULL, d_absent["descriptors"])
+eq("  … and the dispatch title, sanitized", "check PGPASSWORD=\u2039redacted\u203a on \u2039redacted:host\u203a", d_absent["title"])
+eq("\"full\": the same as absent", (FULL, d_absent["title"]), (d_full["descriptors"], d_full["title"]))
+eq("\"paths\": the file path only — no command, no dispatch text",
+   {"Bash": None, "Read": FULL["Read"], "Agent": None}, d_paths["descriptors"])
+eq("  … and no dispatch title", None, d_paths["title"])
+eq("\"none\": no descriptor at all — tool names and timing only", NOTHING, d_none["descriptors"])
+eq("  … and no dispatch title", None, d_none["title"])
+eq("  … while descriptor_allowlisted still reads the allowlist, so § 9.4's alarm stays quiet",
+   {"true": 3, "false": 0}, d_none["allowlisted"])
+eq("an unrecognised value spools what \"none\" spools, never more", (NOTHING, None), (d_typo["descriptors"], d_typo["title"]))
+eq("  … and is a config error, counted on every hook (the flusher then sends nothing, § 9.3)", 3, d_typo["config_invalid"])
+eq("  … and no valid value is one", [0, 0, 0, 0], [d["config_invalid"] for d in (d_absent, d_full, d_paths, d_none)])
+eq("nothing the dispatch text held reaches the spool, under any value",
+   [[], [], [], [], []], [d["leaked"] for d in (d_absent, d_full, d_paths, d_none, d_typo)])
+
+# RED — the two ways this key dies: the hook ignores it, or a typo widens it.
+p_ignore = plant(("const d = buildDescriptor(toolName, ti, mode);", "const d = buildDescriptor(toolName, ti);"),
+                 ("const title = mode === 'full' && typeof", "const title = typeof"))
+r_ignore = drive_descriptors("desc-none-ignored", "none", reporter=p_ignore)
+eq("RED: a hook that ignores the key sends every descriptor and the title under \"none\"",
+   (FULL, False), (r_ignore["descriptors"], r_ignore["title"] is None))
+p_widen = plant(("? cfg.descriptors : 'none';", "? cfg.descriptors : 'full';"))
+r_widen = drive_descriptors("desc-typo-widened", "path", reporter=p_widen)
+eq("RED: a typo read as \"full\" sends the command and the dispatch text", FULL, r_widen["descriptors"])
+redgreen("`descriptors` (D1 § 3.1, card#11292)",
+         f"key ignored -> \"none\" sends {r_ignore['descriptors']} + title {r_ignore['title']!r}; "
+         f"typo read as full -> {r_widen['descriptors']}",
+         f"absent/full -> {d_full['descriptors']}; paths -> {d_paths['descriptors']}; none -> "
+         f"{d_none['descriptors']}, title {d_none['title']!r}; typo -> none + config_invalid "
+         f"{d_typo['config_invalid']}")
 
 
 print("\n== 3. NEVER BLOCKS THE SEAT (P-1..P-5, AT-3) ==")
@@ -1711,11 +1858,12 @@ eq("  … and `hunter2` from that tool_input appears nowhere in the spool", True
 # hypothetical: a bare 32-character hex string (a proxy password, a harness token) matches NO
 # prefix in the shape list, and only the value leg can redact it.
 SHAPELESS = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"          # 32 hex, no recognisable prefix
+# The regex is the reporter's OWN, loaded from it, so the control cannot go on probing a copy of
+# the shape list after the list has grown.
 shape_probe = subprocess.run(
     ["node", "-e",
-     "const RE=/\\b(gh[pousr]_|github_pat_|sk-|sk_live_|sk_test_|xox[abposr]-|AKIA|ASIA|glpat-|"
-     "AIza|mzn_|mzr_)[A-Za-z0-9_-]{8,}/g;"
-     "process.stdout.write(String(RE.test(process.argv[1])));", SHAPELESS],
+     "const RE=require(process.argv[1]).CRED_PREFIX_RE; RE.lastIndex=0;"
+     "process.stdout.write(String(RE.test(process.argv[2])));", str(REPORTER), SHAPELESS],
     capture_output=True, text=True, cwd=str(HERE))
 # THE CONTROL THAT MAKES THIS TEST ISOLATE THE LEG. If the shape regex matched this value, a
 # green sweep below would prove nothing about the value leg — the same false-clean the whole
@@ -3446,7 +3594,10 @@ def drive_at27(box, reporter: Path = REPORTER) -> dict:
             "config_readable": checks.get("config_readable"), "wire": wire(hb),
             "degraded": hb.get("degraded") if hb else None,
             "fingerprint": hb.get("config_fingerprint") if hb else None,
-            "detail": rep27.get("detail", {}).get("protocol_agent_name_in_roster")}
+            "detail": rep27.get("detail", {}).get("protocol_agent_name_in_roster"),
+            # § 6.14's relayed role (card#11144), kept OUT of `wire()` so every AT-27 comparison above
+            # stays the name pair's. An absent member reads `<absent>`, never None, as in `wire()`.
+            "role": (hb["protocol_agent_role"] if "protocol_agent_role" in hb else "<absent>") if hb else None}
 
 
 def act(d: dict) -> tuple:
@@ -3694,7 +3845,7 @@ eq("GREEN: the real reporter on that seat sends null and `undeclared`", want(Non
 
 # ⛔ RED — the disagreement that fails nothing: the check emits `checked`, or selftest passes.
 r_ok = drive_at27(at27_box("at27-red-checked", home=AT27_ROSTER_WITHOUT),
-                  reporter=plant(("  if (roster.names.includes(name)) return", "  if (true) return")))
+                  reporter=plant(("  if (roster.names.includes(name)) {", "  if (true) {")))
 eq("RED: a reporter that calls a non-member `checked` exits 0 with the check passing on a disagreeing seat",
    (0, "pass", "checked"), (r_ok["rc"], r_ok["selftest"], (r_ok["wire"] or {}).get("check")))
 r_pass = drive_at27(at27_box("at27-red-pass", home=AT27_ROSTER_WITHOUT), reporter=plant(
@@ -3781,6 +3932,240 @@ redgreen("a declared agent name is checked, and a disagreement fails an act (D1 
          f"A {act(at_a)}; B {act(at_b)}; C {act(at_c)}; D {act(at_d)}; E == A: {act(at_e) == act(at_a)}; "
          f"F {at_f}; control (one byte off) == C; fingerprint unmoved by the name {at_a['fingerprint']}; "
          f"one read per flusher start {g_long}")
+
+
+print("\n== 19b. THE ROSTER ENTRY'S ROLE IS RELAYED, AND IS NULL WHENEVER NOTHING SELECTS IT (D1 § 3.1, AT-27, card#11144) ==")
+# D1 § 3.1: on the roster read the name check already makes, the reporter relays `roster[].role` of the
+# ONE entry the declared name selects, verbatim, as `protocol_agent_role` on every heartbeat. It is null
+# whenever the check is not `checked`, when the entry carries no slug-shaped role, and when the name
+# matches more than one entry. `selftest` gains no check: its verdict and exit are unchanged in every
+# case below, and `detail.protocol_agent_name_in_roster.roster_role` says why a `checked` seat relays
+# null. Cases A-E are the AT-27 boxes above, re-read for the role.
+def roster_role(d: dict):
+    return (d["detail"] or {}).get("roster_role", "<absent>")
+
+
+eq("relay case A — `checked`: the heartbeat carries the selected entry's role verbatim, and the detail names it",
+   ("impl", "impl"), (at_a["role"], roster_role(at_a)))
+eq("relay case E — `checked` through $COORD_CONFIG: the same role", ("impl", "impl"), (at_e["role"], roster_role(at_e)))
+eq("relay cases B, C, D — `unchecked`, `disagreed`, `undeclared`: the member is PRESENT and null on each",
+   [None, None, None], [at_b["role"], at_c["role"], at_d["role"]])
+eq("  … and the control (one byte off, so `disagreed` against a roster that holds a role for the real name) "
+   "relays nothing", None, at_ctl["role"])
+
+
+def relay_box(tag: str, entries: list, declare=AT27_NAME):
+    return drive_at27(at27_box(f"relay-{tag}", declare=declare, home={"roster": entries}))
+
+
+ROLE_BOUND = NAME_BOUND
+relay_no_role = relay_box("no-role", [{"name": "pm", "role": "pm"}, {"name": AT27_NAME}])
+eq("relay — a `checked` name whose entry carries no role: null, the check `checked` and passing, selftest exit 0",
+   (None, "checked", 0, "pass"),
+   (relay_no_role["role"], (relay_no_role["wire"] or {}).get("check"), relay_no_role["rc"], relay_no_role["selftest"]))
+eq("  … and the detail says the entry carries none", "no role: the entry carries none", roster_role(relay_no_role))
+relay_null_role = relay_box("null-role", [{"name": AT27_NAME, "role": None}])
+eq("relay — an entry whose role is JSON null: null, as an absent one", None, relay_null_role["role"])
+
+for tag, bad_role in (("upper", "Impl"), ("space", "pm helper"), ("over", "a" * (ROLE_BOUND + 1)),
+                      ("empty", ""), ("number", 7), ("array", ["pm"])):
+    r = relay_box(f"bad-{tag}", [{"name": AT27_NAME, "role": bad_role}])
+    eq(f"relay — a role that is not a slug ({tag}): null on the wire, `checked`, selftest exit 0 and passing, "
+       f"and the detail says why", (None, "checked", 0, "pass", True),
+       (r["role"], (r["wire"] or {}).get("check"), r["rc"], r["selftest"], str(roster_role(r)).startswith("not a slug: ")))
+relay_bound = relay_box("bound", [{"name": AT27_NAME, "role": "a" * ROLE_BOUND}])
+eq(f"relay — a role AT § 6.14's {ROLE_BOUND} B bound is relayed verbatim", "a" * ROLE_BOUND, relay_bound["role"])
+relay_open = relay_box("open", [{"name": AT27_NAME, "role": "pm-helper"}])
+eq("relay — the vocabulary is open: an unknown slug (`pm-helper`) is relayed uninterpreted", "pm-helper", relay_open["role"])
+
+DUP = [{"name": "pm", "role": "pm"}, {"name": AT27_NAME, "role": "impl"}, {"name": AT27_NAME, "role": "pm"}]
+relay_dup = relay_box("dup", DUP)
+eq("relay — a name matching TWO roster entries selects nothing: null on the wire, the check still `checked` "
+   "and passing, selftest exit 0", (None, "checked", 0, "pass"),
+   (relay_dup["role"], (relay_dup["wire"] or {}).get("check"), relay_dup["rc"], relay_dup["selftest"]))
+eq("  … and the detail reads ambiguous, with the count and the name", f"ambiguous: 2 entries named {AT27_NAME}",
+   roster_role(relay_dup))
+eq("relay — on an `unchecked`, `disagreed` or `undeclared` seat the detail relays no role either",
+   [None, None, None], [roster_role(at_b), roster_role(at_c), roster_role(at_d)])
+
+# ⛔ RED — a duplicate name relays whichever entry comes first.
+r_dup = drive_at27(at27_box("relay-red-dup", home={"roster": DUP}),
+                   reporter=plant(("  if (at.length !== 1) return", "  if (at.length === 0) return")))
+eq("RED: a reporter that takes the first entry on a duplicate name relays `impl` — a pick nothing on the "
+   "wire says was a pick", "impl", r_dup["role"])
+# ⛔ RED — the role relayed unvalidated: a value the ingest's 48 B bound would refuse, batch and all.
+r_unval = drive_at27(at27_box("relay-red-unvalidated", home={"roster": [{"name": AT27_NAME, "role": "Impl"}]}),
+                     reporter=plant(("  if (typeof v === 'string' && AGENT_NAME_RE.test(v)) return",
+                                     "  if (typeof v === 'string') return")))
+eq("RED: a reporter that relays an unvalidated role puts `Impl` on the wire", "Impl", r_unval["role"])
+# ⛔ RED — the null omitted rather than sent: a seat whose role is null drops the member.
+r_omit_role = drive_at27(at27_box("relay-red-omit"), reporter=plant(
+    ("    protocol_agent_role: declaration.role,",
+     "    ...(declaration.role === null ? {} : { protocol_agent_role: declaration.role }),")))
+eq("RED: a reporter that omits a null role leaves the member ABSENT on an `unchecked` seat", "<absent>",
+   r_omit_role["role"])
+# ⛔ RED — the role relayed on a check that is not `checked`: a disagreed name that happens to share an
+# entry's name in another case, modelled by a reporter relaying the roster's first role on every read.
+r_any = drive_at27(at27_box("relay-red-unchecked-role", home=AT27_ROSTER_WITHOUT), reporter=plant(
+    ("  return { name, check: 'disagreed', role: null,",
+     "  return { name, check: 'disagreed', role: roster.roles.find((v) => typeof v === 'string') || null,")))
+eq("RED: a reporter that relays a role beside `disagreed` sends `pm` for a name the roster does not hold",
+   ("pm", "disagreed"), (r_any["role"], (r_any["wire"] or {}).get("check")))
+
+redgreen("the roster entry's role is relayed, and is null whenever nothing selects it (D1 § 3.1, AT-27, card#11144)",
+         f"first entry on a duplicate name -> {r_dup['role']!r}; unvalidated role -> {r_unval['role']!r}; null "
+         f"role omitted -> {r_omit_role['role']!r}; role beside disagreed -> {r_any['role']!r}",
+         f"A {at_a['role']!r}; E {at_e['role']!r}; B/C/D {[at_b['role'], at_c['role'], at_d['role']]}; no role "
+         f"{relay_no_role['role']!r}; duplicate {relay_dup['role']!r} ({roster_role(relay_dup)}); bound "
+         f"{len(relay_bound['role'] or '')} B; open vocabulary {relay_open['role']!r}")
+
+
+print("\n== 19c. THE SEAT'S CONSOLE URL IS READ FROM THE TRANSCRIPT'S TAIL, AND NOTHING ELSE REACHES THE WIRE (D1 § 6.3, card#9416) ==")
+# Every id below is SYNTHETIC. A real session id is a link to a live console, so none is ever
+# written into a fixture, a log or a report.
+CU_ID_A = "SynthAAAAAAAAAAAAAAAAAAA"
+CU_ID_B = "SynthBBBBBBBBBBBBBBBBBBB"
+CU_URL_A = f"https://claude.ai/code/session_{CU_ID_A}"
+CU_URL_B = f"https://claude.ai/code/session_{CU_ID_B}"
+
+
+def cu_bridge(bid) -> dict:
+    return {"type": "bridge-session", "bridgeSessionId": bid, "sessionId": SID, "lastSequenceNum": 1}
+
+
+def cu_rsc(url) -> dict:
+    return {"type": "attachment", "attachment": {"type": "remote_session_change", "url": url,
+                                                 "commit": None, "pr": None}}
+
+
+def cu_filler(n_bytes: int) -> dict:
+    """An ordinary transcript line of about `n_bytes`, carrying neither marker."""
+    return {"type": "user", "message": {"role": "user", "content": "x" * max(0, n_bytes - 64)}}
+
+
+def cu_transcript(tag: str, records: list) -> Path:
+    d = tmpdir(f"fr-cu-{tag}-")
+    p = d / f"{SID}.jsonl"
+    with p.open("w", encoding="utf-8") as f:
+        for r in records:
+            f.write((r if isinstance(r, str) else json.dumps(r)) + "\n")
+    return p
+
+
+def cu_drive(tag: str, transcript, *, mode=ABSENT, reporter: Path = REPORTER) -> dict:
+    s = seat(f"cu-{tag}")
+    if mode is not ABSENT:
+        s.cfg["descriptors"] = mode
+        s.write_cfg()
+    payload = {"session_id": SID, "hook_event_name": "UserPromptSubmit", "prompt_id": "p1",
+               "prompt": "go", "cwd": "/home/agent/proj"}
+    if transcript is not None:
+        payload["transcript_path"] = str(transcript)
+    t0 = time.monotonic()
+    r = hook(s, "UserPromptSubmit", payload, reporter=reporter)
+    ms = (time.monotonic() - t0) * 1000
+    starts = [e for e in s.events() if e["kind"] == "turn.start"]
+    c = s.counters()
+    return {
+        "rc": r.returncode, "stdout": r.stdout,
+        "url": starts[0]["data"].get("console_url", "<absent>") if len(starts) == 1 else f"<{len(starts)} turn.start>",
+        "malformed": c.get("console_url_malformed", 0),
+        "exhausted": c.get("console_url_tail_exhausted", 0),
+        "missing_key": c.get("payload_key_missing.transcript_path", 0),
+        "ms": ms,
+    }
+
+
+MIB = 1024 * 1024
+FAR = 1536 * 1024                      # filler bytes AFTER a record: past the 1 MiB tail
+fx_bridge = cu_transcript("bridge", [cu_filler(500), cu_bridge(f"cse_{CU_ID_A}"), cu_filler(800)])
+fx_rsc = cu_transcript("rsc", [cu_bridge(f"cse_{CU_ID_A}"), cu_rsc(CU_URL_B), cu_filler(300)])
+fx_rsc_null = cu_transcript("rsc-null", [cu_bridge(f"cse_{CU_ID_A}"), cu_rsc(None), cu_filler(300)])
+fx_newest = cu_transcript("newest", [cu_bridge(f"cse_{CU_ID_A}"), cu_filler(400), cu_bridge(f"cse_{CU_ID_B}")])
+fx_ended = cu_transcript("ended", [cu_bridge(f"cse_{CU_ID_A}"), cu_filler(400), cu_bridge("")])
+fx_absent = cu_transcript("absent", [cu_filler(500), cu_filler(700)])
+fx_bad_id = cu_transcript("bad-id", [cu_bridge(f"cse_{CU_ID_A}"), cu_bridge("cse_bad/../id")])
+fx_bad_url = cu_transcript("bad-url", [cu_bridge(f"cse_{CU_ID_A}"), cu_rsc("https://claude.ai.example.net/code/session_" + CU_ID_B)])
+fx_torn = cu_transcript("torn", [cu_bridge(f"cse_{CU_ID_A}"), '{"type":"bridge-session","bridgeSessionId":"cse_' + CU_ID_B])
+fx_far = cu_transcript("far", [cu_bridge(f"cse_{CU_ID_A}")] + [cu_filler(64 * 1024)] * (FAR // (64 * 1024)))
+# A record that STRADDLES chunk boundaries: preceded by long lines and itself ~100 KiB, so its bytes
+# arrive across two of the walk's 64 KiB reads and only the carried head completes it.
+fx_straddle = cu_transcript("straddle", [cu_filler(300 * 1024),
+                                         dict(cu_bridge(f"cse_{CU_ID_B}"), pad="p" * (100 * 1024)),
+                                         cu_filler(90 * 1024)])
+# A transcript far larger than the tail, record near its end: answered without reading the head.
+fx_huge = cu_transcript("huge", [cu_filler(64 * 1024)] * 640 + [cu_bridge(f"cse_{CU_ID_A}"), cu_filler(2000)])
+
+cu_bridge_r = cu_drive("bridge", fx_bridge)
+cu_rsc_r = cu_drive("rsc", fx_rsc)
+cu_rsc_null_r = cu_drive("rsc-null", fx_rsc_null)
+cu_newest_r = cu_drive("newest", fx_newest)
+cu_ended_r = cu_drive("ended", fx_ended)
+cu_absent_r = cu_drive("absent", fx_absent)
+cu_nofile_r = cu_drive("nofile", fx_absent.parent / "no-such.jsonl")
+cu_nokey_r = cu_drive("nokey", None)
+cu_bad_id_r = cu_drive("bad-id", fx_bad_id)
+cu_bad_url_r = cu_drive("bad-url", fx_bad_url)
+cu_torn_r = cu_drive("torn", fx_torn)
+cu_far_r = cu_drive("far", fx_far)
+cu_straddle_r = cu_drive("straddle", fx_straddle)
+cu_huge_r = cu_drive("huge", fx_huge)
+cu_paths_r = cu_drive("paths", fx_bridge, mode="paths")
+cu_none_r = cu_drive("none", fx_bridge, mode="none")
+
+eq("present via the bridge id: the URL derived from it", CU_URL_A, cu_bridge_r["url"])
+eq("present via a non-null remote_session_change url, newer than the bridge record: that url", CU_URL_B, cu_rsc_r["url"])
+eq("a null remote_session_change url decides nothing: the bridge record behind it answers", CU_URL_A, cu_rsc_null_r["url"])
+eq("the newest bridge record wins — the id changes within a session", CU_URL_B, cu_newest_r["url"])
+eq("an empty bridge id after a live one: the bridge ended, so null", None, cu_ended_r["url"])
+eq("absent: a transcript with no deciding record is null", None, cu_absent_r["url"])
+eq("absent: a transcript that does not exist is null", None, cu_nofile_r["url"])
+eq("absent: no transcript_path is null, and the missing key is counted", (None, 1), (cu_nokey_r["url"], cu_nokey_r["missing_key"]))
+eq("malformed bridge id: dropped, counted", (None, 1), (cu_bad_id_r["url"], cu_bad_id_r["malformed"]))
+eq("malformed url on a foreign host: dropped, counted", (None, 1), (cu_bad_url_r["url"], cu_bad_url_r["malformed"]))
+eq("a torn last line is skipped, and the whole record before it answers", CU_URL_A, cu_torn_r["url"])
+eq("oversized: a record further back than the 1 MiB tail is never read — null, counted",
+   (None, 1), (cu_far_r["url"], cu_far_r["exhausted"]))
+eq("a record straddling the walk's chunk boundaries is read whole", CU_URL_B, cu_straddle_r["url"])
+eq(f"a {fx_huge.stat().st_size // MIB} MiB transcript, record near its end: found from the tail", CU_URL_A, cu_huge_r["url"])
+eq("descriptors \"paths\": null", None, cu_paths_r["url"])
+eq("descriptors \"none\": null", None, cu_none_r["url"])
+cu_all = (cu_bridge_r, cu_rsc_r, cu_rsc_null_r, cu_newest_r, cu_ended_r, cu_absent_r, cu_nofile_r, cu_nokey_r,
+          cu_bad_id_r, cu_bad_url_r, cu_torn_r, cu_far_r, cu_straddle_r, cu_huge_r, cu_paths_r, cu_none_r)
+eq("every read exits 0 and prints nothing (P-1, P-2: UserPromptSubmit stdout reaches the model)",
+   [(0, "")] * len(cu_all), [(r["rc"], r["stdout"]) for r in cu_all])
+cu_clean = (cu_bridge_r, cu_rsc_r, cu_newest_r, cu_ended_r, cu_straddle_r, cu_huge_r)
+eq("nothing counted malformed or exhausted where the read was clean",
+   [0] * len(cu_clean), [r["malformed"] + r["exhausted"] for r in cu_clean])
+print(f"  MEASURED  UserPromptSubmit wall time over the {fx_huge.stat().st_size // MIB} MiB transcript: "
+      f"{cu_huge_r['ms']:.0f} ms (bridge fixture: {cu_bridge_r['ms']:.0f} ms) — P-5's budget is 250 ms, asserted by § 3")
+
+# RED — each way the read dies, planted on a copy and seen to fail on its own fixture.
+p_cu_any = plant(("const m = typeof id === 'string' ? BRIDGE_ID_RE.exec(id) : null;",
+                  "const m = typeof id === 'string' ? [id, id.replace(/^cse_/, '')] : null;"))
+r_cu_any = cu_drive("red-any-id", fx_bad_id, reporter=p_cu_any)
+eq("RED: no pattern check on the id puts a malformed one on the wire",
+   "https://claude.ai/code/session_bad/../id", r_cu_any["url"])
+p_cu_host = plant(("if (typeof a.url === 'string' && CONSOLE_URL_RE.test(a.url)) return a.url;",
+                   "if (typeof a.url === 'string') return a.url;"))
+r_cu_host = cu_drive("red-host", fx_bad_url, reporter=p_cu_host)
+eq("RED: no pattern check on the url puts a foreign host on the wire",
+   "https://claude.ai.example.net/code/session_" + CU_ID_B, r_cu_host["url"])
+p_cu_whole = plant(("const floor = Math.max(0, size - K.CONSOLE_TAIL_BYTES);", "const floor = 0;"))
+r_cu_whole = cu_drive("red-whole", fx_far, reporter=p_cu_whole)
+eq("RED: an unbounded walk reads past the 1 MiB tail (and would read a huge transcript whole)", CU_URL_A, r_cu_whole["url"])
+p_cu_carry = plant(("carry = cut === -1 ? Buffer.alloc(0) : buf.subarray(0, cut);", "carry = Buffer.alloc(0);"))
+r_cu_carry = cu_drive("red-carry", fx_straddle, reporter=p_cu_carry)
+eq("RED: dropping the carried head loses a record that straddles a chunk boundary", False, r_cu_carry["url"] == CU_URL_B)
+p_cu_mode = plant(("  if (descriptorMode(cfg) !== 'full') return null;\n  const tp", "  const tp"))
+r_cu_mode = cu_drive("red-mode", fx_bridge, mode="none", reporter=p_cu_mode)
+eq("RED: a read that ignores `descriptors` sends the URL from a \"none\" seat", CU_URL_A, r_cu_mode["url"])
+redgreen("the console URL is read from the transcript's tail, pattern-checked, and bounded (D1 § 6.3, card#9416)",
+         f"any id -> {r_cu_any['url']!r}; any url -> {r_cu_host['url']!r}; unbounded -> {r_cu_whole['url']!r}; "
+         f"no carry -> {r_cu_carry['url']!r}; descriptors ignored -> {r_cu_mode['url']!r}",
+         f"bridge {cu_bridge_r['url']!r}; rsc {cu_rsc_r['url']!r}; malformed -> None x2 (counted); far -> "
+         f"{cu_far_r['url']!r} (exhausted {cu_far_r['exhausted']}); straddle {cu_straddle_r['url']!r}; huge "
+         f"{cu_huge_r['url']!r} in {cu_huge_r['ms']:.0f} ms; none/paths -> None")
 
 
 print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")

@@ -83,6 +83,37 @@ its date, its decider and the scope of what it moved. The original row above sta
   is untouched and permanent, and nothing here widens the licence allowlist, which remains an
   operator decision taken separately.
 
+- **D-07 · the middle clause retired — operator, 2026-10-05 (card#11046).**
+  The 2026-08-27 append made the ported pixel generator's art interim. The operator then ruled that
+  every character is a cute animal or vegetable creature rather than a person, drawn at full
+  resolution rather than in a block style, and approved the creature design sheet the seat drew
+  from that ruling (card#11046 comments 9958 and 9963). **What moves:** the characters are original
+  animal and vegetable creatures (the operator's ruling). Three things follow from it and are the
+  maintainer's, not the operator's (FLOOR's decision 53): the creatures are drawn by first-party code as
+  SVG documents, the munder-difflin port leaves the tree whole, and the lineage check re-keys from the
+  character tree to a port in it — the port's retirement read file
+  by file in [`docs/design/FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code),
+  nothing of upstream's ships once FLOOR's Appendix B row 19 lands, so its lineage file and attribution
+  rows go with it. **What does NOT
+  move, and each is load-bearing:** the **first** clause (floor art from CC0 tilesets) is untouched;
+  the **last** clause (*the upstream's commercial tilesets are never vendored*) is untouched and
+  permanent; and appearance is still derived from `(install_id, seat_id)` through the seed module's
+  hash, which was first-party all along and stays. This append records the decision; the build that
+  carries it out is FLOOR's Appendix B row 19.
+
+- **D-07 · the floor-art clause superseded — operator, 2026-10-07 (card#11046).**
+  D-07's *"floor art from **CC0 tilesets**"*, exercised on 2026-09-12 by Kenney's Furniture Kit as an
+  explicit bridge, is superseded: the operator chose the room (card#11046 comments 10124 and 10137 — the
+  A2+C picture, and a design per building floor), and the room is drawn by first-party code — a floor
+  THEME, one module per theme drawing the band, the windows, the floor, the scenery and every desk's
+  furniture as vector SVG ([`docs/design/FLOOR.md § 10.6`](design/FLOOR.md#106-themes--a-floors-design-and-the-house-theme),
+  its decision 56). **What moves:** the kit, its `docs/ATTRIBUTION.md` rows and `resources/floor/LINEAGE.md`
+  leave the tree at FLOOR's Appendix B row 22, and no licensed asset is left under `resources/floor/`.
+  **What does NOT move, and each is load-bearing:** the **last** clause (*the upstream's commercial
+  tilesets are never vendored*) is untouched and permanent, and nothing here vendors anything; the licence
+  allowlist is untouched, an operator decision taken separately; and the asset gates still hold every
+  file under `resources/` to a row.
+
 - **D-08 · the target is named — operator, 2026-09-14.**
   D-08 reads *"App deploys to a **separate host** (operator provisions; target TBD)"*. The
   operator named the target on the 2026-09-14 Decision Docket: the production host is
@@ -183,6 +214,25 @@ its date, its decider and the scope of what it moved. The original row above sta
   § 6.2's pinned database names and isolation posture, SQLite's unsupported status, and the full TLS
   requirement for a store on another host. **Reopens:** a store that moves off the application's host,
   which then carries the TLS requirement again with no further decision.
+
+- **card#9070's D3 · superseded: an account is an observer or an operator — operator, 2026-09-13;
+  the console's scope — pm, 2026-10-05 (card#9415).**
+  card#9070 decided that *every authenticated user is an operator* (D3) and named the trigger that
+  would void it: *the first time an account must exist that may NOT administer other accounts*. The
+  operator's ruling of 2026-09-13 on card#9415 fired it: a user is **observer only, or read/write**.
+  **What moves:** `users.role` is `observer` or `operator`, and one gate, `operate`, reads it. The
+  pm decided on 2026-10-05 that the gate covers the **whole admin console**, not only the per-desk
+  write controls card#9415 named, because an observer that reached user management could promote
+  itself. Every account that existed when the column was added is an operator; a new account is an
+  observer unless its creator chooses otherwise; the last active operator can be neither demoted nor
+  retired. `README.md § The admin console` and `server/routes/admin.php` state the operative rule.
+  **What does NOT move, and each is load-bearing:** D-10 stands — Mezzanine still owns no actuator,
+  and of the write controls the role will gate, card#9416's console link hands the operator to
+  Anthropic's console and card#9417's compose box writes into a channel the agent already reads;
+  neither is a server→seat command path.
+  Fleet read access stays all-or-nothing
+  ([`docs/design/FLEET-STATE.md § 14`](design/FLEET-STATE.md#14-open-questions-for-the-review-loop)
+  item 7): an observer reads every install an operator does.
 
 ## 1. The aggregation ruling (D-10) — standalone, and why
 
@@ -303,10 +353,12 @@ and D2 § 14 item 3 asked for a ruling on where the board producer is designed �
 now answers with this document's name, the ratification of 2026-09-12 having written the answer into
 it. It is held to the D-14 bar above like every document listed before it.
 
-Status: **designed and ratified; the poller is not built** — card#7582. The D2 amendments every
-structural piece needed were ratified and applied on 2026-09-12, and the store shape shipped with
-them because retirement now clears the board-user mapping; `docs/design/BOARD-TASK.md § 13` records
-where each landed and what remains unbuilt.
+Status: **designed, ratified and built** — designed on card#7582, built on card#11289. The D2
+amendments every structural piece needed were ratified and applied on 2026-09-12, and the store shape
+shipped with them because retirement clears the board-user mapping; the poller, the seat→board-user
+command and the tier-1 branch of the merge followed. Tier 1 stays dark until an operator issues the
+board credential and maps a seat (`docs/design/BOARD-TASK.md § 10`); § 13 there records where each
+amendment landed and what is still deliberately not built.
 
 ## 3. Work breakdown
 
@@ -494,8 +546,8 @@ rule violations anyone could have committed at the time.
   argued at each step in the script:
   - **Supervision is the application user's crontab.** `bin/supervision.sh` is the one statement of
     what is supervised — the long-lived daemons of `docs/design/FLEET-STATE.md § 2.1`, plus the
-    `schedule:run` entry that drives `mezzanine:purge` — and renders their entries: every minute
-    under `flock -n` on a per-checkout lock (a no-op while the running copy holds it), and at
+    `schedule:run` entry that drives the scheduled commands of `server/routes/console.php` — and
+    renders their entries: every minute under `flock -n` on a per-checkout lock (a no-op while the running copy holds it), and at
     `@reboot`. **Install it as the application user when the host is stood up: `bin/supervision.sh
     install`.** Each deploy then installs its own release's block inside the window — a crontab missing
     an entry or carrying another release's lines included, which the dry run names line by line — so a

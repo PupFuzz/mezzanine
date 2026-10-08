@@ -5,6 +5,7 @@ namespace App\Fold;
 use App\Ingest\Counters;
 use App\Ingest\KindRegistry;
 use App\Ingest\Wire;
+use App\Support\Anchored;
 use App\Sweep\Predicates;
 use Illuminate\Support\Facades\DB;
 
@@ -305,6 +306,13 @@ class Projector
             'updated_at' => $e->receivedAt,
         ];
 
+        // card#9416: the session's console URL, as of its NEWEST turn — so an older `turn.start`
+        // arriving late never replaces it. Written on every newest turn, `null` included: the
+        // reporter sends `null` when the bridge has ended, and that must take the link away.
+        if (! $this->groupIsOlder($e, $row->turn_started_at, $row)) {
+            $update['console_url'] = $this->consoleUrl($e);
+        }
+
         if (! $superseded) {
             $update['turn_open'] = true;
             $update['turn_close_source'] = null;
@@ -321,6 +329,30 @@ class Projector
 
         DB::table('sessions')->where('id', $ref)->update($update);
         $this->touchApplied($ref, $e);
+    }
+
+    /**
+     * D1 § 6.3's `console_url`, or `null`. ⛔ THE PATTERN IS CHECKED HERE, BEFORE THE STORE, because
+     * nothing upstream does: the ingest refuses a byte bound and never a pattern (§ 12.1 step 10), and
+     * the value becomes an `href` on the drill-down. A value that fails it is not stored and is
+     * counted (`console_url_refused`, D2 § 7.2) — a conforming reporter drops it first, so a count
+     * here is a reporter that does not, or a value that did not come from one.
+     */
+    private function consoleUrl(FoldEvent $e): ?string
+    {
+        $value = Wire::field($e->data, 'console_url');
+
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value) && preg_match(Anchored::pattern(Wire::CONSOLE_URL), $value) === 1) {
+            return $value;
+        }
+
+        Counters::seat($e->seatRef, 'console_url_refused');
+
+        return null;
     }
 
     private function turnEnd(FoldEvent $e): void
@@ -928,6 +960,13 @@ class Projector
             'protocol_agent_name_check' => $e->enum(
                 'protocol_agent_name_check',
                 KindRegistry::KINDS['reporter.heartbeat']['enums']['protocol_agent_name_check']['members'],
+            ),
+            // card#11144: the roster entry's ROLE the reporter relays (D1 § 3.1), last heartbeat's
+            // value verbatim under the same rules as the pair above — heartbeat-only, an omitted key
+            // writes `null`, and the bound is read from the ingest's registry, not restated.
+            'protocol_agent_role' => $e->str(
+                'protocol_agent_role',
+                KindRegistry::KINDS['reporter.heartbeat']['bounds']['protocol_agent_role'],
             ),
             'reporter_uptime_s' => $e->int('uptime_s'),
             // § 7.3: stored VERBATIM as a snapshot, never summed and never merged into

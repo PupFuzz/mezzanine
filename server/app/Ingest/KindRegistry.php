@@ -127,9 +127,10 @@ final class KindRegistry
 
         // ── § 6.3 ────────────────────────────────────────────────────────────────────────────
         'turn.start' => [
-            'fields' => ['prompt_chars', 'project_label'],
+            'fields' => ['prompt_chars', 'project_label', 'console_url'],
             'bounds' => [
                 'project_label' => 48,
+                'console_url' => 95,
             ],
             'enums' => [],
         ],
@@ -378,7 +379,7 @@ final class KindRegistry
                 'uptime_s', 'spool_bytes', 'spool_files', 'spool_lag_events',
                 'oldest_unsent_age_s', 'last_hook_at', 'open_calls', 'open_sessions',
                 'open_attention', 'enabled', 'protocol_agent_name', 'protocol_agent_name_check',
-                'degraded', 'counters', 'counters_omitted', 'predicates', 'selftest',
+                'protocol_agent_role', 'degraded', 'counters', 'counters_omitted', 'predicates', 'selftest',
                 'config_fingerprint',
             ],
             'bounds' => [
@@ -387,6 +388,10 @@ final class KindRegistry
                 // same bound, so a conforming reporter cannot load one — and without the refusal it
                 // would pass the ingest and fail at the fold against D2's 48 B column instead.
                 'protocol_agent_name' => 48,
+                // card#11144: § 6.14 states the relayed role's bound as a figure for the same reason —
+                // a conforming reporter relays only a slug within it (D1 § 3.1) and sends `null`
+                // otherwise, so a value over it is a reporter bug and never reaches D2's column.
+                'protocol_agent_role' => 48,
                 'counters' => 1536,
                 'predicates' => 512,
                 'selftest' => 256,

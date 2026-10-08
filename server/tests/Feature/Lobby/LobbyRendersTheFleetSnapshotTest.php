@@ -29,6 +29,16 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
     use DrivesTheLobbyClient;
 
     /**
+     * The viewer is in India (card#9446): every instant below is the wire's UTC shown in the viewer's
+     * zone, five and a half hours on, so a stamp that skipped the converter reads the wire's digits
+     * and fails — which a viewer in UTC could not tell apart.
+     */
+    protected function probeZone(): ?string
+    {
+        return 'Asia/Kolkata';
+    }
+
+    /**
      * Two installs, three seats, one of them driven through a real turn.
      *
      * @return array<string, mixed> the snapshot body, as served
@@ -92,9 +102,11 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
         $this->assertArrayNotHasKey('discrepancy', $model,
             'the snapshot model words a disagreement of its own beside the protocol\'s pair');
 
-        // § 4.1 row 5 / § 2.3 — the membership stamp, from this response's own `server_time`.
-        $this->assertSame('membership as of '.substr((string) $body['server_time'], 11, 8), $model['stamp']);
-        $this->assertSame('membership as of 12:00:03', $model['stamp']);
+        // § 4.1 row 5 / § 2.3 — the membership stamp, from this response's own `server_time`, in the
+        // viewer's zone.
+        $this->assertSame('membership as of '.(new \DateTimeImmutable((string) $body['server_time']))
+            ->setTimezone(new \DateTimeZone('Asia/Kolkata'))->format('H:i:s'), $model['stamp']);
+        $this->assertSame('membership as of 17:30:03', $model['stamp']);
 
         // § 4.1 row 6 / § 5.3 — three indicators plus ingest recency, each naming one member and
         // NEVER ONE AGGREGATE (D2 § 8.2.4: "the wire keeps them apart").
@@ -110,7 +122,7 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
         $this->assertSame('ok', $byKey['derivation']['value']);
         $this->assertSame($body['fleet']['sweep'], $byKey['sweep']['value']);
         $this->assertSame('stalled', $byKey['sweep']['value']);
-        $this->assertSame('last receipt 12:00:00', $byKey['ingest']['value']);
+        $this->assertSame('last receipt 17:30:00', $byKey['ingest']['value']);
 
         // ⛔ `fleet.max_fold_lag_ms` IS DELIBERATELY NOT RENDERED — its published form is the
         // fleet banner's (§ 2.4, § 7.4), which belongs to the FLOOR's status strip. A second
@@ -224,7 +236,7 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
         $this->assertDoesNotMatchRegularExpression('/\d/', (string) $sweep['detail'],
             'a null timestamp was coalesced to a clock reading — a measurement nobody made');
         $this->assertSame(
-            ['store: ok', 'derivation: ok', 'sweep: stalled · last run not reported', 'ingest: last receipt 12:00:00'],
+            ['store: ok', 'derivation: ok', 'sweep: stalled · last run not reported', 'ingest: last receipt 17:30:00'],
             array_map(
                 fn (array $i) => $i['label'].': '.$i['value'].($i['detail'] === null ? '' : ' · '.$i['detail']),
                 $model['indicators'],
@@ -260,7 +272,7 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
         $entered = fn (?string $dir = null): array => $this->probe(
             ['scenario' => ['responses' => $responses, 'steps' => [['do' => 'enter']]]], $dir)['scenario'][0];
 
-        $this->assertSame('fleet state is unavailable — the store could not be read at 12:00:03',
+        $this->assertSame('fleet state is unavailable — the store could not be read at 17:30:03',
             $entered()['failure']['statement'],
             'a snapshot whose fleet{} says the store is down rendered a calm lobby');
 
@@ -328,8 +340,8 @@ class LobbyRendersTheFleetSnapshotTest extends FeedTestCase
         // what says the hoist did not change the behaviour it guards.
         $zeroing = $this->mutatedModules([
             '../wire/clock.js',
-            "    if (typeof wireTime !== 'string') {\n        return null;\n    }",
-            "    if (typeof wireTime !== 'string') {\n        return '00:00:00';\n    }",
+            "    if (ms === null) {\n        return null;\n    }\n\n    const p = parts(ms, zone);\n\n    return `\${p.hour}",
+            "    if (ms === null) {\n        return '00:00:00';\n    }\n\n    const p = parts(ms, zone);\n\n    return `\${p.hour}",
         ]);
         $model = $this->probe(['snapshot' => $body], $zeroing)['model'];
 

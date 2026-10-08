@@ -5,6 +5,7 @@ namespace App\Building;
 use App\Feed\BuildingLayoutChanged;
 use App\Feed\Outbox;
 use App\Floor\FloorMap;
+use App\Floor\FloorThemes;
 use App\Fold\Clock;
 use Illuminate\Support\Facades\DB;
 
@@ -198,6 +199,32 @@ final class Layouts
     }
 
     /**
+     * ⭐ § 4.6's `theme` refusal, at BOTH of § 6.11's write sites (card#11046, docs/design/FLOOR.md § 10.6
+     * item 5): a floor naming a theme the build does not ship is refused by name — at the save, and at the
+     * restore of a revision written while that theme shipped. The READ refuses nothing for it: a layout
+     * already stored is drawn in the house theme under § 9 F23's notice, because a refusal there would take
+     * the building down for an appearance. One method, for `refuseOverlaps()`'s reason.
+     */
+    public static function refuseUnshippedThemes(BuildingLayout $layout): void
+    {
+        $themes = FloorThemes::current();
+
+        foreach ($layout->floors as $floor) {
+            if (isset($floor['theme']) && ! $themes->ships($floor['theme'])) {
+                throw new InvalidBuildingLayout(sprintf(
+                    'Floor `%s` names the theme `%s`, which this build does not ship — the themes it ships '
+                    .'are %s (resources/floor/themes/index.js). Name one of them, or leave `theme` out and '
+                    .'the floor is drawn in the house theme, `%s` (docs/design/FLOOR.md § 4.6, § 10.6).',
+                    $floor['floor'],
+                    $floor['theme'],
+                    '`'.implode('`, `', $themes->themes).'`',
+                    $themes->house,
+                ));
+            }
+        }
+    }
+
+    /**
      * Save an authored layout document. Answers the new `layout_version`.
      *
      * @throws InvalidBuildingLayout on a document this reader refuses, on an overlap, or on a
@@ -211,6 +238,7 @@ final class Layouts
             $layout = BuildingLayout::fromJson($document);
 
             self::refuseOverlaps($layout);
+            self::refuseUnshippedThemes($layout);
 
             return self::write($document, null, $by);
         });
@@ -248,6 +276,7 @@ final class Layouts
             $layout = BuildingLayout::fromJson($document);
 
             self::refuseOverlaps($layout);
+            self::refuseUnshippedThemes($layout);
 
             return self::write($document, $revision, $by);
         });

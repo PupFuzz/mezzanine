@@ -20,13 +20,13 @@ use App\Floor\FurnitureBox;
 final class FloorMapFixture
 {
     /** A map that passes every clause, with `$slots` desk objects. */
-    public static function valid(int $slots = 12): string
+    public static function valid(int $slots = 6): string
     {
         return self::encode(self::decoded($slots));
     }
 
     /** @return array<string, mixed> */
-    public static function decoded(int $slots = 12): array
+    public static function decoded(int $slots = 6): array
     {
         $objects = self::slots($slots);
 
@@ -56,7 +56,7 @@ final class FloorMapFixture
             // would make the VALID fixture invalid, and every refusal below would then be earned
             // for the wrong reason.
             'tilesets' => [
-                ['firstgid' => 1, 'source' => 'tiles/furniture-kit.tsx'],
+                ['firstgid' => 1, 'source' => 'tiles/floor-plane.tsx'],
             ],
             'layers' => [
                 [
@@ -69,7 +69,9 @@ final class FloorMapFixture
                     'height' => self::tilesHigh(),
                     'opacity' => 1,
                     'visible' => true,
-                    'data' => array_fill(0, self::tilesWide($slots) * self::tilesHigh(), 1),
+                    // GID 4 is the shipped tileset's `accent` tile (id 3) — a tile the repository ships, so the
+                    // valid map names no retired art (card#11046, `App\Floor\RetiredArt`).
+                    'data' => array_fill(0, self::tilesWide($slots) * self::tilesHigh(), 4),
                 ],
                 [
                     'id' => 2,
@@ -178,7 +180,7 @@ final class FloorMapFixture
         $map['height'] = $tilesHigh;
         $map['layers'][0]['width'] = $tilesWide;
         $map['layers'][0]['height'] = $tilesHigh;
-        $map['layers'][0]['data'] = array_fill(0, $tilesWide * $tilesHigh, 1);
+        $map['layers'][0]['data'] = array_fill(0, $tilesWide * $tilesHigh, 4);
 
         return self::encode($map);
     }
@@ -282,7 +284,7 @@ final class FloorMapFixture
         unset($map['layers'][0]['data']);
         $map['layers'][0]['chunks'] = [[
             'x' => 0, 'y' => 0, 'width' => 16, 'height' => 16,
-            'data' => array_fill(0, 256, 1),
+            'data' => array_fill(0, 256, 4),
         ]];
 
         return self::encode($map);
@@ -337,13 +339,89 @@ final class FloorMapFixture
         return self::encode($map);
     }
 
-    /** A desk object carrying a property — card#9071's seat name, arriving as an allowlist of one. */
+    /**
+     * A desk object carrying a property other than `reserved_for` — card#9071's seat name, the
+     * property an author reaches for, which § 10.3's allowlist of ONE still refuses.
+     */
     public static function deskWithProperties(): string
     {
         $map = self::decoded();
         $map['layers'][1]['objects'][0]['properties'] = [
             ['name' => 'seat_id', 'type' => 'string', 'value' => 'aimla-pm'],
         ];
+
+        return self::encode($map);
+    }
+
+    /**
+     * card#11144: the valid map with ONE desk reserved for a role — `reserved_for`, a Tiled
+     * `string` property, on the object at `$index` (`id` `$index + 1`). The shipped default
+     * reserves `id 3` for `pm`, which is this fixture's default.
+     *
+     * @return array<string, mixed>
+     */
+    public static function decodedReserved(int $index = 2, mixed $value = 'pm', mixed $type = 'string'): array
+    {
+        $map = self::decoded();
+        $map['layers'][1]['objects'][$index]['properties'] = [
+            ['name' => 'reserved_for', 'type' => $type, 'value' => $value],
+        ];
+
+        return $map;
+    }
+
+    /** The valid map with `id 3` reserved for `pm` — the control every reservation refusal mutates. */
+    public static function reservedDesk(): string
+    {
+        return self::encode(self::decodedReserved());
+    }
+
+    /** card#11144: `id 3` AND `id 6` reserved — a room has one reserved desk. */
+    public static function twoReservedDesks(): string
+    {
+        $map = self::decodedReserved();
+        $map['layers'][1]['objects'][5]['properties'] = [
+            ['name' => 'reserved_for', 'type' => 'string', 'value' => 'impl'],
+        ];
+
+        return self::encode($map);
+    }
+
+    /** card#11144: `reserved_for` as a Tiled `bool` — not the `string` a role name is. */
+    public static function reservedForAsABool(): string
+    {
+        return self::encode(self::decodedReserved(value: true, type: 'bool'));
+    }
+
+    /** card#11144: `reserved_for` a `string` that is not a role slug — a title, not a name. */
+    public static function reservedForNotARoleName(): string
+    {
+        return self::encode(self::decodedReserved(value: 'Project Manager'));
+    }
+
+    /** card#11144: the reserved desk declaring no `id` — the client resolves a reservation by it. */
+    public static function reservedDeskWithNoId(): string
+    {
+        $map = self::decodedReserved();
+        unset($map['layers'][1]['objects'][2]['id']);
+
+        return self::encode($map);
+    }
+
+    /** card#11144: `id 6` re-declaring the reserved desk's `id 3`. */
+    public static function reservedDeskWithADuplicateId(): string
+    {
+        $map = self::decodedReserved();
+        $map['layers'][1]['objects'][5]['id'] = 3;
+
+        return self::encode($map);
+    }
+
+    /** card#11144: the reserved desk one pixel narrower than the furniture box, and nothing else. */
+    public static function reservedDeskUndersized(): string
+    {
+        $map = self::decodedReserved();
+        $map['layers'][1]['objects'][2]['width'] -= 1;
 
         return self::encode($map);
     }

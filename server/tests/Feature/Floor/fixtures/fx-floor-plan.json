@@ -1,5 +1,5 @@
 {
-  "note": "NOT one of docs/design/FLOOR.md \u00a7 11's tabled fixtures. \u00a7 4.6's COMPOSITION \u2014 the default arrangement at \u00a7 12's gap, a planned floor's origins over its hallway, the floor's extent as the union \u2014 plus \u00a7 9 F16 (a room map request that fails), F17 (the layout request that fails) and F18 (two footprints sharing a pixel past every write's refusal). Three rooms: `aimla` renders a 12-desk map for four seats, `beta` a ONE-desk map for three, so \u00a7 3.2's overflow row is reachable in every run, and `gamma` is a room the fleet reports no seat for.",
+  "note": "NOT one of docs/design/FLOOR.md \u00a7 11's tabled fixtures. \u00a7 4.6's COMPOSITION \u2014 the default arrangement at \u00a7 12's gap, a planned floor's origins over its hallway, the floor's extent as the union \u2014 plus \u00a7 9 F16 (a room map request that fails), F17 (the layout request that fails) and F18 (two footprints sharing a pixel past every write's refusal). Three rooms: `aimla` renders a 6-desk map for four seats, `beta` a ONE-desk map for three, so \u00a7 3.2's overflow row is reachable in every run, and `gamma` is a room the fleet reports no seat for. `plan_grouped_desks` is `plan_default` with `aimla`'s `desks` layer moved inside a Tiled `group` layer, which \u00a7 10.3's reader accepts at the write (card#11187), and `beta`'s left at the top level as the same run's control.",
   "snapshot": {
     "api_version": 1,
     "server_time": "2026-08-23T14:23:14.400Z",
@@ -92,6 +92,7 @@
             "enabled": true,
             "protocol_agent_name": "pm",
             "protocol_agent_name_check": "checked",
+            "protocol_agent_role": "pm",
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -171,6 +172,7 @@
             "enabled": true,
             "protocol_agent_name": "impl-1",
             "protocol_agent_name_check": "checked",
+            "protocol_agent_role": "impl",
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -242,6 +244,7 @@
             "enabled": true,
             "protocol_agent_name": "impl-2",
             "protocol_agent_name_check": "checked",
+            "protocol_agent_role": "impl",
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -313,6 +316,7 @@
             "enabled": true,
             "protocol_agent_name": "review",
             "protocol_agent_name_check": "checked",
+            "protocol_agent_role": "review",
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -389,6 +393,7 @@
             "enabled": true,
             "protocol_agent_name": null,
             "protocol_agent_name_check": null,
+            "protocol_agent_role": null,
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -460,6 +465,7 @@
             "enabled": true,
             "protocol_agent_name": null,
             "protocol_agent_name_check": null,
+            "protocol_agent_role": null,
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -531,6 +537,7 @@
             "enabled": true,
             "protocol_agent_name": null,
             "protocol_agent_name_check": null,
+            "protocol_agent_role": null,
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -646,6 +653,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -725,6 +733,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -796,6 +805,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -867,6 +877,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -943,6 +954,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1014,6 +1026,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1085,6 +1098,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1148,7 +1162,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -1160,7 +1174,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -1733,72 +1747,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -1831,7 +1779,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -1961,7 +1909,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -2173,6 +2121,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2252,6 +2201,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2323,6 +2273,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2394,6 +2345,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2470,6 +2422,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2541,6 +2494,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2612,6 +2566,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2685,7 +2640,7 @@
                       "tilesets": [
                         {
                           "firstgid": 1,
-                          "source": "tiles/furniture-kit.tsx"
+                          "source": "tiles/floor-plane.tsx"
                         }
                       ],
                       "layers": [
@@ -2964,7 +2919,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -2976,7 +2931,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -3549,72 +3504,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -3647,7 +3536,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -3777,7 +3666,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -3989,6 +3878,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4068,6 +3958,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4139,6 +4030,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4210,6 +4102,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4286,6 +4179,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4357,6 +4251,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4428,6 +4323,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4503,7 +4399,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -4515,7 +4411,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -5088,72 +4984,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -5186,7 +5016,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -5316,7 +5146,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -5528,6 +5358,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5607,6 +5438,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5678,6 +5510,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5749,6 +5582,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5825,6 +5659,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5896,6 +5731,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5967,6 +5803,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6052,7 +5889,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -6182,7 +6019,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -6394,6 +6231,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6473,6 +6311,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6544,6 +6383,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6615,6 +6455,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6691,6 +6532,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6762,6 +6604,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6833,6 +6676,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6875,7 +6719,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -6887,7 +6731,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -7460,72 +7304,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -7558,7 +7336,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -7688,7 +7466,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -7900,6 +7678,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -7979,6 +7758,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -8050,6 +7830,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -8121,6 +7902,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -8197,6 +7979,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -8268,6 +8051,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -8339,6 +8123,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -8402,7 +8187,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -8414,7 +8199,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -8984,72 +8769,6 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 510,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
                         "y": 200,
                         "width": 80,
                         "height": 48
@@ -9071,7 +8790,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 7,
+                "nextobjectid": 9,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -9083,7 +8802,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -9653,6 +9372,28 @@
                         "rotation": 0,
                         "visible": true,
                         "x": 510,
+                        "y": 260,
+                        "width": 80,
+                        "height": 48
+                      },
+                      {
+                        "id": 7,
+                        "name": "",
+                        "type": "",
+                        "rotation": 0,
+                        "visible": true,
+                        "x": 610,
+                        "y": 260,
+                        "width": 80,
+                        "height": 48
+                      },
+                      {
+                        "id": 8,
+                        "name": "",
+                        "type": "",
+                        "rotation": 0,
+                        "visible": true,
+                        "x": 710,
                         "y": 260,
                         "width": 80,
                         "height": 48
@@ -9688,7 +9429,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -9818,7 +9559,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -10042,6 +9783,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -10121,6 +9863,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -10192,6 +9935,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -10263,6 +10007,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -10339,6 +10084,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -10410,6 +10156,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -10481,6 +10228,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -10583,7 +10331,7 @@
                       "tilesets": [
                         {
                           "firstgid": 1,
-                          "source": "tiles/furniture-kit.tsx"
+                          "source": "tiles/floor-plane.tsx"
                         }
                       ],
                       "layers": [
@@ -10862,7 +10610,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -10874,7 +10622,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -11447,72 +11195,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -11545,7 +11227,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -11675,7 +11357,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -11857,7 +11539,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -11869,7 +11551,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -12442,72 +12124,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -12540,7 +12156,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -12670,7 +12286,1486 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
+                  }
+                ],
+                "layers": [
+                  {
+                    "id": 1,
+                    "name": "floor",
+                    "type": "tilelayer",
+                    "visible": true,
+                    "opacity": 1,
+                    "width": 10,
+                    "height": 6,
+                    "x": 0,
+                    "y": 0,
+                    "encoding": "csv",
+                    "data": [
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0
+                    ]
+                  },
+                  {
+                    "id": 2,
+                    "name": "desks",
+                    "type": "objectgroup",
+                    "visible": true,
+                    "opacity": 1,
+                    "x": 0,
+                    "y": 0,
+                    "draworder": "index",
+                    "objects": [
+                      {
+                        "id": 1,
+                        "name": "",
+                        "type": "",
+                        "rotation": 0,
+                        "visible": true,
+                        "x": 20,
+                        "y": 100,
+                        "width": 80,
+                        "height": 48
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "messages": [],
+      "until_ms": 200,
+      "floor": {
+        "key": "aimla",
+        "local_hours": 19,
+        "local_minutes": 30
+      }
+    },
+    "plan_grouped_desks": {
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 7,
+                "seats_live": 7
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-pm",
+                      "state_version": 48219,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "descriptor": "Bash: composer test",
+                        "started_at": "2026-08-23T14:23:09.882Z",
+                        "started_received_at": "2026-08-23T14:23:14.201Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [
+                        {
+                          "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                          "title": "draft the D1 event schema",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:23:31.004Z"
+                        }
+                      ],
+                      "subagents_open": 1,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:23:09.882Z",
+                        "last_received_at": "2026-08-23T14:23:14.201Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [
+                        "lossy"
+                      ],
+                      "badges_since": "2026-08-23T09:14:02.118Z",
+                      "enabled": true,
+                      "protocol_agent_name": "pm",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-1",
+                      "state_version": 31107,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "descriptor": "Edit: server/app/Feed/SeatDelta.php",
+                        "started_at": "2026-08-23T14:22:58.120Z",
+                        "started_received_at": "2026-08-23T14:23:02.530Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:22:58.120Z",
+                        "last_received_at": "2026-08-23T14:23:02.530Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-1",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-2",
+                      "state_version": 20544,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-2",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-review",
+                      "state_version": 15032,
+                      "render_state": "blocked",
+                      "link_state": "live",
+                      "activity_state": "blocked",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": "2026-08-23T14:19:40.006Z",
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:19:40.006Z",
+                        "last_received_at": "2026-08-23T14:19:44.120Z",
+                        "last_kind": "attention.request"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "review",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                },
+                {
+                  "install_id": "beta",
+                  "seats": [
+                    {
+                      "install_id": "beta",
+                      "seat_id": "beta-1",
+                      "state_version": 6101,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "0000157d-0000-4000-8000-00000000006101",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": null,
+                      "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "beta",
+                      "seat_id": "beta-2",
+                      "state_version": 6102,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "0000157d-0000-4000-8000-00000000006102",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": null,
+                      "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "beta",
+                      "seat_id": "beta-3",
+                      "state_version": 6103,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "0000157d-0000-4000-8000-00000000006103",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": null,
+                      "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "delay_ms": 0
+          }
+        ],
+        "/api/building": [
+          {
+            "status": 200,
+            "body": {
+              "layout": {
+                "layout_version": 7,
+                "floors": [
+                  {
+                    "floor": "aimla",
+                    "label": "the big room",
+                    "rooms": [
+                      {
+                        "install": "aimla",
+                        "form": "open"
+                      },
+                      {
+                        "install": "beta",
+                        "form": "office"
+                      },
+                      {
+                        "install": "gamma",
+                        "form": "office"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "rooms": []
+            }
+          }
+        ],
+        "/api/building/rooms/aimla/map": [
+          {
+            "status": 200,
+            "body": {
+              "install_id": "aimla",
+              "source": "default",
+              "map_version": null,
+              "map": {
+                "compressionlevel": -1,
+                "height": 12,
+                "infinite": false,
+                "nextlayerid": 4,
+                "nextobjectid": 7,
+                "orientation": "orthogonal",
+                "renderorder": "right-down",
+                "tiledversion": "1.10.2",
+                "tileheight": 32,
+                "tilewidth": 32,
+                "type": "map",
+                "version": "1.10",
+                "width": 40,
+                "tilesets": [
+                  {
+                    "firstgid": 1,
+                    "source": "tiles/floor-plane.tsx"
+                  }
+                ],
+                "layers": [
+                  {
+                    "id": 1,
+                    "name": "floor",
+                    "type": "tilelayer",
+                    "visible": true,
+                    "opacity": 1,
+                    "width": 40,
+                    "height": 12,
+                    "x": 0,
+                    "y": 0,
+                    "encoding": "csv",
+                    "data": [
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0
+                    ]
+                  },
+                  {
+                    "id": 3,
+                    "name": "furniture",
+                    "type": "group",
+                    "visible": true,
+                    "opacity": 1,
+                    "x": 0,
+                    "y": 0,
+                    "layers": [
+                      {
+                        "id": 2,
+                        "name": "desks",
+                        "type": "objectgroup",
+                        "visible": true,
+                        "opacity": 1,
+                        "x": 0,
+                        "y": 0,
+                        "draworder": "index",
+                        "objects": [
+                          {
+                            "id": 1,
+                            "name": "",
+                            "type": "",
+                            "rotation": 0,
+                            "visible": true,
+                            "x": 10,
+                            "y": 200,
+                            "width": 80,
+                            "height": 48
+                          },
+                          {
+                            "id": 2,
+                            "name": "",
+                            "type": "",
+                            "rotation": 0,
+                            "visible": true,
+                            "x": 110,
+                            "y": 200,
+                            "width": 80,
+                            "height": 48
+                          },
+                          {
+                            "id": 3,
+                            "name": "",
+                            "type": "",
+                            "rotation": 0,
+                            "visible": true,
+                            "x": 210,
+                            "y": 200,
+                            "width": 80,
+                            "height": 48
+                          },
+                          {
+                            "id": 4,
+                            "name": "",
+                            "type": "",
+                            "rotation": 0,
+                            "visible": true,
+                            "x": 310,
+                            "y": 200,
+                            "width": 80,
+                            "height": 48
+                          },
+                          {
+                            "id": 5,
+                            "name": "",
+                            "type": "",
+                            "rotation": 0,
+                            "visible": true,
+                            "x": 410,
+                            "y": 200,
+                            "width": 80,
+                            "height": 48
+                          },
+                          {
+                            "id": 6,
+                            "name": "",
+                            "type": "",
+                            "rotation": 0,
+                            "visible": true,
+                            "x": 510,
+                            "y": 200,
+                            "width": 80,
+                            "height": 48
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "/api/building/rooms/beta/map": [
+          {
+            "status": 200,
+            "body": {
+              "install_id": "beta",
+              "source": "default",
+              "map_version": null,
+              "map": {
+                "compressionlevel": -1,
+                "height": 6,
+                "infinite": false,
+                "nextlayerid": 3,
+                "nextobjectid": 2,
+                "orientation": "orthogonal",
+                "renderorder": "right-down",
+                "tiledversion": "1.10.2",
+                "tileheight": 32,
+                "tilewidth": 32,
+                "type": "map",
+                "version": "1.10",
+                "width": 10,
+                "tilesets": [
+                  {
+                    "firstgid": 1,
+                    "source": "tiles/floor-plane.tsx"
+                  }
+                ],
+                "layers": [
+                  {
+                    "id": 1,
+                    "name": "floor",
+                    "type": "tilelayer",
+                    "visible": true,
+                    "opacity": 1,
+                    "width": 10,
+                    "height": 6,
+                    "x": 0,
+                    "y": 0,
+                    "encoding": "csv",
+                    "data": [
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0
+                    ]
+                  },
+                  {
+                    "id": 2,
+                    "name": "desks",
+                    "type": "objectgroup",
+                    "visible": true,
+                    "opacity": 1,
+                    "x": 0,
+                    "y": 0,
+                    "draworder": "index",
+                    "objects": [
+                      {
+                        "id": 1,
+                        "name": "",
+                        "type": "",
+                        "rotation": 0,
+                        "visible": true,
+                        "x": 20,
+                        "y": 100,
+                        "width": 80,
+                        "height": 48
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "/api/building/rooms/gamma/map": [
+          {
+            "status": 200,
+            "body": {
+              "install_id": "gamma",
+              "source": "default",
+              "map_version": null,
+              "map": {
+                "compressionlevel": -1,
+                "height": 6,
+                "infinite": false,
+                "nextlayerid": 3,
+                "nextobjectid": 2,
+                "orientation": "orthogonal",
+                "renderorder": "right-down",
+                "tiledversion": "1.10.2",
+                "tileheight": 32,
+                "tilewidth": 32,
+                "type": "map",
+                "version": "1.10",
+                "width": 10,
+                "tilesets": [
+                  {
+                    "firstgid": 1,
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [

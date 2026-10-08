@@ -417,29 +417,44 @@ case("CONTROL — a .png's own compressed BYTES are not scanned by clause 2, whi
      BASE + [row("resources/characters/tile.png", origin="licensed", url=URL, spdx="CC0-1.0")])
 
 print("\n8. THE LINEAGE CHECK — AT-D3-12's lineage half, one RED per required fact")
+# Since card#11046 the check fires on a PORT — a `licensed` row under the character tree — and not on
+# the tree's existence (FLOOR section 10.2). Every RED here is therefore a tree WITH a port, so a red is
+# attributable to the missing fact; the controls at the end are the two directions of the trigger.
+PORT = {"resources/characters/ported.js": "export const P = 1;\n"}
+PORT_ROW = row("resources/characters/ported.js", origin="licensed", url=URL, author="Someone", spdx="MIT")
+PORTED_FILES = {**FILES, **PORT}
+PORTED = BASE + [PORT_ROW]
+case("CONTROL — a port with a complete lineage file PASSES, so each RED below is about its one fact",
+     0, PASS, PORTED_FILES, PORTED)
 case("AT-D3-12 lineage RED: the COMMIT SHA is dropped, the repository URL kept",
      1, "does not carry the upstream commit SHA",
-     {**FILES, "resources/characters/LINEAGE.md": lineage_md("sha")}, BASE)
+     {**PORTED_FILES, "resources/characters/LINEAGE.md": lineage_md("sha")}, PORTED)
 case("the upstream repository URL is dropped",
      1, "does not carry the upstream repository URL",
-     {**FILES, "resources/characters/LINEAGE.md": lineage_md("url")}, BASE)
+     {**PORTED_FILES, "resources/characters/LINEAGE.md": lineage_md("url")}, PORTED)
 case("the copyright line is dropped — the other half of the notice the tree's rows oblige. It is "
      "asked for GENERICALLY rather than per licence, because `Copyright (c) 2026 Someone` is the "
      "same shape under MIT and ISC and a check that cannot discriminate must not claim it can",
      1, "does not carry a copyright line",
-     {**FILES, "resources/characters/LINEAGE.md": lineage_md("copyright")}, BASE)
+     {**PORTED_FILES, "resources/characters/LINEAGE.md": lineage_md("copyright")}, PORTED)
 case("the MIT permission notice is dropped from the LINEAGE file — a link is not a reproduction. "
      "The rows under the character tree declare MIT, which is what obliges it here",
      1, "resources/characters/LINEAGE.md does not reproduce the MIT permission notice",
-     {**FILES, "resources/characters/LINEAGE.md": lineage_md("notice")}, BASE)
+     {**PORTED_FILES, "resources/characters/LINEAGE.md": lineage_md("notice")}, PORTED)
 case("no statement of what was deliberately NOT taken — the line between a port and a fork",
      1, "deliberately NOT taken",
-     {**FILES, "resources/characters/LINEAGE.md": lineage_md("omissions")}, BASE)
+     {**PORTED_FILES, "resources/characters/LINEAGE.md": lineage_md("omissions")}, PORTED)
 case("the MIT notice is in the lineage file but NOT in the manifest — section 10.2 says both",
      1, "docs/ATTRIBUTION.md does not reproduce the MIT permission notice",
-     FILES, BASE, manifest_notice=False)
-case("the lineage file is missing entirely",
+     PORTED_FILES, PORTED, manifest_notice=False)
+case("AT-D3-12 lineage RED — THE PORT WITH NO RECORD: a `licensed` row under the character tree "
+     "and no lineage file at all",
      1, "the port has no record of where it came from",
+     {"resources/characters/index.js": CLEAN_JS, **PORT}, [BASE[0], PORT_ROW])
+case("AT-D3-12 CONTROL (e) — a character tree of FIRST-PARTY files only, with NO lineage file, "
+     "PASSES (the shipped tree since card#11046). Without it the RED above is equally satisfied by "
+     "a gate that asks every character tree for a port's record — the trigger card#11046 retired",
+     0, PASS,
      {"resources/characters/index.js": CLEAN_JS}, [BASE[0]])
 
 print("\n9. GATE 2 IS SCOPED TO ALL OF resources/, not to the character tree (card#7913)")
@@ -592,7 +607,8 @@ print("\n11b. ⭐ THE IMAGE-COLLECTION TILESET — the OTHER Tiled shape, unexer
 # IMAGE COLLECTION — `columns="0"`, no tileset-level <image>, and one <tile><image source=…/></tile>
 # per file — and it is the shape a set of individually-sized renders requires, because packing a
 # 190 px wall and a 5 px keyboard into one grid either crops them or pads the sheet with empty
-# cells. `resources/floor/tiles/furniture-kit.tsx` (card#7341) is that shape.
+# cells. `resources/floor/tiles/floor-plane.tsx` is that shape (and the bridge kit's tileset was, card#7341 to
+# card#11046's row 22, which retired it).
 #
 # ⛔ WHY IT IS HERE AND NOT ASSUMED. Clause 3 walks `root.iter("image")` and `root.iter("data")`,
 # which reaches a per-tile <image> as readily as a tileset-level one — but "reads the same to me"

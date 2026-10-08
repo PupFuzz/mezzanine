@@ -102,7 +102,16 @@ trait DrivesTheDeskFloor
         return $this->mutatedModules([self::DESK_RENDER, $anchor, $replacement]);
     }
 
-    /** A wire instant's own `HH:MM:SS` digits — `wire/clock.js`'s reading, derived here from the fixture. */
+    /**
+     * A copy of the shipped tree with one anchored edit in `desk/desk-poses.js` — § 7.1's *Desk* column
+     * as data, which card#9566 moved out of the desk render so the animation set can read it too.
+     */
+    protected function plantedPoses(string $anchor, string $replacement): string
+    {
+        return $this->mutatedModules(['../desk/desk-poses.js', $anchor, $replacement]);
+    }
+
+    /** A wire instant's `HH:MM:SS` in the suite's UTC (`tests/bootstrap.php`) — `wire/clock.js`'s reading there, derived here from the fixture. */
     protected function hms(string $wire): string
     {
         return substr($wire, 11, 8);

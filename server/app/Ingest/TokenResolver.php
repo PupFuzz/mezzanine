@@ -2,6 +2,7 @@
 
 namespace App\Ingest;
 
+use App\Support\Anchored;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -53,7 +54,7 @@ final class TokenResolver
 
     public function resolve(Request $request): TokenBinding|Refusal
     {
-        $presented = $this->bearer($request);
+        $presented = self::bearer($request);
         $ip = (string) $request->ip();
 
         if ($presented === null) {
@@ -151,12 +152,16 @@ final class TokenResolver
      * `Authorization: Bearer <token>`, and nothing else. No query parameter, no cookie, no
      * custom header: D1 § 4.1 says the endpoint "accepts no cookies and no session", and a
      * second accepted carrier is a second thing to get wrong.
+     *
+     * The one parse of that header: `App\Read\ReadTokens` reads the `mzr_` token through it too.
+     * The match runs to the end of the header, so a token followed by a line break is no token
+     * (card#11263).
      */
-    private function bearer(Request $request): ?string
+    public static function bearer(Request $request): ?string
     {
         $header = (string) $request->header('Authorization', '');
 
-        if (! preg_match('/^Bearer\s+(\S+)$/', $header, $m)) {
+        if (! preg_match(Anchored::pattern('Bearer\s+(\S+)'), $header, $m)) {
             return null;
         }
 

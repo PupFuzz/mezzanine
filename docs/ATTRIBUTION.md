@@ -24,9 +24,10 @@ repository cannot honour.
   them.** `MIT` and `ISC` both grant only *"provided that … this permission notice appear in all
   copies"*; `CC0-1.0` is a public-domain dedication and obliges none. So as soon as any row here
   declares such a licence, **this file** must reproduce that licence's permission notice, and as
-  soon as a row **under `resources/characters/`** declares one, `resources/characters/LINEAGE.md`
-  must reproduce it too — [`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-the-munder-difflin-port)
-  asks a port for both homes. Matched as the licence's own text, because a link is not a
+  soon as the character tree holds a **port** — a `licensed` row under `resources/characters/` —
+  `resources/characters/LINEAGE.md` must exist and reproduce the notice of every licence that tree's
+  rows declare — [`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code)
+  asks a port for both homes. A tree of first-party files only owes no lineage file (card#11046). Matched as the licence's own text, because a link is not a
   reproduction and neither is the label. ⭐ **The gate reads the obligation off the same table its
   allowlist is derived from**, so a licence cannot be admitted without its notice being decided —
   which is the defect card#8301's review found: admitting `ISC` had widened the list and left the
@@ -66,96 +67,51 @@ very fact it exists to check.
 
 | Path | Origin | Source URL | Author | SPDX | Retrieved | SHA-256 |
 |---|---|---|---|---|---|---|
-| `resources/characters/portrait-art.js` | licensed | https://github.com/chaitanyagiri/munder-difflin/blob/eb3df9fa70b63b68495a965c45f158105e87b2e6/src/renderer/src/scene/office/portraitArt.ts | Chaitanya Giri (upstream); Mezzanine contributors (port) | MIT | 2026-08-25 | `d19bdd0099f8c4578ced8331792082332325a1448db7ff80d8c33a61d94bca06` |
-| `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors; hair palette derived from Chaitanya Giri's recipes | MIT | 2026-08-25 | `21810d3b1f4c013eec9fcccc296027b07a4c66e7bdf61b37d528707b46e423ca` |
-| `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-08-25 | `422d0ef0216e16830e05cd3d4300b18748f8eeb616b62b811e313e086a12310b` |
-| `resources/characters/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-08-25 | `f32a34a1152fcb506e020015b9eaa9a3d1ec8066774870ded36f5d7faef426d2` |
-| `resources/floor/tiles/furniture-kit/benchCushion.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `5665a099b17ccc7018ceebd9d33aa51fa6f26dc98317f3956385774acf47922c` |
-| `resources/floor/tiles/furniture-kit/bookcaseClosed.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `8a97317c91d7be94521634b33319a10279dd47277f1f8e8b13d18f4291c92366` |
-| `resources/floor/tiles/furniture-kit/bookcaseOpen.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `5ca87be1fe92f07eebb29d34c568c9bd6315a740b8824be7c3daa0005fd8d217` |
-| `resources/floor/tiles/furniture-kit/bookcaseOpenLow.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `40ce094e3f2ec5b18c558e4cfe1c22401cd0dbb305d9e290c8312dba30019ea9` |
-| `resources/floor/tiles/furniture-kit/books.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `c511fa97297f3054df2adfdafb88ff63c9c9a08f321659f12a98d0068f7f4ab5` |
-| `resources/floor/tiles/furniture-kit/cardboardBoxClosed.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `dd7877bb0cd2787467f4c5b4d46733dc8ff5e2b916a8b0c313ce6e9f61571926` |
-| `resources/floor/tiles/furniture-kit/chairDesk.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `e580a6549e80b0e67e72323acbaa3c41c5d04a3659ebd536224dc7429ada7c2a` |
-| `resources/floor/tiles/furniture-kit/chairModernCushion.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `ec2a0d2a35dfada8e80f7f760e7841ae8469e5f51af748d7fcf1fd6a6a07c5e3` |
-| `resources/floor/tiles/furniture-kit/chairModernFrameCushion.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `dc4640c0bf95fd44c42c1744429a76253044e313ae9bbb49bcb166b48850971f` |
-| `resources/floor/tiles/furniture-kit/chairRounded.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `92821cc1bd1c495bfe525f539eda23987efd69c45acfd2776827e01a8da74ef0` |
-| `resources/floor/tiles/furniture-kit/coatRack.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `fa27ad3f889efa62330f573f1d953831f17f1bd74d2dda3b353916601eb96d12` |
-| `resources/floor/tiles/furniture-kit/computerKeyboard.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `1b556cda0d4cac37a8509dc3d2b6f8aea75e4e7b312b13fd87bd7c19f16a5496` |
-| `resources/floor/tiles/furniture-kit/computerMouse.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `9209afe394622e7f366a5549a0433b28bd27897b7ae9aa55b32589f7103cbaa8` |
-| `resources/floor/tiles/furniture-kit/computerScreen.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `611380a2050ea8b6ede392758741b43eee46d78dd285fa9814abe5c18fdab4b1` |
-| `resources/floor/tiles/furniture-kit/desk.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `d55354ce277cb010e1af510cc8832559c004d24f9670acfeba64177b62cf1c80` |
-| `resources/floor/tiles/furniture-kit/deskCorner.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `02162397db5524208d3ec5192362f0562369ac972ffcb549c2ba17a1a1a6e8ff` |
-| `resources/floor/tiles/furniture-kit/doorwayOpen.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `0a420204a983816f345c291dbbf15d55b766339f5b8f3848261792db4ff69a7f` |
-| `resources/floor/tiles/furniture-kit/floorCorner.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `103b1d2b7722e8eca93c2460c7212ef7a6779991679ac0306f77fc82965b1022` |
-| `resources/floor/tiles/furniture-kit/floorCornerRound.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `b213e066505eba2432ddf0111a5746f095ca53c3c97835621fdc93631bed45ed` |
-| `resources/floor/tiles/furniture-kit/floorFull.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `f9a64102b9fa6ae5a64aa8da78e899771d044645e1575981f22100389dfb8b1f` |
-| `resources/floor/tiles/furniture-kit/floorHalf.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `0a4770c504e39ecc2dfb3e9d1b48c70ea2aae32c8cee5e985da6346ce27fca11` |
-| `resources/floor/tiles/furniture-kit/lampRoundFloor.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `da552fc2f2e33cef000d17ec93f7bb518cccfaa6cfc1fef3d847e847c94d8c3f` |
-| `resources/floor/tiles/furniture-kit/lampRoundTable.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `175f9f5d64cca3994da9b69a93baadc86d2a8784a09dd1da7ade7708c21a8ea4` |
-| `resources/floor/tiles/furniture-kit/lampSquareFloor.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `17af83f19cf4fc99858093a7bc6e754fbd7ffbb362390d7f8409c3c93c8659f3` |
-| `resources/floor/tiles/furniture-kit/lampSquareTable.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `225ec7459e78d2b9c5e2fd6d902f0aeb9978768d8ab78e972de5af0525433c1f` |
-| `resources/floor/tiles/furniture-kit/lampWall.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `4ed46865d5393b4cfe192dc51a9309b680085d2e979321ed0096826b3af9bae7` |
-| `resources/floor/tiles/furniture-kit/laptop.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `6a869cc04b6ec029b90505f650f10bba58e855561c5ee14effddada4ff91a698` |
-| `resources/floor/tiles/furniture-kit/plantSmall1.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `0f4319b0e1a25cc71ed9af055f8af7f533a03a00ff8d3c61019437117f7bee8c` |
-| `resources/floor/tiles/furniture-kit/plantSmall2.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `9a51e04270312c39d254b253641b9177527b394a11d1dea45b3563c787211eea` |
-| `resources/floor/tiles/furniture-kit/plantSmall3.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `b4e343be77e33551b55ab4ce02028b12278e939749b230b6dd57c225f4ad0ee6` |
-| `resources/floor/tiles/furniture-kit/pottedPlant.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `9b11ee7c6ec92d9829d01b84f9dce0257dfe38eaf930bfee9c348fb6b9e81d99` |
-| `resources/floor/tiles/furniture-kit/rugRectangle.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `5c1756ce6245d7a2add724ef9065965dd33e1fc062036946e9b7c828bfb9cf27` |
-| `resources/floor/tiles/furniture-kit/sideTable.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `98a8edd3c942bedcf58701a05b35443b69d8c701453cc4b1bb21f78f2f6fe888` |
-| `resources/floor/tiles/furniture-kit/sideTableDrawers.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `71480a3954ea6841b7a923e484371a7e73994fcc9ef6f28f6e14330151870f09` |
-| `resources/floor/tiles/furniture-kit/table.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `7bc0e103a8d53ab21ed86b08ade4a1a8b9e9de2b55e21f7aee20b904e8443341` |
-| `resources/floor/tiles/furniture-kit/tableCross.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `71539d07ddc9e13c4aebf480803bb352068ed6a0af4036137e3cb8797a14cd21` |
-| `resources/floor/tiles/furniture-kit/tableRound.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `e43d1e3336849d3da1bfe14a3ababd86d79cbb4b528086787157c853619aee6b` |
-| `resources/floor/tiles/furniture-kit/trashcan.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `204d9cebc1907a2bd4f4be34268bb6307805019a3edf728c3b437ac5e9f78f00` |
-| `resources/floor/tiles/furniture-kit/wall.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `38c60212400b3dc672f8d34d666f04e148f43cc202c515457050b3bcd2af8de3` |
-| `resources/floor/tiles/furniture-kit/wallCorner.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `83d505e34e4eaa138323917939154458cd04997ac80ab2c3fe01daa54f9c9d66` |
-| `resources/floor/tiles/furniture-kit/wallCornerRond.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `2594701f426218cc8a509ccf7dc1a994ac67620609562b2717d9bd3ccd4bd970` |
-| `resources/floor/tiles/furniture-kit/wallDoorway.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `d94686203937304b29e75adc7156b3327793e91f5920491c9c4be4e0b3c4e104` |
-| `resources/floor/tiles/furniture-kit/wallDoorwayWide.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `c2f05b7639f8b274b77b422abceac00b9aa7c7cb2288f0f4c69d0af6b8529bff` |
-| `resources/floor/tiles/furniture-kit/wallHalf.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `67b83c905472d847fbd73566571fa7b479faedb3aae3160309c5e15088d73a4e` |
-| `resources/floor/tiles/furniture-kit/wallWindow.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `50f9029b7ff9893b021e1c4c5b016f89ab66f52ce9ae948c0d3796442b235a05` |
-| `resources/floor/tiles/furniture-kit/wallWindowSlide.png` | licensed | https://kenney.nl/assets/furniture-kit | Kenney (Kenney Vleugels) | CC0-1.0 | 2026-09-12 | `671bef582ebc9e4c3708b539ddd992442f75cc0a514c3960a73f66ff9581e7e8` |
-| `resources/floor/tiles/furniture-kit.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `00278845ee2f0492bf76d8d59ff32f0225b8f2bf579e18424ed3d1dc2d99eddf` |
-| `resources/floor/tiles/floor-plane.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `2e5322d59fdd94b008a9a78749f685429641f5ebc7190b0f7b20292c6360465b` |
-| `resources/floor/tiles/floor-plane/planks.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `a76ffbcca697e69c47c50ba31a19ff87b19ca91b3c3e7d7b0b5665528b94374a` |
-| `resources/floor/tiles/floor-plane/rug.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `d888116b53e6e7ea7bc71ede5abda510d6951ce2f6c6a1e3711e45278fddd6ca` |
-| `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `28447dd7e8c0b77d8e5c881b12d90c958861505254b2ab20378fe7e11b291a15` |
-| `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `90158ec868ded10645364bb62bb23993e634067b26bafafa3c38e1f581eae6b4` |
-| `resources/floor/LINEAGE.md` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `551e001d897ac5e67435e81f6aec9539884f5f6c41c0bd11429b30e55f281bee` |
+| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-06 | `adefa592cb9e9007416c9461122bb8d907128a92cd19686f6df20e5d30515749` |
+| `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-06 | `cc2545e8fc6a13cae58f6887a44919a93823ae47d732bea7b71efdfbb467a709` |
+| `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-06 | `ee9798a180c84a10b3cb88305a1b9935e1b119950782c435afda0ad7c51c4f67` |
+| `resources/floor/tiles/floor-plane.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `71fef94ccfb339af81d98b33ced640a0d256611340c591e160df06a9a2311890` |
+| `resources/floor/tiles/floor-plane/wall-strip.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-04 | `7e3c516867896cf61896d9e8557c9c0b8f349408432dca2b1d58d569202426d6` |
+| `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `1fedf264f35b46215d890ac3066861060b06622467794dc2885384d1345a6c75` |
+| `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `ff86ec98cab36b1c4ae8b75ec7b1972e6842875000a0b25631521ca9f7683ebe` |
+| `resources/floor/themes/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `084aedec11906eb303001e99f9ddf05414d931417c7d47695912fdd313d60157` |
+| `resources/floor/themes/studio/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `8e3da1380a3177e192f23d388f8ff0873eed092d8630a0263f158a79079373d9` |
+| `resources/floor/tiles/floor-plane/accent.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `437c9295c17acba54ee563516aa8f24ad73431b1a9e6d25bd72013c97de6fdd3` |
+| `resources/floor/tiles/floor-plane/armchair.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `abe8944932787bd3372ef18f059f37166960e36bc1df9cc0102612dc7357e670` |
+| `resources/floor/tiles/floor-plane/book-pile.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `37fb464552f477fe02ebe0157ff19dac9319425a1ef0693a9d36a85be350ca08` |
+| `resources/floor/tiles/floor-plane/bookcase-tall.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `59819474837e250a6904af47347c0167119dc602d27995bb75e69bdb10bcc32e` |
+| `resources/floor/tiles/floor-plane/bookcase.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `efad27f946275280fd4c11e3fff29059bd93e839f1d4f48039b7200de266743c` |
+| `resources/floor/tiles/floor-plane/cushion.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `13cccd8bb560d5211cb6764be7ad676e8183bb00862ddcfcca89d6e43c59ec3f` |
+| `resources/floor/tiles/floor-plane/floor-lamp.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `a6643461838d7e030d3d38ab4f765d344a10861c356f8520d3447a925efaa8a8` |
+| `resources/floor/tiles/floor-plane/plant-large.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `e662c7e51a250d158537522d22c01eef522ec921288400c536174b93d962d3a0` |
+| `resources/floor/tiles/floor-plane/plant-narrow.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `6861306033201eab9a13a698005c451e137820cfb4c6b6080536b188fc6c2a31` |
+| `resources/floor/tiles/floor-plane/plant.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `1cf4c0c61b87f54750c93332abea6783328e6f2df238144daf3aae804210dfb7` |
 <!-- asset-manifest:end -->
 
-**`portrait-art.js` is the one `licensed` row here, and that is the column doing its job.** It is
-the single upstream file the port took, so it came from **outside** and its URL is upstream's
-blob at the pinned commit. The other three were written here and point at this repository. The
-distinction was always true and was previously legible only by reading the URLs and knowing what
-they meant; it is now a value a gate can test.
+**Why first-party files are listed too.** The character tree's three files — `creatures.js`,
+`seed.js` and `index.js` — were written here, not taken from anywhere, and they are still under an
+asset tree, so they still get rows. The alternative is an exemption the author declares for their own
+files, which is exactly the judgement Gate 1 exists to take out of the author's hands: "this one is
+mine, it doesn't need a row" is how the one file that *did* come from somewhere else eventually gets in.
 
-**Why first-party files are listed too.** `seed.js`, `index.js` and `LINEAGE.md` were written
-here, not taken from anywhere — and they are still under an asset tree, so they still get rows.
-The alternative is an exemption the author declares for their own files, which is exactly the
-judgement Gate 1 exists to take out of the author's hands: "this one is mine, it doesn't need a
-row" is how the one file that *did* come from somewhere else eventually gets in.
+## The characters — first-party since card#11046
 
-## The character port
-
-The generator under `resources/characters/` is ported from **munder-difflin** at commit
-`eb3df9fa70b63b68495a965c45f158105e87b2e6` under the **MIT** licence.
-[`resources/characters/LINEAGE.md`](../resources/characters/LINEAGE.md) records the exact files
-taken, the changes made, and **what was deliberately not taken and why** (the LimeZu-bound
-sprite path, three ISC-derived files, and The Office's cast).
+Every character is an original animal or vegetable creature drawn by the code in
+`resources/characters/`, written for this repository
+([`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-original-creatures-drawn-by-code)). The tree
+**holds no port**: the munder-difflin generator it held from card#7340 to card#11046 — and its
+`LINEAGE.md` and its `licensed` row — left whole, because no line of upstream's ships any more, read
+file by file in § 10.2. Its record stays in git at card#7340's commits and in `docs/PLAN.md § 0`'s
+D-07 appends. `upstream's commercial tilesets are never vendored` (D-07's last clause) is untouched.
 
 **MIT obliges reproduction of the copyright notice and the permission notice, and a link is not
-a reproduction**, so the text is here in full — and again in the lineage file, because
-[`FLOOR.md § 10.2`](design/FLOOR.md#102-characters-the-munder-difflin-port) requires it in both.
-That duplication is deliberate and is the one kind that is correct: a licence notice has to
-*accompany* the distribution rather than point at it, and the text is immutable, so there is
-nothing here that can drift out of sync with the other copy.
+a reproduction.** Every `first-party` row above declares `MIT` — this repository's own licence — so
+the notice is here in full, as [`LICENSE`](../LICENSE) carries it:
 
 ```
 MIT License
 
-Copyright (c) 2026 Chaitanya Giri
+Copyright (c) 2026 PupFuzz
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -176,62 +132,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-**The port's pixel art is INTERIM.** The operator ratified a new art direction on 2026-08-26/27
-([`FLOOR.md § 10.4`](design/FLOOR.md#104-the-art-direction-as-a-specification)) under which the
-product ships original, high-resolution, resolution-independent art of its own. **None of the
-licence work above is undone by that** — the port is still here, the MIT obligations are still
-owed, and what the port actually bought was the **seed machinery**, which the art direction does
-not touch. What changed is `§ 10.1` Gate 2: it used to assert an **absence** — no image file in
-the character tree at all — and now asserts that **every asset is a file Gate 1 can see**. Every
-file carries an admitted file type — **the list and the reason for each member live at § 10.1
-and are deliberately not copied here**, because four copies of that list is what went stale the
-last time it moved — and no text-bearing file may carry a `data:image/` URI or a single
-base64-shaped literal over 1,024 B, because an asset embedded inside another file has no path,
-so no row, so no provenance.
+**Gate 2 runs over ALL of `resources/`, not just the character tree** (card#7913) — the same
+population Gate 1 walks — and gained a **third clause** for the Tiled formats: layer data stored
+plainly as CSV, and **no embedded tileset image**. [`FLOOR.md § 10.1`](design/FLOOR.md#101-the-manifest-and-the-two-gates)
+owns the clauses and the admitted file types, and this file does not restate them.
 
-**Since card#7913, Gate 2 runs over ALL of `resources/`, not just the character tree** — the same
-population Gate 1 walks. It had been scoped to `resources/characters/`, which was right while it
-asserted an absence peculiar to that tree and was a leftover once its claim became a universal
-one. It also gained a **third clause** for the Tiled formats § 10.1 clause 1 now admits: layer
-data stored plainly as CSV, and **no embedded tileset image**, which is image bytes inside a map
-with no path and therefore no row here. As above, § 10.1 owns the clauses and this file does not
-restate them.
+## The floor — first-party since card#11046's row 22
 
-## The floor tileset — and it is a BRIDGE, not the destination
+**Every `resources/floor/` row is `first-party` / `MIT`.** The bridge tileset that stood here from
+**2026-09-12** — Kenney's CC0 **Furniture Kit**, chosen by the operator *explicitly as a bridge to
+first-party vector art* — left the tree with its rows and its `LINEAGE.md` at
+[`FLOOR.md`](design/FLOOR.md) Appendix B row 22 (card#11046), when the art it bridged to landed: the
+floor's **theme** draws every piece of a floor that carries no fact, as code
+([`FLOOR.md § 10.6`](design/FLOOR.md#106-themes--a-floors-design-and-the-house-theme)). The plank and rug
+tiles of the floor tileset left with it.
 
-⚠ **Read this before reading a `resources/floor/` row as a decision about what this product looks
-like.** The tileset those rows cover is Kenney's CC0 **Furniture Kit**, chosen by the operator on
-**2026-09-12** *explicitly as a bridge to first-party vector art*. It is **pre-rendered raster at
-one scale**, so it does **not** meet
-[`FLOOR.md § 10.4`](design/FLOOR.md#104-the-art-direction-as-a-specification)'s requirement that the
-shipped look be resolution-independent — and it is not meant to. It exists so the floor can be
-built and measured against real sprites while the art that ships is drawn, and it leaves the tree
-with its rows when that art lands. [`resources/floor/LINEAGE.md`](../resources/floor/LINEAGE.md) is
-the record a reader meets beside the files: the terms as read in the pack's own `License.txt`, the
-downloaded archive's hash, which renders were curated and why, and what was deliberately not taken.
+**What the rows cover now, and what they do not.** The theme registry (`themes/index.js`) and each
+theme's module (`themes/<name>/theme.js`) are code that DRAWS: the drawings are not files and have no
+rows, the source is the asset, and Gate 2 reads it. The floor tileset (`tiles/floor-plane.tsx`) declares
+a `kind` on every tile, and each tile's image is an authoring **marker** for Tiled — a plain labelled
+outline the floor never draws, which a reader who mistook it for the art is told by the marker itself.
+The shipped default map (`default.tmj`) places those kinds. ⚠ **No gate inspects what a theme MEANS to
+draw**, as no gate does for the creatures: AT-D3-25's theme gates hold the form — every document
+well-formed, self-contained, wordless and taking no seat state — and review carries the look.
 
-**`CC0-1.0` obliges no reproduced notice**, which is why no licence text appears below for it — the
-notice table in `bin/asset-provenance.py` maps it to `None` because a public-domain dedication is
-granted unconditionally, with no permission notice for a copy to carry. Kenney's own `License.txt`
-says crediting is *"not mandatory"*; it is done anyway, in every row and in `README.md`.
+**Two things an authored map needs, from `FLOOR.md § 10.1` clause 3:** export it with the tile layer
+format set to **CSV**, and let the tileset be **referenced** by path rather than embedded. Both are Tiled
+export settings, and both fail the build if they are wrong.
 
-**The floor MAP is still not here.** Card **#7341** (floor v1) authors it, and a tileset is not a
-map: `tools/design/verify-floor.py` still holds
-[`FLOOR.md § 10.3`](design/FLOOR.md#103-the-floor-map)'s declared **absence** of one, because its
-sweep is for Tiled's two *map* spellings and a `.tsx` tileset is neither. **Two things that map
-will need, from `FLOOR.md § 10.1` clause 3:** export it with the tile layer format set to **CSV**,
-and let the tileset **reference** its image by path rather than embedding it. Both are Tiled export
-settings, and both fail the build if they are wrong.
-
-**One thing card#7913 settled before this tree existed, now tested rather than assumed.** Because
-the asset root is `resources/` entire, the directory this tileset created was covered by Gate 1 on
-the day it landed and — since card#7913 — by **both Gate 2 clauses and the third one** as well,
-with nothing here to remember to update first. That widening had never been run against the shape
-the tileset actually takes: an **image-collection** tileset, `columns="0"` with one
-`<tile><image source="…"/></tile>` per PNG rather than one image sliced into a grid. It passes all
-three clauses, and `bin/asset-provenance.selftest.py` now carries that shape as a control **and**
-two REDs of its own, because a green over a shape no fixture had ever fed the parser reports where
-the fixtures stopped rather than what the parser does.
+**The image-collection shape stays tested.** The floor tileset is an **image-collection** tileset,
+`columns="0"` with one `<tile><image source="…"/></tile>` per marker — the shape the kit's tileset first
+brought into the tree — and `bin/asset-provenance.selftest.py` keeps it as a control **and** two REDs of
+its own.
 
 ## What a green gate does not mean
 

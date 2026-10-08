@@ -5,6 +5,7 @@ namespace Tests\Feature\Admin;
 use App\Fleet\SeatRetirement;
 use App\Fleet\SeatRetirementOutcome;
 use App\Models\User;
+use App\Read\Snapshot;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\Feed\OutboxWire;
 use Tests\Feature\Fold\ConcurrencyError;
@@ -28,6 +29,8 @@ use Tests\Feature\Sweep\SweepTestCase;
  */
 class SeatConsoleTest extends SweepTestCase
 {
+    use SeesAConvertedInstant;
+
     /**
      * The competing retirement's `retired_at`, spelled as a `DATETIME(3)` — `Clock::FORMAT`,
      * fractional part included.
@@ -58,12 +61,17 @@ class SeatConsoleTest extends SweepTestCase
         $this->deliver($this->blockedPair(requestOnly: true));
         $this->fold();
 
-        $this->actingAs($this->operator())
+        $page = $this->actingAs($this->operator())
             ->get(route('admin.agents.index'))
             ->assertOk()
             ->assertSee(self::INSTALL)
             ->assertSee(self::SEAT)
             ->assertSee('blocked');
+
+        // card#9446: the seat's last receipt, through the one converter.
+        $received = collect(Snapshot::seats())->firstWhere('seat_id', self::SEAT)?->last_activity_received_at;
+        $this->assertNotNull($received, 'the fixture delivered no activity, so there is no instant to see');
+        $this->assertSeesConvertedInstant($page, $received);
     }
 
     /**
@@ -99,8 +107,10 @@ class SeatConsoleTest extends SweepTestCase
         $page->assertSee('Retired seats')
             ->assertSee(self::SEAT)
             ->assertSee($operator->email)
-            ->assertSee('the box was decommissioned')
-            ->assertSee((string) $this->seatRow()->retired_at);
+            ->assertSee('the box was decommissioned');
+
+        // card#9446: when, through the one converter.
+        $this->assertSeesConvertedInstant($page, (string) $this->seatRow()->retired_at);
 
         // 2 — and the seat is no longer offerable for retirement, because it is no longer in the
         // live list at all. The retire FORM is the live list's own control, so its absence for

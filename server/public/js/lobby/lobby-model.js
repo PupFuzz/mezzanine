@@ -51,8 +51,8 @@ import { NOT_REPORTED } from '../wire/null-render.js';
 /**
  * ⚠ `clockTime` MOVED to `../wire/clock.js` at its second caller (card#8300's coordination
  * client needs the identical function), and is re-exported here so this module stays the
- * lobby's one import. Its reasoning — why it reads the wire's digits and converts nothing —
- * moved with it rather than being copied.
+ * lobby's one import. Its reasoning — why it shows every instant in the viewer's browser zone
+ * (card#9446) — moved with it rather than being copied.
  */
 export { clockTime };
 
@@ -177,6 +177,12 @@ export function floors(snapshot, layout) {
         // would turn a delivered number into a name the operator never wrote.
         const label = typeof floor?.label === 'string' ? floor.label : null;
 
+        // § 4.6's `theme` (card#11046, FLOOR.md § 10.6 item 5): the name the delivered entry carries, or
+        // null for the house theme. Read as the server delivered it — the server refused a non-string at
+        // load — and never judged against the registry here: whether the build ships it is the floor
+        // screen's to draw (§ 9 F23), and the lobby draws no interior.
+        const theme = typeof floor?.theme === 'string' ? floor.theme : null;
+
         // ⭐ § 4.6's PLAN, the floor's half (card#9292): its `hallway` — the corridor drawn at the
         // floor's origin UNDER its rooms — carried exactly as delivered, for `origin`'s reason
         // above. The lobby draws no interior and ignores it (§ 4.1, card#9267); the floor route
@@ -184,7 +190,7 @@ export function floors(snapshot, layout) {
         // `hallway`, or neither" (§ 4.6's reader table), and it reads it HERE rather than going
         // back to the raw document, because a second composition of one floor is two answers to
         // *which rooms are on it*.
-        rows.push(plate(String(floor?.floor), label, rooms, held, floor?.hallway ?? null));
+        rows.push(plate(String(floor?.floor), label, rooms, held, floor?.hallway ?? null, theme));
     }
 
     for (const install_id of Object.keys(held)) {
@@ -195,7 +201,7 @@ export function floors(snapshot, layout) {
             // An implicit floor is one room and no plan at all (§ 4.6): no `origin` on its room and
             // no `hallway` on it, because "a corridor with no rooms placed along it is a picture of
             // nothing" and nobody placed this one.
-            rows.push(plate(install_id, null, [{ install_id, form: 'open', reported: true }], held, null));
+            rows.push(plate(install_id, null, [{ install_id, form: 'open', reported: true }], held, null, null));
         }
     }
 
@@ -212,13 +218,15 @@ export function floors(snapshot, layout) {
  * and the cab's stop in `building-model.js` — a label is display text, and the moment anything
  * looked one up by it, editing a label would move a viewer's floor.
  */
-function plate(floor, label, rooms, held, hallway) {
+function plate(floor, label, rooms, held, hallway, theme) {
     const seats = rooms.flatMap((room) => held[room.install_id] ?? []);
 
     return {
         floor,
         hallway,
         label,
+        // § 4.6 (card#11046): the theme the entry names, or null — an implicit floor's is always null.
+        theme,
         // § 4.6 (card#9273): "its label when the layout gives it one, else its key — the key is
         // honest and no placeholder is invented".
         name: label ?? floor,

@@ -1,8 +1,8 @@
 {
-  "note": "docs/design/FLOOR.md Appendix B row 15's camera and capability-floor runs (card#7341) — AT-D3-21's floor half. Every run replays § 11's fixtures byte for byte — `fx-snapshot-4` through `fx-scene.json`'s `scene_default` and `scene_overflow` (the shipped default map, `@json:`), `fx-gap`'s resync pair, `fx-layout-acts`' `room.map`, `fx-drilldown`'s `fleet.health`, `fx-degraded`'s snapshot and `fx-floor-plan`'s failing room map — at a viewport each run states (`floor.viewport`, CSS px) and with the viewer's camera acts on the scenario clock (`floor.camera`, `fleet-client-probe.mjs`'s header). F is § 12's viewport floor, and the test holds each run's stated viewport to the figure § 12 states. ⭐ And Appendix B row 16's building half (card#7343): `building_rides` and `building_rides_reduced` are `fx-snapshot-4` under a layout of two floors — `aimla`, unlabelled, and `zeta`, labelled *the annex*, a room the fleet reports no seat for — entered at the lobby with the building's drawing surface stated (`lobby.surface`), then the viewer riding to the labelled floor, riding to the other, and asking for the whole building (`lobby.camera`) — the page back from the back-forward cache (`return`) after each ride, since a ride leaves the lobby — with a heartbeat drawn between the second ride and the whole-building control; the second run is the first under `prefers-reduced-motion`. `building_ride_in_flight` is the same entry with a ride in flight interrupted by a second ride, a wheel, a key's zoom, a drag, a focused plate and the whole-building control, then arriving and the lobby's controls working again; `building_focus` is the same entry with the keyboard's focus on plates in and out of view.",
+  "note": "docs/design/FLOOR.md Appendix B row 15's camera runs (card#7341) — AT-D3-21's floor half. Every run replays § 11's fixtures byte for byte — `fx-snapshot-4` through `fx-scene.json`'s `scene_default` and `scene_overflow` (the shipped default map, `@json:`), `fx-gap`'s resync pair, `fx-layout-acts`' `room.map`, `fx-drilldown`'s `fleet.health`, `fx-degraded`'s snapshot and `fx-floor-plan`'s failing room map — at a viewport each run states (`floor.viewport`, CSS px) and with the viewer's camera acts on the scenario clock (`floor.camera`, `fleet-client-probe.mjs`'s header). F is § 12's reference viewport: the test holds every run entered at F to the figure § 12 states, and every any-size run to a window smaller than F in at least one dimension (§ 4.5: the room is drawn at every size, card#7341's 2026-10-01 ruling). ⭐ And Appendix B row 16's building half (card#7343): `building_rides` and `building_rides_reduced` are `fx-snapshot-4` under a layout of two floors — `aimla`, unlabelled, and `zeta`, labelled *the annex*, a room the fleet reports no seat for — entered at the lobby with the building's drawing surface stated (`lobby.surface`), then the viewer riding to the labelled floor, riding to the other, and asking for the whole building (`lobby.camera`) — the page back from the back-forward cache (`return`) after each ride, since a ride leaves the lobby — with a heartbeat drawn between the second ride and the whole-building control; the second run is the first under `prefers-reduced-motion`. `building_ride_in_flight` is the same entry with a ride in flight interrupted by a second ride, a Ctrl+wheel, a plain wheel, a touch pinch, a key's zoom, a drag, a focused plate and the whole-building control, then arriving and the lobby's controls working again; `building_focus` is the same entry with the keyboard's focus on plates in and out of view. `camera_page` is `camera_floor`'s replay entered with the camera's surface at the floor page's own drawing box at F — § 12's stated page surface — and no camera act, so § 12's viewport row is measured on the surface a viewer's page gives the camera (card#11045 PR-E).",
   "runs": {
     "camera_floor": {
-      "note": "AT-D3-21's floor half, the camera leg (Appendix B row 15): `fx-snapshot-4`'s four seats on the SHIPPED default map (`@json:`, the file itself) at a viewport of § 12's viewport floor, F. The viewer zooms with the wheel at a stated cursor point, drags by a stated offset, fits the floor, zooms in again three notches, drags, drags far past the floor's edge (the clamp), and drags once more — then the fleet sends a `seat.delta` (1000 ms), a `seat.delta` past a gap that resyncs the seat by fetch (2000 ms, `fx-gap`'s pair and its seat response), a `room.map` that re-fetches the room at version 4 (2500 ms, `fx-layout-acts`' message), and ends the stream (3000 ms), so the recovery reconnects and applies a second full snapshot. Every frame after the last camera act must carry the camera that act left. With the camera acts removed (an override of the page conditions) it is the discriminating control: the scene at fit and the log carrying exactly the messages' rows.",
+      "note": "AT-D3-21's floor half, the camera leg (Appendix B row 15): `fx-snapshot-4`'s four seats on the SHIPPED default map (`@json:`, the file itself) at a viewport of § 12's reference viewport, F. The viewer zooms with a Ctrl+wheel at a stated cursor point, drags by a stated offset, fits the floor, zooms in again three notches with the cursor at the window's vertical middle (where the fit centres the room, so the clamp never has to move the point under the cursor as the room grows past the window's height), drags, drags far past the floor's edge (the clamp), and drags once more; then (card#11045: the plain wheel pans, Ctrl+wheel and the pinch zoom) zooms in four notches (under the camera's ceiling for the pinch after it on the six-desk default, card#11045), pans with the plain wheel in pixel, line and page mode, pinches out and in about a stated midpoint, wheels far past the bottom edge (consumed, clamped) and again at it (released to the page — Q3), far past the right edge and again at it (released), and wheels diagonally at the right edge (consumed: the vertical axis still follows) — then the fleet sends a `seat.delta` (1000 ms), a `seat.delta` past a gap that resyncs the seat by fetch (2000 ms, `fx-gap`'s pair and its seat response), a `room.map` that re-fetches the room at version 4 (2500 ms, `fx-layout-acts`' message), and ends the stream (3000 ms), so the recovery reconnects and applies a second full snapshot. Every frame after the last camera act must carry the camera that act left. With the camera acts removed (an override of the page conditions) it is the discriminating control: the scene at fit and the log carrying exactly the messages' rows.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -99,6 +99,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -178,6 +179,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -249,6 +251,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -320,6 +323,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -433,6 +437,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -512,6 +517,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -583,6 +589,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -654,6 +661,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -704,12 +712,6 @@
               "map_version": 4,
               "map": "@json:resources/floor/default.tmj"
             }
-          }
-        ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
           }
         ],
         "/art/floor/tiles/floor-plane.tsx": [
@@ -798,6 +800,7 @@
               "enabled": true,
               "protocol_agent_name": "pm",
               "protocol_agent_name_check": "checked",
+              "protocol_agent_role": "pm",
               "reporter": {
                 "version": "0.1.0",
                 "platform": "linux",
@@ -915,8 +918,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -930,7 +933,7 @@
         "camera": [
           {
             "at_ms": 200,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 900,
             "y": 450,
             "delta_y": -100
@@ -947,23 +950,23 @@
           },
           {
             "at_ms": 500,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 300,
-            "y": 380,
+            "y": 400,
             "delta_y": -100
           },
           {
             "at_ms": 510,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 300,
-            "y": 380,
+            "y": 400,
             "delta_y": -100
           },
           {
             "at_ms": 520,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 300,
-            "y": 380,
+            "y": 400,
             "delta_y": -100
           },
           {
@@ -983,8 +986,1014 @@
             "act": "drag",
             "dx": 300,
             "dy": 20
+          },
+          {
+            "at_ms": 850,
+            "act": "zoom",
+            "notches": 4
+          },
+          {
+            "at_ms": 900,
+            "act": "scroll",
+            "delta_x": 40,
+            "delta_y": -30
+          },
+          {
+            "at_ms": 910,
+            "act": "scroll",
+            "delta_y": -2,
+            "delta_mode": 1
+          },
+          {
+            "at_ms": 920,
+            "act": "scroll",
+            "delta_x": -0.1,
+            "delta_mode": 2
+          },
+          {
+            "at_ms": 930,
+            "act": "pinch",
+            "from": {
+              "x": 640,
+              "y": 400
+            },
+            "to": {
+              "x": 600,
+              "y": 420
+            },
+            "factor": 1.25
+          },
+          {
+            "at_ms": 940,
+            "act": "pinch",
+            "from": {
+              "x": 600,
+              "y": 780
+            },
+            "to": {
+              "x": 600,
+              "y": 780
+            },
+            "factor": 0.8
+          },
+          {
+            "at_ms": 950,
+            "act": "scroll",
+            "delta_y": 100000
+          },
+          {
+            "at_ms": 960,
+            "act": "scroll",
+            "delta_y": 100000
+          },
+          {
+            "at_ms": 970,
+            "act": "scroll",
+            "delta_x": 100000
+          },
+          {
+            "at_ms": 980,
+            "act": "scroll",
+            "delta_x": 100000
+          },
+          {
+            "at_ms": 990,
+            "act": "scroll",
+            "delta_x": 40,
+            "delta_y": -30
           }
         ]
+      }
+    },
+    "camera_page": {
+      "note": "§ 12's viewport row measured ON THE PAGE (card#11045 PR-E): `camera_floor`'s replay — `fx-snapshot-4`'s four seats on the SHIPPED default map (`@json:`) — entered with the camera's surface at the floor page's own drawing box at F, § 12's stated page surface (the page chrome above the drawing leaves the window's width by less than its height; `tools/design/floor-chrome.browser.mjs` measures that box on the rendered page and reds when it is not the figure § 12 states). No camera act: the first frame that draws the floor is the fit the row states.",
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-pm",
+                      "state_version": 48219,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "descriptor": "Bash: composer test",
+                        "started_at": "2026-08-23T14:23:09.882Z",
+                        "started_received_at": "2026-08-23T14:23:14.201Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [
+                        {
+                          "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                          "title": "draft the D1 event schema",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:23:31.004Z"
+                        }
+                      ],
+                      "subagents_open": 1,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:23:09.882Z",
+                        "last_received_at": "2026-08-23T14:23:14.201Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [
+                        "lossy"
+                      ],
+                      "badges_since": "2026-08-23T09:14:02.118Z",
+                      "enabled": true,
+                      "protocol_agent_name": "pm",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-1",
+                      "state_version": 31107,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "descriptor": "Edit: server/app/Feed/SeatDelta.php",
+                        "started_at": "2026-08-23T14:22:58.120Z",
+                        "started_received_at": "2026-08-23T14:23:02.530Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:22:58.120Z",
+                        "last_received_at": "2026-08-23T14:23:02.530Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-1",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-2",
+                      "state_version": 20544,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-2",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-review",
+                      "state_version": 15032,
+                      "render_state": "blocked",
+                      "link_state": "live",
+                      "activity_state": "blocked",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": "2026-08-23T14:19:40.006Z",
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:19:40.006Z",
+                        "last_received_at": "2026-08-23T14:19:44.120Z",
+                        "last_kind": "attention.request"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "review",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "delay_ms": 0
+          },
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-pm",
+                      "state_version": 48219,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "descriptor": "Bash: composer test",
+                        "started_at": "2026-08-23T14:23:09.882Z",
+                        "started_received_at": "2026-08-23T14:23:14.201Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [
+                        {
+                          "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                          "title": "draft the D1 event schema",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:23:31.004Z"
+                        }
+                      ],
+                      "subagents_open": 1,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:23:09.882Z",
+                        "last_received_at": "2026-08-23T14:23:14.201Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [
+                        "lossy"
+                      ],
+                      "badges_since": "2026-08-23T09:14:02.118Z",
+                      "enabled": true,
+                      "protocol_agent_name": "pm",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-1",
+                      "state_version": 31107,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "descriptor": "Edit: server/app/Feed/SeatDelta.php",
+                        "started_at": "2026-08-23T14:22:58.120Z",
+                        "started_received_at": "2026-08-23T14:23:02.530Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:22:58.120Z",
+                        "last_received_at": "2026-08-23T14:23:02.530Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-1",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-2",
+                      "state_version": 20544,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-2",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-review",
+                      "state_version": 15032,
+                      "render_state": "blocked",
+                      "link_state": "live",
+                      "activity_state": "blocked",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": "2026-08-23T14:19:40.006Z",
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:19:40.006Z",
+                        "last_received_at": "2026-08-23T14:19:44.120Z",
+                        "last_kind": "attention.request"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "review",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "delay_ms": 0
+          }
+        ],
+        "/api/building": [
+          {
+            "status": 200,
+            "body": {
+              "layout": {
+                "layout_version": 0,
+                "floors": []
+              },
+              "rooms": []
+            }
+          }
+        ],
+        "/api/building/rooms/aimla/map": [
+          {
+            "status": 200,
+            "body": {
+              "install_id": "aimla",
+              "source": "default",
+              "map_version": null,
+              "map": "@json:resources/floor/default.tmj"
+            }
+          },
+          {
+            "status": 200,
+            "body": {
+              "install_id": "aimla",
+              "source": "authored",
+              "map_version": 4,
+              "map": "@json:resources/floor/default.tmj"
+            }
+          }
+        ],
+        "/art/floor/tiles/floor-plane.tsx": [
+          {
+            "status": 200,
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
+          }
+        ],
+        "/api/fleet/seats/aimla/aimla-pm": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:15.800Z",
+              "install_id": "aimla",
+              "seat_id": "aimla-pm",
+              "state_version": 48222,
+              "render_state": "working",
+              "link_state": "live",
+              "activity_state": "working",
+              "unknown_reason": null,
+              "api_error_type": null,
+              "blocked_since": null,
+              "action": {
+                "call_id": "01K3TC2B3C4D5E6F7G8H9J0K1M",
+                "tool_name": "Bash",
+                "descriptor": "Bash: composer test",
+                "started_at": "2026-08-23T14:23:15.180Z",
+                "started_received_at": "2026-08-23T14:23:15.290Z",
+                "agent_scope": "main",
+                "parent_call_id": null
+              },
+              "open_calls": 1,
+              "open_turn": true,
+              "subagents": [
+                {
+                  "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                  "title": "draft the D1 event schema",
+                  "subagent_type": "coder",
+                  "started_at": "2026-08-23T14:23:31.004Z"
+                }
+              ],
+              "subagents_open": 1,
+              "task": {
+                "title": "ingest endpoint",
+                "source": "board_card",
+                "ref": "card#7338",
+                "as_of": "2026-08-23T14:05:00.000Z",
+                "degraded": false
+              },
+              "context": {
+                "used_pct": 74.1,
+                "used_tokens": 148210,
+                "total_tokens": 200000,
+                "source": "harness",
+                "sampled_at": "2026-08-23T14:41:30.102Z",
+                "sampled_received_at": "2026-08-23T14:41:34.660Z"
+              },
+              "model_label": "claude-opus-5",
+              "session": {
+                "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                "started_at": "2026-08-23T14:22:40.201Z",
+                "source": "clear",
+                "project_label": "mezzanine",
+                "harness_label": "claude-code/2.1.240"
+              },
+              "activity": {
+                "last_event_time": "2026-08-23T14:23:09.882Z",
+                "last_received_at": "2026-08-23T14:23:14.201Z",
+                "last_kind": "tool.start"
+              },
+              "delivery": {
+                "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                "no_data_since": null,
+                "clock_skew_ms": 412,
+                "spool_lag_events": 0,
+                "oldest_unsent_age_s": null,
+                "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                "last_seq": 48211
+              },
+              "badges": [
+                "lossy"
+              ],
+              "badges_since": "2026-08-23T09:14:02.118Z",
+              "enabled": true,
+              "protocol_agent_name": "pm",
+              "protocol_agent_name_check": "checked",
+              "protocol_agent_role": "pm",
+              "reporter": {
+                "version": "0.1.0",
+                "platform": "linux",
+                "uptime_s": 401150,
+                "selftest_failed": []
+              },
+              "retired": null,
+              "derivation": {
+                "computed_at": "2026-08-23T14:23:14.318Z",
+                "fold_lag_ms": 117,
+                "cursor_event_id": 9912837
+              },
+              "detail": {}
+            },
+            "delay_ms": 500
+          }
+        ]
+      },
+      "messages": [
+        {
+          "at_ms": 100,
+          "envelope": {
+            "feed_version": 1,
+            "t": "fleet.health",
+            "server_time": "2026-08-23T14:23:14.500Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 4,
+              "seats_live": 4
+            }
+          }
+        },
+        {
+          "at_ms": 1000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "seat.delta",
+            "server_time": "2026-08-23T14:23:14.650Z",
+            "install_id": "aimla",
+            "seat_id": "aimla-pm",
+            "state_version": 48220,
+            "at": "2026-08-23T14:23:14.650Z",
+            "changed": [
+              "render_state",
+              "activity_state",
+              "action",
+              "open_calls"
+            ],
+            "patch": {
+              "render_state": "idle",
+              "activity_state": "idle",
+              "action": null,
+              "open_calls": 0
+            }
+          }
+        },
+        {
+          "at_ms": 2000,
+          "envelope": {
+            "feed_version": 1,
+            "t": "seat.delta",
+            "server_time": "2026-08-23T14:23:15.300Z",
+            "install_id": "aimla",
+            "seat_id": "aimla-pm",
+            "state_version": 48222,
+            "at": "2026-08-23T14:23:15.300Z",
+            "changed": [
+              "render_state",
+              "activity_state",
+              "action",
+              "open_calls"
+            ],
+            "patch": {
+              "render_state": "working",
+              "activity_state": "working",
+              "action": {
+                "call_id": "01K3TC2B3C4D5E6F7G8H9J0K1M",
+                "tool_name": "Bash",
+                "descriptor": "Bash: composer test",
+                "started_at": "2026-08-23T14:23:15.180Z",
+                "started_received_at": "2026-08-23T14:23:15.290Z",
+                "agent_scope": "main",
+                "parent_call_id": null
+              },
+              "open_calls": 1
+            }
+          }
+        },
+        {
+          "at_ms": 2500,
+          "envelope": {
+            "feed_version": 1,
+            "t": "room.map",
+            "server_time": "2026-08-23T14:23:15.400Z",
+            "install_id": "aimla",
+            "map_version": 4,
+            "revision_id": 881
+          }
+        },
+        {
+          "at_ms": 3000,
+          "end": true
+        }
+      ],
+      "recovery": true,
+      "until_ms": 6000,
+      "floor": {
+        "key": "aimla",
+        "local_hours": 9,
+        "local_minutes": 45,
+        "scene": {
+          "measurer": {
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
+          },
+          "character": {
+            "w": 18,
+            "h": 32
+          }
+        },
+        "viewport": {
+          "width": 1280,
+          "height": 579
+        }
       }
     },
     "camera_overflow": {
@@ -1085,6 +2094,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1164,6 +2174,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1235,6 +2246,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1306,6 +2318,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1399,10 +2412,10 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ]
       },
@@ -1414,8 +2427,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -1429,7 +2442,7 @@
         "camera": [
           {
             "at_ms": 50,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 200,
             "y": 300,
             "delta_y": -100
@@ -1441,8 +2454,8 @@
         ]
       }
     },
-    "camera_short": {
-      "note": "AT-D3-21's floor half, the capability-floor leg: `scene_default` entered at F, zoomed in, then the viewport shrunk to F less one pixel in WIDTH (the route must render the list view — no map, no camera — one row per seat), grown back to F (the floor again, at fit, with no row for it), zoomed in again, shrunk to F less one pixel in HEIGHT, and grown back.",
+    "camera_resize": {
+      "note": "AT-D3-21's floor half, the resize leg: `scene_default` entered at § 12's reference viewport, zoomed in, then the window shrunk to a phone's 390 × 700 (the room still drawn, the viewer's zoom kept and the floor in view), grown back to the reference (the same), zoomed in again, shrunk to a low 1,280 × 240, and grown back — with no animation-log row for any of it.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -1539,6 +2552,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1618,6 +2632,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1689,6 +2704,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1760,6 +2776,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1801,12 +2818,6 @@
               "map_version": null,
               "map": "@json:resources/floor/default.tmj"
             }
-          }
-        ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
           }
         ],
         "/art/floor/tiles/floor-plane.tsx": [
@@ -1824,8 +2835,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -1839,7 +2850,7 @@
         "camera": [
           {
             "at_ms": 50,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
@@ -1847,8 +2858,8 @@
           {
             "at_ms": 100,
             "act": "resize",
-            "width": 1279,
-            "height": 800
+            "width": 390,
+            "height": 700
           },
           {
             "at_ms": 200,
@@ -1858,7 +2869,7 @@
           },
           {
             "at_ms": 300,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
@@ -1867,7 +2878,7 @@
             "at_ms": 400,
             "act": "resize",
             "width": 1280,
-            "height": 799
+            "height": 240
           },
           {
             "at_ms": 500,
@@ -1878,8 +2889,8 @@
         ]
       }
     },
-    "camera_entry_short_width": {
-      "note": "AT-D3-21's floor half: `scene_default` ENTERED at F less one pixel in width — the route renders the list view from its first frame, and never a floor scaled down to fit (the third RED's defect).",
+    "camera_entry_narrow": {
+      "note": "AT-D3-21's floor half, the any-size leg (§ 4.5, the operator's ruling of 2026-10-01 on card#7341): `scene_default` ENTERED in a phone-sized window, 390 × 700 CSS px — narrower than the room — and the route draws the room from its first frame at fit, the whole floor in view; a Ctrl+wheel zooms about the cursor, the zoom buttons' step zooms in, a plain wheel pans and a touch pinch zooms about its midpoint (card#11045), a drag pans by its offset, a drag far past the floor is clamped with the floor still in view, and fit-floor frames it whole again.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -1976,6 +2987,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2055,6 +3067,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2126,6 +3139,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2197,6 +3211,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2240,12 +3255,6 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
-          }
-        ],
         "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
@@ -2254,15 +3263,15 @@
         ]
       },
       "messages": [],
-      "until_ms": 100,
+      "until_ms": 1000,
       "floor": {
         "key": "aimla",
         "local_hours": 9,
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -2270,13 +3279,62 @@
           }
         },
         "viewport": {
-          "width": 1279,
-          "height": 800
-        }
+          "width": 390,
+          "height": 700
+        },
+        "camera": [
+          {
+            "at_ms": 200,
+            "act": "ctrl_wheel",
+            "x": 300,
+            "y": 350,
+            "delta_y": -100
+          },
+          {
+            "at_ms": 250,
+            "act": "zoom",
+            "notches": 2
+          },
+          {
+            "at_ms": 260,
+            "act": "scroll",
+            "delta_x": -20,
+            "delta_y": -10
+          },
+          {
+            "at_ms": 270,
+            "act": "pinch",
+            "from": {
+              "x": 150,
+              "y": 100
+            },
+            "to": {
+              "x": 160,
+              "y": 100
+            },
+            "factor": 1.25
+          },
+          {
+            "at_ms": 300,
+            "act": "drag",
+            "dx": 20,
+            "dy": -10
+          },
+          {
+            "at_ms": 400,
+            "act": "drag",
+            "dx": -100000,
+            "dy": -100000
+          },
+          {
+            "at_ms": 500,
+            "act": "fit"
+          }
+        ]
       }
     },
-    "camera_entry_short_height": {
-      "note": "AT-D3-21's floor half: `scene_default` ENTERED at F less one pixel in height — the route renders the list view from its first frame, and never a floor scaled down to fit (the third RED's defect).",
+    "camera_entry_low": {
+      "note": "AT-D3-21's floor half, the any-size leg: `scene_default` ENTERED in a wide, low window, 1,280 × 240 CSS px — lower than the room at its width's fit — and the route draws the room from its first frame at fit; the same camera acts as `camera_entry_narrow`, each doing what it does at any size, except that its zoom step is five notches where the narrow run's is two: from this window's fit, five notches take the view narrower than the six-desk default (card#11045), so the pinch and the drag after it move the view inside the floor rather than against the clamp. The Ctrl+wheel is a partial notch (`delta_y` −6, a trackpad pinch's step): the fit in this window is height-bound, so one whole notch from it zooms the view narrower than the floor, where the camera's clamp keeps the view on the floor and so cannot also hold the point under a cursor this far right (card#11045 PR-D, whose taller back wall moved that fit).",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -2373,6 +3431,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2452,6 +3511,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2523,6 +3583,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2594,6 +3655,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2637,12 +3699,6 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
-          }
-        ],
         "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
@@ -2651,15 +3707,15 @@
         ]
       },
       "messages": [],
-      "until_ms": 100,
+      "until_ms": 1000,
       "floor": {
         "key": "aimla",
         "local_hours": 9,
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -2668,12 +3724,61 @@
         },
         "viewport": {
           "width": 1280,
-          "height": 799
-        }
+          "height": 240
+        },
+        "camera": [
+          {
+            "at_ms": 200,
+            "act": "ctrl_wheel",
+            "x": 900,
+            "y": 120,
+            "delta_y": -6
+          },
+          {
+            "at_ms": 250,
+            "act": "zoom",
+            "notches": 5
+          },
+          {
+            "at_ms": 260,
+            "act": "scroll",
+            "delta_x": -20,
+            "delta_y": -10
+          },
+          {
+            "at_ms": 270,
+            "act": "pinch",
+            "from": {
+              "x": 150,
+              "y": 100
+            },
+            "to": {
+              "x": 160,
+              "y": 100
+            },
+            "factor": 1.25
+          },
+          {
+            "at_ms": 300,
+            "act": "drag",
+            "dx": 20,
+            "dy": -10
+          },
+          {
+            "at_ms": 400,
+            "act": "drag",
+            "dx": -100000,
+            "dy": -100000
+          },
+          {
+            "at_ms": 500,
+            "act": "fit"
+          }
+        ]
       }
     },
-    "camera_degraded_short_width": {
-      "note": "AT-D3-21's floor half: `fx-degraded`'s snapshot (its `degraded_static` run, byte for byte) on the floor route, entered at F less one pixel in width, over `scene_default`'s building, map and tilesets — the list view, one row per seat. What each row SAYS (the `fold_lag` seat's lag line, the `catching_up` seat's currency label, the `config_invalid` seat's *sending nothing* note) is the list module's, Appendix B row 15's slice A.",
+    "camera_degraded_narrow": {
+      "note": "AT-D3-21's floor half: `fx-degraded`'s snapshot (its `degraded_static` run, byte for byte) on the floor route, entered in a phone-sized window (390 × 700), over `scene_default`'s building, map and tilesets — the room drawn with a desk for every seat, and the list view (the desks as text, below the drawing) one row per seat. What each row SAYS (the `fold_lag` seat's lag line, the `catching_up` seat's currency label, the `config_invalid` seat's *sending nothing* note) is the list module's, Appendix B row 15's slice A.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -2753,6 +3858,7 @@
                       "enabled": true,
                       "protocol_agent_name": "catchup",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2824,6 +3930,7 @@
                       "enabled": true,
                       "protocol_agent_name": "stale",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2895,6 +4002,7 @@
                       "enabled": true,
                       "protocol_agent_name": "offline",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2966,6 +4074,7 @@
                       "enabled": false,
                       "protocol_agent_name": "disabled",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3047,6 +4156,7 @@
                       "enabled": true,
                       "protocol_agent_name": "lagged",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3118,6 +4228,7 @@
                       "enabled": true,
                       "protocol_agent_name": "idle",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3160,12 +4271,6 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
-          }
-        ],
         "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
@@ -3181,8 +4286,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -3190,13 +4295,13 @@
           }
         },
         "viewport": {
-          "width": 1279,
-          "height": 800
+          "width": 390,
+          "height": 700
         }
       }
     },
-    "camera_degraded_short_height": {
-      "note": "AT-D3-21's floor half: `fx-degraded`'s snapshot (its `degraded_static` run, byte for byte) on the floor route, entered at F less one pixel in height, over `scene_default`'s building, map and tilesets — the list view, one row per seat. What each row SAYS (the `fold_lag` seat's lag line, the `catching_up` seat's currency label, the `config_invalid` seat's *sending nothing* note) is the list module's, Appendix B row 15's slice A.",
+    "camera_degraded_low": {
+      "note": "AT-D3-21's floor half: `fx-degraded`'s snapshot on the floor route, entered in a wide, low window (1,280 × 240) — the room drawn with a desk for every seat, and the list view one row per seat, as `camera_degraded_narrow`.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -3276,6 +4381,7 @@
                       "enabled": true,
                       "protocol_agent_name": "catchup",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3347,6 +4453,7 @@
                       "enabled": true,
                       "protocol_agent_name": "stale",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3418,6 +4525,7 @@
                       "enabled": true,
                       "protocol_agent_name": "offline",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3489,6 +4597,7 @@
                       "enabled": false,
                       "protocol_agent_name": "disabled",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3570,6 +4679,7 @@
                       "enabled": true,
                       "protocol_agent_name": "lagged",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3641,6 +4751,7 @@
                       "enabled": true,
                       "protocol_agent_name": "idle",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3683,12 +4794,6 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
-          }
-        ],
         "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
@@ -3704,8 +4809,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -3714,7 +4819,7 @@
         },
         "viewport": {
           "width": 1280,
-          "height": 799
+          "height": 240
         }
       }
     },
@@ -3816,6 +4921,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3895,6 +5001,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3966,6 +5073,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4037,6 +5145,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4078,12 +5187,6 @@
               "map_version": null,
               "map": "@json:resources/floor/default.tmj"
             }
-          }
-        ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
           }
         ],
         "/art/floor/tiles/floor-plane.tsx": [
@@ -4102,8 +5205,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -4117,7 +5220,7 @@
         "camera": [
           {
             "at_ms": 50,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
@@ -4130,7 +5233,7 @@
       }
     },
     "camera_proportional": {
-      "note": "AT-D3-21's floor half, the wheel's scale (round-1 finding F1 on PupFuzz/mezzanine#237): `scene_default` at F, and the wheel as a trackpad drives it — a burst of 25 pixel-mode events of 4 px each, one notch's scroll in all — then a line-mode event (3 lines), a page-mode event (one page out) and an accelerated pixel event of 250 px, then a pinch — a burst of small `ctrlKey` pixel events, each scaled by `PINCH_GAIN`, and one fast `ctrlKey` event that the gain takes past a notch — then the keyboard's zoom in and out about the centre. Every wheel event must zoom by `ZOOM_STEP` to the power of its scroll over a notch, `deltaMode` normalised, a pinch's scroll multiplied by `PINCH_GAIN` and one event holding at most one notch after it, and the burst by one notch in all — where a step per event takes it 25 steps, to the ceiling. The run stays between the fit and the ceiling throughout, so no zoom here is the range's clamp.",
+      "note": "AT-D3-21's floor half, the Ctrl+wheel's scale (round-1 finding F1 on PupFuzz/mezzanine#237; since card#11045 every zooming wheel is a Ctrl+wheel, each scaled by `PINCH_GAIN`): `scene_default` at F, and the Ctrl+wheel as a trackpad's pinch drives it — a burst of 25 pixel-mode events of 0.4 px each, one notch's scroll in all after the gain — then a line-mode event (3 lines), a page-mode event (one page out) and an accelerated pixel event of 250 px, then ten pixel events of 1 px (one notch in all) and one of 20 px that the gain takes past a notch — then the keyboard's zoom in and out about the centre. Every Ctrl+wheel event must zoom by `ZOOM_STEP` to the power of its scroll over a notch, `deltaMode` normalised, multiplied by `PINCH_GAIN` and one event holding at most one notch after it, and the burst by one notch in all — where a step per event takes it 25 steps, to the ceiling. The run stays between the fit and the ceiling throughout, so no zoom here is the range's clamp.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -4227,6 +5330,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4306,6 +5410,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4377,6 +5482,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4448,6 +5554,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4491,12 +5598,6 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
-          {
-            "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
-          }
-        ],
         "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
@@ -4512,8 +5613,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -4527,182 +5628,182 @@
         "camera": [
           {
             "at_ms": 50,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 51,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 52,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 53,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 54,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 55,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 56,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 57,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 58,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 59,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 60,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 61,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 62,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 63,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 64,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 65,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 66,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 67,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 68,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 69,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 70,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 71,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 72,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 73,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 74,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
-            "delta_y": -4
+            "delta_y": -0.4
           },
           {
             "at_ms": 100,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 700,
             "y": 420,
             "delta_y": -3,
@@ -4710,7 +5811,7 @@
           },
           {
             "at_ms": 110,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 300,
             "y": 200,
             "delta_y": 1,
@@ -4718,98 +5819,87 @@
           },
           {
             "at_ms": 120,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 300,
             "y": 200,
             "delta_y": -250
           },
           {
             "at_ms": 130,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 131,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 132,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 133,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 134,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 135,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 136,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 137,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 138,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 139,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -3,
-            "ctrl_key": true
+            "delta_y": -1
           },
           {
             "at_ms": 150,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
-            "delta_y": -20,
-            "ctrl_key": true
+            "delta_y": -20
           },
           {
             "at_ms": 200,
@@ -4825,7 +5915,7 @@
       }
     },
     "camera_nothing_measurable": {
-      "note": "AT-D3-21's floor half, a floor with nothing measurable on it (round-1 finding F4 on PupFuzz/mezzanine#237): `fx-snapshot-4`'s snapshot, byte for byte, beside a layout whose one floor holds one room the fleet reports no seat for (§ 4.6), and that room's map request failing as `fx-floor-plan`'s `plan_map_fails` fails it, byte for byte — no footprint, no desk, so the scene is drawn with no extent (`null`, as § 4.6's own extent is: no zero-sized box). The render must still paint — the status strip among it — with the camera unframed, and the viewer's acts on it move nothing.",
+      "note": "AT-D3-21's floor half, a floor with nothing measurable on it (round-1 finding F4 on PupFuzz/mezzanine#237): `fx-snapshot-4`'s snapshot, byte for byte, beside a layout whose one floor holds one room the fleet reports no seat for (§ 4.6), and that room's map request failing as `fx-floor-plan`'s `plan_map_fails` fails it, byte for byte — no footprint, no desk, so the scene is drawn with no extent (`null`, as § 4.6's own extent is: no zero-sized box). The render must still paint — the status strip among it — with the camera unframed, and the viewer's acts on it — a Ctrl+wheel, a plain wheel, a touch pinch, a zoom step, a drag and a fit — move nothing, and neither wheel is consumed: over a camera that frames nothing the wheel is the page's.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -4922,6 +6012,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5001,6 +6092,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5072,6 +6164,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5143,6 +6236,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5186,10 +6280,10 @@
             }
           }
         ],
-        "/art/floor/tiles/furniture-kit.tsx": [
+        "/art/floor/tiles/floor-plane.tsx": [
           {
             "status": 200,
-            "text": "@text:resources/floor/tiles/furniture-kit.tsx"
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
         "/api/building/rooms/zeta/map": [
@@ -5211,8 +6305,8 @@
         "local_minutes": 45,
         "scene": {
           "measurer": {
-            "glyph_w": 6,
-            "line_h": 12
+            "glyph_w": { "fact": 6, "name": 8, "screen": 5 },
+            "line_h": { "fact": 12, "name": 16, "screen": 12 }
           },
           "character": {
             "w": 18,
@@ -5226,10 +6320,29 @@
         "camera": [
           {
             "at_ms": 50,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
+          },
+          {
+            "at_ms": 52,
+            "act": "scroll",
+            "delta_x": 10,
+            "delta_y": 40
+          },
+          {
+            "at_ms": 54,
+            "act": "pinch",
+            "from": {
+              "x": 640,
+              "y": 400
+            },
+            "to": {
+              "x": 600,
+              "y": 400
+            },
+            "factor": 1.5
           },
           {
             "at_ms": 60,
@@ -5347,6 +6460,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5426,6 +6540,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5497,6 +6612,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5568,6 +6684,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5805,6 +6922,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5884,6 +7002,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5955,6 +7074,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6026,6 +7146,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6167,7 +7288,7 @@
       "reduce": true
     },
     "building_ride_in_flight": {
-      "note": "Appendix B row 16's ride in flight (card#7343 r1 ruling: the click commits the ride; r2-4, the seat's ruling: the hold protects the glide only). The ride to the labelled floor, then — while its glide is in flight — a second click on the ride control, a wheel, a key's zoom, a drag, the keyboard's focus on the other plate and the whole-building control, each of which leaves the camera on the plate and none of which rides again; then the glide arrives and the page asks for the route (`arrive`) and the navigation does not complete, so the lobby stays — a wheel then moves the camera, and the ride to the other floor is taken.",
+      "note": "Appendix B row 16's ride in flight (card#7343 r1 ruling: the click commits the ride; r2-4, the seat's ruling: the hold protects the glide only). The ride to the labelled floor, then — while its glide is in flight — a second click on the ride control, a Ctrl+wheel, a plain wheel and a touch pinch (each leaving the camera on the plate, the two wheels consumed — card#11045), a key's zoom, a drag, the keyboard's focus on the other plate and the whole-building control, each of which leaves the camera on the plate and none of which rides again; then the glide arrives and the page asks for the route (`arrive`) and the navigation does not complete, so the lobby stays — a Ctrl+wheel then moves the camera, and the ride to the other floor is taken.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -6264,6 +7385,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6343,6 +7465,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6414,6 +7537,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6485,6 +7609,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6611,10 +7736,29 @@
           },
           {
             "at_ms": 2300,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": -100
+          },
+          {
+            "at_ms": 2310,
+            "act": "scroll",
+            "delta_x": 30,
+            "delta_y": 120
+          },
+          {
+            "at_ms": 2320,
+            "act": "pinch",
+            "from": {
+              "x": 640,
+              "y": 400
+            },
+            "to": {
+              "x": 600,
+              "y": 380
+            },
+            "factor": 1.5
           },
           {
             "at_ms": 2350,
@@ -6642,7 +7786,7 @@
           },
           {
             "at_ms": 3200,
-            "act": "wheel",
+            "act": "ctrl_wheel",
             "x": 640,
             "y": 400,
             "delta_y": 100
@@ -6752,6 +7896,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6831,6 +7976,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6902,6 +8048,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6973,6 +8120,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",

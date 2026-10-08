@@ -35,12 +35,22 @@ with the document it is checking, and it survives exactly the pass that falsifie
                                                disjoint on half-open rects (each is the furniture
                                                box its desk is drawn inside, section 10.3); absent,
                                                section 10.3 must SAY so and no map may exist in the tree;
-                                               the desk sprite's size against its PNG; and the
+                                               and the
                                                READ PATHS section 10.3 says a room's map is fetched
                                                from must be exactly the ones D2 section 8.7 declares;
                                                and the worked floors laid at the furniture box --
                                                section 4.6's two rows and D2 section 8.7's authored
-                                               rooms and worked room map -- re-derived from the box
+                                               rooms and worked room map -- re-derived from the box;
+                                               and the shipped default's RESERVED DESK, its id and
+                                               role read out of the map and held equal to section
+                                               10.3's sentence and section 12's row (card#11144)
+  G-walls the PM office walls (card#11144)     on the shipped default: every wall cell (a tile declaring
+                                               the kind `wall`) outside every `desks` object; the wall
+                                               tile declares `kind: wall` and its marker parses as XML
+  G-scenery the standing pieces (card#11046)   on the shipped default: every tile names a shipped tileset
+                                               and a tile declaring a kind of the theme registry's set;
+                                               every standing piece's cell rect inside the grid and
+                                               outside every `desks` object
   G9  D2 section 6.5's delivery contract        a render row sourcing one of the TEN non-version-
                                                bearing members without `fetch-fresh` / `dark-only`;
                                                a section 5 table this gate has no column for; a table
@@ -535,7 +545,10 @@ else:
         "fit": r"further elements that fit \| \*\*(\d+)\*\*",
         "reach": r"the cap could reach \| \*\*(\d+)\*\*",
         "reach_b": r"worst-case delta of \*\*([\d,]+) B\*\*",
-        "breach": r"16 breaches \| \*\*([\d,]+) B\*\*",
+        # The row's own label names the cap one past the reachable one; it is parsed rather than
+        # written here (it read "16" until card#11144's 95 B moved the reachable cap from 15 to 14).
+        "breach_at": r"\| (\d+) breaches \| \*\*[\d,]+ B\*\*",
+        "breach": r"\| \d+ breaches \| \*\*([\d,]+) B\*\*",
         "over": r"which is \*\*(\d+) B over\*\*",
     }
     for k, p in pats.items():
@@ -556,6 +569,7 @@ else:
                                    ("elements that fit", g3["fit"], want_fit),
                                    ("cap reachable", g3["reach"], want_reach),
                                    ("worst case at that cap", g3["reach_b"], want_reach_b),
+                                   ("the cap one past it", g3["breach_at"], want_reach + 1),
                                    ("worst case one past it", g3["breach"], want_breach),
                                    ("bytes over the bound", g3["over"], want_over)):
             if stated != want:
@@ -1575,13 +1589,16 @@ if not S:
 slot_rows = table_rows(sec32, r"^\| Seat \| `h` \| `h mod \d+` \| Probes \| Slot \|") or []
 if len(slot_rows) < 4:
     fail.append(f"G8 CONTROL: {len(slot_rows)} rows parsed from section 3.2's worked assignment")
+# A row's Probes cell is a count, or `role` for the reserved desk's holder (card#11144): the holder is
+# seated by its role before the probe loop and never probes.  `None` stands for `role` below.  Which
+# slots the function assigns is re-derived by G8i, once the shipped default's reservation is read.
 parsed = []
 for r in slot_rows:
     c = cells(r)
     m2 = re.match(r"^`([^`]+)`$", c[0])
     if not m2:
         continue
-    parsed.append((m2.group(1), int(c[1]), int(c[2]), int(c[3]),
+    parsed.append((m2.group(1), int(c[1]), int(c[2]), None if c[3] == "role" else int(c[3]),
                    int(re.sub(r"\D", "", c[4]))))
 for key, h_stated, mod_stated, probes_stated, slot_stated in parsed:
     h = fnv1a32(key)
@@ -1590,21 +1607,23 @@ for key, h_stated, mod_stated, probes_stated, slot_stated in parsed:
                     f"stated constants gives {h}")
     if S and h % S != mod_stated:
         fail.append(f"G8: section 3.2 states h(`{key}`) mod {S} = {mod_stated}; it is {h % S}")
-if S and parsed:
-    occ = {}
-    for key, *_ in sorted(parsed, key=lambda t: (fnv1a32(t[0]), t[0].split("/")[-1])):
+
+
+def assign_slots(keys, S, k=None, holder=None):
+    """Section 3.2's function: `holder` at the reserved index `k`, `k` taken whether or not it is
+    held, every other key by `(h + i) mod S` in ascending `(h, seat_id)`.  Returns key -> (slot,
+    probes), probes `None` for the holder."""
+    taken = set() if k is None else {k}
+    out = {} if holder is None else {holder: (k, None)}
+    for key in sorted((x for x in keys if x != holder), key=lambda x: (fnv1a32(x), x.split("/")[-1])):
         h = fnv1a32(key)
-        i = 0
-        while (h + i) % S in occ:
-            i += 1
-        occ[(h + i) % S] = (key, i)
-    for key, _h, _m, probes_stated, slot_stated in parsed:
-        got_slot = [s for s, (k, _) in occ.items() if k == key][0]
-        got_probes = occ[got_slot][1]
-        if (got_slot, got_probes) != (slot_stated, probes_stated):
-            fail.append(f"G8: section 3.2 assigns `{key}` slot {slot_stated} after "
-                        f"{probes_stated} probes; the function it publishes assigns slot "
-                        f"{got_slot} after {got_probes}")
+        for i in range(S):
+            if (h + i) % S not in taken:
+                taken.add((h + i) % S)
+                out[key] = ((h + i) % S, i)
+                break
+    return out
+
 
 sec33 = section_text("33-collision-displacement-and-why-a-desk-move-is-itself-an-event") or ""
 m = re.search(prose(r"provisioning `([^`]+)` \(h = (\d+),\s*h mod (\d+) = \*\*(\d+)\*\*\)"), sec33)
@@ -1624,12 +1643,18 @@ else:
         inc_h = fnv1a32("aimla/" + m2.group(1))
         if inc_h != int(m2.group(2)):
             fail.append(f"G8: section 3.3 states the incumbent's h = {m2.group(2)}; it is {inc_h}")
-        if h % mod_s != inc_h % mod_s:
-            fail.append("G8: section 3.3's 'collision' pair does not collide under the stated "
-                        "function — the worked case does not exercise the rule it illustrates")
+        # The arrival collides with the incumbent's SLOT, which is the incumbent's hash slot or, as on
+        # the shipped default's reservation (card#11144), the slot it probed to: section 3.2's table states it.
+        _inc_slot = next((p[4] for p in parsed if p[0] == "aimla/" + m2.group(1)), None)
+        if int(m2.group(3)) != _inc_slot or h % mod_s != _inc_slot:
+            fail.append(f"G8: section 3.3's 'collision' pair does not collide under the stated "
+                        f"function — the arrival hashes to {h % mod_s}, section 3.3 places the incumbent at "
+                        f"slot {m2.group(3)} and section 3.2's table at {_inc_slot}, so the worked case does "
+                        f"not exercise the rule it illustrates")
         if (h < inc_h) is not True:
             fail.append("G8: section 3.3 says the arriving seat takes the slot, but it does not "
                         "sort lower in the (h, seat_id) order the function uses")
+m33_to = re.search(prose(r"probes to slot \*\*(\d+)\*\*"), sec33)
 
 # ---- G8b. `S` against the SHIPPED DEFAULT map file, and its absence declared rather than implied ----
 # WHAT MOVED UNDER card#9208's REVERSAL (2026-09-12) AND WHAT DID NOT.  The file this leg counts is no
@@ -1809,47 +1834,9 @@ else:
         fail.append("G8 CONTROL: section 10.3 no longer restates the shipped default's slot count in "
                     "the form this leg closes against section 3.2, so the two homes are unguarded")
 
-# ---- G8c. the desk sprite's declared size, against the FILE -----------------------------------
-# Section 12's viewport row waited on "a desk's rendered width [being] a measured number rather than
-# a design intent" (section 14 item 7).  The tileset landed on 2026-09-12 and section 10.3 now states
-# that width -- which makes it a number with two homes, a document and a PNG, and the document is the
-# copy nothing re-derives.  G4 already binds section 12's row to section 10.3's sentence; this leg
-# binds that sentence to the bytes, so the pair cannot drift from the file together.
-#
-# BOTH POPULATIONS ARE READ OUT OF THE DOCUMENT: the dimensions AND the path come from section 10.3's
-# own sentence, so re-curating the tileset or renaming the file moves this check with it rather than
-# leaving a stored `116` behind.  The PNG header is the authority -- IHDR width/height at a fixed
-# offset, which is the format's own declaration about itself and needs no decoder.
-#
-# Two branches, and the summary prints which one ran.  DECLARED: the file must exist, be a PNG, and
-# agree.  UNDECLARED: section 10.3 states no sprite measurement, which is the correct state while no
-# tileset is vendored -- and it is not a silent skip, because section 12 cannot then carry the row
-# either: G4 reds any figure that is not a whole token at the section it cites.
-SPRITE_DECL = prose(r"A desk sprite is (\d+) px wide and (\d+) px tall\*\* \(`([^`]+)`\)")
-m_sprite = re.search(SPRITE_DECL, sec103)
-g8c_branch = "UNDECLARED — section 10.3 measures no sprite, so section 12 may cite none (G4 holds that half)"
-if m_sprite:
-    _dw, _dh, _rel = int(m_sprite.group(1)), int(m_sprite.group(2)), m_sprite.group(3)
-    _sprite = ROOT / _rel
-    if not _sprite.is_file():
-        g8c_branch = f"MISSING — `{_rel}`"
-        fail.append(f"G8: section 10.3 states a desk sprite is {_dw}x{_dh} px and names "
-                    f"`{_rel}`, and no such file exists — a measurement of a file that is not "
-                    f"there is the defect card#9208 found in `S`, in a second number")
-    else:
-        _hdr = _sprite.read_bytes()[:24]
-        if _hdr[:8] != b"\x89PNG\r\n\x1a\n" or len(_hdr) < 24:
-            g8c_branch = f"UNREADABLE — `{_rel}`"
-            fail.append(f"G8: `{_rel}` is not a PNG this gate can read a size out of — clause 1 of "
-                        f"section 10.1 admits the suffix and nothing established the dimensions, "
-                        f"and a size this gate could not establish is a red rather than a skip")
-        else:
-            _aw, _ah = struct.unpack(">II", _hdr[16:24])
-            g8c_branch = f"MEASURED from {_rel}: {_aw}x{_ah} px"
-            if (_aw, _ah) != (_dw, _dh):
-                fail.append(f"G8: section 10.3 states the desk sprite is {_dw}x{_dh} px and "
-                            f"`{_rel}` is {_aw}x{_ah} px — the document and the file disagree, and "
-                            f"section 12's viewport row rests on the document's copy")
+# ---- G8c, the desk sprite's declared size against its PNG, RETIRED with the sprite (card#11046, Appendix B
+# row 22): the bridge kit and its desk PNG left the tree, the floor's theme draws the desk as code with no
+# native size (FLOOR.md section 10.6), and section 12's *Desk sprite width* row retired with the file it measured.
 
 # ---- G8e. the FURNITURE BOX at the cap and the shipped default's GRID, against their FILES ---------
 # Appendix B row 14's slice B (card#7341 step 11) gave section 12 two more Measured rows -- the
@@ -1956,21 +1943,286 @@ else:
                                 f"and the shipped default is the map every unauthored room renders")
             g8e_grid += f"; {len(_mobjs)} `desks` objects held at least the box"
 
-# ---- G8f. section 12's VIEWPORT arithmetic, re-derived from the map, the box and the viewport floor ----
+# ---- G8h. the shipped default's RESERVED DESK, against the FILE (card#11144, PR-1a) ----------------------
+# Section 12 gained a Measured row -- which desk the shipped default reserves, by Tiled `id`, and for which
+# role -- and it is a fact with three homes: a sentence in section 10.3, the row, and the map's one `desks`
+# object carrying `reserved_for`.  G4 binds the row's NUMBER to section 10.3 as a whole token, which is weak
+# for a small id (any `3` in the section satisfies it), so this leg binds all three by VALUE: the id and the
+# role are read out of section 10.3's sentence, out of section 12's row, and out of each map G8b counted,
+# and every pair must agree.  A map that reserves two desks is refused by name here too, as the console
+# refuses it at the write (`App\Floor\FloorMap`).  Which seat sits at the reserved desk is G8i's,
+# below.
+RES_DECL = prose(r"The shipped default reserves `id (\d+)` for `([a-z0-9-]+)`\*\*")
+RES_ROW = re.compile(r"^`id (\d+)`, `([a-z0-9-]+)`$")
+g8h = "NOT MEASURED"
+m_res = re.search(RES_DECL, sec103)
+_res_rows = [cells(r) for r in (table_rows(sec12, r"^\| Value \| Number \| Basis \| Where \|") or [])
+             if cells(r)[0].startswith("Reserved desk of the shipped default")]
+if not m_res:
+    fail.append("G8 CONTROL: section 10.3 no longer states the shipped default's reserved desk in the form this "
+                "leg reads (`The shipped default reserves `id N` for `role`**`), so section 12's Measured row "
+                "for it is bound to prose nothing re-derives")
+elif len(_res_rows) != 1 or not RES_ROW.match(_res_rows[0][1].replace("**", "")):
+    fail.append(f"G8 CONTROL: section 12 carries {len(_res_rows)} row(s) named `Reserved desk of the shipped "
+                f"default`, and exactly one is required with its Number cell in the form `id N`, `role` -- "
+                f"a row this leg cannot read is a figure nothing holds")
+elif not g8_maps:
+    fail.append("G8: section 10.3 states the shipped default's reserved desk and no map file was read to hold "
+                "it against -- the figure is a measurement of a file this run never opened")
+else:
+    _decl_res = (m_res.group(1), m_res.group(2))
+    _row = RES_ROW.match(_res_rows[0][1].replace("**", ""))
+    _row_res = (_row.group(1), _row.group(2))
+    if _row_res != _decl_res:
+        fail.append(f"G8: section 12 says the shipped default reserves id {_row_res[0]} for `{_row_res[1]}` and "
+                    f"section 10.3 says id {_decl_res[0]} for `{_decl_res[1]}` -- one fact, two homes, and they "
+                    f"disagree")
+    for _mrel in g8_maps:
+        _doc = json.loads((ROOT / _mrel).read_text())
+        _found = []
+        for _l in _doc.get("layers", []):
+            if _l.get("type") == "objectgroup" and _l.get("name") == layer_name:
+                for _o in _l.get("objects", []):
+                    for _p in _o.get("properties", []) or []:
+                        if _p.get("name") == "reserved_for":
+                            _found.append((str(_o.get("id")), _p.get("type"), _p.get("value")))
+        if len(_found) != 1:
+            g8h = f"{_mrel} reserves {len(_found)} desk(s)"
+            fail.append(f"G8: `{_mrel}` carries `reserved_for` on {len(_found)} `{layer_name}` object(s) "
+                        f"({_found}) and section 10.3 states it reserves exactly one -- a room has one "
+                        f"reserved desk, which the console refuses any other map for at the write")
+            continue
+        _fid, _ftype, _fval = _found[0]
+        g8h = f"MEASURED from {_mrel}: id {_fid} for `{_fval}` ({_ftype})"
+        if _ftype != "string" or (_fid, _fval) != _decl_res:
+            fail.append(f"G8: `{_mrel}` reserves id {_fid} for `{_fval}` (a Tiled `{_ftype}` property) and "
+                        f"section 10.3 states id {_decl_res[0]} for `{_decl_res[1]}` (a `string`) -- the "
+                        f"document and the file disagree, and section 12's reserved-desk row rests on the "
+                        f"document's copy")
+
+# ---- G8i. section 3.2's and 3.3's worked tables, re-derived over the RESERVATION (card#11144, PR-3) ----
+# The worked assignment is the shipped default's, and the shipped default reserves a desk (G8h): its
+# index after the `id` sort is taken before the probe loop, the table's one `role` row is its holder and
+# sits there, and every other row is the loop's answer with that desk taken.  Section 3.3's collision is
+# the same function over the table plus the arriving seat: the arrival takes its hash slot, the displaced
+# incumbent probes to the slot section 3.3 states, and no other desk -- the holder included -- moves.
+# CONTROL: the function WITHOUT the reservation, over the same keys, must disagree with the table; if it
+# agreed, this leg could not tell a client that seats by role from one that ignores the reservation.
+g8i = "NOT MEASURED"
+_g8i_k = None
+if m_res and g8_maps:
+    _ids = []
+    for _l in json.loads((ROOT / sorted(g8_maps)[0]).read_text()).get("layers", []):
+        if _l.get("type") == "objectgroup" and _l.get("name") == layer_name:
+            _ids = sorted(int(_o.get("id")) for _o in _l.get("objects", []))
+    if int(m_res.group(1)) in _ids:
+        _g8i_k = _ids.index(int(m_res.group(1)))
+if _g8i_k is None:
+    fail.append("G8 CONTROL: the shipped default's reserved desk was not resolved to an index (G8h's "
+                "declaration or map was not read), so section 3.2's worked table is held to no reservation")
+elif S and parsed:
+    _holders = [p[0] for p in parsed if p[3] is None]
+    _keys = [p[0] for p in parsed]
+    if len(_holders) != 1:
+        fail.append(f"G8: section 3.2's worked table writes {len(_holders)} `role` rows; the shipped default "
+                    f"reserves one desk, so exactly one seat sits there by its role")
+    else:
+        _holder = _holders[0]
+        _got = assign_slots(_keys, S, _g8i_k, _holder)
+        for key, _h, _m, probes_stated, slot_stated in parsed:
+            if _got[key] != (slot_stated, probes_stated):
+                fail.append(f"G8: section 3.2 assigns `{key}` slot {slot_stated} after "
+                            f"{'role' if probes_stated is None else probes_stated} probes; the function it "
+                            f"publishes, with index {_g8i_k} reserved, assigns slot {_got[key][0]} after "
+                            f"{'role' if _got[key][1] is None else _got[key][1]}")
+        _plain = assign_slots(_keys, S)
+        if all(_plain[key][0] == slot for key, _h, _m, _p, slot in parsed):
+            fail.append("G8 CONTROL: the function without the reservation gives section 3.2's worked table too, "
+                        "so this leg cannot tell a client that seats by role from one that ignores it")
+        g8i = f"MEASURED: {len(parsed)} rows, `{_holder}` at index {_g8i_k} by its role"
+        if m and m2 and m33_to:
+            _arr, _inc = "aimla/" + m.group(1), "aimla/" + m2.group(1)
+            _after = assign_slots(_keys + [_arr], S, _g8i_k, _holder)
+            if _after[_arr][0] != int(m.group(4)):
+                fail.append(f"G8: section 3.3 says `{_arr}` takes slot {m.group(4)}; with index {_g8i_k} "
+                            f"reserved the function gives it slot {_after[_arr][0]}")
+            if _after.get(_inc, (None,))[0] != int(m33_to.group(1)):
+                fail.append(f"G8: section 3.3 says `{_inc}` probes to slot {m33_to.group(1)}; with index "
+                            f"{_g8i_k} reserved the function gives slot {_after.get(_inc, (None,))[0]}")
+            _moved = [key for key in _keys if key != _inc and _after[key][0] != _got[key][0]]
+            if _moved:
+                fail.append(f"G8: section 3.3 says every other desk is untouched; with index {_g8i_k} reserved "
+                            f"the arrival also moves {_moved}")
+            g8i += f"; section 3.3's `{_arr}` -> {_after[_arr][0]}, `{_inc}` -> {_after[_inc][0]}"
+        else:
+            fail.append("G8 CONTROL: section 3.3's collision or the slot its incumbent probes to did not parse")
+
+# ---- G-walls. the PM office walls on the shipped default, under section 10.4's projection rule (card#11144) ----
+# Section 10.4's projection bullet, item 4: every wall but the band shows only its TOP EDGE -- a strip one cell
+# wide, painted with the tileset's wall tile, the `wall` kind the floor's theme draws as a strip on the grid's
+# plane (section 10.6 item 6, card#11046).  The shipped default carries the PM office's walls, so two legs hold
+# it, each re-derived from the files on every run and never from a list stored here:
+#   leg 1  every cell of the shipped default whose GID resolves to a tile declaring `kind: wall` lies OUTSIDE
+#          every `desks` object -- G8's half-open rects, the cell's whole 8 x 8 against the object.  A wall cell
+#          inside a slot is drawn UNDER that desk (the plane draws under every desk), so it is a wall that
+#          silently vanishes, and the console does not refuse one (it validates documents).
+#   leg 2  the wall tile -- the one drawn from the wall-strip marker, tile 2 since the planks and the rug
+#          retired -- declares `kind: wall`, so every stored map's walls keep their meaning; and its marker
+#          parses as well-formed XML, the shape Gate 2 and Tiled read.
+# Until row 22 a second leg held the bridge kit's elevation-only tiles off the shipped default; it is
+# G-scenery's first now, over every tile.  Until row 22 a third held the strip's fill equal to `--house-trim`;
+# nothing draws the marker's fill since the theme draws the walls, so the copy and its guard retired together.
+# Each leg carries a CONTROL that reds rather than reporting clean when its population is empty.
+# What it does NOT check, said rather than implied: an authored map (the console validates documents, not
+# pictures -- section 10.3's residue), where on the plane a wall runs, the doorway's width, and whether the
+# walls LOOK right -- that is the screenshot's, at review.
+gw_status = "NOT MEASURED"
+gs_status = "NOT MEASURED"
+GW_TILE = "wall-strip.svg"
+REGISTRY = ROOT / "resources/floor/themes/index.js"
+_kinds = re.search(r"^export const KINDS = Object\.freeze\(\[([^\]]*)\]\);$", REGISTRY.read_text() if REGISTRY.is_file() else "", re.M)
+KINDS = re.findall(r"'([a-z][a-z0-9-]*)'", _kinds.group(1)) if _kinds else []
+PLANE_KINDS = {"wall", "accent"}
+
+
+def gw_tile_layers(layers):
+    """Every tile layer, inside groups at any depth too -- the renderer's own walk (section 10.3)."""
+    for l in layers:
+        if l.get("type") == "group":
+            yield from gw_tile_layers(l.get("layers", []))
+        elif l.get("type") == "tilelayer":
+            yield l
+
+
+def gw_tiles(map_path, doc):
+    """GID -> (tileset path, tile id, kind or None, width, height) over every tileset the map names, read out of
+    each `.tsx`; a `source` that resolves to no file is listed under None with its path, for G-scenery."""
+    out, missing = {}, []
+    for ts in doc.get("tilesets", []):
+        src = ts.get("source")
+        if not isinstance(src, str):
+            missing.append(("(embedded)", int(ts.get("firstgid", 0))))
+            continue
+        tsx = (map_path.parent / src).resolve()
+        if not tsx.is_file():
+            missing.append((src, int(ts["firstgid"])))
+            continue
+        for t in ET.parse(tsx).getroot().findall("tile"):
+            img = t.find("image")
+            kind = next((p.get("value") for p in t.iter("property") if p.get("name") == "kind"), None)
+            out[int(ts["firstgid"]) + int(t.get("id"))] = (tsx, int(t.get("id")), kind,
+                                                           int(img.get("width")) if img is not None else 0,
+                                                           int(img.get("height")) if img is not None else 0,
+                                                           img.get("source") if img is not None else None)
+    return out, missing
+
+
+if not KINDS:
+    fail.append("G-walls/G-scenery CONTROL: the theme registry's `KINDS` did not parse out of "
+                "`resources/floor/themes/index.js`, so no tile's kind could be held against the set")
+elif not g8_maps:
+    fail.append("G-walls: no shipped default map was read (see the G8 lines above), so the walls on it were "
+                "never measured")
+else:
+    for _mrel in g8_maps:
+        _mp = ROOT / _mrel
+        if _mp.suffix != ".tmj":
+            fail.append(f"G-walls: `{_mrel}` is not a `.tmj` and this leg reads the JSON spelling only -- the "
+                        f"walls on it were never measured")
+            continue
+        _doc = json.loads(_mp.read_text())
+        _tw, _th = int(_doc["tilewidth"]), int(_doc["tileheight"])
+        _gw, _gh = int(_doc["width"]) * _tw, int(_doc["height"]) * _th
+        _tiles, _missing = gw_tiles(_mp, _doc)
+        _objs = g8_maps[_mrel][0]
+        _inside = lambda x, y, w, h, o: x < o[1] + o[3] and o[1] < x + w and y < o[2] + o[4] and o[2] < y + h
+        # leg 2 first: the wall tile and its marker.
+        _strip = [(g, t) for g, t in _tiles.items() if t[5] is not None and pathlib.PurePosixPath(t[5]).name == GW_TILE]
+        if not _strip:
+            fail.append(f"G-walls CONTROL: no tileset `{_mrel}` names declares a tile drawn from `{GW_TILE}`, so "
+                        f"the shipped default's walls cannot be found -- leg 1 would read nothing")
+            continue
+        for _g, _t in _strip:
+            if _t[2] != "wall":
+                fail.append(f"G-walls leg 2: tile {_t[1]} of `{_t[0].name}`, the wall-strip marker's, declares "
+                            f"{'no kind' if _t[2] is None else f'the kind `{_t[2]}`'} -- it must declare `kind: wall`, "
+                            f"so every stored map's walls keep their meaning (section 10.6's retirements)")
+            try:
+                ET.parse(_t[0].parent / _t[5])
+            except ET.ParseError as exc:
+                fail.append(f"G-walls leg 2: `{GW_TILE}` is not well-formed XML ({exc}) -- Tiled and Gate 2 read it")
+        _wall_gids = {g for g, t in _tiles.items() if t[2] == "wall"}
+        _walls, _pieces, _bad_tiles = 0, 0, []
+        for _l in gw_tile_layers(_doc.get("layers", [])):
+            _cols = int(_l.get("width", _doc["width"]))
+            for _i, _cell in enumerate(_l.get("data", [])):
+                _gid = int(_cell) & 0x1FFFFFFF                    # Tiled's three flip bits, cleared
+                if _gid == 0:
+                    continue
+                _col, _row = _i % _cols, _i // _cols
+                _t = _tiles.get(_gid)
+                # G-scenery leg 1: a shipped tileset, and a tile declaring a kind of the registry's set.
+                if _t is None or _t[2] not in KINDS:
+                    _bad_tiles.append((_l.get("name"), _col, _row, _gid,
+                                       "names a tileset the repository does not ship, or a tile it does not declare"
+                                       if _t is None else ("declares no kind" if _t[2] is None
+                                                           else f"declares the kind `{_t[2]}`, which the registry does not name")))
+                    continue
+                if _gid in _wall_gids:
+                    _walls += 1
+                    _cx, _cy = _col * _tw, _row * _th
+                    for _o in _objs:
+                        if _inside(_cx, _cy, _tw, _th, _o):
+                            fail.append(f"G-walls leg 1: `{_mrel}` `{_l.get('name')}` wall cell ({_col}, {_row}) lies "
+                                        f"inside `desks` object id {_o[0]} -- a wall cell inside a slot is drawn under "
+                                        f"that desk and vanishes (section 10.4 item 4)")
+                    continue
+                if _t[2] in PLANE_KINDS:
+                    continue
+                # G-scenery leg 2: a standing piece's WHOLE cell rect, bottom-aligned as drawn (mapTiles()).
+                _pieces += 1
+                _x, _y = _col * _tw, (_row + 1) * _th - _t[4]
+                if _x < 0 or _y < 0 or _x + _t[3] > _gw or _y + _t[4] > _gh:
+                    fail.append(f"G-scenery leg 2: `{_mrel}` `{_l.get('name')}` places a `{_t[2]}` at ({_col}, {_row}) "
+                                f"whose {_t[3]} x {_t[4]} cell leaves the grid")
+                for _o in _objs:
+                    if _inside(_x, _y, _t[3], _t[4], _o):
+                        fail.append(f"G-scenery leg 2: `{_mrel}` `{_l.get('name')}` places a `{_t[2]}` at ({_col}, {_row}) "
+                                    f"whose {_t[3]} x {_t[4]} cell meets `desks` object id {_o[0]} -- scenery never "
+                                    f"sits under a desk's facts (section 10.6 item 6)")
+        for _m in _missing:
+            fail.append(f"G-scenery leg 1: `{_mrel}` names the tileset `{_m[0]}`, which the repository does not ship")
+        for _ln, _c, _r, _g, _why in _bad_tiles:
+            fail.append(f"G-scenery leg 1: `{_mrel}` `{_ln}` cell ({_c}, {_r}), GID {_g}, {_why}")
+        if _walls == 0:
+            fail.append(f"G-walls CONTROL: `{_mrel}` places no wall cell on any tile layer, and section 10.3 says the "
+                        f"shipped default draws the PM office's walls -- leg 1 read an empty population")
+        if _pieces == 0:
+            fail.append(f"G-scenery CONTROL: `{_mrel}` places no standing piece, and section 10.6 says the shipped "
+                        f"default lays the house picture's scenery -- leg 2 read an empty population")
+        if not _missing and not _bad_tiles and _walls and _pieces:
+            gw_status = (f"MEASURED from {_mrel}: {_walls} wall cell(s) outside all {len(_objs)} `desks` objects; "
+                         f"the `{GW_TILE}` tile declares `kind: wall` and its marker parses")
+            gs_status = (f"MEASURED from {_mrel}: every placed tile names a shipped tileset and a kind of the "
+                         f"registry's {len(KINDS)}; {_pieces} standing piece(s), each cell inside the grid and "
+                         f"outside every `desks` object")
+
+# ---- G8f. section 12's VIEWPORT arithmetic, re-derived from the map, the box and the reference viewport ----
 # The viewport row restates, in prose, how wide the shipped default is in furniture boxes and what the
-# camera's fit zoom is at the viewport floor.  Until PR #232's round-1 review that cell CLAIMED to be
+# camera's fit zoom is at the reference viewport (a size the fit is measured at, and no minimum since the
+# operator's ruling of 2026-10-01 on card#7341: section 4.5 draws the floor at every viewport size).  Until PR #232's round-1 review that cell CLAIMED to be
 # gate-bound while three planted edits to it exited 0 (MAJOR-2).  This leg is the binding: the row
 # count and the boxes per row are re-derived from the map's `desks` objects (grouped by `y`), the box
-# from G8e, the grid from G8b, and the viewport floor from section 12's own row, and each figure the
+# from G8e, the grid from G8b, and the reference viewport from section 12's own row, and each figure the
 # cell states -- `R rows of N furniture boxes: N × W px = P px`, `on a grid **G px wide**`, `fit zoom is
 # **V ÷ G ≈ Z**` -- is recomputed and held.  A figure the cell states in another form is a CONTROL red,
 # not a skip.
 sec12_text = section_text("12-every-number-and-where-it-comes-from") or ""
-VIEW_ROW = r"^\| Floor viewport floor \| \*\*([\d,]+) × ([\d,]+) CSS px\*\* \|(.*)$"
+VIEW_ROW = r"^\| Floor reference viewport \| \*\*([\d,]+) × ([\d,]+) CSS px\*\* \|(.*)$"
 m_view = re.search(VIEW_ROW, sec12_text, re.M)
 g8f = "NOT MEASURED"
 if not m_view:
-    fail.append("G8 CONTROL: section 12's `Floor viewport floor` row no longer carries `**W × H CSS px**` as "
+    fail.append("G8 CONTROL: section 12's `Floor reference viewport` row no longer carries `**W × H CSS px**` as "
                 "its Number cell, so the viewport arithmetic has no viewport to be re-derived against")
 elif _box is None or not g8_maps:
     fail.append("G8: section 12's viewport arithmetic could not be re-derived — the box or the map was not "
@@ -2014,7 +2266,7 @@ else:
             for _name, (_stated, _real) in _want.items():
                 if _stated != _real:
                     fail.append(f"G8: section 12's viewport cell states {_name} = {_stated:,} and the map, the box "
-                                f"and the viewport floor re-derive {_real:,} — the cell's arithmetic drifted from "
+                                f"and the reference viewport re-derive {_real:,} — the cell's arithmetic drifted from "
                                 f"what it is stated to be computed from (`{_mrel}`, `{_brel}`)")
             if m_fit.group(3) != f"{_fit:.2f}":
                 fail.append(f"G8: section 12's viewport cell states a fit zoom of {m_fit.group(3)} and "
@@ -3313,20 +3565,30 @@ print(f"G8  desk-slot keys re-hashed: {len(parsed)} at S={S}, plus section 3.3's
       f"was held against nothing but this document's own declaration that there is no file, "
       f"which is the strongest true claim available and is NOT evidence about the number. The "
       f"tree sweep for a map skips {sorted(SWEEP_SKIP)}.")
-print(f"    G8 the desk sprite section 12's viewport row waited on: {g8c_branch}. MEASURED means "
-      f"the size was read out of the PNG's own IHDR header and held against section 10.3's "
-      f"sentence, both the dimensions and the path re-derived from that sentence.")
 print(f"    G8 the furniture box at the cap (Appendix B row 14, slice B): {g8e_box}. MEASURED means the box "
       f"was read out of its one declaration line — the shape `App\\Floor\\FurnitureBox` admits — and held "
       f"against section 10.3's sentence, the path re-derived from that sentence.")
 print(f"    G8 the shipped default's grid: {g8e_grid}. MEASURED means `width × tilewidth` by `height × "
       f"tileheight` was read out of the map and held against section 10.3's sentence, and every `desks` "
       f"object was held at least the box above.")
+print(f"    G8 the shipped default's reserved desk (card#11144): {g8h}. MEASURED means the one `desks` object "
+      f"carrying `reserved_for` was read out of the map, and its id and role held equal to section 10.3's "
+      f"sentence and section 12's row.")
+print(f"    G8 section 3.2's and 3.3's worked tables over the reserved desk (card#11144): {g8i}. MEASURED means "
+      f"every row was re-assigned by section 3.2's function with the reserved index taken and its holder "
+      f"seated by role, and the function without the reservation was seen to disagree with the table.")
 print(f"    G8 section 12's viewport arithmetic: {g8f}. MEASURED means the rows, the boxes per row, the desk "
       f"across, the grid width and the fit zoom the viewport cell states were each recomputed from the map, "
-      f"the box and the row's own viewport floor and held equal.")
+      f"the box and the row's own reference viewport and held equal.")
 print(f"    G8 the worked floors laid at the furniture box: {g8g}. Each figure section 4.6's two rows and D2 "
       f"§ 8.7 state was re-derived from the box above, the rows' own tile counts and the worked JSON, and held.")
+print(f"G-walls the PM office walls on the shipped default (card#11144): {gw_status}. MEASURED means every "
+      f"wall cell was held outside every `desks` object and the wall-strip tile was held to `kind: wall`, its "
+      f"marker parsed. NOT checked: an authored map, where a wall runs, and how the walls look")
+print(f"G-scenery the shipped default's standing pieces (card#11046): {gs_status}. MEASURED means every placed "
+      f"tile resolved to a shipped tileset and a tile declaring a kind of the registry's set, and every standing "
+      f"piece's whole cell rect, bottom-aligned as drawn, was held inside the grid and outside every `desks` "
+      f"object. NOT checked: where an `accent` is painted, which is the author's, and how the pieces look")
 print(f"G11 the composed `api_error_type` line: {len(AET_PAIRS)} member/phrase pairs re-derived from "
       f"section 7.6, section 7.1's worked instance held against them, section 5.1's verbatim "
       f"illustration held against the MEMBERS; both predicates fed their own defect on this run and "

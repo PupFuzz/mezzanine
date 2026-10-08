@@ -52,7 +52,16 @@ The one key the reporter reads beyond § 3.1's table is marked as such in the co
 `protocol_agent_name` (§ 3.1) is optional. When a seat declares one, the reporter checks it against
 the coordination roster at flusher start and on `selftest`, found by § 3.1's resolution order. The name and the check's state ride every
 heartbeat, and `selftest`'s `protocol_agent_name_in_roster` fails when a readable roster does not hold
-the name.
+the name. On that same roster read the reporter relays the `role` of the roster entry the name
+selects as `protocol_agent_role` on every heartbeat (§ 3.1, card#11144): verbatim when the check is
+`checked` and exactly one entry carries that name with a slug-shaped `role`, and `null` otherwise.
+`selftest`'s `detail.protocol_agent_name_in_roster.roster_role` says what the read found.
+
+Every `turn.start` carries `console_url` (§ 6.3, card#9416): the address of the session's console on
+claude.ai, read from the tail of the file the hook's `transcript_path` names — the newest
+`bridge-session` record's id, or a non-null `remote_session_change` url — at most 1 MiB back from the
+end. It is `null` when nothing in that tail answers, when the bridge has ended, and when `descriptors`
+is not `full`; a value of any other shape is dropped and counted `console_url_malformed`.
 
 ## Running the acceptance suite
 

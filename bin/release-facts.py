@@ -15,7 +15,8 @@ from the source it names, or `NOT VERIFIED` naming what was not read and why. No
   3. WHAT THIS CANNOT VERIFY, always printed.
 
 EXIT: 0 printed; 1 a job that a pull_request runs declares a key that makes its status context
-differ from its job id (`name:`, a matrix `strategy:`, a reusable-workflow `uses:`) — the gates
+differ from its job id (a `name:` whose value is not exactly the job id, a matrix `strategy:`, a
+reusable-workflow `uses:`) — the gates
 column joins on job id, so that join is a CHECKED fact here rather than an assumption. A job with no
 pull_request trigger is printed and not counted: no PR carries its context, so the join decides
 nothing for it (the comment in `tree_section` says why the trap stays visible). 2 the tree could
@@ -51,6 +52,7 @@ PAGE = 100  # the API's per_page maximum; a full page is reported as possibly tr
 PR_EVENTS = ("pull_request", "pull_request_target")
 PR_FILTERS = ("paths", "paths-ignore", "branches", "branches-ignore")
 CONTEXT_KEYS = ("name", "strategy", "uses")  # each makes the check-run name differ from the job id
+# … except a `name:` whose plain or quoted scalar is exactly the job id: that context IS the job id.
 KEY = re.compile(r"^( *)([A-Za-z0-9_-]+|'[^']*'|\"[^\"]*\"):(?:\s+(.*))?$")
 
 
@@ -81,6 +83,14 @@ def _children(rows, i):
             break
         body.append(r)
     return body, (body[0][0] if body else None)
+
+
+def _names_itself(job: str, val: str) -> bool:
+    """True when a job's `name:` value is exactly its id, bare or in one pair of matching quotes.
+    Anything else — an expression, an empty value, a block scalar, an unmatched quote — is not admitted."""
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in "'\"":
+        val = val[1:-1]
+    return val == job
 
 
 def parse_workflow(text: str):
@@ -114,7 +124,8 @@ def parse_workflow(text: str):
             if not r[1]:
                 raise TreeError(f"line {r[3]}: not a job id")
             sub, ki = _children(body, j)
-            jobs.append((r[1], [s[1] for s in sub if s[0] == ki and s[1] in CONTEXT_KEYS]))
+            jobs.append((r[1], [s[1] for s in sub if s[0] == ki and s[1] in CONTEXT_KEYS
+                                and not (s[1] == "name" and _names_itself(r[1], s[2]))]))
     return trig, jobs
 
 
@@ -158,8 +169,8 @@ def tree_section(root: Path):
         for b in broken:
             print(f"  ✗ CONTEXT != JOB ID — {b}; its status context is not its job id")
     else:
-        print("  ✓ no job a pull_request runs declares name:/strategy:/uses:, so each such status context is its"
-              " job id (checked, not assumed)")
+        print("  ✓ no job a pull_request runs declares strategy:/uses: or a name: other than its job id, so each"
+              " such status context is its job id (checked, not assumed)")
     floors(root, lanes)
     return lanes, broken
 

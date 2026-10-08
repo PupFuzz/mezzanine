@@ -25,7 +25,8 @@
  *                      "seat": "<seat_id>",     //  § 4.4's `/floor/{floor}/{seat_id}` deep link
  *                      "scene": {               //  Appendix B row 14's scene inputs, as the painter
  *                        "measurer": {glyph_w, line_h},  //  supplies them on a page: a measurer that
- *                        "character": {w, h},   //  answers a stated width per glyph, the tree's
+ *                        "character": {w, h},   //  answers a stated width per glyph PER TYPE ROLE
+ *                                               //  (`Support/harness-measurer.mjs`), the tree's
  *                        "box": {width, height} //  SCENE_W/SCENE_H, and — only in a planted control —
  *                      },                       //  a box other than resources/floor/furniture-box.js's
  *                      "asset_failures": [ { "at_ms": N,  //  § 9 F14 as the painter reports it:
@@ -34,16 +35,23 @@
  *                      "panel": [ { "at_ms": N, //  the drill-down's USER actions, on the scenario
  *                        "action": "open" | "close" | "retry" | "more",   // clock: `open` names
  *                        "install_id": "…", "seat_id": "…" } ],           // the desk (§ 4.3)
- *                      "viewport": {width, height},  //  the viewer's viewport in CSS px (Appendix B
- *                                               //  row 15's capability floor) — absent, § 12's viewport
- *                                               //  floor itself (`VIEWPORT_FLOOR`), so every run written
- *                                               //  before row 15 draws the floor it always drew
- *                      "surface": {width, height},   //  the drawing's size, when not the viewport's
- *                      "camera": [ { "at_ms": N,  //  the viewer's camera acts (row 15): `wheel` at a
- *                        "act": "wheel", "x", "y", "delta_y", "delta_mode"?, "ctrl_key"? } | { "act": "drag", "dx", "dy" }
- *                        | { "act": "zoom", "notches" } | { "act": "fit" } | { "act": "resize", "width", "height" } ] }
- *                                               //  surface point (`delta_mode` the WheelEvent's, absent
- *                                               //  0; `ctrl_key` its `ctrlKey`, a pinch, absent false),
+ *                      "viewport": {width, height},  //  the viewer's window in CSS px, which is the
+ *                                               //  drawing surface the screen is handed (Appendix B
+ *                                               //  row 15) — absent, `HARNESS_SURFACE`
+ *                                               //  (`../Support/harness-surface.mjs`), the size every
+ *                                               //  run written before card#7341's 2026-10-01 ruling
+ *                                               //  was drawn at
+ *                      "camera": [ { "at_ms": N,  //  the viewer's camera acts (row 15, § 4.5): `scroll`, a
+ *                        "act": "scroll", "delta_x"?, "delta_y"?, "delta_mode"? } | { "act": "ctrl_wheel", "x", "y",
+ *                        "delta_y", "delta_mode"? } | { "act": "pinch", "from": {x, y}, "to": {x, y}, "factor" }
+ *                        | { "act": "drag", "dx", "dy" } | { "act": "zoom", "notches" } | { "act": "fit" }
+ *                        | { "act": "resize", "width", "height" } ] }
+ *                                               //  plain wheel event (the screen's `pan()`; each delta
+ *                                               //  absent 0, `delta_mode` the WheelEvent's, absent 0), a
+ *                                               //  Ctrl+wheel event at a surface point (its `zoom()`), one
+ *                                               //  step of a touch pinch (its `pinch()`; the midpoint
+ *                                               //  `from` → `to`, the spread's ratio `factor`) — the wheel's
+ *                                               //  two recorded with the `consumed` they answer —
  *                                               //  a drag, the keyboard's and the zoom buttons' zoom
  *                                               //  about the centre, the fit-floor control, and a
  *                                               //  viewport resize. A resize is followed by a render, as
@@ -58,11 +66,11 @@
  *                                               //  another page) — or, for Appendix B row 16's camera
  *                                               //  at building scale, an object: `{ "surface":
  *                                               //  {width, height},` the building's drawing surface
- *                                               //  (absent, the harness's default 1280 × 800 —
- *                                               //  `VIEWPORT_FLOOR`), `"camera": [ { "at_ms": N,
+ *                                               //  (absent, `HARNESS_SURFACE`), `"camera": [ { "at_ms": N,
  *                                               //  "act": "ride" } | { "act": "arrive" } | { "act":
  *                                               //  "return" } | { "act": "building" } | { "act":
- *                                               //  "wheel", "x", "y", "delta_y" } | { "act": "zoom",
+ *                                               //  "scroll", … } | { "act": "ctrl_wheel", … } | { "act":
+ *                                               //  "pinch", … } (the floor's three) | { "act": "zoom",
  *                                               //  "notches" } | { "act": "drag", "dx", "dy" } | {
  *                                               //  "act": "focus", "floor" } | { "act": "resize",
  *                                               //  "width", "height" } ], "local_hours": N,
@@ -74,7 +82,8 @@
  *                                               //  asks for the route, then the screen's
  *                                               //  `returned()` and a draw), the page coming back
  *                                               //  from the back-forward cache (`returned()`, then
- *                                               //  drawn), the whole-building control, the wheel, a
+ *                                               //  drawn), the whole-building control, the wheel's pan
+ *                                               //  and zoom and the touch pinch, a
  *                                               //  key's or a zoom button's zoom, the drag (or an
  *                                               //  arrow key's), the keyboard's focus on a plate
  *                                               //  (`focusPlate()`) and a surface resize, none
@@ -99,7 +108,8 @@
  *   `{ "records": [ … ], "final": <the last record>, "unscripted": [], "listeners": [ {type: n} ],
  *      "pending_timers": N, "rejections": [], "age_renders": [ {at, readouts} ],
  *      "streams": [ {opened_at, open_fired, refused, ended_at, closed_at} ],
- *      "desk_renders": [ {at, trigger, frame, …} ], "floor_renders": [ {at, frame} ],
+ *      "desk_renders": [ {at, trigger, frame, …} ], "floor_renders": [ {at, trigger, frame} ] — `trigger`
+ *      `render` for a render, `walk end` for a walk's paint-only refresh,
  *      "lobby_renders": [ {at, frame, label} ], "camera_acts": [ {at, act, before, after, glide_ms} ] — on
  *      the lobby, each act also carrying `label: {after, mid}`, and a ride's `ride: {cab, route, resolves_to}`
  *      — `resolves_to` the floor the floor page's `resolveRoute()` finds for the route over the building the
@@ -205,6 +215,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { scriptedFetch } from '../Support/scripted-fetch.mjs';
 import { shownLabel } from '../Support/shown-label.mjs';
+import { HARNESS_SURFACE } from '../Support/harness-surface.mjs';
+import { harnessMeasurer } from '../Support/harness-measurer.mjs';
 
 const dir = process.argv[2];
 
@@ -218,7 +230,7 @@ const { startAgeTicker } = await import(pathToFileURL(join(dir, 'age-readout.js'
 const { formatDuration } = await import(pathToFileURL(join(dir, 'duration.js')).href);
 const { createAnimationLog } = await import(pathToFileURL(join(dir, 'animation-log.js')).href);
 const { startDeskFloor } = await import(pathToFileURL(join(dir, '..', 'desk', 'desk-floor.js')).href);
-const { startFloorScreen, VIEWPORT_FLOOR, resolveRoute } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
+const { startFloorScreen, resolveRoute } = await import(pathToFileURL(join(dir, '..', 'floor', 'floor-screen.js')).href);
 const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'status-strip.js')).href);
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
@@ -235,6 +247,12 @@ const plateLabel = (camera) => shownLabel(showLabels, camera);
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const furniture = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'furniture-box.js')).href);
+const themeRegistry = await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'themes', 'index.js')).href);
+// FLOOR.md § 10.6 item 1: every theme the registry names, from disk, as the page imports each by the asset route.
+const themeModules = Object.fromEntries(await Promise.all(themeRegistry.THEMES.map(async (name) => [
+    name,
+    await import(pathToFileURL(join(repoRoot, 'resources', 'floor', 'themes', name, 'theme.js')).href),
+])));
 
 /** The payload with every `@json:` / `@text:` / `@box.` reference replaced (see the header). */
 function substitute(node) {
@@ -570,30 +588,53 @@ async function replay(scenario) {
     }
 
     if ((scenario.floor ?? null) !== null) {
-        screen = startFloorScreen(client, buildingHttp.fetch, clock, log, (frame) => {
-            floorRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)) });
+        screen = startFloorScreen(client, buildingHttp.fetch, clock, log, (frame, trigger = 'render') => {
+            floorRenders.push({ at: now, trigger, frame: JSON.parse(JSON.stringify(frame)) });
         }, {
             floor: scenario.floor.key,
             seat: scenario.floor.seat ?? null,
             reduce: scenario.reduce === true,
             local_time: viewerTime(scenario.floor),
-            viewport: scenario.floor.viewport ?? VIEWPORT_FLOOR,
-            surface: scenario.floor.surface,
+            surface: scenario.floor.viewport ?? HARNESS_SURFACE,
+            // FLOOR § 6.2's walk note item 4: a walk's last frame, on the scenario queue under its own
+            // label — a paint-only refresh the screen draws through the same callback as `walk end`,
+            // which the loop below never follows with a render.
+            timers: {
+                after: (ms, fire) => schedule(now + ms, 'walk end', () => {
+                    fire();
+
+                    return 'refreshed';
+                }),
+                cancel: (timer) => {
+                    const i = timers.indexOf(timer);
+
+                    if (i >= 0) {
+                        timers.splice(i, 1);
+                    }
+                },
+            },
         });
     }
 
-    // Appendix B row 14's scene inputs, as the painter supplies them on a page: the furniture box and
-    // the desk sprite from `resources/floor/furniture-box.js`, a measurer that answers a stated width
-    // per glyph, and the character's size as the fixture states it.
+    // Appendix B row 14's scene inputs, as the painter supplies them on a page: the furniture box from
+    // `resources/floor/furniture-box.js`, a measurer that answers a stated width per glyph in each type
+    // role, the character's size as the fixture states it, and the themes (FLOOR.md § 10.6) through the
+    // page's own `themeInputs()`. A run may reject the registry's import (`themes.registry: false`) or a
+    // theme's (`themes.reject: [name]`), and each is reported failed as `loadArt()` reports it.
     if (screen !== null && scenario.floor.scene !== undefined) {
-        const { measurer, character, box } = scenario.floor.scene;
+        const { measurer, character, box, themes: spec = {} } = scenario.floor.scene;
+        const { themeInputs, THEME_REGISTRY } = await import(pathToFileURL(join(dir, '..', 'floor', 'painter.js')).href);
+        const registry = spec.registry === false ? null : themeRegistry;
+        const rejected = registry === null ? [] : registry.THEMES.filter((name) => (spec.reject ?? []).includes(name));
+        const modules = registry === null ? {} : Object.fromEntries(registry.THEMES.map((name) => [name, rejected.includes(name) ? null : themeModules[name]]));
 
         screen.sceneInputs({
             box: box ?? furniture.FURNITURE_BOX,
-            desk_sprite: furniture.DESK_SPRITE,
-            measure: (text) => ({ w: [...String(text)].length * measurer.glyph_w, h: measurer.line_h }),
+            measure: harnessMeasurer(measurer),
             character,
+            themes: themeInputs(registry, modules),
         });
+        screen.assetsFailed([...(registry === null ? [THEME_REGISTRY] : []), ...rejected.map((name) => `theme:${name}`)]);
     }
 
     // § 9 F14, as the painter reports it — each an event on the scenario queue, followed by a render
@@ -646,6 +687,9 @@ async function replay(scenario) {
         });
     }
 
+    /** A `scroll` act's plain wheel event, as the screen's `pan()` takes it. */
+    const scrollDelta = (act) => ({ deltaX: act.delta_x ?? 0, deltaY: act.delta_y ?? 0, deltaMode: act.delta_mode ?? 0 });
+
     // Appendix B row 15's camera acts, each an event on the scenario queue, recorded with the camera
     // before and after it. Only a resize is followed by a render (see the header).
     for (const act of scenario.floor?.camera ?? []) {
@@ -656,10 +700,17 @@ async function replay(scenario) {
 
             const before = screen.camera();
             let glide = null;
+            let consumed;
 
             switch (act.act) {
-                case 'wheel':
-                    screen.wheel({ x: act.x, y: act.y }, { deltaY: act.delta_y, deltaMode: act.delta_mode ?? 0, ctrlKey: act.ctrl_key ?? false });
+                case 'scroll':
+                    ({ consumed } = screen.pan(scrollDelta(act)));
+                    break;
+                case 'ctrl_wheel':
+                    ({ consumed } = screen.zoom({ x: act.x, y: act.y }, { deltaY: act.delta_y, deltaMode: act.delta_mode ?? 0 }));
+                    break;
+                case 'pinch':
+                    screen.pinch(act.from, act.to, act.factor);
                     break;
                 case 'zoom':
                     screen.zoomStep(act.notches);
@@ -677,7 +728,7 @@ async function replay(scenario) {
                     throw new Error(`unknown camera act ${act.act}`);
             }
 
-            cameraActs.push({ at: now, act, before, after: screen.camera(), glide_ms: glide });
+            cameraActs.push({ at: now, act, before, after: screen.camera(), glide_ms: glide, ...(consumed === undefined ? {} : { consumed }) });
 
             return act.act;
         });
@@ -687,7 +738,7 @@ async function replay(scenario) {
         lobby = startLobbyScreen(client, buildingHttp.fetch, clock, log, (frame) => {
             lobbyRenders.push({ at: now, frame: JSON.parse(JSON.stringify(frame)), label: plateLabel(frame.camera) });
         }, {
-            surface: lobbyRun.surface ?? VIEWPORT_FLOOR,
+            surface: lobbyRun.surface ?? HARNESS_SURFACE,
             reduce: scenario.reduce === true,
             local_time: viewerTime(lobbyRun),
         });
@@ -702,6 +753,7 @@ async function replay(scenario) {
             let after = null;
             let glide = null;
             let ride;
+            let consumed;
 
             switch (act.act) {
                 case 'ride':
@@ -735,8 +787,14 @@ async function replay(scenario) {
                 case 'building':
                     glide = lobby.wholeBuilding().glide_ms;
                     break;
-                case 'wheel':
-                    lobby.wheel({ x: act.x, y: act.y }, { deltaY: act.delta_y, deltaMode: act.delta_mode ?? 0, ctrlKey: act.ctrl_key ?? false });
+                case 'scroll':
+                    ({ consumed } = lobby.pan(scrollDelta(act)));
+                    break;
+                case 'ctrl_wheel':
+                    ({ consumed } = lobby.zoom({ x: act.x, y: act.y }, { deltaY: act.delta_y, deltaMode: act.delta_mode ?? 0 }));
+                    break;
+                case 'pinch':
+                    lobby.pinch(act.from, act.to, act.factor);
                     break;
                 case 'zoom':
                     lobby.zoomStep(act.notches);
@@ -765,7 +823,8 @@ async function replay(scenario) {
                 ? { riding: { accessor: lobby.riding(), frame: lobbyRenders[lobbyRenders.length - 1].frame.riding } }
                 : {};
 
-            cameraActs.push({ at: now, act, before, after: shown, glide_ms: glide, label, ...(act.act === 'ride' ? { ride } : {}), ...riding });
+            cameraActs.push({ at: now, act, before, after: shown, glide_ms: glide, label, ...(act.act === 'ride' ? { ride } : {}), ...riding,
+                ...(consumed === undefined ? {} : { consumed }) });
 
             return act.act;
         });
@@ -805,9 +864,9 @@ async function replay(scenario) {
 
         await turn();
 
-        // A tick re-reads ages and a camera act moves the viewer's head: neither is an apply, and a
-        // page renders after neither.
-        if (timer.label !== 'age tick' && !timer.label.startsWith('camera ')) {
+        // A tick re-reads ages, a camera act moves the viewer's head, and a walk's end is a paint-only
+        // refresh (FLOOR § 6.2's walk note item 4): none is an apply, and a page renders after none.
+        if (timer.label !== 'age tick' && timer.label !== 'walk end' && !timer.label.startsWith('camera ')) {
             floor?.render();
 
             if (screen !== null) {

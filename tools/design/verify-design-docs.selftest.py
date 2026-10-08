@@ -160,6 +160,17 @@ because a gate can only be proven on a defect of its own class:
                `✅ LANDED` markers each minted a phantom artifact, and a fourth row was written
                unbolded to dodge it -- two forms of one marker.  The plant emboldens a marker
                already in the one form, so what reds is the emphasis alone.
+  `wall-cell`
+            -- write, at the anchored map cell, the GID the anchored tile layer's own first cell
+               carries, which is the class "a wall was painted inside a desk slot".  card#11144's
+               walls are why this exists: G-walls leg 1 holds every wall-strip cell of the shipped
+               default outside every `desks` object, and no other kind can paint a cell.  The GID is
+               read out of the layer's first cell -- the left side wall's -- so the plant stores none.
+  `piece-cell`
+            -- write, at the anchored map cell, the first non-zero GID the anchored tile layer places
+               before it, which is the class "a standing piece was placed inside a desk slot".
+               card#11046's scenery is why this exists: G-scenery leg 2 holds every standing piece's
+               whole cell outside every `desks` object.  The GID is read out of the layer itself.
 
 TWO VERDICTS.  `PLANTS` must RED, as described above.  `HOLDS` must NOT: the mutant must carry no
 line containing the named substring that the control lacks -- the same differential, pointed the
@@ -293,6 +304,71 @@ PLANTS = [
         "a later migration narrowing `protocol_agent_name` through a raw `ALTER TABLE ... MODIFY`, "
         "which check 12 must refuse as a form it cannot read (card#9296 round 4 review)",
         "in a form this check cannot read",
+    ),
+    (
+        # card#11144.  The relayed `protocol_agent_role` is bounded by the name's own figure, and check
+        # 12 holds it at every home that states one.  One plant per home, because each home is read by
+        # its own parser and one plant proves one parser -- the ingest registry is new for both members.
+        "verify-event-schema.py",
+        "docs/design/EVENT-SCHEMA.md",
+        r"(\*`protocol_agent_role`\*\); ≤ )(48)( B — the name's own)",
+        "bump",
+        "D1 § 6.14's `protocol_agent_role` byte bound, held by check 12 to § 18.6's (card#11144)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\n  protocol_agent_role +VARCHAR\()(\d+)(\))",
+        "bump",
+        "D2 § 6.4's `protocol_agent_role` column width, the same check-12 equality (card#11144)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "docs/design/FLEET-STATE.md",
+        r"(\| `protocol_agent_role` \| slug \| \*\*yes\*\* \| ≤ )(\d+)( B)",
+        "bump",
+        "D2 § 8.2.1's `protocol_agent_role` byte bound, the same check-12 equality on the read surface "
+        "(card#11144)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "server/app/Ingest/KindRegistry.php",
+        r"('protocol_agent_role' => )(\d+)(,)",
+        "bump",
+        "the ingest registry's `protocol_agent_role` bound -- the figure that actually refuses -- held "
+        "by check 12 to § 18.6's (card#11144)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        "verify-event-schema.py",
+        "server/database/migrations/2026_10_03_000000_add_protocol_agent_role_column_to_seat_state.php",
+        r"(string\('protocol_agent_role', )(\d+)(\))",
+        "bump",
+        "the store migration's `protocol_agent_role` width, the check-12 equality's code home (card#11144)",
+        "bounds a protocol agent name at",
+    ),
+    (
+        # card#11144.  § 3.1's DECLARED leg names the roster members this design reads; a member named
+        # anywhere else in D1 is a read the contract published to the framework's owner does not cover.
+        "verify-event-schema.py",
+        "docs/design/EVENT-SCHEMA.md",
+        r"(also reads `roster\[\]\.)(role)(` of the entry)",
+        "rename",
+        "a roster member D1 names outside § 3.1's DECLARED leg, which check 12 holds to that leg "
+        "(card#11144)",
+        "a roster member § 3.1's DECLARED leg does",
+    ),
+    (
+        # ... and the reporter's own roster read, member access by member access.
+        "verify-event-schema.py",
+        "fleet-reporter/fleet-reporter.js",
+        r"(roles: named\.map\(\(r\) => r\.)(role)(\))",
+        "rename",
+        "a roster member the reporter reads that § 3.1's DECLARED leg does not declare (card#11144)",
+        "a roster member § 3.1's DECLARED leg does not declare",
     ),
     (
         "verify-fleet-state.py",
@@ -563,18 +639,22 @@ PLANTS = [
         "section 11's fixture table declares no such fixture",
     ),
     (
-        # PupFuzz/mezzanine#164 round 2, the MAJOR.  AT-D3-11 names no fixture, so the harness is in
+        # PupFuzz/mezzanine#164 round 2, the MAJOR (first pinned on AT-D3-11).  The test names no fixture, so the harness is in
         # its class only by its own mention of it: swap that mention for a gate and no recognizer
         # sees a harness test any more.  Against the round-1 verifier, which let any instrument
         # cover a non-harness test, this mutant ran at rc 0 -- measured on d62f212.  It reds only
-        # because the Appendix B row that builds the gate does not gate AT-D3-11, so the substring
+        # because the Appendix B row that builds the gate does not gate the test, so the substring
         # is that anchoring's message and the verdict depends on the anchoring alone.
         "verify-floor.py",
         "docs/design/FLOOR.md",
-        r"(### AT-D3-11 [^\n]*\n\n- \*\*Build:\*\*(?:(?!\n- \*\*)[\s\S])*?\*\*Reads:\*\*)"
+        # RE-PINNED to AT-D3-16 at card#11058 (PR #268 r1): AT-D3-11 split into a desk-model and a scene
+        # half, and its scene half names the harness too, so a swap in one half reds on G5's stronger
+        # harness rule before this one. AT-D3-16 is the one test left of the shape this plant needs: one
+        # Build bullet, no fixture, the harness named once, in its Reads.
+        r"(### AT-D3-16 [^\n]*\n(?:(?!\n- \*\*)[\s\S])*?\n- \*\*Build:\*\*(?:(?!\n- \*\*)[\s\S])*?\*\*Reads:\*\*)"
         r"( \*\*the harness\*\*,)( the)",
         "instrument",
-        "the harness in AT-D3-11, a test that names no fixture, swapped for an Appendix B gate, which "
+        "the harness in AT-D3-16, a test that names no fixture, swapped for an Appendix B gate, which "
         "G5 must refuse because the row that builds the gate does not gate the test (#164 round 2)",
         "an instrument covers only a test that the Appendix B row building it also gates",
     ),
@@ -681,6 +761,115 @@ PLANTS = [
         "smaller than the furniture box at the cap",
     ),
     (
+        # card#11144 PR-1a — G8's reserved-desk leg (G8h).  Section 10.3 states which desk the shipped
+        # default reserves, by Tiled id and role; section 12 carries it as a Measured row; the map
+        # carries it as the one `desks` object with `reserved_for`.  Bumping the sentence's id is the
+        # class "the document's copy drifted from the file".
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        # `\s+` because § 10.3 is wrapped prose, and the sentence breaks across a line.
+        r"(The\s+shipped\s+default\s+reserves\s+`id\s+)(\d+)(`\s+for\s+`)",
+        "bump",
+        "§ 10.3's stated id of the shipped default's reserved desk, which G8 holds against the one "
+        "`desks` object carrying `reserved_for` in `resources/floor/default.tmj` (card#11144)",
+        "the document and the file disagree, and section 12's reserved-desk row",
+    ),
+    (
+        # The same leg's second home: section 12's row, held to section 10.3's sentence by VALUE,
+        # because G4's whole-token match is satisfied by any other `3` in section 10.3.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| Reserved desk of the shipped default \| `id )(\d+)(`)",
+        "bump",
+        "section 12's reserved-desk id, which G8 holds equal to section 10.3's sentence (card#11144)",
+        "one fact, two homes, and they disagree",
+    ),
+    (
+        # The same leg over the FILE: the reserved role renamed in the map.  The anchor pins the
+        # property's NAME and reads its value, so the plant stores no role of its own.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"name\":\"reserved_for\",[\s\S]*?\"value\":\")([a-z0-9-]+)(\")",
+        "rename",
+        "the shipped default's reserved role renamed in the map, which G8 must refuse as the file "
+        "disagreeing with section 10.3's sentence (card#11144)",
+        "the document and the file disagree, and section 12's reserved-desk row",
+    ),
+    (
+        # card#11144 PR-3 — G8's reserved re-derivation (G8i).  Section 3.2's worked table seats the
+        # shipped default's reserved-role holder by its role (its Probes cell reads `role`) at the
+        # reserved desk's index; moving that row's slot is the class "the worked table no longer works
+        # the function it publishes over the reservation".
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| role \| \*\*)(\d+)(\*\* \|)",
+        "bump",
+        "the slot section 3.2's worked table seats the reserved desk's holder at, which G8 re-derives as "
+        "the shipped default's reserved index (card#11144)",
+        "reserved, assigns slot",
+    ),
+    (
+        # The same leg on a hashed row: the probe count of the seat whose hash slot IS the reserved
+        # desk, which probes past it.  A rule that skipped the reserved desk instead of counting it
+        # taken would state a different count here.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(\| `aimla/aimla-impl-2` \| \d+ \| \d+ \| )(\d+)( \|)",
+        "bump",
+        "the probe count section 3.2's worked table states for the seat hashing to the reserved desk, "
+        "which G8 re-derives with that desk taken (card#11144)",
+        "reserved, assigns slot",
+    ),
+    (
+        # The same leg over section 3.3: the slot the displaced incumbent probes to, re-derived as the
+        # function over the table plus the arriving seat, with the reserved desk taken.
+        "verify-floor.py",
+        "docs/design/FLOOR.md",
+        r"(`aimla-impl-2` probes to slot \*\*)(\d+)(\*\*)",
+        "bump",
+        "the slot section 3.3's displaced incumbent probes to, which G8 re-derives over the shipped "
+        "default's reservation (card#11144)",
+        "reserved the function gives slot",
+    ),
+    (
+        # card#11144 walls — G-walls leg 1 over the FILE: a wall-strip cell painted inside a slot.  The
+        # anchor walks to the SECOND tile layer's data (`walls`, between `accent` and `furniture`) and
+        # to row 3, column 13 -- 8 px inside the first `desks` object's top-left corner -- and the
+        # `wall-cell` kind writes there the GID that layer's own first cell carries (the left side
+        # wall's), so the plant stores no GID of its own.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"data\":\[[\s\S]*?\"data\":\[\n(?:[^\n]*\n){3}    (?:\d+, ){13})(0)(, )",
+        "wall-cell",
+        "a wall-strip cell planted inside the shipped default's first `desks` object, which G-walls "
+        "leg 1 must refuse as a wall drawn under a desk (card#11144)",
+        "lies inside `desks` object id",
+    ),
+    (
+        # card#11046 G-scenery leg 2 over the FILE: a standing piece placed inside a slot.  The anchor
+        # walks to the THIRD tile layer's data (`furniture`) and to row 20, column 20 -- a bookcase
+        # bottom-aligned there stands inside the first `desks` object -- and the `piece-cell` kind writes
+        # there the first GID that layer places (the left strip's bookcase), so the plant stores none.
+        "verify-floor.py",
+        "resources/floor/default.tmj",
+        r"(\"data\":\[[\s\S]*?\"data\":\[[\s\S]*?\"data\":\[\n(?:[^\n]*\n){20}    (?:\d+, ){20})(0)(, )",
+        "piece-cell",
+        "a standing piece planted inside the shipped default's first `desks` object, which G-scenery "
+        "leg 2 must refuse as scenery under a desk's facts (card#11046)",
+        "meets `desks` object id",
+    ),
+    (
+        # G-walls leg 2: the wall tile declares `kind: wall`.  Its kind dropped in the tileset is the
+        # class "a stored map's walls lost their meaning" (FLOOR.md section 10.6's retirements).
+        "verify-floor.py",
+        "resources/floor/tiles/floor-plane.tsx",
+        r"(<property name=\"kind\" value=\")(wall)(\"/>)",
+        "drop",
+        "the wall-strip tile's `kind` dropped in the tileset, which G-walls leg 2 must refuse "
+        "(card#11046)",
+        "the wall-strip marker's, declares",
+    ),
+    (
         # PR #232 round 2, MINOR-B — G8e reads the box with the DECLARATION's `\d` bound to ASCII, as
         # PHP's is.  The plant's digit is the width's LAST one, and the position is the whole plant
         # (round 3, F1): the DECLARATION's first digit is `[1-9]`, an ASCII-only range in either
@@ -711,11 +900,11 @@ PLANTS = [
     ),
     (
         # PR #232 round 1, MAJOR-2 — G8f, section 12's viewport arithmetic.  Three figures the cell
-        # states are each recomputed from the map, the box and the viewport floor; each plant bumps
+        # states are each recomputed from the map, the box and the reference viewport; each plant bumps
         # one so the other two cannot cover for it.  The row count first.
         "verify-floor.py",
         "docs/design/FLOOR.md",
-        r"(\| Floor viewport floor \|[^\n]*?\*\*)(\d+)( rows? of \d+ furniture boxes:)",
+        r"(\| Floor reference viewport \|[^\n]*?\*\*)(\d+)( rows? of \d+ furniture boxes:)",
         "bump",
         "the row count the viewport cell states, which G8 re-derives from the shipped default's `desks` "
         "objects grouped by `y` (PR #232 round 1, MAJOR-2)",
@@ -724,7 +913,7 @@ PLANTS = [
     (
         "verify-floor.py",
         "docs/design/FLOOR.md",
-        r"(\| Floor viewport floor \|[^\n]*?furniture boxes: \d+ × [\d,]+ px = )([\d,]+)( px)",
+        r"(\| Floor reference viewport \|[^\n]*?furniture boxes: \d+ × [\d,]+ px = )([\d,]+)( px)",
         "bump",
         "the desk-across product the viewport cell states, which G8 re-derives as boxes per row × the "
         "furniture box's width (PR #232 round 1, MAJOR-2)",
@@ -733,9 +922,9 @@ PLANTS = [
     (
         "verify-floor.py",
         "docs/design/FLOOR.md",
-        r"(\| Floor viewport floor \|[^\n]*?fit zoom is \*\*[\d,]+ ÷ [\d,]+ ≈ 0\.)(\d+)(\*\*)",
+        r"(\| Floor reference viewport \|[^\n]*?fit zoom is \*\*[\d,]+ ÷ [\d,]+ ≈ 0\.)(\d+)(\*\*)",
         "bump",
-        "the fit zoom the viewport cell states, which G8 re-derives as the viewport floor over the shipped "
+        "the fit zoom the viewport cell states, which G8 re-derives as the reference viewport over the shipped "
         "default's grid width (PR #232 round 1, MAJOR-2)",
         "states a fit zoom of",
     ),
@@ -942,6 +1131,11 @@ MUTATIONS = {
     "noun": lambda m: (m.group(1) + m.group(2) + ", and keeps a count of "
                        + re.search(r"`[a-z_]+`", m.group(2)).group(0) + m.group(3)),
     "drop": lambda m: m.group(1) + m.group(3),
+    # The GID the anchored layer's own first cell carries, written at the anchored cell (G-walls leg 1).
+    "wall-cell": lambda m: m.group(1) + re.findall(r'"data":\[\n    (\d+), ', m.group(1))[-1] + m.group(3),
+    # The first GID the anchored layer places, written at the anchored cell (G-scenery leg 2).
+    "piece-cell": lambda m: (m.group(1) + re.search(r'[1-9]\d*', m.group(1)[m.group(1).rindex('"data":['):].replace('"data":[', '', 1)).group(0)
+                             if re.search(r'[1-9]', m.group(1)[m.group(1).rindex('"data":['):]) else m.group(1) + m.group(2)) + m.group(3),
     # The previous object's `x` and `width` are the first of each after the layer's name in
     # group(1); `x + width - 1` is the last pixel column of its half-open span.
     "overlap": lambda m: (m.group(1)

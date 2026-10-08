@@ -20,7 +20,11 @@ is a ruling, because the floor is built once, by card#7341.** The design rulings
   everything inside to the floor's **theme** (palette, desk positions, cabin, furniture set);
 - **seeded characters**: 7 silhouettes × 16 hues × 5 sizes + ears/sprout/eyes/mouth/accessory/
   tilt, all drawn from fnv1a32(install/seat) with searched salts (s18/s3) so the known roster is
-  all-distinct; interns seed from `seat~internN` — **one sprite per open subagent, cap 8, then +N**;
+  all-distinct; interns seed from `seat~internN` — **one sprite per open subagent, cap 8, then +N**.
+  ⚠ **This artifact's characters are superseded** by the operator's rulings of 2026-10-05
+  (card#11046): every character is an original animal or vegetable creature, and their appearance
+  space, salt, intern keying and drawing are `docs/design/FLOOR.md` § 10.2 and § 10.4's — this
+  artifact stays the worked example for everything else in this list, not for its people;
 - **held-loop micro-animation** (blink + wiggle while busy, slumped-asleep idle with z's; stale is
   an EMPTY cushion, never a sleeper); a **wall clock and day/night windows that step on each
   delivered `feed.heartbeat` and therefore stop when the feed stops** — the driver, the minute

@@ -277,6 +277,31 @@ class TheConsoleHoldsDeskSlotsToTheFurnitureBoxTest extends TestCase
         $this->assertSame(1, $this->save(FloorMapFixture::valid()));
     }
 
+    /**
+     * card#11144: a RESERVED desk is a desk slot like any other — `reserved_for` buys it no
+     * exemption from the furniture box. The control is the same map with the reserved slot
+     * exactly the box.
+     */
+    public function test_a_reserved_desk_slot_smaller_than_the_box_is_refused_naming_it(): void
+    {
+        $this->provisionTheRoom();
+        $box = FurnitureBox::current();
+
+        $this->actingAs($this->operator())
+            ->post(route('admin.floors.store'), ['install_id' => self::INSTALL, 'map' => FloorMapFixture::reservedDeskUndersized()])
+            ->assertRedirect()
+            ->assertSessionHasErrors('map');
+
+        $this->assertStringContainsString(
+            sprintf('Desk slot id 3 is %d × %d pixels, smaller than the furniture box of %d × %d', $box->width - 1, $box->height, $box->width, $box->height),
+            (string) session('errors')->first('map'),
+        );
+        $this->assertNull(Floors::forInstall(self::INSTALL));
+
+        // THE CONTROL: the reserved slot exactly the box is accepted.
+        $this->assertSame(1, $this->save(FloorMapFixture::reservedDesk()));
+    }
+
     public function test_a_restore_of_a_desk_slot_smaller_than_the_box_is_refused_naming_it(): void
     {
         $this->provisionTheRoom();

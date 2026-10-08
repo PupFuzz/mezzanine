@@ -1,5 +1,5 @@
 {
-  "note": "docs/design/FLOOR.md \u00a7 11's `fx-collision`: fx-snapshot-4, then a delta for a seat the client does not hold. `collision` delivers \u00a7 3.3's worked `aimla-impl-4` (h mod 12 = 0, which `aimla-pm` holds and sorts above), so slot 0 changes hands and one desk moves; `no_collision` delivers AT-D3-3's `aimla-win-1` (h mod 12 = 9, free) instead, so nothing moves at all. Both hashes are re-derived from \u00a7 3.2's own published function by the test rather than asserted here. `two_arrivals` inserts both of those seats in ONE render (card#7341 step 8, FLOOR.md \u00a7 14 item 27): a heartbeat's `seats_total` of 6 starts a discovery snapshot, both seats' deltas arrive while it is in flight, their insert fetches fail so their buffers wait for the discovery's release, and the discovery inserts both and releases both deltas in one turn. `aimla-pm` is displaced once, and A16's cause is the arrival that took its former slot. `cascade` delivers `aimla-impl-5` (h mod 12 = 11, a free slot) in one render and then `aimla-win-3` (h mod 12 = 11, lower h) in a later one: `aimla-win-3` takes slot 11, `aimla-impl-5` probes to `aimla-pm`'s slot, and `aimla-pm` moves on, so `aimla-pm`'s former slot is held by a seat that is not an arrival. Every hash and slot is re-derived by the test, not asserted here.",
+  "note": "docs/design/FLOOR.md \u00a7 11's `fx-collision`: fx-snapshot-4, served the shipped default's reservation (desk id 3, index 2, `reserved_for: pm`), so `aimla-pm`, the one seat relaying `pm`, sits at slot 2 by its role and `aimla-impl-2` (h mod 6 = 2, the reserved desk) probes past it and `aimla-impl-1` to slot 4; then a delta for a seat the client does not hold. `collision` delivers \u00a7 3.3's worked `aimla-mac-1` (h mod 6 = 4, which `aimla-impl-2` holds and sorts above), so slot 4 changes hands, `aimla-impl-2` probes to slot 5, and one desk moves \u2014 the PM's desk never does; `no_collision` delivers AT-D3-3's `aimla-win-5` (h mod 6 = 5, free) instead, so nothing moves at all; `pm_hash_slot` delivers `aimla-impl-4` (h mod 6 = 0), the PM's own hash slot, which is free because the PM sits at the reserved desk, so nothing moves either. `session_restart` mints a new `session.session_id` on `aimla-impl-2`, a seat the hash places \u2014 a session-keyed hash moves the PM nowhere, because the PM sits by its role. `two_arrivals` inserts `aimla-linux-4` (h mod 6 = 4, which `aimla-impl-2` holds and sorts above) and `aimla-win-5` in ONE render (card#7341 step 8, FLOOR.md \u00a7 14 item 27): a heartbeat's `seats_total` of 6 starts a discovery snapshot, both seats' deltas arrive while it is in flight, their insert fetches fail so their buffers wait for the discovery's release, and the discovery inserts both and releases both deltas in one turn. `aimla-impl-2` is displaced once (to slot 0), and A16's cause is the arrival that took its former slot, `aimla-linux-4` \u2014 never `aimla-win-5`, which sorts lower in \u00a7 3.2's `order` and displaced nobody. `alpha_arrival` delivers `aimla-beta`, which sorts below every seat the snapshot carries by `seat_id` and hashes to a free slot (h mod 6 = 5), so the shipped function moves no desk while slots by sorted position move every desk the hash places. `cascade` delivers `aimla-impl-6` (h mod 6 = 4, held; it probes to the free slot 5) in one render and then `aimla-win-6` (h mod 6 = 2, the reserved desk) in a later one: `aimla-win-6` probes past the reserved desk to slot 3, `aimla-impl-1` moves 3 \u2192 4, `aimla-impl-2` 4 \u2192 5 and `aimla-impl-6` 5 \u2192 0 \u2014 three desks, two of whose former slots are held by seats that are not arrivals. The arriving seats were re-chosen when the shipped default reserved its PM desk (card#11144): there, `aimla-impl-4` lands on the PM's free hash slot and moves nobody, and `aimla-mac-1` and `aimla-win-5` in one render would make the slot's taker the lowest-order arrival. Every hash and slot is re-derived by the test from \u00a7 3.2's published function, not asserted here.",
   "snapshot": {
     "api_version": 1,
     "server_time": "2026-08-23T14:23:14.400Z",
@@ -92,6 +92,7 @@
             "enabled": true,
             "protocol_agent_name": "pm",
             "protocol_agent_name_check": "checked",
+            "protocol_agent_role": "pm",
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -171,6 +172,7 @@
             "enabled": true,
             "protocol_agent_name": "impl-1",
             "protocol_agent_name_check": "checked",
+            "protocol_agent_role": "impl",
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -242,6 +244,7 @@
             "enabled": true,
             "protocol_agent_name": "impl-2",
             "protocol_agent_name_check": "checked",
+            "protocol_agent_role": "impl",
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -313,6 +316,7 @@
             "enabled": true,
             "protocol_agent_name": "review",
             "protocol_agent_name_check": "checked",
+            "protocol_agent_role": "review",
             "reporter": {
               "version": "0.1.0",
               "platform": "linux",
@@ -428,6 +432,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -507,6 +512,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -578,6 +584,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -649,6 +656,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -693,7 +701,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -705,7 +713,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -1239,6 +1247,13 @@
                         "id": 3,
                         "name": "",
                         "type": "",
+                        "properties": [
+                          {
+                            "name": "reserved_for",
+                            "type": "string",
+                            "value": "pm"
+                          }
+                        ],
                         "rotation": 0,
                         "visible": true,
                         "x": 210,
@@ -1278,72 +1293,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -1352,14 +1301,14 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-4": [
+        "/api/fleet/seats/aimla/aimla-mac-1": [
           {
             "status": 200,
             "body": {
               "api_version": 1,
               "server_time": "2026-08-23T14:23:20.500Z",
               "install_id": "aimla",
-              "seat_id": "aimla-impl-4",
+              "seat_id": "aimla-mac-1",
               "state_version": 48300,
               "render_state": "idle",
               "link_state": "live",
@@ -1415,6 +1364,7 @@
               "enabled": true,
               "protocol_agent_name": null,
               "protocol_agent_name_check": null,
+              "protocol_agent_role": "impl",
               "reporter": {
                 "version": "0.1.0",
                 "platform": "linux",
@@ -1441,7 +1391,7 @@
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
-            "seat_id": "aimla-impl-4",
+            "seat_id": "aimla-mac-1",
             "state_version": 48301,
             "at": "2026-08-23T14:23:20.400Z",
             "changed": [
@@ -1564,6 +1514,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1643,6 +1594,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1714,6 +1666,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1785,6 +1738,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -1829,7 +1783,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -1841,7 +1795,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -2375,6 +2329,13 @@
                         "id": 3,
                         "name": "",
                         "type": "",
+                        "properties": [
+                          {
+                            "name": "reserved_for",
+                            "type": "string",
+                            "value": "pm"
+                          }
+                        ],
                         "rotation": 0,
                         "visible": true,
                         "x": 210,
@@ -2414,72 +2375,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -2488,14 +2383,14 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-win-1": [
+        "/api/fleet/seats/aimla/aimla-win-5": [
           {
             "status": 200,
             "body": {
               "api_version": 1,
               "server_time": "2026-08-23T14:23:20.500Z",
               "install_id": "aimla",
-              "seat_id": "aimla-win-1",
+              "seat_id": "aimla-win-5",
               "state_version": 48400,
               "render_state": "idle",
               "link_state": "live",
@@ -2551,6 +2446,7 @@
               "enabled": true,
               "protocol_agent_name": null,
               "protocol_agent_name_check": null,
+              "protocol_agent_role": null,
               "reporter": {
                 "version": "0.1.0",
                 "platform": "linux",
@@ -2577,7 +2473,1089 @@
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
-            "seat_id": "aimla-win-1",
+            "seat_id": "aimla-win-5",
+            "state_version": 48401,
+            "at": "2026-08-23T14:23:20.400Z",
+            "changed": [
+              "context"
+            ],
+            "patch": {
+              "context": {
+                "used_pct": 12.5,
+                "used_tokens": 25000,
+                "total_tokens": 200000,
+                "source": "harness",
+                "sampled_at": "2026-08-23T14:23:20.100Z",
+                "sampled_received_at": "2026-08-23T14:23:20.300Z"
+              }
+            }
+          }
+        }
+      ],
+      "until_ms": 1200,
+      "floor": {
+        "key": "aimla",
+        "local_hours": 9,
+        "local_minutes": 45
+      }
+    },
+    "pm_hash_slot": {
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-pm",
+                      "state_version": 48219,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "descriptor": "Bash: composer test",
+                        "started_at": "2026-08-23T14:23:09.882Z",
+                        "started_received_at": "2026-08-23T14:23:14.201Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [
+                        {
+                          "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                          "title": "draft the D1 event schema",
+                          "subagent_type": "coder",
+                          "started_at": "2026-08-23T14:23:31.004Z"
+                        }
+                      ],
+                      "subagents_open": 1,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:23:09.882Z",
+                        "last_received_at": "2026-08-23T14:23:14.201Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [
+                        "lossy"
+                      ],
+                      "badges_since": "2026-08-23T09:14:02.118Z",
+                      "enabled": true,
+                      "protocol_agent_name": "pm",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-1",
+                      "state_version": 31107,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "descriptor": "Edit: server/app/Feed/SeatDelta.php",
+                        "started_at": "2026-08-23T14:22:58.120Z",
+                        "started_received_at": "2026-08-23T14:23:02.530Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:22:58.120Z",
+                        "last_received_at": "2026-08-23T14:23:02.530Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-1",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-2",
+                      "state_version": 20544,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "impl-2",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-review",
+                      "state_version": 15032,
+                      "render_state": "blocked",
+                      "link_state": "live",
+                      "activity_state": "blocked",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": "2026-08-23T14:19:40.006Z",
+                      "action": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:19:40.006Z",
+                        "last_received_at": "2026-08-23T14:19:44.120Z",
+                        "last_kind": "attention.request"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "protocol_agent_name": "review",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "delay_ms": 0
+          }
+        ],
+        "/api/building": [
+          {
+            "status": 200,
+            "body": {
+              "layout": {
+                "layout_version": 0,
+                "floors": []
+              },
+              "rooms": []
+            }
+          }
+        ],
+        "/api/building/rooms/aimla/map": [
+          {
+            "status": 200,
+            "body": {
+              "install_id": "aimla",
+              "source": "default",
+              "map_version": null,
+              "map": {
+                "compressionlevel": -1,
+                "height": 12,
+                "infinite": false,
+                "nextlayerid": 3,
+                "nextobjectid": 7,
+                "orientation": "orthogonal",
+                "renderorder": "right-down",
+                "tiledversion": "1.10.2",
+                "tileheight": 32,
+                "tilewidth": 32,
+                "type": "map",
+                "version": "1.10",
+                "width": 40,
+                "tilesets": [
+                  {
+                    "firstgid": 1,
+                    "source": "tiles/floor-plane.tsx"
+                  }
+                ],
+                "layers": [
+                  {
+                    "id": 1,
+                    "name": "floor",
+                    "type": "tilelayer",
+                    "visible": true,
+                    "opacity": 1,
+                    "width": 40,
+                    "height": 12,
+                    "x": 0,
+                    "y": 0,
+                    "encoding": "csv",
+                    "data": [
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0
+                    ]
+                  },
+                  {
+                    "id": 2,
+                    "name": "desks",
+                    "type": "objectgroup",
+                    "visible": true,
+                    "opacity": 1,
+                    "x": 0,
+                    "y": 0,
+                    "draworder": "index",
+                    "objects": [
+                      {
+                        "id": 1,
+                        "name": "",
+                        "type": "",
+                        "rotation": 0,
+                        "visible": true,
+                        "x": 10,
+                        "y": 200,
+                        "width": 80,
+                        "height": 48
+                      },
+                      {
+                        "id": 2,
+                        "name": "",
+                        "type": "",
+                        "rotation": 0,
+                        "visible": true,
+                        "x": 110,
+                        "y": 200,
+                        "width": 80,
+                        "height": 48
+                      },
+                      {
+                        "id": 3,
+                        "name": "",
+                        "type": "",
+                        "properties": [
+                          {
+                            "name": "reserved_for",
+                            "type": "string",
+                            "value": "pm"
+                          }
+                        ],
+                        "rotation": 0,
+                        "visible": true,
+                        "x": 210,
+                        "y": 200,
+                        "width": 80,
+                        "height": 48
+                      },
+                      {
+                        "id": 4,
+                        "name": "",
+                        "type": "",
+                        "rotation": 0,
+                        "visible": true,
+                        "x": 310,
+                        "y": 200,
+                        "width": 80,
+                        "height": 48
+                      },
+                      {
+                        "id": 5,
+                        "name": "",
+                        "type": "",
+                        "rotation": 0,
+                        "visible": true,
+                        "x": 410,
+                        "y": 200,
+                        "width": 80,
+                        "height": 48
+                      },
+                      {
+                        "id": 6,
+                        "name": "",
+                        "type": "",
+                        "rotation": 0,
+                        "visible": true,
+                        "x": 510,
+                        "y": 200,
+                        "width": 80,
+                        "height": 48
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "/api/fleet/seats/aimla/aimla-impl-4": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:20.500Z",
+              "install_id": "aimla",
+              "seat_id": "aimla-impl-4",
+              "state_version": 48400,
+              "render_state": "idle",
+              "link_state": "live",
+              "activity_state": "idle",
+              "unknown_reason": null,
+              "api_error_type": null,
+              "blocked_since": null,
+              "action": null,
+              "open_calls": 0,
+              "open_turn": false,
+              "subagents": [],
+              "subagents_open": 0,
+              "task": {
+                "title": "ingest endpoint",
+                "source": "board_card",
+                "ref": "card#7338",
+                "as_of": "2026-08-23T14:05:00.000Z",
+                "degraded": false
+              },
+              "context": {
+                "used_pct": 73.2,
+                "used_tokens": 146401,
+                "total_tokens": 200000,
+                "source": "harness",
+                "sampled_at": "2026-08-23T14:41:00.310Z",
+                "sampled_received_at": "2026-08-23T14:41:04.880Z"
+              },
+              "model_label": "claude-opus-5",
+              "session": {
+                "session_id": "0000157d-0000-4000-8000-00000000048400",
+                "started_at": "2026-08-23T14:22:40.201Z",
+                "source": "clear",
+                "project_label": "mezzanine",
+                "harness_label": "claude-code/2.1.240"
+              },
+              "activity": {
+                "last_event_time": "2026-08-23T14:21:47.300Z",
+                "last_received_at": "2026-08-23T14:21:51.010Z",
+                "last_kind": "turn.end"
+              },
+              "delivery": {
+                "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                "no_data_since": null,
+                "clock_skew_ms": 412,
+                "spool_lag_events": 0,
+                "oldest_unsent_age_s": null,
+                "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                "last_seq": 48211
+              },
+              "badges": [],
+              "badges_since": null,
+              "enabled": true,
+              "protocol_agent_name": null,
+              "protocol_agent_name_check": null,
+              "protocol_agent_role": "impl",
+              "reporter": {
+                "version": "0.1.0",
+                "platform": "linux",
+                "uptime_s": 401150,
+                "selftest_failed": []
+              },
+              "retired": null,
+              "derivation": {
+                "computed_at": "2026-08-23T14:23:14.318Z",
+                "fold_lag_ms": 117,
+                "cursor_event_id": 9912837
+              },
+              "detail": null
+            },
+            "delay_ms": 100
+          }
+        ]
+      },
+      "messages": [
+        {
+          "at_ms": 400,
+          "envelope": {
+            "feed_version": 1,
+            "t": "seat.delta",
+            "server_time": "2026-08-23T14:23:20.400Z",
+            "install_id": "aimla",
+            "seat_id": "aimla-impl-4",
             "state_version": 48401,
             "at": "2026-08-23T14:23:20.400Z",
             "changed": [
@@ -2700,6 +3678,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2779,6 +3758,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2850,6 +3830,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2921,6 +3902,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -2965,7 +3947,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -2977,7 +3959,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -3511,6 +4493,13 @@
                         "id": 3,
                         "name": "",
                         "type": "",
+                        "properties": [
+                          {
+                            "name": "reserved_for",
+                            "type": "string",
+                            "value": "pm"
+                          }
+                        ],
                         "rotation": 0,
                         "visible": true,
                         "x": 210,
@@ -3550,72 +4539,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -3633,8 +4556,8 @@
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:24.400Z",
             "install_id": "aimla",
-            "seat_id": "aimla-pm",
-            "state_version": 48220,
+            "seat_id": "aimla-impl-2",
+            "state_version": 20545,
             "at": "2026-08-23T14:23:24.400Z",
             "changed": [
               "session"
@@ -3755,6 +4678,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3834,6 +4758,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3905,6 +4830,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -3976,6 +4902,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4020,7 +4947,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -4032,7 +4959,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -4566,6 +5493,13 @@
                         "id": 3,
                         "name": "",
                         "type": "",
+                        "properties": [
+                          {
+                            "name": "reserved_for",
+                            "type": "string",
+                            "value": "pm"
+                          }
+                        ],
                         "rotation": 0,
                         "visible": true,
                         "x": 210,
@@ -4605,72 +5539,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -4679,14 +5547,14 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-alpha": [
+        "/api/fleet/seats/aimla/aimla-beta": [
           {
             "status": 200,
             "body": {
               "api_version": 1,
               "server_time": "2026-08-23T14:23:20.500Z",
               "install_id": "aimla",
-              "seat_id": "aimla-alpha",
+              "seat_id": "aimla-beta",
               "state_version": 48500,
               "render_state": "idle",
               "link_state": "live",
@@ -4742,6 +5610,7 @@
               "enabled": true,
               "protocol_agent_name": null,
               "protocol_agent_name_check": null,
+              "protocol_agent_role": null,
               "reporter": {
                 "version": "0.1.0",
                 "platform": "linux",
@@ -4768,7 +5637,7 @@
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
-            "seat_id": "aimla-alpha",
+            "seat_id": "aimla-beta",
             "state_version": 48501,
             "at": "2026-08-23T14:23:20.400Z",
             "changed": [
@@ -4891,6 +5760,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -4970,6 +5840,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5041,6 +5912,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5112,6 +5984,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5226,6 +6099,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5305,6 +6179,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5376,6 +6251,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5447,6 +6323,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5462,7 +6339,7 @@
                     },
                     {
                       "install_id": "aimla",
-                      "seat_id": "aimla-impl-4",
+                      "seat_id": "aimla-linux-4",
                       "state_version": 48300,
                       "render_state": "idle",
                       "link_state": "live",
@@ -5518,6 +6395,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5533,7 +6411,7 @@
                     },
                     {
                       "install_id": "aimla",
-                      "seat_id": "aimla-win-1",
+                      "seat_id": "aimla-win-5",
                       "state_version": 48400,
                       "render_state": "idle",
                       "link_state": "live",
@@ -5589,6 +6467,7 @@
                       "enabled": true,
                       "protocol_agent_name": null,
                       "protocol_agent_name_check": null,
+                      "protocol_agent_role": null,
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -5632,7 +6511,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -5644,7 +6523,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -6178,6 +7057,13 @@
                         "id": 3,
                         "name": "",
                         "type": "",
+                        "properties": [
+                          {
+                            "name": "reserved_for",
+                            "type": "string",
+                            "value": "pm"
+                          }
+                        ],
                         "rotation": 0,
                         "visible": true,
                         "x": 210,
@@ -6217,72 +7103,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -6291,7 +7111,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-4": [
+        "/api/fleet/seats/aimla/aimla-linux-4": [
           {
             "status": 503,
             "body": {
@@ -6302,7 +7122,7 @@
             "delay_ms": 100
           }
         ],
-        "/api/fleet/seats/aimla/aimla-win-1": [
+        "/api/fleet/seats/aimla/aimla-win-5": [
           {
             "status": 503,
             "body": {
@@ -6340,7 +7160,7 @@
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.500Z",
             "install_id": "aimla",
-            "seat_id": "aimla-impl-4",
+            "seat_id": "aimla-linux-4",
             "state_version": 48301,
             "at": "2026-08-23T14:23:20.500Z",
             "changed": [
@@ -6365,7 +7185,7 @@
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.600Z",
             "install_id": "aimla",
-            "seat_id": "aimla-win-1",
+            "seat_id": "aimla-win-5",
             "state_version": 48401,
             "at": "2026-08-23T14:23:20.600Z",
             "changed": [
@@ -6488,6 +7308,7 @@
                       "enabled": true,
                       "protocol_agent_name": "pm",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6567,6 +7388,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-1",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6638,6 +7460,7 @@
                       "enabled": true,
                       "protocol_agent_name": "impl-2",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6709,6 +7532,7 @@
                       "enabled": true,
                       "protocol_agent_name": "review",
                       "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
                       "reporter": {
                         "version": "0.1.0",
                         "platform": "linux",
@@ -6753,7 +7577,7 @@
                 "height": 12,
                 "infinite": false,
                 "nextlayerid": 3,
-                "nextobjectid": 13,
+                "nextobjectid": 7,
                 "orientation": "orthogonal",
                 "renderorder": "right-down",
                 "tiledversion": "1.10.2",
@@ -6765,7 +7589,7 @@
                 "tilesets": [
                   {
                     "firstgid": 1,
-                    "source": "tiles/furniture-kit.tsx"
+                    "source": "tiles/floor-plane.tsx"
                   }
                 ],
                 "layers": [
@@ -7299,6 +8123,13 @@
                         "id": 3,
                         "name": "",
                         "type": "",
+                        "properties": [
+                          {
+                            "name": "reserved_for",
+                            "type": "string",
+                            "value": "pm"
+                          }
+                        ],
                         "rotation": 0,
                         "visible": true,
                         "x": 210,
@@ -7338,72 +8169,6 @@
                         "y": 200,
                         "width": 80,
                         "height": 48
-                      },
-                      {
-                        "id": 7,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 610,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 8,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 710,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 9,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 810,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 10,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 910,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 11,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1010,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
-                      },
-                      {
-                        "id": 12,
-                        "name": "",
-                        "type": "",
-                        "rotation": 0,
-                        "visible": true,
-                        "x": 1110,
-                        "y": 200,
-                        "width": 80,
-                        "height": 48
                       }
                     ]
                   }
@@ -7412,14 +8177,14 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-5": [
+        "/api/fleet/seats/aimla/aimla-impl-6": [
           {
             "status": 200,
             "body": {
               "api_version": 1,
               "server_time": "2026-08-23T14:23:20.500Z",
               "install_id": "aimla",
-              "seat_id": "aimla-impl-5",
+              "seat_id": "aimla-impl-6",
               "state_version": 48500,
               "render_state": "idle",
               "link_state": "live",
@@ -7475,6 +8240,7 @@
               "enabled": true,
               "protocol_agent_name": null,
               "protocol_agent_name_check": null,
+              "protocol_agent_role": "impl",
               "reporter": {
                 "version": "0.1.0",
                 "platform": "linux",
@@ -7492,14 +8258,14 @@
             "delay_ms": 100
           }
         ],
-        "/api/fleet/seats/aimla/aimla-win-3": [
+        "/api/fleet/seats/aimla/aimla-win-6": [
           {
             "status": 200,
             "body": {
               "api_version": 1,
               "server_time": "2026-08-23T14:23:20.500Z",
               "install_id": "aimla",
-              "seat_id": "aimla-win-3",
+              "seat_id": "aimla-win-6",
               "state_version": 48600,
               "render_state": "idle",
               "link_state": "live",
@@ -7555,6 +8321,7 @@
               "enabled": true,
               "protocol_agent_name": null,
               "protocol_agent_name_check": null,
+              "protocol_agent_role": "impl",
               "reporter": {
                 "version": "0.1.0",
                 "platform": "linux",
@@ -7581,7 +8348,7 @@
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
-            "seat_id": "aimla-impl-5",
+            "seat_id": "aimla-impl-6",
             "state_version": 48501,
             "at": "2026-08-23T14:23:20.400Z",
             "changed": [
@@ -7606,7 +8373,7 @@
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.800Z",
             "install_id": "aimla",
-            "seat_id": "aimla-win-3",
+            "seat_id": "aimla-win-6",
             "state_version": 48601,
             "at": "2026-08-23T14:23:20.800Z",
             "changed": [
