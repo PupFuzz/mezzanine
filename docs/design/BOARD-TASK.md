@@ -968,21 +968,25 @@ against.
    condition 1 — compose is unconfigured on every host until it exists. **Closes it:** the token and the
    account's name. ⚠ Whether the board can scope a token to *comment only* is part of the answer, and it
    is not readable from this repository; [§ 5.3](#53-the-compose-credential) says what holds either way.
-7. **⇢ Operator — the product fork the hop opens** ([§ 15.2](#152-the-hop-and-what-this-repository-cannot-verify)).
+7. **✅ CLOSED — the product fork the hop opens is answered: (a)** (operator, 2026-10-09,
+   `opq-1791449375-326a`; [§ 15.2](#152-the-hop-and-what-this-repository-cannot-verify)).
    `card#9417` rests on *"posts into a channel the agent already reads"*, and for a card comment the
    live half of that is false today: this install's bridge subscription carries `task.created` alone,
    the bridge classifies no `comment.created`, and the bridge owner's own tool documentation says
    *"Do not rely on a comment to wake another seat."* The comment still reaches the agent the way every
    card comment does — at the agent's next read of the card, which the build brief orders on every
-   dispatch — so the audit trail and the one-verb amendment stand either way. **The fork:** (a) build
+   dispatch — so the audit trail and the one-verb amendment stand either way. **The fork was:** (a) build
    `BoardCommentChannel` first as the card says, render the receipt as *posted* and never *delivered*,
    and raise the bridge-side feature request (`comment.created` in the subscription filter; a
    `card_comment` intent routed to the seat whose card it is) with kanban-solo now, so the live hop
    lands as a bridge change and not a Mezzanine one; or (b) make the coordination-channel thread the
    first channel, which delivers live today and costs a GitHub credential, a participant identity for
-   the server and a thread model (item 8). **Recommendation: (a)**, with the request filed in the same
-   round as the build; the seam in [§ 15.9](#159-the-composechannel-seam) is what makes (b) additive
-   later rather than a redesign.
+   the server and a thread model (item 8). **The ruling: (a).** Card comments ship first, as
+   `BoardCommentChannel`, with the honest receipt — *posted*, never *delivered*, in the wording
+   [§ 15.10](#1510-the-panel) owns — and the bridge-side request is filed as
+   `PupFuzz/agent-roundtable#609` to kanban-solo ([§ 15.13](#1513-what-the-operator-provisions)
+   item 3). Until that lands, a comment reaches the agent at its next read of the card. The seam in
+   [§ 15.9](#159-the-composechannel-seam) is what keeps (b) additive later rather than a redesign.
 8. **⇢ Operator — the coordination-channel target** ([§ 15.6](#156-target-resolution)). The second
    target in the card's resolution order is *a roundtable thread addressed to the seat's declared
    `protocol_agent_name`*. Three facts gate it, none of them this repository's to decide: the declared
@@ -1089,8 +1093,8 @@ bridge in the path; what it does not do is open a turn.
 - **NAME WHAT CANNOT BE VERIFIED.** Whether the board's webhook for this scope carries
   `comment.created`, whether the bridge forwards it, and whether the seat's channel is live are not
   establishable from this repository; the receipt says so in one clause — ***the floor does not
-  confirm delivery*** — and [§ 14](#14-open-questions) item 7 carries the product fork and the
-  bridge-side request that would close it. ⚠ The card's acceptance line *"the seat's channel receives
+  confirm delivery*** — and [§ 14](#14-open-questions) item 7 records the operator's ruling on the
+  product fork and the bridge-side request that would close it. ⚠ The card's acceptance line *"the seat's channel receives
   it (control on a live seat, not a mock)"* is therefore a **live, cross-boundary** check that no test
   in this suite can run; it is owed on the real surface once the bridge change lands, exactly as
   [§ 13](#13-what-is-deliberately-not-built) still owes the poller's first real tier-1 read.
@@ -1560,10 +1564,11 @@ at the panel and at the route — until the first two are done:
 2. **The seat → board-user mapping and an assigned card** — [§ 10](#10-dark-on-arrival)'s conditions 2
    and 3, unchanged: arm 1 has nothing to resolve until tier 1 is lit. Compose arrives as dark as tier
    1 did, and for the same reasons, each separately legible.
-3. **The bridge-side request** ([§ 14](#14-open-questions) item 7), if the operator takes fork (a): a
-   roundtable feature request to kanban-solo for `comment.created` in the subscription filter and a
-   `card_comment` intent routed to the seat whose card it is. Until it lands, a comment reaches the
-   agent at its next read of the card and the panel says so.
+3. **✅ FILED — the bridge-side request** ([§ 14](#14-open-questions) item 7; the operator chose fork
+   (a) on 2026-10-09): `PupFuzz/agent-roundtable#609`, a roundtable feature request to kanban-solo for
+   `comment.created` in the subscription filter and a `card_comment` intent routed to the seat whose
+   card it is. Until it lands, a comment reaches the agent at its next read of the card and the panel
+   says so.
 
 ### 15.14 Amendments owed to other surfaces
 
