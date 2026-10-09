@@ -1644,8 +1644,8 @@ p_exit = plant(("  } finally {\n    process.exit(0);\n  }", "  } finally {\n    
 r_red = subprocess.run(["node", str(p_exit), "hook", "PreToolUse"], input="}{not json",
                        capture_output=True, text=True, env=s_es.env(), cwd=str(HERE))
 eq("RED: a reporter that propagates its failure exits non-zero", True, r_red.returncode != 0)
-p_net = plant(("function hookMain(hookName) {\n  const atMs = now();",
-               "function hookMain(hookName) {\n  const atMs = now();\n  try { require('child_process').execSync('sleep 2'); } catch (e) {}"))
+p_net = plant(("function hookMain(hookName) {\n",
+               "function hookMain(hookName) {\n  try { require('child_process').execSync('sleep 2'); } catch (e) {}\n"))
 t0 = time.perf_counter()
 subprocess.run(["node", str(p_net), "hook", "PreToolUse"], input=json.dumps(pre()),
                capture_output=True, text=True, env=s3.env(), cwd=str(HERE))
@@ -1774,6 +1774,69 @@ redgreen("survives the bridge being down (AT-4)",
          f"spool_dropped_events=0, {len(delivered_ids)} events delivered, missing={sorted(missing)}, "
          f"seq strictly increasing")
 
+# A DROPPED BUCKET COUNTS ONLY WHAT WAS NEVER DELIVERED (card#11548, D1 § 11.3 "Loss visibility").
+# `spool_dropped_events` is a LOSS counter, and a line behind the bucket's delivery cursor already
+# reached the ingest (or was counted under its own loss counter when it was disposed of). The
+# defect counted every line of a dropped bucket, so a busy seat whose spool sat at its bound with
+# delivered history rendered `lossy` on every drop, with nothing lost. Each case writes a bucket
+# of DROP_N lines and a state.json naming that bucket's cursor, then drives the real drop path.
+DROP_N = 5
+DROP_LINE = json.dumps({"v": 1, "t": "2000-01-01T00:00:00.000Z",
+                        "e": {"kind": "tool.start", "event_id": "01K11548" + "0" * 18, "pad": "x" * 400}}) + "\n"
+
+
+def drop_case(name: str, *, cursor_lines, path: str, reporter: Path = REPORTER) -> int:
+    """Drop one bucket of DROP_N lines whose cursor sits after `cursor_lines` lines (None = no
+    cursor) through the flusher's residency bound or a hook's size bound; return the count."""
+    s = seat(name, ingest=DEAD, enabled=(path == "hook"))
+    age_s = 9 * 86400 if path == "flusher" else 7200
+    b = time.strftime("%Y%m%d%H", time.gmtime(time.time() - age_s))
+    (s.spool / f"{b}.jsonl").write_text(DROP_LINE * DROP_N, encoding="utf-8")
+    st = {"seq_epoch": "01K11548STATE0000000000000", "next_seq": 1, "cursors": {}}
+    if cursor_lines is not None:
+        st["cursors"][b] = len(DROP_LINE.encode("utf-8")) * cursor_lines
+    (s.spool / "state.json").write_text(json.dumps(st), encoding="utf-8")
+    if path == "flusher":
+        flush(s, reporter=reporter)
+        dropped = s.state().get("counters", {}).get("spool_dropped_events", 0)
+    else:
+        # The hook's own event lands in the current hour, so the 2 h-old bucket is the oldest,
+        # its hour has ended, and the 2 KiB bound (the bucket alone is over it) makes it drop.
+        hook(s, "PreToolUse", pre(tuid=f"{name}_0"), reporter=reporter)
+        dropped = s.counters().get("spool_dropped_events", 0)
+    eq(f"  ({name}: the bucket was actually dropped)", False, (s.spool / f"{b}.jsonl").exists())
+    return dropped
+
+
+dr = {
+    ("flusher", "all"): drop_case("drop-fl-delivered", cursor_lines=DROP_N, path="flusher"),
+    ("flusher", "part"): drop_case("drop-fl-part", cursor_lines=2, path="flusher"),
+    ("flusher", "none"): drop_case("drop-fl-nocursor", cursor_lines=None, path="flusher"),
+    ("hook", "all"): drop_case("drop-hk-delivered", cursor_lines=DROP_N, path="hook", reporter=p_small),
+    ("hook", "part"): drop_case("drop-hk-part", cursor_lines=2, path="hook", reporter=p_small),
+    ("hook", "none"): drop_case("drop-hk-nocursor", cursor_lines=None, path="hook", reporter=p_small),
+}
+eq("the flusher drops a FULLY-DELIVERED aged-out bucket and counts 0 dropped events", 0, dr[("flusher", "all")])
+eq("  … a PART-delivered bucket counts exactly its undelivered lines", DROP_N - 2, dr[("flusher", "part")])
+eq("  … a bucket with NO cursor counts every line (nothing of it was delivered)", DROP_N, dr[("flusher", "none")])
+eq("a hook over the size bound drops a fully-delivered bucket, reading the cursor from state.json, "
+   "and counts 0", 0, dr[("hook", "all")])
+eq("  … a part-delivered bucket counts exactly its undelivered lines", DROP_N - 2, dr[("hook", "part")])
+eq("  … a bucket with no cursor counts every line", DROP_N, dr[("hook", "none")])
+# RED — the primitive ignoring the cursor (the defect): the fully-delivered bucket counts every line.
+IGNORE_CURSOR = (re.escape("for (let i = cursor || 0; i < buf.length; i++)"), "for (let i = 0; i < buf.length; i++)")
+red_fl = drop_case("drop-fl-red", cursor_lines=DROP_N, path="flusher", reporter=plant_src(IGNORE_CURSOR))
+red_hk = drop_case("drop-hk-red", cursor_lines=DROP_N, path="hook",
+                   reporter=plant_src((r"SPOOL_BYTES: 33554432,", "SPOOL_BYTES: 2048,"), IGNORE_CURSOR))
+eq("RED: a drop that ignores the cursor counts the fully-delivered bucket's every line, on both paths",
+   (DROP_N, DROP_N), (red_fl, red_hk))
+redgreen("a dropped spool bucket counts only its undelivered lines (§ 11.3, card#11548)",
+         f"cursor ignored -> a fully-delivered bucket of {DROP_N} lines counts {red_fl} (flusher) / "
+         f"{red_hk} (hook) spool_dropped_events, and the seat renders `lossy` with nothing lost",
+         f"lines past the cursor -> fully delivered {dr[('flusher', 'all')]}/{dr[('hook', 'all')]}, "
+         f"2 of {DROP_N} delivered {dr[('flusher', 'part')]}/{dr[('hook', 'part')]}, no cursor "
+         f"{dr[('flusher', 'none')]}/{dr[('hook', 'none')]} (flusher/hook)")
+
 
 print("\n== 5. NO CREDENTIAL REACHES ANY OUTPUT (P-6) — with its negative control FIRST ==")
 # THE CONTROL RUNS BEFORE THE CHECK IS TRUSTED. This check passes by finding NOTHING, and a
@@ -1804,9 +1867,9 @@ def sweep(seat_obj: Seat, extra_streams: list[str]) -> list[str]:
 control_seat = seat("secrets-control")
 p_leak = plant(("      if (config && config.spool_dir) logLine(config.spool_dir, cmd || 'unknown', `crashed: ${e && e.stack}`);",
                 "      if (config && config.spool_dir) logLine(config.spool_dir, cmd || 'unknown', `crashed: ${e && e.stack}`);"),
-               ("function hookMain(hookName) {\n  const atMs = now();",
-                "function hookMain(hookName) {\n  const atMs = now();\n  { const c = loadConfig(configPath()).config; "
-                "if (c) { try { fs.appendFileSync(path.join(c.spool_dir, 'log', 'leak.log'), 'token=' + c.token + '\\n'); } catch (e) {} } }"))
+               ("function hookMain(hookName) {\n",
+                "function hookMain(hookName) {\n  { const c = loadConfig(configPath()).config; "
+                "if (c) { try { fs.appendFileSync(path.join(c.spool_dir, 'log', 'leak.log'), 'token=' + c.token + '\\n'); } catch (e) {} } }\n"))
 (control_seat.spool / "log").mkdir(parents=True, exist_ok=True)
 r_leak = hook(control_seat, "PreToolUse", pre(), reporter=p_leak)
 control_hits = sweep(control_seat, [r_leak.stdout, r_leak.stderr])
@@ -2568,14 +2631,14 @@ worst = subprocess.run(
     ["node", "-e",
      "const m=require(process.argv[1]);const MAX=Number.MAX_SAFE_INTEGER;"
      "const preds={};for(const p of ['attention_source_permission_hook','descriptor_allowlisted',"
-     "'clear_reap_by_session_end','agent_scope_subagent','attention_resolved_by_hook'])"
+     "'clear_reap_by_session_end','agent_scope_subagent'])"
      "preds[p]={true:MAX,false:MAX};"
      "const st={};for(const c of m.SELFTEST_CHECKS) st[c]='fail';"
      "console.log(JSON.stringify({p:JSON.stringify(preds).length,s:JSON.stringify(st).length}));",
      str(REPORTER)], capture_output=True, text=True, cwd=str(HERE))
 w = json.loads(worst.stdout)
-eq(f"`predicates` at its worst case is D1's derived 396 B, under the 512 B cap ({w['p']} B)",
-   (396, True), (w["p"], w["p"] <= 512))
+eq(f"`predicates` at its worst case is D1's derived 316 B, under the 512 B cap ({w['p']} B)",
+   (316, True), (w["p"], w["p"] <= 512))
 # D1 § 6.14 derives the `selftest` worst case over its member table; the figure is READ from there,
 # so a check added to the reporter and not to the table (or the reverse) reds here.
 _d1 = (HERE.parent / "docs/design/EVENT-SCHEMA.md").read_text(encoding="utf-8")
@@ -3014,6 +3077,51 @@ redgreen("unknown enum values (AT-18) and the blocked pair (AT-20)",
          "counted as an undeclared type, while the permission_prompt control still opens one")
 
 
+# AN ATTENTION REQUEST HAS NO TIMER (§ 6.13, card#9527). The operator's ruling: "Mezzanine should
+# assume agent is stuck until it gets another status update from that agent." So two hours on —
+# past the 60-minute `timeout` the reporter used to emit, and past § 6.2's 90-minute silence close —
+# the flusher resolves nothing and closes only the session that is NOT waiting. The second session
+# is the CONTROL that the silence close still fires at all, so a pass that closed nothing would red.
+# SEEN RED against the reporter before card#9527: that pass emitted
+# `attention.resolved(timeout)` for the waiting session and then its `inferred_silence` close.
+s12w = seat("attention-no-timer", ingest=DEAD)
+SID_IDLE = "11111111-2222-4333-8444-0000000000a1"
+w0 = 1_790_000_000_000
+for sid in (SID, SID_IDLE):
+    hook(s12w, "SessionStart", {"session_id": sid, "hook_event_name": "SessionStart",
+                                "source": "startup", "cwd": "/home/agent/mezzanine"},
+         FLEET_REPORTER_NOW_MS=w0)
+hook(s12w, "PermissionRequest", {"session_id": SID, "hook_event_name": "PermissionRequest",
+                                 "tool_name": "Bash", "tool_input": {"command": "x"},
+                                 "permission_suggestions": None}, FLEET_REPORTER_NOW_MS=w0)
+eq("a PermissionRequest opens the request the rest of this block watches", 1,
+   len([e for e in s12w.events() if e["kind"] == "attention.request"]))
+flush(s12w, FLEET_REPORTER_NOW_MS=w0 + 2 * 3600 * 1000)
+eq("two hours on, the flusher resolves NOTHING — the 60-minute `timeout` is gone (§ 6.13)", [],
+   [e["data"]["resolution"] for e in s12w.events() if e["kind"] == "attention.resolved"])
+silent = sorted(e["session_id"] for e in s12w.events()
+                if e["kind"] == "session.end" and e["data"]["end_reason"] == "inferred_silence")
+eq("  … and § 6.2's silence close ends only the session that is NOT waiting on a human",
+   [SID_IDLE], silent)
+hook(s12w, "UserPromptSubmit", {"session_id": SID, "hook_event_name": "UserPromptSubmit",
+                                "prompt_id": "p1", "prompt": "go", "cwd": "/home/agent/mezzanine"},
+     FLEET_REPORTER_NOW_MS=w0 + 2 * 3600 * 1000 + 1000)
+res12w = [e for e in s12w.events() if e["kind"] == "attention.resolved"]
+# `waited_ms` is held to "at least two hours" and not to an exact figure: a pinned clock is an OFFSET
+# taken when the process starts (`CLOCK_OFFSET`), so each hook's instants carry its own start-up
+# milliseconds and the difference of two of them is not exact.
+eq("  … and the wait still has its observed exit: the human's prompt resolves it, two hours late",
+   [("human_input", True)],
+   [(e["data"]["resolution"], e["data"]["waited_ms"] >= 2 * 3600 * 1000) for e in res12w])
+redgreen("an attention request has no timer (§ 6.13, card#9527)",
+         "the reporter before card#9527: at 60 min the flusher emitted attention.resolved(timeout) "
+         "and at 90 min closed the waiting session as inferred_silence, so the desk stopped "
+         "rendering blocked while the agent was still waiting on a human",
+         "two hours on: no resolution, the waiting session still open, the idle control session "
+         "closed as inferred_silence, and the human's prompt resolves the request with "
+         "waited_ms = 2 h")
+
+
 print("\n== 15. A FAILED APPEND IS COUNTED, AND A BAD CACHED DESCRIPTOR COSTS NO EVENT (§ 0 item 9) ==")
 # The loss shape § 0 item 9 forbids outright is the UNCOUNTED one: a seat that drops events and
 # renders healthy. The fault is injected in the product's own terms — the current spool bucket is
@@ -3160,12 +3268,13 @@ redgreen("the OS username never reaches the wire via project_label (§ 1 non-goa
 
 
 print("\n== 17. THE BUCKET IS DERIVED AT THE WRITE, AND § 6.1's PATTERN ADMITS ITS OWN EXAMPLE ==")
-# § 11.1: a hook entering at 13:59:59.900 must not write into bucket 13 after the hour rolled —
-# the flusher's next pass is <= 10 s away and would read to EOF and unlink. The entry timestamp
-# is moved back an hour, which is that boundary made deterministic; the event's `event_time`
-# must follow the entry clock while the FILE it lands in must follow the write clock.
-ENTRY_BACK_AN_HOUR = (r"function hookMain\(hookName\) \{\n  const atMs = now\(\);",
-                      "function hookMain(hookName) {\n  const atMs = now() - 3600000;")
+# § 11.1: a hook stamping its events at 13:59:59.900 must not write into bucket 13 after the hour
+# rolled — the flusher's next pass is <= 10 s away and would read to EOF and unlink. The events'
+# stamp (§ 11.2: read when the section takes the seat write lock) is moved back an hour, which is
+# that boundary made deterministic; the event's `event_time` must follow the stamp while the FILE
+# it lands in must follow the write clock.
+ENTRY_BACK_AN_HOUR = (r"held = acquireWriteLock\(spool\); stamp = now\(\);",
+                      "held = acquireWriteLock(spool); stamp = now() - 3600000;")
 
 
 def bucket_of(rfc: str) -> str:
@@ -3193,15 +3302,15 @@ s16 = seat("bucket-at-write")
 hook(s16, "PreToolUse", pre(), reporter=plant_src(ENTRY_BACK_AN_HOUR))
 entry_b, written_b = emitted_bucket(s16)
 eq("an event emitted after the hour rolled lands in the bucket the WRITE clock names, one hour "
-   "on from the timestamp captured at process entry", [bucket_shift(entry_b, 1)], written_b)
-eq("  … while event_time still carries the entry clock, so placement and semantics are not "
+   "on from the event's stamp", [bucket_shift(entry_b, 1)], written_b)
+eq("  … while event_time still carries the stamp, so placement and semantics are not "
    "conflated", True, entry_b == bucket_shift(written_b[0], -1))
-# RED: the pre-fix derivation — the bucket taken from the entry timestamp at both writers.
+# RED: the pre-fix derivation — the bucket taken from the event's stamp at both writers.
 s16r = seat("bucket-at-entry")
 hook(s16r, "PreToolUse", pre(),
      reporter=plant_src(ENTRY_BACK_AN_HOUR, (r"utcBucket\(now\(\)\)", "utcBucket(t)")))
 entry_r, written_r = emitted_bucket(s16r)
-eq("RED: derived at process entry it lands in the PREVIOUS hour's bucket — behind a cursor the "
+eq("RED: derived from the stamp it lands in the PREVIOUS hour's bucket — behind a cursor the "
    "flusher may already have read to EOF and unlinked", [entry_r], written_r)
 
 # § 6.1's `harness_label` pattern has to accept § 6.1's own mandated value. The doc and the
@@ -4166,6 +4275,434 @@ redgreen("the console URL is read from the transcript's tail, pattern-checked, a
          f"bridge {cu_bridge_r['url']!r}; rsc {cu_rsc_r['url']!r}; malformed -> None x2 (counted); far -> "
          f"{cu_far_r['url']!r} (exhausted {cu_far_r['exhausted']}); straddle {cu_straddle_r['url']!r}; huge "
          f"{cu_huge_r['url']!r} in {cu_huge_r['ms']:.0f} ms; none/paths -> None")
+
+
+print("\n== 19d. AN UNSET harness_label IS A CONFIG GAP, NOT A MOVED HARNESS PAYLOAD (D1 § 6.1, § 9.3, card#11330) ==")
+# INSTALL-LINUX.md Step 3 leaves `harness_label` unset on purpose, so this is the state of every seat
+# installed by the runbook. Builds before card#11330 counted it `payload_key_missing.harness_label`,
+# and § 9.3 maps that family to `harness_contract_moved`: every correct install was badged "the
+# harness payload moved under this reporter". The case is driven end to end, hook -> sink -> flusher
+# -> heartbeat, because the badge is what the operator reads and the counter name alone is not.
+OLD_HL_COUNT = (r"count\('harness_label_unset'\)", "count('payload_key_missing.harness_label')")
+NO_RENAME = (r"\n  renameCounters\(state\.counters\);\n\}", "\n}")
+
+
+def hl_heartbeat(s: Seat) -> dict:
+    return [e for e in s.events() if e["kind"] == "reporter.heartbeat"][-1]["data"]
+
+
+def hl_start(s: Seat, reporter: Path = REPORTER) -> None:
+    hook(s, "SessionStart", {"session_id": SID, "hook_event_name": "SessionStart",
+                             "source": "startup", "cwd": "/home/agent/mezzanine"}, reporter=reporter)
+
+
+s19d = seat("harness-label-unset")
+s19d.cfg.pop("harness_label")
+s19d.write_cfg()
+hl_start(s19d)
+eq("an unset harness_label sends the field null", None,
+   [e for e in s19d.events() if e["kind"] == "session.start"][0]["data"]["harness_label"])
+eq("  … counts the gap as harness_label_unset", 1, s19d.counters().get("harness_label_unset"))
+eq("  … and nothing under payload_key_missing.*, whose subject is a harness payload key", [],
+   [k for k in s19d.counters() if k.startswith("payload_key_missing.")])
+flush(s19d)
+hb19d = hl_heartbeat(s19d)
+eq("  … so the heartbeat carries the count and raises no harness_contract_moved",
+   (1, False), (hb19d["counters"].get("harness_label_unset"), "harness_contract_moved" in hb19d["degraded"]))
+
+# CONTROL: the badge is still reachable from the heartbeat, so its absence above is a measurement.
+# A real harness payload key missing raises it, and the new counter alone does not.
+mod19d = subprocess.run(
+    ["node", "-e",
+     "const m=require(process.argv[1]);"
+     "console.log(JSON.stringify([m.buildDegraded({'payload_key_missing.tool_name':1}),"
+     "m.buildDegraded({'harness_label_unset':5})]));",
+     str(REPORTER)], capture_output=True, text=True, cwd=str(HERE))
+deg_payload, deg_unset = json.loads(mod19d.stdout)
+eq("CONTROL: a missing harness payload key still raises harness_contract_moved", True,
+   "harness_contract_moved" in deg_payload)
+eq("  … and harness_label_unset alone raises no member at all", [], deg_unset)
+
+p19d_old = plant_src(OLD_HL_COUNT, NO_RENAME)       # the build before card#11330: old name, no rename
+s19d_r = seat("harness-label-unset-red")
+s19d_r.cfg.pop("harness_label")
+s19d_r.write_cfg()
+hl_start(s19d_r, reporter=p19d_old)
+flush(s19d_r, reporter=p19d_old)
+eq("RED: the build before card#11330 badges this correct install harness_contract_moved", True,
+   "harness_contract_moved" in hl_heartbeat(s19d_r)["degraded"])
+
+# A SEAT UPGRADED FROM THAT BUILD. Its flusher kept the old name in state.json, and an old hook may
+# have left a delta in a sink bucket the new flusher has not folded yet. Both must arrive renamed,
+# or replacing the artifact leaves the false badge on exactly the seats that reported it.
+s19m = seat("harness-label-upgraded")
+s19m.cfg.pop("harness_label")
+s19m.write_cfg()
+hl_start(s19m, reporter=p19d_old)
+flush(s19m, reporter=p19d_old)
+eq("the old build saved payload_key_missing.harness_label in state.json", 1,
+   s19m.state().get("counters", {}).get("payload_key_missing.harness_label"))
+hl_start(s19m, reporter=p19d_old)          # a sink delta under the old name, not folded yet
+flush(s19m)
+hb19m = hl_heartbeat(s19m)
+eq("after the upgrade both the saved total and the unfolded delta arrive as harness_label_unset",
+   (2, None), (hb19m["counters"].get("harness_label_unset"),
+               hb19m["counters"].get("payload_key_missing.harness_label")))
+eq("  … the heartbeat raises no harness_contract_moved", False, "harness_contract_moved" in hb19m["degraded"])
+eq("  … and state.json keeps only the new name", (2, None),
+   (s19m.state()["counters"].get("harness_label_unset"),
+    s19m.state()["counters"].get("payload_key_missing.harness_label")))
+
+p19m_norename = plant_src(NO_RENAME)
+s19m_r = seat("harness-label-upgraded-red")
+s19m_r.cfg.pop("harness_label")
+s19m_r.write_cfg()
+hl_start(s19m_r, reporter=p19d_old)
+flush(s19m_r, reporter=p19d_old)
+flush(s19m_r, reporter=p19m_norename)
+eq("RED: without the rename an upgraded seat keeps the false harness_contract_moved", True,
+   "harness_contract_moved" in hl_heartbeat(s19m_r)["degraded"])
+redgreen("an unset harness_label raises no harness_contract_moved, on a new seat or an upgraded one (card#11330)",
+         "counted as payload_key_missing.harness_label -> harness_contract_moved on every seat installed "
+         "by the runbook; without the rename an upgraded seat keeps the badge from its saved total",
+         "counted as harness_label_unset, which raises no member; an upgraded seat's saved total and "
+         "unfolded old-name delta arrive as harness_label_unset (2) and the badge clears; control: a "
+         "missing harness payload key still raises harness_contract_moved")
+
+
+print("\n== 19e. A DEGRADED MEMBER IS RAISED WHILE ITS COUNTER ROSE WITHIN 24 h, AND THE TOTAL OUTLIVES IT (D1 § 9.3, card#9491) ==")
+# The totals persist across flusher restarts in state.json (D1 § 9.3), so a member derived from
+# "non-zero" never cleared: one bad session id badged the seat `bad_session_id` for the rest of its
+# life, and restarting the flusher, which the docs named as the way out, changed nothing. The
+# operator's ruling of 2026-09-14 windows every counter-derived badge at 24 h. Each `flush` below is
+# a FRESH flusher process on a pinned clock, so every step is also a restart. Driven end to end,
+# hook -> sink -> flusher -> heartbeat, because the badge is what the operator reads.
+H_MS = 3600 * 1000
+W0 = int(time.time() * 1000)
+BAD_SID = "not a session id"
+
+
+def bw_hook(s: Seat, at_ms: int, reporter: Path = REPORTER) -> None:
+    hook(s, "SessionStart", {"session_id": BAD_SID, "hook_event_name": "SessionStart",
+                             "source": "startup", "cwd": "/home/agent/mezzanine"},
+         reporter=reporter, FLEET_REPORTER_NOW_MS=at_ms)
+
+
+def bw_flush(s: Seat, at_ms: int, reporter: Path = REPORTER) -> dict:
+    flush(s, reporter=reporter, FLEET_REPORTER_NOW_MS=at_ms)
+    return hl_heartbeat(s)
+
+
+s19e = seat("badge-window")
+bw_hook(s19e, W0)
+hb_now = bw_flush(s19e, W0)
+eq("a bad session id raises bad_session_id on the next heartbeat",
+   (1, True), (hb_now["counters"].get("bad_session_id"), "bad_session_id" in hb_now["degraded"]))
+hb_23 = bw_flush(s19e, W0 + 23 * H_MS)
+eq("  … and a restarted flusher 23 h later still raises it: the rise is inside the window",
+   (1, True), (hb_23["counters"].get("bad_session_id"), "bad_session_id" in hb_23["degraded"]))
+hb_25 = bw_flush(s19e, W0 + 25 * H_MS)
+eq("  … 25 h later, with no further rise, the member has cleared and the total of 1 still rides "
+   "the heartbeat", (1, False), (hb_25["counters"].get("bad_session_id"), "bad_session_id" in hb_25["degraded"]))
+bw_hook(s19e, W0 + 26 * H_MS)
+hb_26 = bw_flush(s19e, W0 + 26 * H_MS)
+eq("  … and a second bad session id raises it again, with the total at 2",
+   (2, True), (hb_26["counters"].get("bad_session_id"), "bad_session_id" in hb_26["degraded"]))
+# The pinned clock is an OFFSET (FLEET_REPORTER_NOW_MS), so the pass reads it a little after the pin;
+# the rise is dated at that pass, inside one heartbeat interval of the pin.
+rise_26 = s19e.state()["counter_rises"].get("bad_session_id") or {}
+rise_26_ms = calendar.timegm(time.strptime(rise_26.get("at", "1970-01-01T00:00:00.000Z")[:19],
+                                           "%Y-%m-%dT%H:%M:%S")) * 1000 + int(rise_26.get("at", "x.000Z")[-4:-1])
+eq("  … and state.json dates that rise at the heartbeat that saw it, within one interval of the pinned clock",
+   (2, True), (rise_26.get("value"), 0 <= rise_26_ms - (W0 + 26 * H_MS) < 60_000))
+
+# AN UPGRADED SEAT. A state.json an earlier build saved carries the total and no `counter_rises`.
+# Its first heartbeat dates every non-zero total as rising then, so the badge it showed holds for
+# one window after the upgrade, and clears after it.
+s19u = seat("badge-window-upgraded")
+bw_hook(s19u, W0)
+bw_flush(s19u, W0)
+old_state = s19u.state()
+old_state.pop("counter_rises")
+(s19u.spool / "state.json").write_text(json.dumps(old_state), encoding="utf-8")
+hb_up = bw_flush(s19u, W0 + 40 * H_MS)
+eq("an upgraded state.json with an old total keeps the member on its first heartbeat",
+   (1, True), (hb_up["counters"].get("bad_session_id"), "bad_session_id" in hb_up["degraded"]))
+hb_up2 = bw_flush(s19u, W0 + 65 * H_MS)
+eq("  … and clears it one window later", False, "bad_session_id" in hb_up2["degraded"])
+
+# CONTROL: the window is per counter. A member raised by a family counter that rose recently stays,
+# while one whose counter last rose a window ago clears, in the same heartbeat.
+mod19e = subprocess.run(
+    ["node", "-e",
+     "const m=require(process.argv[1]);const W=m.K.BADGE_WINDOW_MS;const t=Date.parse('2026-10-01T00:00:00.000Z');"
+     "const st={counters:{'spool_dropped_events':3,'payload_key_missing.tool_name':1},counter_rises:{"
+     "'spool_dropped_events':{value:3,at:new Date(t-W).toISOString()},"
+     "'payload_key_missing.tool_name':{value:1,at:new Date(t-W+1).toISOString()}}};"
+     "console.log(JSON.stringify({w:W,deg:m.buildDegraded(m.windowedCounters(st,t))}));",
+     str(REPORTER)], capture_output=True, text=True, cwd=str(HERE))
+r19e = json.loads(mod19e.stdout)
+eq("CONTROL: the window is D1 § 9.3's 24 h", 24 * H_MS, r19e["w"])
+eq("  … a counter that last rose exactly one window ago raises nothing, and one that rose 1 ms "
+   "later still raises its member", ["harness_contract_moved"], r19e["deg"])
+
+# RED: derive the members from the totals, which is the build before card#9491.
+p19e = plant(("degraded: buildDegraded(windowedCounters(state, atMs))", "degraded: buildDegraded(all)"))
+s19e_r = seat("badge-window-red")
+bw_hook(s19e_r, W0, reporter=p19e)
+bw_flush(s19e_r, W0, reporter=p19e)
+hb_r = bw_flush(s19e_r, W0 + 25 * H_MS, reporter=p19e)
+eq("RED: derived from the totals, the member is still raised 25 h and a flusher restart later",
+   True, "bad_session_id" in hb_r["degraded"])
+redgreen("a degraded member is raised while its counter rose within 24 h; the total outlives it (card#9491)",
+         "members derived from the persisted totals: one bad session id keeps bad_session_id raised "
+         "25 h and a flusher restart later, so the badge never clears",
+         "raised at 0 h and at 23 h, cleared at 25 h with the total of 1 still on the heartbeat, raised "
+         "again by a second rise; an upgraded state.json keeps the badge one window, then clears; "
+         "control: the window is per counter, exclusive at 24 h")
+
+
+print("\n== 19f. A STATUSLINE WITH NO USABLE context_window IS EXPECTED, NOT A MOVED HARNESS PAYLOAD (D1 § 6.11, § 9.3, card#11544) ==")
+# D1 § 6.11: the statusLine payload has no usable `context_window` in the first seconds of EVERY
+# session, so the counter for it is non-zero on every seat that applies INSTALL-LINUX.md Step 4(b).
+# Builds before card#11544 counted it `payload_key_missing.context_window`, which § 9.3 maps to
+# `harness_contract_moved`: every session start re-raised "the harness payload moved under this
+# reporter", so card#9491's 24 h window never cleared it on an active seat. Driven end to end,
+# statusLine -> sink -> flusher -> heartbeat, because the badge is what the operator reads.
+OLD_CW_COUNT = (r"count\('context_window_unavailable'\)", "count('payload_key_missing.context_window')")
+NO_CW_RENAME = (r"\n  \['payload_key_missing\.context_window', 'context_window_unavailable'\],", "")
+# The two shapes § 6.11 names: no `context_window` at all, and one whose `used_percentage` is null
+# with no token counts to compute it from (`current_usage` null early in a session).
+CW_NONE = {"session_id": SID, "model": {"display_name": "claude-opus-5"}}
+CW_NULL = {"session_id": SID, "context_window": {"used_percentage": None, "current_usage": None}}
+
+
+def cw_session_start(s: Seat, reporter: Path = REPORTER) -> None:
+    statusline(s, CW_NONE, reporter=reporter)
+    statusline(s, CW_NULL, reporter=reporter)
+
+
+s19f = seat("context-window-unavailable")
+cw_session_start(s19f)
+eq("a statusLine with no usable context_window emits no context.sample", [],
+   [e for e in s19f.events() if e["kind"] == "context.sample"])
+eq("  … counts both renders as context_window_unavailable", 2, s19f.counters().get("context_window_unavailable"))
+eq("  … and nothing under payload_key_missing.*, whose family raises harness_contract_moved", [],
+   [k for k in s19f.counters() if k.startswith("payload_key_missing.")])
+flush(s19f)
+hb19f = hl_heartbeat(s19f)
+eq("  … so the heartbeat carries the count and raises no harness_contract_moved",
+   (2, False), (hb19f["counters"].get("context_window_unavailable"), "harness_contract_moved" in hb19f["degraded"]))
+eq("  … nor any other member", [], hb19f["degraded"])
+
+# CONTROL: the badge is still reachable from the heartbeat, so its absence above is a measurement,
+# and the prefix match still fails loud for a payload key nobody has seen go missing before.
+mod19f = subprocess.run(
+    ["node", "-e",
+     "const m=require(process.argv[1]);"
+     "console.log(JSON.stringify([m.buildDegraded({'payload_key_missing.a_key_added_later':1}),"
+     "m.buildDegraded({'context_window_unavailable':5})]));",
+     str(REPORTER)], capture_output=True, text=True, cwd=str(HERE))
+deg_new_key, deg_cw = json.loads(mod19f.stdout)
+eq("CONTROL: a payload_key_missing.* key no table names still raises harness_contract_moved", True,
+   "harness_contract_moved" in deg_new_key)
+eq("  … and context_window_unavailable alone raises no member at all", [], deg_cw)
+
+p19f_old = plant_src(OLD_CW_COUNT, NO_CW_RENAME)     # the build before card#11544: old name, no rename
+s19f_r = seat("context-window-unavailable-red")
+cw_session_start(s19f_r, reporter=p19f_old)
+flush(s19f_r, reporter=p19f_old)
+eq("RED: the build before card#11544 badges a session start harness_contract_moved", True,
+   "harness_contract_moved" in hl_heartbeat(s19f_r)["degraded"])
+
+# A SEAT UPGRADED FROM THAT BUILD. Its flusher saved the old name in state.json, and an old
+# statusLine process may have left a delta in a sink bucket the new flusher has not folded yet.
+# Both must arrive renamed, or replacing the artifact leaves the false badge on every 4(b) seat.
+s19fm = seat("context-window-upgraded")
+cw_session_start(s19fm, reporter=p19f_old)
+flush(s19fm, reporter=p19f_old)
+eq("the old build saved payload_key_missing.context_window in state.json", 2,
+   s19fm.state().get("counters", {}).get("payload_key_missing.context_window"))
+statusline(s19fm, CW_NONE, reporter=p19f_old)       # a sink delta under the old name, not folded yet
+flush(s19fm)
+hb19fm = hl_heartbeat(s19fm)
+eq("after the upgrade both the saved total and the unfolded delta arrive as context_window_unavailable",
+   (3, None), (hb19fm["counters"].get("context_window_unavailable"),
+               hb19fm["counters"].get("payload_key_missing.context_window")))
+eq("  … the heartbeat raises no harness_contract_moved", False, "harness_contract_moved" in hb19fm["degraded"])
+eq("  … and state.json keeps only the new name", (3, None, None),
+   (s19fm.state()["counters"].get("context_window_unavailable"),
+    s19fm.state()["counters"].get("payload_key_missing.context_window"),
+    s19fm.state()["counter_rises"].get("payload_key_missing.context_window")))
+
+p19fm_norename = plant_src(NO_CW_RENAME)
+s19fm_r = seat("context-window-upgraded-red")
+cw_session_start(s19fm_r, reporter=p19f_old)
+flush(s19fm_r, reporter=p19f_old)
+flush(s19fm_r, reporter=p19fm_norename)
+eq("RED: without the rename entry an upgraded seat keeps the false harness_contract_moved", True,
+   "harness_contract_moved" in hl_heartbeat(s19fm_r)["degraded"])
+redgreen("a statusLine with no usable context_window raises no harness_contract_moved, on a new seat or an "
+         "upgraded one (card#11544)",
+         "counted as payload_key_missing.context_window -> harness_contract_moved at every session start "
+         "on a Step 4(b) seat; without the rename entry an upgraded seat keeps the badge from its saved total",
+         "counted as context_window_unavailable, which raises no member; an upgraded seat's saved total and "
+         "unfolded old-name delta arrive as context_window_unavailable (3) and the badge clears; control: "
+         "a payload_key_missing.* key no table names still raises harness_contract_moved")
+
+
+print("\n== 19g. ONE SEAT'S SPOOL ORDER IS ITS event_time ORDER, ACROSS EVERY WRITER (D1 § 11.2, card#11563) ==")
+# Every writer reads the clock its events carry while holding the seat write lock and appends them
+# before releasing it. Before card#11563 a hook read its clock at ENTRY and appended after stdin
+# and the index fold, and the flusher stamped its heartbeat at the start of a pass that had since
+# awaited the network — so two writers could append in the opposite order to their clocks. The
+# probe card#11563 names measured it with real racing processes (5 of 80 trials); the cases below
+# make the same interleavings DETERMINISTIC, by holding one writer at the exact point the race
+# needs it held, and assert on the spool itself.
+#
+# THE RED is one plant on the primitive: the stamp replaced by the clock read when the process
+# started, which is where a hook read it before card#11563. The lock is still taken and released.
+p19g_entry = plant(
+    ("const now = () => Date.now() + CLOCK_OFFSET;\n",
+     "const now = () => Date.now() + CLOCK_OFFSET;\nconst PROCESS_ENTRY_MS = Date.now() + CLOCK_OFFSET;\n"),
+    ("held = acquireWriteLock(spool); stamp = now();",
+     "held = acquireWriteLock(spool); stamp = PROCESS_ENTRY_MS;"))
+
+
+def spool_times(s: Seat) -> list[tuple[str, str]]:
+    """(event_time, kind) for every spooled event, in SPOOL order — the order seq is assigned in."""
+    return [(e["event_time"], e["kind"]) for e in s.events()]
+
+
+def inversions(s: Seat) -> list[str]:
+    """Every pair spooled in the opposite order to its event_times — all pairs, not only adjacent
+    ones: a later-stamped event can sit any distance ahead of the older one it overtook."""
+    t = spool_times(s)
+    return [f"{a[1]}@{a[0]} spooled before {b[1]}@{b[0]}"
+            for i, a in enumerate(t) for b in t[i + 1:] if b[0] < a[0]]
+
+
+def silence_race(name: str, reporter: Path) -> Seat:
+    """§ 6.2's inferred close against a `Stop` that ENTERED before it and appends after it.
+
+    The Stop hook is started and held on its stdin, which it reads after its old entry-time clock
+    and before its index fold; a one-pass flusher then closes the silent session; then the Stop is
+    released. That is the probe's measured interleaving with the timing removed."""
+    s = seat(name, ingest=DEAD)
+    old = int(time.time() * 1000) - 92 * 60_000
+    hook(s, "UserPromptSubmit", {"session_id": SID, "hook_event_name": "UserPromptSubmit",
+                                 "prompt_id": "p1", "prompt": "go"},
+         reporter=reporter, FLEET_REPORTER_NOW_MS=old)
+    hook(s, "PreToolUse", pre(), reporter=reporter, FLEET_REPORTER_NOW_MS=old + 1000)
+    held = subprocess.Popen(["node", str(reporter), "hook", "Stop"], stdin=subprocess.PIPE,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True,
+                            env=s.env(), cwd=str(HERE))
+    time.sleep(1.0)   # past node start-up and config load: the old reporter has read its clock
+    flush(s, reporter=reporter)
+    held.communicate(json.dumps({"session_id": SID, "hook_event_name": "Stop"}), timeout=30)
+    return s
+
+
+def heartbeat_race(name: str, reporter: Path) -> Seat:
+    """A hook that runs while the flusher awaits its health probe, i.e. after the pass's clock was
+    read and before the pass's heartbeat is spooled."""
+    s = seat(name)
+    hook(s, "PreToolUse", pre(tuid="hb_race_0"), reporter=reporter)
+    INGEST.get_script = [{"run": lambda: hook(s, "PreToolUse", pre(tuid="hb_race_1"), reporter=reporter)}]
+    try:
+        flush(s, reporter=reporter)
+    finally:
+        INGEST.get_script = []
+    return s
+
+
+r19g_s = silence_race("order-silence-red", p19g_entry)
+kinds_r = [k for _, k in spool_times(r19g_s)]
+eq("RED staging: the race happened — the flusher closed the session and the held Stop then ended "
+   "its turn", (True, True), ("session.end" in kinds_r, "turn.end" in kinds_r))
+inv_r = inversions(r19g_s)
+eq("RED: with the clock read at process entry, the held Stop's turn.end lands in the spool AFTER "
+   "the flusher's session.end and carries an OLDER event_time", True,
+   any(i.startswith("session.end@") and "before turn.end@" in i for i in inv_r))
+g19g_s = silence_race("order-silence-green", REPORTER)
+kinds_g = [k for _, k in spool_times(g19g_s)]
+eq("GREEN staging: the same race, the same two events", (True, True),
+   ("session.end" in kinds_g, "turn.end" in kinds_g))
+eq("GREEN: every event in the spool is in event_time order", [], inversions(g19g_s))
+
+r19g_h = heartbeat_race("order-heartbeat-red", p19g_entry)
+eq("RED staging: the hook ran during the probe, so the spool holds both calls' tool.start",
+   2, len([1 for _, k in spool_times(r19g_h) if k == "tool.start"]))
+eq("RED: a heartbeat stamped before the pass awaited the network is spooled behind the hook that "
+   "ran during the await, with an older event_time", True,
+   any(i.startswith("tool.start@") and "before reporter.heartbeat@" in i for i in inversions(r19g_h)))
+g19g_h = heartbeat_race("order-heartbeat-green", REPORTER)
+eq("GREEN staging: both tool.start and a heartbeat spooled",
+   (2, 1), (len([1 for _, k in spool_times(g19g_h) if k == "tool.start"]),
+            len([1 for _, k in spool_times(g19g_h) if k == "reporter.heartbeat"])))
+eq("GREEN: the heartbeat carries the clock of its own section, so the spool is in event_time order",
+   [], inversions(g19g_h))
+
+# THE LOCK ITSELF. A live holder makes a writer wait — bounded at K.WRITE_LOCK_WAIT_MS, then it
+# proceeds unlocked and COUNTS it, because a hook never holds up the harness for an ordering
+# guarantee. A dead or aged holder is broken and counted. The RED removes the exclusive create.
+p19g_nolock = plant(
+    ("      const fd = fs.openSync(lock, 'wx');\n",
+     "      return true;\n      const fd = fs.openSync(lock, 'wx');\n"))
+
+
+def held_lock(s: Seat, pid: int, age_s: float = 0.0) -> Path:
+    lk = s.spool / "write.lock"
+    lk.write_text(str(pid), encoding="utf-8")
+    t = time.time() - age_s
+    os.utime(lk, (t, t))
+    return lk
+
+
+def dead_pid() -> int:
+    p = subprocess.Popen(["true"])
+    p.wait()
+    return p.pid
+
+
+s19g_live = seat("write-lock-live", ingest=DEAD)
+lk = held_lock(s19g_live, os.getpid())
+hook(s19g_live, "PreToolUse", pre(tuid="wl_live"))
+# The counter is raised only once the wait's deadline has passed, so it is the measurement that the
+# hook waited; a wall-clock delta against a second hook would be node start-up jitter of the same size.
+eq("a live holder: the hook waits it out to the cap, proceeds, and counts write_lock_timeout",
+   1, s19g_live.counters().get("write_lock_timeout"))
+eq("  … its event is still spooled — a held lock costs ordering, never an event", 1,
+   len([1 for _, k in spool_times(s19g_live) if k == "tool.start"]))
+eq("  … and it leaves the holder's lock in place, since it never held it", str(os.getpid()),
+   lk.read_text(encoding="utf-8"))
+s19g_live_r = seat("write-lock-live-red", ingest=DEAD)
+held_lock(s19g_live_r, os.getpid())
+hook(s19g_live_r, "PreToolUse", pre(tuid="wl_live_r"), reporter=p19g_nolock)
+eq("RED: with no exclusive create the hook ignores a live holder and counts nothing", None,
+   s19g_live_r.counters().get("write_lock_timeout"))
+
+s19g_dead = seat("write-lock-dead", ingest=DEAD)
+held_lock(s19g_dead, dead_pid())
+hook(s19g_dead, "PreToolUse", pre(tuid="wl_dead"))
+eq("a holder whose pid is gone is broken at once and counted; the hook's own lock is released",
+   (1, None, False), (s19g_dead.counters().get("write_lock_broken"),
+                      s19g_dead.counters().get("write_lock_timeout"),
+                      (s19g_dead.spool / "write.lock").exists()))
+s19g_aged = seat("write-lock-aged", ingest=DEAD)
+held_lock(s19g_aged, os.getpid(), age_s=10.0)
+hook(s19g_aged, "PreToolUse", pre(tuid="wl_aged"))
+eq("a live pid on a lock 10 s old — a reused pid, or a holder hung far past any section — is "
+   "broken and counted", (1, None), (s19g_aged.counters().get("write_lock_broken"),
+                                     s19g_aged.counters().get("write_lock_timeout")))
+redgreen("one seat's spool order is its event_time order (D1 § 11.2, card#11563)",
+         "the clock read at process entry: a Stop held between its entry and its append puts "
+         "turn.end behind the flusher's session.end with an older event_time, and a heartbeat "
+         "stamped before the pass's network await lands behind a hook that ran during it; with no "
+         "exclusive create a hook ignores a live holder and counts nothing",
+         "both interleavings leave the spool in event_time order; a live holder makes the hook "
+         "wait to the cap, then spool its event and count write_lock_timeout; a dead or 10 s old "
+         "holder is broken and counted write_lock_broken")
 
 
 print("\n== 20. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")

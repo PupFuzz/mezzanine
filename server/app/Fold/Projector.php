@@ -5,8 +5,9 @@ namespace App\Fold;
 use App\Ingest\Counters;
 use App\Ingest\KindRegistry;
 use App\Ingest\Wire;
-use App\Support\Anchored;
+use App\Support\Slug;
 use App\Sweep\Predicates;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -35,8 +36,16 @@ use Illuminate\Support\Facades\DB;
  * So each group is guarded on the column that already records when that group was written —
  * `last_turn_ended_at` for the `L` record, `ended_at` for the close, `closed_at` for a call,
  * `resolved_at` for a request, `context_sampled_at` for the gauge, `started_at` for a session
- * start — and `applied_*` is maintained as the row's high-water mark. Every one of § 10.2's
- * out-of-order rows is satisfied by construction rather than by a rule an implementer must hold.
+ * start — and `applied_*` is maintained as the row's high-water mark. A server-inferred turn close
+ * is not an observation, so a `turn.end` is ordered against the start of the turn it closed instead
+ * (`turnRecordTime()`, card#11561).
+ *
+ * ⚠ THE GUARDS MAKE A PAIR OF EVENTS CONVERGE; THEY DO NOT MAKE EVERY COMPOSITION CONVERGE. A group's
+ * guard compares an event with what that group holds, and cannot apply the effects a NEWER event of
+ * another kind would have had on it in order — a `session.end` older than activity already applied
+ * still closes calls and a turn opened after it, and a `turn.start` or `tool.start` older than a
+ * session close still opens in the ended session. `docs/design/FLEET-STATE.md § 6.5` lists the known
+ * cases and the upstream fix they share (card#11561).
  */
 /*
  * NOT `final`, and the reason is a test seam rather than an extension point. `Fold` takes
@@ -52,8 +61,40 @@ class Projector
 
     private const ORPHAN_DISPATCH_MS = 60 * 60 * 1000;
 
-    /** D1 § 6.13 / § 4.7 — measured from the request's own `event_time` (the seat clock). */
-    private const ATTENTION_CEILING_MS = 60 * 60 * 1000;
+    /**
+     * `docs/design/FLEET-STATE.md § 4.4`'s activity exit of `blocked` — the kinds that are
+     * "another status update from that agent" (the operator's ruling of 2026-09-14, card#9527).
+     *
+     * A REQUEST HAS NO TIMER. It stays open until the session it was raised in reports activity
+     * (or any session on the seat starts — `resolveOnSeatActivity()`), and this is that set: a prompt, a turn ending, a tool finishing, a session starting or ending. It
+     * is a SUBSET of `StateRecompute::ACTIVITY_KINDS`, and each member that set has and this one
+     * does not is left out for a stated reason:
+     *
+     *  - `tool.start` — D1 § 6.13 says the order of `PermissionRequest` against the call it is about
+     *    is undocumented, so the very call awaiting permission can open AFTER the request. Counting
+     *    it would resolve the wait on the event that is waiting. Its `tool.end` is in the set.
+     *  - `subagent.spawn` / `subagent.stop` — each rides a dispatch call's `tool.start` / `tool.end`
+     *    (D1 § 6.7), so the call event already speaks for it.
+     *  - `compaction.*` — the harness reclaiming context, not the agent reporting (§ 4.8).
+     *  - `attention.*` — a second request is not an answer to the first (§ 4.4's NOT-an-exit row),
+     *    and a resolution is its own exit.
+     *
+     * `context.sample` and `reporter.heartbeat` are not activity at all (§ 3.2): a heartbeat is the
+     * REPORTER saying it is alive, and a waiting agent's reporter keeps sending one.
+     *
+     * Two events of these kinds are the REPORTER's, not the agent's, and `isReporterInference()`
+     * excludes them at the call site.
+     */
+    private const SEAT_ACTIVITY_KINDS = [
+        'turn.start', 'turn.end', 'tool.end', 'session.start', 'session.end',
+    ];
+
+    /**
+     * § 7.2's `attention_long_wait` threshold: a request whose wait reached it is counted once, when
+     * it resolves. Visibility only — nothing resolves at it. 60 min is the ceiling card#9527 removed,
+     * so the counter reads as "how often the old ceiling would have cleared a wait that was real".
+     */
+    private const ATTENTION_LONG_WAIT_MS = 60 * 60 * 1000;
 
     /**
      * D1 § 6.7 — the dispatch tool's payload `tool_name` is `Agent` on this build, MEASURED at
@@ -81,7 +122,9 @@ class Projector
      *
      * `INVALID_TOOL_NAME` was the worst of the three in a second way: D1 § 6.5 defines that literal
      * as the REPORTER's own substitution for a name that failed its pattern, so reusing it here for
-     * a name that never arrived would put two different facts in one value.
+     * a name that never arrived would put two different facts in one value. A name that DID arrive
+     * and fails § 6.5's pattern is that same fact, and is written as that literal
+     * (`FoldEvent::conforming()`'s `$refusedAs`, card#9346); a missing one still raises.
      */
 
     public function apply(FoldEvent $e): void
@@ -108,6 +151,37 @@ class Projector
             // forbids outright.
             default => throw new \LogicException('no projection for kind '.$e->kind),
         };
+
+        // AFTER the projection, so a `session.end` has already resolved its OWN session's request
+        // as `session_ended` — the more specific label — and this resolves whatever is left.
+        if (in_array($e->kind, self::SEAT_ACTIVITY_KINDS, true) && ! $this->isReporterInference($e)) {
+            $this->resolveOnSeatActivity($e);
+        }
+    }
+
+    /**
+     * An event of an activity kind that no agent act produced — the reporter's own inference — and
+     * so not "another status update from that agent" (card#9527).
+     *
+     * Every `tool.end.close_source` D1 § 6.6 declares, classified against D1 § 8.3's reap table:
+     * `post_tool_use` / `post_tool_use_failure` (the tool ran), `subagent_stop_hook` and
+     * `reap_turn_boundary` (a `Stop` / `StopFailure` / `SubagentStop` hook) and
+     * `reap_session_boundary` (a `SessionEnd` or `SessionStart(clear)` hook) all follow a harness
+     * hook fired by the agent's own session. `reap_reporter_restart` does not: it is the flusher
+     * closing calls older than its own start, so a reporter restart or upgrade under a waiting
+     * prompt would otherwise clear the wait. (`reap_session_boundary` also carries the 16-session
+     * cap's eviction, which no field distinguishes on the `tool.end`; D1 § 8.2 names that case.)
+     *
+     * `session.end(inferred_silence)` is the flusher's inference that a session went quiet
+     * (D1 § 6.2); a waiting session is quiet because it waits.
+     */
+    private function isReporterInference(FoldEvent $e): bool
+    {
+        return match ($e->kind) {
+            'tool.end' => $e->str('close_source', 32) === 'reap_reporter_restart',
+            'session.end' => $e->str('end_reason', 32) === 'inferred_silence',
+            default => false,
+        };
     }
 
     // ── sessions ─────────────────────────────────────────────────────────────────────────────
@@ -127,8 +201,8 @@ class Projector
                     'startup', 'resume', 'clear', 'compact', 'fork', 'unknown',
                 ]),
                 'project_label' => $e->str('project_label', 48),
-                'harness_label' => $e->str('harness_label', 32),
-                'previous_session_id' => $e->str('previous_session_id', 128),
+                'harness_label' => $e->conforming('harness_label', Wire::HARNESS_LABEL),
+                'previous_session_id' => $e->conforming('previous_session_id', Wire::SESSION_ID),
                 'updated_at' => $e->receivedAt,
             ]);
         }
@@ -155,7 +229,7 @@ class Projector
                 'clear', 'resume', 'logout', 'prompt_input_exit', 'other', 'inferred_silence',
             ]),
             // The wire said so. § 6.4's other member, `server_offline`, belongs to § 4.6's offline
-            // quiescence — the sweeper's, which neither half of this card builds.
+            // quiescence — the sweeper's (`Sweep::quiesce`).
             'closed_by' => 'wire',
             // § 4.6: an open compaction is bounded by its session closing, among other things.
             // The ceiling's basis is cleared with the fact — see `compactionEnd()`.
@@ -236,11 +310,25 @@ class Projector
 
         DB::table('sessions')->where('id', $ref)->update($update);
 
-        // § 4.4's `blocked` third exit: "the server also closes the request when the session
+        // § 4.4's `blocked` session exit: "the server also closes the request when the session
         // closes, so a lost resolution cannot strand the state". D1 emits
         // `attention.resolved(session_ended)` after the boundary event; if it arrives, it is an
         // ordinary re-resolution of an already-resolved row and the LWW guard makes it a no-op.
-        $this->resolveOpenRequests($e, $ref);
+        //
+        // NOT on `inferred_silence` (card#9527): the flusher's guess that the session went quiet is
+        // the same inference `isReporterInference()` keeps out of the activity exit, and a waiting
+        // session is quiet because it waits. A current reporter never emits it for a waiting
+        // session (D1 § 6.2); an older one does, at 90 minutes.
+        if (! $this->isReporterInference($e)) {
+            $this->resolveRequests(
+                $e->seatRef,
+                DB::table('attention_requests')
+                    ->where('seat_ref', $e->seatRef)->where('session_ref', $ref)->whereNull('resolved_at'),
+                $e->eventTime,
+                'session_ended',
+                'session_end',
+            );
+        }
 
         $this->touchApplied($ref, $e);
     }
@@ -265,19 +353,74 @@ class Projector
         Predicates::record($e->seatRef, 'call_closed_by_wire', $byWire, $e->receivedAt, $count);
     }
 
-    private function resolveOpenRequests(FoldEvent $e, int $sessionRef): void
+    /**
+     * § 4.4's activity exit: the waiting session's next activity event resolves its request — and
+     * a `session.start` of ANY session on the seat resolves every request still open on it.
+     *
+     * ⛔ SESSION-SCOPED, WITH ONE STATED EXCEPTION (card#9527, seat ruling in comment 10579). A seat
+     * running two terminals is two agents, so work in session B is not session A's status update,
+     * and D1 § 6.2's rule that nothing about one session is inferred from another's events holds.
+     * The exception is a session STARTING: a harness killed while waiting sends no `SessionEnd`,
+     * and the next thing the seat ever says about it is a new session — which is when the operator
+     * restarted it. Without the exception that wait would have no exit at all.
+     *
+     * "BEFORE" IS ON THE SEAT CLOCK, the request's own `opened_at` against the event's
+     * `event_time` — one seat, one clock, so no skew enters the comparison. Strictly before: an
+     * event stamped in the same millisecond as the request is not evidence the wait is over.
+     *
+     * NO `applied_*` TRIPLE IS WRITTEN, the same as the session close above: this is an INFERENCE,
+     * and the reporter's own `attention.resolved` — which for an ordinary approval is emitted right
+     * after the `tool.end` that lands here first — relabels the row through `attentionResolved()`'s
+     * ordinary LWW path. An observation overrides an inference (D1 § 12.5).
+     */
+    private function resolveOnSeatActivity(FoldEvent $e): void
     {
         $open = DB::table('attention_requests')
-            ->where('seat_ref', $e->seatRef)->where('session_ref', $sessionRef)->whereNull('resolved_at')
-            ->get(['id', 'opened_at']);
+            ->where('seat_ref', $e->seatRef)->whereNull('resolved_at')
+            ->where('opened_at', '<', $e->eventTime);
 
-        foreach ($open as $request) {
+        if ($e->kind !== 'session.start') {
+            // The projection above has already created or reopened this session's row, so this
+            // is a read; an event with no session names no session's request.
+            $open->where('session_ref', DB::table('sessions')
+                ->where('seat_ref', $e->seatRef)->where('session_id', $e->sessionId)->value('id'));
+        }
+
+        $this->resolveRequests($e->seatRef, $open, $e->eventTime, 'seat_activity', 'server_seat_activity');
+    }
+
+    /**
+     * The one write-site for a SERVER-side resolution — the session close and the seat-activity
+     * exit — so the `waited_ms` arithmetic and § 7.2's `attention_long_wait` count are stated once.
+     * The wire's resolution has its own path (`attentionResolved()`), because it carries the
+     * reporter's `waited_ms` and the LWW triple; it counts the long wait through the same helper.
+     */
+    private function resolveRequests(
+        int $seatRef,
+        Builder $open,
+        string $at,
+        string $resolution,
+        string $source,
+    ): void {
+        foreach ($open->get(['id', 'opened_at']) as $request) {
+            $waited = max(0, Clock::toMs($at) - Clock::toMs($request->opened_at));
+
             DB::table('attention_requests')->where('id', $request->id)->update([
-                'resolved_at' => $e->eventTime,
-                'resolution' => 'session_ended',
-                'resolution_source' => 'session_end',
-                'waited_ms' => max(0, Clock::toMs($e->eventTime) - Clock::toMs($request->opened_at)),
+                'resolved_at' => $at,
+                'resolution' => $resolution,
+                'resolution_source' => $source,
+                'waited_ms' => $waited,
             ]);
+
+            $this->countLongWait($seatRef, $waited);
+        }
+    }
+
+    /** § 7.2's `attention_long_wait` — counted on a request's FIRST resolution only. */
+    private function countLongWait(int $seatRef, int $waitedMs): void
+    {
+        if ($waitedMs >= self::ATTENTION_LONG_WAIT_MS) {
+            Counters::seat($seatRef, 'attention_long_wait');
         }
     }
 
@@ -292,24 +435,26 @@ class Projector
         // RE-OPEN a turn that has already ended — without that, AT-D2-11's "a completed call
         // reopens and renders working forever" arrives through the turn instead of the call.
         //
-        // BUT THE GUARD IS ON THE FLAG ALONE, AND NOT ON THE ROW. The narrative fields land either
-        // way, because AT-D2-11's GREEN is that the final state equals IN-ORDER delivery exactly,
-        // and in order this turn's `turn_started_at` and `prompt_chars` would be on the row. A
-        // guard that refused the whole event would make the out-of-order run diverge on two
-        // columns while looking like it was protecting a state — which is the same over-broad
-        // shape the `session.start` path avoids by guarding on `started_at IS NULL`.
+        // TWO GROUPS, TWO GUARDS, and neither refuses the whole event. The OPEN FLAG is guarded on
+        // the turn record (`last_turn_ended_at`): a start older than the newest close does not
+        // re-open. The NARRATIVE — `turn_started_at`, `turn_prompt_chars` and the console link — is
+        // guarded on its own time, `turn_started_at`: it describes the NEWEST turn, so a start older
+        // than the one already written leaves it alone (card#11561 — it used to be written
+        // unconditionally, so an older `turn.start` arriving after a newer one put the earlier
+        // prompt in the drill-down). A start older than the newest CLOSE but newer than the stored
+        // start still lands its narrative, because in order this turn's `turn_started_at` and
+        // `prompt_chars` would be on the row — the same per-group reading the `session.start` path
+        // makes by guarding on `started_at IS NULL`.
         $superseded = $this->groupIsOlder($e, $row->last_turn_ended_at, $row);
 
-        $update = [
-            'turn_started_at' => $e->eventTime,
-            'turn_prompt_chars' => $e->int('prompt_chars'),
-            'updated_at' => $e->receivedAt,
-        ];
+        $update = ['updated_at' => $e->receivedAt];
 
-        // card#9416: the session's console URL, as of its NEWEST turn — so an older `turn.start`
-        // arriving late never replaces it. Written on every newest turn, `null` included: the
-        // reporter sends `null` when the bridge has ended, and that must take the link away.
         if (! $this->groupIsOlder($e, $row->turn_started_at, $row)) {
+            $update['turn_started_at'] = $e->eventTime;
+            $update['turn_prompt_chars'] = $e->int('prompt_chars');
+            // card#9416: the session's console URL, as of its NEWEST turn. Written on every newest
+            // turn, `null` included: the reporter sends `null` when the bridge has ended, and that
+            // must take the link away.
             $update['console_url'] = $this->consoleUrl($e);
         }
 
@@ -335,24 +480,13 @@ class Projector
      * D1 § 6.3's `console_url`, or `null`. ⛔ THE PATTERN IS CHECKED HERE, BEFORE THE STORE, because
      * nothing upstream does: the ingest refuses a byte bound and never a pattern (§ 12.1 step 10), and
      * the value becomes an `href` on the drill-down. A value that fails it is not stored and is
-     * counted (`console_url_refused`, D2 § 7.2) — a conforming reporter drops it first, so a count
-     * here is a reporter that does not, or a value that did not come from one.
+     * counted (`format_refused.console_url`, D2 § 7.2) — a conforming reporter drops it first, so a
+     * count here is a reporter that does not, or a value that did not come from one. It is the case
+     * `FoldEvent::conforming()` was generalised from (card#9346), and it goes through it.
      */
     private function consoleUrl(FoldEvent $e): ?string
     {
-        $value = Wire::field($e->data, 'console_url');
-
-        if ($value === null) {
-            return null;
-        }
-
-        if (is_string($value) && preg_match(Anchored::pattern(Wire::CONSOLE_URL), $value) === 1) {
-            return $value;
-        }
-
-        Counters::seat($e->seatRef, 'console_url_refused');
-
-        return null;
+        return $e->conforming('console_url', Wire::CONSOLE_URL);
     }
 
     private function turnEnd(FoldEvent $e): void
@@ -360,8 +494,10 @@ class Projector
         $ref = $this->sessionRef($e);
         $row = DB::table('sessions')->where('id', $ref)->first();
 
-        // AT-D2-11: "a superseded `turn.end` must not overwrite a newer one".
-        if ($this->groupIsOlder($e, $row->last_turn_ended_at, $row)) {
+        // AT-D2-11: "a superseded `turn.end` must not overwrite a newer one" — guarded on the time
+        // of the newest OBSERVED write to the turn record (`turnRecordTime()`), so the server's own
+        // inferred close never outranks the seat's real `turn.end` for the same turn.
+        if ($this->groupIsOlder($e, $this->turnRecordTime($row), $row)) {
             $this->touchApplied($ref, $e);
 
             return;
@@ -410,6 +546,21 @@ class Projector
             ]);
         }
 
+        // A SESSION CLOSE NEWER THAN THIS EVENT HAS ALREADY BEEN APPLIED (card#11561), so in order
+        // this `turn.end` lands first and the close then acts on what it wrote. The close's
+        // effects on the turn record are applied here, as `sessionEnd()` states them: card #7337's
+        // background-task count goes to 0, and a stall this event opens is cleared by the close —
+        // `S` is already false through `ended_at`, and § 4.6 needs the clearer recorded. ⚠ A SECOND
+        // STATEMENT OF `sessionEnd()`'s RULES, which is the per-group design's limit rather than a
+        // choice: see the class docblock's composition note.
+        if ($row->closed_by === 'wire' && $this->groupIsOlder($e, $row->ended_at, $row)) {
+            $update['last_turn_background_tasks_open'] = 0;
+
+            if ($endReason === 'api_error') {
+                $update['stalled_cleared_by'] = 'session_end';
+            }
+        }
+
         DB::table('sessions')->where('id', $ref)->update($update);
 
         // § 5's `turn_clean`, evaluated at its own site — "per `turn.end` — ~200–600/seat/day".
@@ -437,7 +588,7 @@ class Projector
 
     private function toolStart(FoldEvent $e): void
     {
-        $callId = $e->str('call_id', 26);
+        $callId = $e->conforming('call_id', Wire::ULID);
 
         if ($callId === null) {
             return;
@@ -447,12 +598,12 @@ class Projector
 
         $open = [
             'session_ref' => $e->sessionId === null ? null : $this->sessionRef($e),
-            'tool_name' => $e->str('tool_name', 64),
+            'tool_name' => $e->conforming('tool_name', Wire::TOOL_NAME, Wire::INVALID_TOOL_NAME),
             'descriptor' => $e->str('descriptor', 200),
             'descriptor_truncated' => (bool) Wire::field($e->data, 'descriptor_truncated'),
             'agent_scope' => $e->enum('agent_scope', ['main', 'subagent']),
-            'parent_call_id' => $e->str('parent_call_id', 26),
-            'harness_call_ref' => $e->str('harness_call_ref', 64),
+            'parent_call_id' => $e->conforming('parent_call_id', Wire::ULID),
+            'harness_call_ref' => $e->conforming('harness_call_ref', Wire::HARNESS_CALL_REF),
             'synthesized' => (bool) Wire::field($e->data, 'synthesized'),
             'opened_at' => $e->eventTime,
             'opened_received_at' => $e->receivedAt,
@@ -497,7 +648,7 @@ class Projector
 
     private function toolEnd(FoldEvent $e): void
     {
-        $callId = $e->str('call_id', 26);
+        $callId = $e->conforming('call_id', Wire::ULID);
 
         if ($callId === null) {
             return;
@@ -539,12 +690,14 @@ class Projector
             // — one with no open at all — likewise creates a row "already closed with
             // `synthesized = 1`", so the anomaly is a visible flag rather than an absorbed one and
             // the ledger's open-call arithmetic stays total.
+            $toolName = $e->conforming('tool_name', Wire::TOOL_NAME, Wire::INVALID_TOOL_NAME);
+
             DB::table('calls')->insert($close + [
                 'seat_ref' => $e->seatRef,
                 'call_id' => $callId,
                 'session_ref' => $e->sessionId === null ? null : $this->sessionRef($e),
-                'tool_name' => $e->str('tool_name', 64),
-                'is_dispatch' => in_array($e->str('tool_name', 64), self::DISPATCH_TOOLS, true),
+                'tool_name' => $toolName,
+                'is_dispatch' => in_array($toolName, self::DISPATCH_TOOLS, true),
                 'synthesized' => $match === 'synthesized',
             ] + $this->triple($e));
 
@@ -605,7 +758,7 @@ class Projector
 
     private function subagentSpawn(FoldEvent $e): void
     {
-        $callId = $e->str('call_id', 26);
+        $callId = $e->conforming('call_id', Wire::ULID);
 
         if ($callId === null) {
             return;
@@ -643,7 +796,7 @@ class Projector
         // is an honest orphan — and a later spawn for the same `call_id` does fill it (§ 10, E2).
         DB::table('calls')->where('id', $call->id)->update([
             'title' => $e->str('title', 120),
-            'subagent_type' => $e->str('subagent_type', 32),
+            'subagent_type' => $e->conforming('subagent_type', Wire::SUBAGENT_TYPE),
             'is_dispatch' => true,
         ]);
 
@@ -652,7 +805,7 @@ class Projector
 
     private function subagentStop(FoldEvent $e): void
     {
-        $callId = $e->str('call_id', 26);
+        $callId = $e->conforming('call_id', Wire::ULID);
 
         if ($callId === null) {
             return;
@@ -786,7 +939,7 @@ class Projector
 
     private function attentionRequest(FoldEvent $e): void
     {
-        $requestId = $e->str('request_id', 26);
+        $requestId = $e->conforming('request_id', Wire::ULID);
 
         if ($requestId === null) {
             return;
@@ -818,20 +971,17 @@ class Projector
             'notification_kind' => $e->enum('notification_kind', [
                 'permission_required', 'input_awaited', 'elicitation',
             ]),
-            'call_id' => $e->str('call_id', 26),
+            'call_id' => $e->conforming('call_id', Wire::ULID),
+            // NO CEILING IS MATERIALIZED (card#9527). The request stays open until the seat says
+            // something: § 4.4's exits are all events, and none of them is a clock.
             'opened_at' => $e->eventTime,
             'opened_received_at' => $e->receivedAt,
-            // § 4.7's materialized ceiling, measured from the request's own `event_time` — the
-            // SEAT clock, and deliberately not receipt: the reporter owns the competing 60-minute
-            // timer and fires on that basis, so the same basis makes the two fire together instead
-            // of the server minting a `server_ceiling` on every skewed seat.
-            'ceiling_at' => Clock::fromMs(Clock::toMs($e->eventTime) + self::ATTENTION_CEILING_MS),
         ] + $this->triple($e));
     }
 
     private function attentionResolved(FoldEvent $e): void
     {
-        $requestId = $e->str('request_id', 26);
+        $requestId = $e->conforming('request_id', Wire::ULID);
 
         if ($requestId === null) {
             return;
@@ -847,22 +997,21 @@ class Projector
             // values — and § 7.2 has no counter for the case, so it cannot even be counted without
             // inventing vocabulary. Nothing is written. The state is still BOUNDED, which is why
             // this is a hole and not a trapdoor: when the request lands it opens `blocked`, and the
-            // session close above or the sweeper's 60-minute ceiling closes it. See the PR body.
+            // seat's next activity event or the session close resolves it. See the PR body.
             return;
         }
 
         // An observation OVERRIDES an inference and NEVER re-opens a state (D1 § 12.5's rule,
-        // applied to the state D1 hands this document). An `attention.resolved` arriving after the
-        // sweeper's ceiling fired relabels the resolution to the reporter's and counts
-        // `attention_ceiling_overridden` — rising means the ceiling is firing too early, i.e.
-        // resolutions are merely slow rather than lost.
-        if ($request->resolved_at !== null) {
-            if ($request->resolution_source === 'server_ceiling') {
-                Counters::seat($e->seatRef, 'attention_ceiling_overridden');
-            } elseif (! Ordering::newer($this->tripleOf($e), $this->appliedTripleOf($request))) {
-                return;
-            }
+        // applied to the state D1 hands this document). The server's two resolutions — the session
+        // close and the seat-activity exit — write no `applied_*` triple, so the reporter's own
+        // resolution arriving after either is newer than the request's triple and relabels it.
+        if ($request->resolved_at !== null
+            && ! Ordering::newer($this->tripleOf($e), $this->appliedTripleOf($request))) {
+            return;
         }
+
+        $waited = $e->int('waited_ms')
+            ?? max(0, Clock::toMs($e->eventTime) - Clock::toMs($request->opened_at));
 
         DB::table('attention_requests')->where('id', $request->id)->update([
             'resolved_at' => $e->eventTime,
@@ -872,23 +1021,17 @@ class Projector
             'resolution_source' => $e->enum('resolution_source', [
                 'permission_denied_hook', 'call_close', 'user_prompt_submit', 'session_end', 'timeout',
             ]),
-            'waited_ms' => $e->int('waited_ms')
-                ?? max(0, Clock::toMs($e->eventTime) - Clock::toMs($request->opened_at)),
+            'waited_ms' => $waited,
             'applied_event_time' => $e->eventTime,
             'applied_seq_epoch' => $e->seqEpoch,
             'applied_seq' => $e->seq,
         ]);
 
-        // § 5's `attention_resolved_by_wire`, WIRE branch — "per resolution — 0–50/seat/day".
-        //
-        // ⚠ ITS TWO BRANCHES ARE `attention.resolved` AND **THE SERVER CEILING**, and no other
-        // server-side resolution records either. § 5 names the pair exactly that way, and its alarm
-        // criterion is "ANY server-ceiling resolution in 24 h is surfaced" — so folding § 4.5's
-        // `seat_left_live` or the session close into the false branch would make an ORDINARY quiet
-        // seat raise the alarm that exists to say "resolutions are being LOST". Those two closes
-        // have their own counters (`left_live_resolved_attention`, and the session close is D1's
-        // own emission path); this predicate is about the reporter's resolution arriving or not.
-        Predicates::record($e->seatRef, 'attention_resolved_by_wire', true, $e->receivedAt);
+        // A RELABEL IS NOT A SECOND WAIT: the long wait is counted on the request's first
+        // resolution, whichever path wrote it.
+        if ($request->resolved_at === null) {
+            $this->countLongWait($e->seatRef, $waited);
+        }
     }
 
     // ── the heartbeat ────────────────────────────────────────────────────────────────────────
@@ -949,30 +1092,28 @@ class Projector
             // publish a name the seat has stopped sending as though it still sent it. `null`
             // resolves no participant (§ 8.3.3), which is the direction a stale claim must fail in.
             //
-            // Through `str()` / `enum()` rather than raw: the ingest bounds the name and refuses an
-            // out-of-set check, but type-checks neither, so a non-string reaches the column as
-            // `null`. The name's bound and the check's member set are READ from the ingest's
-            // registry, not restated here — `EventSchemaDriftTest` holds that registry to D1 § 6.14.
-            'protocol_agent_name' => $e->str(
-                'protocol_agent_name',
-                KindRegistry::KINDS['reporter.heartbeat']['bounds']['protocol_agent_name'],
-            ),
+            // Through `conforming()` / `enum()` rather than raw: the ingest bounds the name and
+            // refuses an out-of-set check, but checks neither the name's slug pattern nor its type,
+            // so a value off the pattern — a non-ASCII one would fail the ASCII column and take the
+            // whole heartbeat with it (card#9346) — reaches the column as `null` and is counted
+            // `format_refused.<field>`. The pattern is `Slug::AGENT_NAME`, which carries D1 § 6.14's
+            // 48 B bound; the check's member set is READ from the ingest's registry, not restated
+            // here — `EventSchemaDriftTest` holds that registry to D1 § 6.14.
+            'protocol_agent_name' => $e->conforming('protocol_agent_name', Slug::AGENT_NAME),
             'protocol_agent_name_check' => $e->enum(
                 'protocol_agent_name_check',
                 KindRegistry::KINDS['reporter.heartbeat']['enums']['protocol_agent_name_check']['members'],
             ),
             // card#11144: the roster entry's ROLE the reporter relays (D1 § 3.1), last heartbeat's
             // value verbatim under the same rules as the pair above — heartbeat-only, an omitted key
-            // writes `null`, and the bound is read from the ingest's registry, not restated.
-            'protocol_agent_role' => $e->str(
-                'protocol_agent_role',
-                KindRegistry::KINDS['reporter.heartbeat']['bounds']['protocol_agent_role'],
-            ),
+            // writes `null`, and the name's own slug pattern and bound hold it (D1 § 6.14).
+            'protocol_agent_role' => $e->conforming('protocol_agent_role', Slug::AGENT_NAME),
             'reporter_uptime_s' => $e->int('uptime_s'),
             // § 7.3: stored VERBATIM as a snapshot, never summed and never merged into
-            // `seat_counters`. They are monotonic since flusher start, so last-write-wins is the
-            // only correct handling: adding two heartbeats' values would double-count, and a value
-            // that decreases means the flusher restarted rather than that a counter went backwards.
+            // `seat_counters`. They are cumulative totals that persist across flusher restarts, so
+            // last-write-wins is the only correct handling: adding two heartbeats' values would
+            // double-count, and a value that decreases means the seat lost its `state.json` and
+            // began a new `seq_epoch` rather than that a counter went backwards.
             //
             // ⭐ VERBATIM NOW INCLUDES THE OBJECT/ARRAY DISTINCTION (card#9297). These two values
             // are `stdClass` when the seat sent an object, so a heartbeat's `counters: {}` is
@@ -997,24 +1138,47 @@ class Projector
     {
         $existing = DB::table('sessions')
             ->where('seat_ref', $e->seatRef)->where('session_id', $e->sessionId)
-            ->first(['id', 'ended_at', 'end_reason']);
+            ->first(['id', 'ended_at', 'end_reason', 'closed_by',
+                'applied_event_time', 'applied_seq_epoch', 'applied_seq']);
 
         if ($existing !== null) {
-            // D1 § 12.7's `session_reopened`, which "re-derives the 90-minute rule": an event
-            // arrived for a session the FLUSHER closed on inferred silence, so the seat was alive
-            // and the inference was early. Only that member reopens — a `clear` or a `logout` is an
-            // observation of a session that genuinely ended, and reopening it would be the server
-            // overruling the seat.
-            if ($existing->ended_at !== null && $existing->end_reason === 'inferred_silence') {
+            // An event for a session the SERVER closed on an inference re-opens it: the seat is
+            // alive and still in that session, so the inference was wrong. Two closes are inferences
+            // — the flusher's `inferred_silence` and the sweeper's offline quiescence
+            // (`closed_by = server_offline`, FLEET-STATE.md § 4.6), which closes every open session
+            // of a seat that crossed `offline` and writes no `end_reason`. Every other close — a
+            // `clear`, a `logout`, any wire `end_reason` but `inferred_silence` — is the seat's own
+            // observation that the session ended, and reopening it would be the server overruling
+            // the seat.
+            //
+            // AND ONLY AN EVENT NEWER THAN THE CLOSE (card#11561). The close group is guarded like
+            // every other: an event stamped before the inference is history the seat sent while
+            // the session was live, not evidence that it is alive after the close. The flusher
+            // emits `session.end(inferred_silence)` from its own process, so a hook that read its
+            // clock first can reach the spool after it — measured — and reopening on that event
+            // made the out-of-order run end with an open session where in-order delivery ends
+            // with a closed one.
+            $inferredSilence = $existing->end_reason === 'inferred_silence';
+
+            if ($existing->ended_at !== null && ($inferredSilence || $existing->closed_by === 'server_offline')
+                && ! $this->groupIsOlder($e, $existing->ended_at, $existing)) {
                 DB::table('sessions')->where('id', $existing->id)->update([
                     'ended_at' => null,
                     'end_reason' => null,
                     'closed_by' => null,
-                    'reopened' => DB::raw('reopened + 1'),
                     'updated_at' => $e->receivedAt,
-                ]);
+                ] + ($inferredSilence ? ['reopened' => DB::raw('reopened + 1')] : []));
 
-                Counters::seat($e->seatRef, 'session_reopened');
+                // D1 § 12.7's `session_reopened` counts the `inferred_silence` reopen ONLY, because
+                // its consequence is to "re-derive the 90-minute rule": a non-zero count means
+                // 90 min is too tight. An offline reopen says nothing about that number — it
+                // follows every seat that goes offline mid-session and comes back in that session —
+                // so counting it there would hold the signal above zero on any seat that does. `sessions.reopened` is the
+                // same counter's per-session home and moves with it. The offline round trip is
+                // already counted once, at the close, by `offline_quiesced_sessions`.
+                if ($inferredSilence) {
+                    Counters::seat($e->seatRef, 'session_reopened');
+                }
             }
 
             return (int) $existing->id;
@@ -1069,6 +1233,27 @@ class Projector
         $c = strcmp($e->eventTime, $groupTime);
 
         return $c < 0 || ($c === 0 && ! Ordering::newer($this->tripleOf($e), $this->appliedTripleOf($row)));
+    }
+
+    /**
+     * The time a `turn.end` is ordered against — the newest OBSERVED write to the turn record.
+     *
+     * A turn the SERVER closed (`turn_close_source` `session_close` from `sessionEnd()`, or
+     * `server_offline` from the sweeper's quiescence) has an inferred record stamped with the
+     * close's own time, and nothing was observed about when that turn ended. The seat's real
+     * `turn.end` for that turn is stamped EARLIER than the inference and can arrive after it
+     * (card#11561: the flusher's `session.end(inferred_silence)` and a `Stop` hook race to the
+     * spool), and in order it would have closed the turn before the session close found it open.
+     * So against an inferred close the record's time is the start of the turn it closed: any
+     * `turn.end` newer than that start ends this turn and supersedes the inference, and one older
+     * than it ended an earlier turn and is refused, exactly as in-order delivery decides. An
+     * observation overrides an inference (D1 § 12.5).
+     */
+    private function turnRecordTime(object $row): ?string
+    {
+        return in_array($row->turn_close_source, ['session_close', 'server_offline'], true)
+            ? $row->turn_started_at
+            : $row->last_turn_ended_at;
     }
 
     /** @return array{0: string, 1: string, 2: int} */

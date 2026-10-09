@@ -121,7 +121,7 @@ class ConsoleUrlReachesOperatorsOnlyTest extends FeedTestCase
             $this->fold();
 
             $this->assertNull($this->stored(), 'refused value #'.$i.' reached `sessions.console_url`');
-            $this->assertSame($i + 1, $this->counter('console_url_refused'), 'refused value #'.$i.' was not counted');
+            $this->assertSame($i + 1, $this->counter('format_refused.console_url'), 'refused value #'.$i.' was not counted');
         }
 
         $this->assertNull($this->seatAs($this->operator())['detail']['console_url']);
@@ -130,7 +130,7 @@ class ConsoleUrlReachesOperatorsOnlyTest extends FeedTestCase
         $this->deliver($this->turn(self::URL));
         $this->fold();
         $this->assertSame(self::URL, $this->stored());
-        $this->assertSame(count($refused), $this->counter('console_url_refused'), 'a conforming value was counted');
+        $this->assertSame(count($refused), $this->counter('format_refused.console_url'), 'a conforming value was counted');
     }
 
     /** The member follows the session's NEWEST turn: a null takes the link away, a late older turn does not. */

@@ -29,15 +29,17 @@
 #cfg	probe	SC2218
 #cfg	directive	bin/dependency-audit.selftest.sh	disable=SC2015	10
 #cfg	directive	bin/dependency-audit.selftest.sh	disable=SC2016	8
-#cfg	directive	bin/deploy-gate-inputs.selftest.sh	disable=SC2016	8
+#cfg	directive	bin/deploy-gate-inputs.selftest.sh	disable=SC2016	11
+#cfg	directive	bin/deploy-gate-inputs.selftest.sh	source=bin/lib/selftest-assert.sh	1
 #cfg	directive	bin/deploy-gate-inputs.sh	disable=SC2016	3
 #cfg	directive	bin/deploy.selftest.sh	disable=SC1090	2
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2016	7
-#cfg	directive	bin/deploy.selftest.sh	disable=SC2016,SC2317	5
+#cfg	directive	bin/deploy.selftest.sh	disable=SC2016,SC2317	7
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2030	1
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2031	1
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2034	1
 #cfg	directive	bin/deploy.selftest.sh	disable=SC2317	4
+#cfg	directive	bin/deploy.selftest.sh	source=bin/lib/selftest-assert.sh	1
 #cfg	directive	bin/deploy.selftest.sh	source=bin/supervision.sh	1
 #cfg	directive	bin/deploy.sh	disable=SC2016	1
 #cfg	directive	bin/deploy.sh	disable=SC2034	1
@@ -56,12 +58,13 @@
 #pop	bin/env-mirror-diff.mirror.sh
 #pop	bin/env-mirror-diff.sh
 #pop	bin/feed-stream-check.sh
+#pop	bin/lib/selftest-assert.sh
 #pop	bin/promote-cards-by-token
 #pop	bin/promote-cards-by-token.selftest.sh
 #pop	bin/shell-lint.sh
 #pop	bin/supervision.sh
 #pop	bin/vendor-pin-check.sh
-bin/deploy.selftest.sh	SC2015	4
+bin/deploy.selftest.sh	SC2015	3
 bin/deploy.selftest.sh	SC2016	19
 bin/deploy.selftest.sh	SC2034	2
 bin/deploy.selftest.sh	SC2086	2

@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Fold;
 
+use App\Fold\Clock;
 use App\Fold\SeatFacts;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * AT-D2-11 — out-of-order batches converge.
@@ -174,6 +176,140 @@ class At11OutOfOrderTest extends FoldTestCase
         $this->assertSame(1, $this->counter('seq_epoch_change'));
         $this->assertContains('epoch_reset', json_decode($this->state()->server_badges, true));
         $this->assertSame(0, $this->counter('seq_gap'), 'the epoch reset was counted as a gap');
+    }
+
+    /**
+     * card#11561 member 1. A `session.end` closing a session whose turn is still open closes the
+     * turn too (§ 4.6.1) — an INFERENCE stamped with the session close's seat time. The seat's real
+     * `turn.end` for that turn, stamped EARLIER, can still arrive after it: the reporter's flusher
+     * emits `session.end(inferred_silence)` from its own process while a `Stop` hook that read its
+     * clock first is still on its way to the spool (measured on card#11561). In order, the real
+     * `turn.end` closes the turn and the session close finds it closed; out of order it was refused
+     * as older than the inference, and the seat rendered *unknown* where in-order delivery renders
+     * *idle*.
+     *
+     * @return array<string, array{string, string, int}>
+     */
+    public static function turnEndAgainstSessionEnd(): array
+    {
+        return [
+            'the flusher\'s silence close (the measured route)' => ['inferred_silence', 'stop_hook', 0],
+            'a wire close, background tasks still open at the turn end' => ['logout', 'stop_hook', 1],
+            'a wire close after an api_error turn end' => ['other', 'api_error', 0],
+        ];
+    }
+
+    #[DataProvider('turnEndAgainstSessionEnd')]
+    public function test_a_turn_end_older_than_its_session_end_converges_in_both_orders(
+        string $sessionEndReason, string $turnEndReason, int $backgroundTasks,
+    ): void {
+        $prefix = [
+            $this->event('session.start', [
+                'source' => 'startup', 'project_label' => 'mezzanine',
+                'harness_label' => 'claude-code/2.1.240', 'previous_session_id' => null,
+            ]),
+            $this->event('turn.start', ['prompt_chars' => 412]),
+        ];
+
+        $turnEndAt = $this->clockMs + 60_000;
+
+        $turnEnd = $this->event('turn.end', [
+            'end_reason' => $turnEndReason,
+            'api_error_type' => $turnEndReason === 'api_error' ? 'rate_limit' : null,
+            'duration_ms' => 60_000, 'open_calls_at_end' => 0, 'aborted_call_ids' => [],
+            'stop_hook_active' => false, 'background_tasks_open' => $backgroundTasks,
+            'tool_calls' => 0, 'failed_calls' => 0,
+        ], seatClockMs: $turnEndAt);
+
+        // Two milliseconds later on the same seat clock — the measured gap.
+        $sessionEnd = $this->event('session.end', [
+            'end_reason' => $sessionEndReason, 'duration_ms' => 120_000, 'turns' => 1, 'aborted_calls' => 0,
+        ], seatClockMs: $turnEndAt + 2);
+
+        $out = $this->assertArrivalOrderIsIrrelevant($prefix, $turnEnd, $sessionEnd);
+
+        $session = $out['sessions'][0];
+        $this->assertSame('wire', $session['turn_close_source'], 'the real turn.end lost to the inferred close');
+        $this->assertSame($turnEndReason, $session['last_turn_end_reason']);
+        $this->assertNotNull($session['ended_at'], 'the late turn.end re-opened a session that ended after it');
+        $this->assertSame(0, (int) $session['reopened']);
+    }
+
+    /**
+     * card#11561 member 2. `turn.start` wrote `turn_started_at` and `turn_prompt_chars` whatever
+     * the event's age, so an older `turn.start` arriving after a newer one overwrote the
+     * drill-down's turn narrative with the earlier prompt's.
+     */
+    public function test_an_older_turn_start_arriving_late_does_not_overwrite_the_turn_narrative(): void
+    {
+        $prefix = [$this->event('session.start', [
+            'source' => 'startup', 'project_label' => 'mezzanine',
+            'harness_label' => 'claude-code/2.1.240', 'previous_session_id' => null,
+        ])];
+
+        $older = $this->event('turn.start', ['prompt_chars' => 100]);
+        $newer = $this->event('turn.start', ['prompt_chars' => 200]);
+        $newerAt = $this->clockMs;
+
+        $out = $this->assertArrivalOrderIsIrrelevant($prefix, $older, $newer);
+
+        $this->assertSame(200, (int) $out['sessions'][0]['turn_prompt_chars']);
+        $this->assertSame(Clock::fromMs($newerAt), $out['sessions'][0]['turn_started_at']);
+    }
+
+    /**
+     * Deliver `$prefix`, then the pair NEWER-FIRST on this suite's seat and OLDER-FIRST on a control
+     * seat, one batch and one fold per event so each is projected in its arrival order, and assert
+     * the two seats end in the same state. Returns the out-of-order seat's state.
+     *
+     * `seq` is numbered in ARRIVAL order on each seat, because that is what a real seat sends: the
+     * flusher assigns `seq` as it sends, in spool order (D1 § 10.2), so a pair that reaches the
+     * ingest newer-first carries ascending seqs and no `seq_gap`. Keeping the fixture's
+     * creation-order seqs would badge a gap on the out-of-order seat that no reporter produces.
+     *
+     * @param  list<array<string, mixed>>  $prefix
+     * @param  array<string, mixed>  $older
+     * @param  array<string, mixed>  $newer
+     * @return array<string, mixed>
+     */
+    private function assertArrivalOrderIsIrrelevant(array $prefix, array $older, array $newer): array
+    {
+        [$controlToken, $controlSeat] = $this->issueToken('aimla', 'control-seat');
+
+        $run = function (array $arrivals, ?string $token) {
+            $seq = 1;
+
+            foreach ($arrivals as $batch) {
+                $batch = array_map(function (array $event) use (&$seq) {
+                    $event['seq'] = $seq++;
+
+                    return $event;
+                }, $batch);
+
+                $token === null ? $this->deliver($batch) : $this->deliverAs($token, $batch);
+                $this->fold();
+            }
+        };
+
+        // `idle_since` is a SERVER-clock receipt instant (§ 8.2.1, card#9418): the seat entered
+        // `idle` on the arrival that made it idle, which is a different arrival in the two orders
+        // and a different server time on the two seats. Whether the seat is idle is the claim,
+        // and `activity_state` carries it; the instant is compared as present or absent.
+        $comparable = function (int $seatRef): array {
+            $out = $this->comparable($seatRef);
+            $out['facts']['idle_since'] = $out['facts']['idle_since'] !== null;
+
+            return $out;
+        };
+
+        $run([$prefix, [$newer], [$older]], null);
+        $out = $comparable($this->seatRef);
+
+        $run([$prefix, [$older], [$newer]], $controlToken);
+
+        $this->assertSame($comparable($controlSeat), $out, 'out-of-order delivery diverged from in-order');
+
+        return $out;
     }
 
     /**

@@ -262,26 +262,160 @@ fi
 # refuse — precondition phase only. Nothing has been touched, and the message says so, because an
 # operator who cannot tell "refused" from "half-deployed" will go looking for damage that is not
 # there (or, worse, will not go looking when it is).
+# ⛔ ONCE THE WINDOW MAY BE OPEN IT DOES NOT REFUSE, AND THAT IS DECIDED HERE, NOT AT ITS CALLERS
+# (card#9629). Its promise is false from `artisan down` on, so with DEPLOY_IN_WINDOW set it takes
+# window_stop instead — marker, the DOWN-AND-STAYS-DOWN banner, exit 2 — for every caller, the ones
+# not written yet included. Before card#9629 the property was kept per call site, and two the re-exec
+# can reach kept it by nobody: the prologue's MEZZ_DEPLOY_ROOT resolution, which ran before the
+# arguments said which phase this was, and phase_b_post_checkout's missing-marker guard.
 refuse() {
+  [ "$DEPLOY_IN_WINDOW" -eq 0 ] || window_stop "${BASH_LINENO[0]}" "$@"
   printf '\n⛔ REFUSED — %s\n' "$1" >&2
   shift
   # Every line of a multi-line argument gets the indent, not just the first — a refusal message
   # is read once, under pressure, by someone deciding whether prod is broken.
   local line
   for line in "$@"; do printf '%s\n' "$line" | sed 's/^/   /' >&2; done
-  printf '\n   Nothing was changed. The previous release is still serving.\n' >&2
+  # ⛔ THE PROMISE ONLY WHERE IT IS TRUE (card#9629 r1). A failure marker means a previous deploy stopped
+  # inside its window, so the app may be down now — this run changed nothing, and that is all it may say.
+  # The exit stays 1: THIS run is a refusal. MARKER is set before the first `refuse` that can run.
+  if [ -e "$MARKER" ]; then
+    printf '\n   This run changed nothing. A previous deploy left its failure marker at %s,\n   so the app may be DOWN and the previous release may NOT be serving.\n' "$MARKER" >&2
+  else
+    printf '\n   Nothing was changed. The previous release is still serving.\n' >&2
+  fi
   exit 1
 }
 
 usage() { sed -n '/^# USAGE/,/^# CARD/p' "$0" | grep -v '^# CARD' | sed 's/^# \{0,1\}//'; exit 0; }
 
-# ── configuration ─────────────────────────────────────────────────────────────────────────────
+# window_stop <line> <headline> <detail line…> — what `refuse` and not_established say once the window may
+# be open: the details, then in_window_failure with the step in progress (FAILED_STEP) and the headline
+# after it. <line> is the line the CALLER is on, which goes into the marker's `failed_line:`.
+window_stop() {
+  local line="$1"; shift
+  [ $# -lt 2 ] || printf '%s\n' "${@:2}" >&2
+  FAILED_STEP="$FAILED_STEP — $1"
+  # `false ||` so the banner reports a failing status, as it does for every other in-window failure
+  # (in_window_failure reads `$?`).
+  false || in_window_failure "$line"
+}
+
+# DOWN AND STAY DOWN. On any failure after the window opens, the app is NOT brought back up. A
+# migration that failed halfway (MariaDB DDL is not transactional — there is no partial-statement
+# rollback to fall back on), a composer install that produced no vendor/, a daemon that died on
+# start: in each of those the previous code cannot serve (the schema has moved) and the new code
+# is not ready. Bringing the site up would serve the failure. The window stays open, the marker
+# stays on disk, and the next bare re-run refuses (A2) — the operator is the recovery path.
+# ⛔ A MARKER THAT CANNOT BE WRITTEN DOES NOT COST THE BANNER (card#9629). This runs as the last command
+# of a `||` list, where `set -e` applies, so an append that failed used to end the run right there: no
+# banner, and bash's status 1 — the code that MEANS "refused, nothing was touched" — with the app down.
+# The re-exec reaches that with a root that no longer resolves, and any window with a full or read-only
+# filesystem under the marker can. The banner says the marker was not written; bash's reason is above it.
+in_window_failure() {
+  local rc=$? line="$1" marker_state="$MARKER"
+  cat >> "$MARKER" <<MARKER_END || marker_state="$MARKER — ⚠ NOT WRITTEN TO (bash's reason is above): this step and line are recorded only in this banner"
+failed_step: $FAILED_STEP
+failed_line: $line (exit $rc)
+MARKER_END
+  cat >&2 <<BANNER
+
+═══════════════════════════════════════════════════════════════════════════════
+⛔ DEPLOY FAILED INSIDE THE MAINTENANCE WINDOW — THE APP IS DOWN AND STAYS DOWN
+═══════════════════════════════════════════════════════════════════════════════
+  step   : $FAILED_STEP
+  commit : $(git_at rev-parse --short HEAD 2>/dev/null || echo '?')
+  marker : $marker_state
+
+  This is deliberate. Forward-only: nothing was rolled back, because a failed
+  MariaDB migration is half-applied and a rollback would be a second guess at a
+  state nobody has read yet. An operator reads it.
+
+  Recovery is a human act:
+    cd $APP_DIR
+    php artisan migrate:status        # what actually landed
+    tail -n 200 storage/logs/laravel.log
+    ...then either finish forward — bring the schema to where this release expects
+    it, then re-run this script with the same --ref and --redeploy, which restarts
+    every daemon — or deploy the previous commit deliberately with --ref <sha>
+    --allow-unreleased. A bare \`php artisan up\` serves the new code beside daemons
+    that may still be running the previous release's.
+  Clear $MARKER when the failure has been reviewed. Until it is cleared, another
+  run of this script REFUSES — a bare re-run must not be able to erase this.
+═══════════════════════════════════════════════════════════════════════════════
+BANNER
+  exit 2
+}
+
+# ── the deploy root ───────────────────────────────────────────────────────────────────────────
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 # Canonical: the crontab entries A13 matches and the window installs carry this path and cron runs them
 # from HOME, and phase B `cd`s into server/ before it re-execs through it — a relative MEZZ_DEPLOY_ROOT
 # would be wrong in each. Phase B exports the canonical value, so the re-exec cannot re-resolve it.
+# RESOLVED HERE, BEFORE THE ARGUMENTS, AND REFUSED ONLY AFTER THEM (card#9629). Every `refuse` reads
+# MARKER — a marker on disk means the app may be down, and the promise is withheld — so MARKER is set before
+# the first `refuse` that can run, the argument loop's included. A root that does not resolve keeps the value
+# as given: in the re-exec that is the canonical root phase A wrote the marker under, which in_window_failure
+# names. The refusal itself waits for the phase, below the arguments.
+DEPLOY_ROOT_UNRESOLVED=0
 DEPLOY_ROOT="$(readlink -f -- "${MEZZ_DEPLOY_ROOT:-$(dirname "$SELF")/..}")" \
+  || { DEPLOY_ROOT="${MEZZ_DEPLOY_ROOT:-}"; DEPLOY_ROOT_UNRESOLVED=1; }
+APP_DIR="$DEPLOY_ROOT/server"          # D-16: the Laravel app is not at the repo root
+ENV_FILE="$APP_DIR/.env"
+MARKER="$DEPLOY_ROOT/.deploy-failed"   # git-ignored; see .gitignore
+# ── arguments, and the phase they say this is ─────────────────────────────────────────────────
+# ⛔ PARSED BEFORE ANYTHING BELOW CAN REFUSE (card#9629). Resolving MEZZ_DEPLOY_ROOT can fail, and the
+# run that matters is the re-exec, inside the window: refused before the parse, the script did not yet know
+# its phase and refused with phase A's promise while the app was down.
+# Until the loop below ends DEPLOY_IN_WINDOW is 0, so a refusal IN the loop is phase A's. The re-exec
+# reaches none of them: phase_b_open_window passes one argument and its non-empty value.
+DEPLOY_IN_WINDOW=0
+REF="main"; DRY_RUN=0; REDEPLOY=0; ALLOW_UNRELEASED=0; POST_CHECKOUT_SHA=""; TARGET_DAEMONS=""
+
+# Sourced, `$@` is the SOURCING script's argument list, which is not this deploy's and must not be
+# parsed as one — `--ref` would be taken from it, and anything else refused outright.
+[ "$DEPLOY_IS_RUN" -eq 1 ] || set --
+# ⛔ AN OPTION WITH NO VALUE IS REFUSED THROUGH `refuse`, LIKE EVERY OTHER PHASE-A EXIT (card#9646).
+# `${2:?…}` was the shape here, and it is the same defect this card ends one line up from the deploy:
+# bash prints `bash: line N: 2: --ref needs a value` and exits 1 ITSELF, so the operator gets the status
+# that MEANS "refused, nothing was touched" (the exit table above) with no ⛔ banner and no "Nothing was
+# changed" promise — the two lines that say which of those it is. `--internal-post-checkout`'s bare
+# `${2:?}` was worse still: bash's message is then just the parameter's name. Both go through `refuse`.
+# The test is `-n "${2:-}"` rather than `$# -ge 2` so that an EMPTY value is refused exactly as a missing
+# one is, which is what `${2:?…}` did: `--ref ''` would otherwise resolve `refs/remotes/origin/` at A7.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --ref)               [ -n "${2:-}" ] || refuse "--ref needs a value" "run \`$0 --help\`"
+                         REF="$2"; shift 2 ;;
+    --dry-run)           DRY_RUN=1; shift ;;
+    --redeploy)          REDEPLOY=1; shift ;;
+    --allow-unreleased)  ALLOW_UNRELEASED=1; shift ;;
+    # Internal. Phase B re-enters here after the checkout — see § re-exec. Never run by hand:
+    # it assumes the maintenance window is already open.
+    --internal-post-checkout) [ -n "${2:-}" ] || refuse "--internal-post-checkout needs a value" \
+                           "It is internal: phase B passes the commit it checked out. Run \`$0 --help\`."
+                         POST_CHECKOUT_SHA="$2"; shift 2 ;;
+    -h|--help)           usage ;;
+    *) refuse "unknown argument: $1" "run \`$0 --help\`" ;;
+  esac
+done
+
+# DEPLOY_IN_WINDOW — 1 when this run IS the re-exec phase_b_open_window makes after `artisan down`:
+# the commit it checked out on the command line AND the window flag it exports. Either one alone is not
+# the re-exec — `--internal-post-checkout` typed by hand, or a shell that exported the flag — and those
+# runs opened no window, so their refusals keep the promise. This is the ONE phase read `refuse` and
+# not_established make. ⚠ It says the window MAY be open, which is all the re-exec can know: the marker
+# is how the window says it opened, and phase_b_post_checkout's guard on it is a `refuse` like any
+# other — so a missing marker stops the run as an in-window failure, not as a refusal.
+if [ -n "$POST_CHECKOUT_SHA" ] && [ "${MEZZ_DEPLOY_IN_WINDOW:-0}" = "1" ]; then DEPLOY_IN_WINDOW=1; fi
+# The step a re-exec is in until phase_b_post_checkout names one of its own. In phase A nothing reads it
+# before phase_b_open_window sets the first step of the window.
+FAILED_STEP="the re-exec into the deployed release's bin/deploy.sh"
+
+[ "$DEPLOY_ROOT_UNRESOLVED" -eq 0 ] \
   || refuse "MEZZ_DEPLOY_ROOT '${MEZZ_DEPLOY_ROOT:-}' does not resolve to a path"
+
+# ── configuration ─────────────────────────────────────────────────────────────────────────────
 REMOTE="${MEZZ_REMOTE:-origin}"
 # The PHP-FPM binary A14 reads, DERIVED from the PHP this host actually runs. card#9203: the
 # literal `php8.3-fpm` unit name that used to sit here was one of three surfaces that drifted
@@ -314,40 +448,6 @@ HOST_BASH_VERSION="${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
 # `mezzanine:retire` is an operator command and runs nothing between deploys.
 # shellcheck source=bin/supervision.sh
 . "$(dirname "$SELF")/supervision.sh"
-
-APP_DIR="$DEPLOY_ROOT/server"          # D-16: the Laravel app is not at the repo root
-ENV_FILE="$APP_DIR/.env"
-MARKER="$DEPLOY_ROOT/.deploy-failed"   # git-ignored; see .gitignore
-
-REF="main"; DRY_RUN=0; REDEPLOY=0; ALLOW_UNRELEASED=0; POST_CHECKOUT_SHA=""; TARGET_DAEMONS=""
-
-# Sourced, `$@` is the SOURCING script's argument list, which is not this deploy's and must not be
-# parsed as one — `--ref` would be taken from it, and anything else refused outright.
-[ "$DEPLOY_IS_RUN" -eq 1 ] || set --
-# ⛔ AN OPTION WITH NO VALUE IS REFUSED THROUGH `refuse`, LIKE EVERY OTHER PHASE-A EXIT (card#9646).
-# `${2:?…}` was the shape here, and it is the same defect this card ends one line up from the deploy:
-# bash prints `bash: line N: 2: --ref needs a value` and exits 1 ITSELF, so the operator gets the status
-# that MEANS "refused, nothing was touched" (the exit table above) with no ⛔ banner and no "Nothing was
-# changed" promise — the two lines that say which of those it is. `--internal-post-checkout`'s bare
-# `${2:?}` was worse still: bash's message is then just the parameter's name. Both go through `refuse`.
-# The test is `-n "${2:-}"` rather than `$# -ge 2` so that an EMPTY value is refused exactly as a missing
-# one is, which is what `${2:?…}` did: `--ref ''` would otherwise resolve `refs/remotes/origin/` at A7.
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --ref)               [ -n "${2:-}" ] || refuse "--ref needs a value" "run \`$0 --help\`"
-                         REF="$2"; shift 2 ;;
-    --dry-run)           DRY_RUN=1; shift ;;
-    --redeploy)          REDEPLOY=1; shift ;;
-    --allow-unreleased)  ALLOW_UNRELEASED=1; shift ;;
-    # Internal. Phase B re-enters here after the checkout — see § re-exec. Never run by hand:
-    # it assumes the maintenance window is already open.
-    --internal-post-checkout) [ -n "${2:-}" ] || refuse "--internal-post-checkout needs a value" \
-                           "It is internal: phase B passes the commit it checked out. Run \`$0 --help\`."
-                         POST_CHECKOUT_SHA="$2"; shift 2 ;;
-    -h|--help)           usage ;;
-    *) refuse "unknown argument: $1" "run \`$0 --help\`" ;;
-  esac
-done
 
 # ── .env reading ──────────────────────────────────────────────────────────────────────────────
 # Read `.env` DIRECTLY rather than asking `php artisan` for resolved config: at this moment the
@@ -1219,18 +1319,14 @@ git_reader_frame() {
 # nothing has been touched, and the refusal says exactly that. Phase B cannot say it — the window is
 # open and the checkout has landed — so it takes the in-window failure path, which writes the marker
 # and says the app is down and stays down; the step it names is the step in progress (FAILED_STEP)
-# with the headline after it. POST_CHECKOUT_SHA is what phase B re-enters with, so no caller has to
-# remember which side of the window it is on.
+# with the headline after it. DEPLOY_IN_WINDOW is the phase it reads, so no caller has to remember which
+# side of the window it is on. `refuse` reads the same flag and stops the same way (card#9629); what this
+# adds is the line: the frame walk names the precondition that asked, not the reader that failed.
 not_established() {
   local __line
-  if [ -n "$POST_CHECKOUT_SHA" ]; then
+  if [ "$DEPLOY_IN_WINDOW" -eq 1 ]; then
     git_read_call_site __line
-    printf '%s\n' "${@:2}" >&2
-    FAILED_STEP="$FAILED_STEP — $1"
-    # `false ||` so the banner reports a failing status, as it does for every other in-window failure
-    # (in_window_failure reads `$?`) — which is also why the line is resolved into $__line ABOVE and
-    # not in the argument: a command substitution there would run between the `false` and the call.
-    false || in_window_failure "$__line"
+    window_stop "$__line" "$@"
   fi
   refuse "$@"
 }
@@ -1737,14 +1833,16 @@ daemon_timings() {
 # php_require_constraint — read `require.php` from composer.json on stdin; print nothing if it
 # is not there. Scoped to the TOP-LEVEL `require` object on purpose: `require-dev` and a
 # `config.platform.php` both carry a `"php"` key and neither of them is the floor.
+# It reads to the END rather than exiting at the first hit, as npm_lockfile_version does and for
+# the reason text_matches states (card#11562): A6 feeds it composer.json through a pipe.
 php_require_constraint() {
   awk '
     /^[ \t]*"require"[ \t]*:/ && !seen { inreq = 1; seen = 1; next }
     inreq && /^[ \t]*}/ { inreq = 0 }
-    inreq && match($0, /"php"[ \t]*:[ \t]*"[^"]*"/) {
+    inreq && !found && match($0, /"php"[ \t]*:[ \t]*"[^"]*"/) {
       s = substr($0, RSTART, RLENGTH)
       sub(/^"php"[ \t]*:[ \t]*"/, "", s); sub(/"$/, "", s)
-      print s; exit
+      print s; found = 1
     }
   '
 }
@@ -1948,6 +2046,30 @@ ver_is_comparable() {
     case "$v" in *.*) v="${v#*.}" ;; *) return 0 ;; esac
   done
 }
+
+# text_matches <grep options> <pattern> <text> — true when a LINE of <text> matches <pattern>, matched
+# by grep, line by line, under <grep options> (`-E`, `-Ei`, `-F`). The gates that judge a file's TEXT ask
+# through this (A10, A11).
+# ⛔ NEVER `printf '%s' "$text" | grep -q <pattern>` (card#11562). `grep -q` exits at its FIRST match and
+# closes the pipe, and bash's printf writes a multi-line value in several write()s, so a writer that is
+# still writing when grep has gone takes SIGPIPE: under `pipefail` the test is then 141 — FALSE — for
+# text that MATCHES. Whether it happens is scheduling, so it comes and goes with host load. MEASURED
+# with A10's ALGORITHM= test over the migration that alters `events`
+# (2026_09_14_000100_add_purge_retention_indexes.php, which declares it in its first half): the match
+# was missed in 2 of 22000 trials, over three runs on a 4-core host under CPU load (1 in 2000, 1 in
+# 10000, 0 in 10000; 2026-10-08), and in 0 of 10000 through this function. With the writer held 0.2 s
+# after its first half, A10 REFUSED that release — a migration that declares its algorithm — and
+# bin/deploy-gate-inputs.sh exited 1 over a clean tree; and A11's test read a `trustProxies('*')` spliced
+# into server/bootstrap/app.php as ABSENT, the one answer on which A11 does not refuse it. Inside an
+# `if` the race fails OPEN: A10's own `if` would let an ALTER on `events` pass unexamined the same way.
+# bin/deploy-gate-inputs.selftest.sh § A WRITER THAT OUTLIVES grep holds the writer so, every run.
+# `grep -c` reads to the end to count, so the writer always finishes, and the count is printed only once
+# all of <text> has been read. The pipeline's status is not read at all: no match is a count of 0, and a
+# grep that could not run prints no count, which `[` cannot compare, so both answer FALSE — as `grep -q`
+# answered them.
+# ⚠ NOT A HERE-STRING (`grep -q … <<< "$text"`): below bash 5.1 that is a temporary file, which ver_ge's
+# comment says why this file avoids where it can.
+text_matches() { [ "$(printf '%s' "$3" | grep -c "$1" -- "$2")" -gt 0 ] 2>/dev/null; }
 
 # npm_lockfile_version — the TOP-LEVEL `lockfileVersion` of a package-lock.json on stdin, or nothing
 # if it has none. npm writes that key once, at the top level, and in no package entry, so the first
@@ -2396,9 +2518,9 @@ phase_a() {
     "PHP-FPM pool serves the app. Nothing this script does needs root (docs/PLAN.md § 5)."
 
   # A1 — the tools this script shells out to. A missing binary discovered mid-window is an
-  # outage; discovered here it is a refusal. crontab, flock, fuser, setsid and ps are the supervision's:
-  # A13 reads the crontab, and restart_daemons finds, stops, relaunches and ages the daemons with them —
-  # without ps no holder of a lock can be proven to have started after the restart. cgi-fcgi and timeout
+  # outage; discovered here it is a refusal. crontab, flock, fuser and setsid are the supervision's:
+  # A13 reads the crontab, and restart_daemons finds, stops and relaunches the daemons with them (it reads
+  # when each holder started from /proc, not with a command — proc_started). cgi-fcgi and timeout
   # are the stream pool's: A14 reads the pool's status over FastCGI, and phase B's drain lists the
   # streams still open with it (fpm_status).
   #
@@ -2467,7 +2589,7 @@ phase_a() {
     "release's bin/supervision.sh under — every bash this deploy starts. So there is one bash to fix," \
     "and the \`bash\` that happens to be first on PATH is not consulted by any of the three."
   local missing=()
-  for c in git php composer npm curl crontab flock fuser setsid ps cgi-fcgi timeout; do
+  for c in git php composer npm curl crontab flock fuser setsid cgi-fcgi timeout; do
     command -v "$c" >/dev/null 2>&1 || missing+=("$c")
   done
   [ ${#missing[@]} -eq 0 ] || refuse "missing required command(s): ${missing[*]}"
@@ -2593,7 +2715,7 @@ phase_a() {
   #
   # ⚠ AND IT EXITS THROUGH `refuse`, NOT `not_established` (card#9816), which is a deliberate call
   # and not an oversight: `not_established` exists for a precondition that can fail on EITHER side
-  # of the maintenance window, and reads POST_CHECKOUT_SHA to pick its terminal. Every gate this
+  # of the maintenance window, and names the precondition's line when it fails in it. Every gate this
   # card adds — this one, A1's bash floor, A1c's npm read, A6b and A12's comparison — runs only
   # from `phase_a`, which `main` calls only when POST_CHECKOUT_SHA is empty. Routing them through
   # it would buy nothing and would tell the next reader they are reachable in-window, which they
@@ -3431,8 +3553,8 @@ gate_a10_migration_algorithm() {
     [ -n "$mig" ] || continue
     git_read_at body "$SHA" "$mig" \
       || refuse "$mig is in $SHA's tree and then was not there to read"
-    if printf '%s' "$body" | grep -Eqi "Schema::table\([[:space:]]*['\"]events['\"]|ALTER[[:space:]]+TABLE[[:space:]]+\`?events\`?"; then
-      printf '%s' "$body" | grep -Eqi "ALGORITHM[[:space:]]*=[[:space:]]*(INSTANT|INPLACE)" \
+    if text_matches -Ei "Schema::table\([[:space:]]*['\"]events['\"]|ALTER[[:space:]]+TABLE[[:space:]]+\`?events\`?" "$body"; then
+      text_matches -Ei "ALGORITHM[[:space:]]*=[[:space:]]*(INSTANT|INPLACE)" "$body" \
         || offenders+=("$mig")
     fi
   done <<< "$mig_list"
@@ -3528,11 +3650,11 @@ gate_a11_trusted_proxies() {
   # X-Forwarded-For shipping reported the coarse-but-safe state instead, about a file it never opened.
   local bootstrap
   if git_read_at bootstrap "$SHA" server/bootstrap/app.php; then
-    if printf '%s' "$bootstrap" | grep -Eq "trustProxies\(.*['\"]\*['\"]"; then
+    if text_matches -E "trustProxies\(.*['\"]\*['\"]" "$bootstrap"; then
       refuse "server/bootstrap/app.php trusts ALL proxies (\`*\`)" \
         "docs/PLAN.md § 5: never \`*\`. Name the actual reverse proxy."
     fi
-    printf '%s' "$bootstrap" | grep -q "trustProxies" \
+    text_matches -F "trustProxies" "$bootstrap" \
       || warn "no trustProxies() configured — the failed-auth limit will key on the reverse proxy's IP for every request (docs/PLAN.md § 5; coarse, not forgeable)"
   else
     # NOT a warning, and not because the unchecked proxies are worth a refusal on their own: a release
@@ -3773,49 +3895,12 @@ gate_a13_supervision() {
 # PHASE B — the maintenance window. Everything from here MUTATES.
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 
-# DOWN AND STAY DOWN. On any failure after the window opens, the app is NOT brought back up. A
-# migration that failed halfway (MariaDB DDL is not transactional — there is no partial-statement
-# rollback to fall back on), a composer install that produced no vendor/, a daemon that died on
-# start: in each of those the previous code cannot serve (the schema has moved) and the new code
-# is not ready. Bringing the site up would serve the failure. The window stays open, the marker
-# stays on disk, and the next bare re-run refuses (A2) — the operator is the recovery path.
-FAILED_STEP="opening the maintenance window"
-in_window_failure() {
-  local rc=$? line="$1"
-  cat >> "$MARKER" <<MARKER_END
-failed_step: $FAILED_STEP
-failed_line: $line (exit $rc)
-MARKER_END
-  cat >&2 <<BANNER
-
-═══════════════════════════════════════════════════════════════════════════════
-⛔ DEPLOY FAILED INSIDE THE MAINTENANCE WINDOW — THE APP IS DOWN AND STAYS DOWN
-═══════════════════════════════════════════════════════════════════════════════
-  step   : $FAILED_STEP
-  commit : $(git_at rev-parse --short HEAD 2>/dev/null || echo '?')
-  marker : $MARKER
-
-  This is deliberate. Forward-only: nothing was rolled back, because a failed
-  MariaDB migration is half-applied and a rollback would be a second guess at a
-  state nobody has read yet. An operator reads it.
-
-  Recovery is a human act:
-    cd $APP_DIR
-    php artisan migrate:status        # what actually landed
-    tail -n 200 storage/logs/laravel.log
-    ...then either finish forward — bring the schema to where this release expects
-    it, then re-run this script with the same --ref and --redeploy, which restarts
-    every daemon — or deploy the previous commit deliberately with --ref <sha>
-    --allow-unreleased. A bare \`php artisan up\` serves the new code beside daemons
-    that may still be running the previous release's.
-  Clear $MARKER when the failure has been reviewed. Until it is cleared, another
-  run of this script REFUSES — a bare re-run must not be able to erase this.
-═══════════════════════════════════════════════════════════════════════════════
-BANNER
-  exit 2
-}
+# A failure from here on goes to in_window_failure — DOWN AND STAY DOWN — which is defined beside `refuse`
+# at the top of this file, because the re-exec's prologue can reach it before anything below is defined
+# (card#9629).
 
 phase_b_open_window() {
+  FAILED_STEP="opening the maintenance window"
   trap 'in_window_failure $LINENO' ERR
 
   # The marker is written BEFORE the first mutation, not after the first failure: a deploy killed
@@ -3921,9 +4006,9 @@ MARKER_END
 # file open for a moment, and a pid that was only ever that would read as a daemon that died. A daemon
 # that dies two seconds in (a bad config, a class a package removal took away) leaves its lock free at
 # the settle; unproven, it would leave a fold frozen behind a green deploy. What the settle cannot see is
-# a daemon that dies and is started again by cron inside it. A holder's start is read with `ps -o etimes=`,
-# and one still running whose start cannot be read fails the proof: it is never taken for a fresh process.
-# And every OTHER lock file of the checkout must then be held by nothing at all.
+# a daemon that dies and is started again by cron inside it. A holder's start is read where the kernel keeps it
+# (proc_started), and one still running whose start cannot be read fails the proof: it is never taken for a fresh
+# process. And every OTHER lock file of the checkout must then be held by nothing at all.
 lock_holders() { # <file…> — the pids that have any of these files open; nothing for a file not there
   local f
   local -a present=()
@@ -3941,20 +4026,38 @@ checkout_lock_holders() { # the pids holding any of them
   lock_holders "${files[@]}"
 }
 
-holders_started_after() { # <cmd> <lock> <since> <pid…> — every pid still running started at or after <since>
-  local cmd="$1" lock="$2" since="$3" pid age now
+# proc_started <pid|self> — when <pid> started: field 22 of /proc/<pid>/stat, the kernel's own record, in clock
+# ticks since boot. Returns 1, printing nothing, when that cannot be read (the pid has gone, among others).
+# ⛔ ONE CLOCK AND NO ROUNDING, BECAUSE WHOLE SECONDS CANNOT ORDER TWO EVENTS INSIDE ONE SECOND (card#11557). The
+# proof used to compare `date +%s` at the step's start with `now - ps -o etimes=` for each holder: three whole-second
+# readings, taken at different moments, of two different clocks. A holder that started AFTER the step began, read
+# across a second boundary, could come out a second BEFORE it, and the window would then fail, with the app down, on a
+# daemon this deploy had just started — measured on the old function, a process started after `since` and judged just
+# before a second boundary on a loaded host was reported "started 1 s BEFORE this restart". A holder's tick and the
+# step's own (restart_daemons) are the same quantity on the same clock, so a later start is never a smaller number;
+# one in the same tick as the step's start counts as after it.
+# Field 2, the command name, is in parentheses and may itself hold spaces and `)`, so the fields are read after the
+# LAST `) `.
+proc_started() {
+  local stat
+  local -a f
+  { read -r stat < "/proc/$1/stat"; } 2>/dev/null || return 1
+  read -r -a f <<< "${stat##*) }"
+  case "${f[19]:-}" in '' | *[!0-9]*) return 1 ;; esac
+  printf '%s' "${f[19]}"
+}
+
+holders_started_after() { # <cmd> <lock> <since> <pid…> — every pid still running started at or after <since>, a proc_started tick
+  local cmd="$1" lock="$2" since="$3" pid started
   shift 3
-  now="$(date +%s)"
   for pid in "$@"; do
-    age="$(ps -o etimes= -p "$pid" 2>/dev/null || true)"; age="${age//[[:space:]]/}"
-    case "$age" in
-      '' | *[!0-9]*)
-        # Gone since fuser listed it — cron's losing `flock -n` — it holds nothing now and is not judged.
-        if ! kill -0 "$pid" 2>/dev/null; then continue; fi
-        echo "$cmd: cannot read when pid $pid, which holds $lock, started (\`ps -o etimes=\` printed '$age') — it cannot be proven to run the deployed release's code" >&2
-        false ;;
-    esac
-    [ $((now - age)) -ge "$since" ] || { echo "$cmd: $lock is held by pid $pid, which started $((since - now + age)) s BEFORE this restart — it is running the previous release's code" >&2; false; }
+    if ! started="$(proc_started "$pid")"; then
+      # Gone since fuser listed it — cron's losing `flock -n` — it holds nothing now and is not judged.
+      if ! kill -0 "$pid" 2>/dev/null; then continue; fi
+      echo "$cmd: cannot read when pid $pid, which holds $lock, started (/proc/$pid/stat could not be read) — it cannot be proven to run the deployed release's code" >&2
+      false
+    fi
+    [ "$started" -ge "$since" ] || { echo "$cmd: $lock is held by pid $pid, which started BEFORE this restart — it is running the previous release's code (it started at clock tick $started since boot, the restart at $since)" >&2; false; }
   done
 }
 
@@ -3963,7 +4066,9 @@ restart_daemons() {
   local stop_timeout="$DAEMON_STOP_TIMEOUT_S" settle="$DAEMON_SETTLE_S"
   local -a target_locks=() files=() hs=()
   php_bin="$(supervision_default_php)"
-  step_started="$(date +%s)"
+  # The start of this command substitution's own process, which is forked now: the step's start on the clock
+  # proc_started reads every holder's start from.
+  step_started="$(proc_started self)"
   for cmd in "${SUPERVISED_DAEMONS[@]}"; do target_locks+=("$(supervision_lock "$DEPLOY_ROOT" "$cmd")"); done
 
   # A subshell, because install ends with `exit` on a refusal; the ERR trap is dropped inside it so the
@@ -4086,11 +4191,16 @@ drain_previous_streams() {
 }
 
 phase_b_post_checkout() {
-  [ "${MEZZ_DEPLOY_IN_WINDOW:-0}" = "1" ] || refuse \
+  # Without the window flag this is `--internal-post-checkout` typed by hand: no window was opened, and
+  # this refusal keeps its promise. With it, every `refuse` from here on is an in-window stop (§ refuse),
+  # the marker guard below included: the window writes the marker before `artisan down`, so a missing
+  # one cannot establish that the window is closed, and the stop it takes writes a marker of its own.
+  [ "$DEPLOY_IN_WINDOW" -eq 1 ] || refuse \
     "--internal-post-checkout is not an operator entry point" \
     "It assumes the maintenance window is already open. Run bin/deploy.sh without it."
   [ -e "$MARKER" ] || refuse "--internal-post-checkout with no failure marker present" \
-    "The window was never opened by this script. Refusing to continue a deploy that did not start."
+    "The window writes $MARKER before \`php artisan down\`, and it is not there, so whether the app is down is not established." \
+    "Stopping as a failure inside the window rather than continuing a deploy this script cannot show it started."
 
   SHA="$POST_CHECKOUT_SHA"
   trap 'in_window_failure $LINENO' ERR

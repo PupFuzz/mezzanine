@@ -267,12 +267,20 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
         $fields = [];
         $top = [];
         $children = [];
+        // card#9418: a top-level member whose bounds cell declares it ABSENT under a stated
+        // condition (`idle_nudge_after_s`, absent when the install declares no horizon) may be
+        // missing from a fixture seat. Read from the same cell, so it is D2 that says which.
+        $absentable = [];
 
         foreach ($rows as [, $name, , $nullable, $bounds]) {
             $fields[$name] = $nullable === '**yes**';
 
             if (! str_contains($name, '.')) {
                 $top[] = $name;
+
+                if (str_contains($bounds, '**ABSENT when')) {
+                    $absentable[] = $name;
+                }
 
                 continue;
             }
@@ -299,7 +307,10 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
         $this->assertNotSame([], $link, 'link_state’s members parsed to nothing');
         $this->assertNotSame([], $activity, 'activity_state’s members parsed to nothing');
 
-        return ['fields' => $fields, 'top' => $top, 'children' => $children, 'link' => $link, 'activity' => $activity];
+        return [
+            'fields' => $fields, 'top' => $top, 'absentable' => $absentable,
+            'children' => $children, 'link' => $link, 'activity' => $activity,
+        ];
     }
 
     /**
@@ -315,7 +326,7 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
         $defects = [];
         $members = array_keys(array_diff_key($seat, ['detail' => null]));
 
-        foreach (array_diff($spec['top'], $members) as $missing) {
+        foreach (array_diff($spec['top'], $members, $spec['absentable']) as $missing) {
             $defects[] = "missing field `{$missing}`";
         }
 

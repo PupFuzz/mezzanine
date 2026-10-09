@@ -92,7 +92,6 @@ const K = {
   TOMBSTONES: 64,                // § 8.2
   SESSIONS: 16,                  // § 8.2
   TOMBSTONE_MS: 900000,          // § 8.2 15 min, == the ordinary orphan timeout
-  ATTENTION_MS: 3600000,         // § 6.13 60 min
   COMPACTION_MS: 600000,         // § 6.10 10 min
   SILENCE_MS: 5400000,           // § 6.2 90 min
   SAMPLE_STALE_MS: 300000,       // § 6.9 300 s
@@ -102,7 +101,12 @@ const K = {
   PREDICATES_CAP: 512,           // § 6.14
   SELFTEST_CAP: 256,             // § 6.14
   DEGRADED_MAX: 12,              // § 9.3 — the member table's size, not a chosen number
+  BADGE_WINDOW_MS: 86400000,     // § 9.3 24 h — a member is raised while a counter that raises it
+                                 // rose within this window (operator ruling 2026-09-14, card#9491)
   BUCKET_GRACE_MS: 5000,         // § 11.1 20x the P-5 hook budget
+  WRITE_LOCK_WAIT_MS: 100,       // § 11.2 the most a writer waits for the seat write lock: 40% of P-5
+  WRITE_LOCK_STALE_MS: 1000,     // § 11.2 4x P-5 — a live holder's section is far inside it
+  WRITE_LOCK_POLL_MS: 1,         // § 11.2
   WRAPPED_STATUSLINE_MS: 1000,   // § 6.11
   STATUSLINE_CADENCE_MS: 60000,  // § 6.11
   STATUSLINE_BUCKET_PCT: 5,      // § 6.11
@@ -160,7 +164,8 @@ const NOTIFICATION_NOT_ATTENTION = ['idle_prompt', 'auth_success', 'agent_comple
 
 /* § 9.3's degradation members, in that section's order — the array's bound IS this list's
  * length (§ 9.3: "Twelve members, and the array's bound is twelve"). Each maps to the counters
- * that raise it; a member is present when ANY of them is non-zero at that flush. */
+ * that raise it; a member is present when ANY of them ROSE within K.BADGE_WINDOW_MS of that
+ * heartbeat (`windowedCounters` selects them, `buildDegraded` maps them). */
 const DEGRADED = [
   // `spool_append_failed.<tree>` is a LOSSY raiser and not an informational one: an append that
   // fails discards the record it carried — an event, a counter delta, an index entry — which is
@@ -185,7 +190,7 @@ const DEGRADED = [
  * and stayed wrong for 30 days. Adding a predicate without adding it here is a review-blocking
  * defect there; `selftest`'s `predicate_discrimination` check asserts the set is complete. */
 const PREDICATES = ['attention_source_permission_hook', 'descriptor_allowlisted',
-  'clear_reap_by_session_end', 'agent_scope_subagent', 'attention_resolved_by_hook'];
+  'clear_reap_by_session_end', 'agent_scope_subagent'];
 
 /* The `selftest` checks § 6.14's member table declares — the same set the subcommand runs and
  * the heartbeat reports, so the two cannot drift apart. */
@@ -1241,9 +1246,111 @@ function clampInt(v, lo, hi, wireField) {
   return n;
 }
 
-function makeEmitter(cfg, spool) {
-  return function emit(kind, sessionId, data, atMs) {
-    const t = atMs === undefined ? now() : atMs;
+/* ── THE SEAT WRITE LOCK (§ 11.2, card#11563) ─────────────────────────────────────────────────
+ * ONE SEAT'S SPOOL ORDER AND ITS event_time ORDER ARE THE SAME ORDER, and this lock is what makes
+ * them so. Every writer of the events tree — a hook, a statusLine render, the flusher's reaps,
+ * its inferred close and its heartbeat — reads the clock its events carry only while holding
+ * it, and appends those events before letting it go. Before card#11563 a hook read its clock at
+ * ENTRY and appended after config load, stdin and the index fold, and the flusher appended
+ * events stamped at the start of a pass that had since awaited the network; two writers could
+ * therefore append in the opposite order to their clocks. Measured with the probe card#11563
+ * names: 5 of 80 trials put a flusher `session.end` in the spool ahead of an older `turn.end`.
+ * O_APPEND makes each LINE atomic; it orders nothing across a clock read.
+ *
+ * A HOOK HOLDS IT FROM ITS FIRST EMIT TO THE END OF ITS SECTION; THE FLUSHER FROM BEFORE ITS
+ * INDEX FOLD. `withSeatWriter` below says why the two differ and what each costs.
+ *
+ * BOUNDED AND COUNTED, NEVER BLOCKING THE SEAT (P-1, P-5). An exclusive create, a poll, and a
+ * wait capped at K.WRITE_LOCK_WAIT_MS; past the cap the writer proceeds unlocked and counts
+ * `write_lock_timeout`, because a lost ordering guarantee is a smaller harm than a hook that
+ * holds up the harness. A holder whose pid is gone, or whose lock is older than
+ * K.WRITE_LOCK_STALE_MS, is broken and counted `write_lock_broken` — a hook the harness kills
+ * mid-section never wakes to release. The ages are WALL time, not `now()`: FLEET_REPORTER_NOW_MS
+ * shifts the seat's clock for tests, and a lock's age is a duration on the filesystem's clock. */
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+function pidAlive(pid) {
+  try { process.kill(pid, 0); return true; }
+  catch (e) { return e.code !== 'ESRCH'; }   // EPERM: alive, another user's
+}
+
+function breakStaleWriteLock(lock) {
+  let body, st;
+  try { body = fs.readFileSync(lock, 'utf8'); st = fs.statSync(lock); } catch (e) { return e.code === 'ENOENT'; }
+  const pid = Number(body);
+  const dead = Number.isInteger(pid) && pid > 0 && !pidAlive(pid);
+  if (!dead && Date.now() - st.mtimeMs < K.WRITE_LOCK_STALE_MS) return false;
+  try {
+    // Unlink only the lock that was judged: a breaker that read a dead holder must not remove the
+    // lock a faster breaker has since created in its place.
+    if (fs.readFileSync(lock, 'utf8') !== body || fs.statSync(lock).mtimeMs !== st.mtimeMs) return false;
+    fs.unlinkSync(lock);
+  } catch (e) { return false; }
+  count('write_lock_broken');
+  return true;
+}
+
+function acquireWriteLock(spool) {
+  const lock = path.join(spool, 'write.lock');
+  const deadline = Date.now() + K.WRITE_LOCK_WAIT_MS;
+  let madeDir = false;
+  for (;;) {
+    try {
+      const fd = fs.openSync(lock, 'wx');
+      try { fs.writeSync(fd, String(process.pid)); } finally { fs.closeSync(fd); }
+      return true;
+    } catch (e) {
+      // A spool not yet created is a seat's first write, and `appendLine` would create it: so
+      // does this, once, rather than letting that first section append unlocked.
+      if (e.code === 'ENOENT' && !madeDir) { madeDir = true; ensureDir(spool); continue; }
+      // Any other error but contention (a read-only spool) is one the appends that follow meet
+      // too, and `appendLine` counts those; waiting here would only add latency to them.
+      if (e.code !== 'EEXIST') return false;
+    }
+    if (breakStaleWriteLock(lock)) continue;
+    if (Date.now() >= deadline) { count('write_lock_timeout'); return false; }
+    sleepSync(K.WRITE_LOCK_POLL_MS);
+  }
+}
+
+function releaseWriteLock(spool) {
+  const lock = path.join(spool, 'write.lock');
+  try { if (fs.readFileSync(lock, 'utf8') === String(process.pid)) fs.unlinkSync(lock); }
+  catch (e) { /* broken under us as stale: the breaker counted it */ }
+}
+
+/* A SECTION, and the ONLY way to obtain an emitter: `fn(ctx, atMs)` gets `ctx.emit` and the
+ * section's DECISION clock `atMs` — the one its durations, ids and ceilings are computed with.
+ * There is no emitter outside a section, so a writer added later inherits the ordering instead
+ * of re-opening it.
+ *
+ * THE LOCK IS TAKEN AT THE SECTION'S FIRST EMIT, NOT AT ITS START, and the events carry the
+ * clock read the moment it is taken. Holding it from the section's start was measured on the
+ * card#11563 build: a hook's index fold and payload work are ~90 % of such a hold and its appends
+ * ~10 % (median 20.9 ms against 2.0 ms on a host at load average ~21), and the hold is what every
+ * concurrent hook of the seat waits on. Taken at the first emit, the guarantee is the same —
+ * no writer reads its stamp between another writer's stamp and that writer's last append — for a
+ * tenth of the wait. A section that never emits (most statusLine renders) never takes it.
+ *
+ * `ctx.take()` takes it early, and returns the stamp: the flusher calls it BEFORE its index fold,
+ * so its inferred close (§ 6.2) decides against every hook section that emitted before it, and
+ * its stamp is then its decision clock as well. */
+function withSeatWriter(config, spool, fn) {
+  let held = false, stamp = null;
+  const take = () => {
+    if (stamp === null) { held = acquireWriteLock(spool); stamp = now(); }
+    return stamp;
+  };
+  try { return fn({ config, spool, emit: makeEmitter(config, spool, take), take }, now()); }
+  finally { if (held) releaseWriteLock(spool); }
+}
+
+/* `event_time` is the section's stamp (`withSeatWriter`), read under the seat write lock — never
+ * a clock the caller passes in, which is what kept one seat's spool order and event_time order
+ * apart before card#11563. Every event of one section carries the one stamp. */
+function makeEmitter(cfg, spool, take) {
+  return function emit(kind, sessionId, data) {
+    const t = take();
     const ev = {
       event_id: ulid(t), schema_version: SCHEMA_VERSION, kind, event_time: rfc3339(t),
       install_id: cfg.install_id, seat_id: cfg.seat_id, session_id: sessionId, data,
@@ -1348,10 +1455,17 @@ function projectLabel(payload) {
  * inside the 250 ms budget — and is honestly `null` plus a counter until then. There is no installer
  * (card #7336 is won't-do), and `INSTALL-LINUX.md` Step 3 leaves the key unset on purpose, because
  * a version written once goes stale at Claude Code's next self-update.
- * Filed as a D1 amendment request rather than guessed at. */
+ * Filed as a D1 amendment request rather than guessed at.
+ *
+ * THE GAP IS COUNTED `harness_label_unset`, NEVER `payload_key_missing.*` (card#11330). The key is
+ * a CONFIG value the runbook leaves unset, not a harness payload key, and `payload_key_missing.*`
+ * raises `harness_contract_moved` (§ 9.3) — so counting it there badged every correctly installed
+ * seat "the harness payload moved under this reporter", and taught the operator to ignore the one
+ * badge that reports a Claude Code upgrade moving the hook payloads. A seat that counted it under
+ * the old name keeps that total in state.json; `RENAMED_COUNTERS` moves it. */
 function harnessLabel(cfg) {
   const v = typeof cfg.harness_label === 'string' ? cfg.harness_label : null;
-  if (!v) { count('payload_key_missing.harness_label'); return null; }
+  if (!v) { count('harness_label_unset'); return null; }
   return /^[A-Za-z0-9._/-]{1,32}$/.test(v) ? v : null;
 }
 
@@ -1464,12 +1578,12 @@ function reapOne(ctx, entry, abortReason, closeSource, atMs) {
     call_id: entry.call_id, tool_name: entry.tool_name, outcome: 'aborted',
     abort_reason: abortReason, duration_ms: d.duration_ms, duration_source: d.duration_source,
     close_source: closeSource, match: 'reap',
-  }, atMs);
+  });
   if (entry.is_dispatch) {
     ctx.emit('subagent.stop', entry.session_id, {
       call_id: entry.call_id, outcome: 'aborted', abort_reason: abortReason,
       duration_ms: d.duration_ms, close_source: closeSource,
-    }, atMs);
+    });
   }
 }
 
@@ -1487,8 +1601,9 @@ function reap(ctx, ix, select, abortReason, closeSource, atMs) {
 }
 
 /* A reap that ends a session also closes any attention request open in it: a *blocked* desk
- * whose session has ended is not blocked, and D2-MUST #5 needs the exit edge to say so. */
-function resolveAttention(ctx, ix, sessionId, resolution, source, atMs, byHook) {
+ * whose session has ended is not blocked, and D2-MUST #5 needs the exit edge to say so.
+ * Every caller is an OBSERVED edge (§ 6.13): the request has no timer of its own (card#9527). */
+function resolveAttention(ctx, ix, sessionId, resolution, source, atMs) {
   const a = ix.attention.get(sessionId);
   if (!a) return false;
   journal(ctx.spool, { k: 'attention_close', request_id: a.request_id, resolution });
@@ -1496,8 +1611,7 @@ function resolveAttention(ctx, ix, sessionId, resolution, source, atMs, byHook) 
   ctx.emit('attention.resolved', sessionId, {
     request_id: a.request_id, resolution, resolution_source: source,
     waited_ms: Math.max(0, atMs - Date.parse(a.opened_at || atMs)),
-  }, atMs);
-  if (byHook !== undefined) predicate('attention_resolved_by_hook', byHook);
+  });
   return true;
 }
 
@@ -1520,7 +1634,7 @@ function emitTurnEnd(ctx, ix, sessionId, endReason, apiErrorType, openBefore, ab
     background_tasks_open: Array.isArray(payload.background_tasks) ? payload.background_tasks.length : 0,
     tool_calls: turn ? turn.tool_calls : 0,
     failed_calls: turn ? turn.failed_calls : 0,
-  }, atMs);
+  });
   journal(ctx.spool, { k: 'turn_close', session_id: sessionId });
   ix.turns.delete(sessionId);
 }
@@ -1542,7 +1656,7 @@ function reapSessionBoundary(ctx, ix, sessionId, endReasonWire, abortReason, atM
     duration_ms: s && s.opened_at ? Math.max(0, atMs - Date.parse(s.opened_at)) : null,
     turns: s ? s.turns : null,
     aborted_calls: aborted.length,
-  }, atMs);
+  });
   resolveAttention(ctx, ix, sessionId, 'session_ended', 'session_end', atMs);
   journal(ctx.spool, { k: 'session_close', session_id: sessionId });
   ix.sessions.delete(sessionId); ix.turns.delete(sessionId);
@@ -1601,7 +1715,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       emit('session.start', sid, {
         source, project_label: projectLabel(payload), harness_label: harnessLabel(ctx.config),
         previous_session_id: previous,
-      }, atMs);
+      });
       break;
     }
 
@@ -1625,7 +1739,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       // A human typing is a human present (§ 6.13). D1-SILENT on the order of the two events;
       // the resolution is emitted FIRST, matching every other close-before-trigger ordering in
       // § 8.3 and putting the human's presence before the turn it starts.
-      resolveAttention(ctx, ix, sid, 'human_input', 'user_prompt_submit', atMs, true);
+      resolveAttention(ctx, ix, sid, 'human_input', 'user_prompt_submit', atMs);
       touchSession(ctx, ix, sid);
       const prompt = typeof payload.prompt === 'string' ? payload.prompt : null;
       journal(ctx.spool, { k: 'turn_open', session_id: sid, prompt_id: payload.prompt_id || null });
@@ -1635,7 +1749,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         prompt_chars: prompt === null ? null : clampInt(prompt.length, 0, 1000000, 'turn.start.prompt_chars'),
         project_label: projectLabel(payload),
         console_url: consoleUrl(payload, ctx.config),
-      }, atMs);
+      });
       break;
     }
 
@@ -1692,7 +1806,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         descriptor_truncated: d.truncated, agent_scope: agentId ? 'subagent' : 'main',
         parent_call_id: parentCallId, harness_call_ref: ref,
         open_calls_before: Math.min(openBefore, K.OPEN_CALLS),
-      }, atMs);
+      });
       if (isDispatch) {
         // § 6.7 — the dispatch tool's PAYLOAD tool_name is "Agent" at 2.1.240; "Task" is the
         // model-facing name. Both are matched, because a design keyed on "Task" alone would
@@ -1706,7 +1820,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         emit('subagent.spawn', sid, {
           call_id: callId, title: title ? title.text : null,
           title_truncated: title ? title.truncated : false, subagent_type: st,
-        }, atMs);
+        });
       }
       break;
     }
@@ -1730,7 +1844,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
           agent_scope: agentId ? 'subagent' : 'main', parent_call_id: null,
           harness_call_ref: ref, open_calls_before: Math.min(ix.calls.size, K.OPEN_CALLS),
           synthesized: true,
-        }, atMs);
+        });
         entry = { call_id: callId, session_id: sid, tool_name: toolName, started_at: rfc3339(atMs), is_dispatch: false, prompt_id: payload.prompt_id || null };
         matchKind = 'synthesized';
       } else if (m.tombstone) {
@@ -1778,17 +1892,17 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         call_id: entry.call_id, tool_name: entry.tool_name || toolName, outcome,
         abort_reason: abortReason, duration_ms: d.duration_ms, duration_source: d.duration_source,
         close_source: failed ? 'post_tool_use_failure' : 'post_tool_use', match: matchKind,
-      }, atMs);
+      });
       if (entry.is_dispatch) {
         emit('subagent.stop', sid, {
           call_id: entry.call_id, outcome, abort_reason: abortReason,
           duration_ms: d.duration_ms, close_source: failed ? 'post_tool_use_failure' : 'post_tool_use',
-        }, atMs);
+        });
       }
       // § 6.13 rows 2 and 3 — the tool ran, so permission was given.
       const a = ix.attention.get(sid);
       if (a && outcome !== 'aborted' && (a.call_id === entry.call_id || a.call_id === null)) {
-        resolveAttention(ctx, ix, sid, 'granted', 'call_close', atMs, true);
+        resolveAttention(ctx, ix, sid, 'granted', 'call_close', atMs);
       }
       break;
     }
@@ -1848,11 +1962,11 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         call_id: entry.call_id, tool_name: entry.tool_name, outcome: 'completed',
         abort_reason: null, duration_ms: d.duration_ms, duration_source: d.duration_source,
         close_source: 'subagent_stop_hook', match: matchKind,
-      }, atMs);
+      });
       emit('subagent.stop', sid, {
         call_id: entry.call_id, outcome: 'completed', abort_reason: null,
         duration_ms: d.duration_ms, close_source: 'subagent_stop_hook',
-      }, atMs);
+      });
       break;
     }
 
@@ -1869,7 +1983,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
         context_used_pct: sample ? sample.used_pct : null,
         context_used_pct_age_s: sample ? Math.round((atMs - Date.parse(sample.at)) / 1000) : null,
         open_calls: Math.min(ix.calls.size, K.OPEN_CALLS),
-      }, atMs);
+      });
       break;
     }
     case 'PostCompact': {
@@ -1891,7 +2005,7 @@ function handleHook(ctx, hookName, payload, ix, atMs) {
       touchSession(ctx, ix, sid);
       // `denied` means AUTO MODE denied it. A human clicking "no" fires nothing at all, and
       // takes the human_input edge on their next prompt instead (§ 6.13).
-      resolveAttention(ctx, ix, sid, 'denied', 'permission_denied_hook', atMs, true);
+      resolveAttention(ctx, ix, sid, 'denied', 'permission_denied_hook', atMs);
       break;
     }
     case 'Notification': {
@@ -1932,7 +2046,7 @@ function openAttention(ctx, ix, sid, source, kind, atMs) {
     request_id: requestId, source, notification_kind: kind,
     call_id: openCalls.length === 1 ? openCalls[0].call_id : null,
     open_calls: Math.min(openCalls.length, K.OPEN_CALLS),
-  }, atMs);
+  });
 }
 
 function closeCompaction(ctx, ix, sid, closeSource, atMs) {
@@ -1943,7 +2057,7 @@ function closeCompaction(ctx, ix, sid, closeSource, atMs) {
   ctx.emit('compaction.end', sid, {
     duration_ms: c.started_at ? Math.max(0, atMs - Date.parse(c.started_at)) : null,
     close_source: closeSource,
-  }, atMs);
+  });
   return true;
 }
 
@@ -2016,13 +2130,26 @@ function enforceSpoolBoundFromHook(spool, atMs) {
   const oldest = buckets[0];
   if (!oldest || oldest.slice(0, 10) === cur) { count('spool_overflow_deferred'); return; }
   if (atMs < bucketEndMs(oldest.slice(0, 10)) + K.BUCKET_GRACE_MS) { count('spool_overflow_deferred'); return; }
-  dropSpoolBucket(spool, oldest);
+  /* A hook holds no state, so it reads the cursor from the flusher's state.json, read-only: the
+   * flusher writes it by atomic rename, so the read is never torn, and a missing or unusable
+   * file gives no cursor, which counts the whole bucket. The saved cursor can only lag what the
+   * flusher has disposed of, never lead it, so a stale read over-counts and never hides a loss. */
+  dropSpoolBucket(spool, oldest, loadState(spool, atMs).state.cursors[oldest.slice(0, 10)]);
 }
 
-function dropSpoolBucket(spool, file) {
+/* § 11.3 — `spool_dropped_events` counts the lines of the dropped bucket PAST ITS DELIVERY
+ * CURSOR, the byte offset up to which every line has been delivered or already counted under its
+ * own loss counter (corrupt, rejected, oversize, unreadable). With no cursor, nothing of the
+ * bucket was disposed of and every line counts. Counting the whole file made a seat whose spool
+ * sits at its bound with delivered history render `lossy` on every drop with nothing lost
+ * (card#11548). */
+function dropSpoolBucket(spool, file, cursor) {
   const p = path.join(spool, file);
   let lines = 0;
-  try { lines = (fs.readFileSync(p, 'utf8').match(/\n/g) || []).length; } catch (e) { lines = 0; }
+  try {
+    const buf = fs.readFileSync(p);
+    for (let i = cursor || 0; i < buf.length; i++) if (buf[i] === 0x0A) lines += 1;
+  } catch (e) { lines = 0; }
   try { fs.unlinkSync(p); count('spool_dropped_events', lines); }
   catch (e) { /* ENOENT or EBUSY: leave it for the next pass rather than throwing */ }
 }
@@ -2037,14 +2164,13 @@ function dropSpoolBucket(spool, file) {
  * ════════════════════════════════════════════════════════════════════════════════════════════ */
 
 function hookMain(hookName) {
-  const atMs = now();
   const cp = configPath();
   const { config, errors } = loadConfig(cp);
   if (!config) return;                                   // nothing to spool to, and nothing to say
   registerConfigSecrets(config);
   const spool = config.spool_dir;
   if (errors.length) { count('config_invalid'); logLine(spool, 'hook', `config invalid: ${errors.join('; ')}`); }
-  if (!spool || !config.install_id || !config.seat_id) { flushCounters(spool, 'hook', atMs); return; }
+  if (!spool || !config.install_id || !config.seat_id) { flushCounters(spool, 'hook'); return; }
   // § 3.1/§ 6.14 — `enabled: false` is the ONLY switch that stops emission. The hooks go quiet
   // and the flusher keeps heartbeating with enabled:false, so the desk renders *disabled*
   // rather than sliding through stale into offline and looking broken.
@@ -2058,17 +2184,23 @@ function hookMain(hookName) {
   // healthy value is 0 and any non-zero is real.
   if (typeof payload.hook_event_name === 'string' && payload.hook_event_name !== hookName) count('hook_name_mismatch');
 
-  const ctx = { config, spool, emit: makeEmitter(config, spool) };
-  const ix = foldIndex(spool, atMs);
-  // § 8.2 — the seventeenth session evicts the least-recently-active one, and the eviction
-  // REAPS: its open calls close exactly as a SessionEnd would and its session.end goes out as
-  // `inferred_silence`. Without this the bound was asserted twice with nothing enforcing it,
-  // and the seventeenth session's calls would never be reaped at all.
-  for (const evicted of ix.evicted) reapSessionBoundary(ctx, ix, evicted, 'inferred_silence', 'session_ended', atMs);
-  handleHook(ctx, hookName, payload, ix, atMs);
-  enforceSpoolBoundFromHook(spool, atMs);
+  /* ONE SECTION OF THE SEAT WRITER (§ 11.2, card#11563). Its decision clock is read here, after
+   * stdin, and its events carry the stamp read when its first emit takes the seat write lock —
+   * never the entry-time clock a hook used to stamp with, which let another writer append a
+   * later-stamped event ahead of this hook's older one. No clock is read before this point. */
+  const at = withSeatWriter(config, spool, (ctx, sectionAt) => {
+    const ix = foldIndex(spool, sectionAt);
+    // § 8.2 — the seventeenth session evicts the least-recently-active one, and the eviction
+    // REAPS: its open calls close exactly as a SessionEnd would and its session.end goes out as
+    // `inferred_silence`. Without this the bound was asserted twice with nothing enforcing it,
+    // and the seventeenth session's calls would never be reaped at all.
+    for (const evicted of ix.evicted) reapSessionBoundary(ctx, ix, evicted, 'inferred_silence', 'session_ended', sectionAt);
+    handleHook(ctx, hookName, payload, ix, sectionAt);
+    return sectionAt;
+  });
+  enforceSpoolBoundFromHook(spool, at);
   maybeRespawnFlusher(spool, cp);
-  flushCounters(spool, 'hook', atMs);
+  flushCounters(spool, 'hook', at);
 }
 
 /* ── statusline (§ 6.11) ─────────────────────────────────────────────────────────────────────
@@ -2079,7 +2211,6 @@ function hookMain(hookName) {
  * counter line, so statusLine-side counters are a FLOOR, not a census. They are read for
  * direction (zero vs non-zero), never for arithmetic. */
 function statuslineMain() {
-  const atMs = now();
   const cp = configPath();
   const { config, errors } = loadConfig(cp);
   const raw = readStdin();
@@ -2090,7 +2221,10 @@ function statuslineMain() {
 
   try {
     if (spool && config.install_id && config.seat_id && config.enabled !== false) {
-      sampleContext(config, spool, parsePayload(raw), atMs);
+      // A section of the seat writer, like every writer of the events tree (§ 11.2, card#11563):
+      // a `context.sample` carries the stamp its emit takes the lock with. A suppressed render
+      // emits nothing and never takes the lock.
+      withSeatWriter(config, spool, (ctx, sectionAt) => sampleContext(ctx, parsePayload(raw), sectionAt));
     }
   } catch (e) { logLine(spool, 'statusline', `sample failed: ${e && e.message}`); }
 
@@ -2113,10 +2247,11 @@ function statuslineMain() {
       if (r.error || r.status !== 0 || r.signal) count('wrapped_statusline_failures');
     }
   } catch (e) { count('wrapped_statusline_failures'); }
-  if (spool) flushCounters(spool, 'statusline', atMs);
+  if (spool) flushCounters(spool, 'statusline');
 }
 
-function sampleContext(config, spool, payload, atMs) {
+function sampleContext(ctx, payload, atMs) {
+  const spool = ctx.spool;
   const cw = payload.context_window && typeof payload.context_window === 'object' ? payload.context_window : null;
   let usedPct = null, source = null, usedTokens = null, totalTokens = null;
   if (cw) {
@@ -2139,7 +2274,14 @@ function sampleContext(config, spool, payload, atMs) {
     // The ONE suppression in the design driven by payload shape, expected to be non-zero on
     // every seat during the first seconds of a session, and counted precisely because a silent
     // one is how a signal dies unnoticed (§ 3.4).
-    count('payload_key_missing.context_window');
+    //
+    // COUNTED `context_window_unavailable`, NEVER `payload_key_missing.*` (card#11544). That family
+    // raises `harness_contract_moved` (§ 9.3), and this gap is expected at the start of every
+    // session, so the old name re-raised "the harness payload moved under this reporter" at every
+    // session start on every Step 4(b) seat, and the 24 h window never cleared it on an active
+    // seat. A seat that counted it under the old name keeps that total in state.json;
+    // `RENAMED_COUNTERS` moves it.
+    count('context_window_unavailable');
     return;
   }
   usedPct = Math.round(Math.min(100, Math.max(0, usedPct)) * 10) / 10;
@@ -2163,14 +2305,14 @@ function sampleContext(config, spool, payload, atMs) {
   const model = payload.model && typeof payload.model === 'object' && typeof payload.model.display_name === 'string'
     ? sanitize(payload.model.display_name, 48) : null;
   if (model) countSanitizer(model);
-  makeEmitter(config, spool)('context.sample', sid, {
+  ctx.emit('context.sample', sid, {
     used_pct: usedPct,
     used_tokens: usedTokens === null ? null : clampInt(usedTokens, 0, 10000000, 'context.sample.used_tokens'),
     total_tokens: totalTokens === null ? null : clampInt(totalTokens, 1, 10000000, 'context.sample.total_tokens'),
     used_pct_source: source,
     model_label: model ? model.text : null,
     sample_reason: reason,
-  }, atMs);
+  });
 }
 
 /* ════════════════════════════════════════════════════════════════════════════════════════════
@@ -2210,7 +2352,7 @@ function newState(spool, atMs) {
      * events would never be delivered and never be counted as dropped, which is the one loss
      * shape § 0 item 9 forbids. One offset per bucket has no such case. */
     cursors: {},
-    counter_offsets: {}, counters: {}, predicates: {},
+    counter_offsets: {}, counters: {}, counter_rises: {}, predicates: {},
     last_hook_at: null, last_session_activity: {},
   };
 }
@@ -2220,6 +2362,10 @@ function loadState(spool, atMs) {
     const s = JSON.parse(fs.readFileSync(statePath(spool), 'utf8'));
     if (!s || typeof s !== 'object' || !s.seq_epoch || typeof s.next_seq !== 'number') throw new Error('shape');
     s.counters = s.counters || {}; s.predicates = s.predicates || {};
+    // A state.json an earlier build saved has no `counter_rises`. Its first heartbeat records every
+    // non-zero total as rising then (`windowedCounters`), so an upgrade keeps each badge it showed
+    // for one window and the next save writes the map.
+    s.counter_rises = s.counter_rises || {};
     s.counter_offsets = s.counter_offsets || {}; s.cursors = s.cursors || {};
     s.last_session_activity = s.last_session_activity || {};
     return { state: s, reset: false, minted: false };
@@ -2371,6 +2517,29 @@ function foldCounterSink(spool, state) {
     }
     state.counter_offsets[b] = from + nl + 1;
   }
+  renameCounters(state.counters);
+}
+
+/* A COUNTER AN EARLIER BUILD WROTE UNDER THE WRONG NAME, MOVED TO ITS RIGHT ONE (card#11330,
+ * card#11544). The totals live in state.json across flusher restarts, so renaming a counter in the
+ * code does not rename it on a seat that already counted it: the old name stays in the total, and
+ * every heartbeat keeps raising the member that name maps to. Each entry below is a gap an earlier
+ * build counted under `payload_key_missing.*`, which `DEGRADED` maps to `harness_contract_moved`,
+ * although the gap is expected on a correct install: an unset `harness_label` config key
+ * (card#11330), and a statusLine render with no usable `context_window` (card#11544). This runs at
+ * the end of every sink fold, and a fold opens every flusher pass, so it moves the total an earlier
+ * flusher saved AND a delta an older hook or statusLine process wrote into a sink bucket not folded
+ * yet. Applied again to a total that holds no old name, it changes nothing. */
+const RENAMED_COUNTERS = [
+  ['payload_key_missing.harness_label', 'harness_label_unset'],
+  ['payload_key_missing.context_window', 'context_window_unavailable'],
+];
+function renameCounters(counters) {
+  for (const [from, to] of RENAMED_COUNTERS) {
+    if (!(from in counters)) continue;
+    counters[to] = (counters[to] || 0) + counters[from];
+    delete counters[from];
+  }
 }
 
 /* THE BUCKET-DELETION PRECONDITION, one rule for all four trees (§ 11.1): a bucket may be
@@ -2425,7 +2594,7 @@ function enforceSpoolBounds(spool, state, atMs) {
   for (const f of spoolBuckets(spool)) {
     const b = f.slice(0, 10);
     if (atMs - bucketEndMs(b) > K.RESIDENCY_MS && deletableBucket(b, atMs)) {
-      dropSpoolBucket(spool, f);
+      dropSpoolBucket(spool, f, state.cursors[b]);
       delete state.cursors[b];
     }
   }
@@ -2434,7 +2603,7 @@ function enforceSpoolBounds(spool, state, atMs) {
     const buckets = spoolBuckets(spool);
     const oldest = buckets[0];
     if (!oldest || !deletableBucket(oldest.slice(0, 10), atMs)) { count('spool_overflow_deferred'); break; }
-    dropSpoolBucket(spool, oldest);
+    dropSpoolBucket(spool, oldest, state.cursors[oldest.slice(0, 10)]);
     delete state.cursors[oldest.slice(0, 10)];
   }
 }
@@ -2768,6 +2937,29 @@ function buildCounters(all) {
   return { counters: out, counters_omitted: ordered.length - i };
 }
 
+/* THE BADGE WINDOW (§ 9.3, card#9491). The totals in `state.counters` persist across flusher
+ * restarts in state.json, so a member derived from "non-zero" stayed raised for the life of the
+ * seat: one dropped event badged `lossy` for good, and a restart did not clear it. A member now
+ * says "a counter that raises it rose within K.BADGE_WINDOW_MS"; the total itself rides the
+ * heartbeat unchanged, so the badge clearing never hides that the event happened.
+ *
+ * `state.counter_rises` holds, per counter, the total last seen and when it was last seen to rise.
+ * It is read and written HERE, at the heartbeat, rather than at each site that increments a
+ * counter, because a rise is the same fact whichever site produced it. Observing it once per heartbeat dates a rise to within one heartbeat interval, which
+ * is far inside a 24 h window. An entry for a counter no longer in the totals (a rename moved it)
+ * is dropped. Returns the totals that rose within the window, which is what `buildDegraded` maps. */
+function windowedCounters(state, atMs) {
+  const rises = state.counter_rises;
+  const recent = {};
+  for (const [k, v] of Object.entries(state.counters)) {
+    if (!v) continue;
+    if (!rises[k] || v > rises[k].value) rises[k] = { value: v, at: rfc3339(atMs) };
+    if (atMs - Date.parse(rises[k].at) < K.BADGE_WINDOW_MS) recent[k] = v;
+  }
+  for (const k of Object.keys(rises)) if (!state.counters[k]) delete rises[k];
+  return recent;
+}
+
 function buildDegraded(all) {
   const on = [];
   for (const [member, raisers] of DEGRADED) {
@@ -2813,7 +3005,8 @@ function spoolLag(spool, state) {
   return { lines, oldest };
 }
 
-function emitHeartbeat(cfg, spool, state, ix, selftest, declaration, atMs) {
+function emitHeartbeat(ctx, state, ix, selftest, declaration, atMs) {
+  const { config: cfg, spool } = ctx;
   const all = state.counters;
   const { counters, counters_omitted } = buildCounters(all);
   if (counters_omitted > 0) all['data_truncated.reporter.heartbeat.counters'] = (all['data_truncated.reporter.heartbeat.counters'] || 0) + 1;
@@ -2825,7 +3018,7 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, declaration, atMs) {
   // yet measured (null) rides it as `fail`; only the one-shot subcommand reports `not_measured`. Once
   // measured, a check holds its last measured value (flusherMain), never null again.
   for (const c of SELFTEST_CHECKS) st[c] = selftest[c] === true ? 'pass' : 'fail';
-  makeEmitter(cfg, spool)('reporter.heartbeat', null, {
+  ctx.emit('reporter.heartbeat', null, {
     uptime_s: Math.max(0, Math.round((atMs - Date.parse(state.started_at)) / 1000)),
     spool_bytes: Math.min(spoolBytes(spool), K.SPOOL_BYTES),
     spool_files: Math.min(spoolBuckets(spool).length, 400),
@@ -2846,10 +3039,10 @@ function emitHeartbeat(cfg, spool, state, ix, selftest, declaration, atMs) {
     // the check is not `checked`, the name selects more than one entry, or the entry carries no
     // slug-shaped role. Resolved with the name, at flusher start.
     protocol_agent_role: declaration.role,
-    degraded: buildDegraded(all).slice(0, K.DEGRADED_MAX),
+    degraded: buildDegraded(windowedCounters(state, atMs)).slice(0, K.DEGRADED_MAX),
     counters, counters_omitted, predicates, selftest: st,
     config_fingerprint: configFingerprint(cfg),
-  }, atMs);
+  });
 }
 
 function writeSnapshot(spool, state, ix) {
@@ -2936,15 +3129,14 @@ async function flusherMain() {
    * corrected config, and so does a `ca_file` that is not an absolute path: its re-check fails every pass. */
   let caPending = errors.length === 1 && caError !== null;
 
-  const emit = makeEmitter(config, spool);
-  const ctx = { config, spool, emit };
-
   // Flusher start finds index entries older than its own start time: those calls belong to a
-  // reporter that is no longer running (§ 8.3's last row).
-  {
-    const ix = foldIndex(spool, atStart);
-    reap(ctx, ix, (e) => Date.parse(e.started_at || 0) < atStart, 'reporter_restart', 'reap_reporter_restart', atStart);
-  }
+  // reporter that is no longer running (§ 8.3's last row). The SELECTION keys on `atStart`; the
+  // fold and the closes run under the seat write lock, on its stamp (§ 11.2).
+  withSeatWriter(config, spool, (ctx) => {
+    const at = ctx.take();
+    const ix = foldIndex(spool, at);
+    reap(ctx, ix, (e) => Date.parse(e.started_at || 0) < atStart, 'reporter_restart', 'reap_reporter_restart', at);
+  });
 
   const started = runSelftestChecks(config, cp);
   let selftest = started.results;
@@ -2963,9 +3155,19 @@ async function flusherMain() {
       foldCounterSink(spool, state);
       foldLocalCounters(state);
 
-      const ix = foldIndex(spool, atMs);
-      for (const evicted of ix.evicted) reapSessionBoundary(ctx, ix, evicted, 'inferred_silence', 'session_ended', atMs);
-      expireOpenFacts(ctx, ix, atMs);
+      /* THE FOLD, THE DECISIONS AND THEIR EMITS HOLD THE SEAT WRITE LOCK TOGETHER (§ 11.2,
+       * card#11563): `take()` comes before the fold, and its stamp is the decision clock too. The
+       * 90-minute inferred close then decides against an index holding every hook section that
+       * emitted before it, and its `session.end` cannot be appended ahead of an older event. A hook
+       * that has not emitted yet stamps after this section, so it lands after it in both orders.
+       * `atMs` stays the pass's clock for cadences only. */
+      const ix = withSeatWriter(config, spool, (ctx) => {
+        const at = ctx.take();
+        const fx = foldIndex(spool, at);
+        for (const evicted of fx.evicted) reapSessionBoundary(ctx, fx, evicted, 'inferred_silence', 'session_ended', at);
+        expireOpenFacts(ctx, fx, at);
+        return fx;
+      });
       writeSnapshot(spool, state, ix);
 
       if (caPending && readCaFile(config).error === null) {
@@ -3002,7 +3204,10 @@ async function flusherMain() {
 
       if (atMs - lastHeartbeat >= K.HEARTBEAT_MS) {
         lastHeartbeat = atMs;
-        emitHeartbeat(config, spool, state, ix, selftest, declaration, atMs);
+        // Its own section: the pass's `atMs` was read before the drain awaited the network, and a
+        // heartbeat stamped with it would land behind every hook event spooled during the drain
+        // while carrying an older event_time than all of them.
+        withSeatWriter(config, spool, (ctx, sectionAt) => emitHeartbeat(ctx, state, ix, selftest, declaration, sectionAt));
       }
 
       enforceSpoolBounds(spool, state, atMs);
@@ -3052,18 +3257,21 @@ async function flusherMain() {
   releaseLock(spool, state);
 }
 
-/* Every open fact has a ceiling, and each one's expiry is a WIRE EVENT this reporter emits —
- * an entry edge with no exit event is not a state, it is a one-way trapdoor (§ 6.12). */
+/* Every open HARNESS fact has a ceiling, and each one's expiry is a WIRE EVENT this reporter
+ * emits — an entry edge with no exit event is not a state, it is a one-way trapdoor (§ 6.12).
+ * An attention request is the one open fact with NO ceiling (§ 6.13, card#9527): it is a wait on a
+ * human, and "Mezzanine should assume agent is stuck until it gets another status update from that
+ * agent". Its exits are all observed edges, and D2 closes the trapdoor on the seat's next activity
+ * event — so this loop neither times it out nor lets the silence close below end its session. */
 function expireOpenFacts(ctx, ix, atMs) {
-  for (const [sid, a] of [...ix.attention]) {
-    if (atMs - Date.parse(a.opened_at || atMs) > K.ATTENTION_MS) {
-      resolveAttention(ctx, ix, sid, 'timeout', 'timeout', atMs, false);
-    }
-  }
   for (const [sid, c] of [...ix.compactions]) {
     if (atMs - Date.parse(c.started_at || atMs) > K.COMPACTION_MS) closeCompaction(ctx, ix, sid, 'timeout', atMs);
   }
   for (const [sid, s] of [...ix.sessions]) {
+    // A session waiting on a human is silent BECAUSE it is waiting, which is not the silence
+    // § 6.2's 90 minutes infers a dead session from. Closing it would hand D2 a `session.end` that
+    // reads as the agent going away while it still waits (§ 6.2, card#9527).
+    if (ix.attention.has(sid)) continue;
     if (atMs - Date.parse(s.last_active || s.opened_at || atMs) > K.SILENCE_MS) {
       /* § 6.2 — the 90-minute `inferred_silence` close is NOT the reap path and emits NO
        * turn.end: it fires in the flusher, which holds no observation of a turn ending. The
@@ -3075,7 +3283,7 @@ function expireOpenFacts(ctx, ix, atMs) {
         end_reason: 'inferred_silence',
         duration_ms: s.opened_at ? Math.max(0, atMs - Date.parse(s.opened_at)) : null,
         turns: s.turns, aborted_calls: 0,
-      }, atMs);
+      });
     }
   }
 }
@@ -3532,4 +3740,5 @@ if (require.main === module) main();
  * reproduces only by luck. A RED that reproduces by luck is not evidence. The stress harness
  * calls the primitive directly, in a tight loop, from concurrent processes. */
 module.exports = { sanitize, buildDescriptor, truncateBytes, ulid, buildCounters, buildDegraded,
+  windowedCounters,
   appendLine, K, ENUM, SANITIZER_FIXTURES, SELFTEST_CHECKS, CRED_PREFIX_RE };

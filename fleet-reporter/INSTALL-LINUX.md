@@ -466,7 +466,8 @@ restart.
 can only read that from this config key (see the note in the README's open-questions table). Claude Code
 updates itself, so a version written here once stops being true at the next update, and the desk would
 then show a wrong version as a fact. Unset, the field is an honest `null` and the
-`payload_key_missing.harness_label` counter records the gap.
+`harness_label_unset` counter records the gap. That counter raises no badge: an unset key is a correct
+install.
 
 ## Step 4 — wire the hooks, and optionally the statusLine
 
@@ -951,15 +952,48 @@ processes, as Step 5 reports.
   older build sends none, and an operator's drill-down offers no **Open console** link for it, until
   Step 1's artifact is replaced. Every hook loads the reporter when it fires, so the next prompt
   after the replacement carries the link; no flusher restart is needed for it.
-- **A seat installed from a build before card#9374 stays badged `epoch_reset`.** That build counted
-  the first start's missing `state.json` as D1 § 11.4's state reset, so the first heartbeat carried
-  `state_reset: 1`. On the sandbox the badge was still on heartbeat seq 10, eleven minutes later and
-  after a flusher restart, because the counter is a running total kept in `state.json`. A build that
-  includes card#9374 counts no reset on a first start, so a seat installed from it starts with an
-  empty `degraded`. Replacing Step 1's artifact on an older seat does not clear the badge, because the
-  new build loads the same total. Deleting `state.json` does not clear it either: the next batch
-  arrives under a new `seq_epoch`, and the server badges the seat `epoch_reset` from its own
-  `seq_epoch_change`. Whether and how a badge clears is card#9491.
+- **A seat installed from a build before card#9374 was badged `epoch_reset` at its first start.** That
+  build counted the first start's missing `state.json` as D1 § 11.4's state reset, so the first
+  heartbeat carried `state_reset: 1`. A build that includes card#9374 counts no reset on a first
+  start, so a seat installed from it starts with an empty `degraded`. Deleting `state.json` to clear
+  the badge starts a new `seq_epoch`, and the server badges the seat `epoch_reset` from its own
+  `seq_epoch_change`, so leave it in place.
+- **A degraded badge clears one day after its counter last rose, on a build that includes
+  card#9491.** The counters are running totals kept in `state.json` across flusher restarts, and a
+  member of `degraded` now means *a counter that raises it rose within the last 24 h* (D1 § 9.3). A
+  seat running an older build keeps every member it ever raised, through any number of restarts,
+  until Step 1's artifact is replaced and Step 5's flusher restarted; the first heartbeat after that
+  dates every non-zero total as rising then, so the badges clear 24 h later unless a counter rises
+  again. The server's own counter-derived badges (`epoch_reset`, `seq_gap`, `seq_collision`,
+  `reporter_ahead`) follow the same window once the server includes card#9491, with no reporter
+  change.
+- **A seat installed from a build before card#11330 is badged `harness_contract_moved`.** That build
+  counted the unset `harness_label` from Step 3 as `payload_key_missing.harness_label`, which raises the
+  badge whose line is *the harness payload moved under this reporter*, so every seat installed by this
+  runbook carried it. A build that includes card#11330 counts the gap as `harness_label_unset`, which
+  raises nothing. Its flusher also moves the total an older build saved in `state.json` to the new
+  name. The badge then clears at the first heartbeat after Step 1's artifact is replaced and Step 5's
+  flusher restarted, unless a missing harness payload key also raises it. The restart is needed
+  because a running flusher keeps the code it started with.
+- **A seat that applied Step 4(b) with a build before card#11544 is badged `harness_contract_moved`
+  at every session start.** The statusLine payload carries no usable `context_window` in the first
+  seconds of a session (D1 § 6.11), and that build counted the gap as
+  `payload_key_missing.context_window`, which raises the same badge as a moved harness payload. Each
+  new session counted it again, so the badge's 24 h window never ran out on an active seat. A build
+  that includes card#11544 counts the gap as `context_window_unavailable`, which raises nothing, and
+  its flusher moves the total an older build saved in `state.json` to the new name. The badge then
+  clears at the first heartbeat after Step 1's artifact is replaced and Step 5's flusher restarted,
+  unless a missing harness payload key also raises it. A seat that applied only Step 4(a) never
+  counted the gap.
+- **A seat spools its events in `event_time` order only on a build that includes card#11563.** That
+  build has every writer stamp its events under a lock file, `write.lock` in the spool directory
+  (D1 § 11.2), so the flusher delivers them oldest-first. An older build can spool a hook's event
+  behind a newer one, most often behind the flusher's 90-minute `inferred_silence` close, and the
+  server's guards (FLEET-STATE § 6.5) handle that order. Hooks load the reporter when they fire, so
+  they stamp this way as soon as Step 1's artifact is replaced. The flusher's own events, its
+  heartbeat and its inferred close, follow once Step 5's flusher is restarted, because a running
+  flusher keeps the code it started with. Step 8's item 5 removes `write.lock` with the rest of the
+  spool directory.
 - **No context gauge** while Step 4(b) is not applied, which is the sandbox's state.
 - **No Windows procedure exists yet.** One is owed when the Windows agent seat onboards, a real
   Windows machine. By operator ruling on 2026-09-13, D1 § 13's Windows validation is not required

@@ -41,14 +41,67 @@ final class Counters
 
     /**
      * Increment a per-seat counter. `$seatRef` MUST come from a token binding.
+     *
+     * `$at` is when the evidence for the increment was RECEIVED, on the server clock, and it moves
+     * the row's `last_increased_at` — the time `Badges::serverFor()` windows a counter-derived badge
+     * against (D2 § 7.2, card#9491). It defaults to now, which is the receipt for a counter the
+     * ingest or the sweeper writes. The fold passes the event's own `received_at` for the counters
+     * that raise a badge, because the fold can run well after the receipt: a fold catching up
+     * after an outage that stamped `now()` would date an old `seq_gap` to the catch-up and hold its
+     * badge for a window the gap was never in. The column only ever moves forward. A rebuild's
+     * replay writes nothing here at all (`replaying()`).
+     *
+     * A call for the seat `replaying()` is replaying is dropped.
      */
-    public static function seat(int $seatRef, string $name, int $by = 1): void
+    public static function seat(int $seatRef, string $name, int $by = 1, ?string $at = null): void
     {
-        if ($by === 0) {
+        if ($by === 0 || $seatRef === self::$replaying) {
             return;
         }
 
-        self::upsert('seat_counters', ['seat_ref' => $seatRef, 'name' => $name], $by);
+        self::upsert('seat_counters', ['seat_ref' => $seatRef, 'name' => $name], $by, $at ?? now()->format('Y-m-d H:i:s.v'));
+    }
+
+    /**
+     * The seat whose events `replaying()` is re-applying, or null. See `replaying()`.
+     */
+    private static ?int $replaying = null;
+
+    /**
+     * Run `$replay` with every per-seat count for `$seatRef` dropped — `mezzanine:rebuild`'s
+     * replay, and nothing else (D2 § 6.6, § 7.2, card#11549).
+     *
+     * THE COUNTERS ARE THE RECORD OF WHAT THE LIVE PIPELINE OBSERVED, AND A REPLAY OBSERVES
+     * NOTHING NEW. The rebuild runs the fold's own code over events the live fold already applied,
+     * so every fold rule that counts (`seq_gap`, `seq_collision`, `seq_epoch_change`, every
+     * `Projector` counter, and `fold_lag_alarm_entered`, which the replay's rewound cursor would
+     * raise as a lag episode that never happened) would count each of them a second time. § 7.2
+     * says the counters are never reset, so clearing the fold's rows first is no answer: a row
+     * counts events the retention window has since purged, which no replay can count back, and
+     * `--since` replays a part on purpose. Dropping the replay's writes leaves each row's `value`
+     * and `last_increased_at` exactly as the live pipeline left them, which also keeps card#9491's
+     * windowed badges where they were.
+     *
+     * Suppressed HERE, in the one primitive every per-seat writer goes through, rather than at each
+     * fold call site, so a per-seat counter the fold gains later is dropped on the replay without
+     * anyone remembering this. `global()` is not scoped: no fold rule writes a fleet counter today.
+     * Scoped to the one seat being replayed and restored on the way out, even when the replay
+     * throws and the transaction retries it.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $replay
+     * @return T
+     */
+    public static function replaying(int $seatRef, callable $replay): mixed
+    {
+        self::$replaying = $seatRef;
+
+        try {
+            return $replay();
+        } finally {
+            self::$replaying = null;
+        }
     }
 
     /**
@@ -67,7 +120,7 @@ final class Counters
             return;
         }
 
-        self::upsert('global_counters', ['name' => $name], $by);
+        self::upsert('global_counters', ['name' => $name], $by, null);
     }
 
     /** D1 § 12.7's `batches_failed.<detail>`, completed by a `ServerFault`'s value. */
@@ -126,35 +179,56 @@ final class Counters
      * rather than expressed through `VALUES(value)` (MySQL) or `excluded.value` (SQLite) so that
      * one statement shape serves the § 6.1 version floor and everything above it.
      *
+     * `$increasedAt` is `seat_counters.last_increased_at`, and `null` for `global_counters`, which
+     * has no such column because no badge is windowed on a fleet counter. It is the LATER of the
+     * stored value and the one bound, in the same statement, so two writers racing on one row
+     * cannot move it backwards. A stored NULL (a row an older build inserted after a rollback, see
+     * the column's migration) takes the bound value.
+     *
      * @param  array<string, mixed>  $key
      */
-    private static function upsert(string $table, array $key, int $by): void
+    private static function upsert(string $table, array $key, int $by, ?string $increasedAt): void
     {
         $now = now()->format('Y-m-d H:i:s.v');
         $columns = array_keys($key) + [];
         $conflict = implode(', ', $columns);
+        $stamped = $increasedAt !== null;
 
         $sql = sprintf(
-            'INSERT INTO %s (%s, value, updated_at) VALUES (%s, ?, ?)',
+            'INSERT INTO %s (%s, value, updated_at%s) VALUES (%s, ?, ?%s)',
             $table,
             $conflict,
+            $stamped ? ', last_increased_at' : '',
             implode(', ', array_fill(0, count($columns), '?')),
+            $stamped ? ', ?' : '',
         );
 
         $bindings = array_values($key);
         $bindings[] = $by;
         $bindings[] = $now;
 
+        if ($stamped) {
+            $bindings[] = $increasedAt;
+        }
+
         $driver = DB::connection()->getDriverName();
+        $set = 'value = value + ?, updated_at = ?'.($stamped
+            ? ', last_increased_at = CASE WHEN last_increased_at IS NULL OR last_increased_at < ? THEN ? ELSE last_increased_at END'
+            : '');
 
         if ($driver === 'mysql' || $driver === 'mariadb') {
-            $sql .= ' ON DUPLICATE KEY UPDATE value = value + ?, updated_at = ?';
+            $sql .= ' ON DUPLICATE KEY UPDATE '.$set;
         } else {
-            $sql .= sprintf(' ON CONFLICT (%s) DO UPDATE SET value = value + ?, updated_at = ?', $conflict);
+            $sql .= sprintf(' ON CONFLICT (%s) DO UPDATE SET %s', $conflict, $set);
         }
 
         $bindings[] = $by;
         $bindings[] = $now;
+
+        if ($stamped) {
+            $bindings[] = $increasedAt;
+            $bindings[] = $increasedAt;
+        }
 
         DB::statement($sql, $bindings);
     }

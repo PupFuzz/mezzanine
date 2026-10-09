@@ -488,8 +488,6 @@ class PredicateAlarmsTest extends SweepTestCase
     {
         $this->deliver($this->cleanTurn());
         $this->fold();
-        $this->deliver($this->blockedPair(requestOnly: true));
-        $this->fold();
 
         $this->advanceServerClock(61 * 60);
         $this->stayAlive();
@@ -529,8 +527,10 @@ class PredicateAlarmsTest extends SweepTestCase
     {
         $this->deliver($this->cleanTurn());
         $this->fold();
-        $this->deliver($this->blockedPair(requestOnly: true));
-        $this->fold();
+
+        // The firing row. Until card#9527 the fixture's 61-minute attention ceiling supplied it
+        // through `attention_resolved_by_wire`; that predicate is retired, so a latched run does.
+        Predicates::record($this->seatRef, 'turn_clean', true, Clock::sql(now()), 200);
 
         $this->advanceServerClock(61 * 60);
         $this->stayAlive();
@@ -558,34 +558,16 @@ class PredicateAlarmsTest extends SweepTestCase
         $this->assertArrayHasKey(Predicates::CLEAR, $verdicts, 'and a clear one');
     }
 
-    // ── the two criteria that were always exact, still seen to fire and to clear ──────────────
+    // ── the criterion that was always exact, still seen to fire and to clear ─────────────────
 
     /**
-     * `any_false` and the no-window run criterion, driven through a fire and a clear apiece. They
-     * were the only two evaluable before card #7833 and they must not have regressed under the
-     * rule that absorbed the `consecutive` kind into the run kind.
+     * The no-window run criterion, driven through a fire and a clear. It was one of the two
+     * evaluable before card #7833 and it must not have regressed under the rule that absorbed the
+     * `consecutive` kind into the run kind. (The other, `any_false`, was retired by card#9527 with
+     * its one predicate.)
      */
-    public function test_the_existence_and_consecutive_criteria_still_fire_and_clear(): void
+    public function test_the_consecutive_criterion_still_fires_and_clears(): void
     {
-        // ANY_FALSE — `attention_resolved_by_wire`: "any server-ceiling resolution in 24 h".
-        $this->deliver($this->blockedPair(requestOnly: true));
-        $this->fold();
-        $this->advanceServerClock(61 * 60);
-        $this->stayAlive();
-        $this->sweep();
-
-        $this->assertNotNull($this->predicate('attention_resolved_by_wire')->alarm_since);
-        $this->assertSame(Predicates::FIRES, $this->outcome('attention_resolved_by_wire'));
-
-        // …and it CLEARS once the ceiling resolution ages out of its own 24 h window, which is what
-        // separates this criterion from a latch.
-        $this->advanceServerClock(25 * 3_600);
-        $this->stayAlive();
-        $this->sweep();
-
-        $this->assertNull($this->predicate('attention_resolved_by_wire')->alarm_since);
-        $this->assertSame(Predicates::CLEAR, $this->outcome('attention_resolved_by_wire'));
-
         // RUN, no window — `fold_current`: two passes with the fold not running is a run of 2.
         $this->deliver($this->cleanTurn(), age: false);
         $this->advanceServerClock(120);

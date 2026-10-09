@@ -3,10 +3,14 @@
 # bin/promote-cards-by-token.
 #
 # ⚑ VENDORED, NOT AUTHORED HERE — same provenance, same rule, as the script it tests:
-# everything from `set -uo pipefail` down is a BYTE-FOR-BYTE copy from
+# everything from `set -uo pipefail` down is a copy of
 # PupFuzz/agent-board-framework `bin/promote-cards-by-token.selftest.sh` at commit
-# e2f131f796baa93a5aa9cec620969bcaa21ac7fe. Fix defects upstream and re-vendor. Paths and
-# `card#NNNN` references inside the body resolve in THAT repo, not this one.
+# e2f131f796baa93a5aa9cec620969bcaa21ac7fe, EXCEPT ONE DECLARED SITE, the selftest half of the
+# mover's declared site (3) (card#11527): the `foreign` fixture helper, the `%20id=` stub key,
+# the control card `card 1 13 93` in reset_fixtures, case 6's skip assertions, and cases 9b,
+# 9c and 9d — located by the fragments `9c. A 403 card read is judged` and `9d. A 200 that does
+# not carry the fields`. Fix defects upstream and re-vendor. Paths and `card#NNNN` references
+# inside the body resolve in THAT repo, not this one, except card#11527.
 # ⚑ AND THAT CLAIM IS CHECKED, not asserted: `bin/vendor-pin-check.sh` pins the sha256 of this
 # file's body and runs on EVERY PR (the `card-token-lint` workflow). Any edit below reds CI
 # until the pin is updated in the same commit. The mover's header says why this exists — its
@@ -89,6 +93,10 @@ case "$url" in
   # residue case could not distinguish "the board has one visible card" from "page 1 of the
   # board", and every residue assertion would be reading the preflight's body.
   *"/tasks/search.json"*"page="*) key="board.page${url##*page=}" ;;
+  # The BOARD-SCOPED id lookup a 403 triggers (`q=board_id=N%20id=M`) is a third shape: it
+  # must not read the preflight's body either, or a foreign-card case would be judged against
+  # the preflight's row instead of the lookup's answer.
+  *"/tasks/search.json"*"%20id="*) key="search.id${url##*%20id=}"; key="${key%%&*}" ;;
   *"/tasks/search.json"*)         key=search ;;
   *"/tasks/"*)            key="${url##*/tasks/}"; key="${key%%.json*}" ;;
   *)                      key=unknown ;;
@@ -104,6 +112,14 @@ card() {
   printf '200' > "$FIX/$1.code"
   printf '{"data":{"id":%s,"board_id":%s,"workflow_stage_id":%s,"archived_at":%s,"deleted_at":null}}\n' \
     "$1" "$2" "$3" "$([ -n "${4:-}" ] && printf '"%s"' "$4" || printf 'null')" > "$FIX/$1.body"
+}
+# foreign <id> — install a card the token is REFUSED (403) and that the board-scoped lookup
+# does not find on the configured board: kanban's answer for another board's card id.
+foreign() {
+  printf '403' > "$FIX/$1.code"
+  printf '{"message":"This action is unauthorized."}' > "$FIX/$1.body"
+  printf '200' > "$FIX/search.id$1.code"
+  printf '{"data":[],"meta":{"total":0}}' > "$FIX/search.id$1.body"
 }
 # board_page <n> <cards-json-array> [meta.total] [meta.last_page] — install page <n> of the
 # PAGED whole-board read the stranded-card residue report performs. Omitted meta fields are
@@ -122,6 +138,8 @@ reset_fixtures() {
   printf '200' > "$FIX/search.code"
   printf '{"data":[{"id":1}],"meta":{"total":132}}' > "$FIX/search.body"
   board_page 1 '[{"id":1,"board_id":13,"workflow_stage_id":93,"archived_at":null,"deleted_at":null}]' 1 1
+  # The preflight's row, readable on its own: the CONTROL a 403 is judged against.
+  card 1 13 93
   : > "$CALL_LOG"; : > "$PATCH_LOG"
 }
 
@@ -310,15 +328,20 @@ eq "the resolvable card still moved"               "true"  "$(has '/tasks/101.js
 eq "the unresolved token is named"                 "true"  "$(has 'card#102' "$err")"
 eq "the report offers the archived explanation"    "true"  "$(has 'archived' "$err")"
 
-echo "== 6. BOARD-SCOPE: a token resolving to ANOTHER board's card is rejected =="
+echo "== 6. BOARD-SCOPE: a token resolving to ANOTHER board's card is skipped, never moved =="
 # RED when: the `[ "$cbd" != "$BOARD" ]` guard is removed → card#102 (board 3) is PATCHed.
+# A release legitimately carries another board's card token (card#11527: v0.8.0 named a
+# framework-board card), so the skip is NAMED and the run stays green — it is not exit 3.
 reset_fixtures
 card 101 13 97
 card 102 3 97             # a sola board-3 card that happens to share the id space
 run
-eq "out-of-board token → rc 3"                     "3"     "$rc"
+eq "out-of-board token → rc 0"                     "0"     "$rc"
 eq "out-of-board card NOT PATCHed"                 "false" "$(has '/tasks/102.json' "$patched")"
-eq "rejection names the wrong board"               "true"  "$(has 'on board 3, not board 13' "$err")"
+eq "  … the in-board card still moved"             "true"  "$(has '/tasks/101.json' "$patched")"
+eq "skip is a 'not on this board' line"            "true"  "$(has 'card#102: not on this board' "$err")"
+eq "skip names the board the card IS on"           "true"  "$(has 'on board 3' "$err")"
+eq "summary counts it"                             "true"  "$(has '1 not on this board' "$out")"
 
 echo "== 7. An ARCHIVED card is reported, never moved =="
 reset_fixtures
@@ -352,6 +375,130 @@ printf '503' > "$FIX/102.code"
 run
 eq "degraded read → rc 2"                          "2"     "$rc"
 eq "refusal names the degraded read"               "true"  "$(has 'degraded board read' "$err")"
+
+echo "== 9b. A degraded read AFTER a movable card still writes NOTHING (reads precede writes) =="
+# Exit 2 promises NOTHING was written. Card ids are read newest-first, so card#102 resolves
+# (promotable) before card#101's read fails. RED when: reads and writes are interleaved again
+# → card#102 is PATCHed and THEN the run exits 2, a half-applied release reported as a refusal.
+reset_fixtures
+card 102 13 97
+printf '503' > "$FIX/101.code"
+run
+eq "late degraded read → rc 2"                     "2"     "$rc"
+eq "late degraded read → ZERO writes"              ""      "$patched"
+for c in 401 000; do
+  reset_fixtures
+  card 102 13 97
+  printf '%s' "$c" > "$FIX/101.code"
+  run
+  eq "card read HTTP $c → rc 2"                    "2"     "$rc"
+  eq "  … and ZERO writes"                         ""      "$patched"
+done
+
+echo "== 9c. A 403 card read is judged, never trusted: foreign card skipped, lost credential refused =="
+# A 403 body is the SAME for another board's card and for this board's card read by a token
+# that lost board view ("This action is unauthorized." — measured 2026-10-08, card#11527), so
+# the status alone can never decide. The mover reads the preflight's own row back (the
+# CONTROL) and looks the id up on this board before it calls a 403 foreign.
+#
+# 9c-1. Another board's card: skipped and named; the rest move; green.
+# RED when: the 403 arm is dropped (pre-card#11527) → rc 2 and nothing moves.
+reset_fixtures
+card 101 13 97
+foreign 102
+run
+eq "foreign 403 card → rc 0"                       "0"     "$rc"
+eq "  … the in-board card still moved"             "true"  "$(has '/tasks/101.json' "$patched")"
+eq "  … the foreign card is NOT PATCHed"           "false" "$(has '/tasks/102.json' "$patched")"
+eq "  … named on a 'not on this board' line"       "true"  "$(has 'card#102: not on this board' "$err")"
+eq "  … after reading the control card"            "true"  "$(has '/tasks/1.json' "$calls")"
+eq "  … and looking the id up on this board"       "true"  "$(has 'q=board_id=13%20id=102' "$calls")"
+eq "  … summary counts it"                         "true"  "$(has '1 not on this board' "$out")"
+# 9c-2. CREDENTIAL LOSS: every card read 403s, the control included. RED when: a 403 is
+# trusted as 'foreign' on its status alone → rc 0, every card 'skipped', nothing moved, green.
+reset_fixtures
+foreign 101; foreign 102; foreign 1
+run
+eq "every card read 403 → rc 2"                    "2"     "$rc"
+eq "  … ZERO writes"                               ""      "$patched"
+eq "  … no card called foreign"                    "false" "$(has 'not on this board' "$err")"
+eq "  … the refusal names the token"               "true"  "$(has 'cannot read board 13' "$err")"
+# 9c-3. The board-scoped lookup FINDS the 403 card on this board: the token's scope is wrong,
+# not the card's board. RED when: the lookup's rows are not checked → card skipped, rc 0.
+reset_fixtures
+card 101 13 97
+foreign 102
+printf '{"data":[{"id":102,"board_id":13}],"meta":{"total":1}}' > "$FIX/search.id102.body"
+run
+eq "403 card found on this board → rc 2"           "2"     "$rc"
+eq "  … ZERO writes"                               ""      "$patched"
+# 9c-4. The lookup ignored its id filter (a row naming another card): no verdict, refuse.
+reset_fixtures
+card 101 13 97
+foreign 102
+printf '{"data":[{"id":555,"board_id":13}],"meta":{"total":1}}' > "$FIX/search.id102.body"
+run
+eq "unfiltered scoped lookup → rc 2"               "2"     "$rc"
+eq "  … ZERO writes"                               ""      "$patched"
+# 9c-5. The lookup itself fails: no verdict, refuse.
+reset_fixtures
+card 101 13 97
+foreign 102
+printf '503' > "$FIX/search.id102.code"
+run
+eq "failed scoped lookup → rc 2"                   "2"     "$rc"
+eq "  … ZERO writes"                               ""      "$patched"
+
+echo "== 9d. A 200 that does not carry the fields a verdict reads is a degraded read, never a skip =="
+# A 200 proves the server answered, not that it answered with a card. A body stripped on the
+# way (a proxy, a serializer error) leaves every field the mover reads absent, and a jq default
+# turns each absence into a verdict: no board_id read as "another board", no workflow_stage_id
+# as "not Shipped-class", no archived_at/deleted_at as "live", no lookup rows as "foreign".
+# Each of those is exit 0 or a wrong move on a read that measured nothing (card#11527 follow-up).
+#
+# 9d-1/2. The board-scoped lookup answers 200 with no `data` array. RED when: the lookup reads
+# `(.data // [])` → zero rows → card#102 skipped as foreign, rc 0.
+for b in '{}' '{"data":null}'; do
+  reset_fixtures
+  card 101 13 97
+  foreign 102
+  printf '%s' "$b" > "$FIX/search.id102.body"
+  run
+  eq "scoped lookup 200 $b → rc 2"                 "2"     "$rc"
+  eq "  … ZERO writes"                             ""      "$patched"
+  eq "  … card#102 not called foreign"             "false" "$(has 'not on this board' "$err")"
+done
+# 9d-3..6. The card read answers 200 without a field the verdict reads. RED when: the card-read
+# shape check is dropped → no board_id / no data: skipped as foreign, rc 0; no
+# workflow_stage_id: stage-guarded, rc 0; no archived_at/deleted_at: an archived card is MOVED.
+for b in \
+  '{"data":{"id":102,"workflow_stage_id":97,"archived_at":null,"deleted_at":null}}' \
+  '{"data":{"id":102,"board_id":"","workflow_stage_id":97,"archived_at":null,"deleted_at":null}}' \
+  '{}' \
+  '{"data":{"id":102,"board_id":13,"archived_at":null,"deleted_at":null}}' \
+  '{"data":{"id":102,"board_id":13,"workflow_stage_id":97}}' \
+  '{"data":{"id":102,"board_id":13,"workflow_stage_id":97,"archived_at":null}}'; do
+  reset_fixtures
+  card 101 13 97
+  card 102 13 97
+  printf '%s' "$b" > "$FIX/102.body"
+  run
+  eq "card read 200 $b → rc 2"                     "2"     "$rc"
+  eq "  … ZERO writes"                             ""      "$patched"
+  eq "  … card#102 not called foreign"             "false" "$(has 'not on this board' "$err")"
+  eq "  … refusal names the incomplete read"       "true"  "$(has 'card#102 read answered HTTP 200' "$err")"
+done
+# 9d-7. The CONTROL read answers 200 with no board_id: the token's view of board 13 is
+# unmeasured, so the 403 cannot be judged foreign. RED when: the control's board_id check is
+# dropped or defaulted to the configured board → card#102 skipped, rc 0.
+reset_fixtures
+card 101 13 97
+foreign 102
+printf '{"data":{"id":1}}' > "$FIX/1.body"
+run
+eq "control read 200 with no board_id → rc 2"      "2"     "$rc"
+eq "  … ZERO writes"                               ""      "$patched"
+eq "  … card#102 not called foreign"               "false" "$(has 'not on this board' "$err")"
 
 echo "== 10. A range with NO card token: merge tip = nothing to do; squash tip = FAIL =="
 # RED when: the merge_commit_tip discriminator is dropped from the empty-token branch →

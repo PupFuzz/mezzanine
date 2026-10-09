@@ -23,4 +23,17 @@ return [
         'board_ids' => env('BOARD_IDS'),
     ],
 
+    /*
+     * The install's IDLE HORIZON, in seconds — `docs/design/FLEET-STATE.md § 8.2.1`'s
+     * `idle_nudge_after_s` (card#9418). A consumer watching for an idle seat (the bridge's idle
+     * watchdog) reads it off every seat object as the horizon this install declares; this plane
+     * acts on it nowhere.
+     *
+     * RAW, AND NEVER VALIDATED HERE: `App\Read\IdleHorizon` resolves it. Unset or empty is
+     * undeclared and the member is absent, never a default (rt#479). A value that is not a whole
+     * number from 1 to 86400 is undeclared too, counted as `idle_horizon_malformed` on fleet health
+     * and logged — a throw here would stop every process that loads uncached config.
+     */
+    'idle_nudge_after_s' => env('MEZZANINE_IDLE_NUDGE_AFTER_S'),
+
 ];
