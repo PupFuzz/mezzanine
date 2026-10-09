@@ -4,6 +4,7 @@ namespace App\Fold;
 
 use App\Feed\Publisher;
 use App\Ingest\Counters;
+use App\Ingest\Wire;
 use App\Support\ByteTruncation;
 use Illuminate\Support\Facades\DB;
 
@@ -368,8 +369,10 @@ class StateRecompute
             $update['reporter_platform'] = $batch->reporter_platform;
         }
 
-        if ($e->kind === 'session.start' && $e->str('harness_label', 32) !== null) {
-            $update['harness_label'] = $e->str('harness_label', 32);
+        // Through the same format check as the session row's copy (`Projector::sessionStart()`), so
+        // a label off D1 § 6.1's pattern is `null` on both and counted once (card#9346).
+        if ($e->kind === 'session.start' && ($label = $e->conforming('harness_label', Wire::HARNESS_LABEL)) !== null) {
+            $update['harness_label'] = $label;
         }
 
         if ($update !== []) {

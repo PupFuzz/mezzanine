@@ -3,6 +3,8 @@
 namespace Tests\Feature\Ingest;
 
 use App\Ingest\KindRegistry;
+use App\Ingest\Wire;
+use App\Support\Slug;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -217,6 +219,63 @@ class EventSchemaDriftTest extends TestCase
                 $kind,
             ),
         );
+    }
+
+    /**
+     * card#9346: the fold holds these `data` strings to their published format and stores `null`
+     * for a value off it (`App\Fold\FoldEvent::conforming()`), so each pattern body it uses is a
+     * transcription of a § 6 row — and one narrower than the row would null a CONFORMING value.
+     * Re-derived from the row on every run: the row's own `^[…]+$` / `^[…]{1,N}$` character class,
+     * or § 6.0's `slug` class for a `slug`-typed row, with the row's byte bound as the upper limit.
+     * The ULID and session-id bodies are the ingest's own (`Wire::ULID`, `Wire::SESSION_ID`) and are
+     * held where the ingest checks them; `harness_call_ref`, which § 6.5 calls opaque, is held to its
+     * bound only.
+     *
+     * @return array<string, array{string, string, string}>
+     */
+    public static function foldFormatPatterns(): array
+    {
+        return [
+            'harness_label' => ['session.start', 'harness_label', Wire::HARNESS_LABEL],
+            'tool_name' => ['tool.start', 'tool_name', Wire::TOOL_NAME],
+            'subagent_type' => ['subagent.spawn', 'subagent_type', Wire::SUBAGENT_TYPE],
+            'harness_call_ref' => ['tool.start', 'harness_call_ref', Wire::HARNESS_CALL_REF],
+            'protocol_agent_name' => ['reporter.heartbeat', 'protocol_agent_name', Slug::AGENT_NAME],
+            'protocol_agent_role' => ['reporter.heartbeat', 'protocol_agent_role', Slug::AGENT_NAME],
+        ];
+    }
+
+    #[DataProvider('foldFormatPatterns')]
+    public function test_every_fold_format_pattern_matches_the_documents_row(string $kind, string $field, string $body): void
+    {
+        $row = null;
+
+        foreach (self::dataFieldTables()[$kind] ?? [] as $line) {
+            if (str_starts_with($line, '| `'.$field.'` |')) {
+                $row = $line;
+            }
+        }
+
+        $this->assertNotNull($row, "no § 6 row for {$kind}.{$field}, so its format pattern is held to nothing");
+
+        $bound = self::documentedBounds()[$kind][$field] ?? null;
+        $this->assertNotNull($bound, "{$kind}.{$field}'s row states no byte bound to hold the pattern's length to");
+
+        $this->assertSame(1, preg_match('/^\[[^\]]+\]\{1,(\d+)\}$/', $body, $quant), "`{$body}` is not a [class]{1,N} body");
+        $this->assertSame($bound, (int) $quant[1], "{$kind}.{$field}'s fold pattern admits up to {$quant[1]} characters and § 6 bounds it at {$bound} B");
+
+        if ($field === 'harness_call_ref') {
+            return;
+        }
+
+        $cells = array_map('trim', explode('|', $row));
+        $class = $cells[2] === 'slug'
+            ? '[a-z0-9-]'
+            : (preg_match('/`\^(\[[^\]]+\])(?:\+|\{1,\d+\})\$`/', $row, $m) === 1 ? $m[1] : null);
+
+        $this->assertNotNull($class, "{$kind}.{$field}'s row publishes no pattern this test can read");
+        $this->assertSame($class, str_replace('\/', '/', substr($body, 0, (int) strpos($body, ']') + 1)),
+            "{$kind}.{$field}'s fold pattern has drifted from docs/design/EVENT-SCHEMA.md § 6");
     }
 
     /**

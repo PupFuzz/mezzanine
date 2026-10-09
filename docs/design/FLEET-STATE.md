@@ -1610,7 +1610,7 @@ CREATE TABLE sessions (
                                     -- turn.start (an older one delivered late never replaces it;
                                     -- a newer one carrying null clears it). The fold stores only a
                                     -- value matching D1 § 6.3's pattern; any other value is
-                                    -- stored NULL and counts `console_url_refused` (§ 7.2). ⛔ Published to an OPERATOR
+                                    -- stored NULL and counts `format_refused.console_url` (§ 7.2). ⛔ Published to an OPERATOR
                                     -- only, on § 8.2.3's `detail` — never on the seat object, so
                                     -- never on the snapshot or a delta
   turn_close_source ENUM('wire','session_close','server_offline') NULL,
@@ -2474,6 +2474,22 @@ written at the version the last one already announced and no client would ever b
 skipped. The event stays in `events`: the fix plus `mezzanine:rebuild --seat` recovers the seat exactly,
 which is only true because the log is the source of truth and the projections are derived.
 
+**A `data` string off its published format costs that field, never the event (card#9346).** The ingest
+refuses a field over its byte bound and checks no pattern ([D1 § 12.1](EVENT-SCHEMA.md#121-validation-order)
+step 10), so a value off its pattern reaches `project()`. Every `data` string this fold writes into an
+ASCII column of [§ 6.4](#64-ddl) is first held to the format D1 publishes for it, and a value that fails
+it is stored `NULL` and counted `format_refused.<field>` ([§ 7.2](#72-this-planes-own-counters-and-badges)),
+once per event and field, while the rest of the event lands. Without the check a non-ASCII value fails
+the write under the store's strict SQL mode and takes the whole event through the rule above: on a
+heartbeat that rolls back `last_heartbeat_received_at`, and a healthy seat drifts to `stale` with a
+`derivation_error` badge for a label (the operator's ruling on card#9346, D18, option (a); refusing the
+batch at the ingest instead was declined). `calls.tool_name` is `NOT NULL`, so a name off its pattern
+is stored as the stand-in D1 § 6.5 publishes for exactly that case, `INVALID_TOOL_NAME`; a missing name
+stays a raise. A refused `call_id` or `request_id` is the event's key, so that event, like one missing
+it, lands nothing beyond the count. The checked population and each field's format are
+`App\Fold\FoldEvent::conforming()`'s callers, with the pattern bodies in `App\Ingest\Wire` and
+`App\Support\Slug`; `git grep -n "conforming(" -- server/app` re-prints it.
+
 **Batch size 500 and claim size 8, derived.** 500 events is ~2.5 batches at D1's 200-event cap, so a
 pass consumes a real seat's arrivals in one transaction, whose hold on the seat's lock
 `Fold::WINDOW_BUDGET_MS` bounds as well — a window stops at whichever it reaches first; 8 seats per claim keeps one worker's transaction footprint small enough that a second
@@ -2874,7 +2890,7 @@ for the same reason: a counter with no stated home is a counter two implementers
 | `left_live_cleared_stalls` | `seat_counters` | seat detail | the sweeper cleared a `stalled` flag at the seat's leaving-live boundary — `stale` at 300 s, or `offline` at 900 s on the one-pass jump ([§ 4.5](#45-link-states)) | rising ⇒ seats are going quiet while rate-limited, which is a different story from the stall ending properly |
 | `compaction_ceiling_closed` | `seat_counters` | seat detail | the sweeper closed a `compaction_open_since` at its 15-minute ceiling ([§ 4.6](#46-every-open-fact-has-a-ceiling)) | rising ⇒ `compaction.end` is not arriving; `PostCompact` is one of D1's un-driven hook stubs, so this is the instrument that says so |
 | `session_close_orphans` | `seat_counters` | seat detail | a `session.end` arrived with calls still open server-side and the server closed them (`abort_reason: session_close`, `close_source: server_session_close`) | rising ⇒ reap `tool.end`s are being lost in transit, since D1's reaps should have closed them on the wire first |
-| `console_url_refused` | `seat_counters` | seat detail | the fold met a `turn.start` whose `console_url` fails [D1 § 6.3](EVENT-SCHEMA.md#63-turnstart)'s pattern and stored `NULL` in its place ([§ 6.4](#64-ddl)) | none rendered; the link is simply not offered. The reporter drops such a value before it is sent, so a count here is a reporter that does not check the pattern it owes, or a value that did not come from a reporter — a reason to look at the seat's token |
+| `format_refused.<field>` | `seat_counters`, one row per wire field | seat detail | the fold met a `data` string, destined for an ASCII column of [§ 6.4](#64-ddl), that fails the format D1 publishes for it — a `turn.start`'s `console_url` off [D1 § 6.3](EVENT-SCHEMA.md#63-turnstart)'s pattern, a heartbeat's `protocol_agent_name` that is not a slug, and every other member [§ 6.5](#65-the-fold) names — and stored `NULL` in its place (`INVALID_TOOL_NAME` for `tool_name`, whose column is `NOT NULL`). Once per event and field (card#9346; until then `console_url` alone was checked, as `console_url_refused`) | none rendered; the field is simply absent and the rest of the event lands. A conforming reporter never sends such a value, so a count here is a reporter that does not check the format it owes, or a value that did not come from a reporter — a reason to look at the seat's token |
 | `fold_window_purged` | `seat_counters` | seat detail | the fold's emptiness proof found its unfolded window gone to [§ 6.7](#67-retention-and-purge)'s purge, so the cursor advances to the head that proof covered rather than the seat re-claiming forever ([§ 6.5](#65-the-fold)). Counted on the **proof**, not on the guarded cursor write: a pass that loses the race to an ingest advances nothing and still admits the purge, because the same window is jumped by the ordinary branch on a later pass and that jump must not be silent | non-zero ⇒ that seat's state is honest but shorter, and the fold was down longer than retention; the same admission `rebuild_truncated` makes |
 | `state_rebuilds` / `rebuild_truncated` | `seat_counters` | seat detail | a `mezzanine:rebuild` ran / ran against a window shorter than the seat's history | operator-visible; a truncated rebuild's state is honest but shorter |
 | `sweep_seat_error` | `seat_counters` | seat detail | a sweep pass's work on that seat threw anything but a concurrency error, and the pass skipped the seat and went on ([§ 2.1](#21-processes)) | that seat's time-derived transitions did not advance that pass; the pass counts it among its failed seats and `mezzanine:sweep` prints the count |

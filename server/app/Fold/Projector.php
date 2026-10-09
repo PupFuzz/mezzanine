@@ -5,7 +5,7 @@ namespace App\Fold;
 use App\Ingest\Counters;
 use App\Ingest\KindRegistry;
 use App\Ingest\Wire;
-use App\Support\Anchored;
+use App\Support\Slug;
 use App\Sweep\Predicates;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -122,7 +122,9 @@ class Projector
      *
      * `INVALID_TOOL_NAME` was the worst of the three in a second way: D1 § 6.5 defines that literal
      * as the REPORTER's own substitution for a name that failed its pattern, so reusing it here for
-     * a name that never arrived would put two different facts in one value.
+     * a name that never arrived would put two different facts in one value. A name that DID arrive
+     * and fails § 6.5's pattern is that same fact, and is written as that literal
+     * (`FoldEvent::conforming()`'s `$refusedAs`, card#9346); a missing one still raises.
      */
 
     public function apply(FoldEvent $e): void
@@ -199,8 +201,8 @@ class Projector
                     'startup', 'resume', 'clear', 'compact', 'fork', 'unknown',
                 ]),
                 'project_label' => $e->str('project_label', 48),
-                'harness_label' => $e->str('harness_label', 32),
-                'previous_session_id' => $e->str('previous_session_id', 128),
+                'harness_label' => $e->conforming('harness_label', Wire::HARNESS_LABEL),
+                'previous_session_id' => $e->conforming('previous_session_id', Wire::SESSION_ID),
                 'updated_at' => $e->receivedAt,
             ]);
         }
@@ -478,24 +480,13 @@ class Projector
      * D1 § 6.3's `console_url`, or `null`. ⛔ THE PATTERN IS CHECKED HERE, BEFORE THE STORE, because
      * nothing upstream does: the ingest refuses a byte bound and never a pattern (§ 12.1 step 10), and
      * the value becomes an `href` on the drill-down. A value that fails it is not stored and is
-     * counted (`console_url_refused`, D2 § 7.2) — a conforming reporter drops it first, so a count
-     * here is a reporter that does not, or a value that did not come from one.
+     * counted (`format_refused.console_url`, D2 § 7.2) — a conforming reporter drops it first, so a
+     * count here is a reporter that does not, or a value that did not come from one. It is the case
+     * `FoldEvent::conforming()` was generalised from (card#9346), and it goes through it.
      */
     private function consoleUrl(FoldEvent $e): ?string
     {
-        $value = Wire::field($e->data, 'console_url');
-
-        if ($value === null) {
-            return null;
-        }
-
-        if (is_string($value) && preg_match(Anchored::pattern(Wire::CONSOLE_URL), $value) === 1) {
-            return $value;
-        }
-
-        Counters::seat($e->seatRef, 'console_url_refused');
-
-        return null;
+        return $e->conforming('console_url', Wire::CONSOLE_URL);
     }
 
     private function turnEnd(FoldEvent $e): void
@@ -597,7 +588,7 @@ class Projector
 
     private function toolStart(FoldEvent $e): void
     {
-        $callId = $e->str('call_id', 26);
+        $callId = $e->conforming('call_id', Wire::ULID);
 
         if ($callId === null) {
             return;
@@ -607,12 +598,12 @@ class Projector
 
         $open = [
             'session_ref' => $e->sessionId === null ? null : $this->sessionRef($e),
-            'tool_name' => $e->str('tool_name', 64),
+            'tool_name' => $e->conforming('tool_name', Wire::TOOL_NAME, Wire::INVALID_TOOL_NAME),
             'descriptor' => $e->str('descriptor', 200),
             'descriptor_truncated' => (bool) Wire::field($e->data, 'descriptor_truncated'),
             'agent_scope' => $e->enum('agent_scope', ['main', 'subagent']),
-            'parent_call_id' => $e->str('parent_call_id', 26),
-            'harness_call_ref' => $e->str('harness_call_ref', 64),
+            'parent_call_id' => $e->conforming('parent_call_id', Wire::ULID),
+            'harness_call_ref' => $e->conforming('harness_call_ref', Wire::HARNESS_CALL_REF),
             'synthesized' => (bool) Wire::field($e->data, 'synthesized'),
             'opened_at' => $e->eventTime,
             'opened_received_at' => $e->receivedAt,
@@ -657,7 +648,7 @@ class Projector
 
     private function toolEnd(FoldEvent $e): void
     {
-        $callId = $e->str('call_id', 26);
+        $callId = $e->conforming('call_id', Wire::ULID);
 
         if ($callId === null) {
             return;
@@ -699,12 +690,14 @@ class Projector
             // — one with no open at all — likewise creates a row "already closed with
             // `synthesized = 1`", so the anomaly is a visible flag rather than an absorbed one and
             // the ledger's open-call arithmetic stays total.
+            $toolName = $e->conforming('tool_name', Wire::TOOL_NAME, Wire::INVALID_TOOL_NAME);
+
             DB::table('calls')->insert($close + [
                 'seat_ref' => $e->seatRef,
                 'call_id' => $callId,
                 'session_ref' => $e->sessionId === null ? null : $this->sessionRef($e),
-                'tool_name' => $e->str('tool_name', 64),
-                'is_dispatch' => in_array($e->str('tool_name', 64), self::DISPATCH_TOOLS, true),
+                'tool_name' => $toolName,
+                'is_dispatch' => in_array($toolName, self::DISPATCH_TOOLS, true),
                 'synthesized' => $match === 'synthesized',
             ] + $this->triple($e));
 
@@ -765,7 +758,7 @@ class Projector
 
     private function subagentSpawn(FoldEvent $e): void
     {
-        $callId = $e->str('call_id', 26);
+        $callId = $e->conforming('call_id', Wire::ULID);
 
         if ($callId === null) {
             return;
@@ -803,7 +796,7 @@ class Projector
         // is an honest orphan — and a later spawn for the same `call_id` does fill it (§ 10, E2).
         DB::table('calls')->where('id', $call->id)->update([
             'title' => $e->str('title', 120),
-            'subagent_type' => $e->str('subagent_type', 32),
+            'subagent_type' => $e->conforming('subagent_type', Wire::SUBAGENT_TYPE),
             'is_dispatch' => true,
         ]);
 
@@ -812,7 +805,7 @@ class Projector
 
     private function subagentStop(FoldEvent $e): void
     {
-        $callId = $e->str('call_id', 26);
+        $callId = $e->conforming('call_id', Wire::ULID);
 
         if ($callId === null) {
             return;
@@ -946,7 +939,7 @@ class Projector
 
     private function attentionRequest(FoldEvent $e): void
     {
-        $requestId = $e->str('request_id', 26);
+        $requestId = $e->conforming('request_id', Wire::ULID);
 
         if ($requestId === null) {
             return;
@@ -978,7 +971,7 @@ class Projector
             'notification_kind' => $e->enum('notification_kind', [
                 'permission_required', 'input_awaited', 'elicitation',
             ]),
-            'call_id' => $e->str('call_id', 26),
+            'call_id' => $e->conforming('call_id', Wire::ULID),
             // NO CEILING IS MATERIALIZED (card#9527). The request stays open until the seat says
             // something: § 4.4's exits are all events, and none of them is a clock.
             'opened_at' => $e->eventTime,
@@ -988,7 +981,7 @@ class Projector
 
     private function attentionResolved(FoldEvent $e): void
     {
-        $requestId = $e->str('request_id', 26);
+        $requestId = $e->conforming('request_id', Wire::ULID);
 
         if ($requestId === null) {
             return;
@@ -1099,25 +1092,22 @@ class Projector
             // publish a name the seat has stopped sending as though it still sent it. `null`
             // resolves no participant (§ 8.3.3), which is the direction a stale claim must fail in.
             //
-            // Through `str()` / `enum()` rather than raw: the ingest bounds the name and refuses an
-            // out-of-set check, but type-checks neither, so a non-string reaches the column as
-            // `null`. The name's bound and the check's member set are READ from the ingest's
-            // registry, not restated here — `EventSchemaDriftTest` holds that registry to D1 § 6.14.
-            'protocol_agent_name' => $e->str(
-                'protocol_agent_name',
-                KindRegistry::KINDS['reporter.heartbeat']['bounds']['protocol_agent_name'],
-            ),
+            // Through `conforming()` / `enum()` rather than raw: the ingest bounds the name and
+            // refuses an out-of-set check, but checks neither the name's slug pattern nor its type,
+            // so a value off the pattern — a non-ASCII one would fail the ASCII column and take the
+            // whole heartbeat with it (card#9346) — reaches the column as `null` and is counted
+            // `format_refused.<field>`. The pattern is `Slug::AGENT_NAME`, which carries D1 § 6.14's
+            // 48 B bound; the check's member set is READ from the ingest's registry, not restated
+            // here — `EventSchemaDriftTest` holds that registry to D1 § 6.14.
+            'protocol_agent_name' => $e->conforming('protocol_agent_name', Slug::AGENT_NAME),
             'protocol_agent_name_check' => $e->enum(
                 'protocol_agent_name_check',
                 KindRegistry::KINDS['reporter.heartbeat']['enums']['protocol_agent_name_check']['members'],
             ),
             // card#11144: the roster entry's ROLE the reporter relays (D1 § 3.1), last heartbeat's
             // value verbatim under the same rules as the pair above — heartbeat-only, an omitted key
-            // writes `null`, and the bound is read from the ingest's registry, not restated.
-            'protocol_agent_role' => $e->str(
-                'protocol_agent_role',
-                KindRegistry::KINDS['reporter.heartbeat']['bounds']['protocol_agent_role'],
-            ),
+            // writes `null`, and the name's own slug pattern and bound hold it (D1 § 6.14).
+            'protocol_agent_role' => $e->conforming('protocol_agent_role', Slug::AGENT_NAME),
             'reporter_uptime_s' => $e->int('uptime_s'),
             // § 7.3: stored VERBATIM as a snapshot, never summed and never merged into
             // `seat_counters`. They are cumulative totals that persist across flusher restarts, so
